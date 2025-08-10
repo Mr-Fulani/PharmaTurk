@@ -1,0 +1,121 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: pharmaturk
+      POSTGRES_USER: pharmaturk
+      POSTGRES_PASSWORD: pharmaturk
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pharmaturk"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=yourStrongPassword123!
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      opensearch:
+        condition: service_started
+    environment:
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      DATABASE_URL: ${DATABASE_URL:-postgres://pharmaturk:pharmaturk@postgres:5432/pharmaturk}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      VAPI_BASE_URL: ${VAPI_BASE_URL:-https://api.vapi.co}
+      VAPI_API_KEY: ${VAPI_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    command: bash -c "/root/.local/share/pypoetry/venv/bin/poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8000"
+
+  celeryworker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      DATABASE_URL: ${DATABASE_URL:-postgres://pharmaturk:pharmaturk@postgres:5432/pharmaturk}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      VAPI_BASE_URL: ${VAPI_BASE_URL:-https://api.vapi.co}
+      VAPI_API_KEY: ${VAPI_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    command: bash -c "/root/.local/share/pypoetry/venv/bin/poetry run celery -A config worker --loglevel=info"
+
+  celerybeat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      DATABASE_URL: ${DATABASE_URL:-postgres://pharmaturk:pharmaturk@postgres:5432/pharmaturk}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      VAPI_BASE_URL: ${VAPI_BASE_URL:-https://api.vapi.co}
+      VAPI_API_KEY: ${VAPI_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    command: bash -c "/root/.local/share/pypoetry/venv/bin/poetry run celery -A config beat --loglevel=info"
+
+volumes:
+  postgres_data:
+  redis_data:
+  opensearch_data:
+

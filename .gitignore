@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+
+# Virtual environments
+.env/
+.venv/
+env/
+venv/
+
+# Django
+*.log
+db.sqlite3
+media/
+staticfiles/
+local_settings.py
+
+# Docker
+*.pid
+*.seed
+*.db
+*.tar
+docker-compose.override.yml
+
+# IDEs/editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+.cache/
+.coverage
+htmlcov/
+
+# Poetry
+poetry.lock
+
+# Node / Frontend (future)
+node_modules/
+dist/
+.next/
+coverage/
+
