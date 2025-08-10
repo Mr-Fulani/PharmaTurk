@@ -64,6 +64,28 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-json}
     command: bash -c "/root/.local/share/pypoetry/venv/bin/poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8000"
 
+  frontend:
+    image: node:18-bullseye
+    container_name: pharmaturk-frontend-1
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    command: sh -lc "npm install --legacy-peer-deps && NEXT_DISABLE_SWC_NATIVE=1 npx --yes next dev -H 0.0.0.0 -p 3000"
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_TELEMETRY_DISABLED=1
+      - NEXT_DISABLE_SWC_NATIVE=1
+      - HOST=0.0.0.0
+      - PORT=3000
+      - INTERNAL_API_BASE=http://backend:8000
+    depends_on:
+      - backend
+
   celeryworker:
     build:
       context: ./backend
