@@ -11,6 +11,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExampl
 from datetime import timedelta
 import random
 import string
+import uuid
 
 from .models import User, UserProfile, UserAddress, UserSession
 from .serializers import (
@@ -18,6 +19,34 @@ from .serializers import (
     UserAddressSerializer, UserSerializer, UserPasswordChangeSerializer,
     UserEmailVerificationSerializer, UserSessionSerializer, UserStatsSerializer
 )
+
+
+def create_user_session(user, request):
+    """Создание сессии пользователя"""
+    # Генерируем уникальный session_key если его нет
+    session_key = request.session.session_key
+    if not session_key:
+        session_key = str(uuid.uuid4())
+    
+    # Проверяем, не существует ли уже сессия с таким ключом
+    if not UserSession.objects.filter(session_key=session_key).exists():
+        UserSession.objects.create(
+            user=user,
+            session_key=session_key,
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            expires_at=timezone.now() + timedelta(days=30)
+        )
+
+
+def get_client_ip(request):
+    """Получение IP адреса клиента"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
 
 
 class UserRegistrationView(APIView):
@@ -59,7 +88,7 @@ class UserRegistrationView(APIView):
             refresh = RefreshToken.for_user(user)
             
             # Создаем сессию
-            self._create_user_session(user, request)
+            create_user_session(user, request)
             
             return Response({
                 'user': UserSerializer(user).data,
@@ -71,25 +100,6 @@ class UserRegistrationView(APIView):
             }, status=status.HTTP_201_CREATED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    def _create_user_session(self, user, request):
-        """Создание сессии пользователя"""
-        UserSession.objects.create(
-            user=user,
-            session_key=request.session.session_key or '',
-            ip_address=self._get_client_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            expires_at=timezone.now() + timedelta(days=30)
-        )
-    
-    def _get_client_ip(self, request):
-        """Получение IP адреса клиента"""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
-        return ip
 
 
 class UserLoginView(APIView):
@@ -128,14 +138,14 @@ class UserLoginView(APIView):
             
             # Обновляем последний вход
             user.last_login = timezone.now()
-            user.last_login_ip = self._get_client_ip(request)
+            user.last_login_ip = get_client_ip(request)
             user.save()
             
             # Генерируем JWT токены
             refresh = RefreshToken.for_user(user)
             
             # Создаем сессию
-            self._create_user_session(user, request)
+            create_user_session(user, request)
             
             return Response({
                 'user': UserSerializer(user).data,
@@ -147,25 +157,6 @@ class UserLoginView(APIView):
             })
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    def _create_user_session(self, user, request):
-        """Создание сессии пользователя"""
-        UserSession.objects.create(
-            user=user,
-            session_key=request.session.session_key or '',
-            ip_address=self._get_client_ip(request),
-            user_agent=request.META.get('HTTP_USER_AGENT', ''),
-            expires_at=timezone.now() + timedelta(days=30)
-        )
-    
-    def _get_client_ip(self, request):
-        """Получение IP адреса клиента"""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
-        return ip
 
 
 class UserLogoutView(APIView):
@@ -467,3 +458,115 @@ class UserSessionsView(APIView):
             return Response({
                 'message': _('Сессия не найдена')
             }, status=status.HTTP_404_NOT_FOUND)
+
+
+class AppConfigView(APIView):
+    """
+    Конфигурация приложения для мобильных клиентов
+    """
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        summary="Получить конфигурацию приложения",
+        description="Получение поддерживаемых языков, валют и настроек приложения",
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "languages": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "code": {"type": "string"},
+                                "name": {"type": "string"},
+                                "native_name": {"type": "string"}
+                            }
+                        }
+                    },
+                    "currencies": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "code": {"type": "string"},
+                                "name": {"type": "string"},
+                                "symbol": {"type": "string"}
+                            }
+                        }
+                    },
+                    "current_language": {"type": "string"},
+                    "current_currency": {"type": "string"},
+                    "is_mobile": {"type": "boolean"},
+                    "platform": {"type": "string"},
+                    "version": {"type": "string"}
+                }
+            }
+        }
+    )
+    def get(self, request):
+        """Получение конфигурации приложения"""
+        from django.conf import settings
+        
+        # Поддерживаемые языки
+        languages = [
+            {
+                'code': 'en',
+                'name': 'English',
+                'native_name': 'English'
+            },
+            {
+                'code': 'ru',
+                'name': 'Russian',
+                'native_name': 'Русский'
+            },
+            {
+                'code': 'tr',
+                'name': 'Turkish',
+                'native_name': 'Türkçe'
+            }
+        ]
+        
+        # Поддерживаемые валюты
+        currencies = [
+            {
+                'code': 'USD',
+                'name': 'US Dollar',
+                'symbol': '$'
+            },
+            {
+                'code': 'RUB',
+                'name': 'Russian Ruble',
+                'symbol': '₽'
+            },
+            {
+                'code': 'EUR',
+                'name': 'Euro',
+                'symbol': '€'
+            },
+            {
+                'code': 'TRY',
+                'name': 'Turkish Lira',
+                'symbol': '₺'
+            }
+        ]
+        
+        # Текущий язык и валюта
+        current_language = getattr(request, 'LANGUAGE_CODE', settings.LANGUAGE_CODE)
+        current_currency = 'USD'  # По умолчанию
+        
+        # Если пользователь аутентифицирован, используем его настройки
+        if hasattr(request, 'user') and request.user.is_authenticated:
+            current_currency = request.user.currency
+        
+        config = {
+            'languages': languages,
+            'current_language': current_language,
+            'currencies': currencies,
+            'current_currency': current_currency,
+            'is_mobile': getattr(request, 'is_mobile', False),
+            'platform': getattr(request, 'platform', 'web'),
+            'version': '1.0.0'
+        }
+        
+        return Response(config)

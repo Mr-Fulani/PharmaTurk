@@ -38,16 +38,16 @@ class User(AbstractUser):
     
     # Язык и валюта
     language = models.CharField(_('язык'), max_length=10, choices=[
-        ('ru', 'Русский'),
         ('en', 'English'),
+        ('ru', 'Русский'),
         ('tr', 'Türkçe'),
-    ], default='ru')
+    ], default='en')
     currency = models.CharField(_('валюта'), max_length=3, choices=[
-        ('RUB', 'Рубль'),
         ('USD', 'Доллар США'),
+        ('RUB', 'Рубль'),
         ('EUR', 'Евро'),
         ('TRY', 'Турецкая лира'),
-    ], default='RUB')
+    ], default='USD')
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']

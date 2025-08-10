@@ -62,11 +62,16 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+
+    # Кастомные middleware
+    "apps.users.middleware.LanguageMiddleware",
+    "apps.users.middleware.MobileDetectionMiddleware",
 
     # Метрики Prometheus
     "django_prometheus.middleware.PrometheusAfterMiddleware",
@@ -150,10 +155,10 @@ CELERY_BEAT_SCHEDULE = {
 
 
 # i18n и локализация
-LANGUAGE_CODE = "ru"
+LANGUAGE_CODE = "en"
 LANGUAGES = [
-    ("ru", "Russian"),
     ("en", "English"),
+    ("ru", "Russian"),
 ]
 TIME_ZONE = "Europe/Moscow"
 USE_I18N = True

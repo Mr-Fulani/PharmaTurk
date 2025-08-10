@@ -15,7 +15,8 @@ from .views import (
     UserPasswordChangeView,
     UserEmailVerificationView,
     UserStatsView,
-    UserSessionsView
+    UserSessionsView,
+    AppConfigView
 )
 
 # Роутер для ViewSets
@@ -46,6 +47,9 @@ urlpatterns = [
     # Сессии
     path('sessions/', UserSessionsView.as_view(), name='user-sessions'),
     path('sessions/<int:session_id>/', UserSessionsView.as_view(), name='user-session-detail'),
+    
+    # Конфигурация приложения
+    path('config/', AppConfigView.as_view(), name='app-config'),
     
     # ViewSets
     path('', include(router.urls)),
