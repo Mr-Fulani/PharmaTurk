@@ -1,11 +1,16 @@
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useAuth } from '../context/AuthContext'
+import { useEffect } from 'react'
+import { initCartSession } from '../lib/api'
+import { useCartStore } from '../store/cart'
 
 export default function Header() {
   const router = useRouter()
   const path = router.pathname
   const { user, logout } = useAuth()
+  const { itemsCount, refresh } = useCartStore()
+  useEffect(() => { initCartSession(); refresh() }, [refresh])
 
   return (
     <header style={{
@@ -43,7 +48,7 @@ export default function Header() {
           <Link href="/cart" style={{
             color: path.startsWith('/cart') ? '#111' : '#555',
             textDecoration: 'none'
-          }}>Корзина</Link>
+          }}>Корзина {itemsCount ? `(${itemsCount})` : ''}</Link>
           {user ? (
             <button onClick={logout} style={{ border: '1px solid #ddd', borderRadius: 6, padding: '6px 10px', background: '#fafafa', cursor: 'pointer' }}>Выйти</button>
           ) : (

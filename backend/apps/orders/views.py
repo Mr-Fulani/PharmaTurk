@@ -1,3 +1,4 @@
+import logging
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -8,6 +9,8 @@ from drf_spectacular.utils import extend_schema
 import uuid
 
 from apps.catalog.models import Product
+logger = logging.getLogger(__name__)
+import uuid
 from apps.users.models import UserAddress
 from .models import Cart, CartItem, Order, OrderItem
 from .serializers import (
@@ -17,18 +20,46 @@ from .serializers import (
 
 
 def _get_or_create_cart(request) -> Cart:
-    """Получить или создать корзину для пользователя или сессии."""
-    user = request.user if request.user.is_authenticated else None
-    session_key = request.session.session_key
-    if not session_key:
-        session_key = str(uuid.uuid4())
-        request.session['cart_session_key'] = session_key
-    
-    cart, _ = Cart.objects.get_or_create(
+    """Получить или создать корзину для пользователя или сессии.
+    Для анонимных клиентов поддерживаем пользовательский ключ из заголовка X-Cart-Session
+    и из cookie cart_session (fallback для случаев, когда заголовок не передан).
+    """
+    user = request.user if getattr(request, 'user', None) and request.user.is_authenticated else None
+
+    # 1) Ключ из заголовка (для фронтенда) или cookie (fallback)
+    header_session = request.META.get('HTTP_X_CART_SESSION') or getattr(request, 'headers', {}).get('X-Cart-Session')
+    cookie_session = getattr(request, 'COOKIES', {}).get('cart_session')
+    custom_session = header_session or cookie_session
+
+    # 2) Стандартная сессия Django
+    django_session = None
+    if hasattr(request, 'session'):
+        django_session = request.session.session_key
+        if not django_session:
+            # Гарантируем наличие session_key, если потребуется
+            request.session.save()
+            django_session = request.session.session_key
+
+    session_key = None
+    if not user:
+        session_key = custom_session or django_session
+        if not session_key:
+            session_key = str(uuid.uuid4())
+            if hasattr(request, 'session'):
+                request.session['cart_session_key'] = session_key
+
+    cart, created = Cart.objects.get_or_create(
         user=user if user else None,
         session_key='' if user else session_key,
         defaults={'currency': 'USD'}
     )
+    try:
+        logger.info(
+            "cart.resolve user=%s header_sid=%s cookie_sid=%s django_sid=%s resolved=%s created=%s",
+            getattr(user, 'id', None), header_session, cookie_session, django_session, cart.session_key, created
+        )
+    except Exception:
+        pass
     return cart
 
 
@@ -39,6 +70,8 @@ class CartViewSet(viewsets.ViewSet):
     @extend_schema(responses=CartSerializer)
     def list(self, request):
         cart = _get_or_create_cart(request)
+        # Возвращаем корзину с предзагрузкой позиций и товаров
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
 
     @extend_schema(request=AddToCartSerializer, responses=CartSerializer)
@@ -62,6 +95,8 @@ class CartViewSet(viewsets.ViewSet):
         if not created:
             item.quantity += quantity
             item.save()
+        # Возвращаем свежую корзину с позициями
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
 
     @extend_schema(request=UpdateCartItemSerializer, responses=CartSerializer)
@@ -76,6 +111,7 @@ class CartViewSet(viewsets.ViewSet):
         serializer.is_valid(raise_exception=True)
         item.quantity = serializer.validated_data['quantity']
         item.save()
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
 
     @extend_schema(responses=CartSerializer)
@@ -87,6 +123,7 @@ class CartViewSet(viewsets.ViewSet):
         except CartItem.DoesNotExist:
             return Response({"detail": _("Позиция не найдена")}, status=404)
         item.delete()
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
 
     @extend_schema(responses=CartSerializer)
@@ -94,6 +131,7 @@ class CartViewSet(viewsets.ViewSet):
     def clear(self, request):
         cart = _get_or_create_cart(request)
         cart.items.all().delete()
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
 
 

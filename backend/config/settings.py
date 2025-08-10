@@ -202,6 +202,9 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 X_FRAME_OPTIONS = "DENY"
 
+# Отключаем автоматическое добавление завершающего слэша, чтобы не ломать POST-запросы
+APPEND_SLASH = False
+
 
 # Sentry (неактивен, если DSN пуст)
 SENTRY_DSN = env("SENTRY_DSN", default="")
