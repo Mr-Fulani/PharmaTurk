@@ -16,6 +16,9 @@ urlpatterns = [
     path("auth/jwt/create/", TokenObtainPairView.as_view(), name="jwt-create"),
     path("auth/jwt/refresh/", TokenRefreshView.as_view(), name="jwt-refresh"),
 
+    # Пользователи
+    path("users/", include("apps.users.urls")),
+
     # Платежи (заглушки)
     path("payments/", include("apps.payments.urls")),
 
