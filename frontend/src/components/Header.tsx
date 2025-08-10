@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { useRouter } from 'next/router'
+import { useAuth } from '../context/AuthContext'
 
 export default function Header() {
   const router = useRouter()
   const path = router.pathname
+  const { user, logout } = useAuth()
 
   return (
     <header style={{
@@ -42,6 +44,14 @@ export default function Header() {
             color: path.startsWith('/cart') ? '#111' : '#555',
             textDecoration: 'none'
           }}>Корзина</Link>
+          {user ? (
+            <button onClick={logout} style={{ border: '1px solid #ddd', borderRadius: 6, padding: '6px 10px', background: '#fafafa', cursor: 'pointer' }}>Выйти</button>
+          ) : (
+            <>
+              <Link href="/auth/login" style={{ color: path.startsWith('/auth/login') ? '#111' : '#555', textDecoration: 'none' }}>Войти</Link>
+              <Link href="/auth/register" style={{ color: path.startsWith('/auth/register') ? '#111' : '#555', textDecoration: 'none' }}>Регистрация</Link>
+            </>
+          )}
         </nav>
       </div>
     </header>
