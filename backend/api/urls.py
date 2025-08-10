@@ -27,5 +27,8 @@ urlpatterns = [
 
     # Каталог товаров
     path("catalog/", include("apps.catalog.urls")),
+
+    # Корзина и заказы
+    path("orders/", include("apps.orders.urls")),
 ]
 
