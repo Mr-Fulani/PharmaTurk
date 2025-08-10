@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import axios from 'axios'
+import AddToCartButton from '../components/AddToCartButton'
 
 interface Product {
   id: number
@@ -29,7 +30,8 @@ export default function Home({ products }: { products: Product[] }) {
               ) : null}
               <h3 style={{ marginTop: 8 }}>{p.name}</h3>
               <div style={{ fontWeight: 600 }}>{p.price ? `${p.price} ${p.currency}` : 'Цена по запросу'}</div>
-              <Link href={`/product/${p.slug}`} style={{ display: 'inline-block', marginTop: 8 }}>Подробнее</Link>
+              <Link href={`/product/${p.slug}`} style={{ display: 'inline-block', marginTop: 8, marginRight: 8 }}>Подробнее</Link>
+              <AddToCartButton productId={p.id as any} />
             </div>
           ))}
         </div>
