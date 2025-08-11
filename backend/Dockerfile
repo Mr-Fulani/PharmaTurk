@@ -25,6 +25,9 @@ RUN poetry install --no-root --no-interaction --no-ansi
 # Copy app source
 COPY . .
 
+# Run migrations at build-time to speed up container start (safe in dev)
+RUN poetry run python manage.py collectstatic --noinput || true
+
 EXPOSE 8000
 
 CMD ["bash", "-lc", "poetry run python manage.py runserver 0.0.0.0:8000"]

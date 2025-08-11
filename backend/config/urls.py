@@ -19,8 +19,8 @@ urlpatterns = [
         name="swagger-ui",
     ),
 
-    # Метрики Prometheus
-    path("metrics/", include("django_prometheus.urls")),
+    # Метрики Prometheus (включаем корневые url, чтобы путь был /metrics)
+    path("", include("django_prometheus.urls")),
 
     # Основной API
     path("api/", include("api.urls")),

@@ -1,4 +1,4 @@
-from django.urls import path, include
+from django.urls import path, include, re_path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -32,14 +32,19 @@ urlpatterns = [
     
     # Аутентификация
     path('register/', UserRegistrationView.as_view(), name='user-register'),
+    re_path(r'^register$', UserRegistrationView.as_view(), name='user-register-noslash'),
     path('login/', UserLoginView.as_view(), name='user-login'),
+    re_path(r'^login$', UserLoginView.as_view(), name='user-login-noslash'),
     path('logout/', UserLogoutView.as_view(), name='user-logout'),
+    re_path(r'^logout$', UserLogoutView.as_view(), name='user-logout-noslash'),
     
     # Подтверждение email
     path('verify-email/', UserEmailVerificationView.as_view(), name='user-verify-email'),
+    re_path(r'^verify-email$', UserEmailVerificationView.as_view(), name='user-verify-email-noslash'),
     
     # Смена пароля
     path('change-password/', UserPasswordChangeView.as_view(), name='user-change-password'),
+    re_path(r'^change-password$', UserPasswordChangeView.as_view(), name='user-change-password-noslash'),
     
     # Статистика
     path('stats/', UserStatsView.as_view(), name='user-stats'),

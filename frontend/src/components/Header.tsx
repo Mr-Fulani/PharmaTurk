@@ -57,6 +57,9 @@ export default function Header() {
               <Link href="/auth/register" style={{ color: path.startsWith('/auth/register') ? '#111' : '#555', textDecoration: 'none' }}>Регистрация</Link>
             </>
           )}
+          {user ? (
+            <Link href="/profile" style={{ textDecoration: 'none', color: path.startsWith('/profile') ? '#111' : '#555' }}>Профиль</Link>
+          ) : null}
         </nav>
       </div>
     </header>

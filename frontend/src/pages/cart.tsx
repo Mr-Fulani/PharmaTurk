@@ -78,6 +78,11 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
           </div>
         )}
       </main>
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: '0 24px 24px' }}>
+        <a href="/checkout" style={{ display: 'inline-block', marginTop: 12, border: '1px solid #ddd', padding: '8px 14px', borderRadius: 8, textDecoration: 'none' }}>
+          Перейти к оформлению заказа
+        </a>
+      </div>
     </>
   )
 }

@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.db import transaction
 from django.utils.translation import gettext_lazy as _
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiExample
 import uuid
 
 from apps.catalog.models import Product
@@ -67,14 +67,76 @@ class CartViewSet(viewsets.ViewSet):
     """Управление корзиной."""
     permission_classes = [AllowAny]
 
-    @extend_schema(responses=CartSerializer)
+    @extend_schema(
+        description="Получить текущую корзину",
+        responses=CartSerializer,
+        examples=[
+            OpenApiExample(
+                'Пример корзины',
+                value={
+                    "id": 1,
+                    "user": None,
+                    "session_key": "abc123",
+                    "currency": "USD",
+                    "items": [
+                        {
+                            "id": 10,
+                            "product": 1,
+                            "product_name": "Test Product",
+                            "product_slug": "test-product",
+                            "quantity": 2,
+                            "price": "10.00",
+                            "currency": "USD"
+                        }
+                    ],
+                    "items_count": 2,
+                    "total_amount": "20.00"
+                },
+                response_only=True
+            )
+        ]
+    )
     def list(self, request):
         cart = _get_or_create_cart(request)
         # Возвращаем корзину с предзагрузкой позиций и товаров
         cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
 
-    @extend_schema(request=AddToCartSerializer, responses=CartSerializer)
+    @extend_schema(
+        description="Добавить товар в текущую корзину (анонимно по X-Cart-Session/cookie)",
+        request=AddToCartSerializer,
+        responses=CartSerializer,
+        examples=[
+            OpenApiExample(
+                'Запрос',
+                value={"product_id": 1, "quantity": 1},
+                request_only=True
+            ),
+            OpenApiExample(
+                'Ответ',
+                value={
+                    "id": 1,
+                    "user": None,
+                    "session_key": "abc123",
+                    "currency": "USD",
+                    "items": [
+                        {
+                            "id": 11,
+                            "product": 1,
+                            "product_name": "Test Product",
+                            "product_slug": "test-product",
+                            "quantity": 1,
+                            "price": "10.00",
+                            "currency": "USD"
+                        }
+                    ],
+                    "items_count": 1,
+                    "total_amount": "10.00"
+                },
+                response_only=True
+            )
+        ]
+    )
     @action(detail=False, methods=['post'], url_path='add')
     def add(self, request):
         cart = _get_or_create_cart(request)
@@ -99,7 +161,37 @@ class CartViewSet(viewsets.ViewSet):
         cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
 
-    @extend_schema(request=UpdateCartItemSerializer, responses=CartSerializer)
+    @extend_schema(
+        description="Изменить количество позиции корзины",
+        request=UpdateCartItemSerializer,
+        responses=CartSerializer,
+        examples=[
+            OpenApiExample('Запрос', value={"quantity": 3}, request_only=True),
+            OpenApiExample(
+                'Ответ',
+                value={
+                    "id": 1,
+                    "user": None,
+                    "session_key": "abc123",
+                    "currency": "USD",
+                    "items": [
+                        {
+                            "id": 11,
+                            "product": 1,
+                            "product_name": "Test Product",
+                            "product_slug": "test-product",
+                            "quantity": 3,
+                            "price": "10.00",
+                            "currency": "USD"
+                        }
+                    ],
+                    "items_count": 3,
+                    "total_amount": "30.00"
+                },
+                response_only=True
+            ),
+        ]
+    )
     @action(detail=True, methods=['post'], url_path='update')
     def update_item(self, request, pk=None):
         cart = _get_or_create_cart(request)
@@ -114,7 +206,25 @@ class CartViewSet(viewsets.ViewSet):
         cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
 
-    @extend_schema(responses=CartSerializer)
+    @extend_schema(
+        description="Удалить позицию из корзины",
+        responses=CartSerializer,
+        examples=[
+            OpenApiExample(
+                'Ответ',
+                value={
+                    "id": 1,
+                    "user": None,
+                    "session_key": "abc123",
+                    "currency": "USD",
+                    "items": [],
+                    "items_count": 0,
+                    "total_amount": "0.00"
+                },
+                response_only=True
+            )
+        ]
+    )
     @action(detail=True, methods=['delete'], url_path='remove')
     def remove_item(self, request, pk=None):
         cart = _get_or_create_cart(request)
@@ -126,7 +236,25 @@ class CartViewSet(viewsets.ViewSet):
         cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
 
-    @extend_schema(responses=CartSerializer)
+    @extend_schema(
+        description="Очистить корзину",
+        responses=CartSerializer,
+        examples=[
+            OpenApiExample(
+                'Ответ',
+                value={
+                    "id": 1,
+                    "user": None,
+                    "session_key": "abc123",
+                    "currency": "USD",
+                    "items": [],
+                    "items_count": 0,
+                    "total_amount": "0.00"
+                },
+                response_only=True
+            )
+        ]
+    )
     @action(detail=False, methods=['post'], url_path='clear')
     def clear(self, request):
         cart = _get_or_create_cart(request)
@@ -139,15 +267,77 @@ class OrderViewSet(viewsets.ViewSet):
     """Управление заказами."""
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(responses=OrderSerializer(many=True))
+    @extend_schema(
+        description="Список заказов текущего пользователя",
+        responses=OrderSerializer(many=True),
+        examples=[
+            OpenApiExample(
+                'Пример списка заказов',
+                value=[
+                    {
+                        "id": 100,
+                        "number": "ABC123456789",
+                        "status": "new",
+                        "subtotal_amount": "30.00",
+                        "shipping_amount": "0.00",
+                        "discount_amount": "0.00",
+                        "total_amount": "30.00",
+                        "currency": "USD",
+                        "items": [
+                            {"id": 1, "product": 1, "product_name": "Test Product", "price": "10.00", "quantity": 3, "total": "30.00"}
+                        ]
+                    }
+                ],
+                response_only=True
+            )
+        ]
+    )
     def list(self, request):
         orders = Order.objects.filter(user=request.user).order_by('-created_at')
         return Response(OrderSerializer(orders, many=True).data)
 
-    @extend_schema(request=CreateOrderSerializer, responses=OrderSerializer)
+    @extend_schema(
+        description="Создать заказ из корзины",
+        request=CreateOrderSerializer,
+        responses=OrderSerializer,
+        examples=[
+            OpenApiExample(
+                'Запрос',
+                value={
+                    "contact_name": "Иван Иванов",
+                    "contact_phone": "+79990000000",
+                    "contact_email": "ivan@example.com",
+                    "shipping_address_text": "Москва, ул. Пушкина д.1",
+                    "payment_method": "card",
+                    "comment": "Позвонить курьеру"
+                },
+                request_only=True
+            ),
+            OpenApiExample(
+                'Ответ',
+                value={
+                    "id": 101,
+                    "number": "ZXC987654321",
+                    "status": "new",
+                    "subtotal_amount": "30.00",
+                    "shipping_amount": "0.00",
+                    "discount_amount": "0.00",
+                    "total_amount": "30.00",
+                    "currency": "USD",
+                    "items": [
+                        {"id": 1, "product": 1, "product_name": "Test Product", "price": "10.00", "quantity": 3, "total": "30.00"}
+                    ]
+                },
+                response_only=True
+            )
+        ]
+    )
     @action(detail=False, methods=['post'], url_path='create-from-cart')
     @transaction.atomic
     def create_from_cart(self, request):
+        """Создание заказа из текущей корзины.
+        Требует аутентификацию. Примеры запросов в Swagger.
+        """
         cart = _get_or_create_cart(request)
         if cart.items.count() == 0:
             return Response({"detail": _("Корзина пуста")}, status=400)

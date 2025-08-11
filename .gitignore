@@ -10,6 +10,11 @@ __pycache__/
 env/
 venv/
 
+# Environment files
+.env
+.env.local
+.env.*.local
+
 # Django
 *.log
 db.sqlite3
