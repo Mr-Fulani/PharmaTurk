@@ -17,7 +17,13 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(email, password)
-      router.push('/')
+      // Проверяем, есть ли параметр next для редиректа
+      const next = router.query.next as string
+      if (next && next.startsWith('/')) {
+        router.push(next)
+      } else {
+        router.push('/')
+      }
     } catch (e: any) {
       setError('Неверные учетные данные')
     } finally {

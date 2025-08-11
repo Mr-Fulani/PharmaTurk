@@ -225,6 +225,19 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(profile)
         return Response(serializer.data)
+
+    @extend_schema(
+        summary="Список профилей текущего пользователя",
+        description="Возвращает массив с одним профилем пользователя; если профиль отсутствует — создаёт его",
+        responses={200: UserProfileSerializer(many=True)}
+    )
+    def list(self, request, *args, **kwargs):
+        """Список профилей (создаёт при отсутствии)"""
+        profile = self.get_queryset().first()
+        if not profile:
+            profile = UserProfile.objects.create(user=request.user)
+        serializer = self.get_serializer(profile)
+        return Response([serializer.data])
     
     @extend_schema(
         summary="Обновить профиль пользователя",

@@ -42,6 +42,9 @@ api.interceptors.request.use((config) => {
   if (access) {
     if (!config.headers) config.headers = {} as AxiosRequestHeaders
     ;(config.headers as AxiosRequestHeaders)['Authorization'] = `Bearer ${access}`
+    console.log('API: adding auth header for', config.url)
+  } else {
+    console.log('API: no auth token for', config.url)
   }
   // Прокидываем X-Cart-Session для анонимной корзины
   const cartSid = ensureCartSession()
@@ -68,7 +71,9 @@ api.interceptors.response.use(
           if (refresh) {
             const resp = await axios.post((process.env.NEXT_PUBLIC_API_BASE || '/api') + '/auth/jwt/refresh/', { refresh })
             const newAccess = resp.data?.access
-            if (newAccess) Cookies.set('access', newAccess, { sameSite: 'Lax' })
+            if (newAccess) Cookies.set('access', newAccess, { sameSite: 'Lax', path: '/' })
+            const newRefresh = resp.data?.refresh
+            if (newRefresh) Cookies.set('refresh', newRefresh, { sameSite: 'Lax', path: '/' })
           }
         } finally {
           isRefreshing = false

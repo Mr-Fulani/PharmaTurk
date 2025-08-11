@@ -30,11 +30,11 @@ export default function CheckoutPage() {
       })
       const orderNumber = res.data?.number
       router.push(orderNumber ? `/checkout-success?number=${encodeURIComponent(orderNumber)}` : '/checkout-success')
-    } catch (err: any) {
+      } catch (err: any) {
       const status = err?.response?.status
       if (status === 401) {
         alert('Для оформления заказа необходимо войти')
-        router.push('/auth/login')
+          router.push('/auth/login?next=/checkout')
         return
       }
       const detail = err?.response?.data?.detail || err?.message || 'Ошибка оформления заказа'
@@ -48,7 +48,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.replace('/auth/login?next=/checkout')
+      router.push('/auth/login?next=/checkout')
     }
   }, [user, authLoading, router])
 

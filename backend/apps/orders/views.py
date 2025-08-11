@@ -48,10 +48,38 @@ def _get_or_create_cart(request) -> Cart:
             if hasattr(request, 'session'):
                 request.session['cart_session_key'] = session_key
 
+    # Если пользователь авторизован, сначала ищем его корзину
+    if user:
+        cart = Cart.objects.filter(user=user).first()
+        if cart:
+            # Если нашли корзину пользователя, возвращаем её
+            return cart
+        
+        # Если у пользователя нет корзины, но есть анонимная корзина с session_key,
+        # то переносим товары из анонимной корзины в корзину пользователя
+        if custom_session:
+            anonymous_cart = Cart.objects.filter(session_key=custom_session, user=None).first()
+            if anonymous_cart and anonymous_cart.items.exists():
+                # Создаем новую корзину для пользователя
+                cart = Cart.objects.create(user=user, currency=anonymous_cart.currency)
+                # Копируем товары из анонимной корзины
+                for item in anonymous_cart.items.all():
+                    CartItem.objects.create(
+                        cart=cart,
+                        product=item.product,
+                        quantity=item.quantity,
+                        price=item.price,
+                        currency=item.currency
+                    )
+                # Удаляем анонимную корзину
+                anonymous_cart.delete()
+                return cart
+
+    # Создаем новую корзину
     cart, created = Cart.objects.get_or_create(
         user=user if user else None,
         session_key='' if user else session_key,
-        defaults={'currency': 'USD'}
+        defaults={'currency': 'RUB'}  # Изменил на RUB для соответствия товарам
     )
     try:
         logger.info(

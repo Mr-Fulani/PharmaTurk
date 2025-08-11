@@ -303,8 +303,10 @@ def create_products(categories, brands):
     
     created_count = 0
     for data in products_data:
-        # Создаем slug из названия
-        slug = slugify(data['name'])
+        # Создаем качественный slug из названия
+        base_slug = slugify(data['name'])
+        # Добавляем уникальный суффикс для избежания конфликтов
+        slug = f"{base_slug}-{data['sku'].lower()}"
         
         product, created = Product.objects.get_or_create(
             slug=slug,

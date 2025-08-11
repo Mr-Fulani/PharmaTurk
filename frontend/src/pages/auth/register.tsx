@@ -18,7 +18,13 @@ export default function RegisterPage() {
     setLoading(true)
     try {
       await register(email, username, password)
-      router.push('/')
+      // Проверяем, есть ли параметр next для редиректа
+      const next = router.query.next as string
+      if (next && next.startsWith('/')) {
+        router.push(next)
+      } else {
+        router.push('/')
+      }
     } catch (e: any) {
       setError('Ошибка регистрации')
     } finally {

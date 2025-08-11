@@ -20,7 +20,7 @@ from .views import (
 )
 
 # Роутер для ViewSets
-router = DefaultRouter()
+router = DefaultRouter(trailing_slash=False)
 router.register(r'profile', UserProfileViewSet, basename='user-profile')
 router.register(r'addresses', UserAddressViewSet, basename='user-addresses')
 
@@ -58,4 +58,7 @@ urlpatterns = [
     
     # ViewSets
     path('', include(router.urls)),
+
+    # Дублируем list-эндпоинт профиля без завершающего слэша, т.к. APPEND_SLASH=False
+    re_path(r'^profile$', UserProfileViewSet.as_view({'get': 'list'}), name='user-profile-list-noslash'),
 ]
