@@ -22,6 +22,10 @@ class Category(models.Model):
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активна"), default=True)
+    margin_percent = models.DecimalField(
+        _("Маржа, %"), max_digits=5, decimal_places=2, default=0,
+        help_text=_("Процент наценки для категории; перекрывается на уровне бренда/товара")
+    )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
@@ -46,6 +50,10 @@ class Brand(models.Model):
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
+    margin_percent = models.DecimalField(
+        _("Маржа, %"), max_digits=5, decimal_places=2, default=0,
+        help_text=_("Процент наценки для бренда; перекрывает категорию и наследуется товарами")
+    )
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
@@ -85,6 +93,7 @@ class Product(models.Model):
     )
     
     # Цена и валюта
+    # Базовая цена и валюта из внешнего API
     price = models.DecimalField(
         _("Цена"), 
         max_digits=10, 
@@ -101,6 +110,23 @@ class Product(models.Model):
         null=True, 
         blank=True,
         validators=[MinValueValidator(0)]
+    )
+
+    # Конвертированные и финальные цены
+    converted_price_rub = models.DecimalField(
+        _("Цена в RUB (конверт.)"), max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    converted_price_usd = models.DecimalField(
+        _("Цена в USD (конверт.)"), max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    final_price_rub = models.DecimalField(
+        _("Итоговая цена RUB"), max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    final_price_usd = models.DecimalField(
+        _("Итоговая цена USD"), max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    margin_percent_applied = models.DecimalField(
+        _("Применённая маржа, %"), max_digits=5, decimal_places=2, default=0
     )
     
     # Наличие и статус
@@ -127,6 +153,7 @@ class Product(models.Model):
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
     last_synced_at = models.DateTimeField(_("Последняя синхронизация"), null=True, blank=True)
+    last_external_updated_at = models.DateTimeField(_("Изменён во внешнем API"), null=True, blank=True)
 
     class Meta:
         verbose_name = _("Товар")

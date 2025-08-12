@@ -21,7 +21,9 @@ def pull_products(
     category: Optional[str] = None,
     brand: Optional[str] = None,
     search: Optional[str] = None,
-    product_type: Optional[str] = None  # "drug" или "supplement"
+    product_type: Optional[str] = None,  # "drug" или "supplement"
+    lang: Optional[str] = None,
+    sort: Optional[str] = None,
 ) -> Dict:
     """Задача: загрузить список товаров из Vapi API.
     
@@ -44,7 +46,9 @@ def pull_products(
             category=category,
             brand=brand,
             search=search,
-            product_type=product_type
+            product_type=product_type,
+            lang=lang,
+            sort=sort,
         )
         
         # Нормализуем данные в БД
@@ -111,7 +115,7 @@ def pull_products(
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def pull_product_details(self, product_id: str) -> Dict:
+def pull_product_details(self, product_id: str, lang: Optional[str] = None) -> Dict:
     """Задача: загрузить детальную информацию о товаре.
     
     Args:
@@ -122,7 +126,7 @@ def pull_product_details(self, product_id: str) -> Dict:
     """
     try:
         client = VapiClient.from_env()
-        product_data = client.get_product(product_id)
+        product_data = client.get_product(product_id, lang=lang)
         
         if not product_data:
             return {
@@ -136,8 +140,8 @@ def pull_product_details(self, product_id: str) -> Dict:
         product = normalizer.normalize_product(product_data)
         
         # Загружаем дополнительные данные
-        interactions = client.get_drug_interactions(product_id)
-        contraindications = client.get_contraindications(product_id)
+        interactions = client.get_drug_interactions(product_id, lang=lang)
+        contraindications = client.get_contraindications(product_id, lang=lang)
         
         result = {
             "product_id": product_id,
@@ -164,7 +168,7 @@ def pull_product_details(self, product_id: str) -> Dict:
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def search_products_task(self, query: str, limit: int = 50, product_type: Optional[str] = None) -> Dict:
+def search_products_task(self, query: str, limit: int = 50, product_type: Optional[str] = None, lang: Optional[str] = None) -> Dict:
     """Задача: поиск товаров по запросу.
     
     Args:
@@ -177,7 +181,7 @@ def search_products_task(self, query: str, limit: int = 50, product_type: Option
     """
     try:
         client = VapiClient.from_env()
-        products_data = client.search_products(query, limit, product_type)
+        products_data = client.search_products(query, limit, product_type, lang=lang)
         
         # Нормализуем данные в БД
         normalizer = CatalogNormalizer()

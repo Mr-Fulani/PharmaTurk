@@ -82,7 +82,9 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
-            'currency', 'is_available', 'stock_quantity', 'main_image_url',
+            'currency', 'converted_price_rub', 'converted_price_usd',
+            'final_price_rub', 'final_price_usd', 'margin_percent_applied',
+            'is_available', 'stock_quantity', 'main_image_url',
             'is_featured', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
