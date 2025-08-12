@@ -54,35 +54,33 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       <Head>
         <title>Корзина — Turk-Export</title>
       </Head>
-      <main style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-        <h1>Корзина</h1>
+      <main className="mx-auto max-w-6xl p-6">
+        <h1 className="text-2xl font-bold">Корзина</h1>
         {cart.items.length === 0 ? (
-          <div>Корзина пуста</div>
+          <div className="mt-6 rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-600">Корзина пуста</div>
         ) : (
-          <div style={{ display: 'grid', gap: 12 }}>
+          <div className="mt-6 grid gap-3">
             {cart.items.map((i) => (
-              <div key={i.id} style={{ border: '1px solid #eee', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div key={i.id} className="flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4">
                 <div>
-                  <div style={{ fontWeight: 600 }}>{i.product_name || `Товар #${i.product}`}</div>
-                  <div style={{ color: '#666' }}>{i.price} {i.currency} × {i.quantity}</div>
+                  <div className="font-semibold text-gray-900">{i.product_name || `Товар #${i.product}`}</div>
+                  <div className="text-sm text-gray-600">{i.price} {i.currency} × {i.quantity}</div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button onClick={()=>updateQty(i.id, Math.max(1, i.quantity - 1))}>-</button>
-                  <span>{i.quantity}</span>
-                  <button onClick={()=>updateQty(i.id, i.quantity + 1)}>+</button>
-                  <button onClick={()=>removeItem(i.id)} style={{ marginLeft: 8 }}>Удалить</button>
+                <div className="flex items-center gap-2">
+                  <button onClick={()=>updateQty(i.id, Math.max(1, i.quantity - 1))} className="rounded-md border border-gray-300 px-2 py-1">-</button>
+                  <span className="w-6 text-center">{i.quantity}</span>
+                  <button onClick={()=>updateQty(i.id, i.quantity + 1)} className="rounded-md border border-gray-300 px-2 py-1">+</button>
+                  <button onClick={()=>removeItem(i.id)} className="ml-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50">Удалить</button>
                 </div>
               </div>
             ))}
-            <div style={{ textAlign: 'right', fontWeight: 700 }}>Итого: {cart.total_amount}</div>
+            <div className="text-right text-lg font-bold">Итого: {cart.total_amount}</div>
           </div>
         )}
+        <div className="mt-4">
+          <a href="/checkout" className="inline-block rounded-md bg-gray-900 px-4 py-2 text-white hover:bg-black">Перейти к оформлению заказа</a>
+        </div>
       </main>
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: '0 24px 24px' }}>
-        <a href="/checkout" style={{ display: 'inline-block', marginTop: 12, border: '1px solid #ddd', padding: '8px 14px', borderRadius: 8, textDecoration: 'none' }}>
-          Перейти к оформлению заказа
-        </a>
-      </div>
     </>
   )
 }

@@ -2,6 +2,7 @@ import { GetServerSideProps } from 'next'
 import Head from 'next/head'
 import axios from 'axios'
 import Link from 'next/link'
+import ProductCard from '../../components/ProductCard'
 
 interface Product {
   id: number
@@ -17,15 +18,11 @@ export default function CategoryPage({ name, products }: { name: string, product
       <Head>
         <title>{name} — Turk-Export</title>
       </Head>
-      <main style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-        <h1>{name}</h1>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+      <main className="mx-auto max-w-6xl p-6">
+        <h1 className="text-2xl font-bold">{name}</h1>
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {products.map((p) => (
-            <div key={p.id} style={{ border: '1px solid #eee', borderRadius: 8, padding: 12 }}>
-              <h3 style={{ marginTop: 8 }}>{p.name}</h3>
-              <div style={{ fontWeight: 600 }}>{p.price ? `${p.price} ${p.currency}` : 'Цена по запросу'}</div>
-              <Link href={`/product/${p.slug}`} style={{ display: 'inline-block', marginTop: 8 }}>Подробнее</Link>
-            </div>
+            <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} />
           ))}
         </div>
       </main>
@@ -39,11 +36,13 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   try {
     const [catRes, prodRes] = await Promise.all([
       axios.get(`${base}/api/catalog/categories/`),
-      axios.get(`${base}/api/catalog/products/?category_slug=${slug}`)
+      axios.get(`${base}/api/catalog/products/`, { params: { search: '', category_id: undefined, brand_id: undefined } })
     ])
     const categories = Array.isArray(catRes.data) ? catRes.data : (catRes.data.results || [])
     const category = categories.find((c: any) => c.slug === slug)
-    const products = Array.isArray(prodRes.data) ? prodRes.data : (prodRes.data.results || [])
+    // Получаем товары по ID категории (бэкенд фильтрует по category_id)
+    const pr = await axios.get(`${base}/api/catalog/products/`, { params: { category_id: category?.id } })
+    const products = Array.isArray(pr.data) ? pr.data : (pr.data.results || [])
     return { props: { name: category?.name || 'Категория', products } }
   } catch (e) {
     return { notFound: false, props: { name: 'Категория', products: [] } }

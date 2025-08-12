@@ -2,6 +2,8 @@ import Head from 'next/head'
 import Link from 'next/link'
 import axios from 'axios'
 import AddToCartButton from '../components/AddToCartButton'
+import Section from '../components/Section'
+import ProductCard from '../components/ProductCard'
 
 interface Product {
   id: number
@@ -18,23 +20,21 @@ export default function Home({ products }: { products: Product[] }) {
       <Head>
         <title>Turk-Export</title>
       </Head>
-      <main style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-        <h1>Turk-Export</h1>
-        <p>Каталог товаров</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
-          {products.map((p) => (
-            <div key={p.id} style={{ border: '1px solid #eee', borderRadius: 8, padding: 12 }}>
-              {p.main_image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={p.main_image_url} alt={p.name} style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 6 }} />
-              ) : null}
-              <h3 style={{ marginTop: 8 }}>{p.name}</h3>
-              <div style={{ fontWeight: 600 }}>{p.price ? `${p.price} ${p.currency}` : 'Цена по запросу'}</div>
-              <Link href={`/product/${p.slug}`} style={{ display: 'inline-block', marginTop: 8, marginRight: 8 }}>Подробнее</Link>
-              <AddToCartButton productId={p.id as any} />
-            </div>
-          ))}
-        </div>
+      <main>
+        <Section title="Товары дня">
+          <div className="no-scrollbar mt-2 grid grid-flow-col gap-4 overflow-x-auto px-1 [grid-auto-columns:minmax(240px,1fr)]">
+            {products.slice(0, 8).map((p) => (
+              <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} />
+            ))}
+          </div>
+        </Section>
+        <Section title="Хиты продаж">
+          <div className="no-scrollbar mt-2 grid grid-flow-col gap-4 overflow-x-auto px-1 [grid-auto-columns:minmax(240px,1fr)]">
+            {products.slice(8, 16).map((p) => (
+              <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} />
+            ))}
+          </div>
+        </Section>
       </main>
     </>
   )

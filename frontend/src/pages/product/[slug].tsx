@@ -1,6 +1,7 @@
 import { GetServerSideProps } from 'next'
 import Head from 'next/head'
 import axios from 'axios'
+import AddToCartButton from '../../components/AddToCartButton'
 
 interface Product {
   id: number
@@ -13,18 +14,33 @@ interface Product {
 }
 
 export default function ProductPage({ product }: { product: Product }) {
-  if (!product) return <div>Not found</div>
+  if (!product) return <div className="mx-auto max-w-6xl p-6">Not found</div>
   return (
     <>
       <Head>
         <title>{product.name} — Turk-Export</title>
       </Head>
-      <main style={{ maxWidth: 800, margin: '0 auto', padding: 24 }}>
-        <h1>{product.name}</h1>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {product.main_image ? <img src={product.main_image} alt={product.name} style={{ maxWidth: '100%', borderRadius: 8 }} /> : null}
-        <div style={{ marginTop: 16, fontSize: 18, fontWeight: 600 }}>{product.price ? `${product.price} ${product.currency}` : 'Цена по запросу'}</div>
-        <p style={{ marginTop: 16, whiteSpace: 'pre-wrap' }}>{product.description}</p>
+      <main className="mx-auto max-w-6xl p-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {product.main_image ? (
+              <img src={product.main_image} alt={product.name} className="w-full rounded-xl object-cover" />
+            ) : (
+              <div className="aspect-square w-full rounded-xl bg-gray-50" />
+            )}
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
+            <div className="mt-3 text-xl font-semibold text-gray-900">
+              {product.price ? `${product.price} ${product.currency}` : 'Цена по запросу'}
+            </div>
+            <AddToCartButton productId={product.id} className="mt-4" />
+            <div className="prose mt-6 max-w-none">
+              <p className="whitespace-pre-wrap text-gray-700">{product.description}</p>
+            </div>
+          </div>
+        </div>
       </main>
     </>
   )
