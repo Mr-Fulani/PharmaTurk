@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import axios from 'axios'
 import Link from 'next/link'
+import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 
 interface Category {
@@ -12,13 +13,14 @@ interface Category {
 }
 
 export default function CategoriesPage({ categories }: { categories: Category[] }) {
+  const { t } = useTranslation('common')
   return (
     <>
       <Head>
-        <title>Категории — Turk-Export</title>
+        <title>{t('menu_categories', 'Категории')} — Turk-Export</title>
       </Head>
       <main style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-        <h1>Категории</h1>
+        <h1>{t('menu_categories', 'Категории')}</h1>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
           {categories.map((c) => (
             <Link key={c.id} href={`/categories/${c.slug}`} style={{
@@ -27,7 +29,7 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
             }}>
               <div style={{ fontWeight: 600 }}>{c.name}</div>
               <div style={{ color: '#666', fontSize: 13, marginTop: 6 }}>
-                {c.products_count ? `${c.products_count} товаров` : ''}
+                {c.products_count ? `${c.products_count}` : ''}
               </div>
               {c.description ? (
                 <p style={{ color: '#444', fontSize: 14, marginTop: 8 }}>{c.description}</p>

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { useTranslation } from 'next-i18next'
 
 interface ProductCardProps {
   id: number
@@ -13,6 +14,7 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ id, name, slug, price, currency, oldPrice, badge, rating, imageUrl }: ProductCardProps) {
+  const { t } = useTranslation('common')
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
       <div className="relative">
@@ -29,7 +31,7 @@ export default function ProductCard({ id, name, slug, price, currency, oldPrice,
       </div>
       <h3 className="mt-3 line-clamp-2 text-base font-semibold text-gray-900">{name}</h3>
       <div className="mt-1 flex items-baseline gap-2">
-        <div className="text-sm font-semibold text-gray-900">{price ? `${price} ${currency}` : 'Цена по запросу'}</div>
+        <div className="text-sm font-semibold text-gray-900">{price ? `${price} ${currency}` : t('price_on_request', 'Цена по запросу')}</div>
         {oldPrice ? <div className="text-xs text-gray-400 line-through">{oldPrice} {currency}</div> : null}
       </div>
       {typeof rating === 'number' ? (
@@ -40,7 +42,7 @@ export default function ProductCard({ id, name, slug, price, currency, oldPrice,
           href={`/product/${slug}`}
           className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
         >
-          Подробнее
+          {t('product_details', 'Подробнее')}
         </Link>
       </div>
     </div>

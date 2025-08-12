@@ -3,6 +3,8 @@ import Head from 'next/head'
 import axios from 'axios'
 import Link from 'next/link'
 import ProductCard from '../../components/ProductCard'
+import { useTranslation } from 'next-i18next'
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 
 interface Product {
   id: number
@@ -15,6 +17,7 @@ interface Product {
 }
 
 export default function CategoryPage({ name, products }: { name: string, products: Product[] }) {
+  const { t } = useTranslation('common')
   return (
     <>
       <Head>
@@ -45,8 +48,8 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     // Получаем товары по ID категории (бэкенд фильтрует по category_id)
     const pr = await axios.get(`${base}/api/catalog/products`, { params: { category_id: category?.id, page_size: 48 } })
     const products = Array.isArray(pr.data) ? pr.data : (pr.data.results || [])
-    return { props: { name: category?.name || 'Категория', products } }
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), name: category?.name || 'Категория', products } }
   } catch (e) {
-    return { notFound: false, props: { name: 'Категория', products: [] } }
+    return { notFound: false, props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), name: 'Категория', products: [] } }
   }
 }
