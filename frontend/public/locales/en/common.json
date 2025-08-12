@@ -26,6 +26,19 @@
   ,"email": "Email"
   ,"username": "Username"
   ,"remove": "Remove"
+  ,"checkout_page_title": "Checkout — Turk-Export"
+  ,"checkout_title": "Checkout"
+  ,"checkout_recipient_name": "Recipient name"
+  ,"checkout_phone": "Phone"
+  ,"checkout_email_optional": "Email (optional)"
+  ,"checkout_shipping_address": "Shipping address (text)"
+  ,"checkout_payment_method": "Payment method"
+  ,"payment_cod": "Cash on delivery"
+  ,"payment_card": "Bank card"
+  ,"checkout_submitting": "Submitting..."
+  ,"checkout_submit": "Place order"
+  ,"login_required_to_checkout": "You must log in to place an order"
+  ,"checkout_error_generic": "Checkout error"
 }
 
 

@@ -26,6 +26,19 @@
   ,"email": "Email"
   ,"username": "Имя пользователя"
   ,"remove": "Удалить"
+  ,"checkout_page_title": "Оформление заказа — Turk-Export"
+  ,"checkout_title": "Оформление заказа"
+  ,"checkout_recipient_name": "Имя получателя"
+  ,"checkout_phone": "Телефон"
+  ,"checkout_email_optional": "Email (необязательно)"
+  ,"checkout_shipping_address": "Адрес доставки (текст)"
+  ,"checkout_payment_method": "Способ оплаты"
+  ,"payment_cod": "Наложенный платёж"
+  ,"payment_card": "Банковская карта"
+  ,"checkout_submitting": "Отправка..."
+  ,"checkout_submit": "Оформить заказ"
+  ,"login_required_to_checkout": "Для оформления заказа необходимо войти"
+  ,"checkout_error_generic": "Ошибка оформления заказа"
 }
 
 
