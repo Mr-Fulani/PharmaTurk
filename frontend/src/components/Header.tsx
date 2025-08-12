@@ -25,7 +25,8 @@ export default function Header() {
 
   const toggleLocale = () => {
     const next = router.locale === 'ru' ? 'en' : 'ru'
-    router.push(router.asPath, router.asPath, { locale: next })
+    // Меняем только pathname + locale, без asPath (чтобы сработал перевод и SSR словарей)
+    router.push({ pathname: router.pathname, query: router.query }, undefined, { locale: next })
   }
 
   // i18n placeholder

@@ -2,6 +2,8 @@ import { GetServerSideProps } from 'next'
 import Head from 'next/head'
 import axios from 'axios'
 import AddToCartButton from '../../components/AddToCartButton'
+import { useTranslation } from 'next-i18next'
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 
 interface Product {
   id: number
@@ -14,6 +16,7 @@ interface Product {
 }
 
 export default function ProductPage({ product }: { product: Product }) {
+  const { t } = useTranslation('common')
   if (!product) return <div className="mx-auto max-w-6xl p-6">Not found</div>
   return (
     <>
@@ -34,7 +37,7 @@ export default function ProductPage({ product }: { product: Product }) {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
             <div className="mt-3 text-xl font-semibold text-gray-900">
-              {product.price ? `${product.price} ${product.currency}` : 'Цена по запросу'}
+              {product.price ? `${product.price} ${product.currency}` : t('price_on_request')}
             </div>
             <AddToCartButton productId={product.id} className="mt-4" />
             <div className="prose mt-6 max-w-none">
@@ -52,7 +55,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   try {
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
     const res = await axios.get(`${base}/api/catalog/products/${slug}`)
-    return { props: { product: res.data } }
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), product: res.data } }
   } catch (e) {
     return { notFound: true }
   }
