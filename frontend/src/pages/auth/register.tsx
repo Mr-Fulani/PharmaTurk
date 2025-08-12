@@ -46,8 +46,8 @@ export default function RegisterPage() {
       <main className="mx-auto max-w-md p-6">
         <h1 className="text-2xl font-bold">{t('register')}</h1>
         <form onSubmit={submit} className="mt-4 grid gap-3">
-          <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder="Email" value={email} onChange={(e)=>setEmail(e.target.value)} required />
-          <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder="Имя пользователя" value={username} onChange={(e)=>setUsername(e.target.value)} required />
+          <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('email', 'Email')} value={email} onChange={(e)=>setEmail(e.target.value)} required />
+          <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('username', 'Имя пользователя')} value={username} onChange={(e)=>setUsername(e.target.value)} required />
           <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('password_placeholder')} type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required />
           {error ? <div className="text-sm text-red-600">{error}</div> : null}
           <button type="submit" disabled={loading} className="rounded-md bg-violet-600 px-4 py-2 text-white hover:bg-violet-700 disabled:opacity-60">{loading ? '...' : t('register')}</button>

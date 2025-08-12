@@ -3,7 +3,29 @@
   "login_or_username": "Email или имя пользователя",
   "password_placeholder": "Пароль (мин. 8 знаков, буквы и цифры)",
   "login": "Войти",
-  "register": "Регистрация"
+  "register": "Регистрация",
+  "menu_home": "Главная",
+  "menu_categories": "Категории",
+  "menu_cart": "Корзина",
+  "menu_login_register": "Войти / Регистрация"
+  ,"search_button": "Поиск"
+  ,"cart_empty": "Корзина пуста"
+  ,"cart_total": "Итого"
+  ,"cart_checkout": "Перейти к оформлению заказа"
+  ,"product_details": "Подробнее"
+  ,"price_on_request": "Цена по запросу"
+  ,"section_daily_deals": "Товары дня"
+  ,"section_best_sellers": "Хиты продаж"
+  ,"header_profile": "Профиль"
+  ,"header_logout": "Выйти"
+  ,"add_to_cart": "В корзину"
+  ,"adding": "Добавляем..."
+  ,"added": "Добавлено"
+  ,"search_results": "Результаты поиска"
+  ,"search_for": "По запросу"
+  ,"email": "Email"
+  ,"username": "Имя пользователя"
+  ,"remove": "Удалить"
 }
 
 

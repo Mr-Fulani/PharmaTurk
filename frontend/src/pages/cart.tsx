@@ -1,4 +1,6 @@
 import Head from 'next/head'
+import { useTranslation } from 'next-i18next'
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import api from '../lib/api'
 
 interface CartItem {
@@ -23,6 +25,7 @@ import { useEffect, useState } from 'react'
 import { useCartStore } from '../store/cart'
 
 export default function CartPage({ initialCart }: { initialCart: Cart }) {
+  const { t } = useTranslation('common')
   const [cart, setCart] = useState<Cart>(initialCart)
   const { setItemsCount } = useCartStore()
 
@@ -52,12 +55,12 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
   return (
     <>
       <Head>
-        <title>Корзина — Turk-Export</title>
+        <title>{t('menu_cart', 'Корзина')} — Turk-Export</title>
       </Head>
       <main className="mx-auto max-w-6xl p-6">
-        <h1 className="text-2xl font-bold">Корзина</h1>
+        <h1 className="text-2xl font-bold">{t('menu_cart', 'Корзина')}</h1>
         {cart.items.length === 0 ? (
-          <div className="mt-6 rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-600">Корзина пуста</div>
+          <div className="mt-6 rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-600">{t('cart_empty', 'Корзина пуста')}</div>
         ) : (
           <div className="mt-6 grid gap-3">
             {cart.items.map((i) => (
@@ -70,22 +73,23 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                   <button onClick={()=>updateQty(i.id, Math.max(1, i.quantity - 1))} className="rounded-md border border-gray-300 px-2 py-1">-</button>
                   <span className="w-6 text-center">{i.quantity}</span>
                   <button onClick={()=>updateQty(i.id, i.quantity + 1)} className="rounded-md border border-gray-300 px-2 py-1">+</button>
-                  <button onClick={()=>removeItem(i.id)} className="ml-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50">Удалить</button>
+                  <button onClick={()=>removeItem(i.id)} className="ml-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-50">{t('remove', 'Удалить')}</button>
                 </div>
               </div>
             ))}
-            <div className="text-right text-lg font-bold">Итого: {cart.total_amount}</div>
+            <div className="text-right text-lg font-bold">{t('cart_total', 'Итого')}: {cart.total_amount}</div>
           </div>
         )}
         <div className="mt-4">
-          <a href="/checkout" className="inline-block rounded-md bg-gray-900 px-4 py-2 text-white hover:bg-black">Перейти к оформлению заказа</a>
+          <a href="/checkout" className="inline-block rounded-md bg-gray-900 px-4 py-2 text-white hover:bg-black">{t('cart_checkout', 'Перейти к оформлению заказа')}</a>
         </div>
       </main>
     </>
   )
 }
 
-export async function getServerSideProps({ req, res: serverRes }: any) {
+export async function getServerSideProps(ctx: any) {
+  const { req, res: serverRes, locale } = ctx
   try {
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
     // Извлекаем cart_session из cookies
@@ -108,6 +112,8 @@ export async function getServerSideProps({ req, res: serverRes }: any) {
       headers: {
         // Прокидываем исходные cookies
         cookie: cookieHeader,
+        // Для локализации ответов бэка
+        'Accept-Language': locale || 'en',
         // И явный ключ корзины для анонимных пользователей
         ...(cartSession ? { 'X-Cart-Session': cartSession } : {}),
         // Авторизация по access токену, если он есть в cookies
@@ -115,8 +121,8 @@ export async function getServerSideProps({ req, res: serverRes }: any) {
       }
     })
     const data = await apiRes.json()
-    return { props: { initialCart: data } }
+    return { props: { ...(await serverSideTranslations(locale || 'en', ['common'])), initialCart: data } }
   } catch (e) {
-    return { props: { initialCart: { id: 0, items: [], items_count: 0, total_amount: '0.00' } } }
+    return { props: { ...(await serverSideTranslations(locale || 'en', ['common'])), initialCart: { id: 0, items: [], items_count: 0, total_amount: '0.00' } } }
   }
 }

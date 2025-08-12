@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react'
 import api from '../lib/api'
 import ProductCard from '../components/ProductCard'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
+import { useTranslation } from 'next-i18next'
 
 export default function SearchPage() {
   const router = useRouter()
   const q = (router.query.query as string) || ''
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const { t } = useTranslation('common')
 
   useEffect(() => {
     const run = async () => {
@@ -28,10 +30,10 @@ export default function SearchPage() {
 
   return (
     <>
-      <Head><title>Поиск — {q}</title></Head>
+      <Head><title>{t('search_results', 'Результаты поиска')} — {q}</title></Head>
       <main className="mx-auto max-w-6xl p-6">
-        <h1 className="text-2xl font-bold">Результаты поиска</h1>
-        <div className="mt-1 text-sm text-gray-600">{q ? `По запросу: "${q}"` : 'Введите запрос в поиске'}</div>
+        <h1 className="text-2xl font-bold">{t('search_results', 'Результаты поиска')}</h1>
+        <div className="mt-1 text-sm text-gray-600">{q ? `${t('search_for', 'По запросу')}: "${q}"` : t('search_placeholder')}</div>
         {loading ? <div className="mt-6">Загрузка…</div> : (
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             {items.map((p) => (

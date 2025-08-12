@@ -75,7 +75,7 @@ export default function Header() {
               onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); goSearch() } }}
               className="w-full rounded-l-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-400"
             />
-            <button onClick={goSearch} className="rounded-r-lg border border-l-0 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">Поиск</button>
+            <button onClick={goSearch} className="rounded-r-lg border border-l-0 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">{t('search_button', 'Поиск')}</button>
             {query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
               <div className="absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
                 {loadingSuggest ? (
@@ -98,19 +98,19 @@ export default function Header() {
           </div>
         </div>
         <nav className="flex items-center gap-4 text-sm">
-          <Link href="/" className={path === '/' ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-gray-800'}>Главная</Link>
-          <Link href="/categories" className={path.startsWith('/categories') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-gray-800'}>Категории</Link>
+          <Link href="/" className={path === '/' ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-gray-800'}>{t('menu_home', 'Главная')}</Link>
+          <Link href="/categories" className={path.startsWith('/categories') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-gray-800'}>{t('menu_categories', 'Категории')}</Link>
           <Link href="/cart" className={path.startsWith('/cart') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-gray-800'}>
-            Корзина {itemsCount ? `(${itemsCount})` : ''}
+            {t('menu_cart', 'Корзина')} {itemsCount ? `(${itemsCount})` : ''}
           </Link>
           {user ? (
             <>
-              <Link href="/profile" className={path.startsWith('/profile') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-gray-800'}>Профиль</Link>
-              <button onClick={logout} className="rounded-md border border-gray-300 px-3 py-1.5 text-gray-800 hover:bg-gray-50">Выйти</button>
+              <Link href="/profile" className={path.startsWith('/profile') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-gray-800'}>{t('header_profile', 'Профиль')}</Link>
+              <button onClick={logout} className="rounded-md border border-gray-300 px-3 py-1.5 text-gray-800 hover:bg-gray-50">{t('header_logout', 'Выйти')}</button>
             </>
           ) : (
             <>
-              <Link href="/auth" className="rounded-md bg-violet-600 px-3 py-1.5 font-medium text-white hover:bg-violet-700">Войти / Регистрация</Link>
+              <Link href="/auth" className="rounded-md bg-violet-600 px-3 py-1.5 font-medium text-white hover:bg-violet-700">{t('menu_login_register', 'Войти / Регистрация')}</Link>
             </>
           )}
           <button onClick={toggleLocale} className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50" title="Язык">{router.locale?.toUpperCase() || 'EN'}</button>

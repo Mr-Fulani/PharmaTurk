@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import axios from 'axios'
 import Link from 'next/link'
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 
 interface Category {
   id: number
@@ -39,14 +40,14 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
   )
 }
 
-export async function getServerSideProps() {
+export async function getServerSideProps(ctx: any) {
   try {
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
     const res = await axios.get(`${base}/api/catalog/categories`)
     const data = res.data
     const categories: Category[] = Array.isArray(data) ? data : (data.results || [])
-    return { props: { categories } }
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories } }
   } catch (e) {
-    return { props: { categories: [] } }
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories: [] } }
   }
 }

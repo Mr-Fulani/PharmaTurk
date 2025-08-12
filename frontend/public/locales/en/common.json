@@ -3,7 +3,29 @@
   "login_or_username": "Email or username",
   "password_placeholder": "Password (min 8 chars, letters and digits)",
   "login": "Login",
-  "register": "Register"
+  "register": "Register",
+  "menu_home": "Home",
+  "menu_categories": "Categories",
+  "menu_cart": "Cart",
+  "menu_login_register": "Login / Register"
+  ,"search_button": "Search"
+  ,"cart_empty": "Cart is empty"
+  ,"cart_total": "Total"
+  ,"cart_checkout": "Proceed to checkout"
+  ,"product_details": "Details"
+  ,"price_on_request": "Price on request"
+  ,"section_daily_deals": "Deals of the day"
+  ,"section_best_sellers": "Bestsellers"
+  ,"header_profile": "Profile"
+  ,"header_logout": "Logout"
+  ,"add_to_cart": "Add to cart"
+  ,"adding": "Adding..."
+  ,"added": "Added"
+  ,"search_results": "Search results"
+  ,"search_for": "For query"
+  ,"email": "Email"
+  ,"username": "Username"
+  ,"remove": "Remove"
 }
 
 

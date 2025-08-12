@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'next-i18next'
 import api, { initCartSession } from '../lib/api'
 import { useCartStore } from '../store/cart'
 
@@ -6,6 +7,7 @@ export default function AddToCartButton({ productId, className, label }: { produ
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const { refresh } = useCartStore()
+  const { t } = useTranslation('common')
 
   const add = async () => {
     setLoading(true)
@@ -43,7 +45,7 @@ export default function AddToCartButton({ productId, className, label }: { produ
         `inline-flex items-center rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60 ${className || ''}`
       }
     >
-      {done ? 'Добавлено' : (loading ? 'Добавляем...' : (label || 'В корзину'))}
+      {done ? t('added', 'Добавлено') : (loading ? t('adding', 'Добавляем...') : (label || t('add_to_cart', 'В корзину')))}
     </button>
   )
 }
