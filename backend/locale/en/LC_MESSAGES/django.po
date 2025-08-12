@@ -1,0 +1,42 @@
+# English translations for backend messages
+msgid ""
+msgstr ""
+"Project-Id-Version: PharmaTurk\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-08-12 00:00+0000\n"
+"PO-Revision-Date: 2025-08-12 00:00+0000\n"
+"Last-Translator: Auto\n"
+"Language-Team: EN\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# users.serializers
+msgid "Пароли не совпадают"
+msgstr "Passwords do not match"
+
+msgid "Пароль должен содержать минимум 8 символов, включать буквы и цифры"
+msgstr "Password must be at least 8 characters and include letters and digits"
+
+msgid "Неверные учетные данные"
+msgstr "Invalid credentials"
+
+msgid "Аккаунт заблокирован"
+msgstr "Account is blocked"
+
+msgid "Необходимо указать email/имя пользователя и пароль"
+msgstr "Email/username and password are required"
+
+msgid "Пользователь с таким email уже существует"
+msgstr "A user with this email already exists"
+
+msgid "Пользователь с таким именем уже существует"
+msgstr "A user with this username already exists"
+
+# users.models
+msgid "Номер телефона должен быть в формате: '+999999999'. До 15 цифр."
+msgstr "Phone number must be in the format '+999999999'. Up to 15 digits."
+
+

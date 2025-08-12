@@ -3,6 +3,7 @@ import Head from 'next/head'
 import { useEffect, useState } from 'react'
 import api from '../lib/api'
 import ProductCard from '../components/ProductCard'
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 
 export default function SearchPage() {
   const router = useRouter()
@@ -41,6 +42,10 @@ export default function SearchPage() {
       </main>
     </>
   )
+}
+
+export async function getServerSideProps(ctx: any) {
+  return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])) } }
 }
 
 

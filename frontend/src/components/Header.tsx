@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useAuth } from '../context/AuthContext'
 import { useEffect, useState } from 'react'
 import api, { initCartSession } from '../lib/api'
+import { useTranslation } from 'next-i18next'
 import { useCartStore } from '../store/cart'
 
 export default function Header() {
@@ -13,6 +14,7 @@ export default function Header() {
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [loadingSuggest, setLoadingSuggest] = useState(false)
+  const { t } = useTranslation('common')
   useEffect(() => { initCartSession(); refresh() }, [refresh])
 
   const goSearch = () => {
@@ -27,9 +29,7 @@ export default function Header() {
   }
 
   // i18n placeholder
-  const placeholder = router.locale === 'ru'
-    ? 'Искать витамины, магний, для суставов...'
-    : 'Search vitamins, magnesium, joints...'
+  const placeholder = t('search_placeholder')
 
   // Debounced suggestions
   useEffect(() => {
@@ -63,7 +63,7 @@ export default function Header() {
   }, [query])
 
   return (
-    <header className="sticky top-0 z-10 border-b border-violet-200 bg-white/80 backdrop-blur">
+    <header className="sticky top-0 z-10 border-b border-violet-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
         <Link href="/" className="text-lg font-bold text-violet-700">Turk-Export</Link>
         <div className="hidden flex-1 items-center gap-3 md:flex">

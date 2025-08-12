@@ -4,6 +4,7 @@ import axios from 'axios'
 import AddToCartButton from '../components/AddToCartButton'
 import Section from '../components/Section'
 import ProductCard from '../components/ProductCard'
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 
 interface Product {
   id: number
@@ -40,14 +41,14 @@ export default function Home({ products }: { products: Product[] }) {
   )
 }
 
-export async function getServerSideProps() {
+export async function getServerSideProps(ctx: any) {
   try {
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
     const res = await axios.get(`${base}/api/catalog/products`)
     const data = res.data
     const products: Product[] = Array.isArray(data) ? data : (data.results || [])
-    return { props: { products } }
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), products } }
   } catch (e) {
-    return { props: { products: [] } }
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), products: [] } }
   }
 }

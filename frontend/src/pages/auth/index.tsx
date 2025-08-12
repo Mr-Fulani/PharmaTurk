@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import Head from 'next/head'
+import { useTranslation } from 'next-i18next'
+import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useAuth } from '../../context/AuthContext'
 import { useRouter } from 'next/router'
 
@@ -7,6 +9,7 @@ export default function AuthIndexPage() {
   const router = useRouter()
   const tabParam = (router.query.tab as string) || 'login'
   const [tab, setTab] = useState<'login' | 'register'>(tabParam === 'register' ? 'register' : 'login')
+  const { t } = useTranslation('common')
 
   const switchTo = (nextTab: 'login' | 'register') => {
     setTab(nextTab)
@@ -17,17 +20,21 @@ export default function AuthIndexPage() {
   return (
     <>
       <Head>
-        <title>{tab === 'login' ? 'Вход' : 'Регистрация'} — Turk-Export</title>
+        <title>{tab === 'login' ? t('login') : t('register')} — Turk-Export</title>
       </Head>
       <main className="mx-auto max-w-md p-6">
         <div className="mb-4 inline-flex rounded-md border border-gray-300 p-1">
-          <button onClick={()=>switchTo('login')} className={`rounded px-3 py-1.5 text-sm ${tab==='login' ? 'bg-violet-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>Войти</button>
-          <button onClick={()=>switchTo('register')} className={`rounded px-3 py-1.5 text-sm ${tab==='register' ? 'bg-violet-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>Регистрация</button>
+          <button onClick={()=>switchTo('login')} className={`rounded px-3 py-1.5 text-sm ${tab==='login' ? 'bg-violet-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>{t('login')}</button>
+          <button onClick={()=>switchTo('register')} className={`rounded px-3 py-1.5 text-sm ${tab==='register' ? 'bg-violet-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>{t('register')}</button>
         </div>
         {tab === 'login' ? <LoginForm /> : <RegisterForm />}
       </main>
     </>
   )
+}
+
+export async function getServerSideProps(ctx: any) {
+  return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])) } }
 }
 
 function LoginForm() {

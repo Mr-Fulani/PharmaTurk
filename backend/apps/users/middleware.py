@@ -53,7 +53,10 @@ class LanguageMiddleware(MiddlewareMixin):
         # Устанавливаем язык для текущего запроса
         translation.activate(language)
         request.LANGUAGE_CODE = language
-        
+        # Сохраняем язык в сессии для использования LocaleMiddleware (ключ по умолчанию)
+        if hasattr(request, 'session'):
+            request.session['django_language'] = language
+
         return None
 
 

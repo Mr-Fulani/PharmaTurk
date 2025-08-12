@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     curl \
+    gettext \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
@@ -25,8 +26,9 @@ RUN poetry install --no-root --no-interaction --no-ansi
 # Copy app source
 COPY . .
 
-# Run migrations at build-time to speed up container start (safe in dev)
-RUN poetry run python manage.py collectstatic --noinput || true
+# Compile translations and collect static at build-time
+RUN poetry run django-admin compilemessages || true \
+ && poetry run python manage.py collectstatic --noinput || true
 
 EXPOSE 8000
 

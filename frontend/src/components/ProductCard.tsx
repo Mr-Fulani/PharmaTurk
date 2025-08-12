@@ -20,7 +20,8 @@ export default function ProductCard({ id, name, slug, price, currency, oldPrice,
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt={name} className="aspect-[4/3] w-full rounded-md object-cover" />
         ) : (
-          <div className="aspect-[4/3] w-full overflow-hidden rounded-md bg-gray-50" />
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/product-placeholder.svg" alt="No image" className="aspect-[4/3] w-full rounded-md object-cover" />
         )}
         {badge ? (
           <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">{badge}</span>
