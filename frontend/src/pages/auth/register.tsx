@@ -26,7 +26,10 @@ export default function RegisterPage() {
         router.push('/')
       }
     } catch (e: any) {
-      setError('Ошибка регистрации')
+      const data = e?.response?.data || {}
+      const first = Object.values(data)[0] as any
+      const msg = Array.isArray(first) ? first[0] : (typeof first === 'string' ? first : '')
+      setError(String(msg || 'Ошибка регистрации'))
     } finally {
       setLoading(false)
     }

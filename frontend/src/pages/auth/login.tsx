@@ -25,7 +25,12 @@ export default function LoginPage() {
         router.push('/')
       }
     } catch (e: any) {
-      setError('Неверные учетные данные')
+      const data = e?.response?.data
+      const msg = (data?.detail)
+        || (Array.isArray(data?.non_field_errors) ? data.non_field_errors[0] : '')
+        || (typeof data === 'string' ? data : '')
+        || 'Неверные учетные данные'
+      setError(String(msg))
     } finally {
       setLoading(false)
     }
@@ -39,7 +44,7 @@ export default function LoginPage() {
       <main className="mx-auto max-w-md p-6">
         <h1 className="text-2xl font-bold">Вход</h1>
         <form onSubmit={submit} className="mt-4 grid gap-3">
-          <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder="Email" value={email} onChange={(e)=>setEmail(e.target.value)} required />
+          <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder="Email или имя пользователя" value={email} onChange={(e)=>setEmail(e.target.value)} required />
           <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder="Пароль" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required />
           {error ? <div className="text-sm text-red-600">{error}</div> : null}
           <button type="submit" disabled={loading} className="rounded-md bg-violet-600 px-4 py-2 text-white hover:bg-violet-700 disabled:opacity-60">{loading ? 'Входим...' : 'Войти'}</button>

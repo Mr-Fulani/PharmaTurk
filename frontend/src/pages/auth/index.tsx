@@ -47,8 +47,13 @@ function LoginForm() {
       const next = router.query.next as string
       if (next && next.startsWith('/')) router.push(next)
       else router.push('/')
-    } catch {
-      setError('Неверные учетные данные')
+    } catch (e: any) {
+      const data = e?.response?.data
+      const msg = (data?.detail)
+        || (Array.isArray(data?.non_field_errors) ? data.non_field_errors[0] : '')
+        || (typeof data === 'string' ? data : '')
+        || 'Неверные учетные данные'
+      setError(String(msg))
     } finally {
       setLoading(false)
     }
@@ -82,8 +87,11 @@ function RegisterForm() {
       const next = router.query.next as string
       if (next && next.startsWith('/')) router.push(next)
       else router.push('/')
-    } catch {
-      setError('Ошибка регистрации')
+    } catch (e: any) {
+      const data = e?.response?.data || {}
+      const first = Object.values(data)[0] as any
+      const msg = Array.isArray(first) ? first[0] : (typeof first === 'string' ? first : '')
+      setError(String(msg || 'Ошибка регистрации'))
     } finally {
       setLoading(false)
     }
