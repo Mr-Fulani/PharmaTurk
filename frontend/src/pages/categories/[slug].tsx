@@ -10,6 +10,8 @@ interface Product {
   slug: string
   price: string | null
   currency: string
+  main_image_url?: string | null
+  main_image?: string | null
 }
 
 export default function CategoryPage({ name, products }: { name: string, products: Product[] }) {
@@ -21,8 +23,8 @@ export default function CategoryPage({ name, products }: { name: string, product
       <main className="mx-auto max-w-6xl p-6">
         <h1 className="text-2xl font-bold">{name}</h1>
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {products.map((p) => (
-            <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} />
+            {products.map((p) => (
+            <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} imageUrl={p.main_image_url || p.main_image} />
           ))}
         </div>
       </main>
@@ -35,13 +37,13 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
   try {
     const [catRes, prodRes] = await Promise.all([
-      axios.get(`${base}/api/catalog/categories/`),
-      axios.get(`${base}/api/catalog/products/`, { params: { search: '', category_id: undefined, brand_id: undefined } })
+      axios.get(`${base}/api/catalog/categories`),
+      axios.get(`${base}/api/catalog/products`)
     ])
     const categories = Array.isArray(catRes.data) ? catRes.data : (catRes.data.results || [])
     const category = categories.find((c: any) => c.slug === slug)
     // Получаем товары по ID категории (бэкенд фильтрует по category_id)
-    const pr = await axios.get(`${base}/api/catalog/products/`, { params: { category_id: category?.id } })
+    const pr = await axios.get(`${base}/api/catalog/products`, { params: { category_id: category?.id, page_size: 48 } })
     const products = Array.isArray(pr.data) ? pr.data : (pr.data.results || [])
     return { props: { name: category?.name || 'Категория', products } }
   } catch (e) {

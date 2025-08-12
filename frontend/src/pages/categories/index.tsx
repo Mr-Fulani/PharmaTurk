@@ -42,7 +42,7 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
 export async function getServerSideProps() {
   try {
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
-    const res = await axios.get(`${base}/api/catalog/categories/`)
+    const res = await axios.get(`${base}/api/catalog/categories`)
     const data = res.data
     const categories: Category[] = Array.isArray(data) ? data : (data.results || [])
     return { props: { categories } }

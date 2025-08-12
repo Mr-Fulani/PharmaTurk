@@ -50,6 +50,9 @@ api.interceptors.request.use((config) => {
   const cartSid = ensureCartSession()
   if (!config.headers) config.headers = {} as AxiosRequestHeaders
   ;(config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
+  // Прокидываем язык для локализации ответов DRF/Django
+  const locale = Cookies.get('NEXT_LOCALE') || (typeof navigator !== 'undefined' ? (navigator.language?.split('-')[0] || 'en') : 'en')
+  ;(config.headers as AxiosRequestHeaders)['Accept-Language'] = locale
   return config
 })
 

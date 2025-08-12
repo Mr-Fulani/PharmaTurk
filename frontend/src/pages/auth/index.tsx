@@ -93,7 +93,7 @@ function RegisterForm() {
     <form onSubmit={submit} className="grid gap-3">
       <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder="Email" value={email} onChange={(e)=>setEmail(e.target.value)} required />
       <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder="Имя пользователя" value={username} onChange={(e)=>setUsername(e.target.value)} required />
-      <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder="Пароль" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required />
+      <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder="Пароль (мин. 8 знаков, буквы и цифры)" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required />
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
       <button type="submit" disabled={loading} className="rounded-md bg-violet-600 px-4 py-2 text-white hover:bg-violet-700 disabled:opacity-60">{loading ? 'Регистрируем...' : 'Зарегистрироваться'}</button>
     </form>

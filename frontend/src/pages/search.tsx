@@ -14,8 +14,8 @@ export default function SearchPage() {
     const run = async () => {
       if (!q) return
       setLoading(true)
-      try {
-        const r = await api.get('/catalog/products', { params: { search: q } })
+        try {
+        const r = await api.get('/catalog/products', { params: { search: q, page_size: 24 } })
         const data = Array.isArray(r.data) ? r.data : (r.data.results || [])
         setItems(data)
       } finally {

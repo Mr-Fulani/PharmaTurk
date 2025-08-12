@@ -27,7 +27,8 @@ export default function ProductPage({ product }: { product: Product }) {
             {product.main_image ? (
               <img src={product.main_image} alt={product.name} className="w-full rounded-xl object-cover" />
             ) : (
-              <div className="aspect-square w-full rounded-xl bg-gray-50" />
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src="/product-placeholder.svg" alt="No image" className="aspect-square w-full rounded-xl object-cover" />
             )}
           </div>
           <div>
@@ -50,7 +51,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const { slug } = ctx.params as { slug: string }
   try {
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
-    const res = await axios.get(`${base}/api/catalog/products/${slug}/`)
+    const res = await axios.get(`${base}/api/catalog/products/${slug}`)
     return { props: { product: res.data } }
   } catch (e) {
     return { notFound: true }

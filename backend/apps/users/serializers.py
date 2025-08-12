@@ -24,9 +24,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         }
     
     def validate(self, attrs):
-        """Проверка совпадения паролей"""
+        """Проверка пароля и совпадения"""
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError(_("Пароли не совпадают"))
+
+        password = attrs['password']
+        # Базовые требования к сложности пароля: минимум 8 символов, буквы и цифры
+        has_letter = any(ch.isalpha() for ch in password)
+        has_digit = any(ch.isdigit() for ch in password)
+        if not (has_letter and has_digit):
+            raise serializers.ValidationError(_("Пароль должен содержать минимум 8 символов, включать буквы и цифры"))
         return attrs
     
     def validate_email(self, value):
@@ -56,24 +63,35 @@ class UserLoginSerializer(serializers.Serializer):
     """
     Сериализатор для входа пользователей
     """
-    email = serializers.EmailField()
+    # Разрешаем вводить email ИЛИ имя пользователя в одно поле
+    email = serializers.CharField()
     password = serializers.CharField(write_only=True)
     
     def validate(self, attrs):
         """Проверка учетных данных"""
-        email = attrs.get('email')
+        login_value = attrs.get('email')
         password = attrs.get('password')
         
-        if email and password:
-            user = authenticate(request=self.context.get('request'),
-                              username=email, password=password)
+        if login_value and password:
+            request = self.context.get('request')
+            user = None
+            # Если похоже на email — аутентифицируем напрямую
+            if isinstance(login_value, str) and '@' in login_value:
+                user = authenticate(request=request, username=login_value, password=password)
+            else:
+                # Пытаемся найти по username, аутентифицируем по email
+                try:
+                    candidate = User.objects.get(username=login_value)
+                    user = authenticate(request=request, username=candidate.email, password=password)
+                except User.DoesNotExist:
+                    user = None
             if not user:
                 raise serializers.ValidationError(_("Неверные учетные данные"))
             if not user.is_active:
                 raise serializers.ValidationError(_("Аккаунт заблокирован"))
             attrs['user'] = user
         else:
-            raise serializers.ValidationError(_("Необходимо указать email и пароль"))
+            raise serializers.ValidationError(_("Необходимо указать email/имя пользователя и пароль"))
         
         return attrs
 

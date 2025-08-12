@@ -24,14 +24,14 @@ export default function Home({ products }: { products: Product[] }) {
         <Section title="Товары дня">
           <div className="no-scrollbar mt-2 grid grid-flow-col gap-4 overflow-x-auto px-1 [grid-auto-columns:minmax(240px,1fr)]">
             {products.slice(0, 8).map((p) => (
-              <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} />
+              <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} imageUrl={p.main_image_url} />
             ))}
           </div>
         </Section>
         <Section title="Хиты продаж">
           <div className="no-scrollbar mt-2 grid grid-flow-col gap-4 overflow-x-auto px-1 [grid-auto-columns:minmax(240px,1fr)]">
             {products.slice(8, 16).map((p) => (
-              <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} />
+              <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} imageUrl={p.main_image_url} />
             ))}
           </div>
         </Section>
@@ -43,7 +43,7 @@ export default function Home({ products }: { products: Product[] }) {
 export async function getServerSideProps() {
   try {
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
-    const res = await axios.get(`${base}/api/catalog/products/`)
+    const res = await axios.get(`${base}/api/catalog/products`)
     const data = res.data
     const products: Product[] = Array.isArray(data) ? data : (data.results || [])
     return { props: { products } }
