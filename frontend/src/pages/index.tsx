@@ -43,33 +43,28 @@ export default function Home({
   const { t } = useTranslation('common')
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
   const [selectedBrand, setSelectedBrand] = useState<number | null>(null)
-  const [priceRange, setPriceRange] = useState<{ min: number | null; max: number | null }>({ min: null, max: null })
   const [sortBy, setSortBy] = useState('name_asc')
   const [inStockOnly, setInStockOnly] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-
-  const handlePriceChange = (min: number | null, max: number | null) => {
-    setPriceRange({ min, max })
-  }
+  const [currentPage, setCurrentPage] = useState(1)
+  const productsPerPage = 12
 
   return (
     <>
       <Head>
         <title>PharmaTurk</title>
       </Head>
-      <div className="flex">
+      <div className="flex gap-6">
         {/* Sidebar */}
         <Sidebar
           categories={categories}
           brands={brands}
           onCategoryChange={setSelectedCategory}
           onBrandChange={setSelectedBrand}
-          onPriceChange={handlePriceChange}
           onSortChange={setSortBy}
           onAvailabilityChange={setInStockOnly}
           selectedCategory={selectedCategory}
           selectedBrand={selectedBrand}
-          priceRange={priceRange}
           sortBy={sortBy}
           inStockOnly={inStockOnly}
           isOpen={sidebarOpen}
@@ -77,9 +72,9 @@ export default function Home({
         />
         
         {/* Main Content */}
-        <main className="flex-1">
+        <main className="flex-1 p-6">
           {/* Mobile sidebar toggle */}
-          <div className="md:hidden p-4">
+          <div className="md:hidden mb-4">
             <button
               onClick={() => setSidebarOpen(true)}
               className="flex items-center space-x-2 px-4 py-2 bg-violet-600 text-white rounded-md hover:bg-violet-700 transition-colors duration-200"
@@ -90,19 +85,52 @@ export default function Home({
               <span>Фильтры</span>
             </button>
           </div>
+          
           <Section title={t('section_daily_deals', 'Товары дня')}>
-            <div className="no-scrollbar mt-2 grid grid-flow-col gap-4 overflow-x-auto px-1 [grid-auto-columns:minmax(240px,1fr)]">
-              {products.slice(0, 8).map((p) => (
-                <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} imageUrl={p.main_image_url} />
-              ))}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mt-4">
+              {products
+                .slice((currentPage - 1) * productsPerPage, currentPage * productsPerPage)
+                .map((p) => (
+                  <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} imageUrl={p.main_image_url} />
+                ))}
             </div>
-          </Section>
-          <Section title={t('section_best_sellers', 'Хиты продаж')}>
-            <div className="no-scrollbar mt-2 grid grid-flow-col gap-4 overflow-x-auto px-1 [grid-auto-columns:minmax(240px,1fr)]">
-              {products.slice(8, 16).map((p) => (
-                <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} imageUrl={p.main_image_url} />
-              ))}
-            </div>
+            
+            {/* Пагинация */}
+            {products.length > productsPerPage && (
+              <div className="flex justify-center mt-8">
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                  >
+                    Назад
+                  </button>
+                  
+                  {Array.from({ length: Math.ceil(products.length / productsPerPage) }, (_, i) => i + 1).map((page) => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
+                        currentPage === page
+                          ? 'bg-violet-600 text-white'
+                          : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  
+                  <button
+                    onClick={() => setCurrentPage(Math.min(Math.ceil(products.length / productsPerPage), currentPage + 1))}
+                    disabled={currentPage === Math.ceil(products.length / productsPerPage)}
+                    className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                  >
+                    Вперед
+                  </button>
+                </div>
+              </div>
+            )}
           </Section>
         </main>
       </div>

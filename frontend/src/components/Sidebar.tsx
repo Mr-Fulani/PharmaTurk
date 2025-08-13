@@ -6,12 +6,10 @@ interface SidebarProps {
   brands?: Array<{ id: number; name: string; count?: number }>
   onCategoryChange?: (categoryId: number | null) => void
   onBrandChange?: (brandId: number | null) => void
-  onPriceChange?: (min: number | null, max: number | null) => void
   onSortChange?: (sort: string) => void
   onAvailabilityChange?: (inStock: boolean) => void
   selectedCategory?: number | null
   selectedBrand?: number | null
-  priceRange?: { min: number | null; max: number | null }
   sortBy?: string
   inStockOnly?: boolean
   isOpen?: boolean
@@ -23,12 +21,10 @@ export default function Sidebar({
   brands = [],
   onCategoryChange,
   onBrandChange,
-  onPriceChange,
   onSortChange,
   onAvailabilityChange,
   selectedCategory,
   selectedBrand,
-  priceRange = { min: null, max: null },
   sortBy = 'name_asc',
   inStockOnly = false,
   isOpen = true,
@@ -37,17 +33,9 @@ export default function Sidebar({
   const { t } = useTranslation('common')
   const [showAllCategories, setShowAllCategories] = useState(false)
   const [showAllBrands, setShowAllBrands] = useState(false)
-  const [priceMin, setPriceMin] = useState(priceRange.min?.toString() || '')
-  const [priceMax, setPriceMax] = useState(priceRange.max?.toString() || '')
 
   const displayedCategories = showAllCategories ? categories : categories.slice(0, 8)
   const displayedBrands = showAllBrands ? brands : brands.slice(0, 8)
-
-  const handlePriceApply = () => {
-    const min = priceMin ? parseFloat(priceMin) : null
-    const max = priceMax ? parseFloat(priceMax) : null
-    onPriceChange?.(min, max)
-  }
 
   const sortOptions = [
     { value: 'name_asc', label: t('sidebar_sort_name_asc') },
@@ -57,7 +45,7 @@ export default function Sidebar({
   ]
 
   return (
-    <aside className={`${isOpen ? 'translate-x-0' : '-translate-x-full'} fixed md:relative inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 p-6 space-y-8 transition-transform duration-300 ease-in-out md:translate-x-0`}>
+    <aside className={`${isOpen ? 'translate-x-0' : '-translate-x-full'} fixed md:relative md:top-0 left-0 z-50 w-64 bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-6 transition-transform duration-300 ease-in-out md:translate-x-0`}>
       {/* Mobile overlay */}
       {isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden" onClick={onToggle} />
@@ -72,15 +60,16 @@ export default function Sidebar({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
+      
       {/* Категории */}
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('sidebar_categories')}</h3>
-        <div className="space-y-2 max-h-64 overflow-y-auto">
+        <h3 className="text-base font-semibold text-gray-900 mb-3">{t('sidebar_categories')}</h3>
+        <div className="space-y-1 max-h-48 overflow-y-auto">
           {displayedCategories.map((category) => (
             <button
               key={category.id}
               onClick={() => onCategoryChange?.(selectedCategory === category.id ? null : category.id)}
-              className={`w-full text-left px-3 py-2 rounded-md transition-colors duration-200 ${
+              className={`w-full text-left px-2 py-1.5 rounded text-sm transition-colors duration-200 ${
                 selectedCategory === category.id
                   ? 'bg-violet-100 text-violet-700 border border-violet-200'
                   : 'text-gray-700 hover:bg-violet-50 hover:text-violet-700'
@@ -98,7 +87,7 @@ export default function Sidebar({
         {categories.length > 8 && (
           <button
             onClick={() => setShowAllCategories(!showAllCategories)}
-            className="mt-3 text-sm text-violet-600 hover:text-violet-800 transition-colors duration-200"
+            className="mt-2 text-xs text-violet-600 hover:text-violet-800 transition-colors duration-200"
           >
             {showAllCategories ? t('sidebar_show_less') : t('sidebar_show_more')}
           </button>
@@ -107,13 +96,13 @@ export default function Sidebar({
 
       {/* Бренды */}
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('sidebar_brands')}</h3>
-        <div className="space-y-2 max-h-64 overflow-y-auto">
+        <h3 className="text-base font-semibold text-gray-900 mb-3">{t('sidebar_brands')}</h3>
+        <div className="space-y-1 max-h-48 overflow-y-auto">
           {displayedBrands.map((brand) => (
             <button
               key={brand.id}
               onClick={() => onBrandChange?.(selectedBrand === brand.id ? null : brand.id)}
-              className={`w-full text-left px-3 py-2 rounded-md transition-colors duration-200 ${
+              className={`w-full text-left px-2 py-1.5 rounded text-sm transition-colors duration-200 ${
                 selectedBrand === brand.id
                   ? 'bg-violet-100 text-violet-700 border border-violet-200'
                   : 'text-gray-700 hover:bg-violet-50 hover:text-violet-700'
@@ -131,7 +120,7 @@ export default function Sidebar({
         {brands.length > 8 && (
           <button
             onClick={() => setShowAllBrands(!showAllBrands)}
-            className="mt-3 text-sm text-violet-600 hover:text-violet-800 transition-colors duration-200"
+            className="mt-2 text-xs text-violet-600 hover:text-violet-800 transition-colors duration-200"
           >
             {showAllBrands ? t('sidebar_show_less') : t('sidebar_show_more')}
           </button>
@@ -140,50 +129,17 @@ export default function Sidebar({
 
       {/* Фильтры */}
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">{t('sidebar_filters')}</h3>
+        <h3 className="text-base font-semibold text-gray-900 mb-3">{t('sidebar_filters')}</h3>
         
-        {/* Диапазон цен */}
-        <div className="mb-6">
-          <h4 className="text-sm font-medium text-gray-700 mb-3">{t('sidebar_price_range')}</h4>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">{t('sidebar_price_min')}</label>
-              <input
-                type="number"
-                value={priceMin}
-                onChange={(e) => setPriceMin(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">{t('sidebar_price_max')}</label>
-              <input
-                type="number"
-                value={priceMax}
-                onChange={(e) => setPriceMax(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                placeholder="∞"
-              />
-            </div>
-            <button
-              onClick={handlePriceApply}
-              className="w-full px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-md hover:bg-violet-700 transition-colors duration-200"
-            >
-              Применить
-            </button>
-          </div>
-        </div>
-
         {/* Сортировка */}
-        <div className="mb-6">
-          <h4 className="text-sm font-medium text-gray-700 mb-3">{t('sidebar_sort_by')}</h4>
-          <div className="space-y-2">
+        <div className="mb-4">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">{t('sidebar_sort_by')}</h4>
+          <div className="space-y-1">
             {sortOptions.map((option) => (
               <button
                 key={option.value}
                 onClick={() => onSortChange?.(option.value)}
-                className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors duration-200 ${
+                className={`w-full text-left px-2 py-1.5 rounded text-sm transition-colors duration-200 ${
                   sortBy === option.value
                     ? 'bg-violet-100 text-violet-700 border border-violet-200'
                     : 'text-gray-700 hover:bg-violet-50 hover:text-violet-700'
@@ -197,8 +153,8 @@ export default function Sidebar({
 
         {/* Наличие */}
         <div>
-          <h4 className="text-sm font-medium text-gray-700 mb-3">{t('sidebar_availability')}</h4>
-          <label className="flex items-center space-x-3 cursor-pointer">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">{t('sidebar_availability')}</h4>
+          <label className="flex items-center space-x-2 cursor-pointer">
             <input
               type="checkbox"
               checked={inStockOnly}
