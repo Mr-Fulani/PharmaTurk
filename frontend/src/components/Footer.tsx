@@ -9,7 +9,19 @@ export default function Footer() {
         <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <div className="flex items-start justify-center sm:justify-start">
             {/* Логотип/изображение оплат — увеличенный размер и правильное выравнивание */}
-            <img src="/footer-payments.png" alt="payments" className="h-28 w-auto" />
+            <div className="group relative">
+              <img 
+                src="/footer-payments.png" 
+                alt="payments" 
+                className="h-28 w-auto transition-all duration-200 group-hover:scale-105 group-hover:brightness-110" 
+              />
+              <div className="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                <div className="bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                  {t('footer_crypto_payment')}
+                </div>
+                <div className="w-2 h-2 bg-gray-800 rotate-45 absolute top-full left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
+              </div>
+            </div>
           </div>
           <div className="text-center sm:text-left">
             <div className="mb-2 text-sm font-medium text-gray-800">{t('footer_contacts')}</div>

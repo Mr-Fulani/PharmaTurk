@@ -66,7 +66,7 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-10 border-b border-violet-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-        <Link href="/" className="text-lg font-bold text-violet-700">Turk-Export</Link>
+        <Link href="/" className="text-lg font-bold text-violet-700 transition-colors duration-200 hover:text-violet-800">Turk-Export</Link>
         <div className="hidden flex-1 items-center gap-3 md:flex">
           <div className="relative flex w-full max-w-xl items-center">
             <input
@@ -76,7 +76,7 @@ export default function Header() {
               onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); goSearch() } }}
               className="w-full rounded-l-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-400"
             />
-            <button onClick={goSearch} className="rounded-r-lg border border-l-0 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">{t('search_button', 'Поиск')}</button>
+            <button onClick={goSearch} className="rounded-r-lg border border-l-0 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 transition-colors duration-200 hover:bg-violet-50 hover:border-violet-300">{t('search_button', 'Поиск')}</button>
             {query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
               <div className="absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
                 {loadingSuggest ? (
@@ -85,36 +85,36 @@ export default function Header() {
                   <button
                     key={p.id}
                     onClick={() => router.push(`/product/${p.slug}`)}
-                    className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-50"
+                    className="flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors duration-200 hover:bg-violet-50"
                   >
                     <span className="line-clamp-1 pr-2 text-gray-800">{p.name}</span>
                     <span className="whitespace-nowrap text-gray-600">{p.price ? `${p.price} ${p.currency}` : ''}</span>
                   </button>
                 ))}
                 <div className="border-t px-3 py-2 text-right">
-                  <button onClick={goSearch} className="text-xs text-violet-700 hover:underline">Показать все результаты</button>
+                  <button onClick={goSearch} className="text-xs text-violet-700 transition-colors duration-200 hover:text-violet-800 hover:underline">Показать все результаты</button>
                 </div>
               </div>
             ) : null}
           </div>
         </div>
         <nav className="flex items-center gap-4 text-sm">
-          <Link href="/" className={path === '/' ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-gray-800'}>{t('menu_home', 'Главная')}</Link>
-          <Link href="/categories" className={path.startsWith('/categories') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-gray-800'}>{t('menu_categories', 'Категории')}</Link>
-          <Link href="/cart" className={path.startsWith('/cart') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-gray-800'}>
+          <Link href="/" className={`transition-colors duration-200 ${path === '/' ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>{t('menu_home', 'Главная')}</Link>
+          <Link href="/categories" className={`transition-colors duration-200 ${path.startsWith('/categories') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>{t('menu_categories', 'Категории')}</Link>
+          <Link href="/cart" className={`transition-colors duration-200 ${path.startsWith('/cart') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>
             {t('menu_cart', 'Корзина')} {itemsCount ? `(${itemsCount})` : ''}
           </Link>
           {user ? (
             <>
-              <Link href="/profile" className={path.startsWith('/profile') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-gray-800'}>{t('header_profile', 'Профиль')}</Link>
-              <button onClick={logout} className="rounded-md border border-gray-300 px-3 py-1.5 text-gray-800 hover:bg-gray-50">{t('header_logout', 'Выйти')}</button>
+              <Link href="/profile" className={`transition-colors duration-200 ${path.startsWith('/profile') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>{t('header_profile', 'Профиль')}</Link>
+              <button onClick={logout} className="rounded-md border border-gray-300 px-3 py-1.5 text-gray-800 transition-colors duration-200 hover:bg-violet-50 hover:border-violet-300">{t('header_logout', 'Выйти')}</button>
             </>
           ) : (
             <>
-              <Link href="/auth" className="rounded-md bg-violet-600 px-3 py-1.5 font-medium text-white hover:bg-violet-700">{t('menu_login_register', 'Войти / Регистрация')}</Link>
+              <Link href="/auth" className="rounded-md bg-violet-600 px-3 py-1.5 font-medium text-white transition-colors duration-200 hover:bg-violet-700">{t('menu_login_register', 'Войти / Регистрация')}</Link>
             </>
           )}
-          <button onClick={toggleLocale} className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50" title="Язык">{router.locale?.toUpperCase() || 'EN'}</button>
+          <button onClick={toggleLocale} className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 transition-colors duration-200 hover:bg-violet-50 hover:border-violet-300" title="Язык">{router.locale?.toUpperCase() || 'EN'}</button>
         </nav>
       </div>
     </header>
