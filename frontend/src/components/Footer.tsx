@@ -73,7 +73,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="mt-8 border-t border-gray-200 pt-4 text-center text-xs text-gray-500">
-          {t('footer_copyright', { year: new Date().getFullYear() })}
+          © {new Date().getFullYear()} PharmaTurk
         </div>
       </div>
     </footer>
