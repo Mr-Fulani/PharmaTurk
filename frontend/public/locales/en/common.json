@@ -49,6 +49,21 @@
   ,"footer_return": "Return policy"
   ,"footer_privacy": "Privacy policy"
   ,"footer_crypto_payment": "Crypto payment available"
+  ,"sidebar_categories": "Categories"
+  ,"sidebar_brands": "Brands"
+  ,"sidebar_filters": "Filters"
+  ,"sidebar_price_range": "Price range"
+  ,"sidebar_price_min": "Min"
+  ,"sidebar_price_max": "Max"
+  ,"sidebar_sort_by": "Sort by"
+  ,"sidebar_sort_price_asc": "Price: Low to High"
+  ,"sidebar_sort_price_desc": "Price: High to Low"
+  ,"sidebar_sort_name_asc": "Name: A to Z"
+  ,"sidebar_sort_name_desc": "Name: Z to A"
+  ,"sidebar_availability": "Availability"
+  ,"sidebar_in_stock": "In stock"
+  ,"sidebar_show_more": "Show more"
+  ,"sidebar_show_less": "Show less"
 }
 
 

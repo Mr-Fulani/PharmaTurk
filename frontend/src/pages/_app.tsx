@@ -21,9 +21,9 @@ function App({ Component, pageProps }: AppProps) {
     <AuthProvider>
       <div className="min-h-screen flex flex-col">
         <Header />
-        <main className="flex-1">
+        <div className="flex-1">
           <Component {...pageProps} />
-        </main>
+        </div>
         <Footer />
       </div>
     </AuthProvider>

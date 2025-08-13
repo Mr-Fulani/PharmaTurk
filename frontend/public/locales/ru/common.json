@@ -49,6 +49,21 @@
   ,"footer_return": "Возврат товара"
   ,"footer_privacy": "Политика конфиденциальности"
   ,"footer_crypto_payment": "Возможна оплата криптовалютой"
+  ,"sidebar_categories": "Категории"
+  ,"sidebar_brands": "Бренды"
+  ,"sidebar_filters": "Фильтры"
+  ,"sidebar_price_range": "Диапазон цен"
+  ,"sidebar_price_min": "От"
+  ,"sidebar_price_max": "До"
+  ,"sidebar_sort_by": "Сортировка"
+  ,"sidebar_sort_price_asc": "Цена: по возрастанию"
+  ,"sidebar_sort_price_desc": "Цена: по убыванию"
+  ,"sidebar_sort_name_asc": "Название: А-Я"
+  ,"sidebar_sort_name_desc": "Название: Я-А"
+  ,"sidebar_availability": "Наличие"
+  ,"sidebar_in_stock": "В наличии"
+  ,"sidebar_show_more": "Показать ещё"
+  ,"sidebar_show_less": "Свернуть"
 }
 
 
