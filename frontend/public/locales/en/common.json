@@ -39,6 +39,16 @@
   ,"checkout_submit": "Place order"
   ,"login_required_to_checkout": "You must log in to place an order"
   ,"checkout_error_generic": "Checkout error"
+  ,"footer_contacts": "Contacts"
+  ,"footer_phone": "+90 552 582 14 97"
+  ,"footer_email": "fulani.dev@gmail.com"
+  ,"footer_location": "Istanbul, TR"
+  ,"footer_social_networks": "Our social networks"
+  ,"footer_information": "Information"
+  ,"footer_delivery_payment": "Delivery and payment"
+  ,"footer_return": "Return policy"
+  ,"footer_privacy": "Privacy policy"
+  ,"footer_copyright": "© {year} Turk-Export"
 }
 
 

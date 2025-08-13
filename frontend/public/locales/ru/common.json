@@ -39,6 +39,16 @@
   ,"checkout_submit": "Оформить заказ"
   ,"login_required_to_checkout": "Для оформления заказа необходимо войти"
   ,"checkout_error_generic": "Ошибка оформления заказа"
+  ,"footer_contacts": "Контакты"
+  ,"footer_phone": "+90 552 582 14 97"
+  ,"footer_email": "fulani.dev@gmail.com"
+  ,"footer_location": "Стамбул, Турция"
+  ,"footer_social_networks": "Наши соцсети"
+  ,"footer_information": "Информация"
+  ,"footer_delivery_payment": "Доставка и оплата"
+  ,"footer_return": "Возврат товара"
+  ,"footer_privacy": "Политика конфиденциальности"
+  ,"footer_copyright": "© {year} Turk-Export"
 }
 
 

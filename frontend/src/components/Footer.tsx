@@ -1,4 +1,8 @@
+import { useTranslation } from 'next-i18next'
+
 export default function Footer() {
+  const { t } = useTranslation('common')
+
   return (
     <footer className="mt-10 border-t border-violet-100 bg-gradient-to-b from-white/90 to-white">
       <div className="mx-auto max-w-6xl px-6 py-10 text-sm text-gray-700">
@@ -8,33 +12,33 @@ export default function Footer() {
             <img src="/footer-payments.png" alt="payments" className="h-28 w-auto" />
           </div>
           <div className="text-center sm:text-left">
-            <div className="mb-2 text-sm font-medium text-gray-800">Контакты</div>
+            <div className="mb-2 text-sm font-medium text-gray-800">{t('footer_contacts')}</div>
             <div className="space-y-2 text-sm text-gray-600">
               <a href="tel:+905550000000" className="group flex items-center justify-center gap-2 transition hover:-translate-y-0.5 sm:justify-start">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-violet-700 transition group-hover:scale-110">
                   <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.86 19.86 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.86 19.86 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.86.33 1.7.62 2.5a2 2 0 0 1-.45 2.11L8 9a16 16 0 0 0 7 7l.67-1.28a2 2 0 0 1 2.11-.45c.8.29 1.64.5 2.5.62A2 2 0 0 1 22 16.92z" />
                 </svg>
-                <span>+90 552 582 14 97</span>
+                <span>{t('footer_phone')}</span>
               </a>
               <a href="mailto:info@turk-export.example" className="group flex items-center justify-center gap-2 transition hover:-translate-y-0.5 sm:justify-start">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-violet-700 transition group-hover:scale-110">
                   <path d="M4 4h16v16H4z" />
                   <path d="m22 6-10 7L2 6" />
                 </svg>
-                <span>fulani.dev@gmail.com</span>
+                <span>{t('footer_email')}</span>
               </a>
               <div className="flex items-center justify-center gap-2 sm:justify-start">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-violet-700">
                   <path d="M21 10c0 7-9 12-9 12S3 17 3 10a9 9 0 1 1 18 0Z" />
                   <circle cx="12" cy="10" r="3" />
                 </svg>
-                <span>Istanbul, TR</span>
+                <span>{t('footer_location')}</span>
               </div>
             </div>
           </div>
           <div className="flex justify-center sm:justify-start">
             <div>
-              <div className="mb-2 text-sm font-medium text-gray-800">Наши соцсети</div>
+              <div className="mb-2 text-sm font-medium text-gray-800">{t('footer_social_networks')}</div>
               <div className="flex items-center gap-3">
                 <a href="#" className="group inline-flex h-12 w-12 items-center justify-center rounded-full border border-violet-200 bg-white transition hover:-translate-y-0.5 hover:bg-violet-50 hover:shadow-md" aria-label="Telegram">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-blue-500 transition group-hover:scale-110">
@@ -60,15 +64,17 @@ export default function Footer() {
             </div>
           </div>
           <div className="text-center sm:text-left">
-            <div className="mb-2 text-sm font-medium text-gray-800">Информация</div>
+            <div className="mb-2 text-sm font-medium text-gray-800">{t('footer_information')}</div>
             <ul className="space-y-1 text-sm text-gray-600">
-              <li><a href="#" className="hover:underline">Доставка и оплата</a></li>
-              <li><a href="#" className="hover:underline">Возврат товара</a></li>
-              <li><a href="#" className="hover:underline">Политика конфиденциальности</a></li>
+              <li><a href="#" className="hover:underline">{t('footer_delivery_payment')}</a></li>
+              <li><a href="#" className="hover:underline">{t('footer_return')}</a></li>
+              <li><a href="#" className="hover:underline">{t('footer_privacy')}</a></li>
             </ul>
           </div>
         </div>
-        <div className="mt-8 border-t border-gray-200 pt-4 text-center text-xs text-gray-500">© {new Date().getFullYear()} Turk-Export</div>
+        <div className="mt-8 border-t border-gray-200 pt-4 text-center text-xs text-gray-500">
+          {t('footer_copyright', { year: new Date().getFullYear() })}
+        </div>
       </div>
     </footer>
   )
