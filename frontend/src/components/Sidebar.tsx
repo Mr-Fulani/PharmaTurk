@@ -45,7 +45,7 @@ export default function Sidebar({
   ]
 
   return (
-    <aside className={`${isOpen ? 'translate-x-0' : '-translate-x-full'} fixed md:relative md:top-0 left-0 z-50 w-64 bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-6 transition-transform duration-300 ease-in-out md:translate-x-0`}>
+    <aside className={`${isOpen ? 'translate-x-0' : '-translate-x-full'} fixed md:sticky md:top-6 left-0 z-[5] w-64 bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-6 transition-transform duration-300 ease-in-out md:translate-x-0 max-h-[calc(100vh-2rem)] overflow-y-auto`}>
       {/* Mobile overlay */}
       {isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden" onClick={onToggle} />

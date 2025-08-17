@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { useTranslation } from 'next-i18next'
+import AddToCartButton from './AddToCartButton'
 
 interface ProductCardProps {
   id: number
@@ -16,7 +17,7 @@ interface ProductCardProps {
 export default function ProductCard({ id, name, slug, price, currency, oldPrice, badge, rating, imageUrl }: ProductCardProps) {
   const { t } = useTranslation('common')
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
+    <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
       <div className="relative">
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -28,6 +29,15 @@ export default function ProductCard({ id, name, slug, price, currency, oldPrice,
         {badge ? (
           <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">{badge}</span>
         ) : null}
+        
+        {/* Cart Icon Button */}
+        <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <AddToCartButton 
+            productId={id} 
+            className="!p-2 !rounded-full w-10 h-10 shadow-md hover:shadow-lg flex items-center justify-center"
+            label=""
+          />
+        </div>
       </div>
       <h3 className="mt-3 line-clamp-2 text-base font-semibold text-gray-900">{name}</h3>
       <div className="mt-1 flex items-baseline gap-2">
