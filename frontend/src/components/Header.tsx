@@ -100,7 +100,6 @@ export default function Header() {
         </div>
         <nav className="flex items-center gap-4 text-sm">
           <Link href="/" className={`transition-colors duration-200 ${path === '/' ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>{t('menu_home', 'Главная')}</Link>
-          <Link href="/categories" className={`transition-colors duration-200 ${path.startsWith('/categories') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>{t('menu_categories', 'Категории')}</Link>
           <Link href="/cart" className={`transition-colors duration-200 ${path.startsWith('/cart') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>
             {t('menu_cart', 'Корзина')} {itemsCount ? `(${itemsCount})` : ''}
           </Link>
