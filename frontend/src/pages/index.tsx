@@ -61,21 +61,21 @@ export default function Home() {
       textColor: 'text-white'
     },
     {
+      id: 'clothing',
+      name: 'Одежда',
+      slug: 'clothing',
+      description: 'Модная одежда для всей семьи',
+      imageUrl: '/category-clothing.jpg',
+      bgColor: 'from-rose-600 to-pink-500',
+      textColor: 'text-white'
+    },
+    {
       id: 'shoes',
       name: 'Обувь',
       slug: 'shoes',
       description: 'Качественная обувь для всей семьи',
       imageUrl: '/category-shoes.jpg',
       bgColor: 'from-blue-600 to-indigo-500',
-      textColor: 'text-white'
-    },
-    {
-      id: 'cosmetics',
-      name: 'Косметика',
-      slug: 'cosmetics',
-      description: 'Красота и уход за собой',
-      imageUrl: '/category-cosmetics.jpg',
-      bgColor: 'from-purple-600 to-violet-500',
       textColor: 'text-white'
     },
     {
@@ -122,10 +122,10 @@ export default function Home() {
                   Медикаменты
                 </button>
                 <button 
-                  onClick={() => router.push('/brand/zara')}
+                  onClick={() => router.push('/categories/clothing')}
                   className="border-2 border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-violet-600 transition-colors duration-200"
                 >
-                  Бренды
+                  Одежда
                 </button>
               </div>
             </div>

@@ -1,354 +1,498 @@
-import { GetServerSideProps } from 'next'
 import Head from 'next/head'
-import axios from 'axios'
-import Link from 'next/link'
-import { useState } from 'react'
 import { useRouter } from 'next/router'
-import ProductCard from '../../components/ProductCard'
-import Sidebar from '../../components/Sidebar'
-import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
+import { useTranslation } from 'next-i18next'
+import { GetServerSideProps } from 'next'
+import axios from 'axios'
+import { getApiForCategory } from '../../lib/api'
 
 interface Product {
   id: number
   name: string
   slug: string
-  price: string | null
+  description: string
+  price: number
+  price_formatted: string
+  old_price?: number
+  old_price_formatted?: string
   currency: string
-  main_image_url?: string | null
-  main_image?: string | null
+  main_image?: string
+  main_image_url?: string
+  is_available: boolean
+  is_featured: boolean
+  category?: {
+    id: number
+    name: string
+    slug: string
+  }
+  brand?: {
+    id: number
+    name: string
+    slug: string
+  }
+  // Специфичные для одежды поля
+  size?: string
+  color?: string
+  material?: string
+  season?: string
+  // Специфичные для обуви поля
+  heel_height?: string
+  sole_type?: string
+  // Специфичные для электроники поля
+  model?: string
+  specifications?: any
+  warranty?: string
+  power_consumption?: string
 }
 
 interface Category {
   id: number
   name: string
   slug: string
-  count?: number
+  description: string
+  children_count: number
+  // Специфичные для одежды/обуви поля
+  gender?: string
+  gender_display?: string
+  clothing_type?: string
+  shoe_type?: string
+  // Специфичные для электроники поля
+  device_type?: string
 }
 
 interface Brand {
   id: number
   name: string
-  count?: number
+  slug: string
+  description: string
+  logo?: string
 }
 
-export default function CategoryPage({ 
-  name, 
-  products, 
-  totalCount, 
-  page,
-  categories = [],
-  brands = []
-}: { 
-  name: string
+interface CategoryPageProps {
   products: Product[]
-  totalCount: number
-  page: number
   categories: Category[]
   brands: Brand[]
-}) {
+  categoryName: string
+  totalCount: number
+  currentPage: number
+  totalPages: number
+  categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics'
+}
+
+export default function CategoryPage({
+  products,
+  categories,
+  brands,
+  categoryName,
+  totalCount,
+  currentPage,
+  totalPages,
+  categoryType
+}: CategoryPageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
   const { slug } = router.query
-  const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
-  const [selectedBrand, setSelectedBrand] = useState<number | null>(null)
-  const [sortBy, setSortBy] = useState('name_asc')
-  const [inStockOnly, setInStockOnly] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const productsPerPage = 24
-  const currentPage = Number(page) || 1
-  const totalPages = Math.max(1, Math.ceil((Number(totalCount) || 0) / productsPerPage))
 
-  const goToPage = (nextPage: number) => {
-    const p = Math.min(Math.max(1, nextPage), totalPages)
-    router.push({ pathname: `/categories/${slug}`, query: { ...router.query, page: p } })
+  const handleProductClick = (product: Product) => {
+    router.push(`/product/${product.slug}`)
+  }
+
+  const handleCategoryClick = (category: Category) => {
+    router.push(`/categories/${category.slug}`)
+  }
+
+  const handleBrandClick = (brand: Brand) => {
+    router.push(`/brand/${brand.slug}`)
+  }
+
+  const handlePageChange = (page: number) => {
+    router.push({
+      pathname: router.pathname,
+      query: { ...router.query, page }
+    })
   }
 
   return (
     <>
       <Head>
-        <title>{name} — PharmaTurk</title>
+        <title>{categoryName} - PharmaTurk</title>
       </Head>
-      <div className="mx-auto flex max-w-6xl gap-6 px-6">
-        {/* Sidebar */}
-        <div className="hidden md:block mt-6">
-          <Sidebar
-            categories={categories}
-            brands={brands}
-            onCategoryChange={setSelectedCategory}
-            onBrandChange={setSelectedBrand}
-            onSortChange={setSortBy}
-            onAvailabilityChange={setInStockOnly}
-            selectedCategory={selectedCategory}
-            selectedBrand={selectedBrand}
-            sortBy={sortBy}
-            inStockOnly={inStockOnly}
-            isOpen={true}
-            onToggle={() => {}}
-          />
+      
+      <div className="mx-auto max-w-6xl px-6 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            {categoryName}
+          </h1>
+          <p className="text-gray-600">
+            Найдено товаров: {totalCount}
+          </p>
         </div>
-        
-        {/* Mobile Sidebar */}
-        <div className="md:hidden">
-          <Sidebar
-            categories={categories}
-            brands={brands}
-            onCategoryChange={setSelectedCategory}
-            onBrandChange={setSelectedBrand}
-            onSortChange={setSortBy}
-            onAvailabilityChange={setInStockOnly}
-            selectedCategory={selectedCategory}
-            selectedBrand={selectedBrand}
-            sortBy={sortBy}
-            inStockOnly={inStockOnly}
-            isOpen={sidebarOpen}
-            onToggle={() => setSidebarOpen(!sidebarOpen)}
-          />
-        </div>
-        
-        {/* Main Content */}
-        <main className="flex-1 p-6">
-          {/* Mobile sidebar toggle */}
-          <div className="md:hidden mb-4">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="flex items-center space-x-2 px-4 py-2 bg-violet-600 text-white rounded-md hover:bg-violet-700 transition-colors duration-200"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-              <span>Фильтры</span>
-            </button>
-          </div>
 
-          {/* Category Header */}
-          <div className="mb-8">
-            <nav className="mb-4">
-              <Link href="/" className="text-violet-600 hover:text-violet-800 text-sm">
-                Главная
-              </Link>
-              <span className="mx-2 text-gray-400">/</span>
-              <span className="text-gray-600 text-sm">{name}</span>
-            </nav>
-            <h1 className="text-3xl font-bold text-gray-900">{name}</h1>
-          </div>
-          
-          <div className="mt-2 w-full">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-7">
-              {products.map((p) => (
-                <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} imageUrl={p.main_image_url || p.main_image} />
-              ))}
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Sidebar */}
+          <div className="lg:w-1/4">
+            {/* Categories */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Категории
+              </h3>
+              <div className="space-y-2">
+                {categories.map((category) => (
+                  <button
+                    key={category.id}
+                    onClick={() => handleCategoryClick(category)}
+                    className="block w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 transition-colors duration-200"
+                  >
+                    <div className="font-medium text-gray-900">
+                      {category.name}
+                    </div>
+                    {category.children_count > 0 && (
+                      <div className="text-sm text-gray-500">
+                        {category.children_count} подкатегорий
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {products.length === 0 && (
-              <div className="text-center py-16">
-                <h3 className="text-xl font-medium text-gray-900 mb-2">Товары не найдены</h3>
-                <p className="text-gray-600">В данной категории пока нет товаров</p>
+            {/* Brands */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Бренды
+              </h3>
+              <div className="space-y-2">
+                {brands.map((brand) => (
+                  <button
+                    key={brand.id}
+                    onClick={() => handleBrandClick(brand)}
+                    className="block w-full text-left px-3 py-2 rounded-md hover:bg-gray-100 transition-colors duration-200"
+                  >
+                    <div className="font-medium text-gray-900">
+                      {brand.name}
+                    </div>
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
+          </div>
 
-            {totalPages > 1 && (
-              <div className="flex justify-center mt-10">
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => goToPage(currentPage - 1)}
-                    disabled={currentPage <= 1}
-                    className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                  >
-                    Назад
-                  </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => goToPage(p)}
-                      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${currentPage === p ? 'bg-violet-600 text-white' : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'}`}
+          {/* Products Grid */}
+          <div className="lg:w-3/4">
+            {products.length > 0 ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                  {products.map((product) => (
+                    <div
+                      key={product.id}
+                      onClick={() => handleProductClick(product)}
+                      className="bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow duration-300"
                     >
-                      {p}
-                    </button>
+                      {/* Product Image */}
+                      <div className="aspect-square bg-gray-200 flex items-center justify-center">
+                        {product.main_image || product.main_image_url ? (
+                          <img
+                            src={product.main_image || product.main_image_url}
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // Заменяем на плейсхолдер если изображение не загружается
+                              const target = e.currentTarget as HTMLImageElement
+                              const container = target.parentElement
+                              if (container) {
+                                target.style.display = 'none'
+                                const placeholder = container.querySelector('.placeholder-icon') as HTMLElement
+                                if (placeholder) {
+                                  placeholder.style.display = 'flex'
+                                }
+                              }
+                            }}
+                          />
+                        ) : null}
+                        <div className={`placeholder-icon text-gray-400 text-4xl ${product.main_image || product.main_image_url ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}>
+                          {categoryType === 'medicines' ? '💊' : 
+                           categoryType === 'clothing' ? '👕' :
+                           categoryType === 'shoes' ? '👟' :
+                           categoryType === 'electronics' ? '📱' : '📦'}
+                        </div>
+                      </div>
+
+                      {/* Product Info */}
+                      <div className="p-4">
+                        <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">
+                          {product.name}
+                        </h3>
+                        
+                        {/* Category and Brand */}
+                        <div className="text-sm text-gray-500 mb-2">
+                          {product.category && (
+                            <span className="mr-2">{product.category.name}</span>
+                          )}
+                          {product.brand && (
+                            <span>{product.brand.name}</span>
+                          )}
+                        </div>
+
+                        {/* Product-specific attributes */}
+                        {categoryType === 'clothing' && (
+                          <div className="text-sm text-gray-600 mb-2">
+                            {product.size && <span className="mr-2">Размер: {product.size}</span>}
+                            {product.color && <span>Цвет: {product.color}</span>}
+                          </div>
+                        )}
+                        
+                        {categoryType === 'shoes' && (
+                          <div className="text-sm text-gray-600 mb-2">
+                            {product.size && <span className="mr-2">Размер: {product.size}</span>}
+                            {product.heel_height && <span>Каблук: {product.heel_height}</span>}
+                          </div>
+                        )}
+                        
+                        {categoryType === 'electronics' && (
+                          <div className="text-sm text-gray-600 mb-2">
+                            {product.model && <span>Модель: {product.model}</span>}
+                          </div>
+                        )}
+
+                        {/* Price */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-lg font-bold text-gray-900">
+                              {product.price_formatted}
+                            </span>
+                            {product.old_price && (
+                              <span className="text-sm text-gray-500 line-through ml-2">
+                                {product.old_price_formatted}
+                              </span>
+                            )}
+                          </div>
+                          {!product.is_available && (
+                            <span className="text-sm text-red-500">Нет в наличии</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   ))}
-                  <button
-                    onClick={() => goToPage(currentPage + 1)}
-                    disabled={currentPage >= totalPages}
-                    className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                  >
-                    Вперед
-                  </button>
                 </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex justify-center">
+                    <div className="flex space-x-2">
+                      {currentPage > 1 && (
+                        <button
+                          onClick={() => handlePageChange(currentPage - 1)}
+                          className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                        >
+                          Назад
+                        </button>
+                      )}
+                      
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                        <button
+                          key={page}
+                          onClick={() => handlePageChange(page)}
+                          className={`px-4 py-2 border rounded-md ${
+                            page === currentPage
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                      
+                      {currentPage < totalPages && (
+                        <button
+                          onClick={() => handlePageChange(currentPage + 1)}
+                          className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                        >
+                          Вперед
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">😔</div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  Товары не найдены
+                </h3>
+                <p className="text-gray-600">
+                  Попробуйте изменить параметры поиска или выберите другую категорию
+                </p>
               </div>
             )}
           </div>
-        </main>
+        </div>
       </div>
     </>
   )
 }
 
-export const getServerSideProps: GetServerSideProps = async (ctx) => {
-  const { slug } = ctx.params as { slug: string }
-  const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
-  const page = Number(ctx.query?.page || 1)
-  const pageSize = 24
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  const { slug, page = 1 } = context.query
+  const pageSize = 12
 
   try {
-    // Для медикаментов используем реальные данные API, для остальных - моковые данные
-    if (slug === 'medicines') {
-      // Загружаем продукты (медикаменты)
-      const prodRes = await axios.get(`${base}/api/catalog/products`, { params: { page, page_size: pageSize } })
+    // Определяем тип категории по slug
+    let categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' = 'medicines'
+    
+    // Более гибкая логика определения типа категории
+    const clothingCategories = ['clothing', 'women-clothing', 'men-clothing', 'kids-clothing', 'dresses', 'blouses', 'shirts', 'pants', 'zara-clothing']
+    const shoeCategories = ['shoes', 'women-shoes', 'men-shoes', 'kids-shoes', 'sneakers', 'boots', 'heels', 'sandals']
+    const electronicsCategories = ['electronics', 'smartphones', 'laptops', 'tablets', 'computers', 'phones', 'accessories']
+    
+    // Проверяем по slug'у
+    if (clothingCategories.includes(slug as string)) {
+      categoryType = 'clothing'
+    } else if (shoeCategories.includes(slug as string)) {
+      categoryType = 'shoes'  
+    } else if (electronicsCategories.includes(slug as string)) {
+      categoryType = 'electronics'
+    }
+    
+    console.log('=== CATEGORY TYPE DETECTION ===')
+    console.log('Slug:', slug)
+    console.log('Detected category type:', categoryType)
+
+    // Получаем соответствующий API
+    const api = getApiForCategory(categoryType)
+    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+
+    // Загружаем данные в зависимости от типа категории
+    if (categoryType === 'medicines') {
+      // Для медикаментов используем старый API
+      console.log('Fetching medicines from:', `${base}/api/catalog/products`)
+      const prodRes = await axios.get(`${base}/api/catalog/products`, { 
+        params: { page, page_size: pageSize } 
+      })
       const productsData = prodRes.data
-      const products = Array.isArray(productsData) ? productsData : (productsData.results || [])
-      const totalCount = Array.isArray(productsData) ? productsData.length : (productsData.count ?? products.length)
-
-      // Для медикаментов создаем специфические категории и бренды
-      const medicineCategories = [
-        { id: 1, name: 'Обезболивающие', slug: 'painkillers', count: 45 },
-        { id: 2, name: 'Антибиотики', slug: 'antibiotics', count: 32 },
-        { id: 3, name: 'Витамины и БАДы', slug: 'vitamins', count: 67 },
-        { id: 4, name: 'Противовирусные', slug: 'antiviral', count: 23 },
-        { id: 5, name: 'Сердечно-сосудистые', slug: 'cardiovascular', count: 41 },
-        { id: 6, name: 'Желудочно-кишечные', slug: 'gastrointestinal', count: 38 },
-        { id: 7, name: 'Дерматологические', slug: 'dermatological', count: 29 },
-        { id: 8, name: 'Респираторные', slug: 'respiratory', count: 34 }
+      let products = Array.isArray(productsData) ? productsData : (productsData.results || [])
+      
+      // Используем правильный totalCount из API
+      const totalCount = prodRes.data.count || products.length
+      
+      console.log('Medicines API response:', {
+        totalFromAPI: prodRes.data.count,
+        productsLength: products.length,
+        actualTotalCount: totalCount,
+        expectedPages: Math.ceil(totalCount / pageSize)
+      })
+      
+      // Моковые данные для категорий и брендов
+      const categories = [
+        { id: 1, name: 'Обезболивающие', slug: 'painkillers', children_count: 0 },
+        { id: 2, name: 'Антибиотики', slug: 'antibiotics', children_count: 0 },
+        { id: 3, name: 'Витамины', slug: 'vitamins', children_count: 0 },
+        { id: 4, name: 'БАДы', slug: 'supplements', children_count: 0 }
+      ]
+      
+      const brands = [
+        { id: 1, name: 'Bayer', slug: 'bayer', description: 'Немецкий фармацевтический концерн' },
+        { id: 2, name: 'Pfizer', slug: 'pfizer', description: 'Американская фармацевтическая компания' },
+        { id: 3, name: 'Novartis', slug: 'novartis', description: 'Швейцарская фармацевтическая компания' }
       ]
 
-      const medicineBrands = [
-        { id: 1, name: 'Pfizer', count: 15 },
-        { id: 2, name: 'Bayer', count: 22 },
-        { id: 3, name: 'Novartis', count: 18 },
-        { id: 4, name: 'Roche', count: 12 },
-        { id: 5, name: 'Johnson & Johnson', count: 20 },
-        { id: 6, name: 'Merck', count: 16 },
-        { id: 7, name: 'GSK', count: 14 },
-        { id: 8, name: 'Sanofi', count: 19 },
-        { id: 9, name: 'AbbVie', count: 11 },
-        { id: 10, name: 'Bristol Myers', count: 13 }
-      ]
-
-      return { 
-        props: { 
-          ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), 
-          name: 'Медикаменты', 
+      return {
+        props: {
           products,
+          categories,
+          brands,
+          categoryName: 'Медикаменты',
           totalCount,
-          page,
-          categories: medicineCategories,
-          brands: medicineBrands
-        } 
+          currentPage: Number(page),
+          totalPages: Math.ceil(totalCount / pageSize),
+          categoryType,
+          ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
+        },
       }
     } else {
-      // Моковые данные для других категорий с контекстными сайтбарами
-      const mockCategoryData: Record<string, { 
-        name: string, 
-        products: any[], 
-        categories: any[], 
-        brands: any[] 
-      }> = {
-        'shoes': {
-          name: 'Обувь',
-          products: [
-            { id: 301, name: 'Кроссовки спортивные', slug: 'sneakers-sport', price: '4999', currency: 'RUB', main_image_url: '/product-placeholder.svg' },
-            { id: 302, name: 'Ботинки зимние', slug: 'boots-winter', price: '6999', currency: 'RUB', main_image_url: '/product-placeholder.svg' },
-            { id: 303, name: 'Туфли классические', slug: 'shoes-classic', price: '5999', currency: 'RUB', main_image_url: '/product-placeholder.svg' }
-          ],
-          categories: [
-            { id: 1, name: 'Кроссовки', slug: 'sneakers', count: 124 },
-            { id: 2, name: 'Ботинки', slug: 'boots', count: 87 },
-            { id: 3, name: 'Туфли', slug: 'shoes', count: 96 },
-            { id: 4, name: 'Сандалии', slug: 'sandals', count: 45 },
-            { id: 5, name: 'Сапоги', slug: 'high-boots', count: 63 },
-            { id: 6, name: 'Мокасины', slug: 'loafers', count: 34 },
-            { id: 7, name: 'Балетки', slug: 'flats', count: 52 }
-          ],
-          brands: [
-            { id: 1, name: 'Nike', count: 67 },
-            { id: 2, name: 'Adidas', count: 54 },
-            { id: 3, name: 'Puma', count: 43 },
-            { id: 4, name: 'Reebok', count: 29 },
-            { id: 5, name: 'New Balance', count: 35 },
-            { id: 6, name: 'Converse', count: 28 },
-            { id: 7, name: 'Vans', count: 32 }
-          ]
-        },
-        'cosmetics': {
-          name: 'Косметика',
-          products: [
-            { id: 401, name: 'Крем для лица увлажняющий', slug: 'face-cream-moisture', price: '1999', currency: 'RUB', main_image_url: '/product-placeholder.svg' },
-            { id: 402, name: 'Помада стойкая', slug: 'lipstick-long-lasting', price: '899', currency: 'RUB', main_image_url: '/product-placeholder.svg' }
-          ],
-          categories: [
-            { id: 1, name: 'Уход за лицом', slug: 'face-care', count: 89 },
-            { id: 2, name: 'Декоративная косметика', slug: 'makeup', count: 156 },
-            { id: 3, name: 'Парфюмерия', slug: 'perfume', count: 73 },
-            { id: 4, name: 'Уход за волосами', slug: 'hair-care', count: 94 },
-            { id: 5, name: 'Уход за телом', slug: 'body-care', count: 67 },
-            { id: 6, name: 'Мужская косметика', slug: 'mens-cosmetics', count: 42 }
-          ],
-          brands: [
-            { id: 1, name: 'L\'Oréal', count: 45 },
-            { id: 2, name: 'Maybelline', count: 38 },
-            { id: 3, name: 'MAC', count: 29 },
-            { id: 4, name: 'Estée Lauder', count: 22 },
-            { id: 5, name: 'Clinique', count: 31 },
-            { id: 6, name: 'Nivea', count: 56 },
-            { id: 7, name: 'Garnier', count: 41 }
-          ]
-        },
-        'electronics': {
-          name: 'Электроника',
-          products: [
-            { id: 501, name: 'Наушники беспроводные', slug: 'headphones-wireless', price: '2999', currency: 'RUB', main_image_url: '/product-placeholder.svg' },
-            { id: 502, name: 'Смартфон бюджетный', slug: 'smartphone-budget', price: '15999', currency: 'RUB', main_image_url: '/product-placeholder.svg' }
-          ],
-          categories: [
-            { id: 1, name: 'Смартфоны', slug: 'smartphones', count: 234 },
-            { id: 2, name: 'Наушники', slug: 'headphones', count: 156 },
-            { id: 3, name: 'Планшеты', slug: 'tablets', count: 87 },
-            { id: 4, name: 'Ноутбуки', slug: 'laptops', count: 112 },
-            { id: 5, name: 'Умные часы', slug: 'smartwatches', count: 67 },
-            { id: 6, name: 'Аксессуары', slug: 'accessories', count: 198 }
-          ],
-          brands: [
-            { id: 1, name: 'Apple', count: 89 },
-            { id: 2, name: 'Samsung', count: 134 },
-            { id: 3, name: 'Xiaomi', count: 156 },
-            { id: 4, name: 'Huawei', count: 78 },
-            { id: 5, name: 'Sony', count: 67 },
-            { id: 6, name: 'LG', count: 45 },
-            { id: 7, name: 'OnePlus', count: 34 }
-          ]
-        }
-      }
+      // Для новых категорий используем соответствующие API
+      console.log('=== FETCHING CLOTHING DATA ===')
+      console.log('Category type:', categoryType)
+      console.log('Base URL:', base)
+      console.log('Full URL:', `${base}/api/catalog/${categoryType}/products`)
+      console.log('Params:', { page, page_size: pageSize })
+      
+      const [prodRes, catRes, brandRes] = await Promise.all([
+        axios.get(`${base}/api/catalog/${categoryType}/products`, { 
+          params: { page, page_size: pageSize } 
+        }),
+        axios.get(`${base}/api/catalog/${categoryType}/categories`),
+        axios.get(`${base}/api/catalog/brands`)
+      ])
+      
+      console.log('API Response received:', {
+        productsCount: prodRes.data.count || 0,
+        categoriesLength: catRes.data.results?.length || 0,
+        brandsLength: brandRes.data.results?.length || 0
+      })
 
-      const categoryData = mockCategoryData[slug] || { 
-        name: 'Категория', 
-        products: [],
-        categories: [],
-        brands: []
-      }
+      const productsData = prodRes.data
+      const products = Array.isArray(productsData) ? productsData : (productsData.results || [])
+      const categories = catRes.data.results || []
+      const brands = brandRes.data.results || []
+      const totalCount = productsData.count || products.length
+      
+      console.log('Final data:', {
+        totalCount,
+        productsLength: products.length,
+        categoriesLength: categories.length,
+        brandsLength: brands.length
+      })
 
-      return { 
-        props: { 
-          ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), 
-          name: categoryData.name, 
-          products: categoryData.products,
-          totalCount: categoryData.products.length,
-          page: 1,
-          categories: categoryData.categories,
-          brands: categoryData.brands
-        } 
+      // Определяем название категории
+      let categoryName = 'Товары'
+      if (categoryType === 'clothing') categoryName = 'Одежда'
+      else if (categoryType === 'shoes') categoryName = 'Обувь'
+      else if (categoryType === 'electronics') categoryName = 'Электроника'
+
+      return {
+        props: {
+          products,
+          categories,
+          brands,
+          categoryName,
+          totalCount,
+          currentPage: Number(page),
+          totalPages: Math.ceil(totalCount / pageSize),
+          categoryType,
+          ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
+        },
       }
     }
-  } catch (e) {
-    return { 
-      notFound: false, 
-      props: { 
-        ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), 
-        name: 'Категория', 
+  } catch (error) {
+    console.error('=== ERROR FETCHING DATA ===')
+    console.error('Error details:', error)
+    if (axios.isAxiosError(error)) {
+      console.error('Axios error:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          params: error.config?.params
+        }
+      })
+    }
+    
+    return {
+      props: {
         products: [],
-        totalCount: 0,
-        page: 1,
         categories: [],
-        brands: []
-      } 
+        brands: [],
+        categoryName: 'Товары',
+        totalCount: 0,
+        currentPage: 1,
+        totalPages: 1,
+        categoryType: 'medicines',
+        ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
+      },
     }
   }
 }

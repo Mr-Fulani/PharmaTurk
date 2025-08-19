@@ -1,17 +1,34 @@
 """Система селекторов для извлечения данных из HTML."""
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 from bs4 import BeautifulSoup, Tag
 import re
+
+
+class SelectorType(Enum):
+    """Типы селекторов."""
+    CSS = "css"
+    XPATH = "xpath"
 
 
 @dataclass
 class SelectorConfig:
     """Конфигурация селектора для извлечения данных."""
     
-    # CSS селектор или XPath
-    selector: str
+    # Основные селекторы
+    list_selector: str = ""
+    name_selector: str = ""
+    price_selector: str = ""
+    image_selector: str = ""
+    url_selector: str = ""
+    
+    # Тип селектора
+    type: SelectorType = SelectorType.CSS
+    
+    # CSS селектор или XPath (для обратной совместимости)
+    selector: str = ""
     
     # Атрибут для извлечения (text, href, src, data-*, и т.д.)
     attribute: str = "text"

@@ -94,4 +94,56 @@ api.interceptors.response.use(
   }
 )
 
+// ============================================================================
+// API ФУНКЦИИ ДЛЯ РАЗНЫХ КАТЕГОРИЙ ТОВАРОВ
+// ============================================================================
+
+// Основные товары (медикаменты)
+export const medicinesApi = {
+  getCategories: () => api.get('/catalog/categories'),
+  getProducts: (params?: any) => api.get('/catalog/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/products/${slug}`),
+  getBrands: () => api.get('/catalog/brands'),
+}
+
+// Одежда
+export const clothingApi = {
+  getCategories: (params?: any) => api.get('/catalog/clothing/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/clothing/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/clothing/products/${slug}`),
+  getFeatured: () => api.get('/catalog/clothing/products/featured'),
+}
+
+// Обувь
+export const shoesApi = {
+  getCategories: (params?: any) => api.get('/catalog/shoes/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/shoes/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/shoes/products/${slug}`),
+  getFeatured: () => api.get('/catalog/shoes/products/featured'),
+}
+
+// Электроника
+export const electronicsApi = {
+  getCategories: (params?: any) => api.get('/catalog/electronics/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/electronics/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/electronics/products/${slug}`),
+  getFeatured: () => api.get('/catalog/electronics/products/featured'),
+}
+
+// Универсальная функция для получения API в зависимости от типа товаров
+export function getApiForCategory(categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics') {
+  switch (categoryType) {
+    case 'medicines':
+      return medicinesApi
+    case 'clothing':
+      return clothingApi
+    case 'shoes':
+      return shoesApi
+    case 'electronics':
+      return electronicsApi
+    default:
+      return medicinesApi
+  }
+}
+
 export default api

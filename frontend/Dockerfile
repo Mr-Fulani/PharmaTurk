@@ -28,7 +28,7 @@ RUN npm run build || (yarn build || (corepack enable && pnpm build))
 # Runtime образ
 FROM node:18-bullseye AS runner
 WORKDIR /app
-ENV NODE_ENV=production \
+ENV NODE_ENV=development \
     NEXT_DISABLE_SWC_NATIVE=1
 
 # Копируем node_modules и .next
@@ -45,4 +45,4 @@ COPY --from=base /app/next.config.js ./next.config.js
 COPY --from=base /app/styles ./styles
 
 EXPOSE 3000
-CMD ["npm", "run", "start"]
+CMD ["npm", "run", "dev"]
