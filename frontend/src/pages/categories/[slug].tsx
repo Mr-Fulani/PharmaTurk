@@ -334,7 +334,7 @@ export default function CategoryPage({
 }
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
-  const { slug, page = 1 } = context.query
+  const { slug, page = 1, brand } = context.query
   const pageSize = 12
 
   try {
@@ -418,9 +418,21 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       console.log('Full URL:', `${base}/api/catalog/${categoryType}/products`)
       console.log('Params:', { page, page_size: pageSize })
       
+      // Параметры для запроса товаров
+      const productParams: any = { page, page_size: pageSize }
+      if (brand) {
+        // Находим ID бренда по slug
+        const brandRes = await axios.get(`${base}/api/catalog/brands`)
+        const allBrands = brandRes.data.results || []
+        const selectedBrand = allBrands.find((b: any) => b.slug === brand)
+        if (selectedBrand) {
+          productParams.brand_id = selectedBrand.id
+        }
+      }
+
       const [prodRes, catRes, brandRes] = await Promise.all([
         axios.get(`${base}/api/catalog/${categoryType}/products`, { 
-          params: { page, page_size: pageSize } 
+          params: productParams
         }),
         axios.get(`${base}/api/catalog/${categoryType}/categories`),
         axios.get(`${base}/api/catalog/brands`)

@@ -3,15 +3,17 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
+import { GetServerSideProps } from 'next'
+import axios from 'axios'
 
-interface BrandBanner {
-  id: string
+interface Brand {
+  id: number
   name: string
   slug: string
   description: string
-  imageUrl: string
-  bgColor: string
-  textColor: string
+  logo?: string
+  website?: string
+  products_count?: number
 }
 
 interface CategoryBanner {
@@ -24,31 +26,26 @@ interface CategoryBanner {
   textColor: string
 }
 
-export default function Home() {
+interface HomePageProps {
+  brands: Brand[]
+}
+
+export default function Home({ brands }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
 
-  // Данные брендов и категорий для баннеров
-  const brandBanners: BrandBanner[] = [
-    {
-      id: 'zara',
-      name: 'Zara',
-      slug: 'zara',
-      description: 'Модная одежда и аксессуары',
-      imageUrl: '/brand-zara.jpg',
-      bgColor: 'from-gray-900 to-gray-700',
-      textColor: 'text-white'
-    },
-    {
-      id: 'wikiki',
-      name: 'Wikiki',
-      slug: 'wikiki', 
-      description: 'Стильная молодежная одежда',
-      imageUrl: '/brand-wikiki.jpg',
-      bgColor: 'from-pink-500 to-rose-400',
-      textColor: 'text-white'
+  // Функция для получения цветов баннера по бренду
+  const getBrandColors = (brandName: string) => {
+    const colorMap: { [key: string]: { bgColor: string; textColor: string } } = {
+      'Zara': { bgColor: 'from-gray-900 to-gray-700', textColor: 'text-white' },
+      'LC Waikiki': { bgColor: 'from-blue-600 to-blue-400', textColor: 'text-white' },
+      'Koton': { bgColor: 'from-purple-600 to-purple-400', textColor: 'text-white' },
+      'DeFacto': { bgColor: 'from-green-600 to-green-400', textColor: 'text-white' },
+      'Mavi': { bgColor: 'from-indigo-600 to-indigo-400', textColor: 'text-white' },
+      'Boyner': { bgColor: 'from-red-600 to-red-400', textColor: 'text-white' },
     }
-  ]
+    return colorMap[brandName] || { bgColor: 'from-gray-600 to-gray-400', textColor: 'text-white' }
+  }
 
   const categoryBanners: CategoryBanner[] = [
     {
@@ -89,8 +86,9 @@ export default function Home() {
     }
   ]
 
-  const handleBrandClick = (brand: BrandBanner) => {
-    router.push(`/brand/${brand.slug}`)
+  const handleBrandClick = (brand: Brand) => {
+    // Направляем к товарам бренда через категорию одежды с фильтром по бренду
+    router.push(`/categories/clothing?brand=${brand.slug}`)
   }
 
   const handleCategoryClick = (category: CategoryBanner) => {
@@ -137,26 +135,46 @@ export default function Home() {
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8 text-center">
             Популярные бренды
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {brandBanners.map((brand) => (
-              <div
-                key={brand.id}
-                onClick={() => handleBrandClick(brand)}
-                className="relative h-48 rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl"
-              >
-                <div className={`absolute inset-0 bg-gradient-to-r ${brand.bgColor} opacity-90`} />
-                <div className="absolute inset-0 flex items-center justify-center p-6">
-                  <div className={`text-center ${brand.textColor}`}>
-                    <h3 className="text-2xl md:text-3xl font-bold mb-2">
-                      {brand.name}
-                    </h3>
-                    <p className="text-lg opacity-90">
-                      {brand.description}
-                    </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {brands.map((brand) => {
+              const colors = getBrandColors(brand.name)
+              return (
+                <div
+                  key={brand.id}
+                  onClick={() => handleBrandClick(brand)}
+                  className="relative h-48 rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl"
+                >
+                  <div className={`absolute inset-0 bg-gradient-to-r ${colors.bgColor} opacity-90`} />
+                  <div className="absolute inset-0 flex items-center justify-center p-6">
+                    <div className={`text-center ${colors.textColor}`}>
+                      {brand.logo && (
+                        <div className="mb-3 flex justify-center">
+                          <img 
+                            src={brand.logo} 
+                            alt={brand.name}
+                            className="h-12 w-auto object-contain filter brightness-0 invert"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none'
+                            }}
+                          />
+                        </div>
+                      )}
+                      <h3 className="text-2xl md:text-3xl font-bold mb-2">
+                        {brand.name}
+                      </h3>
+                      <p className="text-sm opacity-90 mb-2">
+                        {brand.description}
+                      </p>
+                      {brand.products_count && (
+                        <p className="text-xs opacity-75">
+                          {brand.products_count} товаров
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </section>
 
@@ -192,10 +210,36 @@ export default function Home() {
   )
 }
 
-export async function getServerSideProps(ctx: any) {
-  return {
-    props: {
-      ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
-    },
+export const getServerSideProps: GetServerSideProps = async (context) => {
+  try {
+    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    
+    // Загружаем бренды из API
+    const brandsRes = await axios.get(`${base}/api/catalog/brands`)
+    const allBrands = brandsRes.data.results || []
+    
+    // Фильтруем только турецкие и популярные бренды
+    const turkishBrands = ['Zara', 'LC Waikiki', 'Koton', 'DeFacto', 'Mavi', 'Boyner']
+    const brands = allBrands.filter((brand: Brand) => 
+      turkishBrands.includes(brand.name)
+    ).slice(0, 6) // Показываем максимум 6 брендов
+    
+    console.log('Loaded brands for homepage:', brands.map((b: Brand) => b.name))
+    
+    return {
+      props: {
+        brands,
+        ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
+      },
+    }
+  } catch (error) {
+    console.error('Error loading brands for homepage:', error)
+    
+    return {
+      props: {
+        brands: [],
+        ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
+      },
+    }
   }
 }
