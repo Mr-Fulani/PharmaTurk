@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "apps.orders",
     "apps.payments",
     "apps.vapi",
+    "apps.scrapers",
 ]
 
 # Кастомная модель пользователя
@@ -151,6 +152,22 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.vapi.tasks.full_catalog_sync",
         "schedule": 60 * 60 * 24 * 3,  # 3 дня
         "args": (100,),  # максимум 100 страниц
+    },
+    # Запуск всех активных парсеров каждые 12 часов
+    "run-all-scrapers": {
+        "task": "apps.scrapers.tasks.run_all_active_scrapers",
+        "schedule": 60 * 60 * 12,  # 12 часов
+    },
+    # Очистка старых сессий парсинга каждую неделю
+    "cleanup-scraper-sessions": {
+        "task": "apps.scrapers.tasks.cleanup_old_sessions",
+        "schedule": 60 * 60 * 24 * 7,  # неделя
+        "args": (30,),  # хранить 30 дней
+    },
+    # Поиск и объединение дубликатов каждый день в 3:00
+    "find-merge-duplicates": {
+        "task": "apps.scrapers.tasks.find_and_merge_duplicates",
+        "schedule": 60 * 60 * 24,  # день
     },
 }
 
