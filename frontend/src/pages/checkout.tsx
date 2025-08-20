@@ -5,10 +5,13 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import api from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+import { useCartStore } from '../store/cart'
 
 export default function CheckoutPage() {
+  console.log('CheckoutPage component mounted')
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
+  const { refresh: refreshCart, setItemsCount } = useCartStore()
   const { t } = useTranslation('common')
   const [contactName, setContactName] = useState('')
   const [contactPhone, setContactPhone] = useState('')
@@ -20,6 +23,7 @@ export default function CheckoutPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (submitting) return
+    console.log('Starting checkout submission')
     setSubmitting(true)
     try {
       const body = new URLSearchParams()
@@ -32,26 +36,41 @@ export default function CheckoutPage() {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       })
       const orderNumber = res.data?.number
+      console.log('Order created successfully:', orderNumber)
+      // Сразу обнуляем счетчик корзины
+      console.log('Setting items count to 0')
+      setItemsCount(0)
+      // Обновляем корзину в фоне для синхронизации
+      console.log('Refreshing cart')
+      await refreshCart()
+      // Дополнительная проверка через небольшую задержку
+      setTimeout(() => {
+        console.log('Double-checking cart state')
+        refreshCart()
+      }, 100)
       router.push(orderNumber ? `/checkout-success?number=${encodeURIComponent(orderNumber)}` : '/checkout-success')
       } catch (err: any) {
+      console.error('Checkout submission failed:', err)
       const status = err?.response?.status
       if (status === 401) {
         alert(t('login_required_to_checkout', 'Для оформления заказа необходимо войти'))
-          router.push('/auth/login?next=/checkout')
+          router.push('/auth?next=/checkout')
         return
       }
       const detail = err?.response?.data?.detail || err?.message || t('checkout_error_generic', 'Ошибка оформления заказа')
       alert(String(detail))
-      // eslint-disable-next-line no-console
-      console.error('Checkout error', status, err?.response?.data)
+      console.error('Checkout error details:', { status, data: err?.response?.data, message: err?.message })
     } finally {
+      console.log('Checkout submission finished, submitting:', submitting)
       setSubmitting(false)
     }
   }
 
   useEffect(() => {
+    console.log('CheckoutPage useEffect: authLoading =', authLoading, 'user =', user ? 'authenticated' : 'not authenticated')
     if (!authLoading && !user) {
-      router.push('/auth/login?next=/checkout')
+      console.log('Redirecting to auth page due to no user')
+      router.push('/auth?next=/checkout')
     }
   }, [user, authLoading, router])
 
@@ -85,7 +104,12 @@ export default function CheckoutPage() {
             </select>
           </label>
           <div>
-            <button type="submit" disabled={submitting} style={{ padding: '8px 14px' }}>
+            <button 
+              type="submit" 
+              disabled={submitting} 
+              style={{ padding: '8px 14px' }}
+              onClick={() => console.log('Submit button clicked, submitting:', submitting)}
+            >
               {submitting ? t('checkout_submitting', 'Отправка...') : t('checkout_submit', 'Оформить заказ')}
             </button>
           </div>

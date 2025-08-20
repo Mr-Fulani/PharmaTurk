@@ -51,6 +51,24 @@ def _get_or_create_cart(request) -> Cart:
     # Если пользователь авторизован, сначала ищем его корзину
     if user:
         cart = Cart.objects.filter(user=user).first()
+        
+        # Если у пользователя есть корзина, но она пустая, проверяем анонимную корзину для переноса
+        if cart and not cart.items.exists() and custom_session:
+            anonymous_cart = Cart.objects.filter(session_key=custom_session, user=None).first()
+            if anonymous_cart and anonymous_cart.items.exists():
+                # Копируем товары из анонимной корзины в существующую корзину пользователя
+                for item in anonymous_cart.items.all():
+                    CartItem.objects.create(
+                        cart=cart,
+                        product=item.product,
+                        quantity=item.quantity,
+                        price=item.price,
+                        currency=item.currency
+                    )
+                # Удаляем анонимную корзину
+                anonymous_cart.delete()
+                return cart
+        
         if cart:
             # Если нашли корзину пользователя, возвращаем её
             return cart
@@ -401,9 +419,7 @@ class OrderViewSet(viewsets.ViewSet):
                 order.save()
             except UserAddress.DoesNotExist:
                 pass
-        else:
-            order.shipping_address_text = serializer.validated_data.get('shipping_address_text', '')
-            order.save()
+
 
         # Позиции заказа
         for item in cart.items.all():

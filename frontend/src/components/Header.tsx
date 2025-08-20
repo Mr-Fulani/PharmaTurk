@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useAuth } from '../context/AuthContext'
 import { useEffect, useState } from 'react'
-import api, { initCartSession } from '../lib/api'
+import api from '../lib/api'
 import { useTranslation } from 'next-i18next'
 import { useCartStore } from '../store/cart'
 
@@ -14,8 +14,12 @@ export default function Header() {
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [loadingSuggest, setLoadingSuggest] = useState(false)
+  const [isClient, setIsClient] = useState(false)
   const { t } = useTranslation('common')
-  useEffect(() => { initCartSession(); refresh() }, [refresh])
+  
+  useEffect(() => { 
+    setIsClient(true)
+  }, [])
 
   const goSearch = () => {
     const q = query.trim()
@@ -29,8 +33,8 @@ export default function Header() {
     router.push({ pathname: router.pathname, query: router.query }, undefined, { locale: next })
   }
 
-  // i18n placeholder
-  const placeholder = t('search_placeholder')
+  // i18n placeholder - используем fallback для предотвращения ошибки гидратации
+  const placeholder = isClient ? t('search_placeholder') : 'Search...'
 
   // Debounced suggestions
   useEffect(() => {
@@ -101,7 +105,7 @@ export default function Header() {
         <nav className="flex items-center gap-4 text-sm">
           <Link href="/" className={`transition-colors duration-200 ${path === '/' ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>{t('menu_home', 'Главная')}</Link>
           <Link href="/cart" className={`transition-colors duration-200 ${path.startsWith('/cart') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>
-            {t('menu_cart', 'Корзина')} {itemsCount ? `(${itemsCount})` : ''}
+            {t('menu_cart', 'Корзина')} {isClient && itemsCount ? `(${itemsCount})` : ''}
           </Link>
           {user ? (
             <>

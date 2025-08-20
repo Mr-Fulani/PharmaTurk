@@ -39,17 +39,28 @@ function cryptoRandom() {
 
 api.interceptors.request.use((config) => {
   const access = Cookies.get('access')
+  if (!config.headers) config.headers = {} as AxiosRequestHeaders
+  
   if (access) {
-    if (!config.headers) config.headers = {} as AxiosRequestHeaders
     ;(config.headers as AxiosRequestHeaders)['Authorization'] = `Bearer ${access}`
     console.log('API: adding auth header for', config.url)
+    
+    // Для авторизованных пользователей отправляем cart_session для возможного переноса корзины
+    // но только если это запрос к корзине
+    if (config.url?.includes('/orders/cart')) {
+      const cartSid = Cookies.get('cart_session')
+      if (cartSid) {
+        ;(config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
+        console.log('API: sending cart session for transfer:', cartSid)
+      }
+    }
   } else {
     console.log('API: no auth token for', config.url)
+    // Прокидываем X-Cart-Session для анонимных пользователей
+    const cartSid = ensureCartSession()
+    ;(config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
   }
-  // Прокидываем X-Cart-Session для анонимной корзины
-  const cartSid = ensureCartSession()
-  if (!config.headers) config.headers = {} as AxiosRequestHeaders
-  ;(config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
+  
   // Прокидываем язык для локализации ответов DRF/Django
   const locale = Cookies.get('NEXT_LOCALE') || (typeof navigator !== 'undefined' ? (navigator.language?.split('-')[0] || 'en') : 'en')
   ;(config.headers as AxiosRequestHeaders)['Accept-Language'] = locale

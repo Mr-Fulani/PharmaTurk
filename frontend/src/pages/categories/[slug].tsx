@@ -5,6 +5,7 @@ import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getApiForCategory } from '../../lib/api'
+import ProductCard from '../../components/ProductCard'
 
 interface Product {
   id: number
@@ -93,9 +94,7 @@ export default function CategoryPage({
   const router = useRouter()
   const { slug } = router.query
 
-  const handleProductClick = (product: Product) => {
-    router.push(`/product/${product.slug}`)
-  }
+
 
   const handleCategoryClick = (category: Category) => {
     router.push(`/categories/${category.slug}`)
@@ -184,95 +183,16 @@ export default function CategoryPage({
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                   {products.map((product) => (
-                    <div
+                    <ProductCard
                       key={product.id}
-                      onClick={() => handleProductClick(product)}
-                      className="bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow duration-300"
-                    >
-                      {/* Product Image */}
-                      <div className="aspect-square bg-gray-200 flex items-center justify-center">
-                        {product.main_image || product.main_image_url ? (
-                          <img
-                            src={product.main_image || product.main_image_url}
-                            alt={product.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              // Заменяем на плейсхолдер если изображение не загружается
-                              const target = e.currentTarget as HTMLImageElement
-                              const container = target.parentElement
-                              if (container) {
-                                target.style.display = 'none'
-                                const placeholder = container.querySelector('.placeholder-icon') as HTMLElement
-                                if (placeholder) {
-                                  placeholder.style.display = 'flex'
-                                }
-                              }
-                            }}
-                          />
-                        ) : null}
-                        <div className={`placeholder-icon text-gray-400 text-4xl ${product.main_image || product.main_image_url ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}>
-                          {categoryType === 'medicines' ? '💊' : 
-                           categoryType === 'clothing' ? '👕' :
-                           categoryType === 'shoes' ? '👟' :
-                           categoryType === 'electronics' ? '📱' : '📦'}
-                        </div>
-                      </div>
-
-                      {/* Product Info */}
-                      <div className="p-4">
-                        <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">
-                          {product.name}
-                        </h3>
-                        
-                        {/* Category and Brand */}
-                        <div className="text-sm text-gray-500 mb-2">
-                          {product.category && (
-                            <span className="mr-2">{product.category.name}</span>
-                          )}
-                          {product.brand && (
-                            <span>{product.brand.name}</span>
-                          )}
-                        </div>
-
-                        {/* Product-specific attributes */}
-                        {categoryType === 'clothing' && (
-                          <div className="text-sm text-gray-600 mb-2">
-                            {product.size && <span className="mr-2">Размер: {product.size}</span>}
-                            {product.color && <span>Цвет: {product.color}</span>}
-                          </div>
-                        )}
-                        
-                        {categoryType === 'shoes' && (
-                          <div className="text-sm text-gray-600 mb-2">
-                            {product.size && <span className="mr-2">Размер: {product.size}</span>}
-                            {product.heel_height && <span>Каблук: {product.heel_height}</span>}
-                          </div>
-                        )}
-                        
-                        {categoryType === 'electronics' && (
-                          <div className="text-sm text-gray-600 mb-2">
-                            {product.model && <span>Модель: {product.model}</span>}
-                          </div>
-                        )}
-
-                        {/* Price */}
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <span className="text-lg font-bold text-gray-900">
-                              {product.price_formatted}
-                            </span>
-                            {product.old_price && (
-                              <span className="text-sm text-gray-500 line-through ml-2">
-                                {product.old_price_formatted}
-                              </span>
-                            )}
-                          </div>
-                          {!product.is_available && (
-                            <span className="text-sm text-red-500">Нет в наличии</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                      id={product.id}
+                      name={product.name}
+                      slug={product.slug}
+                      price={product.price ? String(product.price) : null}
+                      currency={product.currency}
+                      oldPrice={product.old_price ? String(product.old_price) : null}
+                      imageUrl={product.main_image || product.main_image_url}
+                    />
                   ))}
                 </div>
 

@@ -212,6 +212,18 @@ SPECTACULAR_SETTINGS = {
 
 # CORS
 CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-cart-session',  # Разрешаем заголовок для корзины
+]
 
 
 # Безопасность (базовые параметры для dev/QA)

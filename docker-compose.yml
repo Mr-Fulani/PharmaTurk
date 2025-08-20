@@ -68,14 +68,14 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     working_dir: /app
-    command: npm run start
+    command: npm run dev
     tty: true
     stdin_open: true
     restart: unless-stopped
     ports:
       - "3001:3000"
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - NEXT_TELEMETRY_DISABLED=1
       - NEXT_DISABLE_SWC_NATIVE=1
       - INTERNAL_API_BASE=http://backend:8000

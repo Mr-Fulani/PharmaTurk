@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import Cookies from 'js-cookie'
 import api from '../lib/api'
+import { useCartStore } from '../store/cart'
 
 interface User {
   id: number
@@ -21,6 +22,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const { refresh: refreshCart } = useCartStore()
 
   useEffect(() => {
     // Попытка получить профиль по access
@@ -51,6 +53,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
       if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
       setUser({ id: user.id, email: user.email, username: user.username })
+      // Обновляем корзину после входа для переноса товаров с анонимной сессии
+      refreshCart()
     },
     async register(email, username, password) {
       const res = await api.post('/users/register/', { email, username, password, password_confirm: password })
@@ -58,13 +62,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
       if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
       setUser({ id: user.id, email: user.email, username: user.username })
+      // Обновляем корзину после регистрации для переноса товаров с анонимной сессии
+      refreshCart()
     },
     logout() {
       Cookies.remove('access', { path: '/' })
       Cookies.remove('refresh', { path: '/' })
       setUser(null)
     }
-  }), [user, loading])
+  }), [user, loading, refreshCart])
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

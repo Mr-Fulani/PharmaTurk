@@ -35,21 +35,21 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
   useEffect(() => {
     (async () => {
       try {
-        const r = await api.get('/orders/cart/')
+        const r = await api.get('/orders/cart')
         setCart(r.data)
       } catch {}
     })()
   }, [])
 
   const updateQty = async (itemId: number, qty: number) => {
-    await api.post(`/orders/cart/${itemId}/update/`, { quantity: qty })
-    const r = await api.get('/orders/cart/')
+    await api.post(`/orders/cart/${itemId}/update`, { quantity: qty })
+    const r = await api.get('/orders/cart')
     setCart(r.data)
   }
 
   const removeItem = async (itemId: number) => {
-    await api.delete(`/orders/cart/${itemId}/remove/`)
-    const r = await api.get('/orders/cart/')
+    await api.delete(`/orders/cart/${itemId}/remove`)
+    const r = await api.get('/orders/cart')
     setCart(r.data)
   }
   return (
@@ -108,7 +108,7 @@ export async function getServerSideProps(ctx: any) {
       }
     }
 
-    const apiRes = await fetch(`${base}/api/orders/cart/`, {
+    const apiRes = await fetch(`${base}/api/orders/cart`, {
       headers: {
         // Прокидываем исходные cookies
         cookie: cookieHeader,
