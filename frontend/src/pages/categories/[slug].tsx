@@ -336,15 +336,24 @@ export default function CategoryPage({
   // Загрузка товаров с фильтрами
   useEffect(() => {
     const loadProducts = async () => {
-      // Если brand_id есть в URL, но фильтры еще не инициализированы, ждем
+      if (!router.isReady) return
+      
+      // Если brand_id есть в URL, используем его напрямую, даже если фильтры еще не инициализированы
       const { brand_id } = router.query
-      if (brand_id && router.isReady) {
+      let brandIdToUse: number | null = null
+      
+      if (brand_id) {
         const brandIdFromUrl = Array.isArray(brand_id) ? parseInt(brand_id[0]) : parseInt(brand_id as string)
-        if (!isNaN(brandIdFromUrl) && !filters.brands.includes(brandIdFromUrl)) {
-          // Фильтры еще не инициализированы - пропускаем загрузку
-          return
+        if (!isNaN(brandIdFromUrl)) {
+          brandIdToUse = brandIdFromUrl
         }
       }
+      
+      // Если brand_id в URL, но его нет в фильтрах, используем brand_id из URL
+      // Это нужно для случая, когда фильтры еще не инициализированы
+      const effectiveBrandIds = brandIdToUse && !filters.brands.includes(brandIdToUse) 
+        ? [brandIdToUse] 
+        : filters.brands
       
       setLoading(true)
       try {
@@ -359,8 +368,8 @@ export default function CategoryPage({
         if (filters.categorySlugs.length > 0) {
           params.category_slug = filters.categorySlugs.join(',')
         }
-        if (filters.brands.length > 0) {
-          params.brand_id = filters.brands
+        if (effectiveBrandIds.length > 0) {
+          params.brand_id = effectiveBrandIds
         }
         if (filters.brandSlugs.length > 0) {
           params.brand_slug = filters.brandSlugs.join(',')
@@ -387,11 +396,13 @@ export default function CategoryPage({
         const base = process.env.NEXT_PUBLIC_API_BASE || '/api'
         const api = getApiForCategory(categoryType)
         
+        console.log('Loading products with params:', params)
         const response = await api.getProducts(params)
         const data = response.data
         const productsList = Array.isArray(data) ? data : (data.results || [])
         const count = data.count || productsList.length
 
+        console.log(`Loaded ${productsList.length} products (total: ${count})`)
         setProducts(productsList)
         setTotalCount(count)
         setTotalPages(Math.ceil(count / 12))
@@ -481,6 +492,7 @@ export default function CategoryPage({
               onFilterChange={handleFilterChange}
               isOpen={sidebarOpen}
               onToggle={() => setSidebarOpen(!sidebarOpen)}
+              initialFilters={filters}
             />
           </div>
 

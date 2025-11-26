@@ -56,6 +56,7 @@ interface CategorySidebarProps {
   onFilterChange?: (filters: FilterState) => void
   isOpen?: boolean
   onToggle?: () => void
+  initialFilters?: FilterState
 }
 
 const toggleArrayValue = <T,>(arr: T[], value: T): T[] =>
@@ -71,10 +72,11 @@ export default function CategorySidebar({
   brandGroups = [],
   onFilterChange,
   isOpen = true,
-  onToggle
+  onToggle,
+  initialFilters
 }: CategorySidebarProps) {
   const { t } = useTranslation('common')
-  const [filters, setFilters] = useState<FilterState>({
+  const defaultFilters: FilterState = {
     categories: [],
     categorySlugs: [],
     brands: [],
@@ -83,8 +85,34 @@ export default function CategorySidebar({
     subcategorySlugs: [],
     inStock: false,
     sortBy: 'name_asc'
+  }
+  const [filters, setFilters] = useState<FilterState>(initialFilters || defaultFilters)
+  
+  // Синхронизация с внешними фильтрами
+  useEffect(() => {
+    if (initialFilters) {
+      setFilters(initialFilters)
+      // Синхронизируем ценовой диапазон
+      setPriceRange({
+        min: initialFilters.priceMin?.toString() || '',
+        max: initialFilters.priceMax?.toString() || ''
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    initialFilters?.brands?.join(','),
+    initialFilters?.categories?.join(','),
+    initialFilters?.subcategories?.join(','),
+    initialFilters?.inStock,
+    initialFilters?.sortBy,
+    initialFilters?.priceMin,
+    initialFilters?.priceMax
+  ])
+  
+  const [priceRange, setPriceRange] = useState({ 
+    min: initialFilters?.priceMin?.toString() || '', 
+    max: initialFilters?.priceMax?.toString() || '' 
   })
-  const [priceRange, setPriceRange] = useState({ min: '', max: '' })
   const [expandedSections, setExpandedSections] = useState({
     categories: true,
     brands: true,

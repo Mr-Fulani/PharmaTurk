@@ -5,6 +5,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
+import { getApiForCategory } from '../lib/api'
 
 interface Brand {
   id: number
@@ -123,25 +124,45 @@ export default function Home({ brands }: HomePageProps) {
   ]
 
   const handleBrandClick = (brand: Brand) => {
-    // Определяем тип товаров бренда на основе названия
-    // Турецкие бренды одежды (расширенный список)
+    // Определяем тип товаров бренда на основе названия и данных из seed
+    // Турецкие бренды одежды
     const clothingBrands = [
       'Zara', 'LC Waikiki', 'Koton', 'DeFacto', 'Mavi', 'Boyner', 'Beymen', 
       'Network', 'Colin\'s', 'Kigili', 'Altınyıldız', 'Damat', 'Tween', 
       'Sarar', 'İpekyol', 'Mango', 'H&M', 'Pull & Bear', 'Bershka', 
-      'Stradivarius', 'Massimo Dutti', 'Oysho', 'Zara Home', 'Uterqüe'
+      'Stradivarius', 'Massimo Dutti', 'Oysho', 'Zara Home', 'Uterqüe',
+      'Vakko', 'Penti'
     ]
     // Турецкие бренды обуви
-    const shoesBrands: string[] = []
+    const shoesBrands = [
+      'Hotiç', 'FLO', 'Greyder', 'Polaris', 'İnci', 'Derimod', 'Lescon', 'Hammer Jack'
+    ]
     // Турецкие бренды электроники
-    const electronicsBrands: string[] = []
+    const electronicsBrands = [
+      'Vestel', 'Arçelik', 'Beko', 'Casper', 'Reeder', 'General Mobile', 'Profilo', 'Sunny'
+    ]
     // Бренды медикаментов
     const medicinesBrands = [
       'Bayer', 'Pfizer', 'Novartis', 'Roche', 'Sanofi', 'GlaxoSmithKline', 
-      'Merck', 'Johnson & Johnson', 'Eli Lilly', 'AstraZeneca', 'Apple', 'Samsung'
+      'Merck', 'Johnson & Johnson', 'Eli Lilly', 'AstraZeneca', 'Apple', 'Samsung',
+      'Abdi İbrahim', 'Deva Holding', 'Nobel İlaç', 'Santa Farma', 'Bilim İlaç',
+      'Atabay İlaç', 'İ.E. Ulagay', 'Centurion Pharma'
+    ]
+    // Бренды посуды
+    const tablewareBrands = [
+      'Karaca', 'Paşabahçe', 'Kütahya Porselen', 'Güral Porselen', 'Porland', 
+      'Hisar', 'Emsan', 'Tantitoni'
+    ]
+    // Бренды мебели
+    const furnitureBrands = [
+      'Enza Home', 'Yataş', 'Doğtaş', 'Kelebek', 'Bellona', 'Lazzoni', 'Nill\'s', 'İder'
+    ]
+    // Бренды медицинского оборудования
+    const medicalEquipmentBrands = [
+      'Alvimedica', 'Bıçakcılar', 'Turkuaz Healthcare', 'Tıpsan', 'Ankara Healthcare'
     ]
     
-    let categoryType = 'clothing' // По умолчанию одежда для турецких брендов
+    let categoryType = 'clothing' // По умолчанию одежда
     
     if (clothingBrands.includes(brand.name)) {
       categoryType = 'clothing'
@@ -151,6 +172,12 @@ export default function Home({ brands }: HomePageProps) {
       categoryType = 'electronics'
     } else if (medicinesBrands.includes(brand.name)) {
       categoryType = 'medicines'
+    } else if (tablewareBrands.includes(brand.name)) {
+      categoryType = 'tableware'
+    } else if (furnitureBrands.includes(brand.name)) {
+      categoryType = 'furniture'
+    } else if (medicalEquipmentBrands.includes(brand.name)) {
+      categoryType = 'medical-equipment'
     }
     
     // Открываем категорию с фильтром по brand_id
@@ -280,17 +307,42 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   try {
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
     
-    // Загружаем бренды из API
-    const brandsRes = await axios.get(`${base}/api/catalog/brands`)
-    const allBrands = brandsRes.data.results || []
+    // Загружаем все бренды из API с пагинацией
+    let allBrands: Brand[] = []
+    let nextUrl: string | null = `${base}/api/catalog/brands`
     
-    // Фильтруем только турецкие и популярные бренды
-    const turkishBrands = ['Zara', 'LC Waikiki', 'Koton', 'DeFacto', 'Mavi', 'Boyner']
-    const brands = allBrands.filter((brand: Brand) => 
-      turkishBrands.includes(brand.name)
-    ).slice(0, 6) // Показываем максимум 6 брендов
+    // Собираем все бренды (обходим пагинацию)
+    while (nextUrl) {
+      try {
+        const brandsRes = await axios.get(nextUrl)
+        const data = brandsRes.data
+        const pageBrands = Array.isArray(data) ? data : (data.results || [])
+        allBrands = [...allBrands, ...pageBrands]
+        
+        // Проверяем наличие следующей страницы
+        nextUrl = data.next || null
+      } catch (err) {
+        console.error('Error loading brands page:', err)
+        break
+      }
+    }
     
-    console.log('Loaded brands for homepage:', brands.map((b: Brand) => b.name))
+    // Фильтруем бренды с товарами и сортируем по количеству товаров (популярность)
+    const brandsWithProducts = allBrands.filter((brand: Brand) => 
+      brand.products_count && brand.products_count > 0
+    )
+    
+    // Сортируем по количеству товаров (по убыванию) - самые популярные первыми
+    brandsWithProducts.sort((a: Brand, b: Brand) => {
+      const countA = a.products_count || 0
+      const countB = b.products_count || 0
+      return countB - countA
+    })
+    
+    // Берем топ-6 самых популярных брендов
+    const brands = brandsWithProducts.slice(0, 6)
+    
+    console.log('Loaded popular brands for homepage:', brands.map((b: Brand) => `${b.name} (${b.products_count} товаров)`))
     
     return {
       props: {
