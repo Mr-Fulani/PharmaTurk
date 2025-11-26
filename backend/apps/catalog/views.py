@@ -79,10 +79,91 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Brand.objects.filter(is_active=True)
     serializer_class = BrandSerializer
     pagination_class = StandardPagination
+
+    PRODUCT_TYPE_ALIASES = {
+        'supplements': 'medicines',
+        'tableware': 'tableware',
+        'furniture': 'furniture',
+        'medical-equipment': 'medical-equipment',
+    }
+    
+    PRODUCT_MODEL_MAP = {
+        'medicines': Product,
+        'tableware': Product,
+        'furniture': Product,
+        'medical-equipment': Product,
+        'clothing': ClothingProduct,
+        'shoes': ShoeProduct,
+        'electronics': ElectronicsProduct,
+    }
+
+    PRODUCT_TYPE_CATEGORY_SLUGS = {
+        'medicines': ['medicines-general'],
+        'tableware': ['tableware-serveware'],
+        'furniture': ['furniture-living'],
+        'medical-equipment': ['medical-equipment'],
+    }
+
+    def _normalize_product_type(self, raw_type: str | None) -> str | None:
+        """Нормализует тип товара (учитываем алиасы)."""
+        if not raw_type:
+            return None
+        raw_type = raw_type.lower()
+        return self.PRODUCT_TYPE_ALIASES.get(raw_type, raw_type)
+
+    def _parse_id_list(self, param: str) -> list[int]:
+        """Парсит список ID из query-параметров."""
+        values = self.request.query_params.getlist(param) or self.request.query_params.getlist(f'{param}[]')
+        result: list[int] = []
+        for value in values:
+            try:
+                result.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        return result
+
+    def _parse_slug_list(self, param: str) -> list[str]:
+        """Парсит список slug из query-параметров."""
+        value = self.request.query_params.get(param)
+        if not value:
+            return []
+        return [slug.strip() for slug in value.split(',') if slug.strip()]
+
+    def get_queryset(self):
+        """Фильтрует бренды по типу товара/категории."""
+        queryset = Brand.objects.filter(is_active=True).order_by('name')
+        product_type = self._normalize_product_type(self.request.query_params.get('product_type'))
+        if not product_type:
+            return queryset
+
+        product_model = self.PRODUCT_MODEL_MAP.get(product_type)
+        if not product_model:
+            return queryset
+        
+        product_qs = product_model.objects.filter(is_active=True, brand__isnull=False)
+
+        category_slugs_filter = self.PRODUCT_TYPE_CATEGORY_SLUGS.get(product_type)
+        if category_slugs_filter and product_model is Product:
+            product_qs = product_qs.filter(category__slug__in=category_slugs_filter)
+
+        category_ids = self._parse_id_list('category_id')
+        if category_ids:
+            product_qs = product_qs.filter(category_id__in=category_ids)
+
+        category_slugs = self._parse_slug_list('category_slug')
+        if category_slugs:
+            product_qs = product_qs.filter(category__slug__in=category_slugs)
+
+        in_stock = self.request.query_params.get('in_stock')
+        if in_stock and in_stock.lower() in ('true', '1', 'yes'):
+            product_qs = product_qs.filter(is_available=True)
+
+        brand_ids = product_qs.values_list('brand_id', flat=True).distinct()
+        return queryset.filter(id__in=brand_ids).distinct()
     
     @extend_schema(
         summary="Получить список брендов",
-        description="Возвращает список активных брендов"
+        description="Возвращает список активных брендов (можно фильтровать по типу товара)"
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -103,19 +184,57 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = StandardPagination
     lookup_field = 'slug'
     
+    def _normalize_ordering(self, ordering: str) -> str:
+        """Преобразует формат сортировки из фронтенда в формат Django.
+        
+        Преобразует:
+        - name_asc -> name
+        - name_desc -> -name
+        - price_asc -> price
+        - price_desc -> -price
+        - newest -> -created_at
+        - popular -> -is_featured, -created_at
+        """
+        ordering_map = {
+            'name_asc': 'name',
+            'name_desc': '-name',
+            'price_asc': 'price',
+            'price_desc': '-price',
+            'newest': '-created_at',
+            'popular': '-is_featured',  # Популярные = рекомендуемые товары
+        }
+        return ordering_map.get(ordering, ordering)
+    
     def get_queryset(self):
         """Фильтрация товаров по параметрам."""
         queryset = Product.objects.filter(is_active=True)
         
-        # Фильтр по категории
-        category_id = self.request.query_params.get('category_id')
-        if category_id:
-            queryset = queryset.filter(category_id=category_id)
+        # Фильтр по категории (поддержка массивов)
+        category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
+        if category_ids:
+            try:
+                category_ids = [int(cid) for cid in category_ids if cid]
+                if category_ids:
+                    queryset = queryset.filter(category_id__in=category_ids)
+            except (ValueError, TypeError):
+                pass
         
-        # Фильтр по бренду
-        brand_id = self.request.query_params.get('brand_id')
-        if brand_id:
-            queryset = queryset.filter(brand_id=brand_id)
+        # Фильтр по slug категории (поддержка нескольких через запятую)
+        category_slug = self.request.query_params.get('category_slug')
+        if category_slug:
+            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
+            if slugs:
+                queryset = queryset.filter(category__slug__in=slugs)
+        
+        # Фильтр по бренду (поддержка массивов)
+        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
+        if brand_ids:
+            try:
+                brand_ids = [int(bid) for bid in brand_ids if bid]
+                if brand_ids:
+                    queryset = queryset.filter(brand_id__in=brand_ids)
+            except (ValueError, TypeError):
+                pass
         
         # Фильтр по поиску
         search = self.request.query_params.get('search')
@@ -147,6 +266,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
+        ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
         
         return queryset
@@ -308,19 +428,41 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = StandardPagination
     lookup_field = 'slug'
     
+    def _normalize_ordering(self, ordering: str) -> str:
+        """Преобразует формат сортировки из фронтенда в формат Django."""
+        ordering_map = {
+            'name_asc': 'name',
+            'name_desc': '-name',
+            'price_asc': 'price',
+            'price_desc': '-price',
+            'newest': '-created_at',
+            'popular': '-is_featured',
+        }
+        return ordering_map.get(ordering, ordering)
+    
     def get_queryset(self):
         """Фильтрация товаров одежды по параметрам."""
         queryset = ClothingProduct.objects.filter(is_active=True)
         
-        # Фильтр по категории
-        category_id = self.request.query_params.get('category_id')
-        if category_id:
-            queryset = queryset.filter(category_id=category_id)
+        # Фильтр по категории (поддержка массивов)
+        category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
+        if category_ids:
+            try:
+                category_ids = [int(cid) for cid in category_ids if cid]
+                if category_ids:
+                    queryset = queryset.filter(category_id__in=category_ids)
+            except (ValueError, TypeError):
+                pass
         
-        # Фильтр по бренду
-        brand_id = self.request.query_params.get('brand_id')
-        if brand_id:
-            queryset = queryset.filter(brand_id=brand_id)
+        # Фильтр по бренду (поддержка массивов)
+        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
+        if brand_ids:
+            try:
+                brand_ids = [int(bid) for bid in brand_ids if bid]
+                if brand_ids:
+                    queryset = queryset.filter(brand_id__in=brand_ids)
+            except (ValueError, TypeError):
+                pass
         
         # Фильтр по полу
         gender = self.request.query_params.get('gender')
@@ -371,6 +513,7 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
+        ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
         
         return queryset
@@ -465,19 +608,41 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = StandardPagination
     lookup_field = 'slug'
     
+    def _normalize_ordering(self, ordering: str) -> str:
+        """Преобразует формат сортировки из фронтенда в формат Django."""
+        ordering_map = {
+            'name_asc': 'name',
+            'name_desc': '-name',
+            'price_asc': 'price',
+            'price_desc': '-price',
+            'newest': '-created_at',
+            'popular': '-is_featured',
+        }
+        return ordering_map.get(ordering, ordering)
+    
     def get_queryset(self):
         """Фильтрация товаров обуви по параметрам."""
         queryset = ShoeProduct.objects.filter(is_active=True)
         
-        # Фильтр по категории
-        category_id = self.request.query_params.get('category_id')
-        if category_id:
-            queryset = queryset.filter(category_id=category_id)
+        # Фильтр по категории (поддержка массивов)
+        category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
+        if category_ids:
+            try:
+                category_ids = [int(cid) for cid in category_ids if cid]
+                if category_ids:
+                    queryset = queryset.filter(category_id__in=category_ids)
+            except (ValueError, TypeError):
+                pass
         
-        # Фильтр по бренду
-        brand_id = self.request.query_params.get('brand_id')
-        if brand_id:
-            queryset = queryset.filter(brand_id=brand_id)
+        # Фильтр по бренду (поддержка массивов)
+        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
+        if brand_ids:
+            try:
+                brand_ids = [int(bid) for bid in brand_ids if bid]
+                if brand_ids:
+                    queryset = queryset.filter(brand_id__in=brand_ids)
+            except (ValueError, TypeError):
+                pass
         
         # Фильтр по полу
         gender = self.request.query_params.get('gender')
@@ -528,6 +693,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
+        ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
         
         return queryset
@@ -616,19 +782,41 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = StandardPagination
     lookup_field = 'slug'
     
+    def _normalize_ordering(self, ordering: str) -> str:
+        """Преобразует формат сортировки из фронтенда в формат Django."""
+        ordering_map = {
+            'name_asc': 'name',
+            'name_desc': '-name',
+            'price_asc': 'price',
+            'price_desc': '-price',
+            'newest': '-created_at',
+            'popular': '-is_featured',
+        }
+        return ordering_map.get(ordering, ordering)
+    
     def get_queryset(self):
         """Фильтрация товаров электроники по параметрам."""
         queryset = ElectronicsProduct.objects.filter(is_active=True)
         
-        # Фильтр по категории
-        category_id = self.request.query_params.get('category_id')
-        if category_id:
-            queryset = queryset.filter(category_id=category_id)
+        # Фильтр по категории (поддержка массивов)
+        category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
+        if category_ids:
+            try:
+                category_ids = [int(cid) for cid in category_ids if cid]
+                if category_ids:
+                    queryset = queryset.filter(category_id__in=category_ids)
+            except (ValueError, TypeError):
+                pass
         
-        # Фильтр по бренду
-        brand_id = self.request.query_params.get('brand_id')
-        if brand_id:
-            queryset = queryset.filter(brand_id=brand_id)
+        # Фильтр по бренду (поддержка массивов)
+        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
+        if brand_ids:
+            try:
+                brand_ids = [int(bid) for bid in brand_ids if bid]
+                if brand_ids:
+                    queryset = queryset.filter(brand_id__in=brand_ids)
+            except (ValueError, TypeError):
+                pass
         
         # Фильтр по модели
         model = self.request.query_params.get('model')
@@ -659,6 +847,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
+        ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
         
         return queryset

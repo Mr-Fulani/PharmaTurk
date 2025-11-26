@@ -142,7 +142,17 @@ export default function BrandPage({
           <div className="mt-2 w-full">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-7">
               {brandData.products.map((p) => (
-                <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} imageUrl={p.main_image_url} />
+                <ProductCard
+                  key={p.id}
+                  id={p.id}
+                  name={p.name}
+                  slug={p.slug}
+                  price={p.price}
+                  currency={p.currency}
+                  imageUrl={p.main_image_url}
+                  productType="medicines"
+                  isBaseProduct
+                />
               ))}
             </div>
 

@@ -95,7 +95,22 @@ class ProductSerializer(serializers.ModelSerializer):
     
     def get_main_image_url(self, obj):
         """URL главного изображения."""
-        return obj.main_image or (obj.images.filter(is_main=True).first().image_url if obj.images.filter(is_main=True).exists() else None)
+        # Сначала проверяем main_image
+        if obj.main_image:
+            return obj.main_image
+        
+        # Затем ищем главное изображение в связанных изображениях
+        main_img = obj.images.filter(is_main=True).first()
+        if main_img:
+            return main_img.image_url
+        
+        # Если нет главного, берем первое изображение
+        first_img = obj.images.first()
+        if first_img:
+            return first_img.image_url
+        
+        # Если изображений нет, возвращаем None
+        return None
     
     def get_price_formatted(self, obj):
         """Форматированная цена."""
@@ -192,6 +207,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     
     category = ClothingCategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     
@@ -201,10 +217,18 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color', 'material', 'season',
-            'is_available', 'stock_quantity', 'main_image',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url',
             'is_featured', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_main_image_url(self, obj):
+        """URL главного изображения.
+        
+        Для ClothingProduct используется только поле main_image,
+        так как нет связи с ProductImage.
+        """
+        return obj.main_image if obj.main_image else None
     
     def get_price_formatted(self, obj):
         """Форматированная цена."""
@@ -245,6 +269,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     
     category = ShoeCategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     
@@ -254,10 +279,18 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color', 'material', 'heel_height', 'sole_type',
-            'is_available', 'stock_quantity', 'main_image',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url',
             'is_featured', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_main_image_url(self, obj):
+        """URL главного изображения.
+        
+        Для ShoeProduct используется только поле main_image,
+        так как нет связи с ProductImage.
+        """
+        return obj.main_image if obj.main_image else None
     
     def get_price_formatted(self, obj):
         """Форматированная цена."""
@@ -296,6 +329,7 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
     
     category = ElectronicsCategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     
@@ -305,10 +339,18 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'model', 'specifications', 'warranty', 'power_consumption',
-            'is_available', 'stock_quantity', 'main_image',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url',
             'is_featured', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_main_image_url(self, obj):
+        """URL главного изображения.
+        
+        Для ElectronicsProduct используется только поле main_image,
+        так как нет связи с ProductImage.
+        """
+        return obj.main_image if obj.main_image else None
     
     def get_price_formatted(self, obj):
         """Форматированная цена."""

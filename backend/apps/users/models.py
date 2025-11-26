@@ -31,6 +31,14 @@ class User(AbstractUser):
     telegram_id = models.CharField(_('telegram ID'), max_length=50, blank=True)
     telegram_username = models.CharField(_('telegram username'), max_length=50, blank=True)
     
+    # Социальные сети (для будущей интеграции)
+    # Поля для хранения ID пользователей в соцсетях
+    google_id = models.CharField(_('Google ID'), max_length=100, blank=True, null=True, unique=True)
+    facebook_id = models.CharField(_('Facebook ID'), max_length=100, blank=True, null=True, unique=True)
+    vk_id = models.CharField(_('VK ID'), max_length=100, blank=True, null=True, unique=True)
+    yandex_id = models.CharField(_('Yandex ID'), max_length=100, blank=True, null=True, unique=True)
+    apple_id = models.CharField(_('Apple ID'), max_length=100, blank=True, null=True, unique=True)
+    
     # Метаданные
     created_at = models.DateTimeField(_('дата создания'), auto_now_add=True)
     updated_at = models.DateTimeField(_('дата обновления'), auto_now=True)

@@ -17,7 +17,8 @@ from .models import User, UserProfile, UserAddress, UserSession
 from .serializers import (
     UserRegistrationSerializer, UserLoginSerializer, UserProfileSerializer,
     UserAddressSerializer, UserSerializer, UserPasswordChangeSerializer,
-    UserEmailVerificationSerializer, UserSessionSerializer, UserStatsSerializer
+    UserEmailVerificationSerializer, UserSessionSerializer, UserStatsSerializer,
+    SMSSendCodeSerializer, SMSVerifyCodeSerializer, SocialAuthSerializer
 )
 
 
@@ -583,3 +584,134 @@ class AppConfigView(APIView):
         }
         
         return Response(config)
+
+
+class SMSSendCodeView(APIView):
+    """
+    Отправка SMS кода на номер телефона.
+    TODO: Реализовать после интеграции SMS провайдера.
+    """
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        summary="Отправить SMS код",
+        description="Отправка SMS кода на номер телефона для входа",
+        request=SMSSendCodeSerializer,
+        responses={
+            200: {"description": "Код отправлен"},
+            400: "Ошибка валидации"
+        }
+    )
+    def post(self, request):
+        """Отправка SMS кода"""
+        serializer = SMSSendCodeSerializer(data=request.data)
+        if serializer.is_valid():
+            phone_number = serializer.validated_data['phone_number']
+            
+            # TODO: Реализовать отправку SMS
+            # from .sms_auth import send_sms_code
+            # verification = send_sms_code(phone_number)
+            
+            return Response({
+                'message': _('SMS код будет отправлен в ближайшее время'),
+                'phone_number': phone_number,
+                'note': 'Функционал находится в разработке'
+            }, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SMSVerifyCodeView(APIView):
+    """
+    Проверка SMS кода и вход/регистрация пользователя.
+    TODO: Реализовать после интеграции SMS провайдера.
+    """
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        summary="Войти по SMS коду",
+        description="Проверка SMS кода и аутентификация пользователя",
+        request=SMSVerifyCodeSerializer,
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "user": {"type": "object"},
+                    "tokens": {"type": "object"},
+                    "message": {"type": "string"}
+                }
+            },
+            400: "Ошибка валидации"
+        }
+    )
+    def post(self, request):
+        """Проверка SMS кода и вход"""
+        serializer = SMSVerifyCodeSerializer(data=request.data)
+        if serializer.is_valid():
+            phone_number = serializer.validated_data['phone_number']
+            code = serializer.validated_data['code']
+            
+            # TODO: Реализовать проверку кода и вход
+            # from .sms_auth import verify_sms_code
+            # success, verification = verify_sms_code(phone_number, code)
+            # if success:
+            #     # Найти или создать пользователя
+            #     user, created = User.objects.get_or_create(
+            #         phone_number=phone_number,
+            #         defaults={'email': f'{phone_number}@sms.user', 'username': phone_number}
+            #     )
+            #     # Генерируем токены и возвращаем
+            #     ...
+            
+            return Response({
+                'message': _('Вход по SMS будет доступен в ближайшее время'),
+                'note': 'Функционал находится в разработке'
+            }, status=status.HTTP_501_NOT_IMPLEMENTED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SocialAuthView(APIView):
+    """
+    Авторизация через социальные сети.
+    TODO: Реализовать после интеграции OAuth провайдеров.
+    """
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        summary="Войти через соцсеть",
+        description="Авторизация через Google, Facebook, VK, Yandex или Apple",
+        request=SocialAuthSerializer,
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "user": {"type": "object"},
+                    "tokens": {"type": "object"},
+                    "message": {"type": "string"}
+                }
+            },
+            400: "Ошибка валидации"
+        }
+    )
+    def post(self, request):
+        """Авторизация через соцсеть"""
+        serializer = SocialAuthSerializer(data=request.data)
+        if serializer.is_valid():
+            provider = serializer.validated_data['provider']
+            access_token = serializer.validated_data['access_token']
+            
+            # TODO: Реализовать OAuth авторизацию
+            # from .social_auth import authenticate_social_user
+            # user = authenticate_social_user(provider, access_token)
+            # if user:
+            #     # Генерируем токены и возвращаем
+            #     ...
+            
+            return Response({
+                'message': _('Авторизация через соцсети будет доступна в ближайшее время'),
+                'provider': provider,
+                'note': 'Функционал находится в разработке'
+            }, status=status.HTTP_501_NOT_IMPLEMENTED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

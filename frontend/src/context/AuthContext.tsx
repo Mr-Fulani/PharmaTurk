@@ -12,9 +12,12 @@ interface User {
 interface AuthContextValue {
   user: User | null
   loading: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (loginValue: string, password: string) => Promise<void> // loginValue может быть email, username или телефон
   register: (email: string, username: string, password: string) => Promise<void>
   logout: () => void
+  // Будущие методы для SMS и соцсетей
+  loginWithSMS?: (phone: string, code: string) => Promise<void>
+  loginWithSocial?: (provider: 'google' | 'facebook' | 'vk' | 'yandex' | 'apple', token: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -47,8 +50,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<AuthContextValue>(() => ({
     user,
     loading,
-    async login(email, password) {
-      const res = await api.post('/users/login/', { email, password })
+    async login(loginValue, password) {
+      // loginValue может быть email, username или телефон
+      const res = await api.post('/users/login/', { email: loginValue, password })
       const { tokens, user } = res.data
       if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
       if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })

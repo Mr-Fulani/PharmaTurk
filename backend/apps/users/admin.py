@@ -1,8 +1,30 @@
+from django import forms
 from django.contrib import admin
+from django.contrib.auth import admin as auth_admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.admin.forms import AdminAuthenticationForm
 from django.utils.translation import gettext_lazy as _
 
 from .models import User, UserProfile, UserAddress, UserSession
+
+
+class CustomAdminAuthenticationForm(AdminAuthenticationForm):
+    """
+    Кастомная форма входа в админку, поддерживающая вход по email, username или телефону.
+    """
+    username = forms.CharField(
+        label=_('Email, Username или Телефон'),
+        widget=forms.TextInput(attrs={'autofocus': True, 'placeholder': 'email@example.com, username или +79991234567'})
+    )
+    
+    def clean_username(self):
+        """
+        Валидация поля username (может быть email, username или телефон).
+        """
+        username = self.cleaned_data.get('username')
+        if username:
+            username = username.strip()
+        return username
 
 
 @admin.register(User)
@@ -10,7 +32,7 @@ class UserAdmin(BaseUserAdmin):
     """Админка для модели пользователя."""
     list_display = ('email', 'username', 'first_name', 'last_name', 'is_staff', 'is_active', 'date_joined')
     list_filter = ('is_staff', 'is_active', 'is_verified', 'language', 'currency', 'date_joined')
-    search_fields = ('email', 'username', 'first_name', 'last_name')
+    search_fields = ('email', 'username', 'first_name', 'last_name', 'phone_number')
     ordering = ('-date_joined',)
     
     fieldsets = (
@@ -21,6 +43,11 @@ class UserAdmin(BaseUserAdmin):
         }),
         (_('Settings'), {'fields': ('language', 'currency', 'email_notifications', 'telegram_notifications', 'push_notifications')}),
         (_('Telegram'), {'fields': ('telegram_id', 'telegram_username')}),
+        (_('Social Networks'), {
+            'fields': ('google_id', 'facebook_id', 'vk_id', 'yandex_id', 'apple_id'),
+            'classes': ('collapse',),  # Сворачиваемый раздел
+            'description': _('Поля для будущей интеграции с социальными сетями')
+        }),
         (_('Important dates'), {'fields': ('last_login', 'date_joined')}),
     )
     add_fieldsets = (
@@ -29,6 +56,10 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('email', 'username', 'password1', 'password2'),
         }),
     )
+
+
+# Переопределяем форму входа в админке
+admin.site.login_form = CustomAdminAuthenticationForm
 
 
 @admin.register(UserProfile)

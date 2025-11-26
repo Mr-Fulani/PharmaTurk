@@ -56,6 +56,12 @@ INSTALLED_APPS = [
 # Кастомная модель пользователя
 AUTH_USER_MODEL = 'users.User'
 
+# Бэкенды аутентификации (поддержка входа по email, username и телефону)
+AUTHENTICATION_BACKENDS = [
+    'apps.users.backends.MultiFieldAuthBackend',  # Кастомный бэкенд (email, username, phone)
+    'django.contrib.auth.backends.ModelBackend',  # Стандартный бэкенд Django (fallback)
+]
+
 MIDDLEWARE = [
     # Метрики Prometheus
     "django_prometheus.middleware.PrometheusBeforeMiddleware",

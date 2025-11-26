@@ -52,9 +52,18 @@ export default function Home({ brands }: HomePageProps) {
       id: 'medicines',
       name: 'Медикаменты',
       slug: 'medicines',
-      description: 'Лекарственные препараты и БАДы',
+      description: 'Лекарственные препараты',
       imageUrl: '/category-medicines.jpg',
       bgColor: 'from-green-600 to-emerald-500',
+      textColor: 'text-white'
+    },
+    {
+      id: 'supplements',
+      name: 'БАДы',
+      slug: 'supplements',
+      description: 'Биологически активные добавки',
+      imageUrl: '/category-supplements.jpg',
+      bgColor: 'from-amber-600 to-yellow-500',
       textColor: 'text-white'
     },
     {
@@ -82,6 +91,33 @@ export default function Home({ brands }: HomePageProps) {
       description: 'Современные гаджеты и техника',
       imageUrl: '/category-electronics.jpg',
       bgColor: 'from-slate-700 to-gray-600',
+      textColor: 'text-white'
+    },
+    {
+      id: 'tableware',
+      name: 'Посуда',
+      slug: 'tableware',
+      description: 'Кухонная посуда и аксессуары',
+      imageUrl: '/category-tableware.jpg',
+      bgColor: 'from-orange-600 to-red-500',
+      textColor: 'text-white'
+    },
+    {
+      id: 'furniture',
+      name: 'Мебель',
+      slug: 'furniture',
+      description: 'Мебель для дома и офиса',
+      imageUrl: '/category-furniture.jpg',
+      bgColor: 'from-amber-800 to-orange-700',
+      textColor: 'text-white'
+    },
+    {
+      id: 'medical-equipment',
+      name: 'Медицинский инвентарь',
+      slug: 'medical-equipment',
+      description: 'Инструменты и оборудование для медицины',
+      imageUrl: '/category-medical-equipment.jpg',
+      bgColor: 'from-teal-600 to-cyan-500',
       textColor: 'text-white'
     }
   ]

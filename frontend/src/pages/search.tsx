@@ -37,7 +37,17 @@ export default function SearchPage() {
         {loading ? <div className="mt-6">Загрузка…</div> : (
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             {items.map((p) => (
-              <ProductCard key={p.id} id={p.id} name={p.name} slug={p.slug} price={p.price} currency={p.currency} imageUrl={p.main_image_url || p.main_image} />
+              <ProductCard
+                key={p.id}
+                id={p.id}
+                name={p.name}
+                slug={p.slug}
+                price={p.price}
+                currency={p.currency}
+                imageUrl={p.main_image_url || p.main_image}
+                productType="medicines"
+                isBaseProduct
+              />
             ))}
           </div>
         )}

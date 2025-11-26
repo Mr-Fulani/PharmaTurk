@@ -40,10 +40,13 @@ export async function getServerSideProps(ctx: any) {
 function LoginForm() {
   const { login } = useAuth()
   const router = useRouter()
-  const [email, setEmail] = useState('')
+  const [loginValue, setLoginValue] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loginMethod, setLoginMethod] = useState<'password' | 'sms'>('password')
+  const [smsCode, setSmsCode] = useState('')
+  const [smsSent, setSmsSent] = useState(false)
   const { t } = useTranslation('common')
 
   const submit = async (e: React.FormEvent) => {
@@ -51,10 +54,15 @@ function LoginForm() {
     setError('')
     setLoading(true)
     try {
-      await login(email, password)
-      const next = router.query.next as string
-      if (next && next.startsWith('/')) router.push(next)
-      else router.push('/')
+      if (loginMethod === 'password') {
+        await login(loginValue, password)
+        const next = router.query.next as string
+        if (next && next.startsWith('/')) router.push(next)
+        else router.push('/')
+      } else {
+        // TODO: Реализовать вход по SMS
+        setError('Вход по SMS будет доступен в ближайшее время')
+      }
     } catch (e: any) {
       const data = e?.response?.data
       const msg = (data?.detail)
@@ -67,13 +75,136 @@ function LoginForm() {
     }
   }
 
+  const handleSendSMS = async () => {
+    // TODO: Реализовать отправку SMS кода
+    setError('')
+    if (!loginValue) {
+      setError('Введите номер телефона')
+      return
+    }
+    setSmsSent(true)
+    setError('Отправка SMS будет доступна в ближайшее время')
+  }
+
   return (
-    <form onSubmit={submit} className="grid gap-3">
-      <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder="Email" value={email} onChange={(e)=>setEmail(e.target.value)} required />
-      <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('password_placeholder', 'Пароль (мин. 8 знаков, буквы и цифры)')} type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required />
-      {error ? <div className="text-sm text-red-600">{error}</div> : null}
-      <button type="submit" disabled={loading} className="rounded-md bg-violet-600 px-4 py-2 text-white hover:bg-violet-700 disabled:opacity-60">{loading ? 'Входим...' : 'Войти'}</button>
-    </form>
+    <div className="space-y-4">
+      {/* Переключатель метода входа */}
+      <div className="inline-flex rounded-md border border-gray-300 p-1 bg-gray-50">
+        <button
+          type="button"
+          onClick={() => {
+            setLoginMethod('password')
+            setSmsSent(false)
+            setSmsCode('')
+            setError('')
+          }}
+          className={`rounded px-3 py-1.5 text-sm transition-colors ${
+            loginMethod === 'password'
+              ? 'bg-violet-600 text-white'
+              : 'text-gray-700 hover:bg-gray-100'
+          }`}
+        >
+          Пароль
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setLoginMethod('sms')
+            setPassword('')
+            setError('')
+          }}
+          className={`rounded px-3 py-1.5 text-sm transition-colors ${
+            loginMethod === 'sms'
+              ? 'bg-violet-600 text-white'
+              : 'text-gray-700 hover:bg-gray-100'
+          }`}
+        >
+          SMS
+        </button>
+        {/* Кнопка для будущей интеграции соцсетей */}
+        <div className="ml-2 flex items-center gap-2 border-l border-gray-300 pl-2">
+          <span className="text-xs text-gray-500">Скоро:</span>
+          <button
+            type="button"
+            disabled
+            className="text-xs text-gray-400 cursor-not-allowed"
+            title="Вход через соцсети будет доступен в ближайшее время"
+          >
+            🔵 Google
+          </button>
+          <button
+            type="button"
+            disabled
+            className="text-xs text-gray-400 cursor-not-allowed"
+            title="Вход через соцсети будет доступен в ближайшее время"
+          >
+            🔵 VK
+          </button>
+        </div>
+      </div>
+
+      <form onSubmit={submit} className="grid gap-3">
+        {loginMethod === 'password' ? (
+          <>
+            <input
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400"
+              placeholder="Email, имя пользователя или телефон"
+              value={loginValue}
+              onChange={(e) => setLoginValue(e.target.value)}
+              required
+            />
+            <input
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400"
+              placeholder={t('password_placeholder', 'Пароль (мин. 8 знаков, буквы и цифры)')}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </>
+        ) : (
+          <>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400"
+                placeholder="+7 (999) 123-45-67"
+                type="tel"
+                value={loginValue}
+                onChange={(e) => setLoginValue(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                onClick={handleSendSMS}
+                disabled={smsSent || loading}
+                className="rounded-md bg-gray-600 px-4 py-2 text-white hover:bg-gray-700 disabled:opacity-60 whitespace-nowrap"
+              >
+                {smsSent ? 'Отправлено' : 'Отправить код'}
+              </button>
+            </div>
+            {smsSent && (
+              <input
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400"
+                placeholder="Код из SMS"
+                type="text"
+                value={smsCode}
+                onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                maxLength={6}
+                required
+              />
+            )}
+          </>
+        )}
+        {error ? <div className="text-sm text-red-600">{error}</div> : null}
+        <button
+          type="submit"
+          disabled={loading}
+          className="rounded-md bg-violet-600 px-4 py-2 text-white hover:bg-violet-700 disabled:opacity-60"
+        >
+          {loading ? 'Входим...' : 'Войти'}
+        </button>
+      </form>
+    </div>
   )
 }
 

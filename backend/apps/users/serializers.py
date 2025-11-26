@@ -61,10 +61,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 class UserLoginSerializer(serializers.Serializer):
     """
-    Сериализатор для входа пользователей
+    Сериализатор для входа пользователей.
+    Поддерживает вход по email, username или телефону.
     """
-    # Разрешаем вводить email ИЛИ имя пользователя в одно поле
-    email = serializers.CharField()
+    # Разрешаем вводить email, username или телефон в одно поле
+    email = serializers.CharField(help_text="Email, имя пользователя или номер телефона")
     password = serializers.CharField(write_only=True)
     
     def validate(self, attrs):
@@ -74,26 +75,78 @@ class UserLoginSerializer(serializers.Serializer):
         
         if login_value and password:
             request = self.context.get('request')
-            user = None
-            # Если похоже на email — аутентифицируем напрямую
-            if isinstance(login_value, str) and '@' in login_value:
-                user = authenticate(request=request, username=login_value, password=password)
-            else:
-                # Пытаемся найти по username, аутентифицируем по email
-                try:
-                    candidate = User.objects.get(username=login_value)
-                    user = authenticate(request=request, username=candidate.email, password=password)
-                except User.DoesNotExist:
-                    user = None
+            # Используем кастомный бэкенд аутентификации, который поддерживает
+            # email, username и телефон
+            user = authenticate(request=request, username=login_value, password=password)
+            
             if not user:
                 raise serializers.ValidationError(_("Неверные учетные данные"))
             if not user.is_active:
                 raise serializers.ValidationError(_("Аккаунт заблокирован"))
             attrs['user'] = user
         else:
-            raise serializers.ValidationError(_("Необходимо указать email/имя пользователя и пароль"))
+            raise serializers.ValidationError(_("Необходимо указать email/имя пользователя/телефон и пароль"))
         
         return attrs
+
+
+class SMSSendCodeSerializer(serializers.Serializer):
+    """
+    Сериализатор для отправки SMS кода.
+    TODO: Реализовать после интеграции SMS провайдера.
+    """
+    phone_number = serializers.CharField(
+        max_length=17,
+        help_text="Номер телефона в формате +79991234567"
+    )
+    
+    def validate_phone_number(self, value):
+        """Валидация номера телефона"""
+        from django.core.validators import RegexValidator
+        from django.core.exceptions import ValidationError
+        
+        phone_regex = RegexValidator(
+            regex=r'^\+?1?\d{9,15}$',
+            message="Номер телефона должен быть в формате: '+999999999'. До 15 цифр."
+        )
+        try:
+            phone_regex(value)
+        except ValidationError:
+            raise serializers.ValidationError("Неверный формат номера телефона")
+        return value
+
+
+class SMSVerifyCodeSerializer(serializers.Serializer):
+    """
+    Сериализатор для проверки SMS кода и входа.
+    TODO: Реализовать после интеграции SMS провайдера.
+    """
+    phone_number = serializers.CharField(max_length=17)
+    code = serializers.CharField(max_length=6, min_length=6)
+    
+    def validate_code(self, value):
+        """Валидация кода (только цифры)"""
+        if not value.isdigit():
+            raise serializers.ValidationError("Код должен содержать только цифры")
+        return value
+
+
+class SocialAuthSerializer(serializers.Serializer):
+    """
+    Сериализатор для авторизации через социальные сети.
+    TODO: Реализовать после интеграции OAuth провайдеров.
+    """
+    provider = serializers.ChoiceField(
+        choices=['google', 'facebook', 'vk', 'yandex', 'apple'],
+        help_text="Провайдер социальной сети"
+    )
+    access_token = serializers.CharField(
+        help_text="Access token от провайдера"
+    )
+    id_token = serializers.CharField(
+        required=False,
+        help_text="ID token (для некоторых провайдеров)"
+    )
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

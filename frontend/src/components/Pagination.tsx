@@ -1,50 +1,96 @@
-import Link from 'next/link'
+import { useRouter } from 'next/router'
 
-export default function Pagination({ current, totalPages }: { current: number; totalPages: number }) {
-  const make = (p: number) => ({ pathname: '/', query: { page: p } })
+interface PaginationProps {
+  currentPage: number
+  totalPages: number
+  onPageChange?: (page: number) => void
+}
+
+export default function Pagination({ currentPage, totalPages, onPageChange }: PaginationProps) {
+  const router = useRouter()
+  
+  const handlePageChange = (page: number) => {
+    if (onPageChange) {
+      onPageChange(page)
+    } else {
+      router.push({
+        pathname: router.pathname,
+        query: { ...router.query, page }
+      })
+    }
+  }
+
   const pages: number[] = []
   const max = Math.max(1, totalPages)
-  const start = Math.max(1, current - 2)
-  const end = Math.min(max, current + 2)
+  const start = Math.max(1, currentPage - 2)
+  const end = Math.min(max, currentPage + 2)
   for (let i = start; i <= end; i++) pages.push(i)
 
+  if (totalPages <= 1) return null
+
   return (
-    <nav className="inline-flex items-center gap-1" aria-label="Pagination">
-      {current > 1 ? (
-        <Link href={make(current - 1)} className="rounded-md border border-violet-200 px-3 py-1.5 text-sm text-violet-700 transition hover:bg-violet-50">←</Link>
-      ) : (
-        <span className="cursor-not-allowed rounded-md border border-violet-100 px-3 py-1.5 text-sm text-gray-300">←</span>
-      )}
-      {start > 1 ? (
+    <nav className="flex items-center justify-center gap-2" aria-label="Pagination">
+      <button
+        onClick={() => handlePageChange(currentPage - 1)}
+        disabled={currentPage <= 1}
+        className={`rounded-md border px-4 py-2 text-sm font-medium transition ${
+          currentPage > 1
+            ? 'border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300'
+            : 'border-gray-200 text-gray-300 cursor-not-allowed'
+        }`}
+      >
+        Назад
+      </button>
+      
+      {start > 1 && (
         <>
-          <Link href={make(1)} className="rounded-md border border-violet-200 px-3 py-1.5 text-sm text-violet-700 transition hover:bg-violet-50">1</Link>
-          {start > 2 ? <span className="px-1 text-gray-400">…</span> : null}
+          <button
+            onClick={() => handlePageChange(1)}
+            className="rounded-md border border-violet-200 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50 transition"
+          >
+            1
+          </button>
+          {start > 2 && <span className="px-2 text-gray-400">…</span>}
         </>
-      ) : null}
+      )}
+      
       {pages.map((p) => (
-        <Link
+        <button
           key={p}
-          href={make(p)}
-          className={
-            p === current
-              ? 'rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white'
-              : 'rounded-md border border-violet-200 px-3 py-1.5 text-sm text-violet-700 transition hover:bg-violet-50'
-          }
+          onClick={() => handlePageChange(p)}
+          className={`rounded-md border px-4 py-2 text-sm font-medium transition ${
+            p === currentPage
+              ? 'bg-violet-600 border-violet-600 text-white'
+              : 'border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300'
+          }`}
         >
           {p}
-        </Link>
+        </button>
       ))}
-      {end < max ? (
+      
+      {end < max && (
         <>
-          {end < max - 1 ? <span className="px-1 text-gray-400">…</span> : null}
-          <Link href={make(max)} className="rounded-md border border-violet-200 px-3 py-1.5 text-sm text-violet-700 transition hover:bg-violet-50">{max}</Link>
+          {end < max - 1 && <span className="px-2 text-gray-400">…</span>}
+          <button
+            onClick={() => handlePageChange(max)}
+            className="rounded-md border border-violet-200 px-4 py-2 text-sm font-medium text-violet-700 hover:bg-violet-50 transition"
+          >
+            {max}
+          </button>
         </>
-      ) : null}
-      {current < max ? (
-        <Link href={make(current + 1)} className="rounded-md border border-violet-200 px-3 py-1.5 text-sm text-violet-700 transition hover:bg-violet-50">→</Link>
-      ) : (
-        <span className="cursor-not-allowed rounded-md border border-violet-100 px-3 py-1.5 text-sm text-gray-300">→</span>
       )}
+      
+      <button
+        onClick={() => handlePageChange(currentPage + 1)}
+        disabled={currentPage >= max}
+        className={`rounded-md border px-4 py-2 text-sm font-medium transition ${
+          currentPage < max
+            ? 'border-violet-200 text-violet-700 hover:bg-violet-50 hover:border-violet-300'
+            : 'border-gray-200 text-gray-300 cursor-not-allowed'
+        }`}
+      >
+        Вперед
+      </button>
     </nav>
   )
 }

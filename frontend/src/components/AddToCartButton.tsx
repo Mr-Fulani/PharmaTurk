@@ -3,7 +3,21 @@ import { useTranslation } from 'next-i18next'
 import api, { initCartSession } from '../lib/api'
 import { useCartStore } from '../store/cart'
 
-export default function AddToCartButton({ productId, className, label }: { productId: number, className?: string, label?: string }) {
+interface AddToCartButtonProps {
+  productId?: number
+  productType?: string
+  productSlug?: string
+  className?: string
+  label?: string
+}
+
+export default function AddToCartButton({
+  productId,
+  productType = 'medicines',
+  productSlug,
+  className,
+  label
+}: AddToCartButtonProps) {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const { refresh } = useCartStore()
@@ -14,12 +28,19 @@ export default function AddToCartButton({ productId, className, label }: { produ
     try {
       initCartSession()
       const body = new URLSearchParams()
-      body.set('product_id', String(productId))
       body.set('quantity', String(1))
+      if (productId !== undefined) {
+        body.set('product_id', String(productId))
+      }
+      if (productType) {
+        body.set('product_type', productType)
+      }
+      if (productSlug) {
+        body.set('product_slug', productSlug)
+      }
       try {
         await api.post('/orders/cart/add', body, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
       } catch (e: any) {
-        // fallback на вариант со слэшем, если роут сконфигурирован иначе
         await api.post('/orders/cart/add/', body, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })
       }
       await refresh()

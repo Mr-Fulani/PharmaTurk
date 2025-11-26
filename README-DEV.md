@@ -1,0 +1,250 @@
+# Утилиты для разработки
+
+## Скрипт перезапуска проекта
+
+### `restart.sh` (Linux/macOS)
+
+Скрипт для полного перезапуска проекта с опциями очистки и пересборки.
+
+**Использование:**
+```bash
+./restart.sh [опции]
+```
+
+**Опции:**
+- `--clean` - Удалить volumes (база данных будет очищена!)
+- `--no-cache` - Пересобрать образы без кэша Docker
+- `--rebuild` - Полная пересборка (--clean + --no-cache)
+- `--logs` - Показать логи после запуска
+- `--help` - Показать справку
+
+**Примеры:**
+```bash
+# Обычный перезапуск
+./restart.sh
+
+# Пересборка без кэша
+./restart.sh --no-cache
+
+# С очисткой базы данных
+./restart.sh --clean
+
+# Полная пересборка с логами
+./restart.sh --rebuild --logs
+```
+
+### `restart.bat` (Windows)
+
+Аналогичный скрипт для Windows.
+
+**Использование:**
+```cmd
+restart.bat [опции]
+```
+
+## Утилиты для разработки
+
+### `dev-utils.sh` (Linux/macOS)
+
+Набор полезных функций для ежедневной разработки.
+
+**Загрузка утилит:**
+```bash
+source dev-utils.sh
+# или
+. dev-utils.sh
+```
+
+**Доступные команды:**
+
+#### Основные команды
+- `restart_backend` - Перезапустить backend
+- `restart_frontend` - Перезапустить frontend
+- `logs [service]` - Показать логи (всех или конкретного сервиса)
+- `status` - Показать статус контейнеров
+
+#### Django команды
+- `manage <command>` - Выполнить manage.py команду
+- `makemigrations [app]` - Создать миграции
+- `migrate` - Применить миграции
+- `createsuperuser` - Создать суперпользователя
+- `shell` - Открыть Django shell
+- `collectstatic` - Собрать статику
+
+#### Очистка
+- `clear_python_cache` - Очистить кэш Python
+- `clear_next_cache` - Очистить кэш Next.js
+- `clear_all_cache` - Очистить все кэши
+
+#### Другое
+- `backend_exec <command>` - Выполнить команду в backend контейнере
+- `frontend_exec <command>` - Выполнить команду в frontend контейнере
+- `disk_usage` - Показать использование дискового пространства
+
+**Примеры использования:**
+```bash
+# Загрузить утилиты
+. dev-utils.sh
+
+# Показать логи backend
+logs backend
+
+# Создать миграции
+makemigrations users
+
+# Применить миграции
+migrate
+
+# Открыть Django shell
+shell
+
+# Очистить все кэши
+clear_all_cache
+```
+
+## Быстрые команды Docker Compose
+
+### Просмотр логов
+```bash
+# Все сервисы
+docker compose logs -f
+
+# Конкретный сервис
+docker compose logs -f backend
+docker compose logs -f frontend
+```
+
+### Выполнение команд в контейнерах
+```bash
+# Backend
+docker compose exec backend poetry run python manage.py <command>
+docker compose exec backend poetry shell
+
+# Frontend
+docker compose exec frontend npm run <command>
+docker compose exec frontend sh
+```
+
+### Перезапуск сервисов
+```bash
+# Все сервисы
+docker compose restart
+
+# Конкретный сервис
+docker compose restart backend
+docker compose restart frontend
+```
+
+### Остановка и запуск
+```bash
+# Остановить все
+docker compose stop
+
+# Запустить все
+docker compose start
+
+# Остановить и удалить контейнеры
+docker compose down
+
+# Остановить и удалить контейнеры + volumes
+docker compose down -v
+```
+
+## Полезные команды для разработки
+
+### Django
+
+```bash
+# Создать суперпользователя
+docker compose exec backend poetry run python manage.py createsuperuser
+
+# Применить миграции
+docker compose exec backend poetry run python manage.py migrate
+
+# Создать миграции
+docker compose exec backend poetry run python manage.py makemigrations
+
+# Django shell
+docker compose exec backend poetry run python manage.py shell
+
+# Собрать статику
+docker compose exec backend poetry run python manage.py collectstatic
+
+# Сбросить пароль пользователя
+docker compose exec backend poetry run python manage.py shell -c "from django.contrib.auth import get_user_model; User = get_user_model(); user = User.objects.get(username='admin'); user.set_password('newpassword'); user.save()"
+```
+
+### Frontend
+
+```bash
+# Установить зависимости
+docker compose exec frontend npm install
+
+# Запустить линтер
+docker compose exec frontend npm run lint
+
+# Собрать проект
+docker compose exec frontend npm run build
+```
+
+### Очистка
+
+```bash
+# Очистить кэш Python
+find . -type d -name __pycache__ -exec rm -r {} +
+find . -type f -name "*.pyc" -delete
+
+# Очистить кэш Next.js
+rm -rf frontend/.next
+rm -rf frontend/node_modules/.cache
+
+# Очистить Docker кэш
+docker system prune -f
+
+# Очистить неиспользуемые образы
+docker image prune -a -f
+```
+
+## Доступные сервисы
+
+После запуска проекта доступны:
+
+- **Backend API**: http://localhost:8000
+- **Frontend**: http://localhost:3001
+- **Admin Panel**: http://localhost:8000/admin/
+- **Swagger Docs**: http://localhost:8000/api/docs/
+- **PostgreSQL**: localhost:5433
+- **Redis**: localhost:6379
+- **OpenSearch**: http://localhost:9200
+
+## Решение проблем
+
+### Проблемы с портами
+
+Если порты заняты, измените их в `docker-compose.yml`:
+```yaml
+ports:
+  - "8001:8000"  # Вместо 8000:8000
+```
+
+### Проблемы с кэшем
+
+Используйте полную пересборку:
+```bash
+./restart.sh --rebuild
+```
+
+### Проблемы с базой данных
+
+Очистите volumes (⚠️ удалит все данные):
+```bash
+./restart.sh --clean
+```
+
+### Проблемы с зависимостями
+
+Пересоберите образы без кэша:
+```bash
+./restart.sh --no-cache
+```
+
