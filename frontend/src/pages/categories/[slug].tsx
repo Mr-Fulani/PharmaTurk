@@ -108,10 +108,77 @@ const createTreeItem = (category: Category): SidebarTreeItem => ({
   type: 'category'
 })
 
-const fallbackGenderItems: Record<string, string[]> = {
-  male: ['Футболки', 'Рубашки', 'Штаны', 'Костюмы'],
-  female: ['Блузки', 'Платья', 'Кофты', 'Юбки'],
-  kids: ['Футболки', 'Шорты', 'Комбинезоны']
+// Подкатегории для мужской одежды
+const MALE_CLOTHING_ITEMS = [
+  { name: 'СВИТЕРЫ', keywords: ['sweaters', 'свитеры', 'свитер'] },
+  { name: 'КУРТКИ', keywords: ['jackets', 'куртки', 'куртка'] },
+  { name: 'ПУХОВИКИ | ЖИЛЕТЫ', keywords: ['down-jackets', 'vests', 'пуховики', 'жилеты', 'пуховик', 'жилет'] },
+  { name: 'ПАЛЬТО И ТРЕНЧИ', keywords: ['coats', 'trench', 'пальто', 'тренчи', 'тренч', 'плащи'] },
+  { name: 'КОЖАНЫЕ', keywords: ['leather', 'кожаные', 'кожа'] },
+  { name: 'БРЮКИ', keywords: ['trousers', 'pants', 'брюки', 'штаны'] },
+  { name: 'ДЖИНСЫ', keywords: ['jeans', 'джинсы'] },
+  { name: 'ФУТБОЛКИ', keywords: ['t-shirts', 'футболки', 'футболка'] },
+  { name: 'РУБАШКИ', keywords: ['shirts', 'рубашки', 'рубашка'] },
+  { name: 'ТОЛСТОВКИ', keywords: ['hoodies', 'sweatshirts', 'толстовки', 'худи'] },
+  { name: 'СВИТЕРЫ | КАРДИГАНЫ', keywords: ['cardigans', 'кардиганы', 'кардиган'] },
+  { name: 'СПОРТИВНЫЕ КОСТЮМЫ', keywords: ['tracksuits', 'sport-suits', 'спортивные костюмы'] },
+  { name: 'КЛАССИЧЕСКИЕ КОСТЮМЫ', keywords: ['suits', 'classic-suits', 'классические костюмы', 'костюмы'] },
+  { name: 'ПОЛО', keywords: ['polo', 'поло'] },
+  { name: 'КУРТКИ-РУБАШКИ', keywords: ['overshirts', 'shackets', 'куртки-рубашки'] },
+  { name: 'БЛЕЙЗЕРЫ', keywords: ['blazers', 'блейзеры', 'пиджаки'] },
+  { name: 'СУМКИ | РЮКЗАКИ', keywords: ['bags', 'backpacks', 'сумки', 'рюкзаки'] },
+  { name: 'ШОРТЫ', keywords: ['shorts', 'шорты'] },
+]
+
+// Подкатегории для женской одежды (включает все из мужской + специфичные)
+const FEMALE_CLOTHING_ITEMS = [
+  { name: 'СВИТЕРЫ', keywords: ['sweaters', 'свитеры', 'свитер'] },
+  { name: 'КУРТКИ', keywords: ['jackets', 'куртки', 'куртка'] },
+  { name: 'ПУХОВИКИ | ЖИЛЕТЫ', keywords: ['down-jackets', 'vests', 'пуховики', 'жилеты', 'пуховик', 'жилет'] },
+  { name: 'ПАЛЬТО И ТРЕНЧИ', keywords: ['coats', 'trench', 'пальто', 'тренчи', 'тренч', 'плащи'] },
+  { name: 'КОЖАНЫЕ', keywords: ['leather', 'кожаные', 'кожа'] },
+  { name: 'БРЮКИ', keywords: ['trousers', 'pants', 'брюки', 'штаны'] },
+  { name: 'ДЖИНСЫ', keywords: ['jeans', 'джинсы'] },
+  { name: 'ФУТБОЛКИ', keywords: ['t-shirts', 'футболки', 'футболка'] },
+  { name: 'РУБАШКИ', keywords: ['shirts', 'рубашки', 'рубашка'] },
+  { name: 'ТОЛСТОВКИ', keywords: ['hoodies', 'sweatshirts', 'толстовки', 'худи'] },
+  { name: 'СВИТЕРЫ | КАРДИГАНЫ', keywords: ['cardigans', 'кардиганы', 'кардиган'] },
+  { name: 'СПОРТИВНЫЕ КОСТЮМЫ', keywords: ['tracksuits', 'sport-suits', 'спортивные костюмы'] },
+  { name: 'КЛАССИЧЕСКИЕ КОСТЮМЫ', keywords: ['suits', 'classic-suits', 'классические костюмы', 'костюмы'] },
+  { name: 'ПОЛО', keywords: ['polo', 'поло'] },
+  { name: 'КУРТКИ-РУБАШКИ', keywords: ['overshirts', 'shackets', 'куртки-рубашки'] },
+  { name: 'БЛЕЙЗЕРЫ', keywords: ['blazers', 'блейзеры', 'пиджаки'] },
+  { name: 'СУМКИ | РЮКЗАКИ', keywords: ['bags', 'backpacks', 'сумки', 'рюкзаки'] },
+  { name: 'ПЛАТЬЯ', keywords: ['dresses', 'платья', 'платье'] },
+  { name: 'ЮБКИ', keywords: ['skirts', 'юбки', 'юбка'] },
+  { name: 'БЛУЗКИ', keywords: ['blouses', 'блузки', 'блузка'] },
+  { name: 'ТОПЫ', keywords: ['tops', 'топы', 'топ'] },
+  { name: 'ШОРТЫ', keywords: ['shorts', 'шорты'] },
+]
+
+// Подкатегории для детской одежды (может быть все, что подходит детям)
+const KIDS_CLOTHING_ITEMS = [
+  { name: 'СВИТЕРЫ', keywords: ['sweaters', 'свитеры', 'свитер'] },
+  { name: 'КУРТКИ', keywords: ['jackets', 'куртки', 'куртка'] },
+  { name: 'ПУХОВИКИ | ЖИЛЕТЫ', keywords: ['down-jackets', 'vests', 'пуховики', 'жилеты', 'пуховик', 'жилет'] },
+  { name: 'ПАЛЬТО И ТРЕНЧИ', keywords: ['coats', 'trench', 'пальто', 'тренчи', 'тренч', 'плащи'] },
+  { name: 'БРЮКИ', keywords: ['trousers', 'pants', 'брюки', 'штаны'] },
+  { name: 'ДЖИНСЫ', keywords: ['jeans', 'джинсы'] },
+  { name: 'ФУТБОЛКИ', keywords: ['t-shirts', 'футболки', 'футболка'] },
+  { name: 'РУБАШКИ', keywords: ['shirts', 'рубашки', 'рубашка'] },
+  { name: 'ТОЛСТОВКИ', keywords: ['hoodies', 'sweatshirts', 'толстовки', 'худи'] },
+  { name: 'СПОРТИВНЫЕ КОСТЮМЫ', keywords: ['tracksuits', 'sport-suits', 'спортивные костюмы'] },
+  { name: 'ПОЛО', keywords: ['polo', 'поло'] },
+  { name: 'ПЛАТЬЯ', keywords: ['dresses', 'платья', 'платье'] },
+  { name: 'ЮБКИ', keywords: ['skirts', 'юбки', 'юбка'] },
+  { name: 'СУМКИ | РЮКЗАКИ', keywords: ['bags', 'backpacks', 'сумки', 'рюкзаки'] },
+  { name: 'ШОРТЫ', keywords: ['shorts', 'шорты'] },
+]
+
+const GENDER_SUBITEMS: Record<string, typeof MALE_CLOTHING_ITEMS> = {
+  male: MALE_CLOTHING_ITEMS,
+  female: FEMALE_CLOTHING_ITEMS,
+  kids: KIDS_CLOTHING_ITEMS,
 }
 
 const clothingGenderKeywords: Record<string, string[]> = {
@@ -119,8 +186,6 @@ const clothingGenderKeywords: Record<string, string[]> = {
   female: ['female', 'women', 'жен', 'женская'],
   kids: ['kids', 'children', 'дет', 'детская']
 }
-
-const createFallbackItems = (_items: string[]): SidebarTreeItem[] => []
 
 const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => {
   const sections = [
@@ -130,46 +195,208 @@ const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => 
   ]
 
   return sections.map(({ key, title }) => {
-    const keywords = clothingGenderKeywords[key] || []
-    const children = categories
-      .filter((category) =>
-        keywords.some((keyword) => category.slug.includes(keyword) || category.name.toLowerCase().includes(keyword))
-      )
-      .map((category) => createTreeItem(category))
+    const genderKeywords = clothingGenderKeywords[key] || []
+    const subitemsStructure = GENDER_SUBITEMS[key] || []
+    
+    const genderCategories = categories.filter((category) => {
+        // Check explicit gender field if available
+        if (category.gender) {
+            return category.gender === key
+        }
+        // Fallback to keyword matching in slug/name
+        return genderKeywords.some((keyword) => category.slug.includes(keyword) || category.name.toLowerCase().includes(keyword))
+    })
 
+    const subcategories: SidebarTreeItem[] = []
+    const usedCategoryIds = new Set<number>()
+    
+    // Добавляем подкатегории для данного гендера
+    subitemsStructure.forEach((itemStruct, index) => {
+      const match = genderCategories.find(cat => 
+        itemStruct.keywords.some(kw => cat.slug.toLowerCase().includes(kw) || cat.name.toLowerCase().includes(kw))
+      )
+      
+      if (match && !usedCategoryIds.has(match.id)) {
+        usedCategoryIds.add(match.id)
+        subcategories.push({
+          id: `cat-${match.id}`,
+          name: itemStruct.name,
+          slug: match.slug,
+          dataId: match.id,
+          count: match.product_count,
+          type: 'category'
+        })
+      } else {
+        // Показываем подкатегорию даже если данных нет
+        subcategories.push({
+          id: `placeholder-${key}-${index}`,
+          name: itemStruct.name,
+          slug: undefined,
+          dataId: undefined,
+          count: undefined,
+          type: 'category'
+        })
+      }
+    })
+
+    // Добавляем оставшиеся категории, которых нет в структуре
+    genderCategories.forEach(cat => {
+        if (!usedCategoryIds.has(cat.id)) {
+            subcategories.push(createTreeItem(cat))
+        }
+    })
+
+    // Создаем главный раздел с вложенными подкатегориями
     return {
       title,
-      items: children.length > 0 ? children : createFallbackItems(fallbackGenderItems[key] || [])
+      items: [{
+        id: `section-${key}`,
+        name: title,
+        type: 'category',
+        children: subcategories
+      }]
     }
   })
-
 }
-const medicineKeywordGroups = [
-  { label: 'Обезболивающие', keywords: ['pain', 'обезбол'] },
-  { label: 'Антибиотики', keywords: ['antibiotic', 'антибиот'] },
-  { label: 'Витамины и иммунитет', keywords: ['vitamin', 'витамин'] },
-  { label: 'Гинекология', keywords: ['gynec', 'гинек'] },
-  { label: 'Онкология', keywords: ['oncology', 'онколо', 'рак'] }
+// Подкатегории для обезболивающих
+const PAINKILLERS_SUBITEMS = [
+  { name: 'Анальгетики', keywords: ['analgesic', 'анальгетик'] },
+  { name: 'Противовоспалительные', keywords: ['anti-inflammatory', 'противовоспалител'] },
+  { name: 'Спазмолитики', keywords: ['antispasmodic', 'спазмолитик'] },
+  { name: 'Обезболивающие мази', keywords: ['pain-relief-cream', 'обезболивающая мазь'] },
+  { name: 'Мигрень и головная боль', keywords: ['migraine', 'headache', 'мигрень', 'головная боль'] },
+]
+
+// Подкатегории для антибиотиков
+const ANTIBIOTICS_SUBITEMS = [
+  { name: 'Пенициллины', keywords: ['penicillin', 'пенициллин'] },
+  { name: 'Цефалоспорины', keywords: ['cephalosporin', 'цефалоспорин'] },
+  { name: 'Макролиды', keywords: ['macrolide', 'макролид'] },
+  { name: 'Фторхинолоны', keywords: ['fluoroquinolone', 'фторхинолон'] },
+  { name: 'Тетрациклины', keywords: ['tetracycline', 'тетрациклин'] },
+  { name: 'Антибиотики широкого спектра', keywords: ['broad-spectrum', 'широкого спектра'] },
+]
+
+// Подкатегории для витаминов
+const VITAMINS_SUBITEMS = [
+  { name: 'Витамин C', keywords: ['vitamin-c', 'витамин с', 'аскорбиновая'] },
+  { name: 'Витамин D', keywords: ['vitamin-d', 'витамин д'] },
+  { name: 'Витамин B комплекс', keywords: ['vitamin-b', 'витамин б', 'витамин в'] },
+  { name: 'Мультивитамины', keywords: ['multivitamin', 'мультивитамин'] },
+  { name: 'Кальций и магний', keywords: ['calcium', 'magnesium', 'кальций', 'магний'] },
+  { name: 'Железо', keywords: ['iron', 'железо'] },
+  { name: 'Омега-3', keywords: ['omega-3', 'омега-3'] },
+  { name: 'Иммуномодуляторы', keywords: ['immunomodulator', 'иммуномодулятор'] },
+]
+
+// Подкатегории для гинекологии
+const GYNECOLOGY_SUBITEMS = [
+  { name: 'Контрацептивы', keywords: ['contraceptive', 'контрацептив'] },
+  { name: 'Гормональные препараты', keywords: ['hormonal', 'гормональн'] },
+  { name: 'Противовоспалительные', keywords: ['anti-inflammatory', 'противовоспалител'] },
+  { name: 'Молочница', keywords: ['candidiasis', 'thrush', 'молочница', 'кандидоз'] },
+  { name: 'Климакс', keywords: ['menopause', 'климакс'] },
+  { name: 'Беременность', keywords: ['pregnancy', 'беременност'] },
+]
+
+// Подкатегории для онкологии
+const ONCOLOGY_SUBITEMS = [
+  { name: 'Химиотерапия', keywords: ['chemotherapy', 'химиотерап'] },
+  { name: 'Иммунотерапия', keywords: ['immunotherapy', 'иммунотерап'] },
+  { name: 'Обезболивание', keywords: ['pain-management', 'обезболивани'] },
+  { name: 'Поддерживающая терапия', keywords: ['supportive-care', 'поддерживающ'] },
+  { name: 'Восстановление', keywords: ['recovery', 'восстановлени'] },
+]
+
+const MEDICINE_GROUPS = [
+  {
+    label: 'Обезболивающие',
+    keywords: ['pain', 'обезбол'],
+    subitems: PAINKILLERS_SUBITEMS
+  },
+  {
+    label: 'Антибиотики',
+    keywords: ['antibiotic', 'антибиот'],
+    subitems: ANTIBIOTICS_SUBITEMS
+  },
+  {
+    label: 'Витамины и иммунитет',
+    keywords: ['vitamin', 'витамин'],
+    subitems: VITAMINS_SUBITEMS
+  },
+  {
+    label: 'Гинекология',
+    keywords: ['gynec', 'гинек'],
+    subitems: GYNECOLOGY_SUBITEMS
+  },
+  {
+    label: 'Онкология',
+    keywords: ['oncology', 'онколо', 'рак'],
+    subitems: ONCOLOGY_SUBITEMS
+  }
 ]
 
 const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] =>
-  medicineKeywordGroups.map((group) => {
-    const children: SidebarTreeItem[] = categories
-      .filter((category) =>
-        group.keywords.some((keyword) => category.slug.includes(keyword) || category.name.toLowerCase().includes(keyword))
-      )
-      .map((category) => ({
-        id: `med-${category.id}`,
-        name: category.name,
-        slug: category.slug,
-        dataId: category.id,
-        count: category.product_count,
-        type: 'category'
-      }))
+  MEDICINE_GROUPS.map((group) => {
+    const groupCategories = categories.filter((category) =>
+      group.keywords.some((keyword) => category.slug.includes(keyword) || category.name.toLowerCase().includes(keyword))
+    )
 
+    const subcategories: SidebarTreeItem[] = []
+    const usedCategoryIds = new Set<number>()
+    
+    // Добавляем подкатегории для данной группы
+    group.subitems.forEach((itemStruct, index) => {
+      const match = groupCategories.find(cat => 
+        itemStruct.keywords.some(kw => cat.slug.toLowerCase().includes(kw) || cat.name.toLowerCase().includes(kw))
+      )
+      
+      if (match && !usedCategoryIds.has(match.id)) {
+        usedCategoryIds.add(match.id)
+        subcategories.push({
+          id: `med-${match.id}`,
+          name: itemStruct.name,
+          slug: match.slug,
+          dataId: match.id,
+          count: match.product_count,
+          type: 'category'
+        })
+      } else {
+        // Показываем подкатегорию даже если данных нет
+        subcategories.push({
+          id: `placeholder-med-${group.label}-${index}`,
+          name: itemStruct.name,
+          slug: undefined,
+          dataId: undefined,
+          count: undefined,
+          type: 'category'
+        })
+      }
+    })
+
+    // Добавляем оставшиеся категории группы, которых нет в структуре
+    groupCategories.forEach(cat => {
+        if (!usedCategoryIds.has(cat.id)) {
+            subcategories.push({
+              id: `med-${cat.id}`,
+              name: cat.name,
+              slug: cat.slug,
+              dataId: cat.id,
+              count: cat.product_count,
+              type: 'category'
+            })
+        }
+    })
+
+    // Создаем главный раздел с вложенными подкатегориями
     return {
       title: group.label,
-      items: children.length > 0 ? children : createFallbackItems([group.label])
+      items: [{
+        id: `section-med-${group.label}`,
+        name: group.label,
+        type: 'category',
+        children: subcategories
+      }]
     }
   })
 

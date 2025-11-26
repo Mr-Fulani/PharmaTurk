@@ -191,18 +191,25 @@ export default function CategorySidebar({
         <div key={item.id} className="space-y-1">
           <button
             type="button"
-            className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm font-medium text-gray-700 hover:text-violet-700"
+            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm font-medium ${
+              item.dataId ? 'text-gray-700 hover:text-violet-700 cursor-pointer' : 'text-gray-400 cursor-not-allowed'
+            }`}
             onClick={() => {
               if (hasChildren) {
                 toggleTreeItem(item.id)
                 return
               }
-              if (item.type === 'brand') {
-                toggleBrandFilter(item.dataId ?? 0, item.slug || undefined)
+              // Не применяем фильтры для placeholder элементов без dataId
+              if (!item.dataId) {
                 return
               }
-              toggleCategoryFilter(item.dataId ?? 0, item.slug || undefined)
+              if (item.type === 'brand') {
+                toggleBrandFilter(item.dataId, item.slug || undefined)
+                return
+              }
+              toggleCategoryFilter(item.dataId, item.slug || undefined)
             }}
+            disabled={!item.dataId && !hasChildren}
           >
             <span className="flex-1 truncate">{item.name}</span>
             {item.count !== undefined && <span className="ml-3 text-xs text-gray-500">({item.count})</span>}
@@ -263,12 +270,19 @@ export default function CategorySidebar({
 
           {categoryGroups.length > 0 && (
             <div className="space-y-5 border-b pb-4">
-              {categoryGroups.map((group) => (
-                <div key={group.title}>
-                  <h3 className="text-base font-semibold text-gray-900 mb-3">{group.title}</h3>
-                  <div className="space-y-1">{renderTreeItems(group.items)}</div>
-                </div>
-              ))}
+              {categoryGroups.map((group) => {
+                // Если первый элемент уже содержит название группы, не показываем заголовок отдельно
+                const firstItem = group.items[0]
+                const shouldHideTitle = firstItem && firstItem.name === group.title
+                return (
+                  <div key={group.title}>
+                    {!shouldHideTitle && (
+                      <h3 className="text-base font-semibold text-gray-900 mb-3">{group.title}</h3>
+                    )}
+                    <div className="space-y-1">{renderTreeItems(group.items)}</div>
+                  </div>
+                )
+              })}
             </div>
           )}
 
