@@ -21,6 +21,8 @@ db.sqlite3
 media/
 staticfiles/
 local_settings.py
+celerybeat-schedule
+celerybeat.pid
 
 # Docker
 *.pid
