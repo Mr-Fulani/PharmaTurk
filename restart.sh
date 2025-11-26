@@ -157,6 +157,32 @@ sleep 5
 info "Проверяем статус контейнеров..."
 docker compose ps
 
+# Ожидание готовности базы данных
+info "Ожидаем готовности базы данных..."
+for i in {1..30}; do
+    if docker compose exec -T postgres pg_isready -U pharmaturk > /dev/null 2>&1; then
+        success "База данных готова"
+        break
+    fi
+    if [ $i -eq 30 ]; then
+        warning "База данных не готова после 30 попыток"
+    else
+        sleep 1
+    fi
+done
+
+# Применение миграций Django
+info "Применяем миграции Django (если есть)..."
+if docker compose ps backend | grep -q "Up"; then
+    if docker compose exec -T backend poetry run python manage.py migrate --noinput; then
+        success "Миграции применены"
+    else
+        warning "Ошибка при применении миграций (возможно, контейнер еще не готов)"
+    fi
+else
+    warning "Backend контейнер не запущен, миграции не применены"
+fi
+
 # Показ логов (если указано)
 if [ "$SHOW_LOGS" = true ]; then
     info "Показываем логи (Ctrl+C для выхода)..."
@@ -175,4 +201,9 @@ info "  - Swagger Docs:   http://localhost:8000/api/docs/"
 info "  - PostgreSQL:     localhost:5433"
 info "  - Redis:          localhost:6379"
 info "  - OpenSearch:     localhost:9200"
+info ""
+info "Hot-reload включен:"
+info "  - Изменения в backend и frontend подхватываются автоматически"
+info "  - Backend использует runserver (автоперезагрузка при изменении .py файлов)"
+info "  - Frontend использует Next.js dev server (hot-reload для React компонентов)"
 

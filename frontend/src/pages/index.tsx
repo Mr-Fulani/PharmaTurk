@@ -123,8 +123,38 @@ export default function Home({ brands }: HomePageProps) {
   ]
 
   const handleBrandClick = (brand: Brand) => {
-    // Направляем к товарам бренда через категорию одежды с фильтром по бренду
-    router.push(`/categories/clothing?brand=${brand.slug}`)
+    // Определяем тип товаров бренда на основе названия
+    // Турецкие бренды одежды (расширенный список)
+    const clothingBrands = [
+      'Zara', 'LC Waikiki', 'Koton', 'DeFacto', 'Mavi', 'Boyner', 'Beymen', 
+      'Network', 'Colin\'s', 'Kigili', 'Altınyıldız', 'Damat', 'Tween', 
+      'Sarar', 'İpekyol', 'Mango', 'H&M', 'Pull & Bear', 'Bershka', 
+      'Stradivarius', 'Massimo Dutti', 'Oysho', 'Zara Home', 'Uterqüe'
+    ]
+    // Турецкие бренды обуви
+    const shoesBrands: string[] = []
+    // Турецкие бренды электроники
+    const electronicsBrands: string[] = []
+    // Бренды медикаментов
+    const medicinesBrands = [
+      'Bayer', 'Pfizer', 'Novartis', 'Roche', 'Sanofi', 'GlaxoSmithKline', 
+      'Merck', 'Johnson & Johnson', 'Eli Lilly', 'AstraZeneca', 'Apple', 'Samsung'
+    ]
+    
+    let categoryType = 'clothing' // По умолчанию одежда для турецких брендов
+    
+    if (clothingBrands.includes(brand.name)) {
+      categoryType = 'clothing'
+    } else if (shoesBrands.includes(brand.name)) {
+      categoryType = 'shoes'
+    } else if (electronicsBrands.includes(brand.name)) {
+      categoryType = 'electronics'
+    } else if (medicinesBrands.includes(brand.name)) {
+      categoryType = 'medicines'
+    }
+    
+    // Открываем категорию с фильтром по brand_id
+    router.push(`/categories/${categoryType}?brand_id=${brand.id}`)
   }
 
   const handleCategoryClick = (category: CategoryBanner) => {

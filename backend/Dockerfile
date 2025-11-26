@@ -26,11 +26,15 @@ RUN poetry install --no-root --no-interaction --no-ansi
 # Copy app source
 COPY . .
 
+# Copy and make entrypoint script executable
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
 # Compile translations and collect static at build-time
 RUN poetry run django-admin compilemessages || true \
  && poetry run python manage.py collectstatic --noinput || true
 
 EXPOSE 8000
 
-CMD ["bash", "-lc", "poetry run python manage.py runserver 0.0.0.0:8000"]
+CMD ["bash", "/app/docker-entrypoint.sh"]
 

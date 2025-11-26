@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import axios from 'axios'
 import { getApiForCategory } from '../../lib/api'
 import ProductCard from '../../components/ProductCard'
@@ -219,10 +219,57 @@ export default function CategoryPage({
   })
   const categoryGroups = useMemo(() => getCategorySections(categoryType, categories), [categoryType, categories])
   const resolvedBrandType = useMemo(() => resolveBrandProductType(categoryType), [categoryType])
+  const filtersInitialized = useRef<string>('')
 
   useEffect(() => {
     setBrandOptions(brands)
   }, [brands])
+
+  // Инициализация фильтров из query параметров
+  useEffect(() => {
+    if (!router.isReady) return
+    
+    const { brand_id } = router.query
+    const brandIdStr = brand_id ? (Array.isArray(brand_id) ? brand_id[0] : String(brand_id)) : ''
+    const initKey = `${router.asPath}-${brandIdStr}`
+    
+    // Если уже инициализировали для этого URL, пропускаем
+    if (filtersInitialized.current === initKey) return
+    
+    if (brand_id) {
+      const brandId = Array.isArray(brand_id) ? parseInt(brand_id[0]) : parseInt(brand_id as string)
+      if (!isNaN(brandId)) {
+        setFilters((prev) => {
+          // Если уже установлен правильный бренд, просто обновляем ключ
+          if (prev.brands.length === 1 && prev.brands[0] === brandId) {
+            filtersInitialized.current = initKey
+            return prev
+          }
+          filtersInitialized.current = initKey
+          return {
+            ...prev,
+            brands: [brandId],
+            brandSlugs: []
+          }
+        })
+        return
+      }
+    } else {
+      // Если brand_id нет в URL, очищаем фильтр брендов только если он был установлен
+      setFilters((prev) => {
+        if (prev.brands.length === 0) {
+          filtersInitialized.current = initKey
+          return prev
+        }
+        filtersInitialized.current = initKey
+        return {
+          ...prev,
+          brands: [],
+          brandSlugs: []
+        }
+      })
+    }
+  }, [router.isReady, router.asPath, router.query.brand_id])
 
   useEffect(() => {
     const loadBrands = async () => {
@@ -242,14 +289,35 @@ export default function CategoryPage({
         const response = await axios.get(`${base}/catalog/brands`, { params })
         const list = Array.isArray(response.data) ? response.data : response.data.results || []
         setBrandOptions(list)
+        // НЕ обновляем filters.brands если brand_id есть в URL - он должен быть установлен через инициализацию
+        const { brand_id } = router.query
+        if (brand_id) {
+          // Если brand_id есть в URL, не трогаем фильтры - они должны быть установлены через инициализацию
+          const brandIdFromUrl = Array.isArray(brand_id) ? parseInt(brand_id[0]) : parseInt(brand_id as string)
+          if (!isNaN(brandIdFromUrl)) {
+            // Просто проверяем, что бренд доступен, но не меняем фильтры
+            const allowedIds = new Set(list.map((brand: any) => brand.id))
+            if (allowedIds.has(brandIdFromUrl)) {
+              // Бренд доступен - фильтры должны быть установлены через инициализацию
+              return
+            }
+          }
+        }
+        
+        // Если нет brand_id в URL, очищаем только несуществующие бренды
         setFilters((prev) => {
           const allowedIds = new Set(list.map((brand: any) => brand.id))
           const allowedSlugs = new Set(list.map((brand: any) => brand.slug))
           const nextBrandIds = prev.brands.filter((id) => allowedIds.has(id))
           const nextBrandSlugs = prev.brandSlugs.filter((slug) => !slug || allowedSlugs.has(slug))
-          if (nextBrandIds.length === prev.brands.length && nextBrandSlugs.length === prev.brandSlugs.length) {
+          
+          // Обновляем только если действительно изменилось
+          if (nextBrandIds.length === prev.brands.length && 
+              nextBrandSlugs.length === prev.brandSlugs.length &&
+              nextBrandIds.every((id, idx) => prev.brands[idx] === id)) {
             return prev
           }
+          
           return {
             ...prev,
             brands: nextBrandIds,
@@ -263,11 +331,21 @@ export default function CategoryPage({
 
     loadBrands()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedBrandType, filters.categories, filters.categorySlugs, filters.inStock])
+  }, [resolvedBrandType, filters.categories, filters.categorySlugs, filters.inStock, router.query.brand_id])
 
   // Загрузка товаров с фильтрами
   useEffect(() => {
     const loadProducts = async () => {
+      // Если brand_id есть в URL, но фильтры еще не инициализированы, ждем
+      const { brand_id } = router.query
+      if (brand_id && router.isReady) {
+        const brandIdFromUrl = Array.isArray(brand_id) ? parseInt(brand_id[0]) : parseInt(brand_id as string)
+        if (!isNaN(brandIdFromUrl) && !filters.brands.includes(brandIdFromUrl)) {
+          // Фильтры еще не инициализированы - пропускаем загрузку
+          return
+        }
+      }
+      
       setLoading(true)
       try {
         const params: any = {
@@ -325,7 +403,23 @@ export default function CategoryPage({
     }
 
     loadProducts()
-  }, [filters, currentPage, categoryType])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    router.isReady,
+    router.query.brand_id,
+    filters.categories,
+    filters.categorySlugs,
+    filters.brands,
+    filters.brandSlugs,
+    filters.subcategories,
+    filters.subcategorySlugs,
+    filters.priceMin,
+    filters.priceMax,
+    filters.inStock,
+    filters.sortBy,
+    currentPage,
+    categoryType
+  ])
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page)
@@ -526,7 +620,7 @@ export default function CategoryPage({
 
 // Сохраняем оригинальную getServerSideProps для совместимости
 export const getServerSideProps: GetServerSideProps = async (context) => {
-  const { slug, page = 1, brand } = context.query
+  const { slug, page = 1, brand, brand_id } = context.query
   const pageSize = 12
 
   try {
@@ -549,6 +643,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
 
     const brandSlug = Array.isArray(brand) ? brand[0] : brand
+    const brandId = Array.isArray(brand_id) ? brand_id[0] : brand_id
     const brandProductType = resolveBrandProductType(categoryType)
 
     if (categoryType === 'medicines') {
@@ -558,7 +653,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const brands = brandRes.data.results || []
 
       const productParams: Record<string, any> = { page, page_size: pageSize }
-      if (brandSlug) {
+      if (brandId) {
+        productParams.brand_id = brandId
+      } else if (brandSlug) {
         const selectedBrand = brands.find((b: any) => b.slug === brandSlug)
         if (selectedBrand) {
           productParams.brand_id = selectedBrand.id
@@ -601,7 +698,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const brands = brandRes.data.results || []
 
       const productParams: any = { page, page_size: pageSize }
-      if (brandSlug) {
+      if (brandId) {
+        productParams.brand_id = brandId
+      } else if (brandSlug) {
         const selectedBrand = brands.find((b: any) => b.slug === brandSlug)
         if (selectedBrand) {
           productParams.brand_id = selectedBrand.id

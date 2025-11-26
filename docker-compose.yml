@@ -42,6 +42,8 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - /app/__pycache__
+      - /app/*/__pycache__
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,7 +63,8 @@ services:
       VAPI_API_KEY: ${VAPI_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
-    command: bash -c "poetry run python manage.py migrate --noinput && poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8000"
+      USE_RUNSERVER: ${USE_RUNSERVER:-1}
+    entrypoint: ["bash", "/app/docker-entrypoint.sh"]
 
   frontend:
     build:
@@ -74,12 +77,17 @@ services:
     restart: unless-stopped
     ports:
       - "3001:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
     environment:
       - NODE_ENV=development
       - NEXT_TELEMETRY_DISABLED=1
       - NEXT_DISABLE_SWC_NATIVE=1
       - INTERNAL_API_BASE=http://backend:8000
       - NEXT_PUBLIC_API_BASE=http://localhost:8000/api
+      - WATCHPACK_POLLING=true
     depends_on:
       - backend
 
@@ -89,6 +97,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./backend:/app
+      - /app/__pycache__
+      - /app/*/__pycache__
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,6 +124,8 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./backend:/app
+      - /app/__pycache__
+      - /app/*/__pycache__
     depends_on:
       postgres:
         condition: service_healthy
