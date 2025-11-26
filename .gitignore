@@ -37,6 +37,13 @@ docker-compose.override.yml
 *.swp
 *.swo
 
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
 # Testing
 .cache/
 .coverage
