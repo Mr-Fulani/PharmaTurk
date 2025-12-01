@@ -688,15 +688,19 @@ class Banner(models.Model):
         ('main', _('Главный баннер (вверху страницы)')),
         ('after_brands', _('После блока "Популярные бренды"')),
         ('before_footer', _('Перед футером')),
+        ('after_popular_products', _('После популярных товаров')),
     ]
     
-    title = models.CharField(_("Заголовок"), max_length=200, blank=True, help_text=_("Заголовок, отображаемый поверх медиа-контента"))
+    title = models.CharField(
+        max_length=200,
+        verbose_name='Заголовок баннера'
+    )
     position = models.CharField(
-        _("Позиция"),
-        max_length=20,
+        max_length=50,
         choices=POSITION_CHOICES,
         default='main',
-        help_text=_("Где на странице отображается баннер")
+        verbose_name='Позиция баннера',
+        db_index=True
     )
     
     # Ссылка при клике

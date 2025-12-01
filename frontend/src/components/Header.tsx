@@ -180,20 +180,20 @@ export default function Header() {
             {t('menu_cart', 'Корзина')} {isClient && itemsCount ? `(${itemsCount})` : ''}
           </Link>
           {user ? (
-            <button 
-              onClick={() => { setShowSuggestions(false); logout() }} 
+              <button 
+                onClick={() => { setShowSuggestions(false); logout() }} 
               className="rounded-md border border-red-200 px-3 py-1.5 text-gray-800 transition-all duration-200 hover:bg-red-100 hover:border-red-400 hover:shadow-md"
-            >
-              {t('header_logout', 'Выйти')}
-            </button>
+              >
+                {t('header_logout', 'Выйти')}
+              </button>
           ) : (
-            <Link 
-              href="/auth" 
-              onClick={() => setShowSuggestions(false)}
+              <Link 
+                href="/auth" 
+                onClick={() => setShowSuggestions(false)}
               className="rounded-md bg-red-600 px-3 py-1.5 font-medium text-white transition-all duration-200 hover:bg-red-700 hover:shadow-lg hover:scale-105"
-            >
-              {t('menu_login_register', 'Войти / Регистрация')}
-            </Link>
+              >
+                {t('menu_login_register', 'Войти / Регистрация')}
+              </Link>
           )}
           <button 
             onClick={() => { setShowSuggestions(false); toggleLocale() }} 

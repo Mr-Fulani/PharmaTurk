@@ -8,6 +8,8 @@ import axios from 'axios'
 import { getApiForCategory } from '../lib/api'
 import BannerCarousel from '../components/BannerCarousel'
 import PopularProductsCarousel from '../components/PopularProductsCarousel'
+import TestimonialsCarousel from '../components/TestimonialsCarousel'
+import Footer from '../components/Footer'
 
 interface Brand {
   id: number
@@ -196,10 +198,11 @@ export default function Home({ brands }: HomePageProps) {
         <title>PharmaTurk - Главная</title>
       </Head>
       
+      <main>
       <div className="mx-auto max-w-6xl px-6 py-8">
-        {/* Главный баннер */}
-        <div className="mb-12">
-          <BannerCarousel position="main" />
+          {/* Главный баннер */}
+          <div className="mb-12">
+            <BannerCarousel position="main" />
         </div>
 
         {/* Brands Section */}
@@ -250,13 +253,13 @@ export default function Home({ brands }: HomePageProps) {
           </div>
         </section>
 
-        {/* Баннер после брендов */}
-        <div className="mb-12">
-          <BannerCarousel position="after_brands" />
-        </div>
+          {/* Баннер после брендов */}
+          <div className="mb-12">
+            <BannerCarousel position="after_brands" />
+          </div>
 
         {/* Categories Section */}
-        <section className="mb-12">
+          <section className="mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8 text-center">
             Категории товаров
           </h2>
@@ -283,14 +286,23 @@ export default function Home({ brands }: HomePageProps) {
           </div>
         </section>
 
-        {/* Баннер перед футером */}
-        <div className="mb-12">
-          <BannerCarousel position="before_footer" />
-        </div>
+          {/* Баннер перед футером */}
+          <div className="mb-12">
+            <BannerCarousel position="before_footer" />
+          </div>
 
-        {/* Популярные товары */}
-        <PopularProductsCarousel />
-      </div>
+          {/* Популярные товары */}
+          <PopularProductsCarousel />
+          
+          {/* Баннер после популярных товаров */}
+          <div className="mb-12">
+            <BannerCarousel position="after_popular_products" />
+          </div>
+          
+          {/* Отзывы клиентов */}
+          <TestimonialsCarousel />
+        </div>
+      </main>
     </>
   )
 }

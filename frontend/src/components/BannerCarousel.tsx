@@ -21,7 +21,7 @@ interface Banner {
 }
 
 interface BannerCarouselProps {
-  position: 'main' | 'after_brands' | 'before_footer'
+  position: 'main' | 'after_brands' | 'after_popular_products' | 'before_footer'
   className?: string
 }
 
@@ -418,6 +418,34 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
           </div>
         )}
       </div>
+      
+      {/* Точки навигации под баннерами (как у карточек) */}
+      {hasMultipleBanners && (
+        <div className="w-full flex justify-center items-center py-4 mt-4">
+          <div className="flex justify-center items-center gap-2.5 px-4 py-2">
+            {banners.map((_, index) => (
+              <button
+                key={index}
+                onClick={() => goToBanner(index)}
+                className="transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 rounded-full"
+                style={{
+                  width: index === currentBannerIndex ? '14px' : '10px',
+                  height: index === currentBannerIndex ? '14px' : '10px',
+                  borderRadius: '50%',
+                  border: index === currentBannerIndex ? 'none' : '2px solid #9ca3af',
+                  backgroundColor: index === currentBannerIndex ? '#111827' : '#ffffff',
+                  cursor: 'pointer',
+                  boxShadow:
+                    index === currentBannerIndex
+                      ? '0 2px 8px rgba(0,0,0,0.4), 0 0 0 2px rgba(255,255,255,0.5)'
+                      : '0 1px 3px rgba(0,0,0,0.2)',
+                }}
+                aria-label={`Перейти к баннеру ${index + 1}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

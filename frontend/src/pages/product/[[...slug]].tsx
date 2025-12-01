@@ -97,11 +97,11 @@ export default function ProductPage({
               {product.price ? `${product.price} ${product.currency}` : t('price_on_request')}
             </div>
             <div className="mt-4 flex items-center gap-3">
-              <AddToCartButton
-                productId={isBaseProduct ? product.id : undefined}
-                productType={productType}
-                productSlug={product.slug}
-              />
+            <AddToCartButton
+              productId={isBaseProduct ? product.id : undefined}
+              productType={productType}
+              productSlug={product.slug}
+            />
               {product.id && (
                 <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
               )}

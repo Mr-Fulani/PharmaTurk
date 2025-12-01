@@ -51,6 +51,8 @@ INSTALLED_APPS = [
     "apps.payments",
     "apps.vapi",
     "apps.scrapers",
+    "apps.favorites",
+    "apps.feedback",
 ]
 
 # Кастомная модель пользователя

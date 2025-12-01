@@ -216,6 +216,10 @@
   ,"processing": "Обработка..."
   ,"popular_products_title": "Популярные товары"
   ,"product_new": "Новинка"
+  ,"testimonials_title": "Что говорят наши клиенты"
+  ,"testimonial_image_alt": "Изображение к отзыву от {{author_name}}"
+  ,"testimonial_video_alt": "Видео к отзыву от {{author_name}}"
+  ,"video_tag_unsupported": "Ваш браузер не поддерживает видео."
 }
 
 

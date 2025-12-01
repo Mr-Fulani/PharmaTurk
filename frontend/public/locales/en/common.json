@@ -216,6 +216,10 @@
   ,"processing": "Processing..."
   ,"popular_products_title": "Popular Products"
   ,"product_new": "New"
+  ,"testimonials_title": "What Our Clients Say",
+  "testimonial_image_alt": "Testimonial image from {{author_name}}",
+  "testimonial_video_alt": "Testimonial video from {{author_name}}",
+  "video_tag_unsupported": "Your browser does not support the video tag."
 }
 
 

@@ -26,6 +26,10 @@ urlpatterns = [
 
     # Основной API
     path("api/", include("api.urls")),
+    path('api/users/', include('apps.users.urls')),
+    path('api/orders/', include('apps.orders.urls')),
+    path('api/favorites/', include('apps.favorites.urls')),
+    path('api/feedback/', include('apps.feedback.urls')),
 ]
 
 # Раздача медиа файлов в режиме разработки
