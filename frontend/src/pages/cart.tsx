@@ -3,7 +3,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Link from 'next/link'
 import api from '../lib/api'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useCartStore } from '../store/cart'
 
 interface CartItem {
@@ -55,9 +55,10 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
     if (mounted) {
       setItemsCount(cart.items_count)
     }
-  }, [cart.items_count, setItemsCount, mounted])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart.items_count, mounted])
 
-  // Клиентское обновление корзины после монтирования (только если данные изменились)
+  // Клиентское обновление корзины после монтирования (только один раз)
   useEffect(() => {
     if (!mounted) return
     let cancelled = false
@@ -69,11 +70,15 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
           // Обновляем только если данные действительно изменились
           setCart(prevCart => {
             // Сравниваем только ключевые поля для избежания лишних обновлений
-            if (
+            const hasChanged = 
               prevCart.items_count !== r.data.items_count ||
               prevCart.items.length !== r.data.items.length ||
-              prevCart.total_amount !== r.data.total_amount
-            ) {
+              prevCart.total_amount !== r.data.total_amount ||
+              prevCart.discount_amount !== r.data.discount_amount ||
+              prevCart.final_amount !== r.data.final_amount ||
+              (prevCart.promo_code?.code || null) !== (r.data.promo_code?.code || null)
+            
+            if (hasChanged) {
               return r.data
             }
             return prevCart
@@ -91,29 +96,44 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       cancelled = true
       clearTimeout(timeout)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted])
 
-  const refreshCart = async () => {
+  const refreshCart = useCallback(async () => {
     try {
       const r = await api.get('/orders/cart')
       if (r.data) {
+        let shouldUpdateCount = false
         setCart(prevCart => {
           // Обновляем только если данные изменились
-          if (
+          const hasChanged = 
             prevCart.items_count !== r.data.items_count ||
             prevCart.total_amount !== r.data.total_amount ||
-            JSON.stringify(prevCart.items) !== JSON.stringify(r.data.items)
-          ) {
+            prevCart.discount_amount !== r.data.discount_amount ||
+            prevCart.final_amount !== r.data.final_amount ||
+            (prevCart.promo_code?.code || null) !== (r.data.promo_code?.code || null) ||
+            prevCart.items.length !== r.data.items.length ||
+            JSON.stringify(prevCart.items.map(i => ({ id: i.id, quantity: i.quantity }))) !== 
+            JSON.stringify(r.data.items.map((i: CartItem) => ({ id: i.id, quantity: i.quantity })))
+          
+          if (hasChanged && prevCart.items_count !== r.data.items_count) {
+            shouldUpdateCount = true
+          }
+          
+          if (hasChanged) {
             return r.data
           }
           return prevCart
         })
-        setItemsCount(r.data.items_count)
+        // Обновляем счетчик только если он изменился
+        if (shouldUpdateCount) {
+          setItemsCount(r.data.items_count)
+        }
       }
     } catch (error) {
       console.error('Failed to refresh cart:', error)
     }
-  }
+  }, [setItemsCount])
 
   const updateQty = async (itemId: number, qty: number) => {
     if (qty < 1) return

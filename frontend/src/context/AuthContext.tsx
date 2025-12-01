@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react'
 import Cookies from 'js-cookie'
 import api from '../lib/api'
 import { useCartStore } from '../store/cart'
@@ -25,7 +25,12 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const { refresh: refreshCart } = useCartStore()
+  const refreshCartRef = useRef(useCartStore.getState().refresh)
+  
+  // Обновляем ref при изменении store
+  useEffect(() => {
+    refreshCartRef.current = useCartStore.getState().refresh
+  }, [])
 
   useEffect(() => {
     // Попытка получить профиль по access
@@ -58,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
       setUser({ id: user.id, email: user.email, username: user.username })
       // Обновляем корзину после входа для переноса товаров с анонимной сессии
-      refreshCart()
+      refreshCartRef.current()
     },
     async register(email, username, password) {
       const res = await api.post('/users/register/', { email, username, password, password_confirm: password })
@@ -67,14 +72,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
       setUser({ id: user.id, email: user.email, username: user.username })
       // Обновляем корзину после регистрации для переноса товаров с анонимной сессии
-      refreshCart()
+      refreshCartRef.current()
     },
     logout() {
       Cookies.remove('access', { path: '/' })
       Cookies.remove('refresh', { path: '/' })
       setUser(null)
     }
-  }), [user, loading, refreshCart])
+  }), [user, loading])
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

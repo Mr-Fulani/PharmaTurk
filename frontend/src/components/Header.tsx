@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useAuth } from '../context/AuthContext'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import api from '../lib/api'
 import { useTranslation } from 'next-i18next'
 import { useCartStore } from '../store/cart'
@@ -15,11 +15,32 @@ export default function Header() {
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [loadingSuggest, setLoadingSuggest] = useState(false)
   const [isClient, setIsClient] = useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation('common')
   
   useEffect(() => { 
     setIsClient(true)
   }, [])
+
+  // Закрываем выпадающее меню при переходе на другую страницу
+  useEffect(() => {
+    setShowSuggestions(false)
+    setSuggestions([])
+  }, [path])
+
+  // Закрываем выпадающее меню при клике вне его области
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+    if (showSuggestions) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showSuggestions])
 
   const goSearch = () => {
     const q = query.trim()
@@ -41,8 +62,10 @@ export default function Header() {
     const q = query.trim()
     if (q.length < 2) {
       setSuggestions([])
+      setShowSuggestions(false)
       return
     }
+    setShowSuggestions(true)
     const id = setTimeout(async () => {
       setLoadingSuggest(true)
       try {
@@ -68,56 +91,92 @@ export default function Header() {
   }, [query])
 
   return (
-    <header className="sticky top-0 z-10 border-b border-violet-200 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-50 border-b border-violet-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
         <Link href="/" className="text-lg font-bold text-violet-700 transition-colors duration-200 hover:text-violet-800">Turk-Export</Link>
         <div className="hidden flex-1 items-center gap-3 md:flex">
-          <div className="relative flex w-full max-w-xl items-center">
+          <div ref={searchRef} className="relative flex w-full max-w-xl items-center">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => { if (query.trim().length >= 2) setShowSuggestions(true) }}
               placeholder={placeholder}
-              onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); goSearch() } }}
+              onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); setShowSuggestions(false); goSearch() } }}
               className="w-full rounded-l-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-400"
             />
-            <button onClick={goSearch} className="rounded-r-lg border border-l-0 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 transition-colors duration-200 hover:bg-violet-50 hover:border-violet-300">{t('search_button', 'Поиск')}</button>
-            {query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
-              <div className="absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
+            <button onClick={() => { setShowSuggestions(false); goSearch() }} className="rounded-r-lg border border-l-0 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 transition-colors duration-200 hover:bg-violet-50 hover:border-violet-300">{t('search_button', 'Поиск')}</button>
+            {showSuggestions && query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
+              <div className="absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
                 {loadingSuggest ? (
                   <div className="px-3 py-2 text-sm text-gray-500">Поиск…</div>
                 ) : suggestions.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => router.push(`/product/${p.slug}`)}
+                    onClick={() => { setShowSuggestions(false); router.push(`/product/${p.slug}`) }}
                     className="flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors duration-200 hover:bg-violet-50"
                   >
                     <span className="line-clamp-1 pr-2 text-gray-800">{p.name}</span>
                     <span className="whitespace-nowrap text-gray-600">{p.price ? `${p.price} ${p.currency}` : ''}</span>
                   </button>
                 ))}
-                <div className="border-t px-3 py-2 text-right">
-                  <button onClick={goSearch} className="text-xs text-violet-700 transition-colors duration-200 hover:text-violet-800 hover:underline">Показать все результаты</button>
-                </div>
+                {suggestions.length > 0 && (
+                  <div className="border-t px-3 py-2 text-right">
+                    <button onClick={() => { setShowSuggestions(false); goSearch() }} className="text-xs text-violet-700 transition-colors duration-200 hover:text-violet-800 hover:underline">Показать все результаты</button>
+                  </div>
+                )}
               </div>
             ) : null}
           </div>
         </div>
-        <nav className="flex items-center gap-4 text-sm">
-          <Link href="/" className={`transition-colors duration-200 ${path === '/' ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>{t('menu_home', 'Главная')}</Link>
-          <Link href="/cart" className={`transition-colors duration-200 ${path.startsWith('/cart') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>
+        <nav className="relative z-50 flex items-center gap-4 text-sm">
+          <Link 
+            href="/" 
+            onClick={() => setShowSuggestions(false)}
+            className={`transition-colors duration-200 ${path === '/' ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}
+          >
+            {t('menu_home', 'Главная')}
+          </Link>
+          <Link 
+            href="/cart" 
+            onClick={() => setShowSuggestions(false)}
+            className={`transition-colors duration-200 ${path.startsWith('/cart') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}
+          >
             {t('menu_cart', 'Корзина')} {isClient && itemsCount ? `(${itemsCount})` : ''}
           </Link>
           {user ? (
             <>
-              <Link href="/profile" className={`transition-colors duration-200 ${path.startsWith('/profile') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}>{t('header_profile', 'Профиль')}</Link>
-              <button onClick={logout} className="rounded-md border border-gray-300 px-3 py-1.5 text-gray-800 transition-colors duration-200 hover:bg-violet-50 hover:border-violet-300">{t('header_logout', 'Выйти')}</button>
+              <Link 
+                href="/profile" 
+                onClick={() => setShowSuggestions(false)}
+                className={`transition-colors duration-200 ${path.startsWith('/profile') ? 'font-medium text-gray-900' : 'text-gray-600 hover:text-violet-700'}`}
+              >
+                {t('header_profile', 'Профиль')}
+              </Link>
+              <button 
+                onClick={() => { setShowSuggestions(false); logout() }} 
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-gray-800 transition-colors duration-200 hover:bg-violet-50 hover:border-violet-300"
+              >
+                {t('header_logout', 'Выйти')}
+              </button>
             </>
           ) : (
             <>
-              <Link href="/auth" className="rounded-md bg-violet-600 px-3 py-1.5 font-medium text-white transition-colors duration-200 hover:bg-violet-700">{t('menu_login_register', 'Войти / Регистрация')}</Link>
+              <Link 
+                href="/auth" 
+                onClick={() => setShowSuggestions(false)}
+                className="rounded-md bg-violet-600 px-3 py-1.5 font-medium text-white transition-colors duration-200 hover:bg-violet-700"
+              >
+                {t('menu_login_register', 'Войти / Регистрация')}
+              </Link>
             </>
           )}
-          <button onClick={toggleLocale} className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 transition-colors duration-200 hover:bg-violet-50 hover:border-violet-300" title="Язык">{router.locale?.toUpperCase() || 'EN'}</button>
+          <button 
+            onClick={() => { setShowSuggestions(false); toggleLocale() }} 
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 transition-colors duration-200 hover:bg-violet-50 hover:border-violet-300" 
+            title="Язык"
+          >
+            {router.locale?.toUpperCase() || 'EN'}
+          </button>
         </nav>
       </div>
     </header>

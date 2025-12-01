@@ -7,6 +7,7 @@
 #   --clean          - Удалить volumes (база данных будет очищена)
 #   --no-cache       - Пересобрать образы без кэша
 #   --rebuild        - Полная пересборка (--clean + --no-cache)
+#   --no-prune       - Не очищать неиспользуемые Docker ресурсы
 #   --logs           - Показать логи после запуска
 #   --help           - Показать справку
 
@@ -23,6 +24,7 @@ NC='\033[0m' # No Color
 CLEAN_VOLUMES=false
 NO_CACHE=false
 SHOW_LOGS=false
+NO_PRUNE=false
 
 # Функция для вывода сообщений
 info() {
@@ -53,6 +55,7 @@ show_help() {
     --clean          Удалить volumes (база данных будет очищена!)
     --no-cache       Пересобрать образы без кэша Docker
     --rebuild        Полная пересборка (--clean + --no-cache)
+    --no-prune       Не очищать неиспользуемые Docker ресурсы (по умолчанию очистка включена)
     --logs           Показать логи после запуска
     --help           Показать эту справку
 
@@ -79,6 +82,10 @@ while [[ $# -gt 0 ]]; do
         --rebuild)
             CLEAN_VOLUMES=true
             NO_CACHE=true
+            shift
+            ;;
+        --no-prune)
+            NO_PRUNE=true
             shift
             ;;
         --logs)
@@ -128,11 +135,24 @@ if [ "$CLEAN_VOLUMES" = true ]; then
     fi
 fi
 
-# Очистка неиспользуемых образов и кэша (опционально)
+# Очистка неиспользуемых Docker ресурсов (по умолчанию включена)
+if [ "$NO_PRUNE" = false ]; then
+    info "Очищаем неиспользуемые Docker ресурсы..."
+    PRUNED=$(docker system prune -a --volumes -f 2>&1 | grep -i "reclaimed" || echo "")
+    if [ -n "$PRUNED" ]; then
+        success "Очистка завершена: $PRUNED"
+    else
+        success "Очистка завершена (неиспользуемых ресурсов не найдено)"
+    fi
+else
+    info "Пропускаем очистку неиспользуемых ресурсов (--no-prune)"
+fi
+
+# Дополнительная очистка при --no-cache
 if [ "$NO_CACHE" = true ]; then
-    info "Очищаем неиспользуемые образы..."
-    docker system prune -f
-    success "Кэш очищен"
+    info "Выполняем дополнительную очистку build cache..."
+    docker builder prune -af --filter "until=24h" > /dev/null 2>&1 || true
+    success "Build cache очищен"
 fi
 
 # Пересборка образов

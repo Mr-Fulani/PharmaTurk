@@ -16,7 +16,8 @@ function App({ Component, pageProps }: AppProps) {
     // Гарантируем, что cookie cart_session создана до первого запроса
     initCartSession()
     refresh()
-  }, [refresh])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   return (
     <AuthProvider>
       <div className="min-h-screen flex flex-col">
