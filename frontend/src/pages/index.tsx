@@ -7,6 +7,7 @@ import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getApiForCategory } from '../lib/api'
 import BannerCarousel from '../components/BannerCarousel'
+import PopularProductsCarousel from '../components/PopularProductsCarousel'
 
 interface Brand {
   id: number
@@ -286,6 +287,9 @@ export default function Home({ brands }: HomePageProps) {
         <div className="mb-12">
           <BannerCarousel position="before_footer" />
         </div>
+
+        {/* Популярные товары */}
+        <PopularProductsCarousel />
       </div>
     </>
   )

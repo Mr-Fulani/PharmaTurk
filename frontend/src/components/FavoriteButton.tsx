@@ -20,7 +20,11 @@ export default function FavoriteButton({
   const { t } = useTranslation('common')
   const favorite = isFavorite(productId)
 
-  const toggle = async () => {
+  const toggle = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
     setLoading(true)
     try {
       if (favorite) {
@@ -38,7 +42,7 @@ export default function FavoriteButton({
   if (iconOnly) {
     return (
       <button
-        onClick={toggle}
+        onClick={(e) => toggle(e)}
         disabled={loading}
         className={`inline-flex items-center justify-center rounded-full p-2 transition-all duration-200 ${
           favorite
@@ -72,7 +76,7 @@ export default function FavoriteButton({
 
   return (
     <button
-      onClick={toggle}
+      onClick={(e) => toggle(e)}
       disabled={loading}
       className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all duration-200 ${
         favorite
