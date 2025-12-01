@@ -147,6 +147,8 @@
   ,"profile_address_comment": "Комментарий"
   ,"profile_address_set_default": "Установить по умолчанию"
   ,"profile_address_required": "Обязательное поле"
+  ,"profile_show_order_history": "Показать все заказы"
+  ,"profile_hide_order_history": "Скрыть историю заказов"
   ,"profile_address_creating": "Создание..."
   ,"profile_address_updating": "Обновление..."
   ,"profile_address_deleting": "Удаление..."

@@ -95,6 +95,9 @@ export default function ProfilePage() {
   const [editingAddress, setEditingAddress] = useState<Address | null>(null)
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [addressSaving, setAddressSaving] = useState(false)
+  
+  // Состояние для управления отображением заказов
+  const [showAllOrders, setShowAllOrders] = useState(false)
 
   // Форма редактирования
   const [formData, setFormData] = useState({
@@ -710,7 +713,7 @@ export default function ProfilePage() {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {orders.map((order) => (
+                    {(showAllOrders ? orders : orders.slice(0, 1)).map((order) => (
                       <div
                         key={order.id}
                         className="group rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden"
@@ -843,6 +846,32 @@ export default function ProfilePage() {
                         </div>
                       </div>
                     ))}
+                    
+                    {/* Кнопка разворачивания истории заказов */}
+                    {orders.length > 1 && (
+                      <div className="flex justify-center pt-4">
+                        <button
+                          onClick={() => setShowAllOrders(!showAllOrders)}
+                          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border-2 border-violet-200 bg-white text-violet-700 font-semibold hover:bg-violet-50 hover:border-violet-300 transition-all duration-200"
+                        >
+                          {showAllOrders ? (
+                            <>
+                              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              </svg>
+                              {t('profile_hide_order_history', 'Скрыть историю заказов')}
+                            </>
+                          ) : (
+                            <>
+                              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                              {t('profile_show_order_history', 'Показать все заказы')} ({orders.length - 1})
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

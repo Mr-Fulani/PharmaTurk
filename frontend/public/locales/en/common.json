@@ -147,6 +147,8 @@
   ,"profile_address_comment": "Comment"
   ,"profile_address_set_default": "Set as Default"
   ,"profile_address_required": "Required field"
+  ,"profile_show_order_history": "Show All Orders"
+  ,"profile_hide_order_history": "Hide Order History"
   ,"profile_address_creating": "Creating..."
   ,"profile_address_updating": "Updating..."
   ,"profile_address_deleting": "Deleting..."
