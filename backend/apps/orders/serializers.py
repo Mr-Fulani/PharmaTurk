@@ -9,7 +9,7 @@ from apps.catalog.models import (
     ShoeProduct,
     ElectronicsProduct,
 )
-from .models import Cart, CartItem, Order, OrderItem
+from .models import Cart, CartItem, Order, OrderItem, PromoCode
 
 VARIANT_MODEL_MAP = {
     'clothing': ClothingProduct,
@@ -141,14 +141,66 @@ class CartItemSerializer(serializers.ModelSerializer):
     """
     product_name = serializers.CharField(source='product.name', read_only=True)
     product_slug = serializers.CharField(source='product.slug', read_only=True)
+    product_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = CartItem
         fields = [
-            'id', 'product', 'product_name', 'product_slug',
+            'id', 'product', 'product_name', 'product_slug', 'product_image_url',
             'quantity', 'price', 'currency', 'created_at', 'updated_at'
         ]
         read_only_fields = ['price', 'currency', 'created_at', 'updated_at']
+    
+    def get_product_image_url(self, obj):
+        """Получение URL изображения товара"""
+        product = obj.product
+        if not product:
+            return None
+        
+        # Сначала проверяем main_image
+        if product.main_image:
+            return product.main_image
+        
+        # Затем ищем главное изображение в связанных изображениях
+        main_img = product.images.filter(is_main=True).first()
+        if main_img:
+            return main_img.image_url
+        
+        # Если нет главного, берем первое изображение
+        first_img = product.images.first()
+        if first_img:
+            return first_img.image_url
+        
+        return None
+
+
+class PromoCodeSerializer(serializers.ModelSerializer):
+    """
+    Сериализатор промокода
+    """
+    class Meta:
+        model = PromoCode
+        fields = [
+            'id', 'code', 'description', 'discount_type', 'discount_value',
+            'min_amount', 'max_discount', 'max_uses', 'used_count',
+            'valid_from', 'valid_to', 'is_active'
+        ]
+        read_only_fields = ['used_count']
+
+
+class ApplyPromoCodeSerializer(serializers.Serializer):
+    """
+    Запрос на применение промокода
+    """
+    code = serializers.CharField(max_length=50)
+
+    def validate_code(self, value):
+        """Валидация кода промокода."""
+        try:
+            promo_code = PromoCode.objects.get(code=value.upper())
+        except PromoCode.DoesNotExist:
+            raise serializers.ValidationError(_("Промокод не найден"))
+        return value.upper()
 
 
 class CartSerializer(serializers.ModelSerializer):
@@ -158,15 +210,19 @@ class CartSerializer(serializers.ModelSerializer):
     items = CartItemSerializer(many=True, read_only=True)
     items_count = serializers.IntegerField(read_only=True)
     total_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    discount_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    final_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    promo_code = PromoCodeSerializer(read_only=True)
 
     class Meta:
         model = Cart
         fields = [
             'id', 'user', 'session_key', 'currency',
-            'items', 'items_count', 'total_amount',
+            'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount',
+            'promo_code',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['user', 'created_at', 'updated_at', 'items', 'items_count', 'total_amount']
+        read_only_fields = ['user', 'created_at', 'updated_at', 'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount']
 
 
 class AddToCartSerializer(serializers.Serializer):
@@ -225,6 +281,7 @@ class OrderSerializer(serializers.ModelSerializer):
     Сериализатор заказа
     """
     items = OrderItemSerializer(many=True, read_only=True)
+    promo_code = PromoCodeSerializer(read_only=True)
 
     class Meta:
         model = Order
@@ -234,6 +291,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'contact_name', 'contact_phone', 'contact_email',
             'shipping_address', 'shipping_address_text', 'shipping_method',
             'payment_method', 'payment_status', 'comment',
+            'promo_code',
             'items',
             'created_at', 'updated_at'
         ]
@@ -252,6 +310,7 @@ class CreateOrderSerializer(serializers.Serializer):
     shipping_method = serializers.CharField(required=False, allow_blank=True)
     payment_method = serializers.CharField(required=False, allow_blank=True)
     comment = serializers.CharField(required=False, allow_blank=True)
+    promo_code = serializers.CharField(required=False, allow_blank=True, max_length=50)
 
     def validate_shipping_address(self, value):
         # Валидация адреса доставки будет реализована при наличии пользователя

@@ -12,10 +12,10 @@ from apps.catalog.models import Product
 logger = logging.getLogger(__name__)
 import uuid
 from apps.users.models import UserAddress
-from .models import Cart, CartItem, Order, OrderItem
+from .models import Cart, CartItem, Order, OrderItem, PromoCode
 from .serializers import (
     CartSerializer, CartItemSerializer, AddToCartSerializer, UpdateCartItemSerializer,
-    OrderSerializer, CreateOrderSerializer
+    OrderSerializer, CreateOrderSerializer, ApplyPromoCodeSerializer, PromoCodeSerializer
 )
 
 
@@ -144,8 +144,13 @@ class CartViewSet(viewsets.ViewSet):
     )
     def list(self, request):
         cart = _get_or_create_cart(request)
-        # Возвращаем корзину с предзагрузкой позиций и товаров
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
+        # Возвращаем корзину с предзагрузкой позиций, товаров и изображений
+        from django.db.models import Prefetch
+        from apps.catalog.models import ProductImage
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related(
+            'items',
+            Prefetch('items__product__images', queryset=ProductImage.objects.all().order_by('is_main', 'sort_order'))
+        ).get()
         return Response(CartSerializer(cart).data)
 
     @extend_schema(
@@ -308,6 +313,98 @@ class CartViewSet(viewsets.ViewSet):
         cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
 
+    @extend_schema(
+        description="Применить промокод к корзине",
+        request=ApplyPromoCodeSerializer,
+        responses=CartSerializer,
+        examples=[
+            OpenApiExample(
+                'Запрос',
+                value={"code": "SUMMER2024"},
+                request_only=True
+            ),
+            OpenApiExample(
+                'Ответ',
+                value={
+                    "id": 1,
+                    "user": None,
+                    "session_key": "abc123",
+                    "currency": "USD",
+                    "items": [],
+                    "items_count": 0,
+                    "total_amount": "100.00",
+                    "discount_amount": "10.00",
+                    "final_amount": "90.00",
+                    "promo_code": {
+                        "id": 1,
+                        "code": "SUMMER2024",
+                        "discount_type": "percent",
+                        "discount_value": "10.00"
+                    }
+                },
+                response_only=True
+            )
+        ]
+    )
+    @action(detail=False, methods=['post'], url_path='apply-promo')
+    def apply_promo(self, request):
+        """Применить промокод к корзине."""
+        cart = _get_or_create_cart(request)
+        serializer = ApplyPromoCodeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        code = serializer.validated_data['code']
+        try:
+            promo_code = PromoCode.objects.get(code=code)
+        except PromoCode.DoesNotExist:
+            return Response({"detail": _("Промокод не найден")}, status=404)
+        
+        # Проверка валидности промокода
+        is_valid, error = promo_code.is_valid(user=request.user if request.user.is_authenticated else None, cart_total=float(cart.total_amount))
+        if not is_valid:
+            return Response({"detail": error}, status=400)
+        
+        # Применяем промокод
+        cart.promo_code = promo_code
+        cart.save()
+        
+        # Возвращаем обновленную корзину
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
+        return Response(CartSerializer(cart).data)
+
+    @extend_schema(
+        description="Удалить промокод из корзины",
+        responses=CartSerializer,
+        examples=[
+            OpenApiExample(
+                'Ответ',
+                value={
+                    "id": 1,
+                    "user": None,
+                    "session_key": "abc123",
+                    "currency": "USD",
+                    "items": [],
+                    "items_count": 0,
+                    "total_amount": "100.00",
+                    "discount_amount": "0.00",
+                    "final_amount": "100.00",
+                    "promo_code": None
+                },
+                response_only=True
+            )
+        ]
+    )
+    @action(detail=False, methods=['post'], url_path='remove-promo')
+    def remove_promo(self, request):
+        """Удалить промокод из корзины."""
+        cart = _get_or_create_cart(request)
+        cart.promo_code = None
+        cart.save()
+        
+        # Возвращаем обновленную корзину
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
+        return Response(CartSerializer(cart).data)
+
 
 class OrderViewSet(viewsets.ViewSet):
     """Управление заказами."""
@@ -390,17 +487,43 @@ class OrderViewSet(viewsets.ViewSet):
         serializer = CreateOrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        # Расчет сумм
+        subtotal = sum((i.price * i.quantity for i in cart.items.all()))
+        shipping = 0
+        discount = 0
+        promo_code = None
+
+        # Проверка и применение промокода из корзины или из запроса
+        promo_code_value = serializer.validated_data.get('promo_code') or (cart.promo_code.code if cart.promo_code else None)
+        if promo_code_value:
+            try:
+                promo_code = PromoCode.objects.get(code=promo_code_value.upper())
+                # Проверка валидности промокода
+                is_valid, error = promo_code.is_valid(user=request.user, cart_total=float(subtotal))
+                if is_valid:
+                    discount = promo_code.calculate_discount(subtotal)
+                    # Увеличиваем счетчик использований
+                    promo_code.used_count += 1
+                    promo_code.save(update_fields=['used_count'])
+                else:
+                    promo_code = None
+            except PromoCode.DoesNotExist:
+                pass
+
+        total = subtotal + shipping - discount
+
         # Генерация номера заказа
         number = uuid.uuid4().hex[:12].upper()
 
         order = Order.objects.create(
             user=request.user,
             number=number,
-            subtotal_amount=sum((i.price * i.quantity for i in cart.items.all())),
-            shipping_amount=0,
-            discount_amount=0,
-            total_amount=sum((i.price * i.quantity for i in cart.items.all())),
+            subtotal_amount=subtotal,
+            shipping_amount=shipping,
+            discount_amount=discount,
+            total_amount=total,
             currency=cart.currency,
+            promo_code=promo_code,
             contact_name=serializer.validated_data.get('contact_name'),
             contact_phone=serializer.validated_data.get('contact_phone'),
             contact_email=serializer.validated_data.get('contact_email', ''),

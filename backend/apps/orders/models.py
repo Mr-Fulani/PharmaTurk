@@ -1,9 +1,69 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinValueValidator
+from django.utils import timezone
 
 from apps.users.models import User, UserAddress
 from apps.catalog.models import Product
+
+
+class PromoCode(models.Model):
+    """Промокод для скидок."""
+    class DiscountType(models.TextChoices):
+        PERCENT = "percent", _("Процент")
+        FIXED = "fixed", _("Фиксированная сумма")
+
+    code = models.CharField(_("Код"), max_length=50, unique=True, db_index=True)
+    description = models.TextField(_("Описание"), blank=True)
+    discount_type = models.CharField(_("Тип скидки"), max_length=10, choices=DiscountType.choices, default=DiscountType.PERCENT)
+    discount_value = models.DecimalField(_("Значение скидки"), max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    min_amount = models.DecimalField(_("Минимальная сумма заказа"), max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    max_discount = models.DecimalField(_("Максимальная скидка"), max_digits=12, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    max_uses = models.PositiveIntegerField(_("Максимальное количество использований"), null=True, blank=True)
+    used_count = models.PositiveIntegerField(_("Количество использований"), default=0)
+    valid_from = models.DateTimeField(_("Действителен с"), default=timezone.now)
+    valid_to = models.DateTimeField(_("Действителен до"), null=True, blank=True)
+    is_active = models.BooleanField(_("Активен"), default=True)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Промокод")
+        verbose_name_plural = _("Промокоды")
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.code} ({self.discount_value}{'%' if self.discount_type == 'percent' else ''})"
+
+    def is_valid(self, user=None, cart_total=0):
+        """Проверка валидности промокода."""
+        if not self.is_active:
+            return False, _("Промокод неактивен")
+        
+        if self.valid_to and timezone.now() > self.valid_to:
+            return False, _("Промокод истёк")
+        
+        if timezone.now() < self.valid_from:
+            return False, _("Промокод ещё не действителен")
+        
+        if self.max_uses and self.used_count >= self.max_uses:
+            return False, _("Промокод исчерпан")
+        
+        if cart_total < self.min_amount:
+            return False, _("Минимальная сумма заказа не достигнута")
+        
+        return True, None
+
+    def calculate_discount(self, amount):
+        """Рассчитать размер скидки для указанной суммы."""
+        if self.discount_type == self.DiscountType.PERCENT:
+            discount = amount * (self.discount_value / 100)
+            if self.max_discount:
+                discount = min(discount, self.max_discount)
+        else:
+            discount = min(self.discount_value, amount)
+        
+        return round(discount, 2)
 
 
 class Cart(models.Model):
@@ -11,6 +71,7 @@ class Cart(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name="carts", verbose_name=_("Пользователь"))
     session_key = models.CharField(_("Ключ сессии"), max_length=64, blank=True, db_index=True)
     currency = models.CharField(_("Валюта"), max_length=3, default="USD")
+    promo_code = models.ForeignKey(PromoCode, on_delete=models.SET_NULL, null=True, blank=True, related_name="carts", verbose_name=_("Промокод"))
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
@@ -35,6 +96,21 @@ class Cart(models.Model):
     def total_amount(self):
         total = sum((item.price * item.quantity for item in self.items.all()))
         return round(total, 2)
+    
+    @property
+    def discount_amount(self):
+        """Рассчитать скидку по промокоду."""
+        if not self.promo_code:
+            return 0
+        is_valid, error = self.promo_code.is_valid(cart_total=self.total_amount)
+        if not is_valid:
+            return 0
+        return self.promo_code.calculate_discount(self.total_amount)
+    
+    @property
+    def final_amount(self):
+        """Итоговая сумма с учётом скидки."""
+        return round(self.total_amount - self.discount_amount, 2)
 
 
 class CartItem(models.Model):
@@ -89,6 +165,8 @@ class Order(models.Model):
 
     payment_method = models.CharField(_("Способ оплаты"), max_length=50, blank=True)
     payment_status = models.CharField(_("Статус оплаты"), max_length=32, default="unpaid")
+    
+    promo_code = models.ForeignKey(PromoCode, on_delete=models.SET_NULL, null=True, blank=True, related_name="orders", verbose_name=_("Промокод"))
 
     comment = models.TextField(_("Комментарий"), blank=True)
 

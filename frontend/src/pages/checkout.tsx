@@ -7,18 +7,36 @@ import api from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cart'
 
-export default function CheckoutPage() {
+interface Cart {
+  promo_code?: { code: string } | null
+}
+
+export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   console.log('CheckoutPage component mounted')
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const { refresh: refreshCart, setItemsCount } = useCartStore()
   const { t } = useTranslation('common')
+  const [cart, setCart] = useState<Cart | null>(initialCart || null)
   const [contactName, setContactName] = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [shippingAddressText, setShippingAddressText] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('cod')
   const [submitting, setSubmitting] = useState(false)
+
+  // Загружаем корзину при монтировании
+  useEffect(() => {
+    const loadCart = async () => {
+      try {
+        const res = await api.get('/orders/cart')
+        setCart(res.data)
+      } catch (error) {
+        console.error('Failed to load cart:', error)
+      }
+    }
+    loadCart()
+  }, [])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,6 +50,10 @@ export default function CheckoutPage() {
       if (contactEmail) body.set('contact_email', contactEmail)
       if (shippingAddressText) body.set('shipping_address_text', shippingAddressText)
       if (paymentMethod) body.set('payment_method', paymentMethod)
+      // Передаем промокод из корзины, если он есть
+      if (cart?.promo_code?.code) {
+        body.set('promo_code', cart.promo_code.code)
+      }
       const res = await api.post('/orders/orders/create-from-cart', body, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       })
@@ -119,10 +141,44 @@ export default function CheckoutPage() {
   )
 }
 
-export async function getServerSideProps({ locale }: { locale: string }) {
+export async function getServerSideProps(ctx: any) {
+  const { req, res: serverRes, locale } = ctx
+  let initialCart = null
+  
+  try {
+    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    const cookieHeader: string = req.headers.cookie || ''
+    const cartSessionMatch = cookieHeader.match(/(?:^|;\s*)cart_session=([^;]+)/)
+    let cartSession = cartSessionMatch ? cartSessionMatch[1] : ''
+    const accessMatch = cookieHeader.match(/(?:^|;\s*)access=([^;]+)/)
+    const accessToken = accessMatch ? accessMatch[1] : ''
+
+    if (!cartSession) {
+      cartSession = Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2)
+      if (serverRes && typeof serverRes.setHeader === 'function') {
+        serverRes.setHeader('Set-Cookie', `cart_session=${cartSession}; Path=/; SameSite=Lax`)
+      }
+    }
+
+    const apiRes = await fetch(`${base}/api/orders/cart`, {
+      headers: {
+        cookie: cookieHeader,
+        'Accept-Language': locale || 'en',
+        ...(cartSession ? { 'X-Cart-Session': cartSession } : {}),
+        ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {})
+      }
+    })
+    if (apiRes.ok) {
+      initialCart = await apiRes.json()
+    }
+  } catch (e) {
+    console.error('Failed to load cart in checkout:', e)
+  }
+
   return {
     props: {
-      ...(await serverSideTranslations(locale ?? 'ru', ['common']))
+      ...(await serverSideTranslations(locale ?? 'ru', ['common'])),
+      initialCart: initialCart || null
     }
   }
 }
