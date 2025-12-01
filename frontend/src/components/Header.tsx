@@ -138,20 +138,15 @@ export default function Header() {
           </div>
         </div>
         <nav className="relative z-50 flex items-center gap-4 text-sm">
-          <Link 
-            href="/" 
-            onClick={() => setShowSuggestions(false)}
-            className={`transition-all duration-200 ${path === '/' ? 'font-medium text-red-800' : 'text-gray-700 hover:text-red-700 hover:font-medium'}`}
-          >
-            {t('menu_home', 'Главная')}
-          </Link>
-          <Link 
-            href="/cart" 
-            onClick={() => setShowSuggestions(false)}
-            className={`transition-all duration-200 ${path.startsWith('/cart') ? 'font-medium text-red-800' : 'text-gray-700 hover:text-red-700 hover:font-medium'}`}
-          >
-            {t('menu_cart', 'Корзина')} {isClient && itemsCount ? `(${itemsCount})` : ''}
-          </Link>
+          {user && (
+            <Link 
+              href="/profile" 
+              onClick={() => setShowSuggestions(false)}
+              className={`transition-all duration-200 ${path.startsWith('/profile') ? 'font-medium text-red-800' : 'text-gray-700 hover:text-red-700 hover:font-medium'}`}
+            >
+              {t('header_profile', 'Профиль')}
+            </Link>
+          )}
           <Link 
             href="/favorites" 
             onClick={() => setShowSuggestions(false)}
@@ -177,32 +172,28 @@ export default function Header() {
               </span>
             )}
           </Link>
+          <Link 
+            href="/cart" 
+            onClick={() => setShowSuggestions(false)}
+            className={`transition-all duration-200 ${path.startsWith('/cart') ? 'font-medium text-red-800' : 'text-gray-700 hover:text-red-700 hover:font-medium'}`}
+          >
+            {t('menu_cart', 'Корзина')} {isClient && itemsCount ? `(${itemsCount})` : ''}
+          </Link>
           {user ? (
-            <>
-              <Link 
-                href="/profile" 
-                onClick={() => setShowSuggestions(false)}
-                className={`transition-all duration-200 ${path.startsWith('/profile') ? 'font-medium text-red-800' : 'text-gray-700 hover:text-red-700 hover:font-medium'}`}
-              >
-                {t('header_profile', 'Профиль')}
-              </Link>
-              <button 
-                onClick={() => { setShowSuggestions(false); logout() }} 
-                className="rounded-md border border-red-200 px-3 py-1.5 text-gray-800 transition-all duration-200 hover:bg-red-100 hover:border-red-400 hover:shadow-md"
-              >
-                {t('header_logout', 'Выйти')}
-              </button>
-            </>
+            <button 
+              onClick={() => { setShowSuggestions(false); logout() }} 
+              className="rounded-md border border-red-200 px-3 py-1.5 text-gray-800 transition-all duration-200 hover:bg-red-100 hover:border-red-400 hover:shadow-md"
+            >
+              {t('header_logout', 'Выйти')}
+            </button>
           ) : (
-            <>
-              <Link 
-                href="/auth" 
-                onClick={() => setShowSuggestions(false)}
-                className="rounded-md bg-red-600 px-3 py-1.5 font-medium text-white transition-all duration-200 hover:bg-red-700 hover:shadow-lg hover:scale-105"
-              >
-                {t('menu_login_register', 'Войти / Регистрация')}
-              </Link>
-            </>
+            <Link 
+              href="/auth" 
+              onClick={() => setShowSuggestions(false)}
+              className="rounded-md bg-red-600 px-3 py-1.5 font-medium text-white transition-all duration-200 hover:bg-red-700 hover:shadow-lg hover:scale-105"
+            >
+              {t('menu_login_register', 'Войти / Регистрация')}
+            </Link>
           )}
           <button 
             onClick={() => { setShowSuggestions(false); toggleLocale() }} 

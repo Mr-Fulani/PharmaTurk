@@ -1,0 +1,423 @@
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import api from '../lib/api'
+
+interface BannerMedia {
+  id: number
+  content_type: 'image' | 'video' | 'gif'
+  content_url: string
+  content_mime_type?: string
+  sort_order: number
+}
+
+interface Banner {
+  id: number
+  title?: string
+  position: string
+  link_url?: string
+  link_text?: string
+  sort_order: number
+  media_files: BannerMedia[]
+}
+
+interface BannerCarouselProps {
+  position: 'main' | 'after_brands' | 'before_footer'
+  className?: string
+}
+
+export default function BannerCarousel({ position, className = '' }: BannerCarouselProps) {
+  const [banners, setBanners] = useState<Banner[]>([])
+  const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
+  const [currentMediaIndex, setCurrentMediaIndex] = useState(0)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchBanners = async () => {
+      try {
+        const response = await api.get('/catalog/banners', {
+          params: { position }
+        })
+        const data = response.data || []
+        // Фильтруем баннеры, у которых есть хотя бы один медиа-файл
+        const bannersWithMedia = data.filter((banner: Banner) => 
+          banner.media_files && banner.media_files.length > 0
+        )
+        setBanners(bannersWithMedia)
+        if (bannersWithMedia.length > 0) {
+          setCurrentBannerIndex(0)
+          setCurrentMediaIndex(0)
+        }
+      } catch (error) {
+        console.error('Failed to fetch banners:', error)
+        setBanners([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchBanners()
+  }, [position])
+
+  // Автоматическая смена медиа внутри баннера каждые 5 секунд
+  useEffect(() => {
+    const currentBanner = banners[currentBannerIndex]
+    if (!currentBanner || currentBanner.media_files.length <= 1) return
+
+    const interval = setInterval(() => {
+      setCurrentMediaIndex((prev) => (prev + 1) % currentBanner.media_files.length)
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [banners, currentBannerIndex])
+
+  // Автоматическая смена баннеров каждые 10 секунд (если больше одного баннера)
+  useEffect(() => {
+    if (banners.length <= 1) return
+
+    const interval = setInterval(() => {
+      setCurrentBannerIndex((prev) => {
+        const nextIndex = (prev + 1) % banners.length
+        setCurrentMediaIndex(0) // Сбрасываем индекс медиа при смене баннера
+        return nextIndex
+      })
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [banners.length])
+
+  const goToBanner = (index: number) => {
+    setCurrentBannerIndex(index)
+    setCurrentMediaIndex(0)
+  }
+
+  const goToPreviousBanner = () => {
+    const prevIndex = (currentBannerIndex - 1 + banners.length) % banners.length
+    setCurrentBannerIndex(prevIndex)
+    setCurrentMediaIndex(0)
+  }
+
+  const goToNextBanner = () => {
+    const nextIndex = (currentBannerIndex + 1) % banners.length
+    setCurrentBannerIndex(nextIndex)
+    setCurrentMediaIndex(0)
+  }
+
+  const goToMedia = (index: number) => {
+    setCurrentMediaIndex(index)
+  }
+
+  const goToPreviousMedia = () => {
+    const currentBanner = banners[currentBannerIndex]
+    if (!currentBanner) return
+    setCurrentMediaIndex((prev) => (prev - 1 + currentBanner.media_files.length) % currentBanner.media_files.length)
+  }
+
+  const goToNextMedia = () => {
+    const currentBanner = banners[currentBannerIndex]
+    if (!currentBanner) return
+    setCurrentMediaIndex((prev) => (prev + 1) % currentBanner.media_files.length)
+  }
+
+  if (loading) {
+    return (
+      <div className={`flex items-center justify-center h-64 md:h-96 lg:h-[500px] bg-gray-100 rounded-xl ${className}`}>
+        <svg className="h-8 w-8 animate-spin text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (banners.length === 0) {
+    return null
+  }
+
+  const currentBanner = banners[currentBannerIndex]
+  const currentMedia = currentBanner.media_files[currentMediaIndex]
+
+  const getFullUrl = (url: string) => {
+    if (!url) return ''
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url
+    }
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE || (typeof window !== 'undefined' ? window.location.origin.replace(':3000', ':8000') : 'http://localhost:8000')
+    return `${apiBase}${url.startsWith('/') ? url : `/${url}`}`
+  }
+
+  // Функция для определения типа видео URL (YouTube, Vimeo, прямой файл)
+  const getVideoEmbedUrl = (url: string): string | null => {
+    if (!url) return null
+    
+    // YouTube
+    const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
+    const youtubeMatch = url.match(youtubeRegex)
+    if (youtubeMatch) {
+      return `https://www.youtube.com/embed/${youtubeMatch[1]}?autoplay=1&loop=1&mute=1&playlist=${youtubeMatch[1]}&controls=0&showinfo=0&rel=0`
+    }
+    
+    // Vimeo
+    const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
+    const vimeoMatch = url.match(vimeoRegex)
+    if (vimeoMatch) {
+      return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1&loop=1&muted=1&background=1`
+    }
+    
+    // Прямой файл - возвращаем как есть
+    return null
+  }
+
+  const renderMedia = () => {
+    if (!currentMedia || !currentMedia.content_url) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-400">
+          <span>Нет контента</span>
+        </div>
+      )
+    }
+
+    const fullUrl = getFullUrl(currentMedia.content_url)
+
+    // Отладочная информация
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Banner media:', {
+        type: currentMedia.content_type,
+        originalUrl: currentMedia.content_url,
+        fullUrl,
+        mimeType: currentMedia.content_mime_type
+      })
+    }
+
+    const contentElement = (
+      <>
+        {currentMedia.content_type === 'image' && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={fullUrl}
+            alt={currentBanner.title || 'Banner'}
+            className="w-full h-full object-cover block"
+            style={{ minHeight: '100%', minWidth: '100%' }}
+            onError={(e) => {
+              console.error('Failed to load banner image:', fullUrl)
+              const target = e.currentTarget
+              target.style.display = 'none'
+              const placeholder = target.parentElement?.querySelector('.banner-placeholder')
+              if (placeholder) {
+                (placeholder as HTMLElement).style.display = 'flex'
+              }
+            }}
+            onLoad={() => {
+              console.log('Banner image loaded:', fullUrl)
+            }}
+          />
+        )}
+        {currentMedia.content_type === 'gif' && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={fullUrl}
+            alt={currentBanner.title || 'Banner'}
+            className="w-full h-full object-cover block"
+            style={{ minHeight: '100%', minWidth: '100%' }}
+            onError={(e) => {
+              console.error('Failed to load banner GIF:', fullUrl)
+              const target = e.currentTarget
+              target.style.display = 'none'
+              const placeholder = target.parentElement?.querySelector('.banner-placeholder')
+              if (placeholder) {
+                (placeholder as HTMLElement).style.display = 'flex'
+              }
+            }}
+            onLoad={() => {
+              console.log('Banner GIF loaded:', fullUrl)
+            }}
+          />
+        )}
+        {currentMedia.content_type === 'video' && (() => {
+          const embedUrl = getVideoEmbedUrl(fullUrl)
+          
+          // Если это YouTube или Vimeo, используем iframe
+          if (embedUrl) {
+            return (
+              <iframe
+                src={embedUrl}
+                className="w-full h-full object-cover block"
+                style={{ minHeight: '100%', minWidth: '100%', border: 'none' }}
+                allow="autoplay; encrypted-media"
+                allowFullScreen
+                onError={(e) => {
+                  console.error('Failed to load banner video embed:', embedUrl)
+                }}
+              />
+            )
+          }
+          
+          // Прямой видеофайл - используем тег video с поддержкой разных форматов
+          const videoExt = fullUrl.split('.').pop()?.toLowerCase()
+          const mimeType = currentMedia.content_mime_type || 
+            (videoExt === 'mp4' ? 'video/mp4' : 
+             videoExt === 'webm' ? 'video/webm' : 
+             videoExt === 'ogg' ? 'video/ogg' : 'video/mp4')
+          
+          return (
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full h-full object-cover block"
+              style={{ minHeight: '100%', minWidth: '100%' }}
+              onError={(e) => {
+                console.error('Failed to load banner video:', fullUrl, mimeType)
+                const target = e.currentTarget
+                target.style.display = 'none'
+                const placeholder = target.parentElement?.querySelector('.banner-placeholder')
+                if (placeholder) {
+                  (placeholder as HTMLElement).style.display = 'flex'
+                }
+              }}
+              onLoadedData={() => {
+                console.log('Banner video loaded:', fullUrl, mimeType)
+              }}
+            >
+              <source src={fullUrl} type={mimeType} />
+              {/* Fallback для разных форматов */}
+              {videoExt !== 'mp4' && <source src={fullUrl.replace(/\.(webm|ogg)$/i, '.mp4')} type="video/mp4" />}
+              {videoExt !== 'webm' && <source src={fullUrl.replace(/\.(mp4|ogg)$/i, '.webm')} type="video/webm" />}
+              Ваш браузер не поддерживает видео.
+            </video>
+          )
+        })()}
+        <div className="banner-placeholder hidden absolute inset-0 w-full h-full items-center justify-center bg-gray-200 text-gray-400">
+          <span>Ошибка загрузки контента</span>
+        </div>
+      </>
+    )
+
+    // Если есть ссылка, но нет link_text, делаем весь баннер кликабельным
+    if (currentBanner.link_url && !currentBanner.link_text) {
+      return (
+        <Link href={currentBanner.link_url} className="block w-full h-full">
+          {contentElement}
+        </Link>
+      )
+    }
+
+    return <div className="w-full h-full">{contentElement}</div>
+  }
+
+  const hasMultipleBanners = banners.length > 1
+  const hasMultipleMedia = currentBanner.media_files.length > 1
+
+  return (
+    <div className={`relative w-full rounded-xl overflow-hidden shadow-lg ${className}`}>
+      <div className="relative h-64 md:h-96 lg:h-[500px] w-full">
+        {/* Контент медиа */}
+        <div className="absolute inset-0 w-full h-full z-0">
+          {renderMedia()}
+        </div>
+        
+        {/* Текст баннера (заголовок и ссылка) - поверх медиа */}
+        {(currentBanner.title || currentBanner.link_text) && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center px-4 text-center">
+            {currentBanner.title && (
+              <h2 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white mb-4 drop-shadow-lg">
+                {currentBanner.title}
+              </h2>
+            )}
+            {currentBanner.link_text && currentBanner.link_url && (
+              <Link
+                href={currentBanner.link_url}
+                className="inline-block mt-4 px-6 py-3 bg-white text-red-600 font-semibold rounded-lg shadow-lg hover:bg-red-50 transition-all duration-200 hover:scale-105"
+              >
+                {currentBanner.link_text}
+              </Link>
+            )}
+          </div>
+        )}
+        
+        {/* Навигационные стрелки для медиа (внутри баннера) */}
+        {hasMultipleMedia && (
+          <>
+            <button
+              onClick={goToPreviousMedia}
+              className="absolute left-4 top-1/2 -translate-y-1/2 z-30 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-200 hover:scale-110"
+              aria-label="Предыдущее медиа"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={goToNextMedia}
+              className="absolute right-4 top-1/2 -translate-y-1/2 z-30 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-200 hover:scale-110"
+              aria-label="Следующее медиа"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </>
+        )}
+
+        {/* Навигационные стрелки для баннеров (если несколько баннеров) */}
+        {hasMultipleBanners && (
+          <>
+            <button
+              onClick={goToPreviousBanner}
+              className="absolute left-16 top-1/2 -translate-y-1/2 z-30 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-200 hover:scale-110"
+              aria-label="Предыдущий баннер"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={goToNextBanner}
+              className="absolute right-16 top-1/2 -translate-y-1/2 z-30 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-200 hover:scale-110"
+              aria-label="Следующий баннер"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              </svg>
+            </button>
+          </>
+        )}
+
+        {/* Индикаторы медиа (внутри баннера) */}
+        {hasMultipleMedia && (
+          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 flex gap-2">
+            {currentBanner.media_files.map((_, index) => (
+              <button
+                key={index}
+                onClick={() => goToMedia(index)}
+                className={`h-2 rounded-full transition-all duration-200 ${
+                  index === currentMediaIndex
+                    ? 'w-8 bg-white'
+                    : 'w-2 bg-white/50 hover:bg-white/75'
+                }`}
+                aria-label={`Перейти к медиа ${index + 1}`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Индикаторы баннеров (если несколько баннеров) */}
+        {hasMultipleBanners && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex gap-2">
+            {banners.map((_, index) => (
+              <button
+                key={index}
+                onClick={() => goToBanner(index)}
+                className={`h-2 rounded-full transition-all duration-200 ${
+                  index === currentBannerIndex
+                    ? 'w-8 bg-white'
+                    : 'w-2 bg-white/50 hover:bg-white/75'
+                }`}
+                aria-label={`Перейти к баннеру ${index + 1}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

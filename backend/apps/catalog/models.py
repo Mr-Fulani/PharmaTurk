@@ -679,3 +679,180 @@ class ElectronicsProduct(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Banner(models.Model):
+    """Баннер для главной страницы."""
+    
+    POSITION_CHOICES = [
+        ('main', _('Главный баннер (вверху страницы)')),
+        ('after_brands', _('После блока "Популярные бренды"')),
+        ('before_footer', _('Перед футером')),
+    ]
+    
+    title = models.CharField(_("Заголовок"), max_length=200, blank=True, help_text=_("Заголовок, отображаемый поверх медиа-контента"))
+    position = models.CharField(
+        _("Позиция"),
+        max_length=20,
+        choices=POSITION_CHOICES,
+        default='main',
+        help_text=_("Где на странице отображается баннер")
+    )
+    
+    # Ссылка при клике
+    link_url = models.URLField(
+        _("Ссылка при клике"),
+        blank=True,
+        help_text=_("URL для перехода при клике на баннер")
+    )
+    link_text = models.CharField(
+        _("Текст кнопки"),
+        max_length=100,
+        blank=True,
+        help_text=_("Текст кнопки, отображаемой поверх медиа-контента")
+    )
+    
+    # Настройки отображения
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(
+        _("Порядок сортировки"),
+        default=0,
+        help_text=_("Чем меньше число, тем выше баннер в карусели")
+    )
+    
+    # Метаданные
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Баннер")
+        verbose_name_plural = _("Баннеры")
+        ordering = ['position', 'sort_order', '-created_at']
+        indexes = [
+            models.Index(fields=['position', 'is_active', 'sort_order']),
+        ]
+    
+    def __str__(self):
+        position_display = dict(self.POSITION_CHOICES).get(self.position, self.position)
+        title_part = f" - {self.title}" if self.title else ""
+        return f"{position_display}{title_part}"
+
+
+class BannerMedia(models.Model):
+    """Медиа-файл для баннера (изображение, видео или GIF)."""
+    
+    CONTENT_TYPE_CHOICES = [
+        ('image', _('Изображение')),
+        ('video', _('Видео')),
+        ('gif', _('GIF анимация')),
+    ]
+    
+    banner = models.ForeignKey(
+        Banner,
+        on_delete=models.CASCADE,
+        related_name='media_files',
+        verbose_name=_("Баннер")
+    )
+    content_type = models.CharField(
+        _("Тип контента"),
+        max_length=10,
+        choices=CONTENT_TYPE_CHOICES,
+        default='image',
+        help_text=_("Тип медиа-контента")
+    )
+    
+    # Поля для изображения
+    image = models.ImageField(
+        _("Изображение"),
+        upload_to='banners/',
+        blank=True,
+        null=True,
+        help_text=_("Изображение для баннера (JPG, PNG)")
+    )
+    image_url = models.URLField(
+        _("URL изображения"),
+        blank=True,
+        help_text=_("Внешний URL изображения (если не загружено локально)")
+    )
+    
+    # Поля для видео
+    video_url = models.URLField(
+        _("URL видео"),
+        blank=True,
+        help_text=_("URL видео (YouTube, Vimeo или прямой ссылка на видеофайл)")
+    )
+    video_file = models.FileField(
+        _("Видеофайл"),
+        upload_to='banners/videos/',
+        blank=True,
+        null=True,
+        help_text=_("Локальный видеофайл (MP4, WebM)")
+    )
+    
+    # Поля для GIF
+    gif_url = models.URLField(
+        _("URL GIF"),
+        blank=True,
+        help_text=_("Внешний URL GIF анимации")
+    )
+    gif_file = models.FileField(
+        _("GIF файл"),
+        upload_to='banners/gifs/',
+        blank=True,
+        null=True,
+        help_text=_("Локальный GIF файл")
+    )
+    
+    # Порядок отображения в карусели
+    sort_order = models.PositiveIntegerField(
+        _("Порядок сортировки"),
+        default=0,
+        help_text=_("Чем меньше число, тем раньше отображается в карусели")
+    )
+    
+    # Метаданные
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    
+    class Meta:
+        verbose_name = _("Медиа баннера")
+        verbose_name_plural = _("Медиа баннеров")
+        ordering = ['banner', 'sort_order', '-created_at']
+        indexes = [
+            models.Index(fields=['banner', 'sort_order']),
+        ]
+    
+    def __str__(self):
+        content_type_display = dict(self.CONTENT_TYPE_CHOICES).get(self.content_type, self.content_type)
+        return f"{self.banner} - {content_type_display} (#{self.sort_order})"
+    
+    def get_content_url(self):
+        """Получить URL контента в зависимости от типа."""
+        if self.content_type == 'image':
+            if self.image:
+                return self.image.url
+            return self.image_url or ''
+        elif self.content_type == 'video':
+            if self.video_file:
+                return self.video_file.url
+            return self.video_url or ''
+        elif self.content_type == 'gif':
+            if self.gif_file:
+                return self.gif_file.url
+            return self.gif_url or ''
+        return ''
+    
+    def get_content_type_for_html(self):
+        """Определить MIME-тип для HTML-тега."""
+        if self.content_type == 'image':
+            if self.image:
+                ext = self.image.name.split('.')[-1].lower()
+                return f'image/{ext if ext in ["jpg", "jpeg", "png", "webp"] else "jpeg"}'
+            return 'image/jpeg'
+        elif self.content_type == 'video':
+            if self.video_file:
+                ext = self.video_file.name.split('.')[-1].lower()
+                return f'video/{ext if ext in ["mp4", "webm", "ogg"] else "mp4"}'
+            return 'video/mp4'
+        elif self.content_type == 'gif':
+            return 'image/gif'
+        return ''

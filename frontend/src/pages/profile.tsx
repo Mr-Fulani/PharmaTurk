@@ -42,8 +42,8 @@ interface UserProfile {
   avatar_url?: string
   whatsapp_phone?: string
   telegram_username?: string
-  total_orders: number
-  total_spent: string
+  total_orders?: number
+  total_spent?: string
 }
 
 interface Address {
@@ -672,15 +672,15 @@ export default function ProfilePage() {
                     </h3>
                     <div className="space-y-3">
                       <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">{t('profile_total_orders')}</span>
+                        <span className="text-sm text-gray-600">{t('profile_total_orders', 'Всего заказов')}</span>
                         <span className="text-base font-semibold text-gray-900">
-                          {profile.total_orders}
+                          {profile.total_orders || 0}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">{t('profile_total_spent')}</span>
+                        <span className="text-sm text-gray-600">{t('profile_total_spent', 'Потрачено всего')}</span>
                         <span className="text-base font-semibold text-violet-600">
-                          {parseFloat(profile.total_spent).toFixed(2)} {orders[0]?.currency || 'USD'}
+                          {profile.total_spent ? parseFloat(profile.total_spent).toFixed(2) : '0.00'} {orders.length > 0 && orders[0]?.currency ? orders[0].currency : 'RUB'}
                         </span>
                       </div>
                     </div>

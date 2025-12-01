@@ -157,6 +157,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     user_username = serializers.CharField(source='user.username', read_only=True)
     phone_number = serializers.CharField(source='user.phone_number', read_only=True)
     avatar_url = serializers.SerializerMethodField()
+    total_orders = serializers.SerializerMethodField()
+    total_spent = serializers.SerializerMethodField()
     
     class Meta:
         model = UserProfile
@@ -180,6 +182,27 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.avatar.url)
             return obj.avatar.url
         return None
+    
+    def get_total_orders(self, obj):
+        """Расчет общего количества заказов пользователя"""
+        from apps.orders.models import Order
+        return Order.objects.filter(user=obj.user).count()
+    
+    def get_total_spent(self, obj):
+        """Расчет общей суммы потраченных денег"""
+        from django.db.models import Sum, Q
+        from apps.orders.models import Order
+        
+        # Получаем сумму всех заказов пользователя (исключая отмененные)
+        result = Order.objects.filter(
+            user=obj.user
+        ).exclude(
+            status='cancelled'
+        ).aggregate(
+            total=Sum('total_amount')
+        )
+        total = result['total'] or 0
+        return str(total)
 
 
 class UserAddressSerializer(serializers.ModelSerializer):

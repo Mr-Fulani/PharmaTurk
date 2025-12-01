@@ -85,7 +85,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="mt-8 border-t border-red-200 pt-4 text-center text-xs text-gray-600">
-          © {new Date().getFullYear()} PharmaTurk
+          © {new Date().getFullYear()} Turk-Export
         </div>
       </div>
     </footer>

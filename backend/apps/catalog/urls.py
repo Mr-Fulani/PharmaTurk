@@ -7,7 +7,8 @@ from .views import (
     CategoryViewSet, BrandViewSet, ProductViewSet, FavoriteViewSet,
     ClothingCategoryViewSet, ClothingProductViewSet,
     ShoeCategoryViewSet, ShoeProductViewSet,
-    ElectronicsCategoryViewSet, ElectronicsProductViewSet
+    ElectronicsCategoryViewSet, ElectronicsProductViewSet,
+    BannerViewSet
 )
 
 # Основной роутер для медикаментов (существующий)
@@ -16,6 +17,7 @@ router.register(r'categories', CategoryViewSet, basename='category')
 router.register(r'brands', BrandViewSet, basename='brand')
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'favorites', FavoriteViewSet, basename='favorite')
+router.register(r'banners', BannerViewSet, basename='banner')
 
 # Роутер для одежды
 clothing_router = DefaultRouter(trailing_slash=False)

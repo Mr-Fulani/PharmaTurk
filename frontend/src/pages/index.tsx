@@ -6,6 +6,7 @@ import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getApiForCategory } from '../lib/api'
+import BannerCarousel from '../components/BannerCarousel'
 
 interface Brand {
   id: number
@@ -195,32 +196,9 @@ export default function Home({ brands }: HomePageProps) {
       </Head>
       
       <div className="mx-auto max-w-6xl px-6 py-8">
-        {/* Hero Banner */}
-        <div className="relative mb-12 rounded-xl overflow-hidden shadow-lg">
-          <div className="bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 h-48 md:h-64 flex items-center justify-center">
-            <div className="text-center text-white px-6">
-              <h1 className="text-3xl md:text-5xl font-bold mb-4">
-                PharmaTurk
-              </h1>
-              <p className="text-lg md:text-xl opacity-90 mb-6">
-                Ваш надежный партнер в мире товаров из Турции
-              </p>
-              <div className="space-x-4">
-                <button 
-                  onClick={() => router.push('/categories/medicines')}
-                  className="bg-white text-violet-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors duration-200"
-                >
-                  Медикаменты
-                </button>
-                <button 
-                  onClick={() => router.push('/categories/clothing')}
-                  className="border-2 border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-violet-600 transition-colors duration-200"
-                >
-                  Одежда
-                </button>
-              </div>
-            </div>
-          </div>
+        {/* Главный баннер */}
+        <div className="mb-12">
+          <BannerCarousel position="main" />
         </div>
 
         {/* Brands Section */}
@@ -271,8 +249,13 @@ export default function Home({ brands }: HomePageProps) {
           </div>
         </section>
 
+        {/* Баннер после брендов */}
+        <div className="mb-12">
+          <BannerCarousel position="after_brands" />
+        </div>
+
         {/* Categories Section */}
-        <section>
+        <section className="mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8 text-center">
             Категории товаров
           </h2>
@@ -298,6 +281,11 @@ export default function Home({ brands }: HomePageProps) {
             ))}
           </div>
         </section>
+
+        {/* Баннер перед футером */}
+        <div className="mb-12">
+          <BannerCarousel position="before_footer" />
+        </div>
       </div>
     </>
   )

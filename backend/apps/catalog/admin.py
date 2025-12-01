@@ -4,7 +4,7 @@ from django.utils.translation import gettext_lazy as _
 from .models import (
     Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ClothingCategory, ClothingProduct, ShoeCategory, ShoeProduct,
-    ElectronicsCategory, ElectronicsProduct
+    ElectronicsCategory, ElectronicsProduct, Banner, BannerMedia
 )
 
 
@@ -246,3 +246,91 @@ class ElectronicsProductAdmin(admin.ModelAdmin):
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
+
+
+class BannerMediaInline(admin.TabularInline):
+    """Inline для медиа-файлов баннера."""
+    model = BannerMedia
+    extra = 1
+    fields = ('content_type', 'image', 'image_url', 'video_file', 'video_url', 'gif_file', 'gif_url', 'sort_order')
+    verbose_name = _("Медиа-файл")
+    verbose_name_plural = _("Медиа-файлы")
+    # Показываем все поля для удобства добавления разных типов медиа
+
+
+@admin.register(Banner)
+class BannerAdmin(admin.ModelAdmin):
+    """Админка для баннеров."""
+    list_display = ('title', 'position', 'get_media_count', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('position', 'is_active', 'created_at')
+    search_fields = ('title',)
+    ordering = ('position', 'sort_order', '-created_at')
+    inlines = [BannerMediaInline]
+    
+    fieldsets = (
+        (None, {'fields': ('title', 'position', 'is_active', 'sort_order')}),
+        (_('Ссылка'), {'fields': ('link_url', 'link_text')}),
+    )
+    
+    def get_media_count(self, obj):
+        """Количество медиа-файлов в баннере."""
+        if obj.pk:
+            return obj.media_files.count()
+        return 0
+    get_media_count.short_description = _("Количество медиа")
+
+
+@admin.register(BannerMedia)
+class BannerMediaAdmin(admin.ModelAdmin):
+    """Админка для медиа-файлов баннеров (для прямого доступа)."""
+    list_display = ('banner', 'content_type', 'get_content_preview', 'sort_order', 'created_at')
+    list_filter = ('content_type', 'banner__position', 'created_at')
+    search_fields = ('banner__title',)
+    ordering = ('banner', 'sort_order', '-created_at')
+    
+    fieldsets = (
+        (None, {'fields': ('banner', 'content_type', 'sort_order')}),
+        (_('Изображение'), {
+            'fields': ('image', 'image_url'),
+            'description': _('Загрузите изображение локально или укажите внешний URL')
+        }),
+        (_('Видео'), {
+            'fields': ('video_file', 'video_url'),
+            'description': _('Загрузите видеофайл локально или укажите внешний URL')
+        }),
+        (_('GIF'), {
+            'fields': ('gif_file', 'gif_url'),
+            'description': _('Загрузите GIF файл локально или укажите внешний URL')
+        }),
+    )
+    
+    def get_fieldsets(self, request, obj=None):
+        """Динамически показываем только нужные поля в зависимости от типа контента."""
+        if obj:
+            if obj.content_type == 'image':
+                return [
+                    (None, {'fields': ('banner', 'content_type', 'sort_order')}),
+                    (_('Изображение'), {'fields': ('image', 'image_url')}),
+                ]
+            elif obj.content_type == 'video':
+                return [
+                    (None, {'fields': ('banner', 'content_type', 'sort_order')}),
+                    (_('Видео'), {'fields': ('video_file', 'video_url')}),
+                ]
+            elif obj.content_type == 'gif':
+                return [
+                    (None, {'fields': ('banner', 'content_type', 'sort_order')}),
+                    (_('GIF'), {'fields': ('gif_file', 'gif_url')}),
+                ]
+        return super().get_fieldsets(request, obj)
+    
+    def get_content_preview(self, obj):
+        """Превью контента."""
+        url = obj.get_content_url()
+        if url:
+            if obj.content_type == 'image' or obj.content_type == 'gif':
+                return f'<img src="{url}" style="max-width: 100px; max-height: 50px;" />'
+            return url[:50] + '...' if len(url) > 50 else url
+        return _("Нет контента")
+    get_content_preview.short_description = _("Превью")
+    get_content_preview.allow_tags = True

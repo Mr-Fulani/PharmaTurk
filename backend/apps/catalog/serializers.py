@@ -4,7 +4,7 @@ from rest_framework import serializers
 from .models import (
     Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ClothingCategory, ClothingProduct, ShoeCategory, ShoeProduct, 
-    ElectronicsCategory, ElectronicsProduct
+    ElectronicsCategory, ElectronicsProduct, Banner, BannerMedia
 )
 
 
@@ -449,3 +449,66 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
         if obj.old_price is not None:
             return f"{obj.old_price} {obj.currency}"
         return None
+
+
+class BannerMediaSerializer(serializers.ModelSerializer):
+    """Сериализатор для медиа-файлов баннера."""
+    
+    content_url = serializers.SerializerMethodField()
+    content_mime_type = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = BannerMedia
+        fields = [
+            'id', 'content_type', 'content_url', 'content_mime_type', 'sort_order'
+        ]
+        read_only_fields = ['id', 'content_url', 'content_mime_type']
+    
+    def get_content_url(self, obj):
+        """Получить URL контента медиа-файла."""
+        request = self.context.get('request')
+        content_url = obj.get_content_url()
+        
+        if not content_url:
+            return ''
+        
+        # Если это внешний URL, возвращаем как есть
+        if content_url.startswith('http://') or content_url.startswith('https://'):
+            return content_url
+        
+        # Если это локальный файл, преобразуем в абсолютный URL
+        if request:
+            absolute_url = request.build_absolute_uri(content_url)
+            # Заменяем внутренний Docker хост на внешний, если нужно
+            if 'backend:8000' in absolute_url or 'localhost:8000' not in absolute_url:
+                host = request.get_host()
+                scheme = 'https' if request.is_secure() else 'http'
+                if 'localhost' not in host and '127.0.0.1' not in host:
+                    return f"{scheme}://{host}{content_url}"
+                return f"http://localhost:8000{content_url}"
+            return absolute_url
+        
+        return content_url
+    
+    def get_content_mime_type(self, obj):
+        """Получить MIME-тип контента."""
+        return obj.get_content_type_for_html()
+
+
+class BannerSerializer(serializers.ModelSerializer):
+    """Сериализатор для баннеров."""
+    
+    media_files = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Banner
+        fields = [
+            'id', 'title', 'position', 'link_url', 'link_text', 
+            'sort_order', 'media_files'
+        ]
+        read_only_fields = ['id', 'media_files']
+    
+    def get_media_files(self, obj):
+        """Получить отсортированные медиа-файлы баннера."""
+        media = obj.media_files.all().order_by('sort_order')
+        return BannerMediaSerializer(media, many=True, context=self.context).data

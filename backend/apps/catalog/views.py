@@ -4,6 +4,7 @@ from typing import List
 from decimal import Decimal
 
 from django.shortcuts import get_object_or_404
+from django.db import models
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -13,7 +14,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExampl
 from .models import (
     Category, Brand, Product, ProductAttribute, PriceHistory, Favorite,
     ClothingCategory, ClothingProduct, ShoeCategory, ShoeProduct,
-    ElectronicsCategory, ElectronicsProduct
+    ElectronicsCategory, ElectronicsProduct, Banner, BannerMedia
 )
 from .services import CatalogService
 from .serializers import (
@@ -30,7 +31,8 @@ from .serializers import (
     ShoeCategorySerializer,
     ShoeProductSerializer,
     ElectronicsCategorySerializer,
-    ElectronicsProductSerializer
+    ElectronicsProductSerializer,
+    BannerSerializer
 )
 
 
@@ -1155,3 +1157,38 @@ class FavoriteViewSet(viewsets.ViewSet):
             count = 0
         
         return Response({"count": count})
+
+
+class BannerViewSet(viewsets.ReadOnlyModelViewSet):
+    """API для работы с баннерами."""
+    
+    queryset = Banner.objects.filter(is_active=True).prefetch_related(
+        models.Prefetch('media_files', queryset=BannerMedia.objects.all().order_by('sort_order'))
+    )
+    serializer_class = BannerSerializer
+    permission_classes = []  # Публичный доступ
+    
+    @extend_schema(
+        summary="Получить список баннеров",
+        description="Возвращает список активных баннеров с медиа-файлами, отсортированных по позиции и порядку сортировки",
+        parameters=[
+            OpenApiParameter(
+                name="position",
+                type=str,
+                required=False,
+                description="Фильтр по позиции баннера: main, after_brands, before_footer",
+                enum=['main', 'after_brands', 'before_footer']
+            ),
+        ],
+        responses={200: BannerSerializer(many=True)},
+    )
+    def list(self, request):
+        """Получить список баннеров с фильтрацией по позиции."""
+        position = request.query_params.get('position')
+        queryset = self.get_queryset()
+        
+        if position:
+            queryset = queryset.filter(position=position)
+        
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
