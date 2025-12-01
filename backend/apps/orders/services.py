@@ -1,4 +1,9 @@
-"""Утилиты для формирования и отправки чеков по заказам."""
+"""
+Утилиты для формирования и отправки чеков по заказам.
+
+TODO: Функционал чеков временно отключен. Будет доработан позже.
+Включает: формирование чека, отправку по email, интеграцию с админкой.
+"""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -38,6 +43,7 @@ def _format_address(address: UserAddress | None, fallback: str = "") -> str:
     return ", ".join(part for part in parts if part)
 
 
+# TODO: Функционал чеков временно отключен. Будет доработан позже.
 def build_order_receipt_payload(order: Order) -> Dict[str, Any]:
     """Формирует структуру данных для отображения/отправки чека."""
     issued_at = timezone.now()
@@ -117,6 +123,7 @@ def build_order_receipt_payload(order: Order) -> Dict[str, Any]:
     }
 
 
+# TODO: Функционал чеков временно отключен. Будет доработан позже.
 def render_receipt_html(order: Order, receipt: Dict[str, Any] | None = None) -> str:
     """Рендерит HTML-версию чека."""
     payload = receipt or build_order_receipt_payload(order)

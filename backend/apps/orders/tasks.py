@@ -1,4 +1,9 @@
-"""Celery-задачи для заказов."""
+"""
+Celery-задачи для заказов.
+
+TODO: Функционал чеков временно отключен. Будет доработан позже.
+Включает: формирование чека, отправку по email, интеграцию с админкой.
+"""
 from __future__ import annotations
 
 from django.conf import settings
@@ -12,6 +17,7 @@ from .models import Order
 from .services import build_order_receipt_payload, render_receipt_html
 
 
+# TODO: Функционал чеков временно отключен. Будет доработан позже.
 @app.task(bind=True, autoretry_for=(Exception,), retry_backoff=60, max_retries=3)
 def send_order_receipt_task(self, order_id: int, email: str | None = None) -> bool:
     """Отправляет чек по заказу на указанный email."""

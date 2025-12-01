@@ -20,13 +20,13 @@ from .serializers import (
     CartItemSerializer,
     CartSerializer,
     CreateOrderSerializer,
-    OrderReceiptSerializer,
+    OrderReceiptSerializer,  # TODO: Функционал чеков временно отключен. Будет доработан позже.
     OrderSerializer,
     PromoCodeSerializer,
     UpdateCartItemSerializer,
 )
-from .services import build_order_receipt_payload, render_receipt_html
-from .tasks import send_order_receipt_task
+from .services import build_order_receipt_payload, render_receipt_html  # TODO: Функционал чеков временно отключен. Будет доработан позже.
+from .tasks import send_order_receipt_task  # TODO: Функционал чеков временно отключен. Будет доработан позже.
 
 logger = logging.getLogger(__name__)
 
@@ -474,6 +474,8 @@ class OrderViewSet(viewsets.ViewSet):
         order = self._get_order_for_user(request.user, number)
         return Response(OrderSerializer(order).data)
 
+    # TODO: Функционал чеков временно отключен. Будет доработан позже.
+    # Включает: формирование чека, отправку по email, интеграцию с админкой.
     @extend_schema(description="Получить подготовленный чек по заказу", responses=OrderReceiptSerializer)
     @action(detail=False, methods=['get'], url_path=r'receipt/(?P<number>[^/]+)')
     def receipt(self, request, number: str):
@@ -485,6 +487,8 @@ class OrderViewSet(viewsets.ViewSet):
         serializer = OrderReceiptSerializer(receipt)
         return Response(serializer.data)
 
+    # TODO: Функционал чеков временно отключен. Будет доработан позже.
+    # Включает: формирование чека, отправку по email, интеграцию с админкой.
     @extend_schema(description="Отправить чек по email", request=None, responses=None)
     @action(detail=False, methods=['post'], url_path=r'send-receipt/(?P<number>[^/]+)')
     def send_receipt(self, request, number: str):

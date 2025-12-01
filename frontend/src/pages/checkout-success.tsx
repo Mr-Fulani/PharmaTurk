@@ -1,3 +1,5 @@
+// TODO: Функционал чеков временно отключен. Будет доработан позже.
+// Включает: формирование чека, отправку по email, интеграцию с админкой.
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -116,6 +118,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
     ]
   }, [receipt, t])
 
+  // TODO: Функционал чеков временно отключен. Будет доработан позже.
   const handlePrintReceipt = () => {
     if (!receipt) return
     const html = buildReceiptDocument(receipt)
@@ -127,6 +130,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
     printWindow.print()
   }
 
+  // TODO: Функционал чеков временно отключен. Будет доработан позже.
   const handleSendReceipt = async () => {
     if (!number || !sendEmail || sendState === 'sending') return
     setSendState('sending')
@@ -368,6 +372,7 @@ function StatisticCard({ label, value, accent }: { label: string; value: string;
   )
 }
 
+// TODO: Функционал чеков временно отключен. Будет доработан позже.
 function buildReceiptDocument(receipt: OrderReceipt) {
   const formatter = (value: string) => `${value} ${receipt.totals.currency}`
   const rows = receipt.items
