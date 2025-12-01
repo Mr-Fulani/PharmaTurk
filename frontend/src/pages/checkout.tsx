@@ -71,6 +71,13 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const [contactEmail, setContactEmail] = useState('')
   const [shippingAddressText, setShippingAddressText] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('cod')
+  const [cardData, setCardData] = useState({
+    number: '',
+    expiry: '',
+    cvv: '',
+    holder: '',
+  })
+  const [cryptoWallet, setCryptoWallet] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingAddresses, setLoadingAddresses] = useState(true)
   const [showAddressForm, setShowAddressForm] = useState(false)
@@ -670,7 +677,12 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
               <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('checkout_payment_method', 'Способ оплаты')}</h2>
                 <div className="space-y-3">
-                  <label className="flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all hover:bg-gray-50">
+                  {/* Наложенный платёж */}
+                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                    paymentMethod === 'cod' 
+                      ? 'border-violet-500 bg-violet-50' 
+                      : 'border-gray-200 hover:bg-gray-50'
+                  }`}>
                     <input
                       type="radio"
                       name="payment"
@@ -680,11 +692,22 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       className="h-4 w-4 text-violet-600 focus:ring-violet-500"
                     />
                     <div className="ml-3 flex-1">
-                      <span className="font-medium text-gray-900">{t('payment_cod', 'Наложенный платёж')}</span>
-                      <p className="text-sm text-gray-500">{t('payment_cod_description', 'Оплата при получении товара')}</p>
+                      <div className="flex items-center gap-2">
+                        <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        <span className="font-medium text-gray-900">{t('payment_cod', 'Наложенный платёж')}</span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">{t('payment_cod_description', 'Оплата при получении товара')}</p>
                     </div>
-          </label>
-                  <label className="flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all hover:bg-gray-50">
+                  </label>
+
+                  {/* Банковская карта */}
+                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                    paymentMethod === 'card' 
+                      ? 'border-violet-500 bg-violet-50' 
+                      : 'border-gray-200 hover:bg-gray-50'
+                  }`}>
                     <input
                       type="radio"
                       name="payment"
@@ -694,11 +717,180 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       className="h-4 w-4 text-violet-600 focus:ring-violet-500"
                     />
                     <div className="ml-3 flex-1">
-                      <span className="font-medium text-gray-900">{t('payment_card', 'Банковская карта')}</span>
-                      <p className="text-sm text-gray-500">{t('payment_card_description', 'Оплата банковской картой онлайн')}</p>
+                      <div className="flex items-center gap-2">
+                        <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
+                        <span className="font-medium text-gray-900">{t('payment_card', 'Банковская карта')}</span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">{t('payment_card_description', 'Оплата банковской картой онлайн')}</p>
                     </div>
-          </label>
+                  </label>
+
+                  {/* Криптовалюта */}
+                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                    paymentMethod === 'crypto' 
+                      ? 'border-violet-500 bg-violet-50' 
+                      : 'border-gray-200 hover:bg-gray-50'
+                  }`}>
+                    <input
+                      type="radio"
+                      name="payment"
+                      value="crypto"
+                      checked={paymentMethod === 'crypto'}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="h-4 w-4 text-violet-600 focus:ring-violet-500"
+                    />
+                    <div className="ml-3 flex-1">
+                      <div className="flex items-center gap-2">
+                        <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="font-medium text-gray-900">{t('payment_crypto', 'Криптовалюта')}</span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">{t('payment_crypto_description', 'Оплата криптовалютой (Bitcoin, Ethereum, USDT и др.)')}</p>
+                    </div>
+                  </label>
                 </div>
+
+                {/* Поля для банковской карты */}
+                {paymentMethod === 'card' && (
+                  <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200 space-y-4">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">{t('payment_card_details', 'Данные карты')}</h3>
+                    
+                    {/* Номер карты */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {t('payment_card_number', 'Номер карты')} <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={cardData.number}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\s/g, '').replace(/\D/g, '')
+                          const formatted = value.match(/.{1,4}/g)?.join(' ') || value
+                          setCardData({ ...cardData, number: formatted.slice(0, 19) })
+                        }}
+                        placeholder="1234 5678 9012 3456"
+                        maxLength={19}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                        required={paymentMethod === 'card'}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Срок действия */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          {t('payment_card_expiry', 'Срок действия')} <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={cardData.expiry}
+                          onChange={(e) => {
+                            let value = e.target.value.replace(/\D/g, '')
+                            if (value.length >= 2) {
+                              value = value.slice(0, 2) + '/' + value.slice(2, 4)
+                            }
+                            setCardData({ ...cardData, expiry: value.slice(0, 5) })
+                          }}
+                          placeholder="MM/YY"
+                          maxLength={5}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                          required={paymentMethod === 'card'}
+                        />
+                      </div>
+
+                      {/* CVV */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          {t('payment_card_cvv', 'CVV')} <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={cardData.cvv}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '')
+                            setCardData({ ...cardData, cvv: value.slice(0, 4) })
+                          }}
+                          placeholder="123"
+                          maxLength={4}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                          required={paymentMethod === 'card'}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Имя держателя */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {t('payment_card_holder', 'Имя держателя карты')} <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={cardData.holder}
+                        onChange={(e) => setCardData({ ...cardData, holder: e.target.value.toUpperCase() })}
+                        placeholder="IVAN IVANOV"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                        required={paymentMethod === 'card'}
+                      />
+                    </div>
+
+                    {/* Информация о безопасности */}
+                    <div className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <svg className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                      <p className="text-xs text-blue-800">
+                        {t('payment_card_security_info', 'Ваши данные защищены. Мы не храним данные карты на наших серверах.')}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Поле для криптокошелька */}
+                {paymentMethod === 'crypto' && (
+                  <div className="mt-6 p-4 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 space-y-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <svg className="h-5 w-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <h3 className="text-sm font-semibold text-gray-700">{t('payment_crypto_wallet', 'Адрес криптокошелька')}</h3>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {t('payment_crypto_wallet_address', 'Адрес кошелька для получения')} <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={cryptoWallet}
+                        onChange={(e) => setCryptoWallet(e.target.value)}
+                        placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+                        className="w-full px-3 py-2 border border-amber-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono text-sm"
+                        required={paymentMethod === 'crypto'}
+                      />
+                      <p className="mt-2 text-xs text-gray-600">
+                        {t('payment_crypto_supported', 'Поддерживаемые криптовалюты: Bitcoin (BTC), Ethereum (ETH), USDT (TRC20/ERC20), Tether (USDT)')}
+                      </p>
+                    </div>
+
+                    {/* Информация о крипто-оплате */}
+                    <div className="flex items-start gap-2 p-3 bg-amber-100 rounded-lg border border-amber-300">
+                      <svg className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="text-xs text-amber-900">
+                        <p className="font-medium mb-1">{t('payment_crypto_info_title', 'Как это работает:')}</p>
+                        <ul className="list-disc list-inside space-y-1 text-amber-800">
+                          <li>{t('payment_crypto_info_1', 'После подтверждения заказа вы получите адрес для оплаты')}</li>
+                          <li>{t('payment_crypto_info_2', 'Отправьте точную сумму на указанный адрес')}</li>
+                          <li>{t('payment_crypto_info_3', 'После подтверждения транзакции заказ будет обработан')}</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
             <button 
