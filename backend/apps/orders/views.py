@@ -1,22 +1,34 @@
 import logging
-from rest_framework import status, viewsets
-from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.response import Response
-from django.db import transaction
-from django.utils.translation import gettext_lazy as _
-from drf_spectacular.utils import extend_schema, OpenApiExample
 import uuid
 
+from django.http import Http404, HttpResponse
+from django.db import transaction
+from django.utils.translation import gettext_lazy as _
+from drf_spectacular.utils import OpenApiExample, extend_schema
+from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+
 from apps.catalog.models import Product
-logger = logging.getLogger(__name__)
-import uuid
 from apps.users.models import UserAddress
+
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
 from .serializers import (
-    CartSerializer, CartItemSerializer, AddToCartSerializer, UpdateCartItemSerializer,
-    OrderSerializer, CreateOrderSerializer, ApplyPromoCodeSerializer, PromoCodeSerializer
+    AddToCartSerializer,
+    ApplyPromoCodeSerializer,
+    CartItemSerializer,
+    CartSerializer,
+    CreateOrderSerializer,
+    OrderReceiptSerializer,
+    OrderSerializer,
+    PromoCodeSerializer,
+    UpdateCartItemSerializer,
 )
+from .services import build_order_receipt_payload, render_receipt_html
+from .tasks import send_order_receipt_task
+
+logger = logging.getLogger(__name__)
 
 
 def _get_or_create_cart(request) -> Cart:
@@ -410,6 +422,17 @@ class OrderViewSet(viewsets.ViewSet):
     """Управление заказами."""
     permission_classes = [IsAuthenticated]
 
+    def _get_order_for_user(self, user, number: str) -> Order:
+        try:
+            return (
+                Order.objects.filter(user=user, number=number)
+                .select_related('user', 'shipping_address', 'promo_code')
+                .prefetch_related('items')
+                .get()
+            )
+        except Order.DoesNotExist:
+            raise Http404(_("Заказ не найден"))
+
     @extend_schema(
         description="Список заказов текущего пользователя",
         responses=OrderSerializer(many=True),
@@ -438,6 +461,43 @@ class OrderViewSet(viewsets.ViewSet):
     def list(self, request):
         orders = Order.objects.filter(user=request.user).order_by('-created_at')
         return Response(OrderSerializer(orders, many=True).data)
+
+    def retrieve(self, request, pk=None):
+        order = Order.objects.filter(user=request.user, pk=pk).prefetch_related('items').first()
+        if not order:
+            raise Http404(_("Заказ не найден"))
+        return Response(OrderSerializer(order).data)
+
+    @extend_schema(description="Получить заказ по номеру", responses=OrderSerializer)
+    @action(detail=False, methods=['get'], url_path=r'by-number/(?P<number>[^/]+)')
+    def by_number(self, request, number: str):
+        order = self._get_order_for_user(request.user, number)
+        return Response(OrderSerializer(order).data)
+
+    @extend_schema(description="Получить подготовленный чек по заказу", responses=OrderReceiptSerializer)
+    @action(detail=False, methods=['get'], url_path=r'receipt/(?P<number>[^/]+)')
+    def receipt(self, request, number: str):
+        order = self._get_order_for_user(request.user, number)
+        receipt = build_order_receipt_payload(order)
+        if request.query_params.get('format') == 'html':
+            html = render_receipt_html(order, receipt)
+            return HttpResponse(html)
+        serializer = OrderReceiptSerializer(receipt)
+        return Response(serializer.data)
+
+    @extend_schema(description="Отправить чек по email", request=None, responses=None)
+    @action(detail=False, methods=['post'], url_path=r'send-receipt/(?P<number>[^/]+)')
+    def send_receipt(self, request, number: str):
+        order = self._get_order_for_user(request.user, number)
+        email = request.data.get('email') or order.contact_email or (order.user.email if order.user else None)
+        if not email:
+            return Response({"detail": _("Не указан email для отправки чека")}, status=400)
+        try:
+            email = serializers.EmailField().to_internal_value(email)
+        except serializers.ValidationError:
+            return Response({"detail": _("Укажите корректный email")}, status=400)
+        send_order_receipt_task.delay(order.id, email)
+        return Response({"detail": _("Чек будет отправлен на %(email)s") % {"email": email}})
 
     @extend_schema(
         description="Создать заказ из корзины",

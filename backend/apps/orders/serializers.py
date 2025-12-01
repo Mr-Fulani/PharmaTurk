@@ -276,6 +276,32 @@ class OrderItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['product_name', 'price', 'total']
 
 
+class OrderReceiptItemSerializer(serializers.Serializer):
+    """Позиция в чеке заказа."""
+    id = serializers.IntegerField()
+    product_name = serializers.CharField()
+    quantity = serializers.IntegerField()
+    price = serializers.DecimalField(max_digits=12, decimal_places=2)
+    total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    currency = serializers.CharField()
+
+
+class OrderReceiptSerializer(serializers.Serializer):
+    """Структура данных чека заказа."""
+    number = serializers.CharField()
+    status = serializers.CharField()
+    currency = serializers.CharField()
+    issued_at = serializers.DateTimeField()
+    items = OrderReceiptItemSerializer(many=True)
+    seller = serializers.DictField()
+    customer = serializers.DictField()
+    shipping = serializers.DictField()
+    payment = serializers.DictField()
+    totals = serializers.DictField()
+    meta = serializers.DictField()
+    promo_code = serializers.CharField(allow_null=True, required=False)
+
+
 class OrderSerializer(serializers.ModelSerializer):
     """
     Сериализатор заказа

@@ -242,6 +242,14 @@ X_FRAME_OPTIONS = "DENY"
 # Отключаем автоматическое добавление завершающего слэша, чтобы не ломать POST-запросы
 APPEND_SLASH = False
 
+# Email/Company defaults
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@pharmaturk.local")
+COMPANY_NAME = env("COMPANY_NAME", default="PharmaTurk")
+COMPANY_SUPPORT_EMAIL = env("COMPANY_SUPPORT_EMAIL", default=DEFAULT_FROM_EMAIL)
+COMPANY_SUPPORT_PHONE = env("COMPANY_SUPPORT_PHONE", default="+90 (000) 000-00-00")
+COMPANY_ADDRESS = env("COMPANY_ADDRESS", default="Istanbul, Turkey")
+COMPANY_SITE_URL = env("COMPANY_SITE_URL", default="https://pharmaturk.ru")
+
 
 # Sentry (неактивен, если DSN пуст)
 SENTRY_DSN = env("SENTRY_DSN", default="")
