@@ -459,7 +459,21 @@ class OrderViewSet(viewsets.ViewSet):
         ]
     )
     def list(self, request):
-        orders = Order.objects.filter(user=request.user).order_by('-created_at')
+        from django.db.models import Prefetch
+        from apps.catalog.models import ProductImage
+        
+        orders = (
+            Order.objects
+            .filter(user=request.user)
+            .select_related('promo_code')
+            .prefetch_related(
+                Prefetch(
+                    'items__product__images',
+                    queryset=ProductImage.objects.all().order_by('is_main', 'sort_order')
+                )
+            )
+            .order_by('-created_at')
+        )
         return Response(OrderSerializer(orders, many=True).data)
 
     def retrieve(self, request, pk=None):
