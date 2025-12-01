@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios from 'axios'
 import { getApiForCategory } from '../../lib/api'
 import ProductCard from '../../components/ProductCard'
@@ -460,7 +460,7 @@ export default function CategoryPage({
   const resolvedBrandType = useMemo(() => resolveBrandProductType(categoryType), [categoryType])
   const filtersInitialized = useRef<string>('')
   
-  const updatePageQuery = (page: number, options: { replace?: boolean } = {}) => {
+  const updatePageQuery = useCallback((page: number, options: { replace?: boolean } = {}) => {
     if (!router.isReady) return
     const nextQuery: Record<string, string | string[] | undefined> = { ...router.query }
     if (page <= 1) {
@@ -479,7 +479,7 @@ export default function CategoryPage({
     ).catch((error) => {
       console.error('Не удалось обновить параметр страницы в URL:', error)
     })
-  }
+  }, [router])
   
   useEffect(() => {
     if (!router.isReady) return
@@ -721,11 +721,11 @@ export default function CategoryPage({
     }
   }
 
-  const handleFilterChange = (newFilters: FilterState) => {
+  const handleFilterChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters)
     setCurrentPage((prev) => (prev === 1 ? prev : 1))
     updatePageQuery(1, { replace: true })
-  }
+  }, [updatePageQuery])
 
   const getCategoryColor = () => {
     const colors: Record<string, string> = {

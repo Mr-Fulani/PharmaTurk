@@ -123,8 +123,22 @@ export default function CategorySidebar({
   const [expandedTreeItems, setExpandedTreeItems] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
-    onFilterChange?.(filters)
-  }, [filters, onFilterChange])
+    if (onFilterChange) {
+      onFilterChange(filters)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    filters.brands.join(','),
+    filters.categories.join(','),
+    filters.subcategories.join(','),
+    filters.brandSlugs.join(','),
+    filters.categorySlugs.join(','),
+    filters.subcategorySlugs.join(','),
+    filters.priceMin,
+    filters.priceMax,
+    filters.inStock,
+    filters.sortBy
+  ])
 
   const updateFilters = (updater: (prev: FilterState) => FilterState) => {
     setFilters((prev) => updater(prev))
