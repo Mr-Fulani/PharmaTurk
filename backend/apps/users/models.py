@@ -90,6 +90,10 @@ class UserProfile(models.Model):
     avatar = models.ImageField(_('аватар'), upload_to='avatars/', null=True, blank=True)
     bio = models.TextField(_('о себе'), blank=True)
     
+    # Контакты
+    whatsapp_phone = models.CharField(_('WhatsApp'), max_length=17, blank=True)
+    telegram_username = models.CharField(_('Telegram'), max_length=50, blank=True)
+    
     # Настройки приватности
     is_public_profile = models.BooleanField(_('публичный профиль'), default=False)
     show_email = models.BooleanField(_('показывать email'), default=False)

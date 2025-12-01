@@ -155,19 +155,31 @@ class UserProfileSerializer(serializers.ModelSerializer):
     """
     user_email = serializers.EmailField(source='user.email', read_only=True)
     user_username = serializers.CharField(source='user.username', read_only=True)
+    phone_number = serializers.CharField(source='user.phone_number', read_only=True)
+    avatar_url = serializers.SerializerMethodField()
     
     class Meta:
         model = UserProfile
         fields = [
-            'id', 'user_email', 'user_username',
+            'id', 'user_email', 'user_username', 'phone_number',
             'first_name', 'last_name', 'middle_name',
             'country', 'city', 'postal_code', 'address',
-            'avatar', 'bio',
+            'avatar', 'avatar_url', 'bio',
+            'whatsapp_phone', 'telegram_username',
             'is_public_profile', 'show_email', 'show_phone',
             'total_orders', 'total_spent',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['total_orders', 'total_spent', 'created_at', 'updated_at']
+        read_only_fields = ['total_orders', 'total_spent', 'created_at', 'updated_at', 'avatar_url']
+    
+    def get_avatar_url(self, obj):
+        """Получение URL аватара"""
+        if obj.avatar:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.avatar.url)
+            return obj.avatar.url
+        return None
 
 
 class UserAddressSerializer(serializers.ModelSerializer):
@@ -215,6 +227,15 @@ class UserSerializer(serializers.ModelSerializer):
             'date_joined', 'last_login'
         ]
         read_only_fields = ['id', 'is_verified', 'date_joined', 'last_login']
+    
+    def to_representation(self, instance):
+        """Переопределение для включения контекста запроса в сериализацию профиля"""
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and instance.profile:
+            profile_serializer = UserProfileSerializer(instance.profile, context={'request': request})
+            representation['profile'] = profile_serializer.data
+        return representation
 
 
 class UserPasswordChangeSerializer(serializers.Serializer):

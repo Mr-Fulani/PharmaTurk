@@ -214,6 +214,17 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         return UserProfile.objects.filter(user=self.request.user)
     
     @extend_schema(
+        summary="Получить полную информацию о текущем пользователе",
+        description="Получение полной информации о текущем пользователе, включая профиль и статистику",
+        responses={200: UserSerializer}
+    )
+    @action(detail=False, methods=['get'], url_path='me')
+    def me(self, request):
+        """Получение полной информации о текущем пользователе"""
+        serializer = UserSerializer(request.user, context={'request': request})
+        return Response(serializer.data)
+    
+    @extend_schema(
         summary="Получить профиль пользователя",
         description="Получение профиля текущего пользователя",
         responses={200: UserProfileSerializer}
@@ -224,7 +235,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         if not profile:
             profile = UserProfile.objects.create(user=request.user)
         
-        serializer = self.get_serializer(profile)
+        serializer = self.get_serializer(profile, context={'request': request})
         return Response(serializer.data)
 
     @extend_schema(
@@ -237,7 +248,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         profile = self.get_queryset().first()
         if not profile:
             profile = UserProfile.objects.create(user=request.user)
-        serializer = self.get_serializer(profile)
+        serializer = self.get_serializer(profile, context={'request': request})
         return Response([serializer.data])
     
     @extend_schema(
@@ -252,11 +263,51 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         if not profile:
             profile = UserProfile.objects.create(user=request.user)
         
-        serializer = self.get_serializer(profile, data=request.data, partial=True)
+        serializer = self.get_serializer(profile, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @extend_schema(
+        summary="Загрузить аватар",
+        description="Загрузка аватара пользователя",
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    'avatar': {'type': 'string', 'format': 'binary'}
+                }
+            }
+        },
+        responses={200: UserProfileSerializer}
+    )
+    @action(detail=False, methods=['post'], url_path='upload-avatar')
+    def upload_avatar(self, request):
+        """Загрузка аватара"""
+        profile = self.get_queryset().first()
+        if not profile:
+            profile = UserProfile.objects.create(user=request.user)
+        
+        if 'avatar' not in request.FILES:
+            return Response({'error': 'Файл аватара не предоставлен'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        avatar_file = request.FILES['avatar']
+        
+        # Валидация размера файла (максимум 5MB)
+        if avatar_file.size > 5 * 1024 * 1024:
+            return Response({'error': 'Размер файла не должен превышать 5MB'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Валидация типа файла
+        allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+        if avatar_file.content_type not in allowed_types:
+            return Response({'error': 'Недопустимый тип файла. Разрешены: JPEG, PNG, GIF, WebP'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        profile.avatar = avatar_file
+        profile.save()
+        
+        serializer = self.get_serializer(profile, context={'request': request})
+        return Response(serializer.data)
 
 
 class UserAddressViewSet(viewsets.ModelViewSet):

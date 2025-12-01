@@ -410,6 +410,18 @@ const getCategorySections = (type: CategoryPageProps['categoryType'], categories
   return []
 }
 
+const normalizePageParam = (value: string | string[] | undefined): number => {
+  if (!value) {
+    return 1
+  }
+  const raw = Array.isArray(value) ? value[0] : value
+  const parsed = parseInt(raw ?? '', 10)
+  if (Number.isNaN(parsed) || parsed < 1) {
+    return 1
+  }
+  return parsed
+}
+
 export default function CategoryPage({
   products: initialProducts,
   categories,
@@ -447,6 +459,33 @@ export default function CategoryPage({
   const categoryGroups = useMemo(() => getCategorySections(categoryType, categories), [categoryType, categories])
   const resolvedBrandType = useMemo(() => resolveBrandProductType(categoryType), [categoryType])
   const filtersInitialized = useRef<string>('')
+  
+  const updatePageQuery = (page: number, options: { replace?: boolean } = {}) => {
+    if (!router.isReady) return
+    const nextQuery: Record<string, string | string[] | undefined> = { ...router.query }
+    if (page <= 1) {
+      delete nextQuery.page
+    } else {
+      nextQuery.page = String(page)
+    }
+    const navigate = options.replace ? router.replace : router.push
+    navigate(
+      {
+        pathname: router.pathname,
+        query: nextQuery
+      },
+      undefined,
+      { shallow: true, scroll: false }
+    ).catch((error) => {
+      console.error('Не удалось обновить параметр страницы в URL:', error)
+    })
+  }
+  
+  useEffect(() => {
+    if (!router.isReady) return
+    const nextPage = normalizePageParam(router.query.page)
+    setCurrentPage((prev) => (prev === nextPage ? prev : nextPage))
+  }, [router.isReady, router.query.page])
 
   useEffect(() => {
     setBrandOptions(brands)
@@ -562,6 +601,8 @@ export default function CategoryPage({
 
   // Загрузка товаров с фильтрами
   useEffect(() => {
+    let isCancelled = false
+
     const loadProducts = async () => {
       if (!router.isReady) return
       
@@ -620,7 +661,6 @@ export default function CategoryPage({
           params.ordering = filters.sortBy
         }
 
-        const base = process.env.NEXT_PUBLIC_API_BASE || '/api'
         const api = getApiForCategory(categoryType)
         
         console.log('Loading products with params:', params)
@@ -630,17 +670,26 @@ export default function CategoryPage({
         const count = data.count || productsList.length
 
         console.log(`Loaded ${productsList.length} products (total: ${count})`)
+        if (isCancelled) return
         setProducts(productsList)
         setTotalCount(count)
         setTotalPages(Math.ceil(count / 12))
       } catch (error) {
-        console.error('Error loading products:', error)
+        if (!isCancelled) {
+          console.error('Error loading products:', error)
+        }
       } finally {
-        setLoading(false)
+        if (!isCancelled) {
+          setLoading(false)
+        }
       }
     }
 
     loadProducts()
+
+    return () => {
+      isCancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     router.isReady,
@@ -660,13 +709,22 @@ export default function CategoryPage({
   ])
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    const total = Math.max(totalPages, 1)
+    const safePage = Math.min(Math.max(page, 1), total)
+    setCurrentPage((prev) => (prev === safePage ? prev : safePage))
+    const currentQueryPage = router.isReady ? normalizePageParam(router.query.page) : safePage
+    if (safePage !== currentQueryPage) {
+      updatePageQuery(safePage)
+    }
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
   }
 
   const handleFilterChange = (newFilters: FilterState) => {
     setFilters(newFilters)
-    setCurrentPage(1)
+    setCurrentPage((prev) => (prev === 1 ? prev : 1))
+    updatePageQuery(1, { replace: true })
   }
 
   const getCategoryColor = () => {
