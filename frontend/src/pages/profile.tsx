@@ -3,12 +3,16 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
+import Link from 'next/link'
 import api from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
 interface OrderItem {
   id: number
+  product?: number
   product_name: string
+  product_slug?: string
+  product_image_url?: string
   price: string
   quantity: number
   total: string
@@ -705,64 +709,137 @@ export default function ProfilePage() {
                     <p className="mt-4 text-gray-600">{t('profile_no_orders')}</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {orders.map((order) => (
                       <div
                         key={order.id}
-                        className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                        className="group rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden"
                       >
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <h3 className="text-lg font-semibold text-gray-900">
-                                {t('profile_order_number')} #{order.number}
-                              </h3>
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs font-medium ${getOrderStatusColor(
-                                  order.status
-                                )}`}
-                              >
-                                {getOrderStatusText(order.status)}
-                              </span>
-                            </div>
-                            <div className="text-sm text-gray-600">
-                              {t('profile_order_date')}: {formatDate(order.created_at)}
-                            </div>
-                            {order.shipping_address_text && (
-                              <div className="text-sm text-gray-600 mt-1">
-                                {order.shipping_address_text}
+                        {/* Заголовок заказа */}
+                        <div className="bg-gradient-to-r from-violet-50 to-purple-50 px-6 py-4 border-b border-gray-200">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <h3 className="text-xl font-bold text-gray-900">
+                                  {t('profile_order_number')} #{order.number}
+                                </h3>
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-semibold ${getOrderStatusColor(
+                                    order.status
+                                  )}`}
+                                >
+                                  {getOrderStatusText(order.status)}
+                                </span>
                               </div>
-                            )}
-                            <div className="text-sm text-gray-600 mt-1">
-                              {order.contact_name} • {order.contact_phone}
+                              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                                <div className="flex items-center gap-1">
+                                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  <span>{formatDate(order.created_at)}</span>
+                                </div>
+                                {order.shipping_address_text && (
+                                  <div className="flex items-center gap-1">
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    <span className="max-w-xs truncate">{order.shipping_address_text}</span>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-1">
+                                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                  </svg>
+                                  <span>{order.contact_name}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                  </svg>
+                                  <span>{order.contact_phone}</span>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-lg font-bold text-violet-600">
-                              {order.total_amount} {order.currency}
-                            </div>
-                            <div className="text-sm text-gray-600 mt-1">
-                              {order.items.length} {order.items.length === 1 ? 'товар' : 'товаров'}
+                            <div className="text-right">
+                              <div className="text-2xl font-bold text-violet-600 mb-1">
+                                {order.total_amount} {order.currency}
+                              </div>
+                              <div className="text-sm text-gray-600">
+                                {order.items.length} {order.items.length === 1 ? 'товар' : order.items.length < 5 ? 'товара' : 'товаров'}
+                              </div>
                             </div>
                           </div>
                         </div>
-                        <div className="mt-4 pt-4 border-t">
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">
+
+                        {/* Товары в заказе */}
+                        <div className="p-6">
+                          <h4 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide">
                             {t('profile_order_items')}:
                           </h4>
-                          <ul className="space-y-1">
-                            {order.items.map((item) => (
-                              <li
-                                key={item.id}
-                                className="text-sm text-gray-600 flex justify-between"
-                              >
-                                <span>
-                                  {item.product_name} × {item.quantity}
-                                </span>
-                                <span className="font-medium">{item.total} {order.currency}</span>
-                              </li>
-                            ))}
-                          </ul>
+                          <div className="space-y-3">
+                            {order.items.map((item) => {
+                              const productLink = item.product_slug ? `/product/${item.product_slug}` : '#'
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="group/item flex flex-col sm:flex-row gap-4 rounded-lg border border-gray-100 bg-gray-50 p-4 hover:bg-white hover:border-gray-200 transition-all duration-200"
+                                >
+                                  {/* Изображение товара */}
+                                  <Link
+                                    href={productLink}
+                                    className="relative w-full sm:w-24 h-24 flex-shrink-0 overflow-hidden rounded-lg bg-gray-200"
+                                  >
+                                    {item.product_image_url ? (
+                                      <img
+                                        src={item.product_image_url}
+                                        alt={item.product_name}
+                                        className="h-full w-full object-cover transition-transform duration-200 group-hover/item:scale-105"
+                                      />
+                                    ) : (
+                                      <div className="h-full w-full flex items-center justify-center bg-gray-200">
+                                        <svg className="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                      </div>
+                                    )}
+                                  </Link>
+
+                                  {/* Информация о товаре */}
+                                  <div className="flex-1 flex flex-col justify-between min-w-0">
+                                    <div>
+                                      <Link
+                                        href={productLink}
+                                        className="block"
+                                      >
+                                        <h5 className="text-base font-semibold text-gray-900 hover:text-violet-600 transition-colors line-clamp-2">
+                                          {item.product_name}
+                                        </h5>
+                                      </Link>
+                                      <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
+                                        <span className="font-medium">
+                                          {t('cart_item_quantity', 'Количество')}: {item.quantity}
+                                        </span>
+                                        <span className="text-violet-600 font-semibold">
+                                          {item.price} {order.currency}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Итого по товару */}
+                                  <div className="flex flex-col justify-between items-end sm:items-end">
+                                    <div className="text-right">
+                                      <div className="text-xs text-gray-500 mb-1">{t('cart_item_total', 'Итого')}</div>
+                                      <div className="text-lg font-bold text-gray-900">
+                                        {item.total} {order.currency}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
                         </div>
                       </div>
                     ))}

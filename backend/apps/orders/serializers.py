@@ -270,10 +270,39 @@ class OrderItemSerializer(serializers.ModelSerializer):
     """
     Сериализатор позиции заказа
     """
+    product_slug = serializers.CharField(source='product.slug', read_only=True)
+    product_image_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'product_name', 'price', 'quantity', 'total']
-        read_only_fields = ['product_name', 'price', 'total']
+        fields = ['id', 'product', 'product_name', 'product_slug', 'product_image_url', 'price', 'quantity', 'total']
+        read_only_fields = ['product_name', 'price', 'total', 'product_slug', 'product_image_url']
+    
+    def get_product_image_url(self, obj):
+        """Получение URL изображения товара"""
+        if not obj.product:
+            return None
+        
+        product = obj.product
+        # Сначала проверяем main_image
+        if product.main_image:
+            return product.main_image
+        
+        # Затем ищем главное изображение в связанных изображениях
+        try:
+            from apps.catalog.models import ProductImage
+            main_img = product.images.filter(is_main=True).first()
+            if main_img:
+                return main_img.image_url
+            
+            # Если нет главного, берем первое изображение
+            first_img = product.images.first()
+            if first_img:
+                return first_img.image_url
+        except Exception:
+            pass
+        
+        return None
 
 
 # TODO: Функционал чеков временно отключен. Будет доработан позже.
