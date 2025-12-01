@@ -58,15 +58,59 @@ export default function AddToCartButton({
     }
   }
 
+  const isIconOnly = !label || label === ''
+  const displayText = done ? t('added', 'Добавлено') : (loading ? t('adding', 'Добавляем...') : (label || t('add_to_cart', 'В корзину')))
+  
+  // Иконка корзины для отображения при наведении
+  const cartIcon = (
+    <svg 
+      className="w-5 h-5" 
+      fill="none" 
+      stroke="currentColor" 
+      viewBox="0 0 24 24"
+    >
+      <path 
+        strokeLinecap="round" 
+        strokeLinejoin="round" 
+        strokeWidth={2} 
+        d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" 
+      />
+    </svg>
+  )
+  
   return (
     <button
       onClick={add}
       disabled={loading}
       className={
-        `inline-flex items-center rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60 ${className || ''}`
+        `inline-flex items-center justify-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60 transition-all duration-200 ${className || ''} ${
+          isIconOnly ? 'group' : ''
+        }`
       }
     >
-      {done ? t('added', 'Добавлено') : (loading ? t('adding', 'Добавляем...') : (label || t('add_to_cart', 'В корзину')))}
+      {loading ? (
+        <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      ) : isIconOnly ? (
+        <>
+          <span className="group-hover:hidden transition-opacity duration-200">
+            {done ? t('added', 'Добавлено') : cartIcon}
+          </span>
+          <span className="hidden group-hover:block transition-opacity duration-200">
+            {cartIcon}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="group-hover:hidden transition-opacity duration-200">
+            {displayText}
+          </span>
+          <span className="hidden group-hover:block transition-opacity duration-200">
+            {cartIcon}
+          </span>
+        </>
+      )}
     </button>
   )
 }

@@ -2,6 +2,7 @@ import { GetServerSideProps } from 'next'
 import Head from 'next/head'
 import axios from 'axios'
 import AddToCartButton from '../../components/AddToCartButton'
+import FavoriteButton from '../../components/FavoriteButton'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 
@@ -95,12 +96,16 @@ export default function ProductPage({
             <div className="mt-3 text-xl font-semibold text-gray-900">
               {product.price ? `${product.price} ${product.currency}` : t('price_on_request')}
             </div>
-            <AddToCartButton
-              productId={isBaseProduct ? product.id : undefined}
-              productType={productType}
-              productSlug={product.slug}
-              className="mt-4"
-            />
+            <div className="mt-4 flex items-center gap-3">
+              <AddToCartButton
+                productId={isBaseProduct ? product.id : undefined}
+                productType={productType}
+                productSlug={product.slug}
+              />
+              {product.id && (
+                <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
+              )}
+            </div>
             <div className="prose mt-6 max-w-none">
               <p className="whitespace-pre-wrap text-gray-700">{product.description}</p>
             </div>

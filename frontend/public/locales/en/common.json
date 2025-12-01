@@ -205,6 +205,15 @@
   ,"applying": "Applying..."
   ,"cart_subtotal": "Subtotal"
   ,"cart_discount": "Discount"
+  ,"menu_favorites": "Favorites"
+  ,"favorites_title": "Favorites"
+  ,"favorites_empty_title": "Favorites is empty"
+  ,"favorites_empty_description": "Add items to favorites to keep them for later"
+  ,"favorites_go_shopping": "Go shopping"
+  ,"add_to_favorites": "Add to favorites"
+  ,"remove_from_favorites": "Remove from favorites"
+  ,"favorite_error": "Error working with favorites"
+  ,"processing": "Processing..."
 }
 
 

@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
 from .models import (
-    Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory,
+    Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ClothingCategory, ClothingProduct, ShoeCategory, ShoeProduct,
     ElectronicsCategory, ElectronicsProduct
 )
@@ -107,6 +107,24 @@ class PriceHistoryAdmin(admin.ModelAdmin):
     search_fields = ('product__name',)
     ordering = ('-recorded_at',)
     readonly_fields = ('recorded_at',)
+
+
+@admin.register(Favorite)
+class FavoriteAdmin(admin.ModelAdmin):
+    """Админка для избранного."""
+    list_display = ('user', 'get_product_name', 'content_type', 'session_key', 'created_at')
+    list_filter = ('content_type', 'created_at')
+    search_fields = ('user__email', 'session_key')
+    ordering = ('-created_at',)
+    readonly_fields = ('created_at', 'get_product_name')
+    raw_id_fields = ('user',)
+    
+    def get_product_name(self, obj):
+        """Получить название товара."""
+        if obj.product:
+            return getattr(obj.product, 'name', 'Unknown')
+        return 'N/A'
+    get_product_name.short_description = _("Товар")
 
 
 # ============================================================================

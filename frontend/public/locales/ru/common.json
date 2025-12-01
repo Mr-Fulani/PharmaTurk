@@ -205,6 +205,15 @@
   ,"applying": "Применение..."
   ,"cart_subtotal": "Сумма товаров"
   ,"cart_discount": "Скидка"
+  ,"menu_favorites": "Избранное"
+  ,"favorites_title": "Избранное"
+  ,"favorites_empty_title": "Избранное пусто"
+  ,"favorites_empty_description": "Добавьте товары в избранное, чтобы не потерять их"
+  ,"favorites_go_shopping": "Перейти к покупкам"
+  ,"add_to_favorites": "В избранное"
+  ,"remove_from_favorites": "Удалить из избранного"
+  ,"favorite_error": "Ошибка при работе с избранным"
+  ,"processing": "Обработка..."
 }
 
 

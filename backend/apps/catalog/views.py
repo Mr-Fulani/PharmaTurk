@@ -11,7 +11,7 @@ from rest_framework.pagination import PageNumberPagination
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 
 from .models import (
-    Category, Brand, Product, ProductAttribute, PriceHistory,
+    Category, Brand, Product, ProductAttribute, PriceHistory, Favorite,
     ClothingCategory, ClothingProduct, ShoeCategory, ShoeProduct,
     ElectronicsCategory, ElectronicsProduct
 )
@@ -23,6 +23,8 @@ from .serializers import (
     ProductDetailSerializer,
     ProductAttributeSerializer,
     PriceHistorySerializer,
+    FavoriteSerializer,
+    AddToFavoriteSerializer,
     ClothingCategorySerializer,
     ClothingProductSerializer,
     ShoeCategorySerializer,
@@ -881,3 +883,275 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
+
+
+class FavoriteViewSet(viewsets.ViewSet):
+    """API для работы с избранным."""
+    
+    from rest_framework.permissions import AllowAny
+    permission_classes = [AllowAny]
+    
+    def _get_session_key(self, request):
+        """Получить ключ сессии для анонимных пользователей."""
+        header_session = request.META.get('HTTP_X_CART_SESSION') or getattr(request, 'headers', {}).get('X-Cart-Session')
+        cookie_session = getattr(request, 'COOKIES', {}).get('cart_session')
+        django_session = None
+        if hasattr(request, 'session'):
+            django_session = request.session.session_key
+            if not django_session:
+                request.session.save()
+                django_session = request.session.session_key
+        return header_session or cookie_session or django_session
+    
+    @extend_schema(
+        summary="Получить список избранных товаров",
+        description="Возвращает список товаров в избранном для текущего пользователя или сессии",
+        responses=FavoriteSerializer(many=True),
+        examples=[
+            OpenApiExample(
+                'Пример ответа',
+                value=[
+                    {
+                        "id": 1,
+                        "product": {
+                            "id": 1,
+                            "name": "Test Product",
+                            "slug": "test-product",
+                            "price": "10.00",
+                            "currency": "USD",
+                            "main_image_url": "https://example.com/image.jpg"
+                        },
+                        "created_at": "2024-01-01T12:00:00Z"
+                    }
+                ],
+                response_only=True
+            )
+        ]
+    )
+    def list(self, request):
+        """Получить список избранных товаров."""
+        from django.contrib.contenttypes.models import ContentType
+        
+        user = request.user if request.user.is_authenticated else None
+        session_key = None if user else self._get_session_key(request)
+        
+        if user:
+            favorites = Favorite.objects.filter(user=user).select_related('content_type')
+        elif session_key:
+            favorites = Favorite.objects.filter(session_key=session_key).select_related('content_type')
+        else:
+            favorites = Favorite.objects.none()
+        
+        serializer = FavoriteSerializer(favorites, many=True)
+        return Response(serializer.data)
+    
+    @extend_schema(
+        summary="Добавить товар в избранное",
+        description="Добавляет товар в избранное для текущего пользователя или сессии",
+        request=AddToFavoriteSerializer,
+        responses={201: FavoriteSerializer, 400: None},
+        examples=[
+            OpenApiExample(
+                'Запрос',
+                value={"product_id": 1},
+                request_only=True
+            ),
+            OpenApiExample(
+                'Ответ',
+                value={
+                    "id": 1,
+                    "product": {
+                        "id": 1,
+                        "name": "Test Product",
+                        "slug": "test-product",
+                        "price": "10.00",
+                        "currency": "USD"
+                    },
+                    "created_at": "2024-01-01T12:00:00Z"
+                },
+                response_only=True
+            )
+        ]
+    )
+    @action(detail=False, methods=['post'], url_path='add')
+    def add(self, request):
+        """Добавить товар в избранное."""
+        from django.contrib.contenttypes.models import ContentType
+        
+        serializer = AddToFavoriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        product = serializer.validated_data['_product']
+        content_type = ContentType.objects.get_for_model(product)
+        
+        user = request.user if request.user.is_authenticated else None
+        session_key = None if user else self._get_session_key(request)
+        
+        if not user and not session_key:
+            return Response(
+                {"detail": "Требуется авторизация или сессия"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Проверяем, не добавлен ли уже товар
+        if user:
+            favorite, created = Favorite.objects.get_or_create(
+                user=user,
+                content_type=content_type,
+                object_id=product.id
+            )
+        else:
+            favorite, created = Favorite.objects.get_or_create(
+                session_key=session_key,
+                content_type=content_type,
+                object_id=product.id
+            )
+        
+        if not created:
+            return Response(
+                {"detail": "Товар уже в избранном"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Загружаем связанные данные в зависимости от типа товара
+        favorite = Favorite.objects.filter(pk=favorite.pk).select_related('content_type').first()
+        return Response(FavoriteSerializer(favorite).data, status=status.HTTP_201_CREATED)
+    
+    @extend_schema(
+        summary="Удалить товар из избранного",
+        description="Удаляет товар из избранного по ID товара",
+        request=AddToFavoriteSerializer,
+        responses={200: {"detail": "Товар удален из избранного"}, 404: None},
+        examples=[
+            OpenApiExample(
+                'Запрос',
+                value={"product_id": 1},
+                request_only=True
+            )
+        ]
+    )
+    @action(detail=False, methods=['delete'], url_path='remove')
+    def remove(self, request):
+        """Удалить товар из избранного."""
+        from django.contrib.contenttypes.models import ContentType
+        
+        serializer = AddToFavoriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        product = serializer.validated_data['_product']
+        content_type = ContentType.objects.get_for_model(product)
+        
+        user = request.user if request.user.is_authenticated else None
+        session_key = None if user else self._get_session_key(request)
+        
+        if not user and not session_key:
+            return Response(
+                {"detail": "Требуется авторизация или сессия"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Удаляем товар из избранного
+        if user:
+            deleted = Favorite.objects.filter(
+                user=user,
+                content_type=content_type,
+                object_id=product.id
+            ).delete()[0]
+        else:
+            deleted = Favorite.objects.filter(
+                session_key=session_key,
+                content_type=content_type,
+                object_id=product.id
+            ).delete()[0]
+        
+        if not deleted:
+            return Response(
+                {"detail": "Товар не найден в избранном"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        return Response({"detail": "Товар удален из избранного"}, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        summary="Проверить, находится ли товар в избранном",
+        description="Проверяет, находится ли товар в избранном для текущего пользователя или сессии",
+        parameters=[
+            OpenApiParameter(name="product_id", type=int, required=True, description="ID товара")
+        ],
+        responses={200: {"is_favorite": True}, 404: None}
+    )
+    @action(detail=False, methods=['get'], url_path='check')
+    def check(self, request):
+        """Проверить, находится ли товар в избранном."""
+        from django.contrib.contenttypes.models import ContentType
+        
+        product_id = request.query_params.get('product_id')
+        product_type = request.query_params.get('product_type', 'medicines')
+        
+        if not product_id:
+            return Response(
+                {"detail": "Не указан product_id"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Определяем модель товара по типу
+        PRODUCT_MODEL_MAP = {
+            'medicines': Product,
+            'supplements': Product,
+            'tableware': Product,
+            'furniture': Product,
+            'medical-equipment': Product,
+            'clothing': ClothingProduct,
+            'shoes': ShoeProduct,
+            'electronics': ElectronicsProduct,
+        }
+        
+        model_class = PRODUCT_MODEL_MAP.get(product_type, Product)
+        
+        try:
+            product = model_class.objects.get(id=product_id)
+        except model_class.DoesNotExist:
+            return Response({"is_favorite": False})
+        
+        content_type = ContentType.objects.get_for_model(product)
+        
+        user = request.user if request.user.is_authenticated else None
+        session_key = None if user else self._get_session_key(request)
+        
+        if not user and not session_key:
+            return Response({"is_favorite": False})
+        
+        if user:
+            is_favorite = Favorite.objects.filter(
+                user=user,
+                content_type=content_type,
+                object_id=product.id
+            ).exists()
+        else:
+            is_favorite = Favorite.objects.filter(
+                session_key=session_key,
+                content_type=content_type,
+                object_id=product.id
+            ).exists()
+        
+        return Response({"is_favorite": is_favorite})
+    
+    @extend_schema(
+        summary="Получить количество товаров в избранном",
+        description="Возвращает количество товаров в избранном для текущего пользователя или сессии",
+        responses={200: {"count": 5}}
+    )
+    @action(detail=False, methods=['get'], url_path='count')
+    def count(self, request):
+        """Получить количество товаров в избранном."""
+        user = request.user if request.user.is_authenticated else None
+        session_key = None if user else self._get_session_key(request)
+        
+        if user:
+            count = Favorite.objects.filter(user=user).count()
+        elif session_key:
+            count = Favorite.objects.filter(session_key=session_key).count()
+        else:
+            count = 0
+        
+        return Response({"count": count})

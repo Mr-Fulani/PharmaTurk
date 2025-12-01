@@ -45,9 +45,9 @@ api.interceptors.request.use((config) => {
     ;(config.headers as AxiosRequestHeaders)['Authorization'] = `Bearer ${access}`
     console.log('API: adding auth header for', config.url)
     
-    // Для авторизованных пользователей отправляем cart_session для возможного переноса корзины
-    // но только если это запрос к корзине
-    if (config.url?.includes('/orders/cart')) {
+    // Для авторизованных пользователей отправляем cart_session для возможного переноса корзины/избранного
+    // но только если это запрос к корзине или избранному
+    if (config.url?.includes('/orders/cart') || config.url?.includes('/catalog/favorites')) {
       const cartSid = Cookies.get('cart_session')
       if (cartSid) {
         ;(config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid

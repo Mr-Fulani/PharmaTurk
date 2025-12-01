@@ -3,6 +3,8 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinValueValidator
+from django.contrib.contenttypes.models import ContentType
+from django.contrib.contenttypes.fields import GenericForeignKey
 
 
 class Category(models.Model):
@@ -255,6 +257,56 @@ class PriceHistory(models.Model):
 
     def __str__(self):
         return f"{self.product.name} - {self.price} {self.currency} ({self.recorded_at})"
+
+
+class Favorite(models.Model):
+    """Избранное пользователя."""
+    
+    user = models.ForeignKey(
+        'users.User',
+        on_delete=models.CASCADE,
+        related_name='favorites',
+        null=True,
+        blank=True,
+        verbose_name=_("Пользователь")
+    )
+    
+    # GenericForeignKey для поддержки всех типов товаров
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        verbose_name=_("Тип товара")
+    )
+    object_id = models.PositiveIntegerField(verbose_name=_("ID товара"))
+    product = GenericForeignKey('content_type', 'object_id')
+    
+    session_key = models.CharField(
+        _("Ключ сессии"),
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text=_("Для анонимных пользователей")
+    )
+    created_at = models.DateTimeField(_("Дата добавления"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Избранное")
+        verbose_name_plural = _("Избранное")
+        unique_together = [
+            ('user', 'content_type', 'object_id'),
+            ('session_key', 'content_type', 'object_id'),
+        ]
+        indexes = [
+            models.Index(fields=['user', 'created_at']),
+            models.Index(fields=['session_key', 'created_at']),
+            models.Index(fields=['content_type', 'object_id']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        user_str = self.user.email if self.user else f"Session: {self.session_key}"
+        product_name = getattr(self.product, 'name', 'Unknown')
+        return f"{user_str} - {product_name}"
 
 
 # ============================================================================

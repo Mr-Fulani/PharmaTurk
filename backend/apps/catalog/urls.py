@@ -4,7 +4,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CategoryViewSet, BrandViewSet, ProductViewSet,
+    CategoryViewSet, BrandViewSet, ProductViewSet, FavoriteViewSet,
     ClothingCategoryViewSet, ClothingProductViewSet,
     ShoeCategoryViewSet, ShoeProductViewSet,
     ElectronicsCategoryViewSet, ElectronicsProductViewSet
@@ -15,6 +15,7 @@ router = DefaultRouter(trailing_slash=False)
 router.register(r'categories', CategoryViewSet, basename='category')
 router.register(r'brands', BrandViewSet, basename='brand')
 router.register(r'products', ProductViewSet, basename='product')
+router.register(r'favorites', FavoriteViewSet, basename='favorite')
 
 # Роутер для одежды
 clothing_router = DefaultRouter(trailing_slash=False)

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { useTranslation } from 'next-i18next'
 import AddToCartButton from './AddToCartButton'
+import FavoriteButton from './FavoriteButton'
 
 interface ProductCardProps {
   id: number
@@ -39,7 +40,7 @@ export default function ProductCard({
   
   if (viewMode === 'list') {
     return (
-      <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all duration-200">
+      <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
         <div className="relative w-full sm:w-48 h-48 flex-shrink-0">
           {imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -56,7 +57,7 @@ export default function ProductCard({
         </div>
         <div className="flex-1 flex flex-col justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">{name}</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-violet-700 transition-colors">{name}</h3>
             {description && (
               <p className="text-sm text-gray-600 line-clamp-2 mb-3">{description}</p>
             )}
@@ -82,16 +83,25 @@ export default function ProductCard({
           <div className="flex items-center gap-3">
             <Link
               href={href || `/product/${productType}/${slug}`}
-              className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors"
+              className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-violet-50 hover:border-violet-300 hover:text-violet-700 transition-colors"
             >
               {t('product_details', 'Подробнее')}
             </Link>
-            <AddToCartButton 
-              productId={isBaseProduct ? id : undefined} 
-              productType={productType}
-              productSlug={slug}
-              className="flex-1 sm:flex-initial"
-            />
+            <div className="flex items-center gap-2 ml-auto">
+              <FavoriteButton 
+                productId={id}
+                productType={productType}
+                iconOnly={true}
+                className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
+              />
+              <AddToCartButton 
+                productId={isBaseProduct ? id : undefined} 
+                productType={productType}
+                productSlug={slug}
+                className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
+                label=""
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -113,17 +123,6 @@ export default function ProductCard({
             {badge}
           </span>
         )}
-        
-        {/* Cart Icon Button */}
-        <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          <AddToCartButton 
-            productId={isBaseProduct ? id : undefined} 
-            productType={productType}
-            productSlug={slug}
-            className="!p-2 !rounded-full w-10 h-10 bg-white shadow-lg hover:shadow-xl flex items-center justify-center hover:scale-110 transition-transform"
-            label=""
-          />
-        </div>
       </div>
       <h3 className="mt-3 line-clamp-2 text-base font-semibold text-gray-900 group-hover:text-violet-700 transition-colors">
         {name}
@@ -144,13 +143,28 @@ export default function ProductCard({
           <span>{rating.toFixed(1)}</span>
         </div>
       )}
-      <div className="mt-3">
+      <div className="mt-3 flex items-center gap-2">
         <Link
           href={href || `/product/${productType}/${slug}`}
           className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-violet-50 hover:border-violet-300 hover:text-violet-700 transition-colors"
         >
           {t('product_details', 'Подробнее')}
         </Link>
+        <div className="flex gap-2 ml-auto">
+          <FavoriteButton 
+            productId={id}
+            productType={productType}
+            iconOnly={true}
+            className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
+          />
+          <AddToCartButton 
+            productId={isBaseProduct ? id : undefined} 
+            productType={productType}
+            productSlug={slug}
+            className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
+            label=""
+          />
+        </div>
       </div>
     </div>
   )

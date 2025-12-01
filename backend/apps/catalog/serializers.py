@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from .models import (
-    Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory,
+    Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ClothingCategory, ClothingProduct, ShoeCategory, ShoeProduct, 
     ElectronicsCategory, ElectronicsProduct
 )
@@ -175,6 +175,92 @@ class CatalogStatsSerializer(serializers.Serializer):
     available_products = serializers.IntegerField()
     featured_products = serializers.IntegerField()
     last_sync = serializers.DateTimeField(allow_null=True)
+
+
+class FavoriteSerializer(serializers.ModelSerializer):
+    """Сериализатор для избранного."""
+    
+    product = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Favorite
+        fields = ['id', 'product', 'created_at']
+        read_only_fields = ['id', 'created_at']
+    
+    def get_product(self, obj):
+        """Сериализация товара в зависимости от его типа."""
+        product = obj.product
+        
+        # Определяем тип товара по модели
+        product_type = 'medicines'  # По умолчанию
+        if isinstance(product, ClothingProduct):
+            product_type = 'clothing'
+            product_data = ClothingProductSerializer(product).data
+        elif isinstance(product, ShoeProduct):
+            product_type = 'shoes'
+            product_data = ShoeProductSerializer(product).data
+        elif isinstance(product, ElectronicsProduct):
+            product_type = 'electronics'
+            product_data = ElectronicsProductSerializer(product).data
+        elif isinstance(product, Product):
+            # Для Product нужно определить подтип по категории или другим признакам
+            # Пока используем 'medicines' как базовый тип
+            product_type = 'medicines'
+            product_data = ProductSerializer(product).data
+        else:
+            # Fallback для неизвестных типов
+            product_data = {
+                'id': getattr(product, 'id', None),
+                'name': getattr(product, 'name', 'Unknown'),
+                'slug': getattr(product, 'slug', ''),
+                'price': str(getattr(product, 'price', '')) if hasattr(product, 'price') else None,
+                'currency': getattr(product, 'currency', ''),
+                'main_image_url': getattr(product, 'main_image', None) or getattr(product, 'main_image_url', None)
+            }
+        
+        # Добавляем тип товара в данные
+        product_data['_product_type'] = product_type
+        return product_data
+
+
+class AddToFavoriteSerializer(serializers.Serializer):
+    """Сериализатор для добавления товара в избранное."""
+    
+    product_id = serializers.IntegerField(required=True)
+    product_type = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    
+    def validate(self, attrs):
+        """Проверка существования товара в зависимости от типа."""
+        product_id = attrs.get('product_id')
+        product_type = attrs.get('product_type', 'medicines')
+        
+        # Маппинг типов товаров на модели
+        from .models import Product, ClothingProduct, ShoeProduct, ElectronicsProduct
+        
+        PRODUCT_MODEL_MAP = {
+            'medicines': Product,
+            'supplements': Product,
+            'tableware': Product,
+            'furniture': Product,
+            'medical-equipment': Product,
+            'clothing': ClothingProduct,
+            'shoes': ShoeProduct,
+            'electronics': ElectronicsProduct,
+        }
+        
+        model_class = PRODUCT_MODEL_MAP.get(product_type, Product)
+        
+        try:
+            product = model_class.objects.get(id=product_id)
+            # Проверяем is_active, если поле существует
+            if hasattr(product, 'is_active') and not product.is_active:
+                raise serializers.ValidationError({"product_id": "Товар неактивен"})
+        except model_class.DoesNotExist:
+            raise serializers.ValidationError({"product_id": "Товар не найден"})
+        
+        attrs['_product'] = product
+        attrs['_product_type'] = product_type
+        return attrs
 
 
 # ============================================================================
