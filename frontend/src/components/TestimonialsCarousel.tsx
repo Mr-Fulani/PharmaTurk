@@ -316,10 +316,10 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
               <div
                 key={testimonial.id}
                 onClick={() => router.push('/testimonials')}
-                className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer transform hover:-translate-y-2 hover:scale-[1.02]"
+                className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer transform hover:-translate-y-2 hover:scale-[1.02] flex flex-col"
               >
                 {testimonial.media && testimonial.media.length > 0 && (
-                   <div className="relative w-full h-80 overflow-hidden bg-gray-100">
+                   <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100">
                     <div className="w-full h-full transition-transform duration-300 group-hover:scale-110">
                       {renderMedia(testimonial)}
                     </div>
@@ -355,37 +355,42 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                     )}
                   </div>
                 )}
-                <div className="p-4 transition-colors duration-300 group-hover:bg-gray-50">
-                  {testimonial.rating && (
-                    <div className="flex items-center mb-2">
-                      {[0, 1, 2, 3, 4].map((rating) => (
-                        <StarIcon
-                          key={rating}
-                          className={classNames(
-                            (testimonial.rating || 0) > rating ? 'text-yellow-400 group-hover:text-yellow-500' : 'text-gray-300',
-                            'h-4 w-4 flex-shrink-0 transition-all duration-300 group-hover:scale-110'
-                          )}
-                          style={{
-                            transitionDelay: `${rating * 30}ms`
-                          }}
-                          aria-hidden="true"
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <p className="text-gray-600 mb-3 text-sm italic line-clamp-3 group-hover:text-gray-700 transition-colors duration-300">"{testimonial.text}"</p>
-                  <div className="flex items-center">
+                
+                {/* Текст отзыва - по центру */}
+                <div className="flex-1 p-4 min-h-[100px]">
+                  <p className="text-gray-600 text-sm line-clamp-4">
+                    "{testimonial.text}"
+                  </p>
+                </div>
+                
+                {/* Нижняя часть: аватарка + имя слева, звездочки справа */}
+                <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 mt-auto">
+                  <div className="flex items-center flex-1 min-w-0">
                     {testimonial.author_avatar_url && (
                       <img
                         src={testimonial.author_avatar_url}
                         alt={testimonial.author_name}
-                        className="w-8 h-8 rounded-full mr-3 object-cover ring-2 ring-gray-200 group-hover:ring-red-400 transition-all duration-300 group-hover:scale-110"
+                        className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
                       />
                     )}
-                    <div className="text-xs font-semibold text-gray-900 group-hover:text-red-600 transition-colors duration-300">
+                    <div className="text-xs font-semibold text-gray-900 truncate">
                       {testimonial.author_name}
                     </div>
                   </div>
+                  {testimonial.rating && (
+                    <div className="flex items-center ml-2 flex-shrink-0">
+                      {[0, 1, 2, 3, 4].map((rating) => (
+                        <StarIcon
+                          key={rating}
+                          className={`h-4 w-4 ${
+                            (testimonial.rating || 0) > rating
+                              ? 'text-yellow-400'
+                              : 'text-gray-300'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

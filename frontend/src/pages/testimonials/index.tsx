@@ -651,7 +651,7 @@ export default function TestimonialsPage() {
         >
           <div
             ref={modalRef}
-            className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative"
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto relative"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close button */}
