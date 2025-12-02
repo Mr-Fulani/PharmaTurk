@@ -44,8 +44,6 @@ class TestimonialSerializer(serializers.ModelSerializer):
     Сериализатор для модели отзыва.
     """
     author_avatar_url = serializers.SerializerMethodField()
-    image_url = serializers.SerializerMethodField()
-    video_file_url = serializers.SerializerMethodField()
     media = TestimonialMediaSerializer(many=True, read_only=True)
 
     class Meta:
@@ -56,10 +54,6 @@ class TestimonialSerializer(serializers.ModelSerializer):
             'author_avatar_url',
             'text',
             'rating',
-            'media_type',
-            'image_url',
-            'video_url',
-            'video_file_url',
             'media',
             'created_at',
         )
@@ -73,24 +67,6 @@ class TestimonialSerializer(serializers.ModelSerializer):
             return obj.author_avatar.url
         return None
 
-    def get_image_url(self, obj):
-        """Возвращает URL изображения (для обратной совместимости)."""
-        if obj.image and hasattr(obj.image, 'url'):
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
-        return None
-
-    def get_video_file_url(self, obj):
-        """Возвращает URL видео файла (для обратной совместимости)."""
-        if obj.video_file and hasattr(obj.video_file, 'url'):
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.video_file.url)
-            return obj.video_file.url
-        return None
-
 
 class TestimonialCreateSerializer(serializers.ModelSerializer):
     """
@@ -102,6 +78,8 @@ class TestimonialCreateSerializer(serializers.ModelSerializer):
         allow_empty=True,
         write_only=True
     )
+    author_name = serializers.CharField(required=False, read_only=True)
+    author_avatar = serializers.ImageField(required=False, read_only=True)
 
     class Meta:
         model = Testimonial
@@ -116,7 +94,47 @@ class TestimonialCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """Создает отзыв с медиа файлами."""
         media_items = validated_data.pop('media_items', [])
-        testimonial = Testimonial.objects.create(is_active=False, **validated_data)
+        
+        # Получаем пользователя из запроса
+        user = self.context['request'].user
+        
+        # Получаем или создаем профиль пользователя
+        from apps.users.models import UserProfile
+        try:
+            profile = user.profile
+        except UserProfile.DoesNotExist:
+            profile = UserProfile.objects.create(user=user)
+        
+        # Автоматически заполняем имя и аватар из профиля
+        author_name = validated_data.pop('author_name', None)
+        if not author_name:
+            # Формируем имя из профиля или username
+            if profile.first_name or profile.last_name:
+                name_parts = [profile.first_name, profile.last_name]
+                author_name = ' '.join(filter(None, name_parts))
+            else:
+                author_name = user.username or user.email
+        
+        author_avatar = validated_data.pop('author_avatar', None)
+        if not author_avatar and profile.avatar:
+            # Копируем аватар из профиля
+            # Открываем файл и создаем копию для отзыва
+            profile.avatar.open('rb')
+            file_content = profile.avatar.read()
+            profile.avatar.close()
+            
+            # Создаем новый файл для отзыва
+            from django.core.files.base import ContentFile
+            import os
+            file_name = os.path.basename(profile.avatar.name)
+            author_avatar = ContentFile(file_content, name=file_name)
+        
+        testimonial = Testimonial.objects.create(
+            is_active=False,
+            author_name=author_name,
+            author_avatar=author_avatar,
+            **validated_data
+        )
         
         for idx, media_item in enumerate(media_items):
             media_type = media_item.get('media_type')

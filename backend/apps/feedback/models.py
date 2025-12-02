@@ -6,12 +6,6 @@ class Testimonial(models.Model):
     """
     Модель для хранения отзывов клиентов.
     """
-    MEDIA_TYPE_CHOICES = (
-        ('none', 'Нет'),
-        ('image', 'Изображение'),
-        ('video', 'Видео'),
-    )
-
     author_name = models.CharField(
         max_length=100,
         verbose_name='Имя автора'
@@ -30,30 +24,6 @@ class Testimonial(models.Model):
         blank=True,
         null=True,
         verbose_name='Рейтинг (1-5)'
-    )
-    # Старые поля для обратной совместимости
-    media_type = models.CharField(
-        max_length=10,
-        choices=MEDIA_TYPE_CHOICES,
-        default='none',
-        verbose_name='Тип медиа (устаревшее)'
-    )
-    image = models.ImageField(
-        upload_to='testimonials/images/',
-        blank=True,
-        null=True,
-        verbose_name='Изображение (устаревшее)'
-    )
-    video_url = models.URLField(
-        blank=True,
-        null=True,
-        verbose_name='URL видео (YouTube, Vimeo) (устаревшее)'
-    )
-    video_file = models.FileField(
-        upload_to='testimonials/videos/',
-        blank=True,
-        null=True,
-        verbose_name='Файл видео (устаревшее)'
     )
     is_active = models.BooleanField(
         default=False,

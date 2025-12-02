@@ -240,7 +240,8 @@
   "testimonial_submit_error": "Error submitting review. Please try again.",
   "video_preview_unavailable": "Preview unavailable",
   "testimonial_submitted_title": "Review submitted!",
-  "testimonial_moderation_message": "Thank you for your review! It has been sent for moderation and will be published after administrator approval."
+  "testimonial_moderation_message": "Thank you for your review! It has been sent for moderation and will be published after administrator approval.",
+  "testimonial_will_be_signed_as": "Review will be signed as:"
 }
 
 

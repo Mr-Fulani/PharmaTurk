@@ -24,11 +24,6 @@ class TestimonialAdmin(admin.ModelAdmin):
         ('Основная информация', {
             'fields': ('author_name', 'author_avatar', 'text', 'rating', 'is_active')
         }),
-        ('Старое медиа (для обратной совместимости)', {
-            'fields': ('media_type', 'image', 'video_url', 'video_file'),
-            'classes': ('collapse',),
-            'description': 'Эти поля устарели. Используйте вкладку "Медиа отзывов" для добавления медиа.'
-        }),
     )
 
     def media_count(self, obj):

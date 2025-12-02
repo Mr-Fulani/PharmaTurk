@@ -20,10 +20,6 @@ interface Testimonial {
   author_avatar_url: string | null
   text: string
   rating: number | null
-  media_type: 'none' | 'image' | 'video'
-  image_url: string | null
-  video_url: string | null
-  video_file_url: string | null
   media: TestimonialMedia[]
   created_at: string
 }
@@ -218,37 +214,11 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   if (testimonials.length === 0) return null
 
   const renderMedia = (testimonial: Testimonial) => {
-    // Используем новый массив media, если он есть, иначе старые поля для обратной совместимости
-    let mediaItems: TestimonialMedia[] = []
-    
-    if (testimonial.media && testimonial.media.length > 0) {
-      mediaItems = testimonial.media
-    } else if (testimonial.media_type !== 'none') {
-      // Обработка старых отзывов - определяем тип медиа по наличию полей
-      let mediaType: 'image' | 'video' | 'video_file' = 'image'
-      
-      if (testimonial.video_file_url) {
-        mediaType = 'video_file'
-      } else if (testimonial.video_url) {
-        mediaType = 'video'
-      } else if (testimonial.image_url) {
-        mediaType = 'image'
-      }
-      
-      mediaItems = [{
-        id: testimonial.id,
-        media_type: mediaType,
-        image_url: testimonial.image_url,
-        video_url: testimonial.video_url,
-        video_file_url: testimonial.video_file_url,
-        order: 0
-      }]
-    }
-    
-    if (mediaItems.length === 0) return null
+    // Используем массив media
+    if (!testimonial.media || testimonial.media.length === 0) return null
     
     // Показываем только первый медиа элемент в карусели
-    const firstMedia = mediaItems[0]
+    const firstMedia = testimonial.media[0]
     
     if (firstMedia.media_type === 'image' && firstMedia.image_url) {
       return (
@@ -348,26 +318,15 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                 onClick={() => router.push('/testimonials')}
                 className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer transform hover:-translate-y-2 hover:scale-[1.02]"
               >
-                {(() => {
-                  // Проверяем наличие медиа: новый массив или старые поля
-                  const hasNewMedia = testimonial.media && testimonial.media.length > 0
-                  const hasOldMedia = testimonial.media_type !== 'none' && 
-                    (testimonial.image_url || testimonial.video_url || testimonial.video_file_url)
-                  return hasNewMedia || hasOldMedia
-                })() && (
+                {testimonial.media && testimonial.media.length > 0 && (
                    <div className="relative w-full h-80 overflow-hidden bg-gray-100">
                     <div className="w-full h-full transition-transform duration-300 group-hover:scale-110">
                       {renderMedia(testimonial)}
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    {(() => {
-                      // Проверяем наличие видео файла для кнопки звука
-                      const hasNewVideoFile = testimonial.media && testimonial.media.some(
-                        m => m.media_type === 'video_file' && m.video_file_url
-                      )
-                      const hasOldVideoFile = testimonial.media_type === 'video' && testimonial.video_file_url
-                      return hasNewVideoFile || hasOldVideoFile
-                    })() && (
+                    {testimonial.media && testimonial.media.some(
+                      m => m.media_type === 'video_file' && m.video_file_url
+                    ) && (
                       <button
                         onClick={(e) => {
                           e.preventDefault()

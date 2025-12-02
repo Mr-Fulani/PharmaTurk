@@ -22,7 +22,7 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         """Разрешения для разных действий."""
         if self.action == 'create':
-            return [AllowAny()]  # Разрешаем создание отзывов всем
+            return [IsAuthenticated()]  # Только зарегистрированные пользователи могут создавать отзывы
         return [AllowAny()]
 
     def list(self, request, *args, **kwargs):

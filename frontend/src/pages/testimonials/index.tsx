@@ -5,6 +5,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
 import api from '../../lib/api'
+import { useAuth } from '../../context/AuthContext'
 import { StarIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/20/solid'
 import { PhotoIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
 
@@ -23,10 +24,6 @@ interface Testimonial {
   author_avatar_url: string | null
   text: string
   rating: number | null
-  media_type: 'none' | 'image' | 'video'
-  image_url: string | null
-  video_url: string | null
-  video_file_url: string | null
   media: TestimonialMedia[]
   created_at: string
 }
@@ -41,6 +38,7 @@ interface MediaItem {
 export default function TestimonialsPage() {
   const { t } = useTranslation('common')
   const router = useRouter()
+  const { user } = useAuth()
   const [testimonials, setTestimonials] = useState<Testimonial[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTestimonial, setSelectedTestimonial] = useState<Testimonial | null>(null)
@@ -51,7 +49,6 @@ export default function TestimonialsPage() {
   
   // Form state
   const [formData, setFormData] = useState({
-    author_name: '',
     text: '',
     rating: 0,
   })
@@ -92,31 +89,7 @@ export default function TestimonialsPage() {
   const allMedia = selectedTestimonial 
     ? (selectedTestimonial.media && selectedTestimonial.media.length > 0 
         ? selectedTestimonial.media 
-        : (() => {
-            // Обработка старых отзывов - определяем тип медиа по наличию полей
-            if (selectedTestimonial.media_type === 'none') return []
-            
-            let mediaType: 'image' | 'video' | 'video_file' = 'image'
-            
-            if (selectedTestimonial.video_file_url) {
-              mediaType = 'video_file'
-            } else if (selectedTestimonial.video_url) {
-              mediaType = 'video'
-            } else if (selectedTestimonial.image_url) {
-              mediaType = 'image'
-            } else {
-              return []
-            }
-            
-            return [{
-              id: selectedTestimonial.id,
-              media_type: mediaType,
-              image_url: selectedTestimonial.image_url,
-              video_url: selectedTestimonial.video_url,
-              video_file_url: selectedTestimonial.video_file_url,
-              order: 0
-            }]
-          })())
+        : [])
     : []
 
   const nextMedia = () => {
@@ -181,11 +154,17 @@ export default function TestimonialsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!user) {
+      alert(t('login_required_to_submit_testimonial', 'Для отправки отзыва необходимо войти.'))
+      router.push('/auth')
+      return
+    }
+    
     setSubmitting(true)
 
     try {
       const formDataToSend = new FormData()
-      formDataToSend.append('author_name', formData.author_name)
       formDataToSend.append('text', formData.text)
       if (formData.rating > 0) {
         formDataToSend.append('rating', formData.rating.toString())
@@ -212,7 +191,7 @@ export default function TestimonialsPage() {
       })
 
       // Сброс формы
-      setFormData({ author_name: '', text: '', rating: 0 })
+      setFormData({ text: '', rating: 0 })
       setMediaItems([])
       setShowForm(false)
       
@@ -388,42 +367,12 @@ export default function TestimonialsPage() {
                     setSelectedTestimonial(testimonial)
                     setCurrentMediaIndex(0)
                   }}
-                  className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer transform hover:-translate-y-2"
+                  className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer transform hover:-translate-y-2 flex flex-col"
                 >
-                  {(() => {
-                    // Определяем медиа для отображения в карточке
-                    let cardMedia: TestimonialMedia | null = null
-                    
-                    if (testimonial.media && testimonial.media.length > 0) {
-                      cardMedia = testimonial.media[0]
-                    } else if (testimonial.media_type !== 'none') {
-                      // Обработка старых отзывов
-                      let mediaType: 'image' | 'video' | 'video_file' = 'image'
-                      
-                      if (testimonial.video_file_url) {
-                        mediaType = 'video_file'
-                      } else if (testimonial.video_url) {
-                        mediaType = 'video'
-                      } else if (testimonial.image_url) {
-                        mediaType = 'image'
-                      } else {
-                        return null
-                      }
-                      
-                      cardMedia = {
-                        id: testimonial.id,
-                        media_type: mediaType,
-                        image_url: testimonial.image_url,
-                        video_url: testimonial.video_url,
-                        video_file_url: testimonial.video_file_url,
-                        order: 0
-                      }
-                    }
-                    
-                    if (!cardMedia) return null
-                    
+                  {testimonial.media && testimonial.media.length > 0 && (() => {
+                    const cardMedia = testimonial.media[0]
                     return (
-                      <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100 rounded-xl">
+                      <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100">
                         {cardMedia.media_type === 'image' && cardMedia.image_url && (
                           <img
                             src={cardMedia.image_url}
@@ -463,9 +412,29 @@ export default function TestimonialsPage() {
                     )
                   })()}
                   
-                  <div className="p-4">
+                  {/* Текст отзыва - по центру */}
+                  <div className="flex-1 p-4 min-h-[100px]">
+                    <p className="text-gray-600 text-sm line-clamp-4">
+                      "{testimonial.text}"
+                    </p>
+                  </div>
+                  
+                  {/* Нижняя часть: аватарка + имя слева, звездочки справа */}
+                  <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 mt-auto">
+                    <div className="flex items-center flex-1 min-w-0">
+                      {testimonial.author_avatar_url && (
+                        <img
+                          src={testimonial.author_avatar_url}
+                          alt={testimonial.author_name}
+                          className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                        />
+                      )}
+                      <div className="text-xs font-semibold text-gray-900 truncate">
+                        {testimonial.author_name}
+                      </div>
+                    </div>
                     {testimonial.rating && (
-                      <div className="flex items-center mb-2">
+                      <div className="flex items-center ml-2 flex-shrink-0">
                         {[0, 1, 2, 3, 4].map((rating) => (
                           <StarIcon
                             key={rating}
@@ -478,21 +447,6 @@ export default function TestimonialsPage() {
                         ))}
                       </div>
                     )}
-                    <p className="text-gray-600 mb-3 text-sm line-clamp-3">
-                      "{testimonial.text}"
-                    </p>
-                    <div className="flex items-center">
-                      {testimonial.author_avatar_url && (
-                        <img
-                          src={testimonial.author_avatar_url}
-                          alt={testimonial.author_name}
-                          className="w-8 h-8 rounded-full mr-3 object-cover"
-                        />
-                      )}
-                      <div className="text-xs font-semibold text-gray-900">
-                        {testimonial.author_name}
-                      </div>
-                    </div>
                   </div>
                 </div>
               ))}
@@ -500,35 +454,47 @@ export default function TestimonialsPage() {
           )}
 
           {/* Add Testimonial Button */}
-          <div className="text-center mt-12 mb-8">
-            <button
-              onClick={() => setShowForm(!showForm)}
-              className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              {showForm ? t('cancel', 'Отмена') : t('add_testimonial', 'Оставить отзыв')}
-            </button>
-          </div>
+          {user ? (
+            <div className="text-center mt-12 mb-8">
+              <button
+                onClick={() => setShowForm(!showForm)}
+                className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                {showForm ? t('cancel', 'Отмена') : t('add_testimonial', 'Оставить отзыв')}
+              </button>
+            </div>
+          ) : (
+            <div className="text-center mt-12 mb-8">
+              <p className="text-gray-600 mb-4">
+                {t('login_required_to_submit_testimonial', 'Для отправки отзыва необходимо войти.')}
+              </p>
+              <button
+                onClick={() => router.push('/auth')}
+                className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                {t('login', 'Войти')}
+              </button>
+            </div>
+          )}
 
           {/* Add Testimonial Form */}
-          {showForm && (
+          {showForm && user && (
             <div className="bg-white rounded-xl shadow-lg p-6 mb-12">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">
                 {t('add_testimonial', 'Оставить отзыв')}
               </h2>
               
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {t('your_name', 'Ваше имя')} *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.author_name}
-                    onChange={(e) => setFormData({ ...formData, author_name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                  />
-                </div>
+                {user && (
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">
+                      {t('testimonial_will_be_signed_as', 'Отзыв будет подписан как:')}
+                    </p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {user.username || user.email}
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
