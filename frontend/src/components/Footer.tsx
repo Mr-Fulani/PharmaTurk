@@ -17,7 +17,7 @@ export default function Footer() {
               />
               <div className="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                 <div className="bg-gray-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                  {t('footer_crypto_payment')}
+                  {t('footer_crypto_payment', 'Возможна оплата криптовалютой')}
                 </div>
                 <div className="w-2 h-2 bg-gray-800 rotate-45 absolute top-full left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
               </div>

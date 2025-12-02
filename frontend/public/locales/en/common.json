@@ -219,7 +219,28 @@
   ,"testimonials_title": "What Our Clients Say",
   "testimonial_image_alt": "Testimonial image from {{author_name}}",
   "testimonial_video_alt": "Testimonial video from {{author_name}}",
-  "video_tag_unsupported": "Your browser does not support the video tag."
+  "video_tag_unsupported": "Your browser does not support the video tag.",
+  "testimonials_page_title": "Customer Reviews",
+  "testimonials_page_description": "What our customers say about our products and services",
+  "no_testimonials": "No reviews yet",
+  "loading": "Loading...",
+  "testimonial_not_found": "Review not found",
+  "back_to_testimonials": "Back to reviews",
+  "add_testimonial": "Leave a review",
+  "cancel": "Cancel",
+  "your_name": "Your name",
+  "rating": "Rating",
+  "testimonial_text": "Review text",
+  "add_media": "Add media",
+  "add_image": "Add image",
+  "add_video_file": "Add video file",
+  "video_url_placeholder": "Video URL (YouTube, Vimeo)",
+  "submit_testimonial": "Submit review",
+  "submitting": "Submitting...",
+  "testimonial_submit_error": "Error submitting review. Please try again.",
+  "video_preview_unavailable": "Preview unavailable",
+  "testimonial_submitted_title": "Review submitted!",
+  "testimonial_moderation_message": "Thank you for your review! It has been sent for moderation and will be published after administrator approval."
 }
 
 

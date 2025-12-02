@@ -1,8 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import { StarIcon } from '@heroicons/react/20/solid'
 import { SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/outline'
+
+interface TestimonialMedia {
+  id: number
+  media_type: 'image' | 'video' | 'video_file'
+  image_url: string | null
+  video_url: string | null
+  video_file_url: string | null
+  order: number
+}
 
 interface Testimonial {
   id: number
@@ -14,6 +24,7 @@ interface Testimonial {
   image_url: string | null
   video_url: string | null
   video_file_url: string | null
+  media: TestimonialMedia[]
   created_at: string
 }
 
@@ -27,6 +38,7 @@ function classNames(...classes: (string | boolean)[]) {
 
 export default function TestimonialsCarousel({ className = '' }: TestimonialsCarouselProps) {
   const { t } = useTranslation('common')
+  const router = useRouter()
   const [testimonials, setTestimonials] = useState<Testimonial[]>([])
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(0)
@@ -206,80 +218,112 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   if (testimonials.length === 0) return null
 
   const renderMedia = (testimonial: Testimonial) => {
-    if (testimonial.media_type === 'image' && testimonial.image_url) {
+    // Используем новый массив media, если он есть, иначе старые поля для обратной совместимости
+    let mediaItems: TestimonialMedia[] = []
+    
+    if (testimonial.media && testimonial.media.length > 0) {
+      mediaItems = testimonial.media
+    } else if (testimonial.media_type !== 'none') {
+      // Обработка старых отзывов - определяем тип медиа по наличию полей
+      let mediaType: 'image' | 'video' | 'video_file' = 'image'
+      
+      if (testimonial.video_file_url) {
+        mediaType = 'video_file'
+      } else if (testimonial.video_url) {
+        mediaType = 'video'
+      } else if (testimonial.image_url) {
+        mediaType = 'image'
+      }
+      
+      mediaItems = [{
+        id: testimonial.id,
+        media_type: mediaType,
+        image_url: testimonial.image_url,
+        video_url: testimonial.video_url,
+        video_file_url: testimonial.video_file_url,
+        order: 0
+      }]
+    }
+    
+    if (mediaItems.length === 0) return null
+    
+    // Показываем только первый медиа элемент в карусели
+    const firstMedia = mediaItems[0]
+    
+    if (firstMedia.media_type === 'image' && firstMedia.image_url) {
       return (
         <img
-          src={testimonial.image_url}
+          src={firstMedia.image_url}
           alt={t('testimonial_image_alt', `Изображение к отзыву от ${testimonial.author_name}`)}
           className="w-full h-full object-cover"
         />
       )
     }
-    if (testimonial.media_type === 'video') {
-      if (testimonial.video_url) {
-        // Для YouTube/Vimeo видео добавляем autoplay и muted в URL
-        let embedUrl = testimonial.video_url
-        
-        // Обработка YouTube URL
-        if (embedUrl.includes('youtube.com/watch?v=') || embedUrl.includes('youtu.be/')) {
-          const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
-          const match = embedUrl.match(youtubeRegex)
-          if (match) {
-            embedUrl = `https://www.youtube.com/embed/${match[1]}?autoplay=1&mute=1&loop=1&playlist=${match[1]}&controls=1&modestbranding=1`
-          }
+    
+    if (firstMedia.media_type === 'video' && firstMedia.video_url) {
+      // Для YouTube/Vimeo видео добавляем autoplay и muted в URL
+      let embedUrl = firstMedia.video_url
+      
+      // Обработка YouTube URL
+      if (embedUrl.includes('youtube.com/watch?v=') || embedUrl.includes('youtu.be/')) {
+        const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
+        const match = embedUrl.match(youtubeRegex)
+        if (match) {
+          embedUrl = `https://www.youtube.com/embed/${match[1]}?autoplay=1&mute=1&loop=1&playlist=${match[1]}&controls=1&modestbranding=1`
         }
-        // Обработка Vimeo URL
-        else if (embedUrl.includes('vimeo.com/')) {
-          const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
-          const match = embedUrl.match(vimeoRegex)
-          if (match) {
-            embedUrl = `https://player.vimeo.com/video/${match[1]}?autoplay=1&muted=1&loop=1&controls=1&background=0`
-          }
+      }
+      // Обработка Vimeo URL
+      else if (embedUrl.includes('vimeo.com/')) {
+        const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
+        const match = embedUrl.match(vimeoRegex)
+        if (match) {
+          embedUrl = `https://player.vimeo.com/video/${match[1]}?autoplay=1&muted=1&loop=1&controls=1&background=0`
         }
-        
-        return (
-          <iframe
-            src={embedUrl}
-            title={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
-            frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            className="w-full h-full"
-          ></iframe>
-        )
       }
-      if (testimonial.video_file_url) {
-        const isMuted = videoMuted.has(testimonial.id) ? videoMuted.get(testimonial.id) : true // По умолчанию muted
-        return (
-          <video
-            ref={(el) => {
-              if (el) {
-                videoRefs.current.set(testimonial.id, el)
-                el.muted = isMuted !== false
-                // Инициализируем состояние если его еще нет
-                if (!videoMuted.has(testimonial.id)) {
-                  setVideoMuted((prev) => {
-                    const newMap = new Map(prev)
-                    newMap.set(testimonial.id, true)
-                    return newMap
-                  })
-                }
-              } else {
-                videoRefs.current.delete(testimonial.id)
-              }
-            }}
-            controls={false}
-            muted={isMuted !== false}
-            playsInline
-            loop
-            className="w-full h-full object-cover"
-          >
-            <source src={testimonial.video_file_url} type="video/mp4" />
-            {t('video_tag_unsupported', 'Ваш браузер не поддерживает видео.')}
-          </video>
-        )
-      }
+      
+      return (
+        <iframe
+          src={embedUrl}
+          title={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          className="w-full h-full"
+        ></iframe>
+      )
     }
+    
+    if (firstMedia.media_type === 'video_file' && firstMedia.video_file_url) {
+      const isMuted = videoMuted.has(testimonial.id) ? videoMuted.get(testimonial.id) : true
+      return (
+        <video
+          ref={(el) => {
+            if (el) {
+              videoRefs.current.set(testimonial.id, el)
+              el.muted = isMuted !== false
+              if (!videoMuted.has(testimonial.id)) {
+                setVideoMuted((prev) => {
+                  const newMap = new Map(prev)
+                  newMap.set(testimonial.id, true)
+                  return newMap
+                })
+              }
+            } else {
+              videoRefs.current.delete(testimonial.id)
+            }
+          }}
+          controls={false}
+          muted={isMuted !== false}
+          playsInline
+          loop
+          className="w-full h-full object-cover"
+        >
+          <source src={firstMedia.video_file_url} type="video/mp4" />
+          {t('video_tag_unsupported', 'Ваш браузер не поддерживает видео.')}
+        </video>
+      )
+    }
+    
     return null
   }
 
@@ -301,15 +345,29 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             {testimonials.map((testimonial) => (
               <div
                 key={testimonial.id}
+                onClick={() => router.push('/testimonials')}
                 className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer transform hover:-translate-y-2 hover:scale-[1.02]"
               >
-                {testimonial.media_type !== 'none' && (
+                {(() => {
+                  // Проверяем наличие медиа: новый массив или старые поля
+                  const hasNewMedia = testimonial.media && testimonial.media.length > 0
+                  const hasOldMedia = testimonial.media_type !== 'none' && 
+                    (testimonial.image_url || testimonial.video_url || testimonial.video_file_url)
+                  return hasNewMedia || hasOldMedia
+                })() && (
                    <div className="relative w-full h-80 overflow-hidden bg-gray-100">
                     <div className="w-full h-full transition-transform duration-300 group-hover:scale-110">
                       {renderMedia(testimonial)}
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    {testimonial.media_type === 'video' && testimonial.video_file_url && (
+                    {(() => {
+                      // Проверяем наличие видео файла для кнопки звука
+                      const hasNewVideoFile = testimonial.media && testimonial.media.some(
+                        m => m.media_type === 'video_file' && m.video_file_url
+                      )
+                      const hasOldVideoFile = testimonial.media_type === 'video' && testimonial.video_file_url
+                      return hasNewVideoFile || hasOldVideoFile
+                    })() && (
                       <button
                         onClick={(e) => {
                           e.preventDefault()
