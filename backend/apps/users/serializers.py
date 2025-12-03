@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
-from .models import User, UserProfile, UserAddress, UserSession
+from .models import User, UserAddress, UserSession
 from django.utils import timezone
 
 
@@ -52,9 +52,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         """Создание пользователя"""
         validated_data.pop('password_confirm')
         user = User.objects.create_user(**validated_data)
-        
-        # Создаем профиль пользователя
-        UserProfile.objects.create(user=user)
         
         return user
 
@@ -149,30 +146,36 @@ class SocialAuthSerializer(serializers.Serializer):
     )
 
 
-class UserProfileSerializer(serializers.ModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
     """
-    Сериализатор для профиля пользователя
+    Сериализатор для основной информации пользователя
     """
-    user_email = serializers.EmailField(source='user.email', read_only=True)
-    user_username = serializers.CharField(source='user.username', read_only=True)
-    phone_number = serializers.CharField(source='user.phone_number', read_only=True)
+    user_email = serializers.EmailField(source='email', read_only=True)
+    user_username = serializers.CharField(source='username', read_only=True)
     avatar_url = serializers.SerializerMethodField()
     total_orders = serializers.SerializerMethodField()
     total_spent = serializers.SerializerMethodField()
     
     class Meta:
-        model = UserProfile
+        model = User
         fields = [
-            'id', 'user_email', 'user_username', 'phone_number',
+            'id', 'email', 'user_email', 'username', 'user_username',
             'first_name', 'last_name', 'middle_name',
+            'phone_number', 'birth_date', 'is_verified',
+            'language', 'currency',
+            'email_notifications', 'telegram_notifications', 'push_notifications',
+            'telegram_username', 'whatsapp_phone',
             'country', 'city', 'postal_code', 'address',
             'avatar', 'avatar_url', 'bio',
-            'whatsapp_phone', 'telegram_username',
             'is_public_profile', 'show_email', 'show_phone',
+            'date_joined', 'last_login', 'created_at', 'updated_at',
             'total_orders', 'total_spent',
-            'created_at', 'updated_at'
         ]
-        read_only_fields = ['total_orders', 'total_spent', 'created_at', 'updated_at', 'avatar_url']
+        read_only_fields = [
+            'id', 'is_verified', 'date_joined', 'last_login',
+            'created_at', 'updated_at', 'total_orders', 'total_spent',
+            'user_email', 'user_username'
+        ]
     
     def get_avatar_url(self, obj):
         """Получение URL аватара"""
@@ -185,17 +188,59 @@ class UserProfileSerializer(serializers.ModelSerializer):
     
     def get_total_orders(self, obj):
         """Расчет общего количества заказов пользователя"""
+        import logging
+        logger = logging.getLogger(__name__)
         from apps.orders.models import Order
-        return Order.objects.filter(user=obj.user).count()
+        
+        # Считаем все заказы пользователя (исключая отмененные)
+        count = Order.objects.filter(
+            user=obj
+        ).exclude(
+            status='cancelled'
+        ).count()
+        
+        # Логирование для отладки
+        all_orders_count = Order.objects.filter(user=obj).count()
+        
+        user_email = obj.email
+        user_username = obj.username
+        
+        orders_by_email = Order.objects.filter(contact_email=user_email).exclude(status='cancelled').count() if user_email else 0
+        orders_without_user = Order.objects.filter(user__isnull=True, contact_email=user_email).exclude(status='cancelled').count() if user_email else 0
+        
+        if user_email:
+            all_orders_with_email = Order.objects.filter(contact_email=user_email).exclude(status='cancelled')
+            orders_info = []
+            for order in all_orders_with_email:
+                orders_info.append(f"order_id={order.id}, number={order.number}, user_id={order.user.id if order.user else None}, user_username={order.user.username if order.user else None}, contact_name={order.contact_name}")
+            if orders_info:
+                logger.info(f'All orders with email {user_email}: {"; ".join(orders_info)}')
+        
+        if user_username:
+            orders_by_name = Order.objects.filter(
+                contact_name__icontains=user_username
+            ).exclude(status='cancelled').exclude(user=obj)
+            if orders_by_name.exists():
+                orders_by_name_info = []
+                for order in orders_by_name:
+                    orders_by_name_info.append(f"order_id={order.id}, number={order.number}, user_id={order.user.id if order.user else None}, user_username={order.user.username if order.user else None}, contact_email={order.contact_email}, contact_name={order.contact_name}")
+                logger.info(f'Orders with username "{user_username}" in contact_name (not linked to this user): {"; ".join(orders_by_name_info)}')
+        
+        logger.info(
+            f'UserSerializer.get_total_orders: user={user_username} (id={obj.id}), '
+            f'email={user_email}, all_orders={all_orders_count}, non_cancelled={count}, '
+            f'orders_by_email={orders_by_email}, orders_without_user={orders_without_user}'
+        )
+        
+        return count
     
     def get_total_spent(self, obj):
         """Расчет общей суммы потраченных денег"""
-        from django.db.models import Sum, Q
+        from django.db.models import Sum
         from apps.orders.models import Order
         
-        # Получаем сумму всех заказов пользователя (исключая отмененные)
         result = Order.objects.filter(
-            user=obj.user
+            user=obj
         ).exclude(
             status='cancelled'
         ).aggregate(
@@ -230,35 +275,6 @@ class UserAddressSerializer(serializers.ModelSerializer):
             UserAddress.objects.filter(user=user, is_default=True).update(is_default=False)
         
         return attrs
-
-
-class UserSerializer(serializers.ModelSerializer):
-    """
-    Сериализатор для основной информации пользователя
-    """
-    profile = UserProfileSerializer(read_only=True)
-    
-    class Meta:
-        model = User
-        fields = [
-            'id', 'email', 'username', 'first_name', 'last_name',
-            'phone_number', 'birth_date', 'is_verified',
-            'language', 'currency',
-            'email_notifications', 'telegram_notifications', 'push_notifications',
-            'telegram_username',
-            'profile',
-            'date_joined', 'last_login'
-        ]
-        read_only_fields = ['id', 'is_verified', 'date_joined', 'last_login']
-    
-    def to_representation(self, instance):
-        """Переопределение для включения контекста запроса в сериализацию профиля"""
-        representation = super().to_representation(instance)
-        request = self.context.get('request')
-        if request and instance.profile:
-            profile_serializer = UserProfileSerializer(instance.profile, context={'request': request})
-            representation['profile'] = profile_serializer.data
-        return representation
 
 
 class UserPasswordChangeSerializer(serializers.Serializer):
@@ -337,25 +353,28 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     """
     Сериализатор для публичного профиля пользователя
     """
-    user_username = serializers.CharField(source='user.username', read_only=True)
+    user_username = serializers.CharField(source='username', read_only=True)
     avatar_url = serializers.SerializerMethodField()
     total_orders = serializers.SerializerMethodField()
     testimonial_id = serializers.SerializerMethodField()
     social_links = serializers.SerializerMethodField()
     
     class Meta:
-        model = UserProfile
+        model = User
         fields = [
             'id',
             'user_username',
             'first_name',
             'last_name',
+            'middle_name',
             'avatar_url',
             'bio',
             'whatsapp_phone',
             'telegram_username',
-            'total_orders',
+            'country',
+            'city',
             'testimonial_id',
+            'total_orders',
             'social_links',
         ]
     
@@ -363,24 +382,20 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         """Получение URL аватара из профиля или из отзыва"""
         request = self.context.get('request')
         
-        # Сначала проверяем аватар в профиле
         if obj.avatar:
             if request:
                 return request.build_absolute_uri(obj.avatar.url)
             return obj.avatar.url
         
-        # Если аватара в профиле нет, ищем в отзывах
         from apps.feedback.models import Testimonial
         testimonial_id = self.context.get('testimonial_id')
         
-        # Если передан testimonial_id, используем его
         if testimonial_id:
             try:
-                # Преобразуем testimonial_id в int, если это строка
                 testimonial_id_int = int(testimonial_id) if isinstance(testimonial_id, str) else testimonial_id
                 testimonial = Testimonial.objects.filter(
                     id=testimonial_id_int,
-                    user=obj.user,
+                    user=obj,
                     is_active=True,
                     author_avatar__isnull=False
                 ).first()
@@ -391,10 +406,9 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
             except (ValueError, TypeError):
                 pass
         
-        # Если testimonial_id не передан или отзыв не найден, ищем любой активный отзыв с аватаром
         try:
             testimonial = Testimonial.objects.filter(
-                user=obj.user,
+                user=obj,
                 is_active=True,
                 author_avatar__isnull=False
             ).first()
@@ -409,36 +423,73 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     
     def get_total_orders(self, obj):
         """Расчет общего количества заказов пользователя"""
+        import logging
+        logger = logging.getLogger(__name__)
         from apps.orders.models import Order
-        return Order.objects.filter(user=obj.user).count()
+        
+        count = Order.objects.filter(
+            user=obj
+        ).exclude(
+            status='cancelled'
+        ).count()
+        
+        all_orders_count = Order.objects.filter(user=obj).count()
+        
+        user_email = obj.email
+        user_username = obj.username
+        
+        orders_by_email = Order.objects.filter(contact_email=user_email).exclude(status='cancelled').count() if user_email else 0
+        orders_without_user = Order.objects.filter(user__isnull=True, contact_email=user_email).exclude(status='cancelled').count() if user_email else 0
+        
+        if user_email:
+            all_orders_with_email = Order.objects.filter(contact_email=user_email).exclude(status='cancelled')
+            orders_info = []
+            for order in all_orders_with_email:
+                orders_info.append(f"order_id={order.id}, number={order.number}, user_id={order.user.id if order.user else None}, user_username={order.user.username if order.user else None}, contact_name={order.contact_name}")
+            if orders_info:
+                logger.info(f'All orders with email {user_email}: {"; ".join(orders_info)}')
+        
+        if user_username:
+            orders_by_name = Order.objects.filter(
+                contact_name__icontains=user_username
+            ).exclude(status='cancelled').exclude(user=obj)
+            if orders_by_name.exists():
+                orders_by_name_info = []
+                for order in orders_by_name:
+                    orders_by_name_info.append(f"order_id={order.id}, number={order.number}, user_id={order.user.id if order.user else None}, user_username={order.user.username if order.user else None}, contact_email={order.contact_email}, contact_name={order.contact_name}")
+                logger.info(f'Orders with username "{user_username}" in contact_name (not linked to this user): {"; ".join(orders_by_name_info)}')
+        
+        logger.info(
+            f'PublicUserProfileSerializer.get_total_orders: user={user_username} (id={obj.id}), '
+            f'email={user_email}, all_orders={all_orders_count}, non_cancelled={count}, '
+            f'orders_by_email={orders_by_email}, orders_without_user={orders_without_user}'
+        )
+        
+        return count
     
     def get_testimonial_id(self, obj):
         """Получение ID отзыва пользователя, если есть"""
         from apps.feedback.models import Testimonial
-        testimonial = Testimonial.objects.filter(user=obj.user, is_active=True).first()
+        testimonial = Testimonial.objects.filter(user=obj, is_active=True).first()
         return testimonial.id if testimonial else None
     
     def get_social_links(self, obj):
         """Получение ссылок на социальные сети"""
         links = {}
-        user = obj.user
         
-        # Telegram
         if obj.telegram_username:
             links['telegram'] = f"https://t.me/{obj.telegram_username.lstrip('@')}"
         
-        # WhatsApp
         if obj.whatsapp_phone:
             links['whatsapp'] = f"https://wa.me/{obj.whatsapp_phone.lstrip('+')}"
         
-        # Социальные сети из User модели (если есть ID)
-        if user.google_id:
-            links['google'] = f"https://plus.google.com/{user.google_id}"
-        if user.facebook_id:
-            links['facebook'] = f"https://facebook.com/{user.facebook_id}"
-        if user.vk_id:
-            links['vk'] = f"https://vk.com/id{user.vk_id}"
-        if user.yandex_id:
-            links['yandex'] = f"https://yandex.ru/profile/{user.yandex_id}"
+        if obj.google_id:
+            links['google'] = f"https://plus.google.com/{obj.google_id}"
+        if obj.facebook_id:
+            links['facebook'] = f"https://facebook.com/{obj.facebook_id}"
+        if obj.vk_id:
+            links['vk'] = f"https://vk.com/id{obj.vk_id}"
+        if obj.yandex_id:
+            links['yandex'] = f"https://yandex.ru/profile/{obj.yandex_id}"
         
         return links

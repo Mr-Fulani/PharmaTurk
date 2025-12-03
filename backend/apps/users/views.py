@@ -12,10 +12,13 @@ from datetime import timedelta
 import random
 import string
 import uuid
+import logging
 
-from .models import User, UserProfile, UserAddress, UserSession
+from .models import User, UserAddress, UserSession
+
+logger = logging.getLogger(__name__)
 from .serializers import (
-    UserRegistrationSerializer, UserLoginSerializer, UserProfileSerializer,
+    UserRegistrationSerializer, UserLoginSerializer,
     UserAddressSerializer, UserSerializer, UserPasswordChangeSerializer,
     UserEmailVerificationSerializer, UserSessionSerializer, UserStatsSerializer,
     SMSSendCodeSerializer, SMSVerifyCodeSerializer, SocialAuthSerializer,
@@ -86,6 +89,18 @@ class UserRegistrationView(APIView):
         if serializer.is_valid():
             user = serializer.save()
             
+            # Связываем заказы без пользователя по email
+            try:
+                from apps.orders.models import Order
+                linked_orders = Order.objects.filter(
+                    user__isnull=True,
+                    contact_email=user.email
+                ).exclude(status='cancelled').update(user=user)
+                if linked_orders > 0:
+                    logger.info(f'Linked {linked_orders} orders to new user {user.username} (id={user.id}) by email {user.email}')
+            except Exception as e:
+                logger.error(f'Error linking orders to new user {user.username}: {e}')
+            
             # Генерируем JWT токены
             refresh = RefreshToken.for_user(user)
             
@@ -142,6 +157,18 @@ class UserLoginView(APIView):
             user.last_login = timezone.now()
             user.last_login_ip = get_client_ip(request)
             user.save()
+            
+            # Связываем заказы без пользователя по email
+            try:
+                from apps.orders.models import Order
+                linked_orders = Order.objects.filter(
+                    user__isnull=True,
+                    contact_email=user.email
+                ).exclude(status='cancelled').update(user=user)
+                if linked_orders > 0:
+                    logger.info(f'Linked {linked_orders} orders to user {user.username} (id={user.id}) by email {user.email}')
+            except Exception as e:
+                logger.error(f'Error linking orders to user {user.username}: {e}')
             
             # Генерируем JWT токены
             refresh = RefreshToken.for_user(user)
@@ -208,63 +235,57 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     Управление профилем пользователя
     """
     permission_classes = [IsAuthenticated]
-    serializer_class = UserProfileSerializer
+    serializer_class = UserSerializer
     
     def get_queryset(self):
-        """Получение профиля текущего пользователя"""
-        return UserProfile.objects.filter(user=self.request.user)
+        """Получение текущего пользователя"""
+        return User.objects.filter(id=self.request.user.id)
     
     @extend_schema(
         summary="Получить полную информацию о текущем пользователе",
-        description="Получение полной информации о текущем пользователе, включая профиль и статистику",
+        description="Получение полной информации о текущем пользователе, включая статистику",
         responses={200: UserSerializer}
     )
     @action(detail=False, methods=['get'], url_path='me')
     def me(self, request):
         """Получение полной информации о текущем пользователе"""
-        serializer = UserSerializer(request.user, context={'request': request})
+        serializer = self.get_serializer(request.user, context={'request': request})
         return Response(serializer.data)
     
     @extend_schema(
         summary="Получить профиль пользователя",
         description="Получение профиля текущего пользователя",
-        responses={200: UserProfileSerializer}
+        responses={200: UserSerializer}
     )
     def retrieve(self, request, *args, **kwargs):
         """Получение профиля"""
-        profile = self.get_queryset().first()
-        if not profile:
-            profile = UserProfile.objects.create(user=request.user)
-        
-        serializer = self.get_serializer(profile, context={'request': request})
+        serializer = self.get_serializer(request.user, context={'request': request})
         return Response(serializer.data)
 
     @extend_schema(
         summary="Список профилей текущего пользователя",
-        description="Возвращает массив с одним профилем пользователя; если профиль отсутствует — создаёт его",
-        responses={200: UserProfileSerializer(many=True)}
+        description="Возвращает массив с одним профилем пользователя",
+        responses={200: UserSerializer(many=True)}
     )
     def list(self, request, *args, **kwargs):
-        """Список профилей (создаёт при отсутствии)"""
-        profile = self.get_queryset().first()
-        if not profile:
-            profile = UserProfile.objects.create(user=request.user)
-        serializer = self.get_serializer(profile, context={'request': request})
+        """Список профилей"""
+        serializer = self.get_serializer(request.user, context={'request': request})
         return Response([serializer.data])
     
     @extend_schema(
         summary="Обновить профиль пользователя",
         description="Обновление профиля текущего пользователя",
-        request=UserProfileSerializer,
-        responses={200: UserProfileSerializer}
+        request=UserSerializer,
+        responses={200: UserSerializer}
     )
     def update(self, request, *args, **kwargs):
         """Обновление профиля"""
-        profile = self.get_queryset().first()
-        if not profile:
-            profile = UserProfile.objects.create(user=request.user)
-        
-        serializer = self.get_serializer(profile, data=request.data, partial=True, context={'request': request})
+        serializer = self.get_serializer(
+            request.user,
+            data=request.data,
+            partial=True,
+            context={'request': request}
+        )
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
@@ -281,15 +302,11 @@ class UserProfileViewSet(viewsets.ModelViewSet):
                 }
             }
         },
-        responses={200: UserProfileSerializer}
+        responses={200: UserSerializer}
     )
     @action(detail=False, methods=['post'], url_path='upload-avatar')
     def upload_avatar(self, request):
         """Загрузка аватара"""
-        profile = self.get_queryset().first()
-        if not profile:
-            profile = UserProfile.objects.create(user=request.user)
-        
         if 'avatar' not in request.FILES:
             return Response({'error': 'Файл аватара не предоставлен'}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -304,10 +321,10 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         if avatar_file.content_type not in allowed_types:
             return Response({'error': 'Недопустимый тип файла. Разрешены: JPEG, PNG, GIF, WebP'}, status=status.HTTP_400_BAD_REQUEST)
         
-        profile.avatar = avatar_file
-        profile.save()
+        request.user.avatar = avatar_file
+        request.user.save()
         
-        serializer = self.get_serializer(profile, context={'request': request})
+        serializer = self.get_serializer(request.user, context={'request': request})
         return Response(serializer.data)
 
 
@@ -451,17 +468,14 @@ class UserStatsView(APIView):
     def get(self, request):
         """Получение статистики пользователя"""
         user = request.user
-        profile = user.profile
-        
         # Рассчитываем дни с регистрации
         days_since_registration = (timezone.now() - user.date_joined).days
         
-        # TODO: Добавить подсчет избранных товаров и последнего заказа
-        # когда будут созданы соответствующие модели
+        serialized_user = UserSerializer(user, context={'request': request}).data
         
         stats = {
-            'total_orders': profile.total_orders,
-            'total_spent': profile.total_spent,
+            'total_orders': serialized_user.get('total_orders', 0),
+            'total_spent': serialized_user.get('total_spent', '0'),
             'favorite_products_count': 0,  # TODO: реализовать
             'active_addresses_count': user.addresses.filter(is_active=True).count(),
             'last_order_date': None,  # TODO: реализовать
@@ -831,15 +845,6 @@ class PublicUserProfileView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Получаем профиль
-        try:
-            profile = user.profile
-        except UserProfile.DoesNotExist:
-            return Response(
-                {'error': 'Профиль не найден'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
         # Проверяем, является ли профиль публичным
         # Если это текущий пользователь (и он аутентифицирован), показываем профиль в любом случае
         is_own_profile = request.user.is_authenticated and request.user == user
@@ -847,9 +852,9 @@ class PublicUserProfileView(APIView):
         # Отладочная информация
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f'Public profile check: user={user.username}, is_public_profile={profile.is_public_profile}, is_own_profile={is_own_profile}, request_user={request.user}')
+        logger.info(f'Public profile check: user={user.username}, is_public_profile={user.is_public_profile}, is_own_profile={is_own_profile}, request_user={request.user}')
         
-        if not profile.is_public_profile and not is_own_profile:
+        if not user.is_public_profile and not is_own_profile:
             return Response(
                 {'error': 'Профиль не является публичным'},
                 status=status.HTTP_403_FORBIDDEN
@@ -865,7 +870,7 @@ class PublicUserProfileView(APIView):
                 testimonial_id_for_context = None
         
         serializer = PublicUserProfileSerializer(
-            profile,
+            user,
             context={
                 'request': request,
                 'testimonial_id': testimonial_id_for_context

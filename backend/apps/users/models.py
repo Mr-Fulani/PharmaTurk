@@ -21,6 +21,14 @@ class User(AbstractUser):
     is_verified = models.BooleanField(_('подтвержден'), default=False)
     verification_code = models.CharField(_('код подтверждения'), max_length=6, blank=True)
     verification_code_expires = models.DateTimeField(_('срок действия кода'), null=True, blank=True)
+    middle_name = models.CharField(_('отчество'), max_length=150, blank=True)
+    country = models.CharField(_('страна'), max_length=100, blank=True)
+    city = models.CharField(_('город'), max_length=100, blank=True)
+    postal_code = models.CharField(_('почтовый индекс'), max_length=20, blank=True)
+    address = models.TextField(_('адрес'), blank=True)
+    avatar = models.ImageField(_('аватар'), upload_to='avatars/', null=True, blank=True)
+    bio = models.TextField(_('о себе'), blank=True)
+    whatsapp_phone = models.CharField(_('WhatsApp'), max_length=17, blank=True)
     
     # Настройки уведомлений
     email_notifications = models.BooleanField(_('email уведомления'), default=True)
@@ -29,7 +37,7 @@ class User(AbstractUser):
     
     # Telegram
     telegram_id = models.CharField(_('telegram ID'), max_length=50, blank=True)
-    telegram_username = models.CharField(_('telegram username'), max_length=50, blank=True)
+    telegram_username = models.CharField(_('Telegram'), max_length=50, blank=True)
     
     # Социальные сети (для будущей интеграции)
     # Поля для хранения ID пользователей в соцсетях
@@ -43,6 +51,9 @@ class User(AbstractUser):
     created_at = models.DateTimeField(_('дата создания'), auto_now_add=True)
     updated_at = models.DateTimeField(_('дата обновления'), auto_now=True)
     last_login_ip = models.GenericIPAddressField(_('последний IP входа'), null=True, blank=True)
+    is_public_profile = models.BooleanField(_('публичный профиль'), default=False)
+    show_email = models.BooleanField(_('показывать email'), default=False)
+    show_phone = models.BooleanField(_('показывать телефон'), default=False)
     
     # Язык и валюта
     language = models.CharField(_('язык'), max_length=10, choices=[
@@ -67,53 +78,6 @@ class User(AbstractUser):
         
     def __str__(self):
         return self.email or self.username
-
-
-class UserProfile(models.Model):
-    """
-    Расширенный профиль пользователя
-    """
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    
-    # Персональная информация
-    first_name = models.CharField(_('имя'), max_length=150, blank=True)
-    last_name = models.CharField(_('фамилия'), max_length=150, blank=True)
-    middle_name = models.CharField(_('отчество'), max_length=150, blank=True)
-    
-    # Адресная информация
-    country = models.CharField(_('страна'), max_length=100, blank=True)
-    city = models.CharField(_('город'), max_length=100, blank=True)
-    postal_code = models.CharField(_('почтовый индекс'), max_length=20, blank=True)
-    address = models.TextField(_('адрес'), blank=True)
-    
-    # Дополнительная информация
-    avatar = models.ImageField(_('аватар'), upload_to='avatars/', null=True, blank=True)
-    bio = models.TextField(_('о себе'), blank=True)
-    
-    # Контакты
-    whatsapp_phone = models.CharField(_('WhatsApp'), max_length=17, blank=True)
-    telegram_username = models.CharField(_('Telegram'), max_length=50, blank=True)
-    
-    # Настройки приватности
-    is_public_profile = models.BooleanField(_('публичный профиль'), default=False)
-    show_email = models.BooleanField(_('показывать email'), default=False)
-    show_phone = models.BooleanField(_('показывать телефон'), default=False)
-    
-    # Статистика
-    total_orders = models.PositiveIntegerField(_('всего заказов'), default=0)
-    total_spent = models.DecimalField(_('общая сумма покупок'), max_digits=10, decimal_places=2, default=0)
-    
-    # Метаданные
-    created_at = models.DateTimeField(_('дата создания'), auto_now_add=True)
-    updated_at = models.DateTimeField(_('дата обновления'), auto_now=True)
-    
-    class Meta:
-        verbose_name = _('профиль пользователя')
-        verbose_name_plural = _('профили пользователей')
-        db_table = 'user_profiles'
-        
-    def __str__(self):
-        return f"Профиль {self.user.email}"
 
 
 class UserAddress(models.Model):

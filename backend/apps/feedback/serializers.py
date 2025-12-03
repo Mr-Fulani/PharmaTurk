@@ -64,22 +64,36 @@ class TestimonialSerializer(serializers.ModelSerializer):
     
     def get_user_id(self, obj):
         """Возвращает ID пользователя, если он привязан к отзыву."""
+        import logging
+        logger = logging.getLogger(__name__)
         try:
             # Проверяем, что user загружен (select_related должен это обеспечить)
             if hasattr(obj, 'user') and obj.user is not None:
-                return obj.user.id
-        except AttributeError:
-            pass
+                user_id = obj.user.id
+                logger.info(f'Testimonial {obj.id} (author_name={obj.author_name}): user_id={user_id}, user_username={obj.user.username}')
+                return user_id
+        except AttributeError as e:
+            logger.warning(f'Testimonial {obj.id}: AttributeError in get_user_id: {e}')
+        except Exception as e:
+            logger.error(f'Testimonial {obj.id}: Error in get_user_id: {e}')
+        logger.info(f'Testimonial {obj.id} (author_name={obj.author_name}): user_id=None (no user)')
         return None
     
     def get_user_username(self, obj):
         """Возвращает username пользователя, если он привязан к отзыву."""
+        import logging
+        logger = logging.getLogger(__name__)
         try:
             # Проверяем, что user загружен (select_related должен это обеспечить)
             if hasattr(obj, 'user') and obj.user is not None:
-                return obj.user.username
-        except AttributeError:
-            pass
+                username = obj.user.username
+                logger.info(f'Testimonial {obj.id} (author_name={obj.author_name}): user_username={username}')
+                return username
+        except AttributeError as e:
+            logger.warning(f'Testimonial {obj.id}: AttributeError in get_user_username: {e}')
+        except Exception as e:
+            logger.error(f'Testimonial {obj.id}: Error in get_user_username: {e}')
+        logger.info(f'Testimonial {obj.id} (author_name={obj.author_name}): user_username=None (no user)')
         return None
 
     def get_author_avatar_url(self, obj):
@@ -122,35 +136,27 @@ class TestimonialCreateSerializer(serializers.ModelSerializer):
         # Получаем пользователя из запроса
         user = self.context['request'].user
         
-        # Получаем или создаем профиль пользователя
-        from apps.users.models import UserProfile
-        try:
-            profile = user.profile
-        except UserProfile.DoesNotExist:
-            profile = UserProfile.objects.create(user=user)
-        
-        # Автоматически заполняем имя и аватар из профиля
         author_name = validated_data.pop('author_name', None)
         if not author_name:
             # Формируем имя из профиля или username
-            if profile.first_name or profile.last_name:
-                name_parts = [profile.first_name, profile.last_name]
+            if user.first_name or user.last_name:
+                name_parts = [user.first_name, user.last_name]
                 author_name = ' '.join(filter(None, name_parts))
             else:
                 author_name = user.username or user.email
         
         author_avatar = validated_data.pop('author_avatar', None)
-        if not author_avatar and profile.avatar:
+        if not author_avatar and user.avatar:
             # Копируем аватар из профиля
             # Открываем файл и создаем копию для отзыва
-            profile.avatar.open('rb')
-            file_content = profile.avatar.read()
-            profile.avatar.close()
+            user.avatar.open('rb')
+            file_content = user.avatar.read()
+            user.avatar.close()
             
             # Создаем новый файл для отзыва
             from django.core.files.base import ContentFile
             import os
-            file_name = os.path.basename(profile.avatar.name)
+            file_name = os.path.basename(user.avatar.name)
             author_avatar = ContentFile(file_content, name=file_name)
         
         testimonial = Testimonial.objects.create(
