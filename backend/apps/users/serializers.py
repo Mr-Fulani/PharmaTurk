@@ -361,19 +361,13 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     
     def get_avatar_url(self, obj):
         """Получение URL аватара из профиля или из отзыва"""
-        import logging
-        logger = logging.getLogger(__name__)
         request = self.context.get('request')
         
         # Сначала проверяем аватар в профиле
         if obj.avatar:
             if request:
-                url = request.build_absolute_uri(obj.avatar.url)
-                logger.info(f'PublicUserProfileSerializer: Avatar URL from profile for user {obj.user.username}: {url}')
-                return url
-            url = obj.avatar.url
-            logger.info(f'PublicUserProfileSerializer: Avatar URL from profile (no request) for user {obj.user.username}: {url}')
-            return url
+                return request.build_absolute_uri(obj.avatar.url)
+            return obj.avatar.url
         
         # Если аватара в профиле нет, ищем в отзывах
         from apps.feedback.models import Testimonial
@@ -382,30 +376,35 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         # Если передан testimonial_id, используем его
         if testimonial_id:
             try:
-                testimonial = Testimonial.objects.get(id=testimonial_id, user=obj.user, is_active=True)
-                if testimonial.author_avatar:
+                # Преобразуем testimonial_id в int, если это строка
+                testimonial_id_int = int(testimonial_id) if isinstance(testimonial_id, str) else testimonial_id
+                testimonial = Testimonial.objects.filter(
+                    id=testimonial_id_int,
+                    user=obj.user,
+                    is_active=True,
+                    author_avatar__isnull=False
+                ).first()
+                if testimonial and testimonial.author_avatar:
                     if request:
-                        url = request.build_absolute_uri(testimonial.author_avatar.url)
-                        logger.info(f'PublicUserProfileSerializer: Avatar URL from testimonial {testimonial_id} for user {obj.user.username}: {url}')
-                        return url
-                    url = testimonial.author_avatar.url
-                    logger.info(f'PublicUserProfileSerializer: Avatar URL from testimonial {testimonial_id} (no request) for user {obj.user.username}: {url}')
-                    return url
-            except Testimonial.DoesNotExist:
+                        return request.build_absolute_uri(testimonial.author_avatar.url)
+                    return testimonial.author_avatar.url
+            except (ValueError, TypeError):
                 pass
         
         # Если testimonial_id не передан или отзыв не найден, ищем любой активный отзыв с аватаром
-        testimonial = Testimonial.objects.filter(user=obj.user, is_active=True, author_avatar__isnull=False).first()
-        if testimonial and testimonial.author_avatar:
-            if request:
-                url = request.build_absolute_uri(testimonial.author_avatar.url)
-                logger.info(f'PublicUserProfileSerializer: Avatar URL from first testimonial for user {obj.user.username}: {url}')
-                return url
-            url = testimonial.author_avatar.url
-            logger.info(f'PublicUserProfileSerializer: Avatar URL from first testimonial (no request) for user {obj.user.username}: {url}')
-            return url
+        try:
+            testimonial = Testimonial.objects.filter(
+                user=obj.user,
+                is_active=True,
+                author_avatar__isnull=False
+            ).first()
+            if testimonial and testimonial.author_avatar:
+                if request:
+                    return request.build_absolute_uri(testimonial.author_avatar.url)
+                return testimonial.author_avatar.url
+        except Exception:
+            pass
         
-        logger.info(f'PublicUserProfileSerializer: No avatar for user {obj.user.username} (neither in profile nor in testimonials)')
         return None
     
     def get_total_orders(self, obj):

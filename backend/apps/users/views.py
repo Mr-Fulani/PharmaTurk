@@ -810,10 +810,12 @@ class PublicUserProfileView(APIView):
         if testimonial_id:
             try:
                 from apps.feedback.models import Testimonial
-                testimonial = Testimonial.objects.get(id=testimonial_id, is_active=True)
+                # Преобразуем testimonial_id в int, если это строка
+                testimonial_id_int = int(testimonial_id) if isinstance(testimonial_id, str) else testimonial_id
+                testimonial = Testimonial.objects.get(id=testimonial_id_int, is_active=True)
                 if testimonial.user:
                     user = testimonial.user
-            except Testimonial.DoesNotExist:
+            except (Testimonial.DoesNotExist, ValueError, TypeError):
                 pass
         
         # Поиск по username
@@ -854,11 +856,19 @@ class PublicUserProfileView(APIView):
             )
         
         # Передаем testimonial_id в контекст сериализатора для получения аватара из отзыва
+        # Преобразуем testimonial_id в int, если это строка
+        testimonial_id_for_context = None
+        if testimonial_id:
+            try:
+                testimonial_id_for_context = int(testimonial_id) if isinstance(testimonial_id, str) else testimonial_id
+            except (ValueError, TypeError):
+                testimonial_id_for_context = None
+        
         serializer = PublicUserProfileSerializer(
             profile,
             context={
                 'request': request,
-                'testimonial_id': testimonial_id
+                'testimonial_id': testimonial_id_for_context
             }
         )
         return Response(serializer.data)

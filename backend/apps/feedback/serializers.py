@@ -64,11 +64,23 @@ class TestimonialSerializer(serializers.ModelSerializer):
     
     def get_user_id(self, obj):
         """Возвращает ID пользователя, если он привязан к отзыву."""
-        return obj.user.id if obj.user else None
+        try:
+            # Проверяем, что user загружен (select_related должен это обеспечить)
+            if hasattr(obj, 'user') and obj.user is not None:
+                return obj.user.id
+        except AttributeError:
+            pass
+        return None
     
     def get_user_username(self, obj):
         """Возвращает username пользователя, если он привязан к отзыву."""
-        return obj.user.username if obj.user else None
+        try:
+            # Проверяем, что user загружен (select_related должен это обеспечить)
+            if hasattr(obj, 'user') and obj.user is not None:
+                return obj.user.username
+        except AttributeError:
+            pass
+        return None
 
     def get_author_avatar_url(self, obj):
         """Возвращает URL аватара автора."""

@@ -26,7 +26,7 @@ urlpatterns = [
 
     # Основной API
     path("api/", include("api.urls")),
-    path('api/users/', include('apps.users.urls')),
+    # Примечание: users.urls уже включен в api/urls.py, поэтому здесь не дублируем
     path('api/orders/', include('apps.orders.urls')),
     path('api/favorites/', include('apps.favorites.urls')),
     path('api/feedback/', include('apps.feedback.urls')),
