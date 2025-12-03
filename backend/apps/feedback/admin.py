@@ -13,16 +13,17 @@ class TestimonialMediaInline(admin.TabularInline):
 
 @admin.register(Testimonial)
 class TestimonialAdmin(admin.ModelAdmin):
-    list_display = ('author_name', 'rating', 'media_count', 'is_active', 'created_at')
-    list_filter = ('is_active', 'rating', 'created_at')
-    search_fields = ('author_name', 'text')
+    list_display = ('author_name', 'user', 'rating', 'media_count', 'is_active', 'created_at')
+    list_filter = ('is_active', 'rating', 'created_at', 'user')
+    search_fields = ('author_name', 'text', 'user__username', 'user__email')
     list_editable = ('is_active',)
     date_hierarchy = 'created_at'
     inlines = [TestimonialMediaInline]
+    raw_id_fields = ('user',)  # Для удобного выбора пользователя
     
     fieldsets = (
         ('Основная информация', {
-            'fields': ('author_name', 'author_avatar', 'text', 'rating', 'is_active')
+            'fields': ('user', 'author_name', 'author_avatar', 'text', 'rating', 'is_active')
         }),
     )
 

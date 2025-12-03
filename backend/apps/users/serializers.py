@@ -331,3 +331,115 @@ class UserStatsSerializer(serializers.Serializer):
     last_order_date = serializers.DateTimeField(allow_null=True)
     registration_date = serializers.DateTimeField()
     days_since_registration = serializers.IntegerField()
+
+
+class PublicUserProfileSerializer(serializers.ModelSerializer):
+    """
+    Сериализатор для публичного профиля пользователя
+    """
+    user_username = serializers.CharField(source='user.username', read_only=True)
+    avatar_url = serializers.SerializerMethodField()
+    total_orders = serializers.SerializerMethodField()
+    testimonial_id = serializers.SerializerMethodField()
+    social_links = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = UserProfile
+        fields = [
+            'id',
+            'user_username',
+            'first_name',
+            'last_name',
+            'avatar_url',
+            'bio',
+            'whatsapp_phone',
+            'telegram_username',
+            'total_orders',
+            'testimonial_id',
+            'social_links',
+        ]
+    
+    def get_avatar_url(self, obj):
+        """Получение URL аватара из профиля или из отзыва"""
+        import logging
+        logger = logging.getLogger(__name__)
+        request = self.context.get('request')
+        
+        # Сначала проверяем аватар в профиле
+        if obj.avatar:
+            if request:
+                url = request.build_absolute_uri(obj.avatar.url)
+                logger.info(f'PublicUserProfileSerializer: Avatar URL from profile for user {obj.user.username}: {url}')
+                return url
+            url = obj.avatar.url
+            logger.info(f'PublicUserProfileSerializer: Avatar URL from profile (no request) for user {obj.user.username}: {url}')
+            return url
+        
+        # Если аватара в профиле нет, ищем в отзывах
+        from apps.feedback.models import Testimonial
+        testimonial_id = self.context.get('testimonial_id')
+        
+        # Если передан testimonial_id, используем его
+        if testimonial_id:
+            try:
+                testimonial = Testimonial.objects.get(id=testimonial_id, user=obj.user, is_active=True)
+                if testimonial.author_avatar:
+                    if request:
+                        url = request.build_absolute_uri(testimonial.author_avatar.url)
+                        logger.info(f'PublicUserProfileSerializer: Avatar URL from testimonial {testimonial_id} for user {obj.user.username}: {url}')
+                        return url
+                    url = testimonial.author_avatar.url
+                    logger.info(f'PublicUserProfileSerializer: Avatar URL from testimonial {testimonial_id} (no request) for user {obj.user.username}: {url}')
+                    return url
+            except Testimonial.DoesNotExist:
+                pass
+        
+        # Если testimonial_id не передан или отзыв не найден, ищем любой активный отзыв с аватаром
+        testimonial = Testimonial.objects.filter(user=obj.user, is_active=True, author_avatar__isnull=False).first()
+        if testimonial and testimonial.author_avatar:
+            if request:
+                url = request.build_absolute_uri(testimonial.author_avatar.url)
+                logger.info(f'PublicUserProfileSerializer: Avatar URL from first testimonial for user {obj.user.username}: {url}')
+                return url
+            url = testimonial.author_avatar.url
+            logger.info(f'PublicUserProfileSerializer: Avatar URL from first testimonial (no request) for user {obj.user.username}: {url}')
+            return url
+        
+        logger.info(f'PublicUserProfileSerializer: No avatar for user {obj.user.username} (neither in profile nor in testimonials)')
+        return None
+    
+    def get_total_orders(self, obj):
+        """Расчет общего количества заказов пользователя"""
+        from apps.orders.models import Order
+        return Order.objects.filter(user=obj.user).count()
+    
+    def get_testimonial_id(self, obj):
+        """Получение ID отзыва пользователя, если есть"""
+        from apps.feedback.models import Testimonial
+        testimonial = Testimonial.objects.filter(user=obj.user, is_active=True).first()
+        return testimonial.id if testimonial else None
+    
+    def get_social_links(self, obj):
+        """Получение ссылок на социальные сети"""
+        links = {}
+        user = obj.user
+        
+        # Telegram
+        if obj.telegram_username:
+            links['telegram'] = f"https://t.me/{obj.telegram_username.lstrip('@')}"
+        
+        # WhatsApp
+        if obj.whatsapp_phone:
+            links['whatsapp'] = f"https://wa.me/{obj.whatsapp_phone.lstrip('+')}"
+        
+        # Социальные сети из User модели (если есть ID)
+        if user.google_id:
+            links['google'] = f"https://plus.google.com/{user.google_id}"
+        if user.facebook_id:
+            links['facebook'] = f"https://facebook.com/{user.facebook_id}"
+        if user.vk_id:
+            links['vk'] = f"https://vk.com/id{user.vk_id}"
+        if user.yandex_id:
+            links['yandex'] = f"https://yandex.ru/profile/{user.yandex_id}"
+        
+        return links

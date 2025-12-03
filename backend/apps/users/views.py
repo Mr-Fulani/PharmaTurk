@@ -18,7 +18,8 @@ from .serializers import (
     UserRegistrationSerializer, UserLoginSerializer, UserProfileSerializer,
     UserAddressSerializer, UserSerializer, UserPasswordChangeSerializer,
     UserEmailVerificationSerializer, UserSessionSerializer, UserStatsSerializer,
-    SMSSendCodeSerializer, SMSVerifyCodeSerializer, SocialAuthSerializer
+    SMSSendCodeSerializer, SMSVerifyCodeSerializer, SocialAuthSerializer,
+    PublicUserProfileSerializer
 )
 
 
@@ -766,3 +767,98 @@ class SocialAuthView(APIView):
             }, status=status.HTTP_501_NOT_IMPLEMENTED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PublicUserProfileView(APIView):
+    """
+    Публичный профиль пользователя
+    """
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        summary="Получить публичный профиль пользователя",
+        description="Получение публичного профиля пользователя по username или по ID отзыва",
+        parameters=[
+            OpenApiParameter(
+                name='username',
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description='Username пользователя',
+                required=False
+            ),
+            OpenApiParameter(
+                name='testimonial_id',
+                type=int,
+                location=OpenApiParameter.QUERY,
+                description='ID отзыва для поиска пользователя',
+                required=False
+            ),
+        ],
+        responses={
+            200: PublicUserProfileSerializer,
+            404: "Пользователь не найден или профиль не публичный"
+        }
+    )
+    def get(self, request):
+        """Получение публичного профиля пользователя"""
+        username = request.query_params.get('username')
+        testimonial_id = request.query_params.get('testimonial_id')
+        
+        user = None
+        
+        # Поиск по testimonial_id
+        if testimonial_id:
+            try:
+                from apps.feedback.models import Testimonial
+                testimonial = Testimonial.objects.get(id=testimonial_id, is_active=True)
+                if testimonial.user:
+                    user = testimonial.user
+            except Testimonial.DoesNotExist:
+                pass
+        
+        # Поиск по username
+        if not user and username:
+            try:
+                user = User.objects.get(username=username)
+            except User.DoesNotExist:
+                pass
+        
+        if not user:
+            return Response(
+                {'error': 'Пользователь не найден'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Получаем профиль
+        try:
+            profile = user.profile
+        except UserProfile.DoesNotExist:
+            return Response(
+                {'error': 'Профиль не найден'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Проверяем, является ли профиль публичным
+        # Если это текущий пользователь (и он аутентифицирован), показываем профиль в любом случае
+        is_own_profile = request.user.is_authenticated and request.user == user
+        
+        # Отладочная информация
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f'Public profile check: user={user.username}, is_public_profile={profile.is_public_profile}, is_own_profile={is_own_profile}, request_user={request.user}')
+        
+        if not profile.is_public_profile and not is_own_profile:
+            return Response(
+                {'error': 'Профиль не является публичным'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Передаем testimonial_id в контекст сериализатора для получения аватара из отзыва
+        serializer = PublicUserProfileSerializer(
+            profile,
+            context={
+                'request': request,
+                'testimonial_id': testimonial_id
+            }
+        )
+        return Response(serializer.data)

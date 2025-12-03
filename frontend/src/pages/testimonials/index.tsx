@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
+import Link from 'next/link'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
@@ -26,6 +27,8 @@ interface Testimonial {
   rating: number | null
   media: TestimonialMedia[]
   created_at: string
+  user_id?: number | null
+  user_username?: string | null
 }
 
 interface MediaItem {
@@ -61,7 +64,11 @@ export default function TestimonialsPage() {
   useEffect(() => {
     const fetchTestimonials = async () => {
       try {
-        const response = await api.get('/feedback/testimonials/')
+        // Получаем параметр username из URL для фильтрации
+        const username = router.query.username as string | undefined
+        const params = username ? { username } : {}
+        
+        const response = await api.get('/feedback/testimonials/', { params })
         const data = response.data
         setTestimonials(Array.isArray(data) ? data : data.results || [])
       } catch (error) {
@@ -71,7 +78,7 @@ export default function TestimonialsPage() {
       }
     }
     fetchTestimonials()
-  }, [])
+  }, [router.query.username])
 
   // Блокировка скролла при открытом модальном окне
   useEffect(() => {
@@ -344,12 +351,31 @@ export default function TestimonialsPage() {
       <div className="min-h-screen bg-gray-50 py-12">
         <div className="mx-auto max-w-6xl px-4">
           <div className="mb-8">
-            <h1 className="text-4xl font-bold text-gray-900 mb-4">
-              {t('testimonials_page_title', 'Отзывы клиентов')}
-            </h1>
-            <p className="text-gray-600">
-              {t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')}
-            </p>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                  {t('testimonials_page_title', 'Отзывы клиентов')}
+                </h1>
+                {router.query.username && (
+                  <p className="text-lg text-gray-700">
+                    {t('filtered_by_user', 'Отзывы пользователя')}: <span className="font-semibold">@{router.query.username}</span>
+                  </p>
+                )}
+                {!router.query.username && (
+                  <p className="text-gray-600">
+                    {t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')}
+                  </p>
+                )}
+              </div>
+              {router.query.username && (
+                <Link
+                  href="/testimonials"
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  {t('show_all_testimonials', 'Показать все отзывы')}
+                </Link>
+              )}
+            </div>
           </div>
 
           {testimonials.length === 0 ? (
@@ -421,18 +447,39 @@ export default function TestimonialsPage() {
                   
                   {/* Нижняя часть: аватарка + имя слева, звездочки справа */}
                   <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 mt-auto">
-                    <div className="flex items-center flex-1 min-w-0">
-                      {testimonial.author_avatar_url && (
-                        <img
-                          src={testimonial.author_avatar_url}
-                          alt={testimonial.author_name}
-                          className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
-                        />
-                      )}
-                      <div className="text-xs font-semibold text-gray-900 truncate">
-                        {testimonial.author_name}
+                    {testimonial.user_id && testimonial.user_username ? (
+                      <Link
+                        href={`/user/${testimonial.user_username}?testimonial_id=${testimonial.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation() // Предотвращаем открытие модалки
+                        }}
+                        className="flex items-center flex-1 min-w-0 hover:opacity-80 transition-opacity"
+                      >
+                        {testimonial.author_avatar_url && (
+                          <img
+                            src={testimonial.author_avatar_url}
+                            alt={testimonial.author_name}
+                            className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                          />
+                        )}
+                        <div className="text-xs font-semibold text-gray-900 truncate">
+                          {testimonial.author_name}
+                        </div>
+                      </Link>
+                    ) : (
+                      <div className="flex items-center flex-1 min-w-0">
+                        {testimonial.author_avatar_url && (
+                          <img
+                            src={testimonial.author_avatar_url}
+                            alt={testimonial.author_name}
+                            className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                          />
+                        )}
+                        <div className="text-xs font-semibold text-gray-900 truncate">
+                          {testimonial.author_name}
+                        </div>
                       </div>
-                    </div>
+                    )}
                     {testimonial.rating && (
                       <div className="flex items-center ml-2 flex-shrink-0">
                         {[0, 1, 2, 3, 4].map((rating) => (

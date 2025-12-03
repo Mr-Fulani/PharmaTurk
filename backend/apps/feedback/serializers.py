@@ -45,6 +45,8 @@ class TestimonialSerializer(serializers.ModelSerializer):
     """
     author_avatar_url = serializers.SerializerMethodField()
     media = TestimonialMediaSerializer(many=True, read_only=True)
+    user_id = serializers.SerializerMethodField()
+    user_username = serializers.SerializerMethodField()
 
     class Meta:
         model = Testimonial
@@ -56,7 +58,17 @@ class TestimonialSerializer(serializers.ModelSerializer):
             'rating',
             'media',
             'created_at',
+            'user_id',
+            'user_username',
         )
+    
+    def get_user_id(self, obj):
+        """Возвращает ID пользователя, если он привязан к отзыву."""
+        return obj.user.id if obj.user else None
+    
+    def get_user_username(self, obj):
+        """Возвращает username пользователя, если он привязан к отзыву."""
+        return obj.user.username if obj.user else None
 
     def get_author_avatar_url(self, obj):
         """Возвращает URL аватара автора."""
@@ -130,6 +142,7 @@ class TestimonialCreateSerializer(serializers.ModelSerializer):
             author_avatar = ContentFile(file_content, name=file_name)
         
         testimonial = Testimonial.objects.create(
+            user=user,
             is_active=False,
             author_name=author_name,
             author_avatar=author_avatar,

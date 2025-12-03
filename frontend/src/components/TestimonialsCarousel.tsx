@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
+import Link from 'next/link'
 import api from '../lib/api'
 import { StarIcon } from '@heroicons/react/20/solid'
 import { SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/outline'
@@ -22,6 +23,8 @@ interface Testimonial {
   rating: number | null
   media: TestimonialMedia[]
   created_at: string
+  user_id?: number | null
+  user_username?: string | null
 }
 
 interface TestimonialsCarouselProps {
@@ -49,7 +52,24 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       try {
         const response = await api.get('/feedback/testimonials/')
         const data = response.data
-        setTestimonials(Array.isArray(data) ? data : data.results || [])
+        const testimonialsList = Array.isArray(data) ? data : data.results || []
+        // Отладочная информация для проверки данных
+        console.log('Testimonials loaded:', testimonialsList.map(t => ({
+          id: t.id,
+          author_name: t.author_name,
+          user_id: t.user_id,
+          user_username: t.user_username,
+          hasUser: !!(t.user_id && t.user_username),
+          user_id_type: typeof t.user_id,
+          user_username_type: typeof t.user_username
+        })))
+        console.log('Full testimonials data (first item):', testimonialsList[0])
+        console.log('First testimonial user_id:', testimonialsList[0]?.user_id)
+        console.log('First testimonial user_username:', testimonialsList[0]?.user_username)
+        testimonialsList.forEach((t, idx) => {
+          console.log(`Testimonial ${idx + 1} (ID: ${t.id}): user_id=${t.user_id}, user_username=${t.user_username}`)
+        })
+        setTestimonials(testimonialsList)
       } catch (error) {
         console.error('Failed to fetch testimonials:', error)
       } finally {
@@ -312,14 +332,33 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
               msOverflowStyle: 'none',
             }}
           >
-            {testimonials.map((testimonial) => (
+            {testimonials.map((testimonial) => {
+              const hasUser = testimonial.user_id != null && testimonial.user_username
+              if (hasUser) {
+                console.log('Rendering testimonial with user:', {
+                  id: testimonial.id,
+                  user_id: testimonial.user_id,
+                  user_username: testimonial.user_username
+                })
+              }
+              return (
               <div
                 key={testimonial.id}
-                onClick={() => router.push('/testimonials')}
-                className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer transform hover:-translate-y-2 hover:scale-[1.02] flex flex-col"
+                className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 hover:scale-[1.02] flex flex-col"
               >
                 {testimonial.media && testimonial.media.length > 0 && (
-                   <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100">
+                  <Link
+                    href="/testimonials"
+                    className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100 block"
+                    onClick={(e) => {
+                      // Не перехватываем клик, если кликнули на кнопку пользователя
+                      const target = e.target as HTMLElement
+                      if (target.closest('button[type="button"]')) {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }
+                    }}
+                  >
                     <div className="w-full h-full transition-transform duration-300 group-hover:scale-110">
                       {renderMedia(testimonial)}
                     </div>
@@ -353,30 +392,78 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                         )}
                       </button>
                     )}
-                  </div>
+                  </Link>
                 )}
                 
                 {/* Текст отзыва - по центру */}
-                <div className="flex-1 p-4 min-h-[100px]">
+                <Link
+                  href="/testimonials"
+                  className="flex-1 p-4 min-h-[100px] cursor-pointer"
+                  onClick={(e) => {
+                    // Не перехватываем клик, если кликнули на кнопку пользователя
+                    const target = e.target as HTMLElement
+                    if (target.closest('button[type="button"]')) {
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }
+                  }}
+                >
                   <p className="text-gray-600 text-sm line-clamp-4">
                     "{testimonial.text}"
                   </p>
-                </div>
+                </Link>
                 
                 {/* Нижняя часть: аватарка + имя слева, звездочки справа */}
                 <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 mt-auto">
-                  <div className="flex items-center flex-1 min-w-0">
-                    {testimonial.author_avatar_url && (
-                      <img
-                        src={testimonial.author_avatar_url}
-                        alt={testimonial.author_name}
-                        className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
-                      />
-                    )}
-                    <div className="text-xs font-semibold text-gray-900 truncate">
-                      {testimonial.author_name}
+                  {testimonial.user_id != null && testimonial.user_username ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        console.log('Clicking on user profile:', {
+                          username: testimonial.user_username,
+                          userId: testimonial.user_id,
+                          testimonialId: testimonial.id
+                        })
+                        const url = `/user/${testimonial.user_username}?testimonial_id=${testimonial.id}`
+                        console.log('Navigating to:', url)
+                        router.push(url).catch(err => {
+                          console.error('Navigation error:', err)
+                        })
+                      }}
+                      onMouseDown={(e) => {
+                        e.stopPropagation()
+                      }}
+                      className="flex items-center flex-1 min-w-0 hover:opacity-80 transition-opacity cursor-pointer text-left bg-transparent border-none p-0 outline-none focus:outline-none"
+                      title={`Профиль ${testimonial.author_name}`}
+                      style={{ zIndex: 10 }}
+                    >
+                      {testimonial.author_avatar_url && (
+                        <img
+                          src={testimonial.author_avatar_url}
+                          alt={testimonial.author_name}
+                          className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0 pointer-events-none"
+                        />
+                      )}
+                      <div className="text-xs font-semibold text-gray-900 truncate pointer-events-none">
+                        {testimonial.author_name}
+                      </div>
+                    </button>
+                  ) : (
+                    <div className="flex items-center flex-1 min-w-0">
+                      {testimonial.author_avatar_url && (
+                        <img
+                          src={testimonial.author_avatar_url}
+                          alt={testimonial.author_name}
+                          className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                        />
+                      )}
+                      <div className="text-xs font-semibold text-gray-900 truncate">
+                        {testimonial.author_name}
+                      </div>
                     </div>
-                  </div>
+                  )}
                   {testimonial.rating && (
                     <div className="flex items-center ml-2 flex-shrink-0">
                       {[0, 1, 2, 3, 4].map((rating) => (
@@ -393,7 +480,8 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 

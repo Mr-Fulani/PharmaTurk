@@ -8,6 +8,19 @@ from django.utils.translation import gettext_lazy as _
 from .models import User, UserProfile, UserAddress, UserSession
 
 
+class UserProfileInline(admin.StackedInline):
+    """Inline для редактирования профиля пользователя в админке User."""
+    model = UserProfile
+    can_delete = False
+    verbose_name_plural = 'Профиль'
+    fieldsets = (
+        (None, {'fields': ('first_name', 'last_name', 'middle_name', 'avatar', 'bio')}),
+        (_('Address'), {'fields': ('country', 'city', 'postal_code', 'address')}),
+        (_('Privacy'), {'fields': ('is_public_profile', 'show_email', 'show_phone')}),
+        (_('Social'), {'fields': ('whatsapp_phone', 'telegram_username')}),
+    )
+
+
 class CustomAdminAuthenticationForm(AdminAuthenticationForm):
     """
     Кастомная форма входа в админку, поддерживающая вход по email, username или телефону.
@@ -34,6 +47,7 @@ class UserAdmin(BaseUserAdmin):
     list_filter = ('is_staff', 'is_active', 'is_verified', 'language', 'currency', 'date_joined')
     search_fields = ('email', 'username', 'first_name', 'last_name', 'phone_number')
     ordering = ('-date_joined',)
+    inlines = [UserProfileInline]
     
     fieldsets = (
         (None, {'fields': ('email', 'password')}),

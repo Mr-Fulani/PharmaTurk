@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, useRef } from 
 import Cookies from 'js-cookie'
 import api from '../lib/api'
 import { useCartStore } from '../store/cart'
+import { useFavoritesStore } from '../store/favorites'
 
 interface User {
   id: number
@@ -26,10 +27,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const refreshCartRef = useRef(useCartStore.getState().refresh)
+  const refreshFavoritesRef = useRef(useFavoritesStore.getState().refresh)
   
   // Обновляем ref при изменении store
   useEffect(() => {
     refreshCartRef.current = useCartStore.getState().refresh
+    refreshFavoritesRef.current = useFavoritesStore.getState().refresh
   }, [])
 
   useEffect(() => {
@@ -45,6 +48,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('AuthContext: profile loaded:', profile ? 'success' : 'failed')
       if (profile) {
         setUser({ id: profile.id, email: profile.user_email, username: profile.user_username })
+        // Обновляем избранное после загрузки профиля пользователя
+        refreshFavoritesRef.current()
       }
     }).catch((err) => {
       console.log('AuthContext: profile error:', err?.response?.status)
@@ -64,6 +69,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser({ id: user.id, email: user.email, username: user.username })
       // Обновляем корзину после входа для переноса товаров с анонимной сессии
       refreshCartRef.current()
+      // Обновляем избранное после входа для загрузки избранного пользователя
+      refreshFavoritesRef.current()
     },
     async register(email, username, password) {
       const res = await api.post('/users/register/', { email, username, password, password_confirm: password })
@@ -73,11 +80,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser({ id: user.id, email: user.email, username: user.username })
       // Обновляем корзину после регистрации для переноса товаров с анонимной сессии
       refreshCartRef.current()
+      // Обновляем избранное после регистрации для загрузки избранного пользователя
+      refreshFavoritesRef.current()
     },
     logout() {
       Cookies.remove('access', { path: '/' })
       Cookies.remove('refresh', { path: '/' })
       setUser(null)
+      // Очищаем избранное при выходе
+      refreshFavoritesRef.current()
     }
   }), [user, loading])
 

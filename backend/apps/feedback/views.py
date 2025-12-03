@@ -28,6 +28,12 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         """Получение списка активных отзывов."""
         queryset = self.filter_queryset(self.get_queryset())
+        
+        # Фильтрация по username пользователя
+        username = request.query_params.get('username')
+        if username:
+            queryset = queryset.filter(user__username=username)
+        
         serializer = self.get_serializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
@@ -38,8 +44,8 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     def get_queryset(self):
-        """Возвращает queryset с prefetch для медиа."""
-        return super().get_queryset().prefetch_related('media')
+        """Возвращает queryset с prefetch для медиа и select_related для пользователя."""
+        return super().get_queryset().select_related('user').prefetch_related('media')
 
     def create(self, request, *args, **kwargs):
         """Создание нового отзыва с медиа."""

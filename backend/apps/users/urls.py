@@ -19,7 +19,8 @@ from .views import (
     AppConfigView,
     SMSSendCodeView,
     SMSVerifyCodeView,
-    SocialAuthView
+    SocialAuthView,
+    PublicUserProfileView
 )
 
 # Роутер для ViewSets
@@ -65,6 +66,9 @@ urlpatterns = [
     
     # Конфигурация приложения
     path('config/', AppConfigView.as_view(), name='app-config'),
+    
+    # Публичный профиль пользователя
+    path('public-profile/', PublicUserProfileView.as_view(), name='public-user-profile'),
     
     # ViewSets
     path('', include(router.urls)),
