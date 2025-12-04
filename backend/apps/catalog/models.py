@@ -757,6 +757,11 @@ class BannerMedia(models.Model):
         related_name='media_files',
         verbose_name=_("Баннер")
     )
+    link_url = models.URLField(
+        _("Ссылка при клике на медиа"),
+        blank=True,
+        help_text=_("URL для перехода при клике на этот конкретный медиа-элемент. Если пусто, используется ссылка баннера.")
+    )
     content_type = models.CharField(
         _("Тип контента"),
         max_length=10,

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import api from '../lib/api'
 
 interface BannerMedia {
@@ -8,6 +9,7 @@ interface BannerMedia {
   content_url: string
   content_mime_type?: string
   sort_order: number
+  link_url?: string
 }
 
 interface Banner {
@@ -26,6 +28,7 @@ interface BannerCarouselProps {
 }
 
 export default function BannerCarousel({ position, className = '' }: BannerCarouselProps) {
+  const router = useRouter()
   const [banners, setBanners] = useState<Banner[]>([])
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0)
@@ -148,17 +151,58 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
   const getVideoEmbedUrl = (url: string): string | null => {
     if (!url) return null
     
-    // YouTube
-    const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
-    const youtubeMatch = url.match(youtubeRegex)
-    if (youtubeMatch) {
-      return `https://www.youtube.com/embed/${youtubeMatch[1]}?autoplay=1&loop=1&mute=1&playlist=${youtubeMatch[1]}&controls=0&showinfo=0&rel=0`
+    // YouTube - проверяем, является ли URL уже embed URL
+    if (url.includes('youtube.com/embed/')) {
+      // Уже embed URL, просто добавляем параметры если их нет
+      if (!url.includes('?')) {
+        return `${url}?autoplay=1&loop=1&muted=1&controls=0&showinfo=0&rel=0`
+      } else if (!url.includes('autoplay')) {
+        return `${url}&autoplay=1&loop=1&muted=1&controls=0&showinfo=0&rel=0`
+      }
+      return url
     }
     
-    // Vimeo
+    // Извлекаем ID из любого формата YouTube URL (включая мобильные версии и Shorts)
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      // Поддерживаем: /watch?v=, /embed/, /shorts/, youtu.be/, m.youtube.com/
+      // Для обычных видео ID всегда 11 символов, для Shorts может быть разной длины
+      let videoId = null
+      
+      // Сначала пробуем стандартный формат (11 символов)
+      const standardRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})/
+      let match = url.match(standardRegex)
+      
+      // Если не нашли, пробуем формат Shorts (может быть разной длины)
+      if (!match) {
+        const shortsRegex = /(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)/
+        match = url.match(shortsRegex)
+      }
+      
+      if (match && match[1]) {
+        videoId = match[1]
+        return `https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&muted=1&playlist=${videoId}&controls=0&showinfo=0&rel=0`
+      } else {
+        // Если не удалось извлечь ID, возвращаем null
+        console.warn('Invalid YouTube URL format:', url)
+        return null
+      }
+    }
+    
+    // Vimeo - проверяем, является ли URL уже player URL
+    if (url.includes('player.vimeo.com/video/')) {
+      // Уже player URL, просто добавляем параметры если их нет
+      if (!url.includes('?')) {
+        return `${url}?autoplay=1&loop=1&muted=1&background=1`
+      } else if (!url.includes('autoplay')) {
+        return `${url}&autoplay=1&loop=1&muted=1&background=1`
+      }
+      return url
+    }
+    
+    // Извлекаем ID из обычного Vimeo URL
     const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
     const vimeoMatch = url.match(vimeoRegex)
-    if (vimeoMatch) {
+    if (vimeoMatch && vimeoMatch[1]) {
       return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1&loop=1&muted=1&background=1`
     }
     
@@ -292,12 +336,37 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
       </>
     )
 
-    // Если есть ссылка, но нет link_text, делаем весь баннер кликабельным
-    if (currentBanner.link_url && !currentBanner.link_text) {
+    const activeLink = currentMedia.link_url || currentBanner.link_url
+    const isExternal = (link: string) => /^https?:\/\//.test(link)
+
+    const handleNavigation = () => {
+      if (!activeLink) return
+      if (isExternal(activeLink)) {
+        window.open(activeLink, '_blank', 'noopener, noreferrer')
+      } else {
+        router.push(activeLink)
+      }
+    }
+
+    if (activeLink) {
       return (
-        <Link href={currentBanner.link_url} className="block w-full h-full">
+        <div
+          role="link"
+          tabIndex={0}
+          onClick={(event) => {
+            event.stopPropagation()
+            handleNavigation()
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              handleNavigation()
+            }
+          }}
+          className="w-full h-full cursor-pointer"
+        >
           {contentElement}
-        </Link>
+        </div>
       )
     }
 
@@ -317,19 +386,29 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
         
         {/* Текст баннера (заголовок и ссылка) - поверх медиа */}
         {(currentBanner.title || currentBanner.link_text) && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center px-4 text-center">
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center px-4 text-center pointer-events-none">
             {currentBanner.title && (
               <h2 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white mb-4 drop-shadow-lg">
                 {currentBanner.title}
               </h2>
             )}
             {currentBanner.link_text && currentBanner.link_url && (
-              <Link
+              <a
                 href={currentBanner.link_url}
-                className="inline-block mt-4 px-6 py-3 bg-white text-red-600 font-semibold rounded-lg shadow-lg hover:bg-red-50 transition-all duration-200 hover:scale-105"
+                className="inline-block mt-4 px-6 py-3 bg-white text-red-600 font-semibold rounded-lg shadow-lg hover:bg-red-50 transition-all duration-200 hover:scale-105 pointer-events-auto"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  const isExternal = (link: string) => /^https?:\/\//.test(link)
+                  if (isExternal(currentBanner.link_url!)) {
+                    window.open(currentBanner.link_url, '_blank', 'noopener, noreferrer')
+                  } else {
+                    router.push(currentBanner.link_url!)
+                  }
+                }}
               >
                 {currentBanner.link_text}
-              </Link>
+              </a>
             )}
           </div>
         )}

@@ -460,7 +460,7 @@ class BannerMediaSerializer(serializers.ModelSerializer):
     class Meta:
         model = BannerMedia
         fields = [
-            'id', 'content_type', 'content_url', 'content_mime_type', 'sort_order'
+            'id', 'content_type', 'content_url', 'content_mime_type', 'sort_order', 'link_url'
         ]
         read_only_fields = ['id', 'content_url', 'content_mime_type']
     
@@ -504,10 +504,9 @@ class BannerSerializer(serializers.ModelSerializer):
         model = Banner
         fields = [
             'id', 'title', 'position', 'link_url', 'link_text', 
-            'sort_order', 'media_files'
+            'is_active', 'sort_order', 'media_files'
         ]
-        read_only_fields = ['id', 'media_files']
-    
+
     def get_media_files(self, obj):
         """Получить отсортированные медиа-файлы баннера."""
         media = obj.media_files.all().order_by('sort_order')

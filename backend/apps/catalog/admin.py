@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
@@ -252,10 +253,11 @@ class BannerMediaInline(admin.TabularInline):
     """Inline для медиа-файлов баннера."""
     model = BannerMedia
     extra = 1
-    fields = ('content_type', 'image', 'image_url', 'video_file', 'video_url', 'gif_file', 'gif_url', 'sort_order')
+    fields = (
+        'content_type', 'image', 'video_file', 'gif_file', 'link_url', 'sort_order'
+    )
     verbose_name = _("Медиа-файл")
     verbose_name_plural = _("Медиа-файлы")
-    # Показываем все поля для удобства добавления разных типов медиа
 
 
 @admin.register(Banner)
@@ -302,6 +304,10 @@ class BannerMediaAdmin(admin.ModelAdmin):
             'fields': ('gif_file', 'gif_url'),
             'description': _('Загрузите GIF файл локально или укажите внешний URL')
         }),
+        (_('Ссылка'), {
+            'fields': ('link_url',),
+            'description': _('Ссылка, на которую должен вести клик по текущему медиа')
+        }),
     )
     
     def get_fieldsets(self, request, obj=None):
@@ -311,16 +317,19 @@ class BannerMediaAdmin(admin.ModelAdmin):
                 return [
                     (None, {'fields': ('banner', 'content_type', 'sort_order')}),
                     (_('Изображение'), {'fields': ('image', 'image_url')}),
+                    (_('Ссылка'), {'fields': ('link_url',)}),
                 ]
             elif obj.content_type == 'video':
                 return [
                     (None, {'fields': ('banner', 'content_type', 'sort_order')}),
                     (_('Видео'), {'fields': ('video_file', 'video_url')}),
+                    (_('Ссылка'), {'fields': ('link_url',)}),
                 ]
             elif obj.content_type == 'gif':
                 return [
                     (None, {'fields': ('banner', 'content_type', 'sort_order')}),
                     (_('GIF'), {'fields': ('gif_file', 'gif_url')}),
+                    (_('Ссылка'), {'fields': ('link_url',)}),
                 ]
         return super().get_fieldsets(request, obj)
     

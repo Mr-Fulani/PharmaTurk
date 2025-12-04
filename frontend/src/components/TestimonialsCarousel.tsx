@@ -253,24 +253,65 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     if (firstMedia.media_type === 'video' && firstMedia.video_url) {
       // Для YouTube/Vimeo видео добавляем autoplay и muted в URL
       let embedUrl = firstMedia.video_url
+      let isValidEmbedUrl = false
       
-      // Обработка YouTube URL
-      if (embedUrl.includes('youtube.com/watch?v=') || embedUrl.includes('youtu.be/')) {
-        const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
-        const match = embedUrl.match(youtubeRegex)
-        if (match) {
-          embedUrl = `https://www.youtube.com/embed/${match[1]}?autoplay=1&mute=1&loop=1&playlist=${match[1]}&controls=1&modestbranding=1`
+      // Обработка YouTube URL - улучшенная версия, поддерживающая все форматы
+      // Проверяем, является ли URL уже embed URL
+      if (embedUrl.includes('youtube.com/embed/')) {
+        // Уже embed URL, просто добавляем параметры если их нет
+        if (!embedUrl.includes('?')) {
+          embedUrl += '?autoplay=1&muted=1&loop=1&controls=1&modestbranding=1'
+        } else if (!embedUrl.includes('autoplay')) {
+          embedUrl += '&autoplay=1&muted=1&loop=1&controls=1&modestbranding=1'
+        }
+        isValidEmbedUrl = true
+      } else if (embedUrl.includes('youtube.com') || embedUrl.includes('youtu.be')) {
+        // Извлекаем ID из любого формата YouTube URL (включая мобильные версии и Shorts)
+        // Поддерживаем: /watch?v=, /embed/, /shorts/, youtu.be/, m.youtube.com/
+        // Для обычных видео ID всегда 11 символов, для Shorts может быть разной длины
+        let videoId = null
+        
+        // Сначала пробуем стандартный формат (11 символов)
+        const standardRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})/
+        let match = embedUrl.match(standardRegex)
+        
+        // Если не нашли, пробуем формат Shorts (может быть разной длины)
+        if (!match) {
+          const shortsRegex = /(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)/
+          match = embedUrl.match(shortsRegex)
+        }
+        
+        if (match && match[1]) {
+          videoId = match[1]
+        }
+        
+        if (videoId) {
+          embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&muted=1&loop=1&playlist=${videoId}&controls=1&modestbranding=1&rel=0`
+          isValidEmbedUrl = true
+        } else {
+          // Если не удалось извлечь ID, не показываем iframe
+          console.warn('Invalid YouTube URL format:', embedUrl)
+          return null
         }
       }
+      
       // Обработка Vimeo URL
-      else if (embedUrl.includes('vimeo.com/')) {
+      if (embedUrl.includes('vimeo.com/') && !embedUrl.includes('player.vimeo.com')) {
         const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
         const match = embedUrl.match(vimeoRegex)
-        if (match) {
+        if (match && match[1]) {
           embedUrl = `https://player.vimeo.com/video/${match[1]}?autoplay=1&muted=1&loop=1&controls=1&background=0`
+          isValidEmbedUrl = true
+        } else {
+          console.warn('Invalid Vimeo URL format:', embedUrl)
+          return null
         }
+      } else if (embedUrl.includes('player.vimeo.com')) {
+        isValidEmbedUrl = true
       }
       
+      // Показываем iframe только если URL валидный
+      if (isValidEmbedUrl) {
       return (
         <iframe
           src={embedUrl}
@@ -281,6 +322,9 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           className="w-full h-full"
         ></iframe>
       )
+      }
+      
+      return null
     }
     
     if (firstMedia.media_type === 'video_file' && firstMedia.video_file_url) {
@@ -451,18 +495,18 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                       </div>
                     </button>
                   ) : (
-                    <div className="flex items-center flex-1 min-w-0">
-                      {testimonial.author_avatar_url && (
-                        <img
-                          src={testimonial.author_avatar_url}
-                          alt={testimonial.author_name}
-                          className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
-                        />
-                      )}
-                      <div className="text-xs font-semibold text-gray-900 truncate">
-                        {testimonial.author_name}
-                      </div>
+                  <div className="flex items-center flex-1 min-w-0">
+                    {testimonial.author_avatar_url && (
+                      <img
+                        src={testimonial.author_avatar_url}
+                        alt={testimonial.author_name}
+                        className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                      />
+                    )}
+                    <div className="text-xs font-semibold text-gray-900 truncate">
+                      {testimonial.author_name}
                     </div>
+                  </div>
                   )}
                   {testimonial.rating && (
                     <div className="flex items-center ml-2 flex-shrink-0">
