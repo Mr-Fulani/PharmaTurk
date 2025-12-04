@@ -50,8 +50,18 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
           setCurrentBannerIndex(0)
           setCurrentMediaIndex(0)
         }
-      } catch (error) {
-        console.error('Failed to fetch banners:', error)
+      } catch (error: any) {
+        console.error('Failed to fetch banners:', {
+          error,
+          message: error?.message,
+          response: error?.response?.data,
+          status: error?.response?.status,
+          url: error?.config?.url,
+          baseURL: error?.config?.baseURL,
+          fullUrl: error?.config ? `${error?.config.baseURL}${error?.config.url}` : 'unknown',
+          position,
+          origin: typeof window !== 'undefined' ? window.location.origin : 'server'
+        })
         setBanners([])
       } finally {
         setLoading(false)
@@ -143,7 +153,21 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return url
     }
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE || (typeof window !== 'undefined' ? window.location.origin.replace(':3000', ':8000') : 'http://localhost:8000')
+    // Динамически определяем базовый URL для работы на мобильных устройствах
+    let apiBase = process.env.NEXT_PUBLIC_API_BASE
+    if (!apiBase && typeof window !== 'undefined') {
+      const origin = window.location.origin
+      // Если порт 3001 (frontend), заменяем на 8000 (backend)
+      if (origin.includes(':3001')) {
+        apiBase = origin.replace(':3001', ':8000') + '/api'
+      } else if (origin.includes(':3000')) {
+        apiBase = origin.replace(':3000', ':8000') + '/api'
+      } else {
+        apiBase = '/api'
+      }
+    } else if (!apiBase) {
+      apiBase = '/api'
+    }
     return `${apiBase}${url.startsWith('/') ? url : `/${url}`}`
   }
 

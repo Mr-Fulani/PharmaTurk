@@ -8,7 +8,7 @@ import { GetServerSideProps } from 'next'
 import api from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { StarIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/20/solid'
-import { PhotoIcon, VideoCameraIcon } from '@heroicons/react/24/outline'
+import { PhotoIcon, VideoCameraIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/outline'
 
 interface TestimonialMedia {
   id: number
@@ -164,6 +164,17 @@ export default function TestimonialsPage() {
     if (isRightSwipe && allMedia.length > 0) {
       prevMedia()
     }
+  }
+
+  const handleToggleMute = () => {
+    if (!selectedTestimonial) return
+    
+    setVideoMuted((prev) => {
+      const newMap = new Map(prev)
+      const currentMuted = newMap.get(selectedTestimonial.id) !== false
+      newMap.set(selectedTestimonial.id, !currentMuted)
+      return newMap
+    })
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video_file') => {
@@ -885,13 +896,13 @@ export default function TestimonialsPage() {
             className="bg-white rounded-3xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto relative"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Close button */}
+            {/* Close button - только для мобильных устройств */}
             <button
               onClick={() => {
                 setSelectedTestimonial(null)
                 setCurrentMediaIndex(0)
               }}
-              className="absolute top-4 right-4 z-10 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-all"
+              className="md:hidden absolute top-4 right-4 z-10 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-all"
             >
               <XMarkIcon className="w-6 h-6" />
             </button>

@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import Link from 'next/link'
 import api from '../lib/api'
 import { StarIcon } from '@heroicons/react/20/solid'
-import { SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/outline'
+import { SpeakerWaveIcon, SpeakerXMarkIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline'
 
 declare global {
   interface Window {
@@ -84,18 +84,234 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   const youtubePlayers = useRef<Map<number, any>>(new Map()) // YouTube IFrame API players
   const videoMutedRef = useRef<Map<number, boolean>>(new Map())
   const [videoMuted, setVideoMuted] = useState<Map<number, boolean>>(videoMutedRef.current)
+  const videoPlayingRef = useRef<Map<number, boolean>>(new Map()) // Состояние воспроизведения видео
+  const [videoPlaying, setVideoPlaying] = useState<Map<number, boolean>>(new Map()) // Для UI
+  const isProgrammaticPauseRef = useRef<Map<number, boolean>>(new Map()) // Флаг программной паузы (при скролле)
   const [youtubeApiReady, setYoutubeApiReady] = useState(false)
   const [playerReadyMap, setPlayerReadyMap] = useState<Map<number, boolean>>(new Map())
   const itemsPerPage = 3 // A "page" for pagination dots
+  const muteToggleTimeoutRef = useRef<Map<number, NodeJS.Timeout>>(new Map()) // Debounce для мобильных
 
   const updateVideoMuted = (mutator: (map: Map<number, boolean>) => void) => {
-    setVideoMuted((prev) => {
-      const newMap = new Map(prev)
-      mutator(newMap)
-      videoMutedRef.current = newMap
-      return newMap
-    })
+    // Обновляем ref сразу для мгновенного доступа
+    const newMap = new Map(videoMutedRef.current)
+    mutator(newMap)
+    videoMutedRef.current = newMap
+    // Обновляем состояние асинхронно, чтобы не блокировать UI
+    setVideoMuted(newMap)
   }
+
+  // Оптимизированный обработчик переключения звука - полностью синхронный для мгновенного отклика
+  const handleToggleMute = useCallback((testimonialId: number, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    // Очищаем предыдущий таймаут для этого видео (если есть)
+    const existingTimeout = muteToggleTimeoutRef.current.get(testimonialId)
+    if (existingTimeout) {
+      clearTimeout(existingTimeout)
+      muteToggleTimeoutRef.current.delete(testimonialId)
+    }
+    
+    // Используем ref для получения текущего состояния без перерендера
+    const currentMuted = videoMutedRef.current.get(testimonialId) !== false
+    const newMuted = !currentMuted
+    
+    // СНАЧАЛА обновляем UI мгновенно для визуального отклика
+    updateVideoMuted((map) => {
+      map.set(testimonialId, newMuted)
+    })
+    
+    // Затем применяем изменения к видео/iframe СИНХРОННО (без задержек)
+    const video = videoRefs.current.get(testimonialId)
+    const iframe = iframeRefs.current.get(testimonialId)
+    
+    if (video) {
+      // Управление звуком для video_file
+      // Важно: изменение muted не должно перезапускать видео
+      try {
+        // Проверяем, что видео загружено и готово
+        if (video.readyState >= 2) { // HAVE_CURRENT_DATA или выше
+          // Сохраняем текущее состояние воспроизведения
+          const wasPlaying = !video.paused
+          const currentTime = video.currentTime
+          
+          // Устанавливаем muted только если оно отличается
+          if (video.muted !== newMuted) {
+            video.muted = newMuted
+            
+            // Убеждаемся, что volume установлен правильно при включении звука
+            if (!newMuted && video.volume === 0) {
+              video.volume = 1.0
+            }
+          }
+          
+          // Проверяем, не сбросилось ли время воспроизведения (некоторые браузеры могут это делать)
+          // Восстанавливаем только если разница значительная (>0.5 сек)
+          if (wasPlaying && Math.abs(video.currentTime - currentTime) > 0.5) {
+            video.currentTime = currentTime
+          }
+          
+          // Восстанавливаем воспроизведение только если оно было и остановилось
+          // НЕ вызываем play() если видео уже воспроизводится
+          if (wasPlaying && video.paused) {
+            // Используем requestAnimationFrame для более плавного восстановления
+            requestAnimationFrame(() => {
+              if (video.paused) {
+                video.play().catch((err) => {
+                  console.error('Error resuming video playback:', err)
+                })
+              }
+            })
+          }
+        } else {
+          // Если видео еще не загружено, просто устанавливаем muted
+          // Это не вызовет перезапуск, так как видео еще не началось
+          video.muted = newMuted
+        }
+      } catch (error) {
+        console.error('Error toggling mute for video_file:', error)
+        // Fallback: просто устанавливаем muted
+        try {
+          video.muted = newMuted
+        } catch (e) {
+          console.error('Error setting muted property:', e)
+        }
+      }
+    } else if (iframe) {
+      // Управление звуком для YouTube/Vimeo iframe через API - синхронно
+      const player = youtubePlayers.current.get(testimonialId)
+      if (player && window.YT) {
+        try {
+          // Используем YouTube IFrame API - синхронно
+          if (newMuted) {
+            player.mute()
+          } else {
+            player.unMute()
+          }
+        } catch (error) {
+          console.error('Error toggling mute via API:', error)
+          // В случае ошибки состояние уже обновлено, ничего не делаем
+        }
+      }
+    }
+  }, [])
+
+  // Обработчик переключения play/pause для видео
+  const handleTogglePlay = useCallback((testimonialId: number, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    const video = videoRefs.current.get(testimonialId)
+    const iframe = iframeRefs.current.get(testimonialId)
+    
+    if (video) {
+      // Управление воспроизведением для video_file
+      try {
+        if (video.paused) {
+          video.play().catch((err) => {
+            console.error('Error playing video:', err)
+          })
+          videoPlayingRef.current.set(testimonialId, true)
+          setVideoPlaying((prev) => {
+            const newMap = new Map(prev)
+            newMap.set(testimonialId, true)
+            return newMap
+          })
+        } else {
+          video.pause()
+          videoPlayingRef.current.set(testimonialId, false)
+          setVideoPlaying((prev) => {
+            const newMap = new Map(prev)
+            newMap.set(testimonialId, false)
+            return newMap
+          })
+        }
+      } catch (error) {
+        console.error('Error toggling play/pause for video_file:', error)
+      }
+    } else if (iframe) {
+      // Управление воспроизведением для YouTube/Vimeo через API
+      const player = youtubePlayers.current.get(testimonialId)
+      if (player && window.YT) {
+        try {
+          const playerState = player.getPlayerState()
+          // YT.PlayerState.PLAYING = 1, YT.PlayerState.PAUSED = 2
+          if (playerState === 1) {
+            // Воспроизводится - ставим на паузу
+            player.pauseVideo()
+            videoPlayingRef.current.set(testimonialId, false)
+            setVideoPlaying((prev) => {
+              const newMap = new Map(prev)
+              newMap.set(testimonialId, false)
+              return newMap
+            })
+          } else {
+            // На паузе или не запущено - воспроизводим
+            player.playVideo()
+            videoPlayingRef.current.set(testimonialId, true)
+            setVideoPlaying((prev) => {
+              const newMap = new Map(prev)
+              newMap.set(testimonialId, true)
+              return newMap
+            })
+          }
+        } catch (error) {
+          console.error('Error toggling play/pause via YouTube API:', error)
+        }
+      }
+    }
+  }, [])
+
+  // Отслеживаем изменения состояния воспроизведения для video_file
+  useEffect(() => {
+    const handlePlay = (e: Event) => {
+      const video = e.target as HTMLVideoElement
+      const testimonialId = Array.from(videoRefs.current.entries()).find(([_, v]) => v === video)?.[0]
+      if (testimonialId !== undefined) {
+        // Сбрасываем флаг программной паузы при пользовательском запуске
+        isProgrammaticPauseRef.current.set(testimonialId, false)
+        videoPlayingRef.current.set(testimonialId, true)
+        setVideoPlaying((prev) => {
+          const newMap = new Map(prev)
+          newMap.set(testimonialId, true)
+          return newMap
+        })
+      }
+    }
+    
+    const handlePause = (e: Event) => {
+      const video = e.target as HTMLVideoElement
+      const testimonialId = Array.from(videoRefs.current.entries()).find(([_, v]) => v === video)?.[0]
+      if (testimonialId !== undefined) {
+        // Всегда обновляем состояние - UI должен отражать реальное состояние видео
+        videoPlayingRef.current.set(testimonialId, false)
+        setVideoPlaying((prev) => {
+          const newMap = new Map(prev)
+          newMap.set(testimonialId, false)
+          return newMap
+        })
+        // Сбрасываем флаг программной паузы после обработки
+        isProgrammaticPauseRef.current.set(testimonialId, false)
+      }
+    }
+    
+    videoRefs.current.forEach((video) => {
+      if (video) {
+        video.addEventListener('play', handlePlay)
+        video.addEventListener('pause', handlePause)
+      }
+    })
+    
+    return () => {
+      videoRefs.current.forEach((video) => {
+        if (video) {
+          video.removeEventListener('play', handlePlay)
+          video.removeEventListener('pause', handlePause)
+        }
+      })
+    }
+  }, [testimonials])
 
   const updatePlayerReady = (mutator: (map: Map<number, boolean>) => void) => {
     setPlayerReadyMap((prev) => {
@@ -149,6 +365,17 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     }
   }, [])
 
+  // Cleanup таймаутов при размонтировании компонента
+  useEffect(() => {
+    return () => {
+      // Очищаем все активные таймауты debounce
+      muteToggleTimeoutRef.current.forEach((timeout) => {
+        clearTimeout(timeout)
+      })
+      muteToggleTimeoutRef.current.clear()
+    }
+  }, [])
+
   useEffect(() => {
     const fetchTestimonials = async () => {
       try {
@@ -172,8 +399,17 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           console.log(`Testimonial ${idx + 1} (ID: ${t.id}): user_id=${t.user_id}, user_username=${t.user_username}`)
         })
         setTestimonials(testimonialsList)
-      } catch (error) {
-        console.error('Failed to fetch testimonials:', error)
+      } catch (error: any) {
+        console.error('Failed to fetch testimonials:', {
+          error,
+          message: error?.message,
+          response: error?.response?.data,
+          status: error?.response?.status,
+          url: error?.config?.url,
+          baseURL: error?.config?.baseURL,
+          fullUrl: error?.config ? `${error?.config.baseURL}${error?.config.url}` : 'unknown',
+          origin: typeof window !== 'undefined' ? window.location.origin : 'server'
+        })
       } finally {
         setLoading(false)
       }
@@ -186,6 +422,15 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       if (!videoMutedRef.current.has(testimonial.id)) {
         updateVideoMuted((map) => {
           map.set(testimonial.id, true)
+        })
+      }
+      // Инициализируем состояние воспроизведения (по умолчанию пауза)
+      if (!videoPlayingRef.current.has(testimonial.id)) {
+        videoPlayingRef.current.set(testimonial.id, false)
+        setVideoPlaying((prev) => {
+          const newMap = new Map(prev)
+          newMap.set(testimonial.id, false)
+          return newMap
         })
       }
     })
@@ -245,14 +490,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     let pageUpdateTimeout: NodeJS.Timeout
     
     const checkAndControlVideos = () => {
-      // Сначала останавливаем ВСЕ видео (только для video_file, загруженных через админку)
-      videoRefs.current.forEach((video) => {
-        if (video && !video.paused) {
-          video.pause()
-        }
-      })
-      
-      // Затем запускаем только те, которые видны (только для video_file)
+      // Управляем паузой видео при скролле (только для video_file, загруженных через админку)
       videoRefs.current.forEach((video, testimonialId) => {
         if (!video || !video.parentElement) return
         
@@ -262,21 +500,42 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         const containerRect = container.getBoundingClientRect()
         const cardRect = cardElement.getBoundingClientRect()
         
-        // Проверяем, видна ли карточка в контейнере
-        const isVisible = 
+        // Проверяем видимость карточки относительно VIEWPORT окна И контейнера карусели
+        // Карточка должна быть видна И в контейнере И на экране
+        const isVisibleInContainer = 
           cardRect.left < containerRect.right &&
           cardRect.right > containerRect.left
         
-        if (isVisible) {
-          // Вычисляем процент видимости
-          const visibleWidth = Math.min(cardRect.right, containerRect.right) - Math.max(cardRect.left, containerRect.left)
-          const visibleRatio = Math.max(0, visibleWidth / cardRect.width)
-          
-          // Если карточка видна на 30% и более - воспроизводим
-          if (visibleRatio >= 0.3) {
-            const isMuted = videoMutedRef.current.get(testimonialId) !== false
+        const isVisibleInViewport = 
+          cardRect.top < window.innerHeight &&
+          cardRect.bottom > 0
+        
+        const isVisible = isVisibleInContainer && isVisibleInViewport
+        
+        // Вычисляем процент видимости по горизонтали
+        const visibleWidth = Math.min(cardRect.right, containerRect.right) - Math.max(cardRect.left, containerRect.left)
+        const visibleRatio = isVisible ? Math.max(0, visibleWidth / cardRect.width) : 0
+        
+        // Если карточка видна на 30% и более - только синхронизируем muted, НЕ останавливаем видео
+        // Пользователь может запустить видео вручную, и оно будет продолжать воспроизводиться
+        if (isVisible && visibleRatio >= 0.3) {
+          const isMuted = videoMutedRef.current.get(testimonialId) !== false
+          // Устанавливаем muted только если оно изменилось, чтобы не перезапускать видео
+          if (video.muted !== isMuted) {
             video.muted = isMuted
-            video.play().catch(() => {})
+          }
+          // НЕ останавливаем видео - если пользователь его запустил, оно продолжит воспроизводиться
+        } else {
+          // Карточка не видна или видна менее чем на 30% - ставим видео на паузу
+          if (!video.paused) {
+            isProgrammaticPauseRef.current.set(testimonialId, true)
+            video.pause()
+            videoPlayingRef.current.set(testimonialId, false)
+            setVideoPlaying((prev) => {
+              const newMap = new Map(prev)
+              newMap.set(testimonialId, false)
+              return newMap
+            })
           }
         }
       })
@@ -318,7 +577,19 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       }
     }
     
+    // Обработчик для скролла страницы (window scroll)
+    let lastWindowScrollTime = 0
+    const throttledCheckVideos = () => {
+      const now = Date.now()
+      if (now - lastWindowScrollTime >= 50) {
+        lastWindowScrollTime = now
+        checkAndControlVideos()
+      }
+    }
+    
     container.addEventListener('scroll', throttledHandleScroll, { passive: true })
+    // Добавляем обработчик скролла страницы для остановки видео при вертикальном скролле
+    window.addEventListener('scroll', throttledCheckVideos, { passive: true })
     
     // Первоначальная проверка
     checkAndControlVideos()
@@ -328,31 +599,40 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     
     return () => {
       container.removeEventListener('scroll', throttledHandleScroll)
+      window.removeEventListener('scroll', throttledCheckVideos)
       clearInterval(intervalId)
       clearTimeout(scrollTimeout)
       clearTimeout(pageUpdateTimeout)
     }
   }, [testimonials, videoMuted, currentPage, totalPages, itemsPerPage])
 
-  // Останавливаем все видео при смене страницы (только для video_file)
-  useEffect(() => {
-    videoRefs.current.forEach((video) => {
-      if (video) {
-        video.pause()
-        video.currentTime = 0
-      }
-    })
-    // YouTube видео не останавливаются при смене страницы
-  }, [currentPage])
+  // Автовоспроизведение отключено - не останавливаем видео при смене страницы
+  // Пользователь управляет воспроизведением вручную
+  // useEffect(() => {
+  //   videoRefs.current.forEach((video) => {
+  //     if (video) {
+  //       video.pause()
+  //       video.currentTime = 0
+  //     }
+  //   })
+  //   // YouTube видео не останавливаются при смене страницы
+  // }, [currentPage])
   
   // Останавливаем видео при переходе на другую вкладку (только для video_file)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
         // Останавливаем все видео (только для video_file)
-        videoRefs.current.forEach((video) => {
+        videoRefs.current.forEach((video, testimonialId) => {
           if (video && !video.paused) {
+            isProgrammaticPauseRef.current.set(testimonialId, true)
             video.pause()
+            videoPlayingRef.current.set(testimonialId, false)
+            setVideoPlaying((prev) => {
+              const newMap = new Map(prev)
+              newMap.set(testimonialId, false)
+              return newMap
+            })
           }
         })
         // YouTube видео не останавливаются при переходе на другую вкладку
@@ -386,7 +666,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           const player = new window.YT.Player(iframe, {
             videoId,
             playerVars: {
-              autoplay: 1,
+              autoplay: 0, // Автовоспроизведение отключено
               mute: isMuted ? 1 : 0,
               loop: 1,
               playlist: videoId,
@@ -405,9 +685,26 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                   } else {
                     event.target.unMute()
                   }
+                  // Инициализируем состояние воспроизведения (по умолчанию пауза, так как autoplay=0)
+                  videoPlayingRef.current.set(testimonial.id, false)
+                  setVideoPlaying((prev) => {
+                    const newMap = new Map(prev)
+                    newMap.set(testimonial.id, false)
+                    return newMap
+                  })
                 } catch (e) {
                   console.error('Error setting mute on ready:', e)
                 }
+              },
+              onStateChange: (event: any) => {
+                // YT.PlayerState.PLAYING = 1, YT.PlayerState.PAUSED = 2
+                const isPlaying = event.data === 1
+                videoPlayingRef.current.set(testimonial.id, isPlaying)
+                setVideoPlaying((prev) => {
+                  const newMap = new Map(prev)
+                  newMap.set(testimonial.id, isPlaying)
+                  return newMap
+                })
               },
             },
           })
@@ -457,18 +754,19 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     }
     
     if (firstMedia.media_type === 'video' && firstMedia.video_url) {
-      // Для YouTube/Vimeo видео добавляем autoplay и muted в URL
+      // Для YouTube/Vimeo видео добавляем параметры в URL (без autoplay)
       let embedUrl = firstMedia.video_url
       let isValidEmbedUrl = false
       
       // Обработка YouTube URL - улучшенная версия, поддерживающая все форматы
       // Проверяем, является ли URL уже embed URL
       if (embedUrl.includes('youtube.com/embed/')) {
-        // Уже embed URL, просто добавляем параметры если их нет
+        // Уже embed URL, просто добавляем параметры если их нет (без autoplay)
         if (!embedUrl.includes('?')) {
-          embedUrl += '?autoplay=1&muted=1&loop=1&controls=1&modestbranding=1&enablejsapi=1'
+          embedUrl += '?muted=1&loop=1&controls=1&modestbranding=1&enablejsapi=1'
         } else {
-          if (!embedUrl.includes('autoplay')) embedUrl += '&autoplay=1'
+          // Убираем autoplay если есть
+          embedUrl = embedUrl.replace(/[?&]autoplay=\d+/g, '')
           if (!embedUrl.includes('muted')) embedUrl += '&muted=1'
           if (!embedUrl.includes('loop')) embedUrl += '&loop=1'
           if (!embedUrl.includes('controls')) embedUrl += '&controls=1'
@@ -497,7 +795,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         }
         
         if (videoId) {
-          embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&muted=1&loop=1&playlist=${videoId}&controls=1&modestbranding=1&rel=0&enablejsapi=1`
+          embedUrl = `https://www.youtube.com/embed/${videoId}?muted=1&loop=1&playlist=${videoId}&controls=1&modestbranding=1&rel=0&enablejsapi=1`
           isValidEmbedUrl = true
         } else {
           // Если не удалось извлечь ID, не показываем iframe
@@ -511,7 +809,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
         const match = embedUrl.match(vimeoRegex)
         if (match && match[1]) {
-          embedUrl = `https://player.vimeo.com/video/${match[1]}?autoplay=1&muted=1&loop=1&controls=1&background=0`
+          embedUrl = `https://player.vimeo.com/video/${match[1]}?muted=1&loop=1&controls=1&background=0`
           isValidEmbedUrl = true
         } else {
           console.warn('Invalid Vimeo URL format:', embedUrl)
@@ -531,10 +829,8 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           try {
             const url = new URL(embedUrl)
             
-            // Убеждаемся, что autoplay=1 присутствует
-            if (!url.searchParams.has('autoplay')) {
-              url.searchParams.set('autoplay', '1')
-            }
+            // Убираем autoplay если есть
+            url.searchParams.delete('autoplay')
             
             // Всегда начинаем с muted=1 (звук выключен по умолчанию)
             url.searchParams.set('muted', '1')
@@ -542,12 +838,11 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             finalUrl = url.toString()
           } catch (error) {
             console.error('Error parsing URL:', error, embedUrl)
-            // Fallback: простая замена
-            if (!embedUrl.includes('autoplay=1')) {
-              const separator = embedUrl.includes('?') ? '&' : '?'
-              finalUrl = `${embedUrl}${separator}autoplay=1&muted=1`
-            } else {
-              finalUrl = embedUrl.includes('muted') ? embedUrl : `${embedUrl}&muted=1`
+            // Fallback: простая замена - убираем autoplay
+            finalUrl = embedUrl.replace(/[?&]autoplay=\d+/g, '')
+            if (!finalUrl.includes('muted')) {
+              const separator = finalUrl.includes('?') ? '&' : '?'
+              finalUrl = `${finalUrl}${separator}muted=1`
             }
           }
           
@@ -563,7 +858,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         const thumbnail = getYouTubeThumbnail(firstMedia.video_url || embedUrl)
         const isPlayerReady = playerReadyMap.get(testimonial.id) === true
 
-        return (
+      return (
           <div className="w-full h-full relative" key={`container-${testimonial.id}`}>
             {thumbnail && (
               <img
@@ -572,7 +867,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                 className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${isPlayerReady ? 'opacity-0' : 'opacity-100'}`}
               />
             )}
-            <iframe
+        <iframe
               ref={(el) => {
                 if (el) {
                   iframeRefs.current.set(testimonial.id, el)
@@ -582,14 +877,14 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                 }
               }}
               src={finalUrl}
-              title={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
+          title={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
+          frameBorder="0"
+              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
               className="absolute inset-0 w-full h-full"
-            ></iframe>
+        ></iframe>
           </div>
-        )
+      )
       }
       
       return null
@@ -671,62 +966,46 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                     {testimonial.media && testimonial.media.some(
                       m => (m.media_type === 'video_file' && m.video_file_url) || (m.media_type === 'video' && m.video_url)
                     ) && (
+                      <>
+                        {/* Кнопка play/pause */}
+                        <button
+                          onClick={(e) => handleTogglePlay(testimonial.id, e)}
+                          className="absolute top-2 left-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
+                          aria-label={videoPlaying.get(testimonial.id) ? 'Пауза' : 'Воспроизведение'}
+                        >
+                          <div className="relative w-5 h-5">
+                            <PauseIcon 
+                              className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
+                                videoPlaying.get(testimonial.id) ? 'opacity-100' : 'opacity-0'
+                              }`}
+                            />
+                            <PlayIcon 
+                              className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
+                                videoPlaying.get(testimonial.id) ? 'opacity-0' : 'opacity-100'
+                              }`}
+                            />
+                          </div>
+                        </button>
+                        {/* Кнопка звука */}
                       <button
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          const video = videoRefs.current.get(testimonial.id)
-                          const iframe = iframeRefs.current.get(testimonial.id)
-                          
-                            if (video) {
-                              // Управление звуком для video_file
-                              const currentMuted = videoMuted.get(testimonial.id) !== false
-                              const newMuted = !currentMuted
-                              video.muted = newMuted
-                              updateVideoMuted((map) => {
-                                map.set(testimonial.id, newMuted)
-                              })
-                            } else if (iframe) {
-                              // Управление звуком для YouTube/Vimeo iframe через API
-                              const currentMuted = videoMuted.get(testimonial.id) !== false
-                              const newMuted = !currentMuted
-                              
-                              // Используем YouTube IFrame API если доступен
-                              const player = youtubePlayers.current.get(testimonial.id)
-                              if (player && window.YT) {
-                                try {
-                                  if (newMuted) {
-                                    player.mute()
-                                  } else {
-                                    player.unMute()
-                                  }
-                                  updateVideoMuted((map) => {
-                                    map.set(testimonial.id, newMuted)
-                                  })
-                                } catch (error) {
-                                  console.error('Error toggling mute via API:', error)
-                                  // Fallback: пересоздаем iframe (состояние обновляется, что вызовет useEffect и оставит плеер)
-                                  updateVideoMuted((map) => {
-                                    map.set(testimonial.id, newMuted)
-                                  })
-                                }
-                              } else {
-                                // Fallback: пересоздаем iframe (состояние обновляется)
-                                updateVideoMuted((map) => {
-                                  map.set(testimonial.id, newMuted)
-                                })
-                              }
-                            }
-                        }}
-                        className="absolute top-2 right-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-200 hover:scale-110"
+                          onClick={(e) => handleToggleMute(testimonial.id, e)}
+                          className="absolute top-2 right-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
                         aria-label={videoMuted.get(testimonial.id) !== false ? 'Включить звук' : 'Выключить звук'}
                       >
-                        {(videoMuted.get(testimonial.id) !== false) ? (
-                          <SpeakerXMarkIcon className="w-5 h-5" />
-                        ) : (
-                          <SpeakerWaveIcon className="w-5 h-5" />
-                        )}
+                          <div className="relative w-5 h-5">
+                            <SpeakerXMarkIcon 
+                              className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
+                                videoMuted.get(testimonial.id) !== false ? 'opacity-100' : 'opacity-0'
+                              }`}
+                            />
+                            <SpeakerWaveIcon 
+                              className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
+                                videoMuted.get(testimonial.id) !== false ? 'opacity-0' : 'opacity-100'
+                              }`}
+                            />
+                          </div>
                       </button>
+                      </>
                     )}
                   </Link>
                 )}

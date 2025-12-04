@@ -86,7 +86,7 @@ services:
       - NEXT_TELEMETRY_DISABLED=1
       - NEXT_DISABLE_SWC_NATIVE=1
       - INTERNAL_API_BASE=http://backend:8000
-      - NEXT_PUBLIC_API_BASE=http://localhost:8000/api
+      # NEXT_PUBLIC_API_BASE не устанавливаем - будет определяться динамически на клиенте
       - WATCHPACK_POLLING=true
     depends_on:
       - backend
