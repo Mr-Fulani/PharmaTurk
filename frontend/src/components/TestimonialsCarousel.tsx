@@ -540,7 +540,58 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         }
       })
       
-      // YouTube видео не останавливаются при скролле - они продолжают воспроизводиться
+      // Управляем паузой YouTube видео при скролле
+      iframeRefs.current.forEach((iframe, testimonialId) => {
+        if (!iframe || !iframe.parentElement) return
+        
+        const player = youtubePlayers.current.get(testimonialId)
+        if (!player || typeof player.getPlayerState !== 'function') return
+        
+        const cardElement = iframe.closest('.flex-shrink-0') as HTMLElement
+        if (!cardElement) return
+        
+        const containerRect = container.getBoundingClientRect()
+        const cardRect = cardElement.getBoundingClientRect()
+        
+        // Проверяем видимость карточки относительно VIEWPORT окна И контейнера карусели
+        const isVisibleInContainer = 
+          cardRect.left < containerRect.right &&
+          cardRect.right > containerRect.left
+        
+        const isVisibleInViewport = 
+          cardRect.top < window.innerHeight &&
+          cardRect.bottom > 0
+        
+        const isVisible = isVisibleInContainer && isVisibleInViewport
+        
+        // Вычисляем процент видимости по горизонтали
+        const visibleWidth = Math.min(cardRect.right, containerRect.right) - Math.max(cardRect.left, containerRect.left)
+        const visibleRatio = isVisible ? Math.max(0, visibleWidth / cardRect.width) : 0
+        
+        try {
+          const playerState = player.getPlayerState()
+          // 1 = playing, 2 = paused
+          const isPlaying = playerState === 1
+          
+          // Если карточка видна на 30% и более - НЕ останавливаем видео
+          if (isVisible && visibleRatio >= 0.3) {
+            // Ничего не делаем - если пользователь запустил видео, оно продолжит воспроизводиться
+          } else {
+            // Карточка не видна или видна менее чем на 30% - ставим видео на паузу
+            if (isPlaying) {
+              player.pauseVideo()
+              videoPlayingRef.current.set(testimonialId, false)
+              setVideoPlaying((prev) => {
+                const newMap = new Map(prev)
+                newMap.set(testimonialId, false)
+                return newMap
+              })
+            }
+          }
+        } catch (error) {
+          // Игнорируем ошибки, если плеер не готов
+        }
+      })
     }
     
     const handleScroll = () => {
@@ -618,11 +669,11 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   //   // YouTube видео не останавливаются при смене страницы
   // }, [currentPage])
   
-  // Останавливаем видео при переходе на другую вкладку (только для video_file)
+  // Останавливаем видео при переходе на другую вкладку (для video_file И YouTube)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // Останавливаем все видео (только для video_file)
+        // Останавливаем все видео (video_file)
         videoRefs.current.forEach((video, testimonialId) => {
           if (video && !video.paused) {
             isProgrammaticPauseRef.current.set(testimonialId, true)
@@ -635,7 +686,27 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             })
           }
         })
-        // YouTube видео не останавливаются при переходе на другую вкладку
+        
+        // Останавливаем все YouTube видео
+        youtubePlayers.current.forEach((player, testimonialId) => {
+          if (!player || typeof player.getPlayerState !== 'function') return
+          
+          try {
+            const playerState = player.getPlayerState()
+            // 1 = playing
+            if (playerState === 1) {
+              player.pauseVideo()
+              videoPlayingRef.current.set(testimonialId, false)
+              setVideoPlaying((prev) => {
+                const newMap = new Map(prev)
+                newMap.set(testimonialId, false)
+                return newMap
+              })
+            }
+          } catch (error) {
+            // Игнорируем ошибки, если плеер не готов
+          }
+        })
       }
     }
     
