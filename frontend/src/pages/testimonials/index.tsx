@@ -49,6 +49,9 @@ export default function TestimonialsPage() {
   const [showForm, setShowForm] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const modalIframeRef = useRef<HTMLIFrameElement | null>(null)
+  const modalIframeUrl = useRef<string | null>(null)
+  const [videoMuted, setVideoMuted] = useState<Map<number, boolean>>(new Map())
   
   // Form state
   const [formData, setFormData] = useState({
@@ -84,14 +87,43 @@ export default function TestimonialsPage() {
   useEffect(() => {
     if (selectedTestimonial) {
       document.body.style.overflow = 'hidden'
+      // Инициализируем muted состояние для выбранного отзыва, если еще не установлено
+      if (!videoMuted.has(selectedTestimonial.id)) {
+        setVideoMuted((prev) => {
+          const newMap = new Map(prev)
+          newMap.set(selectedTestimonial.id, true) // По умолчанию muted
+          return newMap
+        })
+      }
     } else {
       document.body.style.overflow = 'unset'
+      // Очищаем iframe при закрытии модального окна
+      modalIframeRef.current = null
+      modalIframeUrl.current = null
     }
 
     return () => {
       document.body.style.overflow = 'unset'
     }
-  }, [selectedTestimonial])
+  }, [selectedTestimonial, videoMuted])
+  
+  // Останавливаем видео при переходе на другую вкладку
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && modalIframeRef.current && modalIframeUrl.current) {
+        // Убираем autoplay из URL для паузы
+        const pausedUrl = modalIframeUrl.current.replace(/[?&]autoplay=1/g, '').replace(/autoplay=1[&]/g, '').replace(/[?&]autoplay=1&/g, '?')
+        if (modalIframeRef.current.src !== pausedUrl) {
+          modalIframeRef.current.src = pausedUrl
+        }
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
 
   const allMedia = selectedTestimonial 
     ? (selectedTestimonial.media && selectedTestimonial.media.length > 0 
@@ -240,9 +272,15 @@ export default function TestimonialsPage() {
       if (embedUrl.includes('youtube.com/embed/')) {
         // Уже embed URL, просто добавляем параметры если их нет
         if (!embedUrl.includes('?')) {
-          embedUrl += '?controls=1&rel=0'
-        } else if (!embedUrl.includes('controls')) {
-          embedUrl += '&controls=1&rel=0'
+          embedUrl += '?autoplay=1&muted=1&loop=1&controls=1&rel=0&modestbranding=1'
+        } else {
+          // Добавляем параметры если их нет
+          if (!embedUrl.includes('autoplay')) embedUrl += '&autoplay=1'
+          if (!embedUrl.includes('muted')) embedUrl += '&muted=1'
+          if (!embedUrl.includes('loop')) embedUrl += '&loop=1'
+          if (!embedUrl.includes('controls')) embedUrl += '&controls=1'
+          if (!embedUrl.includes('rel')) embedUrl += '&rel=0'
+          if (!embedUrl.includes('modestbranding')) embedUrl += '&modestbranding=1'
         }
         isValidEmbedUrl = true
       } else if (embedUrl.includes('youtube.com') || embedUrl.includes('youtu.be')) {
@@ -263,7 +301,7 @@ export default function TestimonialsPage() {
         
         if (match && match[1]) {
           videoId = match[1]
-          embedUrl = `https://www.youtube.com/embed/${videoId}?controls=1&rel=0`
+          embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&muted=1&loop=1&playlist=${videoId}&controls=1&rel=0&modestbranding=1`
           isValidEmbedUrl = true
         } else {
           // Если не удалось извлечь ID, не показываем iframe
@@ -277,28 +315,113 @@ export default function TestimonialsPage() {
         const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
         const match = embedUrl.match(vimeoRegex)
         if (match && match[1]) {
-          embedUrl = `https://player.vimeo.com/video/${match[1]}?controls=1`
+          embedUrl = `https://player.vimeo.com/video/${match[1]}?autoplay=1&muted=1&loop=1&controls=1&background=0`
           isValidEmbedUrl = true
         } else {
           console.warn('Invalid Vimeo URL format:', embedUrl)
           return null
         }
       } else if (embedUrl.includes('player.vimeo.com')) {
+        // Добавляем параметры если их нет
+        if (!embedUrl.includes('?')) {
+          embedUrl += '?autoplay=1&muted=1&loop=1&controls=1&background=0'
+        } else {
+          if (!embedUrl.includes('autoplay')) embedUrl += '&autoplay=1'
+          if (!embedUrl.includes('muted')) embedUrl += '&muted=1'
+          if (!embedUrl.includes('loop')) embedUrl += '&loop=1'
+          if (!embedUrl.includes('controls')) embedUrl += '&controls=1'
+        }
         isValidEmbedUrl = true
       }
       
       // Показываем iframe только если URL валидный
       if (isValidEmbedUrl) {
-      return (
-        <iframe
-          src={embedUrl}
-          title="Testimonial video"
-          frameBorder="0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          className="w-full h-full"
-        />
-      )
+        // Сохраняем URL и ref для управления воспроизведением в модальном окне
+        modalIframeUrl.current = embedUrl
+        
+        // Инициализируем muted состояние, если еще не установлено (по умолчанию true - без звука)
+        if (selectedTestimonial && !videoMuted.has(selectedTestimonial.id)) {
+          setVideoMuted((prev) => {
+            const newMap = new Map(prev)
+            newMap.set(selectedTestimonial.id, true) // По умолчанию muted (без звука)
+            return newMap
+          })
+        }
+        
+        // Получаем текущее состояние muted (по умолчанию true)
+        const isMuted = selectedTestimonial 
+          ? (videoMuted.get(selectedTestimonial.id) !== false)
+          : true
+        
+        // Создаем URL с правильным параметром muted
+        // Для включения звука нужно УБРАТЬ параметр muted, а не ставить muted=0
+        let finalUrl = embedUrl
+        try {
+          const url = new URL(embedUrl)
+          
+          // Убеждаемся, что autoplay=1 присутствует
+          if (!url.searchParams.has('autoplay')) {
+            url.searchParams.set('autoplay', '1')
+          }
+          
+          if (isMuted) {
+            // Выключен звук - устанавливаем muted=1
+            url.searchParams.set('muted', '1')
+          } else {
+            // Включен звук - убираем параметр muted полностью
+            url.searchParams.delete('muted')
+          }
+          
+          finalUrl = url.toString()
+        } catch (error) {
+          console.error('Error parsing URL:', error, embedUrl)
+          // Fallback: простая замена
+          // Убеждаемся, что autoplay=1 есть
+          if (!finalUrl.includes('autoplay=1')) {
+            const separator = finalUrl.includes('?') ? '&' : '?'
+            finalUrl = `${finalUrl}${separator}autoplay=1`
+          }
+          
+          if (isMuted) {
+            // Выключен звук - убеждаемся, что muted=1 есть
+            if (!finalUrl.includes('muted=1')) {
+              // Убираем muted=0 если есть
+              finalUrl = finalUrl.replace(/[?&]muted=0/g, '').replace(/muted=0[&]/g, '')
+              const separator = finalUrl.includes('?') ? '&' : '?'
+              finalUrl = `${finalUrl}${separator}muted=1`
+            }
+            // Убираем muted=0 если остался
+            finalUrl = finalUrl.replace(/[?&]muted=0/g, '').replace(/muted=0[&]/g, '')
+          } else {
+            // Включен звук - убираем muted полностью
+            finalUrl = finalUrl.replace(/[?&]muted=1/g, '').replace(/muted=1[&]/g, '')
+            finalUrl = finalUrl.replace(/[?&]muted=0/g, '').replace(/muted=0[&]/g, '')
+            // Очищаем двойные разделители
+            finalUrl = finalUrl.replace(/\?\&/g, '?').replace(/\&\&/g, '&')
+            // Убираем ? или & в конце если остались
+            finalUrl = finalUrl.replace(/[?&]$/, '')
+          }
+        }
+        
+        // Отладочная информация
+        if (process.env.NODE_ENV === 'development') {
+          console.log('YouTube iframe URL (modal):', { testimonialId: selectedTestimonial?.id, isMuted, finalUrl })
+        }
+        
+        return (
+          <iframe
+            key={`modal-${selectedTestimonial?.id || 'video'}-${isMuted ? 'muted' : 'unmuted'}`}
+            ref={(el) => {
+              modalIframeRef.current = el
+            }}
+            src={finalUrl}
+            title="Testimonial video"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="w-full h-full"
+          />
+        )
       }
       
       return null
@@ -321,9 +444,24 @@ export default function TestimonialsPage() {
   }
 
   const extractYouTubeId = (url: string): string | null => {
-    // Улучшенное регулярное выражение, поддерживающее все форматы YouTube URL, включая мобильные
-    const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})/
-    const match = url.match(youtubeRegex)
+    if (!url) return null
+    
+    // Проверяем, является ли URL уже embed URL
+    if (url.includes('youtube.com/embed/')) {
+      const embedMatch = url.match(/youtube\.com\/embed\/([^"&?\/\s]+)/)
+      return embedMatch ? embedMatch[1] : null
+    }
+    
+    // Сначала пробуем стандартный формат (11 символов)
+    const standardRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})/
+    let match = url.match(standardRegex)
+    
+    // Если не нашли, пробуем формат Shorts (может быть разной длины)
+    if (!match) {
+      const shortsRegex = /(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)/
+      match = url.match(shortsRegex)
+    }
+    
     return match ? match[1] : null
   }
 
