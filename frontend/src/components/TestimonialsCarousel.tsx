@@ -88,7 +88,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   const [videoPlaying, setVideoPlaying] = useState<Map<number, boolean>>(new Map()) // Для UI
   const isProgrammaticPauseRef = useRef<Map<number, boolean>>(new Map()) // Флаг программной паузы (при скролле)
   const [youtubeApiReady, setYoutubeApiReady] = useState(false)
-  const [playerReadyMap, setPlayerReadyMap] = useState<Map<number, boolean>>(new Map())
+  const playerReadyMapRef = useRef<Map<number, boolean>>(new Map())
   const itemsPerPage = 3 // A "page" for pagination dots
   const muteToggleTimeoutRef = useRef<Map<number, NodeJS.Timeout>>(new Map()) // Debounce для мобильных
 
@@ -116,6 +116,13 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     // Используем ref для получения текущего состояния без перерендера
     const currentMuted = videoMutedRef.current.get(testimonialId) !== false
     const newMuted = !currentMuted
+    
+    console.log('handleToggleMute called:', {
+      testimonialId,
+      currentMuted,
+      newMuted,
+      videoMutedRef: Array.from(videoMutedRef.current.entries())
+    })
     
     // СНАЧАЛА обновляем UI мгновенно для визуального отклика
     updateVideoMuted((map) => {
@@ -181,17 +188,49 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     } else if (iframe) {
       // Управление звуком для YouTube/Vimeo iframe через API - синхронно
       const player = youtubePlayers.current.get(testimonialId)
+      console.log('Toggle mute for YouTube:', {
+        testimonialId,
+        hasPlayer: !!player,
+        hasYT: !!window.YT,
+        newMuted,
+        volumeBefore: player ? player.getVolume() : 'N/A',
+        isMutedBefore: player ? player.isMuted() : 'N/A'
+      })
       if (player && window.YT) {
         try {
-          // Используем YouTube IFrame API - синхронно
+          const volumeBefore = player.getVolume()
+          const isMutedBefore = player.isMuted()
+          console.log('Toggle mute for YouTube:', {
+            testimonialId,
+            hasPlayer: !!player,
+            hasYT: !!window.YT,
+            newMuted,
+            volumeBefore,
+            isMutedBefore,
+          })
+
           if (newMuted) {
-            player.mute()
+            // Выключаем звук - ТОЛЬКО через setVolume (без mute())
+            player.setVolume(0)
+            console.log('YouTube muted:', testimonialId, 'volume:', player.getVolume())
           } else {
-            player.unMute()
+            // Включаем звук - ТОЛЬКО через setVolume (БЕЗ playVideo() и unMute())
+            // НЕ вызываем playVideo(), т.к. YouTube блокирует это и ПАУЗИТ видео
+            // Кнопка звука ТОЛЬКО переключает громкость, НЕ управляет воспроизведением
+            player.setVolume(100)
+            console.log('YouTube unmuted:', testimonialId, 'volume:', player.getVolume())
           }
+          
+          // Проверяем результат после небольшой задержки
+          setTimeout(() => {
+            console.log('YouTube after toggle (delayed check):', {
+              volume: player.getVolume(),
+              isMuted: player.isMuted(),
+              playerState: player.getPlayerState()
+            })
+          }, 100)
         } catch (error) {
           console.error('Error toggling mute via API:', error)
-          // В случае ошибки состояние уже обновлено, ничего не делаем
         }
       }
     }
@@ -204,6 +243,17 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     
     const video = videoRefs.current.get(testimonialId)
     const iframe = iframeRefs.current.get(testimonialId)
+    const player = youtubePlayers.current.get(testimonialId)
+    
+    console.log('handleTogglePlay called:', {
+      testimonialId,
+      hasVideo: !!video,
+      hasIframe: !!iframe,
+      hasPlayer: !!player,
+      videoRefs: Array.from(videoRefs.current.keys()),
+      iframeRefs: Array.from(iframeRefs.current.keys()),
+      youtubePlayers: Array.from(youtubePlayers.current.keys())
+    })
     
     if (video) {
       // Управление воспроизведением для video_file
@@ -232,13 +282,23 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       }
     } else if (iframe) {
       // Управление воспроизведением для YouTube/Vimeo через API
-      const player = youtubePlayers.current.get(testimonialId)
-      if (player && window.YT) {
+    const player = youtubePlayers.current.get(testimonialId)
+    const isPlayerReady = playerReadyMapRef.current.get(testimonialId)
+      
+      if (player && window.YT && isPlayerReady) {
         try {
           const playerState = player.getPlayerState()
+          console.log('YouTube player state:', {
+            testimonialId,
+            playerState,
+            YT_PLAYING: window.YT.PlayerState.PLAYING,
+            YT_PAUSED: window.YT.PlayerState.PAUSED
+          })
+          
           // YT.PlayerState.PLAYING = 1, YT.PlayerState.PAUSED = 2
           if (playerState === 1) {
             // Воспроизводится - ставим на паузу
+            console.log('Pausing YouTube video:', testimonialId)
             player.pauseVideo()
             videoPlayingRef.current.set(testimonialId, false)
             setVideoPlaying((prev) => {
@@ -247,8 +307,19 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
               return newMap
             })
           } else {
-            // На паузе или не запущено - воспроизводим
+            // На паузе или не запущено - воспроизводим СО ЗВУКОМ
+            console.log('Playing YouTube video:', testimonialId)
             player.playVideo()
+            // СРАЗУ включаем звук (обход Autoplay Policy: видео запускается muted=1, потом unmute)
+            setTimeout(() => {
+              try {
+                player.setVolume(100)
+                console.log('YouTube volume set to 100 after play:', testimonialId)
+              } catch (e) {
+                console.error('Error setting volume after play:', e)
+              }
+            }, 100)
+            
             videoPlayingRef.current.set(testimonialId, true)
             setVideoPlaying((prev) => {
               const newMap = new Map(prev)
@@ -257,8 +328,20 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             })
           }
         } catch (error) {
-          console.error('Error toggling play/pause via YouTube API:', error)
+          console.error('Error toggling play/pause via YouTube API:', error, {
+            testimonialId,
+            hasPlayer: !!player,
+            isPlayerReady,
+            playerState: player ? player.getPlayerState() : 'N/A'
+          })
         }
+      } else {
+        console.log('YouTube player not ready:', {
+          testimonialId,
+          hasPlayer: !!player,
+          hasYT: !!window.YT,
+          isPlayerReady
+        })
       }
     }
   }, [])
@@ -314,11 +397,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   }, [testimonials])
 
   const updatePlayerReady = (mutator: (map: Map<number, boolean>) => void) => {
-    setPlayerReadyMap((prev) => {
-      const newMap = new Map(prev)
-      mutator(newMap)
-      return newMap
-    })
+    mutator(playerReadyMapRef.current)
   }
 
   // Загрузка YouTube IFrame API
@@ -513,7 +592,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         const isVisible = isVisibleInContainer && isVisibleInViewport
         
         // Вычисляем процент видимости по горизонтали
-        const visibleWidth = Math.min(cardRect.right, containerRect.right) - Math.max(cardRect.left, containerRect.left)
+          const visibleWidth = Math.min(cardRect.right, containerRect.right) - Math.max(cardRect.left, containerRect.left)
         const visibleRatio = isVisible ? Math.max(0, visibleWidth / cardRect.width) : 0
         
         // Если карточка видна на 30% и более - только синхронизируем muted, НЕ останавливаем видео
@@ -677,7 +756,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         videoRefs.current.forEach((video, testimonialId) => {
           if (video && !video.paused) {
             isProgrammaticPauseRef.current.set(testimonialId, true)
-            video.pause()
+        video.pause()
             videoPlayingRef.current.set(testimonialId, false)
             setVideoPlaying((prev) => {
               const newMap = new Map(prev)
@@ -748,14 +827,18 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             },
             events: {
               onReady: (event: any) => {
-                updatePlayerReady((map) => map.set(testimonial.id, true))
-                const currentMuted = videoMutedRef.current.get(testimonial.id) !== false
+                // Обновляем состояние готовности плеера
+                playerReadyMapRef.current.set(testimonial.id, true)
+                console.log('YouTube player ready:', { 
+                  testimonialId: testimonial.id,
+                  playerReadyMapRef: Array.from(playerReadyMapRef.current.entries()),
+                  justSet: playerReadyMapRef.current.get(testimonial.id)
+                })
+                
                 try {
-                  if (currentMuted) {
-                    event.target.mute()
-                  } else {
-                    event.target.unMute()
-                  }
+                  // Инициализируем БЕЗ звука (для обхода Autoplay Policy)
+                  // Звук включится при первом playVideo() в handleTogglePlay
+                  event.target.setVolume(0)
                   // Инициализируем состояние воспроизведения (по умолчанию пауза, так как autoplay=0)
                   videoPlayingRef.current.set(testimonial.id, false)
                   setVideoPlaying((prev) => {
@@ -763,13 +846,27 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                     newMap.set(testimonial.id, false)
                     return newMap
                   })
+                  console.log('YouTube player initialized with volume:', event.target.getVolume())
                 } catch (e) {
-                  console.error('Error setting mute on ready:', e)
+                  console.error('Error setting volume on ready:', e)
                 }
               },
               onStateChange: (event: any) => {
-                // YT.PlayerState.PLAYING = 1, YT.PlayerState.PAUSED = 2
+                // YT.PlayerState.UNSTARTED = -1, ENDED = 0, PLAYING = 1, PAUSED = 2, BUFFERING = 3, CUED = 5
                 const isPlaying = event.data === 1
+                console.log('YouTube state changed:', {
+                  testimonialId: testimonial.id,
+                  state: event.data,
+                  isPlaying,
+                  stateNames: {
+                    '-1': 'UNSTARTED',
+                    '0': 'ENDED',
+                    '1': 'PLAYING',
+                    '2': 'PAUSED',
+                    '3': 'BUFFERING',
+                    '5': 'CUED'
+                  }
+                })
                 videoPlayingRef.current.set(testimonial.id, isPlaying)
                 setVideoPlaying((prev) => {
                   const newMap = new Map(prev)
@@ -903,7 +1000,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             // Убираем autoplay если есть
             url.searchParams.delete('autoplay')
             
-            // Всегда начинаем с muted=1 (звук выключен по умолчанию)
+            // Всегда начинаем с muted=1 (для обхода Autoplay Policy)
             url.searchParams.set('muted', '1')
             
             finalUrl = url.toString()
@@ -927,7 +1024,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         }
 
         const thumbnail = getYouTubeThumbnail(firstMedia.video_url || embedUrl)
-        const isPlayerReady = playerReadyMap.get(testimonial.id) === true
+        const isPlayerReady = playerReadyMapRef.current.get(testimonial.id) === true
 
       return (
           <div className="w-full h-full relative" key={`container-${testimonial.id}`}>
@@ -935,7 +1032,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
               <img
                 src={thumbnail}
                 alt={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
-                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${isPlayerReady ? 'opacity-0' : 'opacity-100'}`}
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${playerReadyMapRef.current.get(testimonial.id) ? 'opacity-0' : 'opacity-100'}`}
               />
             )}
         <iframe
@@ -950,7 +1047,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
               src={finalUrl}
           title={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
           frameBorder="0"
-              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
               className="absolute inset-0 w-full h-full"
         ></iframe>
@@ -1035,11 +1132,12 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                     {testimonial.media && testimonial.media.some(
-                      m => (m.media_type === 'video_file' && m.video_file_url) || (m.media_type === 'video' && m.video_url)
+                      m => (m.media_type === 'video_file' && m.video_file_url) || 
+                           (m.media_type === 'video' && m.video_url)
                     ) && (
                       <>
-                        {/* Кнопка play/pause */}
-                        <button
+                        {/* Кнопка play/pause - для ВСЕХ видео */}
+                      <button
                           onClick={(e) => handleTogglePlay(testimonial.id, e)}
                           className="absolute top-2 left-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
                           aria-label={videoPlaying.get(testimonial.id) ? 'Пауза' : 'Воспроизведение'}
@@ -1057,25 +1155,34 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                             />
                           </div>
                         </button>
-                        {/* Кнопка звука */}
-                      <button
-                          onClick={(e) => handleToggleMute(testimonial.id, e)}
-                          className="absolute top-2 right-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
-                        aria-label={videoMuted.get(testimonial.id) !== false ? 'Включить звук' : 'Выключить звук'}
-                      >
-                          <div className="relative w-5 h-5">
-                            <SpeakerXMarkIcon 
-                              className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
-                                videoMuted.get(testimonial.id) !== false ? 'opacity-100' : 'opacity-0'
-                              }`}
-                            />
-                            <SpeakerWaveIcon 
-                              className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
-                                videoMuted.get(testimonial.id) !== false ? 'opacity-0' : 'opacity-100'
-                              }`}
-                            />
-                          </div>
-                      </button>
+                        
+                        {/* Кнопка звука - ТОЛЬКО для загруженных видео, НЕ для YouTube/Vimeo */}
+                        {testimonial.media.some(
+                          m => (m.media_type === 'video_file' && m.video_file_url) || 
+                               (m.media_type === 'video' && m.video_url && 
+                                !m.video_url.includes('youtube.com') && 
+                                !m.video_url.includes('youtu.be') && 
+                                !m.video_url.includes('vimeo.com'))
+                        ) && (
+                          <button
+                            onClick={(e) => handleToggleMute(testimonial.id, e)}
+                            className="absolute top-2 right-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
+                            aria-label={videoMuted.get(testimonial.id) !== false ? 'Включить звук' : 'Выключить звук'}
+                          >
+                            <div className="relative w-5 h-5">
+                              <SpeakerXMarkIcon 
+                                className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
+                                  videoMuted.get(testimonial.id) !== false ? 'opacity-100' : 'opacity-0'
+                                }`}
+                              />
+                              <SpeakerWaveIcon 
+                                className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
+                                  videoMuted.get(testimonial.id) !== false ? 'opacity-0' : 'opacity-100'
+                                }`}
+                              />
+                            </div>
+                          </button>
+                        )}
                       </>
                     )}
                   </Link>
