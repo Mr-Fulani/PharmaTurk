@@ -6,6 +6,7 @@ import api from '../lib/api'
 import { useTranslation } from 'next-i18next'
 import { useCartStore } from '../store/cart'
 import { useFavoritesStore } from '../store/favorites'
+import AnimatedLogoutButton from './AnimatedLogoutButton'
 
 export default function Header() {
   const router = useRouter()
@@ -180,12 +181,10 @@ export default function Header() {
             {t('menu_cart', 'Корзина')} {isClient && itemsCount ? `(${itemsCount})` : ''}
           </Link>
           {user ? (
-              <button 
-                onClick={() => { setShowSuggestions(false); logout() }} 
-              className="rounded-md border border-red-200 px-3 py-1.5 text-gray-800 transition-all duration-200 hover:bg-red-100 hover:border-red-400 hover:shadow-md"
-              >
-                {t('header_logout', 'Выйти')}
-              </button>
+              <AnimatedLogoutButton 
+                onLogout={() => { setShowSuggestions(false); logout() }}
+                isDark={false}
+              />
           ) : (
               <Link 
                 href="/auth" 
