@@ -1,0 +1,263 @@
+/* Стили для нового слайдера с анимацией */
+.container {
+  position: relative;
+  width: 100%;
+  max-width: 1400px;
+  height: 600px;
+  margin: 0 auto;
+  background: #f5f5f5;
+  box-shadow: 0 30px 50px #dbdbdb;
+  overflow: visible;
+}
+
+.slide {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.item {
+  width: 200px;
+  height: 300px;
+  position: absolute;
+  top: 50%;
+  transform: translate(0, -50%);
+  border-radius: 20px;
+  box-shadow: 0 30px 50px rgba(0, 0, 0, 0.3);
+  background-position: 50% 50%;
+  background-size: cover;
+  display: inline-block;
+  transition: all 0.5s ease-in-out;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+/* Первые два элемента - большие на весь экран (как в примере) */
+.slide .item:nth-child(1),
+.slide .item:nth-child(2) {
+  top: 0;
+  left: 0;
+  transform: translate(0, 0);
+  border-radius: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Третий элемент - первая миниатюра справа */
+.slide .item:nth-child(3) {
+  left: 50%;
+  z-index: 10;
+}
+
+/* Четвертый элемент - вторая миниатюра */
+.slide .item:nth-child(4) {
+  left: calc(50% + 220px);
+  z-index: 11;
+}
+
+/* Пятый элемент - третья миниатюра */
+.slide .item:nth-child(5) {
+  left: calc(50% + 440px);
+  z-index: 12;
+}
+
+/* Все элементы начиная с 6-го - скрыты справа */
+.slide .item:nth-child(n + 6) {
+  left: calc(50% + 660px);
+  opacity: 0;
+  z-index: 13;
+}
+
+/* Контент внутри элемента */
+.item .content {
+  position: absolute;
+  top: 50%;
+  left: 100px;
+  width: 300px;
+  text-align: left;
+  color: #eee;
+  transform: translate(0, -50%);
+  font-family: system-ui, -apple-system, sans-serif;
+  display: none;
+  z-index: 5;
+}
+
+/* Контент показывается для второго элемента (активного, как в примере) */
+.slide .item:nth-child(2) .content {
+  display: block !important;
+}
+
+/* Если только один баннер, контент показывается для первого элемента */
+.slide .item:only-child .content {
+  display: block !important;
+}
+
+.name {
+  font-size: 40px;
+  text-transform: uppercase;
+  font-weight: bold;
+  opacity: 0;
+  animation: animate 1s ease-in-out 1 forwards;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.des {
+  margin-top: 10px;
+  margin-bottom: 20px;
+  opacity: 0;
+  animation: animate 1s ease-in-out 0.3s 1 forwards;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  line-height: 1.5;
+}
+
+.button {
+  padding: 10px 20px;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  animation: animate 1s ease-in-out 0.6s 1 forwards;
+  background-color: rgba(255, 255, 255, 0.9);
+  color: #333;
+  border-radius: 5px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  font-size: 14px;
+}
+
+.button:hover {
+  color: #ffffff;
+  background-color: #FF8C00;
+  transform: scale(1.05);
+}
+
+/* Анимация появления контента */
+@keyframes animate {
+  from {
+    opacity: 0;
+    transform: translate(0, 100px);
+    filter: blur(33px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0);
+    filter: blur(0);
+  }
+}
+
+/* Контейнер для кнопок навигации */
+.buttonContainer {
+  width: 100%;
+  text-align: center;
+  position: absolute;
+  bottom: 20px;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.navButton {
+  width: 40px;
+  height: 35px;
+  border-radius: 8px;
+  border: 1px solid #000;
+  cursor: pointer;
+  margin: 0 5px;
+  transition: 0.3s;
+  background-color: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navButton:hover {
+  background: #ababab;
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Стили для медиа внутри элемента */
+.itemMedia {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.itemVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.itemIframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Адаптивность для мобильных устройств */
+@media (max-width: 768px) {
+  .container {
+    height: 400px;
+    max-width: 100%;
+    border-radius: 0;
+  }
+
+  .item {
+    width: 150px;
+    height: 200px;
+  }
+
+  .item .content {
+    left: 50px;
+    width: 250px;
+  }
+
+  .name {
+    font-size: 28px;
+  }
+
+  .des {
+    font-size: 14px;
+  }
+
+  .slide .item:nth-child(4),
+  .slide .item:nth-child(5),
+  .slide .item:nth-child(n + 6) {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    height: 300px;
+  }
+
+  .item .content {
+    left: 20px;
+    width: calc(100% - 40px);
+  }
+
+  .name {
+    font-size: 24px;
+  }
+
+  .des {
+    font-size: 12px;
+    margin-top: 5px;
+    margin-bottom: 10px;
+  }
+
+  .button {
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+}
+

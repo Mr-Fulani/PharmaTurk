@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import api from '../lib/api'
+import styles from './BannerCarousel.module.css'
 
 interface BannerMedia {
   id: number
@@ -30,9 +31,11 @@ interface BannerCarouselProps {
 export default function BannerCarousel({ position, className = '' }: BannerCarouselProps) {
   const router = useRouter()
   const [banners, setBanners] = useState<Banner[]>([])
+  const [displayBanners, setDisplayBanners] = useState<Banner[]>([])
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0)
   const [loading, setLoading] = useState(true)
+  const slideRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const fetchBanners = async () => {
@@ -46,9 +49,27 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
           banner.media_files && banner.media_files.length > 0
         )
         setBanners(bannersWithMedia)
+        // Инициализируем displayBanners
+        // В слайдере: первые два элемента - большие, второй активный с контентом, остальные - миниатюры справа
         if (bannersWithMedia.length > 0) {
+          console.log('=== BannerCarousel: Loaded banners ===')
+          console.log('Position:', position)
+          console.log('Count:', bannersWithMedia.length)
+          bannersWithMedia.forEach((b, i) => {
+            console.log(`Banner ${i + 1}:`, {
+              id: b.id,
+              title: b.title || 'НЕТ ЗАГОЛОВКА',
+              link_text: b.link_text || 'НЕТ ТЕКСТА ССЫЛКИ',
+              link_url: b.link_url || 'НЕТ URL',
+              media_count: b.media_files.length
+            })
+          })
+          console.log('=======================================')
+          setDisplayBanners(bannersWithMedia.slice(0, Math.min(6, bannersWithMedia.length)))
           setCurrentBannerIndex(0)
           setCurrentMediaIndex(0)
+        } else {
+          setDisplayBanners([])
         }
       } catch (error: any) {
         console.error('Failed to fetch banners:', {
@@ -88,30 +109,79 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
     if (banners.length <= 1) return
 
     const interval = setInterval(() => {
-      setCurrentBannerIndex((prev) => {
-        const nextIndex = (prev + 1) % banners.length
-        setCurrentMediaIndex(0) // Сбрасываем индекс медиа при смене баннера
-        return nextIndex
+      setDisplayBanners((prev) => {
+        const newBanners = [...prev]
+        const firstBanner = newBanners.shift()
+        if (firstBanner) {
+          newBanners.push(firstBanner)
+        }
+        return newBanners
       })
+      setCurrentBannerIndex((prev) => (prev + 1) % banners.length)
+      setCurrentMediaIndex(0) // Сбрасываем индекс медиа при смене баннера
     }, 10000)
 
     return () => clearInterval(interval)
   }, [banners.length])
 
   const goToBanner = (index: number) => {
+    const targetBanner = banners[index]
+    // Пересоздаем displayBanners так, чтобы целевой баннер был на позиции 1 (активная)
+    const newBanners = [...banners]
+    // Находим индекс целевого баннера
+    const targetIndexInBanners = newBanners.findIndex(b => b.id === targetBanner.id)
+    if (targetIndexInBanners !== -1) {
+      // Перемещаем элементы так, чтобы целевой был на позиции 1
+      const before = newBanners.slice(0, targetIndexInBanners)
+      const after = newBanners.slice(targetIndexInBanners + 1)
+      const reordered = [targetBanner, ...after, ...before]
+      setDisplayBanners(reordered.slice(0, Math.min(6, reordered.length)))
+    }
     setCurrentBannerIndex(index)
     setCurrentMediaIndex(0)
   }
 
   const goToPreviousBanner = () => {
-    const prevIndex = (currentBannerIndex - 1 + banners.length) % banners.length
-    setCurrentBannerIndex(prevIndex)
+    if (banners.length <= 1) return
+    // Берем последний элемент и добавляем в начало (как в примере)
+    setDisplayBanners((prev) => {
+      const newBanners = [...prev]
+      const lastBanner = newBanners.pop()
+      if (lastBanner) {
+        newBanners.unshift(lastBanner)
+      }
+      // После перемещения активный баннер - это элемент на позиции 1
+      const activeBanner = newBanners[1] || newBanners[0]
+      if (activeBanner) {
+        const bannerIndex = banners.findIndex(b => b.id === activeBanner.id)
+        if (bannerIndex !== -1) {
+          setCurrentBannerIndex(bannerIndex)
+        }
+      }
+      return newBanners
+    })
     setCurrentMediaIndex(0)
   }
 
   const goToNextBanner = () => {
-    const nextIndex = (currentBannerIndex + 1) % banners.length
-    setCurrentBannerIndex(nextIndex)
+    if (banners.length <= 1) return
+    // Берем первый элемент и добавляем в конец (как в примере)
+    setDisplayBanners((prev) => {
+      const newBanners = [...prev]
+      const firstBanner = newBanners.shift()
+      if (firstBanner) {
+        newBanners.push(firstBanner)
+      }
+      // После перемещения активный баннер - это элемент на позиции 1
+      const activeBanner = newBanners[1] || newBanners[0]
+      if (activeBanner) {
+        const bannerIndex = banners.findIndex(b => b.id === activeBanner.id)
+        if (bannerIndex !== -1) {
+          setCurrentBannerIndex(bannerIndex)
+        }
+      }
+      return newBanners
+    })
     setCurrentMediaIndex(0)
   }
 
@@ -144,9 +214,6 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
   if (banners.length === 0) {
     return null
   }
-
-  const currentBanner = banners[currentBannerIndex]
-  const currentMedia = currentBanner.media_files[currentMediaIndex]
 
   const getFullUrl = (url: string) => {
     if (!url) return ''
@@ -234,319 +301,177 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
     return null
   }
 
-  const renderMedia = () => {
-    if (!currentMedia || !currentMedia.content_url) {
-      return (
-        <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-400">
-          <span>Нет контента</span>
-        </div>
-      )
-    }
+  const hasMultipleBanners = banners.length > 1
+  // Активный баннер - второй элемент (index 1), как в оригинальном примере
+  const activeIndex = 1
+  const currentBanner = displayBanners[activeIndex] || displayBanners[0] || banners[currentBannerIndex]
+  const currentMedia = currentBanner?.media_files[currentMediaIndex]
 
-    const fullUrl = getFullUrl(currentMedia.content_url)
+  const renderBannerItem = (banner: Banner, index: number) => {
+    // Для активного баннера используем currentMediaIndex
+    // Если баннер один - index 0, если больше одного - index 1
+    const isActive = displayBanners.length === 1 ? index === 0 : index === 1
+    const mediaIndex = isActive ? currentMediaIndex : 0
+    const media = banner.media_files[mediaIndex] || banner.media_files[0]
+    const fullUrl = media ? getFullUrl(media.content_url) : ''
+    const embedUrl = media && media.content_type === 'video' ? getVideoEmbedUrl(fullUrl) : null
 
-    // Отладочная информация
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Banner media:', {
-        type: currentMedia.content_type,
-        originalUrl: currentMedia.content_url,
-        fullUrl,
-        mimeType: currentMedia.content_mime_type
+    // Отладка для КАЖДОГО элемента
+    if (typeof window !== 'undefined') {
+      console.log(`📌 Banner index ${index}:`, {
+        id: banner.id,
+        isActive,
+        displayCount: displayBanners.length,
+        title: banner.title || '❌ НЕТ',
+        link_text: banner.link_text || '❌ НЕТ',
+        hasMedia: !!media
       })
     }
 
-    const contentElement = (
-      <>
-        {currentMedia.content_type === 'image' && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={fullUrl}
-            alt={currentBanner.title || 'Banner'}
-            className="w-full h-full object-cover block"
-            style={{ minHeight: '100%', minWidth: '100%' }}
-            onError={(e) => {
-              console.error('Failed to load banner image:', fullUrl)
-              const target = e.currentTarget
-              target.style.display = 'none'
-              const placeholder = target.parentElement?.querySelector('.banner-placeholder')
-              if (placeholder) {
-                (placeholder as HTMLElement).style.display = 'flex'
-              }
-            }}
-            onLoad={() => {
-              console.log('Banner image loaded:', fullUrl)
-            }}
-          />
-        )}
-        {currentMedia.content_type === 'gif' && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={fullUrl}
-            alt={currentBanner.title || 'Banner'}
-            className="w-full h-full object-cover block"
-            style={{ minHeight: '100%', minWidth: '100%' }}
-            onError={(e) => {
-              console.error('Failed to load banner GIF:', fullUrl)
-              const target = e.currentTarget
-              target.style.display = 'none'
-              const placeholder = target.parentElement?.querySelector('.banner-placeholder')
-              if (placeholder) {
-                (placeholder as HTMLElement).style.display = 'flex'
-              }
-            }}
-            onLoad={() => {
-              console.log('Banner GIF loaded:', fullUrl)
-            }}
-          />
-        )}
-        {currentMedia.content_type === 'video' && (() => {
-          const embedUrl = getVideoEmbedUrl(fullUrl)
-          
-          // Если это YouTube или Vimeo, используем iframe
-          if (embedUrl) {
-            return (
-              <iframe
-                src={embedUrl}
-                className="w-full h-full object-cover block"
-                style={{ minHeight: '100%', minWidth: '100%', border: 'none' }}
-                allow="autoplay; encrypted-media"
-                allowFullScreen
-                onError={(e) => {
-                  console.error('Failed to load banner video embed:', embedUrl)
-                }}
-              />
-            )
+    // Отладка для активного элемента
+    if (isActive && typeof window !== 'undefined') {
+      console.log('🔵 ACTIVE BANNER:', {
+        index,
+        id: banner.id,
+        title: banner.title || '❌ НЕТ ЗАГОЛОВКА',
+        link_text: banner.link_text || '❌ НЕТ ТЕКСТА',
+        link_url: banner.link_url || '❌ НЕТ URL',
+        hasMedia: !!media,
+        mediaUrl: media?.content_url || '❌ НЕТ МЕДИА'
+      })
+    }
+
+    // Обработчик клика на баннер
+    const handleBannerClick = () => {
+      // Если кликнули на миниатюру (index >= 2), делаем её активной
+      if (index >= 2 && displayBanners.length > 1) {
+        // Перемещаем элементы так, чтобы кликнутый был на позиции 1 (активный)
+        // Количество шагов = index - 1 (чтобы элемент стал на позицию 1)
+        const steps = index - 1
+        const newBanners = [...displayBanners]
+        for (let i = 0; i < steps; i++) {
+          const firstBanner = newBanners.shift()
+          if (firstBanner) {
+            newBanners.push(firstBanner)
           }
-          
-          // Прямой видеофайл - используем тег video с поддержкой разных форматов
-          const videoExt = fullUrl.split('.').pop()?.toLowerCase()
-          const mimeType = currentMedia.content_mime_type || 
-            (videoExt === 'mp4' ? 'video/mp4' : 
-             videoExt === 'webm' ? 'video/webm' : 
-             videoExt === 'ogg' ? 'video/ogg' : 'video/mp4')
-          
-          return (
-            <video
-              autoPlay
-              loop
-              muted
-              playsInline
-              className="w-full h-full object-cover block"
-              style={{ minHeight: '100%', minWidth: '100%' }}
-              onError={(e) => {
-                console.error('Failed to load banner video:', fullUrl, mimeType)
-                const target = e.currentTarget
-                target.style.display = 'none'
-                const placeholder = target.parentElement?.querySelector('.banner-placeholder')
-                if (placeholder) {
-                  (placeholder as HTMLElement).style.display = 'flex'
-                }
-              }}
-              onLoadedData={() => {
-                console.log('Banner video loaded:', fullUrl, mimeType)
-              }}
-            >
-              <source src={fullUrl} type={mimeType} />
-              {/* Fallback для разных форматов */}
-              {videoExt !== 'mp4' && <source src={fullUrl.replace(/\.(webm|ogg)$/i, '.mp4')} type="video/mp4" />}
-              {videoExt !== 'webm' && <source src={fullUrl.replace(/\.(mp4|ogg)$/i, '.webm')} type="video/webm" />}
-              Ваш браузер не поддерживает видео.
-            </video>
-          )
-        })()}
-        <div className="banner-placeholder hidden absolute inset-0 w-full h-full items-center justify-center bg-gray-200 text-gray-400">
-          <span>Ошибка загрузки контента</span>
-        </div>
-      </>
-    )
-
-    const activeLink = currentMedia.link_url || currentBanner.link_url
-    const isExternal = (link: string) => /^https?:\/\//.test(link)
-
-    const handleNavigation = () => {
-      if (!activeLink) return
-      if (isExternal(activeLink)) {
-        window.open(activeLink, '_blank', 'noopener, noreferrer')
-      } else {
-        router.push(activeLink)
+        }
+        
+        setDisplayBanners(newBanners.slice(0, Math.min(6, newBanners.length)))
+        
+        // Обновляем currentBannerIndex
+        const bannerIndex = banners.findIndex(b => b.id === banner.id)
+        if (bannerIndex !== -1) {
+          setCurrentBannerIndex(bannerIndex)
+        }
+        setCurrentMediaIndex(0)
+      } else if (isActive && banner.link_url) {
+        // Если кликнули на активный элемент с ссылкой, переходим по ссылке
+        const isExternal = /^https?:\/\//.test(banner.link_url)
+        if (isExternal) {
+          window.open(banner.link_url, '_blank', 'noopener, noreferrer')
+        } else {
+          router.push(banner.link_url)
+        }
       }
     }
 
-    if (activeLink) {
-      return (
-        <div
-          role="link"
-          tabIndex={0}
-          onClick={(event) => {
-            event.stopPropagation()
-            handleNavigation()
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              handleNavigation()
-            }
-          }}
-          className="w-full h-full cursor-pointer"
-        >
-          {contentElement}
-        </div>
-      )
-    }
+    return (
+      <div
+        key={banner.id}
+        className={styles.item}
+        style={{
+          backgroundImage: media && (media.content_type === 'image' || media.content_type === 'gif') 
+            ? `url(${fullUrl})` 
+            : 'none',
+        }}
+        onClick={handleBannerClick}
+      >
+        {/* Видео контент */}
+        {media && media.content_type === 'video' && embedUrl && (
+          <iframe
+            src={embedUrl}
+            className={styles.itemIframe}
+            allow="autoplay; encrypted-media"
+            allowFullScreen
+          />
+        )}
+        {media && media.content_type === 'video' && !embedUrl && (
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            className={styles.itemVideo}
+          >
+            <source src={fullUrl} type={media.content_mime_type || 'video/mp4'} />
+          </video>
+        )}
 
-    return <div className="w-full h-full">{contentElement}</div>
+        {/* Контент с текстом */}
+        <div className={styles.content}>
+          {banner.title && (
+            <div className={styles.name}>{banner.title}</div>
+          )}
+          {banner.link_text && (
+            <div className={styles.des}>{banner.link_text}</div>
+          )}
+          {banner.link_text && banner.link_url && (
+            <button
+              className={styles.button}
+              onClick={(e) => {
+                e.stopPropagation() // Предотвращаем всплытие клика на родительский элемент
+                const isExternal = /^https?:\/\//.test(banner.link_url!)
+                if (isExternal) {
+                  window.open(banner.link_url, '_blank', 'noopener, noreferrer')
+                } else {
+                  router.push(banner.link_url!)
+                }
+              }}
+            >
+              {banner.link_text}
+            </button>
+          )}
+        </div>
+      </div>
+    )
   }
 
-  const hasMultipleBanners = banners.length > 1
-  const hasMultipleMedia = currentBanner.media_files.length > 1
+  // Лог перед рендером
+  if (typeof window !== 'undefined' && displayBanners.length > 0) {
+    console.log('🎬 RENDER:', {
+      displayBannersCount: displayBanners.length,
+      bannerIds: displayBanners.map((b, i) => `${i}:${b.id}`),
+      activeIndex: 1,
+      hasMultipleBanners
+    })
+  }
 
   return (
-    <div className={`relative w-full rounded-xl overflow-hidden shadow-lg ${className}`}>
-      <div className="relative h-64 md:h-96 lg:h-[500px] w-full">
-        {/* Контент медиа */}
-        <div className="absolute inset-0 w-full h-full z-0">
-          {renderMedia()}
-        </div>
-        
-        {/* Текст баннера (заголовок и ссылка) - поверх медиа */}
-        {(currentBanner.title || currentBanner.link_text) && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center px-4 text-center pointer-events-none">
-            {currentBanner.title && (
-              <h2 className="text-2xl md:text-4xl lg:text-5xl font-bold text-white mb-4 drop-shadow-lg">
-                {currentBanner.title}
-              </h2>
-            )}
-            {currentBanner.link_text && currentBanner.link_url && (
-              <a
-                href={currentBanner.link_url}
-                className="inline-block mt-4 px-6 py-3 bg-white text-red-600 font-semibold rounded-lg shadow-lg hover:bg-red-50 transition-all duration-200 hover:scale-105 pointer-events-auto"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  e.preventDefault()
-                  const isExternal = (link: string) => /^https?:\/\//.test(link)
-                  if (isExternal(currentBanner.link_url!)) {
-                    window.open(currentBanner.link_url, '_blank', 'noopener, noreferrer')
-                  } else {
-                    router.push(currentBanner.link_url!)
-                  }
-                }}
-              >
-                {currentBanner.link_text}
-              </a>
-            )}
-          </div>
-        )}
-        
-        {/* Навигационные стрелки для медиа (внутри баннера) */}
-        {hasMultipleMedia && (
-          <>
-            <button
-              onClick={goToPreviousMedia}
-              className="absolute left-4 top-1/2 -translate-y-1/2 z-30 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-200 hover:scale-110"
-              aria-label="Предыдущее медиа"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <button
-              onClick={goToNextMedia}
-              className="absolute right-4 top-1/2 -translate-y-1/2 z-30 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-200 hover:scale-110"
-              aria-label="Следующее медиа"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </>
-        )}
-
-        {/* Навигационные стрелки для баннеров (если несколько баннеров) */}
-        {hasMultipleBanners && (
-          <>
-            <button
-              onClick={goToPreviousBanner}
-              className="absolute left-16 top-1/2 -translate-y-1/2 z-30 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-200 hover:scale-110"
-              aria-label="Предыдущий баннер"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-              </svg>
-            </button>
-            <button
-              onClick={goToNextBanner}
-              className="absolute right-16 top-1/2 -translate-y-1/2 z-30 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-200 hover:scale-110"
-              aria-label="Следующий баннер"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-              </svg>
-            </button>
-          </>
-        )}
-
-        {/* Индикаторы медиа (внутри баннера) */}
-        {hasMultipleMedia && (
-          <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 flex gap-2">
-            {currentBanner.media_files.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => goToMedia(index)}
-                className={`h-2 rounded-full transition-all duration-200 ${
-                  index === currentMediaIndex
-                    ? 'w-8 bg-white'
-                    : 'w-2 bg-white/50 hover:bg-white/75'
-                }`}
-                aria-label={`Перейти к медиа ${index + 1}`}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Индикаторы баннеров (если несколько баннеров) */}
-        {hasMultipleBanners && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex gap-2">
-            {banners.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => goToBanner(index)}
-                className={`h-2 rounded-full transition-all duration-200 ${
-                  index === currentBannerIndex
-                    ? 'w-8 bg-white'
-                    : 'w-2 bg-white/50 hover:bg-white/75'
-                }`}
-                aria-label={`Перейти к баннеру ${index + 1}`}
-              />
-            ))}
-          </div>
-        )}
+    <div className={`${styles.container} ${className}`}>
+      <div ref={slideRef} className={styles.slide}>
+        {displayBanners.map((banner, index) => renderBannerItem(banner, index))}
       </div>
-      
-      {/* Точки навигации под баннерами (как у карточек) */}
+
       {hasMultipleBanners && (
-        <div className="w-full flex justify-center items-center py-4 mt-4">
-          <div className="flex justify-center items-center gap-2.5 px-4 py-2">
-            {banners.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => goToBanner(index)}
-                className="transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 rounded-full"
-                style={{
-                  width: index === currentBannerIndex ? '14px' : '10px',
-                  height: index === currentBannerIndex ? '14px' : '10px',
-                  borderRadius: '50%',
-                  border: index === currentBannerIndex ? 'none' : '2px solid #9ca3af',
-                  backgroundColor: index === currentBannerIndex ? '#111827' : '#ffffff',
-                  cursor: 'pointer',
-                  boxShadow:
-                    index === currentBannerIndex
-                      ? '0 2px 8px rgba(0,0,0,0.4), 0 0 0 2px rgba(255,255,255,0.5)'
-                      : '0 1px 3px rgba(0,0,0,0.2)',
-                }}
-                aria-label={`Перейти к баннеру ${index + 1}`}
-              />
-            ))}
-          </div>
+        <div className={styles.buttonContainer}>
+          <button
+            className={styles.navButton}
+            onClick={goToPreviousBanner}
+            aria-label="Предыдущий баннер"
+          >
+            <svg className={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <button
+            className={styles.navButton}
+            onClick={goToNextBanner}
+            aria-label="Следующий баннер"
+          >
+            <svg className={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
       )}
     </div>
