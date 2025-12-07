@@ -33,6 +33,8 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   const [displayMedia, setDisplayMedia] = useState<BannerMedia[]>([])
   const [loading, setLoading] = useState(true)
   const slideRef = useRef<HTMLDivElement>(null)
+  const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const lastManualActionRef = useRef<number>(0)
 
   useEffect(() => {
     const fetchBanners = async () => {
@@ -71,21 +73,42 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     fetchBanners()
   }, [position])
 
+  // Функция для сброса и перезапуска автоматического переключения
+  const resetAutoPlay = () => {
+    if (autoPlayIntervalRef.current) {
+      clearInterval(autoPlayIntervalRef.current)
+    }
+    
+    if (banner && displayMedia.length > 1) {
+      autoPlayIntervalRef.current = setInterval(() => {
+        // Проверяем, не было ли ручного действия в последние 4 секунды
+        const timeSinceLastManual = Date.now() - lastManualActionRef.current
+        if (timeSinceLastManual > 4000) {
+          goToNextMedia()
+        }
+      }, 5000)
+    }
+  }
+
   // Автоматическая смена медиа каждые 5 секунд
   useEffect(() => {
-    if (!banner || displayMedia.length <= 1) return
-
-    const interval = setInterval(() => {
-      goToNextMedia()
-    }, 5000)
-
-    return () => clearInterval(interval)
+    resetAutoPlay()
+    
+    return () => {
+      if (autoPlayIntervalRef.current) {
+        clearInterval(autoPlayIntervalRef.current)
+      }
+    }
   }, [banner, displayMedia.length])
 
   const goToPreviousMedia = () => {
     if (!banner || displayMedia.length <= 1) return
     
-    // Просто перемещаем элементы (CSS transition сделает анимацию автоматически)
+    // Отмечаем ручное действие
+    lastManualActionRef.current = Date.now()
+    resetAutoPlay()
+    
+    // Сначала обновляем состояние
     setDisplayMedia((prev) => {
       const newMedia = [...prev]
       const lastMedia = newMedia.pop()
@@ -94,12 +117,27 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
       }
       return newMedia
     })
+    
+    // Затем перемещаем DOM для плавной анимации
+    requestAnimationFrame(() => {
+      if (slideRef.current) {
+        const items = slideRef.current.querySelectorAll('[data-banner-item]')
+        if (items.length > 0) {
+          const lastItem = items[items.length - 1] as HTMLElement
+          slideRef.current.insertBefore(lastItem, slideRef.current.firstChild)
+        }
+      }
+    })
   }
 
   const goToNextMedia = () => {
     if (!banner || displayMedia.length <= 1) return
     
-    // Просто перемещаем элементы (CSS transition сделает анимацию автоматически)
+    // Отмечаем ручное действие
+    lastManualActionRef.current = Date.now()
+    resetAutoPlay()
+    
+    // Сначала обновляем состояние
     setDisplayMedia((prev) => {
       const newMedia = [...prev]
       const firstMedia = newMedia.shift()
@@ -107,6 +145,17 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
         newMedia.push(firstMedia)
       }
       return newMedia
+    })
+    
+    // Затем перемещаем DOM для плавной анимации
+    requestAnimationFrame(() => {
+      if (slideRef.current) {
+        const items = slideRef.current.querySelectorAll('[data-banner-item]')
+        if (items.length > 0) {
+          const firstItem = items[0] as HTMLElement
+          slideRef.current.appendChild(firstItem)
+        }
+      }
     })
   }
 
@@ -166,6 +215,10 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     const handleMediaClick = () => {
       // Если кликнули на миниатюру (index >= 2), делаем её активной
       if (index >= 2 && displayMedia.length > 1) {
+        // Отмечаем ручное действие
+        lastManualActionRef.current = Date.now()
+        resetAutoPlay()
+        
         const steps = index - 1
         const newMedia = [...displayMedia]
         for (let i = 0; i < steps; i++) {
@@ -188,6 +241,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     return (
       <div
         key={media.id}
+        data-banner-item
         className={styles.item}
         style={{
           backgroundImage: (media.content_type === 'image' || media.content_type === 'gif') 
