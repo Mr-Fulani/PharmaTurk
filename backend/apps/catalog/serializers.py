@@ -3,8 +3,10 @@
 from rest_framework import serializers
 from .models import (
     Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
-    ClothingCategory, ClothingProduct, ShoeCategory, ShoeProduct, 
-    ElectronicsCategory, ElectronicsProduct, Banner, BannerMedia
+    ClothingCategory, ClothingProduct, ClothingProductImage,
+    ShoeCategory, ShoeProduct, ShoeProductImage,
+    ElectronicsCategory, ElectronicsProduct, ElectronicsProductImage,
+    Banner, BannerMedia
 )
 
 
@@ -96,8 +98,6 @@ class ProductSerializer(serializers.ModelSerializer):
             'weight_value', 'weight_unit', 'length', 'width', 'height', 'dimensions_unit',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
-            'meta_title_en', 'meta_description_en', 'meta_keywords_en',
-            'og_title_en', 'og_description_en',
             'main_image_url',
             'is_featured', 'created_at', 'updated_at'
         ]
@@ -299,6 +299,14 @@ class ClothingCategorySerializer(serializers.ModelSerializer):
         return obj.children.filter(is_active=True).count()
 
 
+class ClothingProductImageSerializer(serializers.ModelSerializer):
+    """Сериализатор изображений одежды."""
+
+    class Meta:
+        model = ClothingProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+
 class ClothingProductSerializer(serializers.ModelSerializer):
     """Сериализатор для товаров одежды (краткая информация)."""
     
@@ -307,6 +315,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     main_image_url = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     
     class Meta:
         model = ClothingProduct
@@ -315,6 +324,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color', 'material', 'season',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
+            'images',
             'is_featured', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -322,10 +332,20 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     def get_main_image_url(self, obj):
         """URL главного изображения.
         
-        Для ClothingProduct используется только поле main_image,
-        так как нет связи с ProductImage.
+        Сначала main_image, затем главное изображение из галереи,
+        затем первое изображение.
         """
-        return obj.main_image if obj.main_image else None
+        if obj.main_image:
+            return obj.main_image
+        gallery = getattr(obj, "images", None)
+        if gallery:
+            main_img = obj.images.filter(is_main=True).first()
+            if main_img:
+                return main_img.image_url
+            first_img = obj.images.first()
+            if first_img:
+                return first_img.image_url
+        return None
     
     def get_price_formatted(self, obj):
         """Форматированная цена."""
@@ -338,6 +358,13 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         if obj.old_price is not None:
             return f"{obj.old_price} {obj.currency}"
         return None
+
+    def get_images(self, obj):
+        """Галерея изображений."""
+        gallery = getattr(obj, "images", None)
+        if not gallery:
+            return []
+        return ClothingProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
 
 
 class ShoeCategorySerializer(serializers.ModelSerializer):
@@ -369,6 +396,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     main_image_url = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     
     class Meta:
         model = ShoeProduct
@@ -377,6 +405,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color', 'material', 'heel_height', 'sole_type',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
+            'images',
             'is_featured', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -384,10 +413,20 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     def get_main_image_url(self, obj):
         """URL главного изображения.
         
-        Для ShoeProduct используется только поле main_image,
-        так как нет связи с ProductImage.
+        Сначала main_image, затем главное изображение из галереи,
+        затем первое изображение.
         """
-        return obj.main_image if obj.main_image else None
+        if obj.main_image:
+            return obj.main_image
+        main_img = getattr(obj, "images", None)
+        if main_img:
+            main_img = obj.images.filter(is_main=True).first()
+            if main_img:
+                return main_img.image_url
+            first_img = obj.images.first()
+            if first_img:
+                return first_img.image_url
+        return None
     
     def get_price_formatted(self, obj):
         """Форматированная цена."""
@@ -400,6 +439,22 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         if obj.old_price is not None:
             return f"{obj.old_price} {obj.currency}"
         return None
+
+    def get_images(self, obj):
+        """Галерея изображений."""
+        gallery = getattr(obj, "images", None)
+        if not gallery:
+            return []
+        return ShoeProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+
+
+class ShoeProductImageSerializer(serializers.ModelSerializer):
+    """Сериализатор изображений обуви."""
+
+    class Meta:
+        model = ShoeProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
 
 
 class ElectronicsCategorySerializer(serializers.ModelSerializer):
@@ -421,6 +476,14 @@ class ElectronicsCategorySerializer(serializers.ModelSerializer):
         return obj.children.filter(is_active=True).count()
 
 
+class ElectronicsProductImageSerializer(serializers.ModelSerializer):
+    """Сериализатор изображений электроники."""
+
+    class Meta:
+        model = ElectronicsProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+
 class ElectronicsProductSerializer(serializers.ModelSerializer):
     """Сериализатор для товаров электроники (краткая информация)."""
     
@@ -429,6 +492,7 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
     main_image_url = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     
     class Meta:
         model = ElectronicsProduct
@@ -437,6 +501,7 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'model', 'specifications', 'warranty', 'power_consumption',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
+            'images',
             'is_featured', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -444,10 +509,20 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
     def get_main_image_url(self, obj):
         """URL главного изображения.
         
-        Для ElectronicsProduct используется только поле main_image,
-        так как нет связи с ProductImage.
+        Сначала main_image, затем главное изображение из галереи,
+        затем первое изображение.
         """
-        return obj.main_image if obj.main_image else None
+        if obj.main_image:
+            return obj.main_image
+        gallery = getattr(obj, "images", None)
+        if gallery:
+            main_img = obj.images.filter(is_main=True).first()
+            if main_img:
+                return main_img.image_url
+            first_img = obj.images.first()
+            if first_img:
+                return first_img.image_url
+        return None
     
     def get_price_formatted(self, obj):
         """Форматированная цена."""
@@ -460,6 +535,13 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
         if obj.old_price is not None:
             return f"{obj.old_price} {obj.currency}"
         return None
+
+    def get_images(self, obj):
+        """Галерея изображений."""
+        gallery = getattr(obj, "images", None)
+        if not gallery:
+            return []
+        return ElectronicsProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
 
 
 class BannerMediaSerializer(serializers.ModelSerializer):

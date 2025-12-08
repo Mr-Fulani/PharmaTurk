@@ -6,6 +6,15 @@ from django.core.validators import MinValueValidator
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
 
+CURRENCY_CHOICES = [
+    ("RUB", "RUB"),
+    ("USD", "USD"),
+    ("EUR", "EUR"),
+    ("TRY", "TRY"),
+    ("GBP", "GBP"),
+    ("USDT", "USDT"),
+]
+
 
 class Category(models.Model):
     """Категория товаров."""
@@ -90,7 +99,7 @@ class Product(models.Model):
         ("out_of_stock", _("Нет в наличии")),
         ("discontinued", _("Снят с производства")),
     ]
-    
+
     # Основная информация
     name = models.CharField(_("Название"), max_length=500)
     slug = models.SlugField(_("Slug"), max_length=500, unique=True)
@@ -133,7 +142,13 @@ class Product(models.Model):
         blank=True,
         validators=[MinValueValidator(0)]
     )
-    currency = models.CharField(_("Валюта"), max_length=3, default="RUB")
+    currency = models.CharField(
+        _("Валюта"),
+        max_length=5,
+        choices=CURRENCY_CHOICES,
+        default="RUB",
+        help_text=_("Выбирается из списка расчётных валют, используемых в прайсах.")
+    )
     old_price = models.DecimalField(
         _("Старая цена"), 
         max_digits=10, 
@@ -199,28 +214,50 @@ class Product(models.Model):
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     
     # Изображения
-    main_image = models.URLField(_("Главное изображение"), blank=True)
+    main_image = models.URLField(
+        _("Главное изображение"),
+        blank=True,
+        help_text=_("URL основного изображения (ссылка на CDN или внутреннее хранилище).")
+    )
     
     # Внешние данные
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
-    meta_title = models.CharField(_("Meta Title"), max_length=255, blank=True)
-    meta_description = models.CharField(_("Meta Description"), max_length=500, blank=True)
-    meta_keywords = models.CharField(_("Meta Keywords"), max_length=500, blank=True)
-    og_title = models.CharField(_("OG Title"), max_length=255, blank=True)
-    og_description = models.CharField(_("OG Description"), max_length=500, blank=True)
-    og_image_url = models.URLField(_("OG Image URL"), blank=True)
-    meta_title_en = models.CharField(_("Meta Title (англ.)"), max_length=255, blank=True)
-    meta_description_en = models.CharField(
-        _("Meta Description (англ.)"), max_length=500, blank=True
+    meta_title = models.CharField(
+        _("Meta Title"),
+        max_length=255,
+        blank=True,
+        help_text=_("Англоязычный SEO title, используется на всех фронтенд-страницах.")
     )
-    meta_keywords_en = models.CharField(
-        _("Meta Keywords (англ.)"), max_length=500, blank=True
+    meta_description = models.CharField(
+        _("Meta Description"),
+        max_length=500,
+        blank=True,
+        help_text=_("Англоязычный SEO description для карточки товара.")
     )
-    og_title_en = models.CharField(_("OG Title (англ.)"), max_length=255, blank=True)
-    og_description_en = models.CharField(
-        _("OG Description (англ.)"), max_length=500, blank=True
+    meta_keywords = models.CharField(
+        _("Meta Keywords"),
+        max_length=500,
+        blank=True,
+        help_text=_("Ключевые слова для индексации (англ.).")
+    )
+    og_title = models.CharField(
+        _("OG Title"),
+        max_length=255,
+        blank=True,
+        help_text=_("OpenGraph title (англ.), если отличается от meta title.")
+    )
+    og_description = models.CharField(
+        _("OG Description"),
+        max_length=500,
+        blank=True,
+        help_text=_("OpenGraph description (англ.) для социальных сетей.")
+    )
+    og_image_url = models.URLField(
+        _("OG Image URL"),
+        blank=True,
+        help_text=_("Ссылка на изображение для OpenGraph, если оно отличается от основного.")
     )
     
     # Метаданные
@@ -246,9 +283,9 @@ class Product(models.Model):
             models.Index(fields=["is_active", "is_available"]),
             models.Index(fields=["category", "brand"]),
             models.Index(fields=["price"]),
-        models.Index(fields=["product_type"]),
-        models.Index(fields=["availability_status"]),
-        models.Index(fields=["country_of_origin"]),
+            models.Index(fields=["product_type"]),
+            models.Index(fields=["availability_status"]),
+            models.Index(fields=["country_of_origin"]),
         ]
 
     def __str__(self):
@@ -264,7 +301,10 @@ class ProductImage(models.Model):
         related_name="images",
         verbose_name=_("Товар")
     )
-    image_url = models.URLField(_("URL изображения"))
+    image_url = models.URLField(
+        _("URL изображения"),
+        help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -329,7 +369,13 @@ class PriceHistory(models.Model):
         verbose_name=_("Товар")
     )
     price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2)
-    currency = models.CharField(_("Валюта"), max_length=3, default="RUB")
+    currency = models.CharField(
+        _("Валюта"),
+        max_length=5,
+        choices=CURRENCY_CHOICES,
+        default="RUB",
+        help_text=_("Выбирается из списка расчётных валют, используемых в прайсах.")
+    )
     recorded_at = models.DateTimeField(_("Дата записи"), auto_now_add=True)
     source = models.CharField(_("Источник"), max_length=50, default="api")
 
@@ -470,7 +516,13 @@ class ClothingProduct(models.Model):
         blank=True,
         validators=[MinValueValidator(0)]
     )
-    currency = models.CharField(_("Валюта"), max_length=3, default="RUB")
+    currency = models.CharField(
+        _("Валюта"),
+        max_length=5,
+        choices=CURRENCY_CHOICES,
+        default="RUB",
+        help_text=_("Выбирается из списка расчётных валют, используемых в прайсах.")
+    )
     old_price = models.DecimalField(
         _("Старая цена"), 
         max_digits=10, 
@@ -521,6 +573,36 @@ class ClothingProduct(models.Model):
         return self.name
 
 
+class ClothingProductImage(models.Model):
+    """Изображение товара одежды."""
+
+    product = models.ForeignKey(
+        ClothingProduct,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Товар одежды")
+    )
+    image_url = models.URLField(
+        _("URL изображения"),
+        help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение товара одежды")
+        verbose_name_plural = _("Изображения товаров одежды")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
+
+
 class ShoeCategory(models.Model):
     """Категория обуви."""
     
@@ -562,6 +644,23 @@ class ShoeCategory(models.Model):
 
 class ShoeProduct(models.Model):
     """Товар обуви."""
+
+    SHOE_SIZE_CHOICES = [
+        ("35", "35"),
+        ("36", "36"),
+        ("37", "37"),
+        ("38", "38"),
+        ("39", "39"),
+        ("40", "40"),
+        ("41", "41"),
+        ("42", "42"),
+        ("43", "43"),
+        ("44", "44"),
+        ("45", "45"),
+        ("46", "46"),
+        ("47", "47"),
+        ("48", "48"),
+    ]
     
     # Основная информация
     name = models.CharField(_("Название"), max_length=500)
@@ -575,7 +674,8 @@ class ShoeProduct(models.Model):
         null=True, 
         blank=True,
         related_name="products",
-        verbose_name=_("Категория")
+        verbose_name=_("Категория"),
+        help_text=_("Выберите категорию из дерева обуви; при необходимости создайте новую в ShoeCategory.")
     )
     brand = models.ForeignKey(
         Brand, 
@@ -583,7 +683,8 @@ class ShoeProduct(models.Model):
         null=True, 
         blank=True,
         related_name="shoe_products",
-        verbose_name=_("Бренд")
+        verbose_name=_("Бренд"),
+        help_text=_("Если нет бренда в списке — создайте его в разделе брендов.")
     )
     
     # Цена
@@ -595,7 +696,13 @@ class ShoeProduct(models.Model):
         blank=True,
         validators=[MinValueValidator(0)]
     )
-    currency = models.CharField(_("Валюта"), max_length=3, default="RUB")
+    currency = models.CharField(
+        _("Валюта"),
+        max_length=5,
+        choices=CURRENCY_CHOICES,
+        default="RUB",
+        help_text=_("Выбирается из списка расчётных валют, используемых в прайсах.")
+    )
     old_price = models.DecimalField(
         _("Старая цена"), 
         max_digits=10, 
@@ -606,7 +713,13 @@ class ShoeProduct(models.Model):
     )
     
     # Специфичные для обуви поля
-    size = models.CharField(_("Размер"), max_length=20, blank=True)
+    size = models.CharField(
+        _("Размер"),
+        max_length=20,
+        blank=True,
+        choices=SHOE_SIZE_CHOICES,
+        help_text=_("Выберите размер в EU-формате; при необходимости можно оставить пустым.")
+    )
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
     material = models.CharField(_("Материал"), max_length=100, blank=True)
     heel_height = models.CharField(_("Высота каблука"), max_length=50, blank=True)
@@ -617,7 +730,11 @@ class ShoeProduct(models.Model):
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     
     # Изображения
-    main_image = models.URLField(_("Главное изображение"), blank=True)
+    main_image = models.URLField(
+        _("Главное изображение"),
+        blank=True,
+        help_text=_("URL главного фото; дополнительные фото задаются в галерее ниже.")
+    )
     
     # Внешние данные
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
@@ -645,6 +762,36 @@ class ShoeProduct(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ShoeProductImage(models.Model):
+    """Изображение товара обуви."""
+
+    product = models.ForeignKey(
+        ShoeProduct,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Товар обуви")
+    )
+    image_url = models.URLField(
+        _("URL изображения"),
+        help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение товара обуви")
+        verbose_name_plural = _("Изображения товаров обуви")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
 
 
 class ElectronicsCategory(models.Model):
@@ -713,7 +860,13 @@ class ElectronicsProduct(models.Model):
         blank=True,
         validators=[MinValueValidator(0)]
     )
-    currency = models.CharField(_("Валюта"), max_length=3, default="RUB")
+    currency = models.CharField(
+        _("Валюта"),
+        max_length=5,
+        choices=CURRENCY_CHOICES,
+        default="RUB",
+        help_text=_("Выбирается из списка расчётных валют, используемых в прайсах.")
+    )
     old_price = models.DecimalField(
         _("Старая цена"), 
         max_digits=10, 
@@ -762,6 +915,36 @@ class ElectronicsProduct(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ElectronicsProductImage(models.Model):
+    """Изображение товара электроники."""
+
+    product = models.ForeignKey(
+        ElectronicsProduct,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Товар электроники")
+    )
+    image_url = models.URLField(
+        _("URL изображения"),
+        help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение товара электроники")
+        verbose_name_plural = _("Изображения товаров электроники")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
 
 
 class Banner(models.Model):

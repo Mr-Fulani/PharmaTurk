@@ -1,6 +1,7 @@
 import { GetServerSideProps } from 'next'
 import Head from 'next/head'
 import axios from 'axios'
+import { useState } from 'react'
 import AddToCartButton from '../../components/AddToCartButton'
 import FavoriteButton from '../../components/FavoriteButton'
 import { useTranslation } from 'next-i18next'
@@ -59,6 +60,7 @@ interface Product {
   currency: string
   main_image?: string
   main_image_url?: string
+  images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
 }
 
 export default function ProductPage({
@@ -74,7 +76,13 @@ export default function ProductPage({
   if (!product) {
     return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
   }
-  const image = product.main_image_url || product.main_image
+  const gallery = product.images || []
+  const initialImage =
+    product.main_image_url ||
+    product.main_image ||
+    gallery.find((img) => img.is_main)?.image_url ||
+    gallery[0]?.image_url
+  const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
   return (
     <>
       <Head>
@@ -83,12 +91,26 @@ export default function ProductPage({
       <main className="mx-auto max-w-6xl p-6">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
-            {image ? (
+            {activeImage ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={image} alt={product.name} className="w-full rounded-xl object-cover" />
+              <img src={activeImage} alt={product.name} className="w-full rounded-xl object-cover" />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img src="/product-placeholder.svg" alt="No image" className="aspect-square w-full rounded-xl object-cover" />
+            )}
+            {gallery.length > 1 && (
+              <div className="mt-3 flex gap-2 overflow-x-auto">
+                {gallery.map((img) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={img.id}
+                    src={img.image_url}
+                    alt={img.alt_text || product.name}
+                    className={`h-20 w-20 rounded-lg object-cover cursor-pointer border ${activeImage === img.image_url ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200'}`}
+                    onClick={() => setActiveImage(img.image_url)}
+                  />
+                ))}
+              </div>
             )}
           </div>
           <div>

@@ -18,7 +18,11 @@ class ProductImageInlineFormSet(BaseInlineFormSet):
         if len(images) > 5:
             raise ValidationError(_("Можно загрузить не более 5 изображений товара."))
         if images and not any(img.cleaned_data.get("is_main") for img in images):
-            raise ValidationError(_("Необходимо отметить как минимум одно изображение как главное."))
+            # Если в объекте уже есть main_image, не требуем is_main в галерее
+            instance = getattr(self, "instance", None)
+            has_main_field = getattr(instance, "main_image", None) if instance else None
+            if not has_main_field:
+                raise ValidationError(_("Необходимо отметить как минимум одно изображение как главное."))
 
 
 class ProductForm(forms.ModelForm):
@@ -28,7 +32,9 @@ class ProductForm(forms.ModelForm):
         model = Product
         fields = "__all__"
         help_texts = {
-            "meta_title": _("Применяется для SEO title. Оставьте пустым, если нужно автозаполнение."),
+            "meta_title": _("Применяется для SEO title на английском, оставьте пустым для автогенерации."),
+            "meta_description": _("Англоязычное описание для поисковиков."),
+            "og_description": _("OpenGraph description (англ.), отображается в соцсетях."),
             "og_image_url": _("Ссылка на изображение для Open Graph, если оно отличается от основного."),
         }
 

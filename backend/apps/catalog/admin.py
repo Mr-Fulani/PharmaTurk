@@ -6,8 +6,10 @@ from django.utils.translation import gettext_lazy as _
 from .forms import ProductForm, ProductImageInlineFormSet
 from .models import (
     Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
-    ClothingCategory, ClothingProduct, ShoeCategory, ShoeProduct,
-    ElectronicsCategory, ElectronicsProduct, Banner, BannerMedia
+    ClothingCategory, ClothingProduct, ClothingProductImage,
+    ShoeCategory, ShoeProduct, ShoeProductImage,
+    ElectronicsCategory, ElectronicsProduct, ElectronicsProductImage,
+    Banner, BannerMedia
 )
 
 
@@ -64,6 +66,63 @@ class ProductImageInline(admin.TabularInline):
     image_preview.short_description = _("Превью")
 
 
+class ShoeProductImageInline(admin.TabularInline):
+    """Инлайн для изображений обуви."""
+    model = ShoeProductImage
+    extra = 1
+    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
+    formset = ProductImageInlineFormSet
+
+    def image_preview(self, obj):
+        """Превью изображения."""
+        if obj and obj.image_url:
+            return format_html(
+                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                obj.image_url
+            )
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
+class ClothingProductImageInline(admin.TabularInline):
+    """Инлайн для изображений одежды."""
+    model = ClothingProductImage
+    extra = 1
+    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
+    formset = ProductImageInlineFormSet
+
+    def image_preview(self, obj):
+        """Превью изображения."""
+        if obj and obj.image_url:
+            return format_html(
+                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                obj.image_url
+            )
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
+class ElectronicsProductImageInline(admin.TabularInline):
+    """Инлайн для изображений электроники."""
+    model = ElectronicsProductImage
+    extra = 1
+    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
+    formset = ProductImageInlineFormSet
+
+    def image_preview(self, obj):
+        """Превью изображения."""
+        if obj and obj.image_url:
+            return format_html(
+                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                obj.image_url
+            )
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
 class ProductAttributeInline(admin.TabularInline):
     """Инлайн для атрибутов товара."""
     model = ProductAttribute
@@ -85,7 +144,7 @@ class ProductAdmin(admin.ModelAdmin):
     )
     search_fields = (
         'name', 'name_en', 'slug', 'description', 'description_en',
-        'sku', 'barcode', 'gtin', 'mpn', 'meta_title', 'meta_title_en'
+        'sku', 'barcode', 'gtin', 'mpn', 'meta_title'
     )
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
@@ -113,16 +172,13 @@ class ProductAdmin(admin.ModelAdmin):
                 'width', 'height', 'dimensions_unit', 'country_of_origin'
             )
         }),
-        (_('SEO (RU)'), {
+        (_('SEO (EN)'), {
             'fields': (
                 'meta_title', 'meta_description', 'meta_keywords',
                 'og_title', 'og_description', 'og_image_url'
-            )
-        }),
-        (_('SEO (ENG)'), {
-            'fields': (
-                'meta_title_en', 'meta_description_en', 'meta_keywords_en',
-                'og_title_en', 'og_description_en'
+            ),
+            'description': _(
+                "Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях."
             )
         }),
         (_('Медиа'), {'fields': ('main_image',)}),
@@ -239,6 +295,7 @@ class ClothingProductAdmin(admin.ModelAdmin):
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
+    inlines = [ClothingProductImageInline]
 
 
 @admin.register(ShoeCategory)
@@ -271,13 +328,17 @@ class ShoeProductAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {'fields': ('category', 'brand')}),
-        (_('Shoes'), {'fields': ('size', 'color', 'material', 'heel_height', 'sole_type')}),
+        (_('Shoes'), {
+            'fields': ('size', 'color', 'material', 'heel_height', 'sole_type'),
+            'description': _("Заполните размер в EU-формате и тип обуви; при необходимости создайте категорию в ShoeCategory.")
+        }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('Media'), {'fields': ('main_image',)}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
+    inlines = [ShoeProductImageInline]
 
 
 @admin.register(ElectronicsCategory)
@@ -317,6 +378,7 @@ class ElectronicsProductAdmin(admin.ModelAdmin):
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
+    inlines = [ElectronicsProductImageInline]
 
 
 class BannerMediaInline(admin.StackedInline):

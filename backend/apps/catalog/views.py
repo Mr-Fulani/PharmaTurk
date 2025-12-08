@@ -535,6 +535,8 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError):
                 pass
         
+        queryset = queryset.prefetch_related('images')
+        
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
         ordering = self._normalize_ordering(ordering)
@@ -714,6 +716,8 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
                 queryset = queryset.filter(price__lte=max_price)
             except (ValueError, TypeError):
                 pass
+        
+        queryset = queryset.prefetch_related('images')
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
