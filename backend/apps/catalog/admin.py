@@ -3,30 +3,101 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
-from .forms import ProductForm, ProductImageInlineFormSet
+from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFormSet
 from .models import (
-    Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
-    ClothingCategory, ClothingProduct, ClothingProductImage,
-    ShoeCategory, ShoeProduct, ShoeProductImage,
+    Category, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
+    CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
+    Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
+    ProductMedicines, ProductSupplements, ProductMedicalEquipment,
+    ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
+    ClothingCategory, ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage,
+    ShoeCategory, ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage,
     ElectronicsCategory, ElectronicsProduct, ElectronicsProductImage,
-    Banner, BannerMedia
+    Banner, BannerMedia, MarketingBanner, MarketingBannerMedia
 )
 
 
-@admin.register(Category)
-class CategoryAdmin(admin.ModelAdmin):
-    """Админка для категорий."""
+class BaseCategoryAdmin(admin.ModelAdmin):
+    """Базовый админ для прокси категорий с фильтром по типу."""
+    required_category_type: str | None = None
     list_display = ('name', 'slug', 'parent', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'parent', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
-    
+    exclude = ('category_type',)
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Hierarchy'), {'fields': ('parent',)}),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
+    )
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if self.required_category_type:
+            qs = qs.filter(category_type=self.required_category_type)
+        return qs
+
+    def save_model(self, request, obj, form, change):
+        if self.required_category_type:
+            obj.category_type = self.required_category_type
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(CategoryMedicines)
+class CategoryMedicinesAdmin(BaseCategoryAdmin):
+    required_category_type = "medicines"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Категории для товаров медицины: антибиотики, обезболивающие и т.д.")}),
+    )
+
+
+@admin.register(CategorySupplements)
+class CategorySupplementsAdmin(BaseCategoryAdmin):
+    required_category_type = "supplements"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Категории БАДов: витамины, минералы, протеин, омега и т.д.")}),
+    )
+
+
+@admin.register(CategoryMedicalEquipment)
+class CategoryMedicalEquipmentAdmin(BaseCategoryAdmin):
+    required_category_type = "medical_equipment"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Медтехника: тонометры, глюкометры, небулайзеры, ортезы, расходники.")}),
+    )
+
+
+@admin.register(CategoryTableware)
+class CategoryTablewareAdmin(BaseCategoryAdmin):
+    required_category_type = "tableware"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Посуда: кухонная, сервировка, хранение, медь, фарфор, стекло/керамика.")}),
+    )
+
+
+@admin.register(CategoryFurniture)
+class CategoryFurnitureAdmin(BaseCategoryAdmin):
+    required_category_type = "furniture"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Мебель: гостиная, спальня, офис, кухня/столовая.")}),
+    )
+
+
+@admin.register(CategoryAccessories)
+class CategoryAccessoriesAdmin(BaseCategoryAdmin):
+    required_category_type = "accessories"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Аксессуары общего назначения (ремни, брелоки и т.п.), подкатегории добавляются вручную.")}),
+    )
+
+
+@admin.register(CategoryJewelry)
+class CategoryJewelryAdmin(BaseCategoryAdmin):
+    required_category_type = "jewelry"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Украшения: кольца, цепочки, браслеты, серьги, подвески; есть женские/мужские.")}),
     )
 
 
@@ -123,6 +194,44 @@ class ElectronicsProductImageInline(admin.TabularInline):
     image_preview.short_description = _("Превью")
 
 
+class ClothingVariantImageInline(admin.TabularInline):
+    """Инлайн для изображений варианта одежды."""
+    model = ClothingVariantImage
+    extra = 1
+    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
+    formset = VariantImageInlineFormSet
+
+    def image_preview(self, obj):
+        """Превью изображения."""
+        if obj and obj.image_url:
+            return format_html(
+                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                obj.image_url
+            )
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
+class ShoeVariantImageInline(admin.TabularInline):
+    """Инлайн для изображений варианта обуви."""
+    model = ShoeVariantImage
+    extra = 1
+    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
+    formset = VariantImageInlineFormSet
+
+    def image_preview(self, obj):
+        """Превью изображения."""
+        if obj and obj.image_url:
+            return format_html(
+                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                obj.image_url
+            )
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
 class ProductAttributeInline(admin.TabularInline):
     """Инлайн для атрибутов товара."""
     model = ProductAttribute
@@ -130,9 +239,8 @@ class ProductAttributeInline(admin.TabularInline):
     fields = ('attribute_type', 'name', 'value', 'sort_order')
 
 
-@admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
-    """Админка для товаров."""
+class BaseProductAdmin(admin.ModelAdmin):
+    """Базовый админ для товаров (используется прокси)."""
     form = ProductForm
     list_display = (
         'name', 'slug', 'product_type', 'category', 'brand', 'price', 'currency',
@@ -195,6 +303,76 @@ class ProductAdmin(admin.ModelAdmin):
             return format_html('<code>{}</code>', obj.slug)
         return "-"
     slug_preview.short_description = _("Slug (предпросмотр)")
+
+
+class BaseProductProxyAdmin(BaseProductAdmin):
+    """Фильтрует по фиксированному product_type и скрывает поле типа."""
+    required_product_type: str | None = None
+    exclude = ('product_type',)
+    autocomplete_fields = ('brand',)  # убираем category из autocomplete, чтобы избежать admin.E039
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if self.required_product_type:
+            qs = qs.filter(product_type=self.required_product_type)
+        return qs
+
+    def save_model(self, request, obj, form, change):
+        if self.required_product_type:
+            obj.product_type = self.required_product_type
+        super().save_model(request, obj, form, change)
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = list(super().get_fieldsets(request, obj))
+        new_fieldsets = []
+        for title, opts in fieldsets:
+            fields = list(opts.get('fields', ()))
+            if 'product_type' in fields:
+                fields = [f for f in fields if f != 'product_type']
+            new_fieldsets.append((title, {**opts, 'fields': tuple(fields)}))
+        return new_fieldsets
+
+
+@admin.register(ProductMedicines)
+class ProductMedicinesAdmin(BaseProductProxyAdmin):
+    required_product_type = "medicines"
+    fieldsets = BaseProductAdmin.fieldsets
+
+
+@admin.register(ProductSupplements)
+class ProductSupplementsAdmin(BaseProductProxyAdmin):
+    required_product_type = "supplements"
+    fieldsets = BaseProductAdmin.fieldsets
+
+
+@admin.register(ProductMedicalEquipment)
+class ProductMedicalEquipmentAdmin(BaseProductProxyAdmin):
+    required_product_type = "medical_equipment"
+    fieldsets = BaseProductAdmin.fieldsets
+
+
+@admin.register(ProductTableware)
+class ProductTablewareAdmin(BaseProductProxyAdmin):
+    required_product_type = "tableware"
+    fieldsets = BaseProductAdmin.fieldsets
+
+
+@admin.register(ProductFurniture)
+class ProductFurnitureAdmin(BaseProductProxyAdmin):
+    required_product_type = "furniture"
+    fieldsets = BaseProductAdmin.fieldsets
+
+
+@admin.register(ProductAccessories)
+class ProductAccessoriesAdmin(BaseProductProxyAdmin):
+    required_product_type = "accessories"
+    fieldsets = BaseProductAdmin.fieldsets
+
+
+@admin.register(ProductJewelry)
+class ProductJewelryAdmin(BaseProductProxyAdmin):
+    required_product_type = "jewelry"
+    fieldsets = BaseProductAdmin.fieldsets
 
 
 @admin.register(ProductImage)
@@ -276,6 +454,35 @@ class ClothingCategoryAdmin(admin.ModelAdmin):
     )
 
 
+class ClothingVariantInline(admin.TabularInline):
+    """Инлайн для вариантов одежды (основные поля)."""
+    model = ClothingVariant
+    extra = 0
+    fields = ('name', 'slug', 'color', 'size', 'price', 'currency', 'is_available', 'stock_quantity', 'is_active', 'sort_order')
+    readonly_fields = ('slug',)
+    show_change_link = True
+
+
+@admin.register(ClothingVariant)
+class ClothingVariantAdmin(admin.ModelAdmin):
+    """Отдельная админка варианта одежды (для картинок)."""
+    list_display = ('name', 'product', 'color', 'size', 'price', 'currency', 'is_available', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'is_available', 'color', 'size', 'currency', 'created_at')
+    search_fields = ('name', 'product__name', 'slug', 'color', 'size', 'sku', 'barcode', 'gtin', 'mpn')
+    ordering = ('product', 'sort_order', '-created_at')
+    readonly_fields = ('slug',)
+    fieldsets = (
+        (None, {'fields': ('product', 'name', 'slug')}),
+        (_('Характеристики'), {'fields': ('color', 'size')}),
+        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')}),
+        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
+        (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
+        (_('Статус'), {'fields': ('is_active', 'sort_order')}),
+    )
+    inlines = [ClothingVariantImageInline]
+
+
 @admin.register(ClothingProduct)
 class ClothingProductAdmin(admin.ModelAdmin):
     """Админка для товаров одежды."""
@@ -288,14 +495,17 @@ class ClothingProductAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {'fields': ('category', 'brand')}),
-        (_('Clothing'), {'fields': ('size', 'color', 'material', 'season')}),
+        (_('Clothing (устаревшие поля)'), {
+            'fields': ('size', 'color', 'material', 'season'),
+            'description': _("Для цветов/размеров используйте варианты ниже; эти поля оставлены для совместимости.")
+        }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('Media'), {'fields': ('main_image',)}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ClothingProductImageInline]
+    inlines = [ClothingVariantInline, ClothingProductImageInline]
 
 
 @admin.register(ShoeCategory)
@@ -313,7 +523,44 @@ class ShoeCategoryAdmin(admin.ModelAdmin):
         (_('Hierarchy'), {'fields': ('parent',)}),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
+        (_('Подсказка'), {
+            'fields': (),
+            'description': _(
+                "Древо обуви предзаполнено: верхний уровень — Женская/Мужская/Унисекс/Детская обувь; "
+                "под ними — Кроссовки, Ботинки, Сандалии, Туфли, Домашняя обувь. "
+                "При необходимости добавляйте новые типы или меняйте сортировку."
+            )
+        }),
     )
+
+
+class ShoeVariantInline(admin.TabularInline):
+    """Инлайн для вариантов обуви (основные поля)."""
+    model = ShoeVariant
+    extra = 0
+    fields = ('name', 'slug', 'color', 'size', 'price', 'currency', 'is_available', 'stock_quantity', 'is_active', 'sort_order')
+    readonly_fields = ('slug',)
+    show_change_link = True
+
+
+@admin.register(ShoeVariant)
+class ShoeVariantAdmin(admin.ModelAdmin):
+    """Отдельная админка варианта обуви (для картинок)."""
+    list_display = ('name', 'product', 'color', 'size', 'price', 'currency', 'is_available', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'is_available', 'color', 'size', 'currency', 'created_at')
+    search_fields = ('name', 'product__name', 'slug', 'color', 'size', 'sku', 'barcode', 'gtin', 'mpn')
+    ordering = ('product', 'sort_order', '-created_at')
+    readonly_fields = ('slug',)
+    fieldsets = (
+        (None, {'fields': ('product', 'name', 'slug')}),
+        (_('Характеристики'), {'fields': ('color', 'size', 'heel_height', 'sole_type')}),
+        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')}),
+        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
+        (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
+        (_('Статус'), {'fields': ('is_active', 'sort_order')}),
+    )
+    inlines = [ShoeVariantImageInline]
 
 
 @admin.register(ShoeProduct)
@@ -328,9 +575,9 @@ class ShoeProductAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {'fields': ('category', 'brand')}),
-        (_('Shoes'), {
+        (_('Shoes (используйте варианты ниже)'), {
             'fields': ('size', 'color', 'material', 'heel_height', 'sole_type'),
-            'description': _("Заполните размер в EU-формате и тип обуви; при необходимости создайте категорию в ShoeCategory.")
+            'description': _("Размер/цвет теперь задаются через варианты; здесь поля оставлены для совместимости.")
         }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
@@ -338,7 +585,7 @@ class ShoeProductAdmin(admin.ModelAdmin):
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ShoeProductImageInline]
+    inlines = [ShoeVariantInline, ShoeProductImageInline]
 
 
 @admin.register(ElectronicsCategory)
@@ -399,7 +646,7 @@ class BannerMediaInline(admin.StackedInline):
     verbose_name_plural = _("Медиа-файлы")
 
 
-@admin.register(Banner)
+@admin.register(MarketingBanner)
 class BannerAdmin(admin.ModelAdmin):
     """Админка для баннеров."""
     list_display = ('title', 'position', 'get_media_count', 'is_active', 'sort_order', 'created_at')
@@ -427,7 +674,7 @@ class BannerAdmin(admin.ModelAdmin):
     get_media_count.short_description = _("Количество медиа")
 
 
-@admin.register(BannerMedia)
+@admin.register(MarketingBannerMedia)
 class BannerMediaAdmin(admin.ModelAdmin):
     """Админка для медиа-файлов баннеров (для прямого доступа)."""
     list_display = ('banner', 'content_type', 'get_content_preview', 'sort_order', 'created_at')

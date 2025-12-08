@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "api",
     "apps.users",
     "apps.catalog",
+    "apps.marketing",
     "apps.orders",
     "apps.payments",
     "apps.vapi",

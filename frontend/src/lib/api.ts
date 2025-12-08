@@ -220,13 +220,15 @@ export const electronicsApi = {
 
 // Универсальная функция для получения API в зависимости от типа товаров
 export function getApiForCategory(
-  categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'tableware' | 'furniture' | 'medical-equipment'
+  categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'medical-equipment' | 'furniture' | 'tableware' | 'accessories' | 'jewelry'
 ) {
   const mapping: Record<string, 'medicines' | 'clothing' | 'shoes' | 'electronics'> = {
     supplements: 'medicines',
-    tableware: 'clothing',
-    furniture: 'clothing',
-    'medical-equipment': 'medicines'
+    'medical-equipment': 'medicines',
+    furniture: 'medicines',
+    tableware: 'medicines',
+    accessories: 'medicines',
+    jewelry: 'medicines',
   }
   const normalized = mapping[categoryType] || categoryType
   switch (normalized) {

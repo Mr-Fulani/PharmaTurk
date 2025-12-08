@@ -81,20 +81,22 @@ interface CategoryPageProps {
   totalCount: number
   currentPage: number
   totalPages: number
-  categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'tableware' | 'furniture' | 'medical-equipment'
+  categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'medical-equipment' | 'furniture' | 'tableware' | 'accessories' | 'jewelry'
 }
 
 type CategoryTypeKey = CategoryPageProps['categoryType']
 
-const brandProductTypeMap: Record<CategoryTypeKey, 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'tableware' | 'furniture' | 'medical-equipment'> = {
+const brandProductTypeMap: Record<CategoryTypeKey, 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'medical-equipment'> = {
   medicines: 'medicines',
   supplements: 'medicines',
   clothing: 'clothing',
   shoes: 'shoes',
   electronics: 'electronics',
-  tableware: 'tableware',
-  furniture: 'furniture',
-  'medical-equipment': 'medical-equipment'
+  'medical-equipment': 'medical-equipment',
+  furniture: 'medicines',
+  tableware: 'medicines',
+  accessories: 'medicines',
+  jewelry: 'medicines',
 }
 
 const resolveBrandProductType = (type: CategoryTypeKey) => brandProductTypeMap[type] || 'medicines'

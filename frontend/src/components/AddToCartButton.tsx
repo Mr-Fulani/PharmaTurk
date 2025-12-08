@@ -29,14 +29,20 @@ export default function AddToCartButton({
       initCartSession()
       const body = new URLSearchParams()
       body.set('quantity', String(1))
-      if (productId !== undefined) {
+      const baseTypes = [
+        'medicines', 'supplements', 'medical-equipment', 'medical_equipment',
+        'furniture', 'tableware', 'accessories', 'jewelry'
+      ]
+      const isBase = baseTypes.includes(productType)
+      if (isBase && productId !== undefined) {
         body.set('product_id', String(productId))
-      }
-      if (productType) {
-        body.set('product_type', productType)
-      }
-      if (productSlug) {
-        body.set('product_slug', productSlug)
+      } else {
+        if (productType) {
+          body.set('product_type', productType)
+        }
+        if (productSlug) {
+          body.set('product_slug', productSlug)
+        }
       }
       try {
         await api.post('/orders/cart/add', body, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } })

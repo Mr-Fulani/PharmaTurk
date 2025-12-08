@@ -8,38 +8,107 @@ from apps.catalog.models import (
     ClothingProduct,
     ShoeProduct,
     ElectronicsProduct,
+    ClothingVariant,
+    ShoeVariant,
 )
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
 
 VARIANT_MODEL_MAP = {
-    'clothing': ClothingProduct,
-    'shoes': ShoeProduct,
+    'clothing': ClothingVariant,
+    'shoes': ShoeVariant,
     'electronics': ElectronicsProduct,
 }
 
 PRODUCT_TYPE_ALIASES = {
-    'supplements': 'medicines',
-    'tableware': 'clothing',
-    'furniture': 'clothing',
-    'medical-equipment': 'medicines',
+    'supplements': 'supplements',
+    'medical-equipment': 'medical_equipment',
+    'medical_equipment': 'medical_equipment',
+    'medical-accessories': 'accessories',
+    'medical_accessories': 'accessories',
+    'tableware': 'tableware',
+    'furniture': 'furniture',
+    'accessories': 'accessories',
+    'jewelry': 'jewelry',
 }
 
 CATEGORY_PRESETS = {
     'clothing': ('clothing-general', 'Одежда'),
     'shoes': ('shoes-general', 'Обувь'),
     'electronics': ('electronics-general', 'Электроника'),
-    'tableware': ('tableware-serveware', 'Посуда'),
-    'furniture': ('furniture-living', 'Мебель'),
-    'medical-equipment': ('medical-equipment', 'Медицинское оборудование'),
+    'medical_equipment': ('medical-equipment', 'Медицинская техника'),
 }
 
-BASE_PRODUCT_TYPES = {'medicines', 'supplements', 'medical-equipment'}
+BASE_PRODUCT_TYPES = {
+    'medicines',
+    'supplements',
+    'medical_equipment',
+    'tableware',
+    'furniture',
+    'accessories',
+    'jewelry',
+}
 
 
 def normalize_product_type(value: str | None) -> str:
     if not value:
         return 'medicines'
     return value.lower()
+
+
+def ensure_product_from_base(base_obj, product_type: str) -> Product:
+    """
+    Создает/возвращает базовый Product для карточки обуви/одежды, если Variants отсутствуют.
+    """
+    slug = base_obj.slug
+    defaults = {
+        'name': getattr(base_obj, 'name', slug),
+        'slug': slug,
+        'description': getattr(base_obj, 'description', '') or '',
+        'price': getattr(base_obj, 'price', None) or 0,
+        'currency': getattr(base_obj, 'currency', None) or 'TRY',
+        'brand': getattr(base_obj, 'brand', None),
+        # У базовой модели обуви/одежды категория относится к ShoeCategory/ClothingCategory,
+        # поэтому для общего Product оставляем category пустым.
+        'category': None,
+        'product_type': product_type,
+        'is_available': getattr(base_obj, 'is_available', True),
+        'main_image': getattr(base_obj, 'main_image', '') or '',
+        'external_data': {
+            'source_type': f'base_{product_type}',
+            'source_id': base_obj.id,
+            'source_slug': base_obj.slug,
+        },
+    }
+    product, created = Product.objects.get_or_create(slug=slug, defaults=defaults)
+    if not created:
+        changed = False
+        new_price = getattr(base_obj, 'price', None)
+        if new_price is not None and product.price != new_price:
+            product.old_price = product.price
+            product.price = new_price
+            changed = True
+        new_currency = getattr(base_obj, 'currency', None)
+        if new_currency and product.currency != new_currency:
+            product.currency = new_currency
+            changed = True
+        availability = getattr(base_obj, 'is_available', True)
+        if product.is_available != availability:
+            product.is_available = availability
+            changed = True
+        main_image = getattr(base_obj, 'main_image', None)
+        if main_image and product.main_image != main_image:
+            product.main_image = main_image
+            changed = True
+        brand = getattr(base_obj, 'brand', None)
+        if brand and product.brand_id is None:
+            product.brand = brand
+            changed = True
+        if product.product_type != product_type:
+            product.product_type = product_type
+            changed = True
+        if changed:
+            product.save()
+    return product
 
 
 def get_or_create_category_for_variant(product_type: str) -> Category | None:
@@ -65,16 +134,20 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
 
     base_slug = external.get('base_product_slug') or slugify(f"{source_type}-{variant.slug}")
     category = get_or_create_category_for_variant(source_type) or get_or_create_category_for_variant(effective_type)
+    parent_product = getattr(variant, "product", None)
+    brand = getattr(variant, "brand", None) if hasattr(variant, "brand") else None
+    if not brand and parent_product:
+        brand = getattr(parent_product, "brand", None)
     defaults = {
-        'name': variant.name,
+        'name': variant.name or (parent_product.name if parent_product else ""),
         'slug': base_slug,
-        'description': getattr(variant, 'description', '') or '',
-        'price': getattr(variant, 'price', None) or 0,
-        'currency': getattr(variant, 'currency', None) or 'TRY',
-        'brand': getattr(variant, 'brand', None),
+        'description': getattr(variant, 'description', '') or (getattr(parent_product, "description", "") if parent_product else ''),
+        'price': getattr(variant, 'price', None) or (getattr(parent_product, "price", None) or 0),
+        'currency': getattr(variant, 'currency', None) or (getattr(parent_product, "currency", None) or 'TRY'),
+        'brand': brand,
         'category': category,
         'is_available': getattr(variant, 'is_available', True),
-        'main_image': getattr(variant, 'main_image', '') or '',
+        'main_image': getattr(variant, 'main_image', '') or (getattr(parent_product, "main_image", "") if parent_product else ''),
         'external_data': {
             'source_type': source_type,
             'effective_type': effective_type,
@@ -105,8 +178,8 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         if category and product.category_id is None:
             product.category = category
             changed = True
-        if getattr(variant, 'brand', None) and product.brand_id is None:
-            product.brand = variant.brand
+        if brand and product.brand_id is None:
+            product.brand = brand
             changed = True
         if changed:
             product.save()
@@ -123,6 +196,17 @@ def resolve_variant_product(product_type: str, product_slug: str) -> Product:
     effective_type = PRODUCT_TYPE_ALIASES.get(normalized, normalized)
     if effective_type in BASE_PRODUCT_TYPES:
         return Product.objects.get(slug=product_slug, is_active=True)
+
+    # Базовая карточка без вариантов (обувь/одежда), если slug есть в соответствующей модели
+    base_model_map = {
+        'shoes': ShoeProduct,
+        'clothing': ClothingProduct,
+    }
+    base_model = base_model_map.get(effective_type)
+    if base_model:
+        base_obj = base_model.objects.filter(slug=product_slug, is_active=True).first()
+        if base_obj:
+            return ensure_product_from_base(base_obj, effective_type)
 
     model = VARIANT_MODEL_MAP.get(effective_type)
     if not model:
@@ -227,7 +311,9 @@ class CartSerializer(serializers.ModelSerializer):
 
 class AddToCartSerializer(serializers.Serializer):
     """
-    Запрос на добавление товара в корзину
+    Запрос на добавление товара в корзину.
+    - Базовые товары: product_id
+    - Варианты (одежда/обувь): product_type + product_slug (slug варианта)
     """
     product_id = serializers.IntegerField(required=False)
     product_type = serializers.CharField(required=False)
@@ -239,21 +325,37 @@ class AddToCartSerializer(serializers.Serializer):
         product_type = attrs.get('product_type')
         product_slug = attrs.get('product_slug')
 
+        # Конфликт: оба идентификатора одновременно
+        if product_id and product_slug:
+            raise serializers.ValidationError({"detail": _("Укажите либо product_id, либо product_slug (вариант), но не оба.")})
+
+        # Базовый товар по ID
         if product_id:
             try:
                 product = Product.objects.get(id=product_id, is_active=True)
             except Product.DoesNotExist:
-                raise serializers.ValidationError(_("Товар не найден"))
+                raise serializers.ValidationError({"detail": _("Товар не найден по product_id")})
             attrs['product'] = product
             return attrs
 
-        if not product_type or not product_slug:
-            raise serializers.ValidationError(_("Не удалось определить товар для добавления в корзину"))
+        # Вариант по type + slug (или fallback на базовый по slug)
+        if not product_slug:
+            raise serializers.ValidationError({"detail": _("Не указан product_slug или product_id")})
 
+        # Если тип не передан, считаем базовым
+        effective_type = product_type or 'medicines'
+
+        # Сначала пробуем базовый товар по slug (это также покрывает случаи, когда фронт прислал slug родителя)
+        base = Product.objects.filter(slug=product_slug, is_active=True).first()
+        if base:
+            attrs['product'] = base
+            return attrs
+
+        # Если базового нет — пробуем как вариант/базовую карточку одежды/обуви
         try:
-            product = resolve_variant_product(product_type, product_slug)
+            product = resolve_variant_product(effective_type, product_slug)
         except Product.DoesNotExist:
-            raise serializers.ValidationError(_("Товар не найден"))
+            raise serializers.ValidationError({"detail": _("Товар не найден по slug")})
 
         attrs['product'] = product
         return attrs

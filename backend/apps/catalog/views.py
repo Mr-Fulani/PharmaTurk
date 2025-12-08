@@ -13,7 +13,8 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExampl
 
 from .models import (
     Category, Brand, Product, ProductAttribute, PriceHistory, Favorite,
-    ClothingCategory, ClothingProduct, ShoeCategory, ShoeProduct,
+    ClothingCategory, ClothingProduct, ClothingVariant,
+    ShoeCategory, ShoeProduct, ShoeVariant,
     ElectronicsCategory, ElectronicsProduct, Banner, BannerMedia
 )
 from .services import CatalogService
@@ -85,27 +86,32 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = StandardPagination
 
     PRODUCT_TYPE_ALIASES = {
-        'supplements': 'medicines',
-        'tableware': 'tableware',
+        'supplements': 'supplements',
+        'medical-equipment': 'medical_equipment',
+        'medical_equipment': 'medical_equipment',
+        'accessories': 'accessories',
+        'medical-accessories': 'accessories',
+        'medical_accessories': 'accessories',
         'furniture': 'furniture',
-        'medical-equipment': 'medical-equipment',
+        'tableware': 'tableware',
+        'jewelry': 'jewelry',
     }
     
     PRODUCT_MODEL_MAP = {
         'medicines': Product,
-        'tableware': Product,
+        'supplements': Product,
+        'medical_equipment': Product,
         'furniture': Product,
-        'medical-equipment': Product,
+        'tableware': Product,
+        'accessories': Product,
+        'jewelry': Product,
         'clothing': ClothingProduct,
         'shoes': ShoeProduct,
         'electronics': ElectronicsProduct,
     }
 
     PRODUCT_TYPE_CATEGORY_SLUGS = {
-        'medicines': ['medicines-general'],
-        'tableware': ['tableware-serveware'],
-        'furniture': ['furniture-living'],
-        'medical-equipment': ['medical-equipment'],
+        # Для базовых типов (медицина/БАДы/медтехника/аксессуары) список slug задаётся при необходимости.
     }
 
     def _normalize_product_type(self, raw_type: str | None) -> str | None:
@@ -466,7 +472,11 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         """Фильтрация товаров одежды по параметрам."""
-        queryset = ClothingProduct.objects.filter(is_active=True)
+        queryset = ClothingProduct.objects.filter(is_active=True).prefetch_related(
+            'images',
+            'variants',
+            'variants__images',
+        )
         
         # Фильтр по категории (поддержка массивов)
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
@@ -496,12 +506,12 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
         # Фильтр по размеру
         size = self.request.query_params.get('size')
         if size:
-            queryset = queryset.filter(size=size)
+            queryset = queryset.filter(models.Q(size=size) | models.Q(variants__size=size))
         
         # Фильтр по цвету
         color = self.request.query_params.get('color')
         if color:
-            queryset = queryset.filter(color__icontains=color)
+            queryset = queryset.filter(models.Q(color__icontains=color) | models.Q(variants__color__icontains=color))
         
         # Фильтр по материалу
         material = self.request.query_params.get('material')
@@ -534,8 +544,6 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
                 queryset = queryset.filter(price__lte=max_price)
             except (ValueError, TypeError):
                 pass
-        
-        queryset = queryset.prefetch_related('images')
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
@@ -576,6 +584,24 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
             is_featured=True
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Деталь по товару или по варианту (если slug варианта)."""
+        slug = kwargs.get("slug")
+        active_variant_slug = None
+        obj = None
+        if slug:
+            variant = ClothingVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            if variant:
+                obj = variant.product
+                active_variant_slug = variant.slug
+        if obj is None:
+            obj = self.get_object()
+        serializer = self.get_serializer(
+            obj,
+            context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}
+        )
         return Response(serializer.data)
 
 
@@ -648,7 +674,11 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         """Фильтрация товаров обуви по параметрам."""
-        queryset = ShoeProduct.objects.filter(is_active=True)
+        queryset = ShoeProduct.objects.filter(is_active=True).prefetch_related(
+            'images',
+            'variants',
+            'variants__images',
+        )
         
         # Фильтр по категории (поддержка массивов)
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
@@ -678,12 +708,12 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
         # Фильтр по размеру
         size = self.request.query_params.get('size')
         if size:
-            queryset = queryset.filter(size=size)
+            queryset = queryset.filter(models.Q(size=size) | models.Q(variants__size=size))
         
         # Фильтр по цвету
         color = self.request.query_params.get('color')
         if color:
-            queryset = queryset.filter(color__icontains=color)
+            queryset = queryset.filter(models.Q(color__icontains=color) | models.Q(variants__color__icontains=color))
         
         # Фильтр по материалу
         material = self.request.query_params.get('material')
@@ -716,8 +746,6 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
                 queryset = queryset.filter(price__lte=max_price)
             except (ValueError, TypeError):
                 pass
-        
-        queryset = queryset.prefetch_related('images')
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
@@ -758,6 +786,24 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
             is_featured=True
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Деталь по товару или по варианту (если slug варианта)."""
+        slug = kwargs.get("slug")
+        active_variant_slug = None
+        obj = None
+        if slug:
+            variant = ShoeVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            if variant:
+                obj = variant.product
+                active_variant_slug = variant.slug
+        if obj is None:
+            obj = self.get_object()
+        serializer = self.get_serializer(
+            obj,
+            context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}
+        )
         return Response(serializer.data)
 
 
@@ -1124,9 +1170,11 @@ class FavoriteViewSet(viewsets.ViewSet):
         PRODUCT_MODEL_MAP = {
             'medicines': Product,
             'supplements': Product,
+            'medical_equipment': Product,
             'tableware': Product,
             'furniture': Product,
-            'medical-equipment': Product,
+            'accessories': Product,
+            'jewelry': Product,
             'clothing': ClothingProduct,
             'shoes': ShoeProduct,
             'electronics': ElectronicsProduct,

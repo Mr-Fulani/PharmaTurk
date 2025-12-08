@@ -13,21 +13,30 @@ type CategoryType =
   | 'shoes'
   | 'electronics'
   | 'supplements'
-  | 'tableware'
-  | 'furniture'
   | 'medical-equipment'
+  | 'furniture'
+  | 'tableware'
+  | 'accessories'
+  | 'jewelry'
 
 const CATEGORY_ALIASES: Record<string, CategoryType> = {
-  supplements: 'medicines',
-  tableware: 'tableware',
-  furniture: 'furniture',
+  supplements: 'supplements',
   'medical-equipment': 'medical-equipment',
+  medical_equipment: 'medical-equipment',
+  furniture: 'furniture',
+  tableware: 'tableware',
+  accessories: 'accessories',
+  jewelry: 'jewelry',
 }
 
 const normalizeCategoryType = (value?: string): CategoryType => {
   if (!value) return 'medicines'
   const lower = value.toLowerCase()
-  if (['medicines', 'clothing', 'shoes', 'electronics'].includes(lower)) {
+  if ([
+    'medicines', 'clothing', 'shoes', 'electronics',
+    'supplements', 'medical-equipment',
+    'furniture', 'tableware', 'accessories', 'jewelry'
+  ].includes(lower)) {
     return lower as CategoryType
   }
   return CATEGORY_ALIASES[lower] || 'medicines'
@@ -41,10 +50,12 @@ const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
       return `/api/catalog/shoes/products/${slug}`
     case 'electronics':
       return `/api/catalog/electronics/products/${slug}`
+    case 'furniture':
+    case 'tableware':
+    case 'accessories':
+    case 'jewelry':
     case 'medicines':
     case 'supplements':
-    case 'tableware':
-    case 'furniture':
     case 'medical-equipment':
     default:
       return `/api/catalog/products/${slug}`
@@ -61,6 +72,28 @@ interface Product {
   main_image?: string
   main_image_url?: string
   images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
+  variants?: Variant[]
+  default_variant_slug?: string | null
+  active_variant_slug?: string | null
+  active_variant_price?: string | null
+  active_variant_currency?: string | null
+  active_variant_stock_quantity?: number | null
+  active_variant_main_image_url?: string | null
+}
+
+interface Variant {
+  id: number
+  slug: string
+  name?: string
+  color?: string
+  size?: string
+  price?: number | string | null
+  old_price?: number | string | null
+  currency?: string
+  is_available?: boolean
+  stock_quantity?: number | null
+  main_image?: string
+  images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
 }
 
 export default function ProductPage({
@@ -76,13 +109,62 @@ export default function ProductPage({
   if (!product) {
     return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
   }
-  const gallery = product.images || []
+  const variants = product.variants || []
+  const [selectedVariantSlug, setSelectedVariantSlug] = useState<string | null>(
+    product.active_variant_slug || product.default_variant_slug || variants[0]?.slug || null
+  )
+  const selectedVariant = variants.find((v) => v.slug === selectedVariantSlug)
+
+  const gallerySource = selectedVariant?.images?.length ? selectedVariant.images : (product.images || [])
   const initialImage =
+    selectedVariant?.main_image ||
+    product.active_variant_main_image_url ||
     product.main_image_url ||
     product.main_image ||
-    gallery.find((img) => img.is_main)?.image_url ||
-    gallery[0]?.image_url
+    gallerySource.find((img) => img.is_main)?.image_url ||
+    gallerySource[0]?.image_url
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
+
+  const colors = Array.from(new Set((variants.map((v) => v.color).filter(Boolean) as string[])))
+  const sizes = Array.from(new Set((variants.map((v) => v.size).filter(Boolean) as string[])))
+
+  const [selectedColor, setSelectedColor] = useState<string | undefined>(selectedVariant?.color || colors[0])
+  const [selectedSize, setSelectedSize] = useState<string | undefined>(selectedVariant?.size || sizes[0])
+
+  // Подбор варианта при смене цвета/размера
+  const pickVariant = (color?: string, size?: string) => {
+    let found = variants.find((v) => {
+      const colorOk = color ? v.color === color : true
+      const sizeOk = size ? v.size === size : true
+      return colorOk && sizeOk
+    })
+    if (!found && color) {
+      found = variants.find((v) => v.color === color)
+    }
+    if (!found && size) {
+      found = variants.find((v) => v.size === size)
+    }
+    if (!found) {
+      found = variants[0]
+    }
+    if (found) {
+      setSelectedVariantSlug(found.slug)
+      setActiveImage(
+        found.main_image ||
+          found.images?.find((img) => img.is_main)?.image_url ||
+          found.images?.[0]?.image_url ||
+          product.main_image_url ||
+          product.main_image ||
+          gallerySource.find((img) => img.is_main)?.image_url ||
+          gallerySource[0]?.image_url ||
+          null
+      )
+    }
+  }
+
+  const displayPrice = selectedVariant?.price
+    ? `${selectedVariant.price} ${selectedVariant.currency || product.currency}`
+    : product.active_variant_price || (product.price ? `${product.price} ${product.currency}` : t('price_on_request'))
   return (
     <>
       <Head>
@@ -98,9 +180,9 @@ export default function ProductPage({
               // eslint-disable-next-line @next/next/no-img-element
               <img src="/product-placeholder.svg" alt="No image" className="aspect-square w-full rounded-xl object-cover" />
             )}
-            {gallery.length > 1 && (
+            {gallerySource.length > 1 && (
               <div className="mt-3 flex gap-2 overflow-x-auto">
-                {gallery.map((img) => (
+                {gallerySource.map((img) => (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     key={img.id}
@@ -116,13 +198,57 @@ export default function ProductPage({
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
             <div className="mt-3 text-xl font-semibold text-gray-900">
-              {product.price ? `${product.price} ${product.currency}` : t('price_on_request')}
+              {displayPrice || t('price_on_request')}
             </div>
+            {(colors.length > 0 || sizes.length > 0) && (
+              <div className="mt-4 flex flex-col gap-3">
+                {colors.length > 0 && (
+                  <label className="flex flex-col text-sm text-gray-700 gap-1">
+                    {t('color', 'Цвет')}
+                    <select
+                      value={selectedColor || ''}
+                      onChange={(e) => {
+                        const val = e.target.value || undefined
+                        setSelectedColor(val)
+                        pickVariant(val, selectedSize)
+                      }}
+                      className="rounded-md border-gray-300 shadow-sm focus:border-violet-500 focus:ring-violet-500"
+                    >
+                      {colors.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {sizes.length > 0 && (
+                  <label className="flex flex-col text-sm text-gray-700 gap-1">
+                    {t('size', 'Размер')}
+                    <select
+                      value={selectedSize || ''}
+                      onChange={(e) => {
+                        const val = e.target.value || undefined
+                        setSelectedSize(val)
+                        pickVariant(selectedColor, val)
+                      }}
+                      className="rounded-md border-gray-300 shadow-sm focus:border-violet-500 focus:ring-violet-500"
+                    >
+                      {sizes.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
             <div className="mt-4 flex items-center gap-3">
             <AddToCartButton
               productId={isBaseProduct ? product.id : undefined}
               productType={productType}
-              productSlug={product.slug}
+              productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
             />
               {product.id && (
                 <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
@@ -158,7 +284,10 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const endpoint = resolveDetailEndpoint(categoryType, productSlug)
   try {
     const res = await axios.get(`${base}${endpoint}`)
-    const baseProductTypes: CategoryType[] = ['medicines', 'supplements', 'medical-equipment']
+    const baseProductTypes: CategoryType[] = [
+      'medicines', 'supplements', 'medical-equipment',
+      'furniture', 'tableware', 'accessories', 'jewelry'
+    ]
     const isBaseProduct = baseProductTypes.includes(categoryType)
     return {
       props: {

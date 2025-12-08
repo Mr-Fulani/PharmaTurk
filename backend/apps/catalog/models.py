@@ -3,6 +3,7 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinValueValidator
+from django.utils.text import slugify
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
 
@@ -19,9 +20,30 @@ CURRENCY_CHOICES = [
 class Category(models.Model):
     """Категория товаров."""
     
+    CATEGORY_TYPE_CHOICES = [
+        ("medicines", _("Медицина")),
+        ("supplements", _("БАДы")),
+        ("medical_equipment", _("Медтехника")),
+        ("clothing", _("Одежда")),
+        ("shoes", _("Обувь")),
+        ("electronics", _("Электроника")),
+        ("furniture", _("Мебель")),
+        ("tableware", _("Посуда")),
+        ("accessories", _("Аксессуары")),
+        ("jewelry", _("Украшения")),
+    ]
+    
     name = models.CharField(_("Название"), max_length=200)
     slug = models.SlugField(_("Slug"), max_length=200, unique=True)
     description = models.TextField(_("Описание"), blank=True)
+    category_type = models.CharField(
+        _("Тип категории"),
+        max_length=32,
+        choices=CATEGORY_TYPE_CHOICES,
+        default="medicines",
+        db_index=True,
+        help_text=_("Определяет домен: медицина, БАДы, медтехника, посуда, мебель, аксессуары, украшения и т.д.")
+    )
     parent = models.ForeignKey(
         "self", 
         on_delete=models.CASCADE, 
@@ -42,12 +64,61 @@ class Category(models.Model):
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
     class Meta:
-        verbose_name = _("Категория")
-        verbose_name_plural = _("Категории")
+        verbose_name = _("Категория (медицина/БАДы/медтехника/аксессуары)")
+        verbose_name_plural = _("Категории (медицина/БАДы/медтехника/аксессуары)")
         ordering = ["sort_order", "name"]
 
     def __str__(self):
         return self.name
+
+
+class CategoryMedicines(Category):
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Медицина")
+        verbose_name_plural = _("Категории — Медицина")
+
+
+class CategorySupplements(Category):
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — БАДы")
+        verbose_name_plural = _("Категории — БАДы")
+
+
+class CategoryMedicalEquipment(Category):
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Медтехника")
+        verbose_name_plural = _("Категории — Медтехника")
+
+
+class CategoryTableware(Category):
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Посуда")
+        verbose_name_plural = _("Категории — Посуда")
+
+
+class CategoryFurniture(Category):
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Мебель")
+        verbose_name_plural = _("Категории — Мебель")
+
+
+class CategoryAccessories(Category):
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Аксессуары")
+        verbose_name_plural = _("Категории — Аксессуары")
+
+
+class CategoryJewelry(Category):
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Украшения")
+        verbose_name_plural = _("Категории — Украшения")
 
 
 class Brand(models.Model):
@@ -81,15 +152,16 @@ class Product(models.Model):
     """Товар в каталоге."""
 
     PRODUCT_TYPE_CHOICES = [
-        ("medicines", _("Лекарства")),
+        ("medicines", _("Медицина")),
         ("supplements", _("БАДы")),
-        ("tableware", _("Посуда")),
-        ("furniture", _("Мебель")),
-        ("medical_equipment", _("Медицинская техника")),
+        ("medical_equipment", _("Медтехника")),
         ("clothing", _("Одежда")),
         ("shoes", _("Обувь")),
         ("electronics", _("Электроника")),
-        ("other", _("Прочее")),
+        ("furniture", _("Мебель")),
+        ("tableware", _("Посуда")),
+        ("accessories", _("Аксессуары")),
+        ("jewelry", _("Украшения")),
     ]
 
     AVAILABILITY_STATUS_CHOICES = [
@@ -275,8 +347,8 @@ class Product(models.Model):
     last_external_updated_at = models.DateTimeField(_("Изменён во внешнем API"), null=True, blank=True)
 
     class Meta:
-        verbose_name = _("Товар")
-        verbose_name_plural = _("Товары")
+        verbose_name = _("Товар (медицина/БАДы/медтехника/аксессуары)")
+        verbose_name_plural = _("Товары (медицина/БАДы/медтехника/аксессуары)")
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["external_id"]),
@@ -290,6 +362,55 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ProductMedicines(Product):
+    class Meta:
+        proxy = True
+        verbose_name = _("Товар — Медицина")
+        verbose_name_plural = _("Товары — Медицина")
+
+
+class ProductSupplements(Product):
+    class Meta:
+        proxy = True
+        verbose_name = _("Товар — БАДы")
+        verbose_name_plural = _("Товары — БАДы")
+
+
+class ProductMedicalEquipment(Product):
+    class Meta:
+        proxy = True
+        verbose_name = _("Товар — Медтехника")
+        verbose_name_plural = _("Товары — Медтехника")
+
+
+class ProductTableware(Product):
+    class Meta:
+        proxy = True
+        verbose_name = _("Товар — Посуда")
+        verbose_name_plural = _("Товары — Посуда")
+
+
+class ProductFurniture(Product):
+    class Meta:
+        proxy = True
+        verbose_name = _("Товар — Мебель")
+        verbose_name_plural = _("Товары — Мебель")
+
+
+class ProductAccessories(Product):
+    class Meta:
+        proxy = True
+        verbose_name = _("Товар — Аксессуары")
+        verbose_name_plural = _("Товары — Аксессуары")
+
+
+class ProductJewelry(Product):
+    class Meta:
+        proxy = True
+        verbose_name = _("Товар — Украшения")
+        verbose_name_plural = _("Товары — Украшения")
 
 
 class ProductImage(models.Model):
@@ -317,6 +438,88 @@ class ProductImage(models.Model):
 
     def __str__(self):
         return f"Изображение {self.product.name}"
+
+
+class ClothingVariant(models.Model):
+    """Вариант одежды (цвет/размер, цена, остаток)."""
+
+    product = models.ForeignKey(
+        "ClothingProduct",
+        on_delete=models.CASCADE,
+        related_name="variants",
+        verbose_name=_("Товар одежды (родитель)")
+    )
+    name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/цвету/размеру, можно переопределить."))
+    color = models.CharField(_("Цвет"), max_length=50, blank=True)
+    size = models.CharField(_("Размер"), max_length=50, blank=True)
+    sku = models.CharField(_("SKU"), max_length=100, blank=True)
+    barcode = models.CharField(_("Штрихкод"), max_length=100, blank=True)
+    gtin = models.CharField(_("GTIN"), max_length=100, blank=True)
+    mpn = models.CharField(_("MPN"), max_length=100, blank=True)
+    price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    currency = models.CharField(_("Валюта"), max_length=5, choices=CURRENCY_CHOICES, default="RUB")
+    old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Вариант одежды")
+        verbose_name_plural = _("Варианты одежды")
+        ordering = ["product", "sort_order", "-created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["slug"]),
+            models.Index(fields=["is_active", "is_available"]),
+        ]
+
+    def __str__(self):
+        base = self.name or self.product.name
+        attrs = f"{self.color or ''} {self.size or ''}".strip()
+        return f"{base} ({attrs})" if attrs else base
+
+    def save(self, *args, **kwargs):
+        """Автогенерация slug, если не заполнен."""
+        if not self.slug:
+            base_name = self.name or self.product.name
+            composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
+            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+        super().save(*args, **kwargs)
+
+
+class ClothingVariantImage(models.Model):
+    """Изображение варианта одежды."""
+
+    variant = models.ForeignKey(
+        ClothingVariant,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Вариант одежды")
+    )
+    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение варианта одежды")
+        verbose_name_plural = _("Изображения вариантов одежды")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["variant", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение варианта {self.variant}"
 
 
 class ProductAttribute(models.Model):
@@ -794,6 +997,88 @@ class ShoeProductImage(models.Model):
         return f"Изображение {self.product.name}"
 
 
+class ShoeVariant(models.Model):
+    """Вариант обуви (цвет/размер, цена, остаток)."""
+
+    product = models.ForeignKey(
+        ShoeProduct,
+        on_delete=models.CASCADE,
+        related_name="variants",
+        verbose_name=_("Товар (родитель)")
+    )
+    name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/цвету/размеру, можно переопределить."))
+    color = models.CharField(_("Цвет"), max_length=50, blank=True)
+    size = models.CharField(_("Размер"), max_length=20, blank=True, help_text=_("Используйте EU размер; можно оставить пустым, если не применяется."))
+    sku = models.CharField(_("SKU"), max_length=100, blank=True)
+    barcode = models.CharField(_("Штрихкод"), max_length=100, blank=True)
+    gtin = models.CharField(_("GTIN"), max_length=100, blank=True)
+    mpn = models.CharField(_("MPN"), max_length=100, blank=True)
+    price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    currency = models.CharField(_("Валюта"), max_length=5, choices=CURRENCY_CHOICES, default="RUB")
+    old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Вариант обуви")
+        verbose_name_plural = _("Варианты обуви")
+        ordering = ["product", "sort_order", "-created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["slug"]),
+            models.Index(fields=["is_active", "is_available"]),
+        ]
+
+    def __str__(self):
+        base = self.name or self.product.name
+        attrs = f"{self.color or ''} {self.size or ''}".strip()
+        return f"{base} ({attrs})" if attrs else base
+
+    def save(self, *args, **kwargs):
+        """Автогенерация slug, если не заполнен."""
+        if not self.slug:
+            base_name = self.name or self.product.name
+            composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
+            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+        super().save(*args, **kwargs)
+
+
+class ShoeVariantImage(models.Model):
+    """Изображение варианта обуви."""
+
+    variant = models.ForeignKey(
+        ShoeVariant,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Вариант обуви")
+    )
+    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение варианта обуви")
+        verbose_name_plural = _("Изображения вариантов обуви")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["variant", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение варианта {self.variant}"
+
+
 class ElectronicsCategory(models.Model):
     """Категория электроники."""
     
@@ -1015,6 +1300,14 @@ class Banner(models.Model):
         return f"{position_display}{title_part}"
 
 
+class MarketingBanner(Banner):
+    class Meta:
+        proxy = True
+        app_label = "marketing"
+        verbose_name = _("Баннер")
+        verbose_name_plural = _("Маркетинг — Баннеры")
+
+
 class BannerMedia(models.Model):
     """Медиа-файл для баннера (изображение, видео или GIF)."""
     
@@ -1155,3 +1448,11 @@ class BannerMedia(models.Model):
         elif self.content_type == 'gif':
             return 'image/gif'
         return ''
+
+
+class MarketingBannerMedia(BannerMedia):
+    class Meta:
+        proxy = True
+        app_label = "marketing"
+        verbose_name = _("Медиа баннеров")
+        verbose_name_plural = _("Маркетинг — Медиа баннеров")

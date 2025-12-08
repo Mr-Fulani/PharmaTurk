@@ -3,8 +3,8 @@
 from rest_framework import serializers
 from .models import (
     Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
-    ClothingCategory, ClothingProduct, ClothingProductImage,
-    ShoeCategory, ShoeProduct, ShoeProductImage,
+    ClothingCategory, ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage,
+    ShoeCategory, ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage,
     ElectronicsCategory, ElectronicsProduct, ElectronicsProductImage,
     Banner, BannerMedia
 )
@@ -251,9 +251,11 @@ class AddToFavoriteSerializer(serializers.Serializer):
         PRODUCT_MODEL_MAP = {
             'medicines': Product,
             'supplements': Product,
-            'tableware': Product,
+            'medical_equipment': Product,
             'furniture': Product,
-            'medical-equipment': Product,
+            'tableware': Product,
+            'accessories': Product,
+            'jewelry': Product,
             'clothing': ClothingProduct,
             'shoes': ShoeProduct,
             'electronics': ElectronicsProduct,
@@ -307,6 +309,32 @@ class ClothingProductImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
 
 
+class ClothingVariantImageSerializer(serializers.ModelSerializer):
+    """Сериализатор изображений варианта одежды."""
+
+    class Meta:
+        model = ClothingVariantImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+
+class ClothingVariantSerializer(serializers.ModelSerializer):
+    """Сериализатор варианта одежды."""
+
+    images = ClothingVariantImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ClothingVariant
+        fields = [
+            'id', 'slug', 'name', 'color', 'size',
+            'price', 'old_price', 'currency',
+            'is_available', 'stock_quantity',
+            'main_image', 'images',
+            'sku', 'barcode', 'gtin', 'mpn',
+            'is_active', 'sort_order',
+        ]
+        read_only_fields = ['id', 'slug', 'sort_order']
+
+
 class ClothingProductSerializer(serializers.ModelSerializer):
     """Сериализатор для товаров одежды (краткая информация)."""
     
@@ -316,6 +344,13 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = ClothingProduct
@@ -325,6 +360,9 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             'currency', 'size', 'color', 'material', 'season',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
             'images',
+            'variants', 'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url',
             'is_featured', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -337,6 +375,17 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         """
         if obj.main_image:
             return obj.main_image
+        # Пробуем активный вариант
+        variant = self._get_active_variant(obj)
+        if variant:
+            if variant.main_image:
+                return variant.main_image
+            v_main = variant.images.filter(is_main=True).first()
+            if v_main:
+                return v_main.image_url
+            v_first = variant.images.first()
+            if v_first:
+                return v_first.image_url
         gallery = getattr(obj, "images", None)
         if gallery:
             main_img = obj.images.filter(is_main=True).first()
@@ -365,6 +414,67 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         if not gallery:
             return []
         return ClothingProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+
+    # ------------------------------------------------------------------
+    # Варианты
+    # ------------------------------------------------------------------
+    def _get_default_variant(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return None
+        return variants.filter(is_active=True).order_by("sort_order", "id").first()
+
+    def _get_active_variant(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return None
+        active_slug = self.context.get("active_variant_slug")
+        if active_slug:
+            return variants.filter(slug=active_slug, is_active=True).first()
+        return self._get_default_variant(obj)
+
+    def get_variants(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return []
+        qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images")
+        return ClothingVariantSerializer(qs, many=True).data
+
+    def get_default_variant_slug(self, obj):
+        variant = self._get_default_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_slug(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_price(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return f"{variant.price} {variant.currency}"
+        return None
+
+    def get_active_variant_currency(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.currency if variant else None
+
+    def get_active_variant_stock_quantity(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.stock_quantity if variant else None
+
+    def get_active_variant_main_image_url(self, obj):
+        variant = self._get_active_variant(obj)
+        if not variant:
+            return None
+        if variant.main_image:
+            return variant.main_image
+        main_img = variant.images.filter(is_main=True).first()
+        if main_img:
+            return main_img.image_url
+        first_img = variant.images.first()
+        if first_img:
+            return first_img.image_url
+        return None
 
 
 class ShoeCategorySerializer(serializers.ModelSerializer):
@@ -397,15 +507,25 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = ShoeProduct
         fields = [
             'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
-            'currency', 'size', 'color', 'material', 'heel_height', 'sole_type',
+            'currency', 'size', 'color', 'material',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
             'images',
+            'variants', 'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url',
             'is_featured', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -418,6 +538,16 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         """
         if obj.main_image:
             return obj.main_image
+        variant = self._get_active_variant(obj)
+        if variant:
+            if variant.main_image:
+                return variant.main_image
+            v_main = variant.images.filter(is_main=True).first()
+            if v_main:
+                return v_main.image_url
+            v_first = variant.images.first()
+            if v_first:
+                return v_first.image_url
         main_img = getattr(obj, "images", None)
         if main_img:
             main_img = obj.images.filter(is_main=True).first()
@@ -447,6 +577,67 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             return []
         return ShoeProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
 
+    # ------------------------------------------------------------------
+    # Варианты
+    # ------------------------------------------------------------------
+    def _get_default_variant(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return None
+        return variants.filter(is_active=True).order_by("sort_order", "id").first()
+
+    def _get_active_variant(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return None
+        active_slug = self.context.get("active_variant_slug")
+        if active_slug:
+            return variants.filter(slug=active_slug, is_active=True).first()
+        return self._get_default_variant(obj)
+
+    def get_variants(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return []
+        qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images")
+        return ShoeVariantSerializer(qs, many=True).data
+
+    def get_default_variant_slug(self, obj):
+        variant = self._get_default_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_slug(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_price(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return f"{variant.price} {variant.currency}"
+        return None
+
+    def get_active_variant_currency(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.currency if variant else None
+
+    def get_active_variant_stock_quantity(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.stock_quantity if variant else None
+
+    def get_active_variant_main_image_url(self, obj):
+        variant = self._get_active_variant(obj)
+        if not variant:
+            return None
+        if variant.main_image:
+            return variant.main_image
+        main_img = variant.images.filter(is_main=True).first()
+        if main_img:
+            return main_img.image_url
+        first_img = variant.images.first()
+        if first_img:
+            return first_img.image_url
+        return None
+
 
 class ShoeProductImageSerializer(serializers.ModelSerializer):
     """Сериализатор изображений обуви."""
@@ -454,6 +645,32 @@ class ShoeProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShoeProductImage
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+
+class ShoeVariantImageSerializer(serializers.ModelSerializer):
+    """Сериализатор изображений варианта обуви."""
+
+    class Meta:
+        model = ShoeVariantImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+
+class ShoeVariantSerializer(serializers.ModelSerializer):
+    """Сериализатор варианта обуви."""
+
+    images = ShoeVariantImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ShoeVariant
+        fields = [
+            'id', 'slug', 'name', 'color', 'size',
+            'price', 'old_price', 'currency',
+            'is_available', 'stock_quantity',
+            'main_image', 'images',
+            'sku', 'barcode', 'gtin', 'mpn',
+            'is_active', 'sort_order',
+        ]
+        read_only_fields = ['id', 'slug', 'sort_order']
 
 
 

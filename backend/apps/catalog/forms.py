@@ -3,7 +3,12 @@ from django.core.exceptions import ValidationError
 from django.forms.models import BaseInlineFormSet
 from django.utils.translation import gettext_lazy as _
 
-from .models import Product, ProductImage
+from .models import (
+    Product,
+    ProductImage,
+    ClothingVariantImage,
+    ShoeVariantImage,
+)
 
 
 class ProductImageInlineFormSet(BaseInlineFormSet):
@@ -23,6 +28,24 @@ class ProductImageInlineFormSet(BaseInlineFormSet):
             has_main_field = getattr(instance, "main_image", None) if instance else None
             if not has_main_field:
                 raise ValidationError(_("Необходимо отметить как минимум одно изображение как главное."))
+
+
+class VariantImageInlineFormSet(BaseInlineFormSet):
+    """Формсет для изображений вариантов (та же логика, что и для товаров)."""
+
+    def clean(self):
+        super().clean()
+        images = [
+            form for form in self.forms
+            if not form.cleaned_data.get("DELETE", False) and form.cleaned_data.get("image_url")
+        ]
+        if len(images) > 5:
+            raise ValidationError(_("Можно загрузить не более 5 изображений варианта."))
+        if images and not any(img.cleaned_data.get("is_main") for img in images):
+            instance = getattr(self, "instance", None)
+            has_main_field = getattr(instance, "main_image", None) if instance else None
+            if not has_main_field:
+                raise ValidationError(_("Необходимо отметить как минимум одно изображение варианта как главное."))
 
 
 class ProductForm(forms.ModelForm):

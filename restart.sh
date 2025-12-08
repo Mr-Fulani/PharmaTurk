@@ -191,16 +191,21 @@ for i in {1..30}; do
     fi
 done
 
-# Применение миграций Django
-info "Применяем миграции Django (если есть)..."
+# Создание и применение миграций Django
+info "Создаем и применяем миграции Django..."
 if docker compose ps backend | grep -q "Up"; then
+    if docker compose exec -T backend poetry run python manage.py makemigrations; then
+        success "Миграции созданы (если были изменения моделей)"
+    else
+        warning "Ошибка при создании миграций (возможно, контейнер еще не готов)"
+    fi
     if docker compose exec -T backend poetry run python manage.py migrate --noinput; then
         success "Миграции применены"
     else
         warning "Ошибка при применении миграций (возможно, контейнер еще не готов)"
     fi
 else
-    warning "Backend контейнер не запущен, миграции не применены"
+    warning "Backend контейнер не запущен, миграции не созданы и не применены"
 fi
 
 # Показ логов (если указано)

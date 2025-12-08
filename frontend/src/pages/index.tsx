@@ -99,21 +99,39 @@ export default function Home({ brands }: HomePageProps) {
       textColor: 'text-white'
     },
     {
-      id: 'tableware',
-      name: 'Посуда',
-      slug: 'tableware',
-      description: 'Кухонная посуда и аксессуары',
-      imageUrl: '/category-tableware.jpg',
-      bgColor: 'from-orange-600 to-red-500',
-      textColor: 'text-white'
-    },
-    {
       id: 'furniture',
       name: 'Мебель',
       slug: 'furniture',
       description: 'Мебель для дома и офиса',
       imageUrl: '/category-furniture.jpg',
       bgColor: 'from-amber-800 to-orange-700',
+      textColor: 'text-white'
+    },
+    {
+      id: 'tableware',
+      name: 'Посуда',
+      slug: 'tableware',
+      description: 'Кухонная, сервировка, медь, фарфор, стекло',
+      imageUrl: '/category-tableware.jpg',
+      bgColor: 'from-orange-600 to-red-500',
+      textColor: 'text-white'
+    },
+    {
+      id: 'accessories',
+      name: 'Аксессуары',
+      slug: 'accessories',
+      description: 'Ремни, брелоки и др. — добавляйте вручную',
+      imageUrl: '/category-accessories.jpg',
+      bgColor: 'from-purple-600 to-pink-500',
+      textColor: 'text-white'
+    },
+    {
+      id: 'jewelry',
+      name: 'Украшения',
+      slug: 'jewelry',
+      description: 'Кольца, цепочки, браслеты, серьги',
+      imageUrl: '/category-jewelry.jpg',
+      bgColor: 'from-amber-500 to-yellow-400',
       textColor: 'text-white'
     },
     {
@@ -153,18 +171,12 @@ export default function Home({ brands }: HomePageProps) {
       'Atabay İlaç', 'İ.E. Ulagay', 'Centurion Pharma'
     ]
     // Бренды посуды
-    const tablewareBrands = [
-      'Karaca', 'Paşabahçe', 'Kütahya Porselen', 'Güral Porselen', 'Porland', 
-      'Hisar', 'Emsan', 'Tantitoni'
-    ]
-    // Бренды мебели
-    const furnitureBrands = [
-      'Enza Home', 'Yataş', 'Doğtaş', 'Kelebek', 'Bellona', 'Lazzoni', 'Nill\'s', 'İder'
-    ]
     // Бренды медицинского оборудования
     const medicalEquipmentBrands = [
       'Alvimedica', 'Bıçakcılar', 'Turkuaz Healthcare', 'Tıpsan', 'Ankara Healthcare'
     ]
+    // Бренды мед. аксессуаров / расходников (пример)
+    const medicalAccessoriesBrands: string[] = []
     
     let categoryType = 'clothing' // По умолчанию одежда
     
@@ -176,11 +188,9 @@ export default function Home({ brands }: HomePageProps) {
       categoryType = 'electronics'
     } else if (medicinesBrands.includes(brand.name)) {
       categoryType = 'medicines'
-    } else if (tablewareBrands.includes(brand.name)) {
-      categoryType = 'tableware'
-    } else if (furnitureBrands.includes(brand.name)) {
-      categoryType = 'furniture'
     } else if (medicalEquipmentBrands.includes(brand.name)) {
+      categoryType = 'medical-equipment'
+    } else if (medicalAccessoriesBrands.includes(brand.name)) {
       categoryType = 'medical-equipment'
     }
     

@@ -166,13 +166,22 @@ class CartViewSet(viewsets.ViewSet):
         return Response(CartSerializer(cart).data)
 
     @extend_schema(
-        description="Добавить товар в текущую корзину (анонимно по X-Cart-Session/cookie)",
+        description=(
+            "Добавить товар в текущую корзину (анонимно по X-Cart-Session/cookie). "
+            "Для базовых товаров передавайте product_id. Для вариантов одежды/обуви "
+            "передавайте product_type + product_slug (slug варианта)."
+        ),
         request=AddToCartSerializer,
         responses=CartSerializer,
         examples=[
             OpenApiExample(
                 'Запрос',
                 value={"product_id": 1, "quantity": 1},
+                request_only=True
+            ),
+            OpenApiExample(
+                'Запрос (вариант обуви)',
+                value={"product_type": "shoes", "product_slug": "nike-air-force-white-42", "quantity": 1},
                 request_only=True
             ),
             OpenApiExample(
@@ -200,11 +209,19 @@ class CartViewSet(viewsets.ViewSet):
             )
         ]
     )
-    @action(detail=False, methods=['post'], url_path='add')
+    @action(detail=False, methods=['post'], url_path=r'add/?')
     def add(self, request):
         cart = _get_or_create_cart(request)
         serializer = AddToCartSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception as exc:
+            # Логируем входящие данные и ошибки для диагностики проблем добавления
+            logger.warning(
+                "cart.add validation failed",
+                extra={"data": dict(request.data), "errors": getattr(exc, "detail", str(exc))}
+            )
+            raise
         product = serializer.validated_data['product']
         quantity = serializer.validated_data['quantity']
 
