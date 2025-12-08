@@ -84,36 +84,50 @@
   color: #eee;
   transform: translate(0, -50%);
   font-family: system-ui, -apple-system, sans-serif;
-  display: none;
-  z-index: 5;
+  z-index: 1000;
+  pointer-events: auto;
 }
 
-/* Контент показывается для второго элемента (активного, как в примере) */
+/* Скрываем контент на миниатюрах (nth-child(3) и далее) */
+.slide .item:nth-child(n + 3) .content {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+/* Убеждаемся, что контент виден на больших картинках (nth-child(1) и nth-child(2)) */
+.slide .item:nth-child(1) .content,
 .slide .item:nth-child(2) .content {
   display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 1000 !important;
 }
 
-/* Если только один баннер, контент показывается для первого элемента */
-.slide .item:only-child .content {
-  display: block !important;
-}
-
-.name {
+/* Заголовок H2 */
+.name,
+.content h2.name {
   font-size: 40px;
   text-transform: uppercase;
   font-weight: bold;
   opacity: 0;
   animation: animate 1s ease-in-out 1 forwards;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  margin: 0;
+  padding: 0;
 }
 
-.des {
+/* Описание H3 */
+.des,
+.content h3.des {
   margin-top: 10px;
   margin-bottom: 20px;
   opacity: 0;
   animation: animate 1s ease-in-out 0.3s 1 forwards;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
   line-height: 1.5;
+  font-size: inherit;
+  font-weight: normal;
 }
 
 .button {
@@ -129,6 +143,30 @@
   transition: all 0.3s ease;
   text-transform: uppercase;
   font-size: 14px;
+}
+
+/* Убеждаемся, что элементы контента видимы на активных больших картинках */
+.slide .item:nth-child(1) .content,
+.slide .item:nth-child(2) .content {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Принудительно запускаем анимацию для элементов контента на активных больших картинках */
+.slide .item:nth-child(1) .content .name,
+.slide .item:nth-child(2) .content .name {
+  animation: animate 1s ease-in-out 0s 1 forwards !important;
+}
+
+.slide .item:nth-child(1) .content .des,
+.slide .item:nth-child(2) .content .des {
+  animation: animate 1s ease-in-out 0.3s 1 forwards !important;
+}
+
+.slide .item:nth-child(1) .content .button,
+.slide .item:nth-child(2) .content .button {
+  animation: animate 1s ease-in-out 0.6s 1 forwards !important;
 }
 
 .button:hover {

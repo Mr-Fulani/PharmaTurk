@@ -262,6 +262,23 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError):
                 pass
         
+        # Фильтр по типу товара
+        product_type = self.request.query_params.get('product_type')
+        if product_type:
+            queryset = queryset.filter(product_type=product_type)
+
+        # Фильтр по статусу доступности
+        availability_status = self.request.query_params.get('availability_status')
+        if availability_status:
+            queryset = queryset.filter(availability_status=availability_status)
+
+        # Фильтр по стране происхождения
+        country_of_origin = self.request.query_params.get('country_of_origin')
+        if country_of_origin:
+            countries = [c.strip() for c in country_of_origin.split(',') if c.strip()]
+            if countries:
+                queryset = queryset.filter(country_of_origin__in=countries)
+        
         # Фильтр по наличию
         is_available = self.request.query_params.get('is_available')
         if is_available is not None:
@@ -292,6 +309,9 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             OpenApiParameter(name="max_price", type=float, required=False, description="Максимальная цена"),
             OpenApiParameter(name="is_available", type=bool, required=False, description="В наличии"),
             OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
+                OpenApiParameter(name="product_type", type=str, required=False, description="Тип товара (например, medicines, clothing)"),
+                OpenApiParameter(name="availability_status", type=str, required=False, description="Статус доступности (in_stock, backorder, preorder, out_of_stock, discontinued)"),
+                OpenApiParameter(name="country_of_origin", type=str, required=False, description="Страна происхождения (можно через запятую)"),
         ]
     )
     def list(self, request, *args, **kwargs):

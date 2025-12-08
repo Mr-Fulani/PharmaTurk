@@ -84,11 +84,21 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'id', 'name', 'name_en', 'slug', 'description', 'description_en',
+            'category', 'brand',
+            'product_type',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'converted_price_rub', 'converted_price_usd',
             'final_price_rub', 'final_price_usd', 'margin_percent_applied',
-            'is_available', 'stock_quantity', 'main_image_url',
+            'availability_status', 'is_available', 'stock_quantity',
+            'min_order_quantity', 'pack_quantity',
+            'country_of_origin', 'gtin', 'mpn',
+            'weight_value', 'weight_unit', 'length', 'width', 'height', 'dimensions_unit',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
+            'meta_title_en', 'meta_description_en', 'meta_keywords_en',
+            'og_title_en', 'og_description_en',
+            'main_image_url',
             'is_featured', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -155,6 +165,7 @@ class ProductSearchSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             'id', 'name', 'slug', 'category_name', 'brand_name',
+            'product_type',
             'price', 'price_formatted', 'currency', 'is_available',
             'main_image', 'is_featured'
         ]
@@ -460,7 +471,8 @@ class BannerMediaSerializer(serializers.ModelSerializer):
     class Meta:
         model = BannerMedia
         fields = [
-            'id', 'content_type', 'content_url', 'content_mime_type', 'sort_order', 'link_url'
+            'id', 'content_type', 'content_url', 'content_mime_type', 'sort_order', 
+            'link_url', 'title', 'description', 'link_text'
         ]
         read_only_fields = ['id', 'content_url', 'content_mime_type']
     
@@ -503,7 +515,7 @@ class BannerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Banner
         fields = [
-            'id', 'title', 'position', 'link_url', 'link_text', 
+            'id', 'title', 'description', 'position', 'link_url', 'link_text', 
             'is_active', 'sort_order', 'media_files'
         ]
 

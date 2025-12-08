@@ -70,11 +70,40 @@ class Brand(models.Model):
 
 class Product(models.Model):
     """Товар в каталоге."""
+
+    PRODUCT_TYPE_CHOICES = [
+        ("medicines", _("Лекарства")),
+        ("supplements", _("БАДы")),
+        ("tableware", _("Посуда")),
+        ("furniture", _("Мебель")),
+        ("medical_equipment", _("Медицинская техника")),
+        ("clothing", _("Одежда")),
+        ("shoes", _("Обувь")),
+        ("electronics", _("Электроника")),
+        ("other", _("Прочее")),
+    ]
+
+    AVAILABILITY_STATUS_CHOICES = [
+        ("in_stock", _("В наличии")),
+        ("backorder", _("Под заказ")),
+        ("preorder", _("Предзаказ")),
+        ("out_of_stock", _("Нет в наличии")),
+        ("discontinued", _("Снят с производства")),
+    ]
     
     # Основная информация
     name = models.CharField(_("Название"), max_length=500)
     slug = models.SlugField(_("Slug"), max_length=500, unique=True)
     description = models.TextField(_("Описание"), blank=True)
+    name_en = models.CharField(_("Название (англ.)"), max_length=500, blank=True)
+    description_en = models.TextField(_("Описание (англ.)"), blank=True)
+    product_type = models.CharField(
+        _("Тип товара"),
+        max_length=32,
+        choices=PRODUCT_TYPE_CHOICES,
+        default="medicines",
+        db_index=True,
+    )
     
     # Категоризация
     category = models.ForeignKey(
@@ -130,6 +159,40 @@ class Product(models.Model):
     margin_percent_applied = models.DecimalField(
         _("Применённая маржа, %"), max_digits=5, decimal_places=2, default=0
     )
+    availability_status = models.CharField(
+        _("Статус доступности"),
+        max_length=32,
+        choices=AVAILABILITY_STATUS_CHOICES,
+        default="in_stock",
+        db_index=True,
+    )
+    min_order_quantity = models.PositiveIntegerField(
+        _("Минимальное количество заказа"), default=1
+    )
+    pack_quantity = models.PositiveIntegerField(
+        _("Количество в упаковке"), null=True, blank=True
+    )
+    country_of_origin = models.CharField(
+        _("Страна происхождения"), max_length=100, blank=True, db_index=True
+    )
+    gtin = models.CharField(_("GTIN"), max_length=64, blank=True)
+    mpn = models.CharField(_("MPN"), max_length=64, blank=True)
+    weight_value = models.DecimalField(
+        _("Вес"), max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    weight_unit = models.CharField(_("Единица веса"), max_length=10, default="g")
+    length = models.DecimalField(
+        _("Длина"), max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    width = models.DecimalField(
+        _("Ширина"), max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    height = models.DecimalField(
+        _("Высота"), max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    dimensions_unit = models.CharField(
+        _("Единица размера"), max_length=10, default="cm"
+    )
     
     # Наличие и статус
     is_available = models.BooleanField(_("В наличии"), default=True)
@@ -142,6 +205,23 @@ class Product(models.Model):
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    meta_title = models.CharField(_("Meta Title"), max_length=255, blank=True)
+    meta_description = models.CharField(_("Meta Description"), max_length=500, blank=True)
+    meta_keywords = models.CharField(_("Meta Keywords"), max_length=500, blank=True)
+    og_title = models.CharField(_("OG Title"), max_length=255, blank=True)
+    og_description = models.CharField(_("OG Description"), max_length=500, blank=True)
+    og_image_url = models.URLField(_("OG Image URL"), blank=True)
+    meta_title_en = models.CharField(_("Meta Title (англ.)"), max_length=255, blank=True)
+    meta_description_en = models.CharField(
+        _("Meta Description (англ.)"), max_length=500, blank=True
+    )
+    meta_keywords_en = models.CharField(
+        _("Meta Keywords (англ.)"), max_length=500, blank=True
+    )
+    og_title_en = models.CharField(_("OG Title (англ.)"), max_length=255, blank=True)
+    og_description_en = models.CharField(
+        _("OG Description (англ.)"), max_length=500, blank=True
+    )
     
     # Метаданные
     sku = models.CharField(_("SKU"), max_length=100, blank=True)
@@ -166,6 +246,9 @@ class Product(models.Model):
             models.Index(fields=["is_active", "is_available"]),
             models.Index(fields=["category", "brand"]),
             models.Index(fields=["price"]),
+        models.Index(fields=["product_type"]),
+        models.Index(fields=["availability_status"]),
+        models.Index(fields=["country_of_origin"]),
         ]
 
     def __str__(self):
@@ -693,7 +776,14 @@ class Banner(models.Model):
     
     title = models.CharField(
         max_length=200,
-        verbose_name='Заголовок баннера'
+        verbose_name='Заголовок баннера',
+        blank=True,
+        help_text=_("Заголовок баннера (используется как fallback для медиа-файлов, если у них не указан свой заголовок)")
+    )
+    description = models.TextField(
+        _("Описание баннера"),
+        blank=True,
+        help_text=_("Описание баннера (используется как fallback для медиа-файлов, если у них не указано свое описание)")
     )
     position = models.CharField(
         max_length=50,
@@ -761,6 +851,23 @@ class BannerMedia(models.Model):
         _("Ссылка при клике на медиа"),
         blank=True,
         help_text=_("URL для перехода при клике на этот конкретный медиа-элемент. Если пусто, используется ссылка баннера.")
+    )
+    title = models.CharField(
+        _("Заголовок"),
+        max_length=200,
+        blank=True,
+        help_text=_("Заголовок для этого медиа-элемента (H2). Если пусто, используется заголовок баннера.")
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+        help_text=_("Описание для этого медиа-элемента (H3). Если пусто, используется описание баннера.")
+    )
+    link_text = models.CharField(
+        _("Текст кнопки"),
+        max_length=100,
+        blank=True,
+        help_text=_("Текст для кнопки ссылки. Если пусто, используется текст ссылки баннера.")
     )
     content_type = models.CharField(
         _("Тип контента"),
