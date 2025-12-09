@@ -256,7 +256,7 @@ export default function CategorySidebar({
       {isOpen && <div className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" onClick={onToggle} />}
       <aside
         className={`
-          fixed lg:sticky top-0 left-0 z-50
+          fixed lg:sticky top-16 lg:top-20 left-0 z-30
           h-full lg:h-auto lg:max-h-[calc(100vh-2rem)]
           w-80 bg-white border-r lg:border-r-0 lg:border border-gray-200
           shadow-xl lg:shadow-sm
