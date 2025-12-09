@@ -7,8 +7,8 @@ from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFor
 from .models import (
     Category, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
-    CategoryUnderwear, CategoryHeadwear,
-    Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
+    CategoryUnderwear, CategoryHeadwear, MarketingCategory,
+    Brand, MarketingBrand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ProductMedicines, ProductSupplements, ProductMedicalEquipment,
     ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
     ProductUnderwear, ProductHeadwear,
@@ -132,6 +132,7 @@ class BrandAdmin(admin.ModelAdmin):
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Media'), {'fields': ('logo', 'website')}),
         (_('Settings'), {'fields': ('is_active',)}),
+        (_('Категория'), {'fields': ('primary_category_slug',)}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
 
@@ -824,3 +825,79 @@ class BannerMediaAdmin(admin.ModelAdmin):
         return _("Нет контента")
     get_content_preview.short_description = _("Превью")
     get_content_preview.allow_tags = True
+
+
+@admin.register(MarketingBrand)
+class MarketingBrandAdmin(admin.ModelAdmin):
+    """Админка для карточек популярных брендов (раздел «Маркетинг»)."""
+    list_display = ('name', 'primary_category_slug', 'card_media_preview', 'is_active', 'created_at')
+    list_filter = ('is_active', 'primary_category_slug', 'created_at')
+    search_fields = ('name', 'slug', 'description')
+    ordering = ('name',)
+    prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ('card_media_preview',)
+
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Медиа карточки'), {'fields': ('card_media', 'card_media_preview', 'logo')}),
+        (_('Категория'), {'fields': ('primary_category_slug',)}),
+        (_('Ссылки'), {'fields': ('website',)}),
+        (_('Settings'), {'fields': ('is_active',)}),
+        (_('External'), {'fields': ('external_id', 'external_data')}),
+    )
+
+    def card_media_preview(self, obj):
+        """Отображает превью медиа-файла карточки бренда."""
+        url = obj.get_card_media_url()
+        if not url:
+            return _("Нет медиа")
+        lower_url = url.split('?')[0].lower()
+        if lower_url.endswith(("mp4", "mov", "webm")):
+            return format_html(
+                '<video src="{}" style="max-width: 180px; max-height: 100px;" muted loop playsinline></video>',
+                url,
+            )
+        return format_html(
+            '<img src="{}" style="max-width: 180px; max-height: 100px;" />',
+            url,
+        )
+    card_media_preview.short_description = _("Превью медиа")
+
+
+@admin.register(MarketingCategory)
+class MarketingCategoryAdmin(admin.ModelAdmin):
+    """Админка для карточек категорий (раздел «Маркетинг»)."""
+    list_display = ('name', 'slug', 'card_media_preview', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'created_at')
+    search_fields = ('name', 'slug', 'description')
+    ordering = ('sort_order', 'name')
+    prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ('card_media_preview',)
+
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Hierarchy'), {'fields': ('parent',)}),
+        (_('Медиа карточки'), {
+            'fields': ('card_media', 'card_media_preview'),
+            'description': _('Изображение, GIF или видео для карточки категории.'),
+        }),
+        (_('Settings'), {'fields': ('is_active', 'sort_order')}),
+        (_('External'), {'fields': ('external_id', 'external_data')}),
+    )
+
+    def card_media_preview(self, obj):
+        """Отображает превью медиа-файла карточки категории."""
+        url = obj.get_card_media_url()
+        if not url:
+            return _("Нет медиа")
+        lower_url = url.split('?')[0].lower()
+        if lower_url.endswith(("mp4", "mov", "webm")):
+            return format_html(
+                '<video src="{}" style="max-width: 180px; max-height: 100px;" muted loop playsinline></video>',
+                url,
+            )
+        return format_html(
+            '<img src="{}" style="max-width: 180px; max-height: 100px;" />',
+            url,
+        )
+    card_media_preview.short_description = _("Превью медиа")

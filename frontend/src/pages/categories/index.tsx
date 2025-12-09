@@ -3,6 +3,7 @@ import axios from 'axios'
 import Link from 'next/link'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
+import BannerCarousel from '../../components/BannerCarouselMedia'
 
 interface Category {
   id: number
@@ -10,33 +11,171 @@ interface Category {
   slug: string
   description?: string
   products_count?: number
+  parent?: number | null
+  card_media_url?: string | null
 }
 
 export default function CategoriesPage({ categories }: { categories: Category[] }) {
   const { t } = useTranslation('common')
+
+  // Такая же функция, как на главной, чтобы не было расхождений при перезагрузке
+  const resolveMediaUrl = (url?: string | null) => {
+    if (!url) return ''
+
+    // Абсолютный URL, но мог прийти с хостом backend:8000 — переписываем на публичный
+    const clientApi = process.env.NEXT_PUBLIC_API_BASE
+    const serverApi = process.env.INTERNAL_API_BASE
+
+    const stripApiSuffix = (value?: string) => {
+      if (!value) return ''
+      return value.endsWith('/api') ? value.slice(0, -4) : value
+    }
+
+    const fallbackMediaBase =
+      process.env.NEXT_PUBLIC_MEDIA_BASE ||
+      'http://localhost:8000'
+
+    const replaceBackendHost = (base: string) => {
+      if (!base) return ''
+      try {
+        const u = new URL(base)
+        if (u.hostname === 'backend') {
+          if (typeof window !== 'undefined') {
+            u.hostname = window.location.hostname
+          } else {
+            u.hostname = 'localhost'
+            u.port = u.port || '8000'
+          }
+        }
+        return u.toString().replace(/\/$/, '')
+      } catch {
+        return base
+      }
+    }
+
+    const serverMediaBase = replaceBackendHost(stripApiSuffix(serverApi) || 'http://backend:8000')
+    const clientMediaBase =
+      typeof window === 'undefined'
+        ? replaceBackendHost(stripApiSuffix(serverApi) || stripApiSuffix(clientApi) || fallbackMediaBase)
+        : replaceBackendHost(stripApiSuffix(clientApi) || '') ||
+          `${window.location.protocol}//${window.location.hostname}:8000`
+
+    // Если абсолютный и указывает на backend/внутренний хост — заменяем на публичный
+    if (/^https?:\/\//i.test(url)) {
+      try {
+        const u = new URL(url)
+        if (serverMediaBase && url.startsWith(serverMediaBase)) {
+          return url.replace(serverMediaBase, clientMediaBase || u.origin)
+        }
+        // если хост "backend" или "backend:8000", заменим на доступный
+        if (u.hostname === 'backend') {
+          const origin8000 =
+            typeof window !== 'undefined'
+              ? `${window.location.protocol}//${window.location.hostname}:8000`
+              : fallbackMediaBase
+          return `${origin8000}${u.pathname}${u.search}`
+        }
+        return url
+      } catch {
+        return url
+      }
+    }
+
+    // Относительный путь
+    if (clientMediaBase) {
+      return url.startsWith('/') ? `${clientMediaBase}${url}` : `${clientMediaBase}/${url}`
+    }
+
+    if (typeof window !== 'undefined') {
+      const origin = window.location.origin
+      return url.startsWith('/') ? `${origin}${url}` : `${origin}/${url}`
+    }
+    return url
+  }
+
+  const renderMedia = (mediaUrl?: string | null, alt?: string) => {
+    if (!mediaUrl) return null
+    const src = resolveMediaUrl(mediaUrl)
+    if (!src) return null
+
+    const normalized = src.split('?')[0].toLowerCase()
+    const isVideo = /\.(mp4|mov|webm|m4v)$/i.test(normalized)
+
+    if (isVideo) {
+      return (
+        <video
+          className="absolute inset-0 h-full w-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+        >
+          <source src={src} />
+        </video>
+      )
+    }
+
+    return (
+      <img
+        src={src}
+        alt={alt || ''}
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+    )
+  }
+
   return (
     <>
       <Head>
         <title>{t('menu_categories', 'Категории')} — Turk-Export</title>
       </Head>
-      <main style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-        <h1>{t('menu_categories', 'Категории')}</h1>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
-          {categories.map((c) => (
-            <Link key={c.id} href={`/categories/${c.slug}`} style={{
-              border: '1px solid #eee', borderRadius: 8, padding: 12,
-              textDecoration: 'none', color: '#111'
-            }}>
-              <div style={{ fontWeight: 600 }}>{c.name}</div>
-              <div style={{ color: '#666', fontSize: 13, marginTop: 6 }}>
-                {c.products_count ? `${c.products_count}` : ''}
-              </div>
-              {c.description ? (
-                <p style={{ color: '#444', fontSize: 14, marginTop: 8 }}>{c.description}</p>
-              ) : null}
-            </Link>
-          ))}
+      <main className="bg-gray-50 min-h-screen">
+        {/* Hero banner */}
+        <section className="bg-gradient-to-r from-violet-700 to-indigo-600 text-white py-12">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-4">
+            <div>
+              <p className="text-sm uppercase tracking-widest opacity-80">Каталог</p>
+              <h1 className="text-3xl md:text-4xl font-bold mt-1">Категории товаров</h1>
+              <p className="mt-2 text-lg opacity-90">
+                Выберите основную категорию — карточки и баннеры как на главной.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Main banner from CMS */}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8">
+          <BannerCarousel position="main" />
         </div>
+
+        {/* Cards grid */}
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {categories.map((c) => {
+              return (
+                <Link
+                  key={c.id}
+                  href={`/categories/${c.slug}`}
+                  className="relative h-44 rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-gray-900/10"
+                >
+                  {renderMedia(c.card_media_url, c.name)}
+                  <div className="absolute inset-0 bg-black/35" />
+                  <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
+                    <div className="text-center text-white drop-shadow">
+                      <h3 className="text-xl font-bold mb-1">{c.name}</h3>
+                      {c.description ? (
+                        <p className="text-sm opacity-90 line-clamp-2">{c.description}</p>
+                      ) : null}
+                      {c.products_count ? (
+                        <p className="text-xs opacity-80 mt-2">{c.products_count} товаров</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </section>
       </main>
     </>
   )
@@ -45,9 +184,56 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
 export async function getServerSideProps(ctx: any) {
   try {
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
-    const res = await axios.get(`${base}/api/catalog/categories`)
-    const data = res.data
-    const categories: Category[] = Array.isArray(data) ? data : (data.results || [])
+
+    const canonicalOrder = [
+      'medicines',
+      'supplements',
+      'medical-equipment',
+      'clothing',
+      'shoes',
+      'electronics',
+      'furniture',
+      'tableware',
+      'accessories',
+      'jewelry',
+      'underwear',
+      'headwear',
+    ]
+    const canonicalSet = new Set(canonicalOrder)
+
+    let all: Category[] = []
+    let nextUrl: string | null = `${base}/api/catalog/categories?page_size=200`
+
+    while (nextUrl) {
+      const res = await axios.get(nextUrl)
+      const data = res.data
+      const pageItems: Category[] = Array.isArray(data) ? data : (data.results || [])
+      all = all.concat(pageItems)
+      nextUrl = data.next || null
+    }
+
+    // Только верхний уровень и только канонические слуги
+    const top = all.filter((c) => (c.parent === null || typeof c.parent === 'undefined') && canonicalSet.has((c.slug || '').replace(/_/g, '-')))
+
+    // Нормализуем слуги (underscores -> dash) и устраняем дубли
+    const uniqueMap = new Map<string, Category>()
+    top.forEach((c) => {
+      const normSlug = (c.slug || '').replace(/_/g, '-')
+      if (!uniqueMap.has(normSlug)) {
+        uniqueMap.set(normSlug, { ...c, slug: normSlug })
+      }
+    })
+
+    const categories = Array.from(uniqueMap.values())
+      .sort((a, b) => {
+      const ia = canonicalOrder.indexOf(a.slug)
+      const ib = canonicalOrder.indexOf(b.slug)
+      if (ia === -1 && ib === -1) return (a.id || 0) - (b.id || 0)
+      if (ia === -1) return 1
+      if (ib === -1) return -1
+      return ia - ib
+    })
+
     return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories } }
   } catch (e) {
     return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories: [] } }

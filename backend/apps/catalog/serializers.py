@@ -14,12 +14,13 @@ class CategorySerializer(serializers.ModelSerializer):
     """Сериализатор для категорий."""
     
     children_count = serializers.SerializerMethodField()
+    card_media_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Category
         fields = [
-            'id', 'name', 'slug', 'description', 'parent', 
-            'external_id', 'is_active', 'sort_order', 
+            'id', 'name', 'slug', 'description', 'card_media_url', 'parent',
+            'external_id', 'is_active', 'sort_order',
             'children_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -28,16 +29,29 @@ class CategorySerializer(serializers.ModelSerializer):
         """Количество подкатегорий."""
         return obj.children.filter(is_active=True).count()
 
+    def get_card_media_url(self, obj):
+        """Полный URL медиа-файла карточки категории."""
+        url = obj.get_card_media_url()
+        if not url:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(url)
+        return url
+
 
 class BrandSerializer(serializers.ModelSerializer):
     """Сериализатор для брендов."""
     
     products_count = serializers.SerializerMethodField()
+    card_media_url = serializers.SerializerMethodField()
+    primary_category_slug = serializers.SerializerMethodField()
     
     class Meta:
         model = Brand
         fields = [
-            'id', 'name', 'slug', 'description', 'logo', 'website',
+            'id', 'name', 'slug', 'description', 'logo', 'website', 'card_media_url',
+            'primary_category_slug',
             'external_id', 'is_active', 'products_count', 
             'created_at', 'updated_at'
         ]
@@ -46,6 +60,91 @@ class BrandSerializer(serializers.ModelSerializer):
     def get_products_count(self, obj):
         """Количество товаров бренда."""
         return obj.products.filter(is_active=True).count()
+
+    def get_card_media_url(self, obj):
+        """Полный URL медиа-файла карточки бренда."""
+        url = obj.get_card_media_url()
+        if not url:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(url)
+        return url
+
+    def get_primary_category_slug(self, obj):
+        """Slug основной категории бренда, с fallback на товары бренда."""
+        if obj.primary_category_slug:
+            return obj.primary_category_slug
+
+        allowed_map = {
+            "medicines": "medicines",
+            "supplements": "supplements",
+            "medical_equipment": "medical-equipment",
+            "clothing": "clothing",
+            "underwear": "underwear",
+            "headwear": "headwear",
+            "shoes": "shoes",
+            "electronics": "electronics",
+            "furniture": "furniture",
+            "tableware": "tableware",
+            "accessories": "accessories",
+            "jewelry": "jewelry",
+        }
+
+        def normalize(slug: str | None) -> str | None:
+            if not slug:
+                return None
+            slug = slug.replace("_", "-").lower()
+            return allowed_map.get(slug, slug)
+
+        # 1) Пытаемся по основной модели Product
+        product = obj.products.filter(is_active=True).select_related("category").first()
+        if product:
+            if product.category and product.category.slug:
+                norm = normalize(product.category.slug)
+                if norm in allowed_map.values():
+                    return norm
+            norm = normalize(product.product_type)
+            if norm in allowed_map.values():
+                return norm
+
+        # 2) Одежда
+        clothing_product = getattr(obj, "clothingproduct_set", None)
+        if clothing_product:
+            cp = clothing_product.filter(is_active=True).select_related("category").first()
+            if cp and cp.category and cp.category.slug:
+                norm = normalize(cp.category.slug)
+                if norm in allowed_map.values():
+                    return norm
+            if cp:
+                norm = normalize("clothing")
+                return norm
+
+        # 3) Обувь
+        shoe_product = getattr(obj, "shoeproduct_set", None)
+        if shoe_product:
+            sp = shoe_product.filter(is_active=True).select_related("category").first()
+            if sp and sp.category and sp.category.slug:
+                norm = normalize(sp.category.slug)
+                if norm in allowed_map.values():
+                    return norm
+            if sp:
+                norm = normalize("shoes")
+                return norm
+
+        # 4) Электроника
+        electronics_product = getattr(obj, "electronicsproduct_set", None)
+        if electronics_product:
+            ep = electronics_product.filter(is_active=True).select_related("category").first()
+            if ep and ep.category and ep.category.slug:
+                norm = normalize(ep.category.slug)
+                if norm in allowed_map.values():
+                    return norm
+            if ep:
+                norm = normalize("electronics")
+                return norm
+
+        return None
 
 
 class ProductImageSerializer(serializers.ModelSerializer):

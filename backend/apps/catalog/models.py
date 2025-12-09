@@ -2,7 +2,8 @@
 
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from django.core.validators import MinValueValidator
+from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator, FileExtensionValidator
 from django.utils.text import slugify
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -15,6 +16,34 @@ CURRENCY_CHOICES = [
     ("GBP", "GBP"),
     ("USDT", "USDT"),
 ]
+
+CARD_MEDIA_ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"]
+CARD_MEDIA_MAX_SIZE_MB = 50
+
+TOP_CATEGORY_SLUG_CHOICES = [
+    ("medicines", "medicines"),
+    ("supplements", "supplements"),
+    ("medical-equipment", "medical-equipment"),
+    ("clothing", "clothing"),
+    ("shoes", "shoes"),
+    ("electronics", "electronics"),
+    ("furniture", "furniture"),
+    ("tableware", "tableware"),
+    ("accessories", "accessories"),
+    ("jewelry", "jewelry"),
+    ("underwear", "underwear"),
+    ("headwear", "headwear"),
+]
+
+
+def validate_card_media_file_size(value):
+    """Проверяет, что размер медиа-файла карточки не превышает допустимый лимит."""
+    max_bytes = CARD_MEDIA_MAX_SIZE_MB * 1024 * 1024
+    if value.size > max_bytes:
+        raise ValidationError(
+            _("Размер файла превышает %(size)s МБ"),
+            params={"size": CARD_MEDIA_MAX_SIZE_MB},
+        )
 
 
 class Category(models.Model):
@@ -46,6 +75,17 @@ class Category(models.Model):
         db_index=True,
         help_text=_("Определяет домен: медицина, БАДы, медтехника, посуда, мебель, аксессуары, украшения и т.д.")
     )
+    card_media = models.FileField(
+        _("Медиа для карточки"),
+        upload_to="marketing/cards/categories/",
+        null=True,
+        blank=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=CARD_MEDIA_ALLOWED_EXTENSIONS),
+            validate_card_media_file_size,
+        ],
+        help_text=_("Изображение, GIF или видео для карточки категории (до 50 МБ)."),
+    )
     parent = models.ForeignKey(
         "self", 
         on_delete=models.CASCADE, 
@@ -72,6 +112,15 @@ class Category(models.Model):
 
     def __str__(self):
         return self.name
+
+    def get_card_media_url(self) -> str:
+        """Возвращает URL медиа-файла карточки (или пустую строку)."""
+        if self.card_media:
+            try:
+                return self.card_media.url
+            except ValueError:
+                return self.card_media.name or ""
+        return ""
 
 
 class CategoryMedicines(Category):
@@ -137,6 +186,14 @@ class CategoryHeadwear(Category):
         verbose_name_plural = _("Категории — Головные уборы")
 
 
+class MarketingCategory(Category):
+    class Meta:
+        proxy = True
+        app_label = "marketing"
+        verbose_name = _("Категория товара")
+        verbose_name_plural = _("Маркетинг — Категории товаров")
+
+
 class Brand(models.Model):
     """Бренд товаров."""
     
@@ -152,6 +209,24 @@ class Brand(models.Model):
         _("Маржа, %"), max_digits=5, decimal_places=2, default=0,
         help_text=_("Процент наценки для бренда; перекрывает категорию и наследуется товарами")
     )
+    primary_category_slug = models.CharField(
+        _("Основная категория (slug)"),
+        max_length=64,
+        blank=True,
+        choices=TOP_CATEGORY_SLUG_CHOICES,
+        help_text=_("Явно укажите ключевой slug для бренда (clothing, shoes, electronics и т.д.)."),
+    )
+    card_media = models.FileField(
+        _("Медиа для карточки"),
+        upload_to="marketing/cards/brands/",
+        null=True,
+        blank=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=CARD_MEDIA_ALLOWED_EXTENSIONS),
+            validate_card_media_file_size,
+        ],
+        help_text=_("Изображение, GIF или видео для карточки бренда (до 50 МБ)."),
+    )
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
@@ -162,6 +237,23 @@ class Brand(models.Model):
 
     def __str__(self):
         return self.name
+
+    def get_card_media_url(self) -> str:
+        """Возвращает URL медиа-файла карточки (или пустую строку)."""
+        if self.card_media:
+            try:
+                return self.card_media.url
+            except ValueError:
+                return self.card_media.name or ""
+        return ""
+
+
+class MarketingBrand(Brand):
+    class Meta:
+        proxy = True
+        app_label = "marketing"
+        verbose_name = _("Популярный бренд")
+        verbose_name_plural = _("Маркетинг — Популярные бренды")
 
 
 class Product(models.Model):

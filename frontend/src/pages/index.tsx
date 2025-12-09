@@ -5,11 +5,9 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
-import { getApiForCategory } from '../lib/api'
 import BannerCarousel from '../components/BannerCarouselMedia'
 import PopularProductsCarousel from '../components/PopularProductsCarousel'
 import TestimonialsCarousel from '../components/TestimonialsCarousel'
-import Footer from '../components/Footer'
 
 interface Brand {
   id: number
@@ -19,23 +17,26 @@ interface Brand {
   logo?: string
   website?: string
   products_count?: number
+  primary_category_slug?: string | null
+  card_media_url?: string | null
 }
 
-interface CategoryBanner {
-  id: string
+interface CategoryCard {
+  id: number
   name: string
   slug: string
   description: string
-  imageUrl: string
-  bgColor: string
-  textColor: string
+  card_media_url?: string | null
+  parent?: number | null
+  sort_order?: number | null
 }
 
 interface HomePageProps {
   brands: Brand[]
+  categories: CategoryCard[]
 }
 
-export default function Home({ brands }: HomePageProps) {
+export default function Home({ brands, categories }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
 
@@ -52,172 +53,173 @@ export default function Home({ brands }: HomePageProps) {
     return colorMap[brandName] || { bgColor: 'from-gray-600 to-gray-400', textColor: 'text-white' }
   }
 
-  const categoryBanners: CategoryBanner[] = [
-    {
-      id: 'medicines',
-      name: 'Медикаменты',
-      slug: 'medicines',
-      description: 'Лекарственные препараты',
-      imageUrl: '/category-medicines.jpg',
-      bgColor: 'from-green-600 to-emerald-500',
-      textColor: 'text-white'
-    },
-    {
-      id: 'supplements',
-      name: 'БАДы',
-      slug: 'supplements',
-      description: 'Биологически активные добавки',
-      imageUrl: '/category-supplements.jpg',
-      bgColor: 'from-amber-600 to-yellow-500',
-      textColor: 'text-white'
-    },
-    {
-      id: 'clothing',
-      name: 'Одежда',
-      slug: 'clothing',
-      description: 'Модная одежда для всей семьи',
-      imageUrl: '/category-clothing.jpg',
-      bgColor: 'from-rose-600 to-pink-500',
-      textColor: 'text-white'
-    },
-    {
-      id: 'underwear',
-      name: 'Нижнее бельё',
-      slug: 'underwear',
-      description: 'Базовые и вариативные модели белья',
-      imageUrl: '/category-underwear.jpg',
-      bgColor: 'from-rose-500 to-red-500',
-      textColor: 'text-white'
-    },
-    {
-      id: 'headwear',
-      name: 'Головные уборы',
-      slug: 'headwear',
-      description: 'Кепки, шапки, панамы и др.',
-      imageUrl: '/category-headwear.jpg',
-      bgColor: 'from-blue-500 to-cyan-500',
-      textColor: 'text-white'
-    },
-    {
-      id: 'shoes',
-      name: 'Обувь',
-      slug: 'shoes',
-      description: 'Качественная обувь для всей семьи',
-      imageUrl: '/category-shoes.jpg',
-      bgColor: 'from-blue-600 to-indigo-500',
-      textColor: 'text-white'
-    },
-    {
-      id: 'electronics',
-      name: 'Электроника',
-      slug: 'electronics',
-      description: 'Современные гаджеты и техника',
-      imageUrl: '/category-electronics.jpg',
-      bgColor: 'from-slate-700 to-gray-600',
-      textColor: 'text-white'
-    },
-    {
-      id: 'furniture',
-      name: 'Мебель',
-      slug: 'furniture',
-      description: 'Мебель для дома и офиса',
-      imageUrl: '/category-furniture.jpg',
-      bgColor: 'from-amber-800 to-orange-700',
-      textColor: 'text-white'
-    },
-    {
-      id: 'tableware',
-      name: 'Посуда',
-      slug: 'tableware',
-      description: 'Кухонная, сервировка, медь, фарфор, стекло',
-      imageUrl: '/category-tableware.jpg',
-      bgColor: 'from-orange-600 to-red-500',
-      textColor: 'text-white'
-    },
-    {
-      id: 'accessories',
-      name: 'Аксессуары',
-      slug: 'accessories',
-      description: 'Ремни, брелоки и др. — добавляйте вручную',
-      imageUrl: '/category-accessories.jpg',
-      bgColor: 'from-purple-600 to-pink-500',
-      textColor: 'text-white'
-    },
-    {
-      id: 'jewelry',
-      name: 'Украшения',
-      slug: 'jewelry',
-      description: 'Кольца, цепочки, браслеты, серьги',
-      imageUrl: '/category-jewelry.jpg',
-      bgColor: 'from-amber-500 to-yellow-400',
-      textColor: 'text-white'
-    },
-    {
-      id: 'medical-equipment',
-      name: 'Медицинский инвентарь',
-      slug: 'medical-equipment',
-      description: 'Инструменты и оборудование для медицины',
-      imageUrl: '/category-medical-equipment.jpg',
-      bgColor: 'from-teal-600 to-cyan-500',
-      textColor: 'text-white'
-    }
-  ]
-
-  const handleBrandClick = (brand: Brand) => {
-    // Определяем тип товаров бренда на основе названия и данных из seed
-    // Турецкие бренды одежды
-    const clothingBrands = [
-      'Zara', 'LC Waikiki', 'Koton', 'DeFacto', 'Mavi', 'Boyner', 'Beymen', 
-      'Network', 'Colin\'s', 'Kigili', 'Altınyıldız', 'Damat', 'Tween', 
-      'Sarar', 'İpekyol', 'Mango', 'H&M', 'Pull & Bear', 'Bershka', 
-      'Stradivarius', 'Massimo Dutti', 'Oysho', 'Zara Home', 'Uterqüe',
-      'Vakko', 'Penti'
-    ]
-    // Турецкие бренды обуви
-    const shoesBrands = [
-      'Hotiç', 'FLO', 'Greyder', 'Polaris', 'İnci', 'Derimod', 'Lescon', 'Hammer Jack'
-    ]
-    // Турецкие бренды электроники
-    const electronicsBrands = [
-      'Vestel', 'Arçelik', 'Beko', 'Casper', 'Reeder', 'General Mobile', 'Profilo', 'Sunny'
-    ]
-    // Бренды медикаментов
-    const medicinesBrands = [
-      'Bayer', 'Pfizer', 'Novartis', 'Roche', 'Sanofi', 'GlaxoSmithKline', 
-      'Merck', 'Johnson & Johnson', 'Eli Lilly', 'AstraZeneca', 'Apple', 'Samsung',
-      'Abdi İbrahim', 'Deva Holding', 'Nobel İlaç', 'Santa Farma', 'Bilim İlaç',
-      'Atabay İlaç', 'İ.E. Ulagay', 'Centurion Pharma'
-    ]
-    // Бренды посуды
-    // Бренды медицинского оборудования
-    const medicalEquipmentBrands = [
-      'Alvimedica', 'Bıçakcılar', 'Turkuaz Healthcare', 'Tıpsan', 'Ankara Healthcare'
-    ]
-    // Бренды мед. аксессуаров / расходников (пример)
-    const medicalAccessoriesBrands: string[] = []
-    
-    let categoryType = 'clothing' // По умолчанию одежда
-    
-    if (clothingBrands.includes(brand.name)) {
-      categoryType = 'clothing'
-    } else if (shoesBrands.includes(brand.name)) {
-      categoryType = 'shoes'
-    } else if (electronicsBrands.includes(brand.name)) {
-      categoryType = 'electronics'
-    } else if (medicinesBrands.includes(brand.name)) {
-      categoryType = 'medicines'
-    } else if (medicalEquipmentBrands.includes(brand.name)) {
-      categoryType = 'medical-equipment'
-    } else if (medicalAccessoriesBrands.includes(brand.name)) {
-      categoryType = 'medical-equipment'
-    }
-    
-    // Открываем категорию с фильтром по brand_id
-    router.push(`/categories/${categoryType}?brand_id=${brand.id}`)
+  const categoryColorMap: Record<string, { bgColor: string; textColor: string }> = {
+    medicines: { bgColor: 'from-green-600 to-emerald-500', textColor: 'text-white' },
+    supplements: { bgColor: 'from-amber-600 to-yellow-500', textColor: 'text-white' },
+    clothing: { bgColor: 'from-rose-600 to-pink-500', textColor: 'text-white' },
+    underwear: { bgColor: 'from-rose-500 to-red-500', textColor: 'text-white' },
+    headwear: { bgColor: 'from-blue-500 to-cyan-500', textColor: 'text-white' },
+    shoes: { bgColor: 'from-blue-600 to-indigo-500', textColor: 'text-white' },
+    electronics: { bgColor: 'from-slate-700 to-gray-600', textColor: 'text-white' },
+    furniture: { bgColor: 'from-amber-800 to-orange-700', textColor: 'text-white' },
+    tableware: { bgColor: 'from-orange-600 to-red-500', textColor: 'text-white' },
+    accessories: { bgColor: 'from-purple-600 to-pink-500', textColor: 'text-white' },
+    jewelry: { bgColor: 'from-amber-500 to-yellow-400', textColor: 'text-white' },
+    'medical-equipment': { bgColor: 'from-teal-600 to-cyan-500', textColor: 'text-white' },
   }
 
-  const handleCategoryClick = (category: CategoryBanner) => {
-    router.push(`/categories/${category.slug}`)
+  const getCategoryColors = (slug: string) => {
+    return categoryColorMap[slug] || { bgColor: 'from-gray-600 to-gray-400', textColor: 'text-white' }
+  }
+
+  const rootSlugSet = new Set([
+    'medicines',
+    'supplements',
+    'medical_equipment',
+    'medical-equipment',
+    'clothing',
+    'shoes',
+    'electronics',
+    'furniture',
+    'tableware',
+    'accessories',
+    'jewelry',
+    'underwear',
+    'headwear',
+  ])
+
+  const mapCategoryToRouteSlug = (slug?: string | null) => {
+    const normalized = (slug || '').trim().toLowerCase().replace(/_/g, '-')
+    return normalized || 'medicines'
+  }
+
+  const resolveMediaUrl = (url?: string | null) => {
+    if (!url) return ''
+
+    // Абсолютный URL, но мог прийти с хостом backend:8000 — переписываем на публичный
+    const clientApi = process.env.NEXT_PUBLIC_API_BASE
+    const serverApi = process.env.INTERNAL_API_BASE
+
+    const stripApiSuffix = (value?: string) => {
+      if (!value) return ''
+      return value.endsWith('/api') ? value.slice(0, -4) : value
+    }
+
+    const fallbackMediaBase =
+      process.env.NEXT_PUBLIC_MEDIA_BASE ||
+      'http://localhost:8000'
+
+    const replaceBackendHost = (base: string) => {
+      if (!base) return ''
+      try {
+        const u = new URL(base)
+        if (u.hostname === 'backend') {
+          if (typeof window !== 'undefined') {
+            u.hostname = window.location.hostname
+          } else {
+            u.hostname = 'localhost'
+            u.port = u.port || '8000'
+          }
+        }
+        return u.toString().replace(/\/$/, '')
+      } catch {
+        return base
+      }
+    }
+
+    const serverMediaBase = replaceBackendHost(stripApiSuffix(serverApi) || 'http://backend:8000')
+    const clientMediaBase =
+      typeof window === 'undefined'
+        ? replaceBackendHost(stripApiSuffix(serverApi) || stripApiSuffix(clientApi) || fallbackMediaBase)
+        : replaceBackendHost(stripApiSuffix(clientApi) || '') ||
+          `${window.location.protocol}//${window.location.hostname}:8000`
+
+    // Если абсолютный и указывает на backend/внутренний хост — заменяем на публичный
+    if (/^https?:\/\//i.test(url)) {
+      try {
+        const u = new URL(url)
+        if (serverMediaBase && url.startsWith(serverMediaBase)) {
+          return url.replace(serverMediaBase, clientMediaBase || u.origin)
+        }
+        // если хост "backend" или "backend:8000", заменим на доступный
+        if (u.hostname === 'backend') {
+          const origin8000 =
+            typeof window !== 'undefined'
+              ? `${window.location.protocol}//${window.location.hostname}:8000`
+              : fallbackMediaBase
+          return `${origin8000}${u.pathname}${u.search}`
+        }
+        return url
+      } catch {
+        return url
+      }
+    }
+
+    // Относительный путь
+    if (clientMediaBase) {
+      return url.startsWith('/') ? `${clientMediaBase}${url}` : `${clientMediaBase}/${url}`
+    }
+
+    if (typeof window !== 'undefined') {
+      const origin = window.location.origin
+      return url.startsWith('/') ? `${origin}${url}` : `${origin}/${url}`
+    }
+    return url
+  }
+
+  const renderMedia = (mediaUrl?: string | null, alt?: string) => {
+    if (!mediaUrl) return null
+    const src = resolveMediaUrl(mediaUrl)
+    if (!src) return null
+
+    const normalized = src.split('?')[0].toLowerCase()
+    const isVideo = /\.(mp4|mov|webm|m4v)$/i.test(normalized)
+
+    if (isVideo) {
+      return (
+        <video
+          className="absolute inset-0 h-full w-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+        >
+          <source src={src} />
+        </video>
+      )
+    }
+
+    return (
+      <img
+        src={src}
+        alt={alt || ''}
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+    )
+  }
+
+  const preparedCategories = categories
+    .filter((category) => {
+      const isTop = category.parent === null || typeof category.parent === 'undefined'
+      if (!isTop) return false
+      const raw = (category.slug || '').trim().toLowerCase().replace(/-/g, '_')
+      return rootSlugSet.has(raw) || rootSlugSet.has(raw.replace(/_/g, '-'))
+    })
+    .map((category) => ({
+      ...category,
+      displaySlug: mapCategoryToRouteSlug(category.slug),
+      __isTopLevel: true,
+    }))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+
+  const handleBrandClick = (brand: Brand) => {
+    const slug = mapCategoryToRouteSlug(brand.primary_category_slug || '')
+    router.push(`/categories/${slug}?brand_id=${brand.id}`)
+  }
+
+  const handleCategoryClick = (category: CategoryCard & { displaySlug?: string }) => {
+    const slugForRoute = category.displaySlug || mapCategoryToRouteSlug(category.slug)
+    router.push(`/categories/${slugForRoute}`)
   }
 
   return (
@@ -240,16 +242,16 @@ export default function Home({ brands }: HomePageProps) {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {brands.map((brand) => {
-              const colors = getBrandColors(brand.name)
               return (
                 <div
                   key={brand.id}
                   onClick={() => handleBrandClick(brand)}
-                  className="relative h-48 rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl"
+                  className="relative h-48 rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
                 >
-                  <div className={`absolute inset-0 bg-gradient-to-r ${colors.bgColor} opacity-90`} />
-                  <div className="absolute inset-0 flex items-center justify-center p-6">
-                    <div className={`text-center ${colors.textColor}`}>
+                  {renderMedia(brand.card_media_url || brand.logo, brand.name)}
+                  <div className="absolute inset-0 bg-black/35" />
+                  <div className="absolute inset-0 flex items-center justify-center p-6 z-10">
+                    <div className="text-center text-white drop-shadow">
                       {brand.logo && (
                         <div className="mb-3 flex justify-center">
                           <img 
@@ -292,15 +294,17 @@ export default function Home({ brands }: HomePageProps) {
             Категории товаров
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {categoryBanners.map((category) => (
+            {preparedCategories.map((category) => {
+              return (
               <div
                 key={category.id}
                 onClick={() => handleCategoryClick(category)}
-                className="relative h-40 rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl"
+                className="relative h-40 rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
               >
-                <div className={`absolute inset-0 bg-gradient-to-r ${category.bgColor} opacity-90`} />
-                <div className="absolute inset-0 flex items-center justify-center p-4">
-                  <div className={`text-center ${category.textColor}`}>
+                  {renderMedia(category.card_media_url, category.name)}
+                  <div className="absolute inset-0 bg-black/35" />
+                  <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
+                    <div className="text-center text-white drop-shadow">
                     <h3 className="text-xl font-bold mb-1">
                       {category.name}
                     </h3>
@@ -310,7 +314,8 @@ export default function Home({ brands }: HomePageProps) {
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </section>
 
@@ -375,10 +380,31 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const brands = brandsWithProducts.slice(0, 6)
     
     console.log('Loaded popular brands for homepage:', brands.map((b: Brand) => `${b.name} (${b.products_count} товаров)`))
+
+    // Загружаем категории (top-level) с пагинацией
+    let allCategories: CategoryCard[] = []
+    let nextCategoryUrl: string | null = `${base}/api/catalog/categories?page_size=100`
+
+    while (nextCategoryUrl) {
+      try {
+        const categoriesRes = await axios.get(nextCategoryUrl)
+        const data = categoriesRes.data
+        const pageCategories = Array.isArray(data) ? data : (data.results || [])
+        allCategories = [...allCategories, ...pageCategories]
+        nextCategoryUrl = data.next || null
+      } catch (err) {
+        console.error('Error loading categories page:', err)
+        break
+      }
+    }
+
+    const categories = allCategories.filter((category) => category.parent === null || typeof category.parent === 'undefined')
+    categories.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
     
     return {
       props: {
         brands,
+        categories,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }
@@ -388,6 +414,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     return {
       props: {
         brands: [],
+        categories: [],
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }

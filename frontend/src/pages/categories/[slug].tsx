@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
@@ -102,6 +103,24 @@ const brandProductTypeMap: Record<CategoryTypeKey, 'medicines' | 'clothing' | 's
 }
 
 const resolveBrandProductType = (type: CategoryTypeKey) => brandProductTypeMap[type] || 'medicines'
+
+const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): CategoryTypeKey => {
+  const slug = Array.isArray(slugRaw) ? slugRaw[0] : slugRaw || ''
+  const norm = slug.toLowerCase().replace(/_/g, '-')
+  if (norm.startsWith('shoes')) return 'shoes'
+  if (norm.startsWith('clothing')) return 'clothing'
+  if (norm.startsWith('electronics')) return 'electronics'
+  if (norm.startsWith('furniture')) return 'furniture'
+  if (norm.startsWith('tableware')) return 'tableware'
+  if (norm.startsWith('accessories')) return 'accessories'
+  if (norm.startsWith('jewelry')) return 'jewelry'
+  if (norm.startsWith('underwear')) return 'underwear'
+  if (norm.startsWith('headwear')) return 'headwear'
+  if (norm.startsWith('medical-equipment')) return 'medical-equipment'
+  if (norm.startsWith('supplements')) return 'supplements'
+  if (norm.startsWith('medicines')) return 'medicines'
+  return 'medicines'
+}
 
 const createTreeItem = (category: Category): SidebarTreeItem => ({
   id: `cat-${category.id}`,
@@ -634,6 +653,12 @@ export default function CategoryPage({
           page_size: 12
         }
 
+        // Ограничиваем выдачу конкретным слагом категории из URL, чтобы не падать в default (medicines)
+        const routeSlug = Array.isArray(router.query.slug) ? router.query.slug[0] : (router.query.slug as string | undefined)
+        if (routeSlug) {
+          params.category_slug = routeSlug
+        }
+
         if (filters.categories.length > 0) {
           params.category_id = filters.categories
         }
@@ -745,6 +770,40 @@ export default function CategoryPage({
     return colors[categoryType] || 'from-violet-600 to-purple-500'
   }
 
+  const routeSlug = useMemo(() => {
+    const slugParam = router.query.slug
+    return Array.isArray(slugParam) ? slugParam[0] : slugParam || ''
+  }, [router.query.slug])
+
+  const brandLabel = useMemo(() => {
+    const brandIdParam = router.query.brand_id
+    const brandSlugParam = router.query.brand
+    let found = null
+    if (brandIdParam) {
+      const brandId = Array.isArray(brandIdParam) ? parseInt(brandIdParam[0]) : parseInt(String(brandIdParam))
+      if (!isNaN(brandId)) {
+        found = brands.find((b) => b.id === brandId)?.name || null
+      }
+    }
+    if (!found && brandSlugParam) {
+      const slug = Array.isArray(brandSlugParam) ? brandSlugParam[0] : String(brandSlugParam)
+      found = brands.find((b) => b.slug === slug)?.name || null
+    }
+    return found
+  }, [brands, router.query.brand, router.query.brand_id])
+
+  const breadcrumbs = useMemo(() => {
+    const items = [
+      { href: '/', label: 'Главная' },
+      { href: '/categories', label: 'Категории' },
+      { href: `/categories/${routeSlug}`, label: categoryName || 'Категория' },
+    ]
+    if (brandLabel) {
+      items.push({ href: router.asPath, label: brandLabel })
+    }
+    return items
+  }, [brandLabel, categoryName, routeSlug, router.asPath])
+
   return (
     <>
       <Head>
@@ -767,7 +826,26 @@ export default function CategoryPage({
             </div>
           </div>
         </div>
-        </div>
+      </div>
+
+      {/* Breadcrumbs */}
+      <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 text-sm text-gray-600 flex flex-wrap items-center gap-2">
+        {breadcrumbs.map((item, idx) => {
+          const isLast = idx === breadcrumbs.length - 1
+          return (
+            <span key={`${item.href}-${idx}`} className="flex items-center gap-2">
+              {!isLast ? (
+                <Link href={item.href} className="hover:text-violet-600 transition-colors">
+                  {item.label}
+                </Link>
+              ) : (
+                <span className="text-gray-900 font-medium">{item.label}</span>
+              )}
+              {!isLast && <span className="text-gray-400">/</span>}
+            </span>
+          )
+        })}
+      </nav>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col lg:flex-row gap-8">
@@ -925,22 +1003,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   const pageSize = 12
 
   try {
-    let categoryType: CategoryTypeKey = 'medicines'
-    
-    const categoryMap: Record<string, CategoryTypeKey> = {
-      medicines: 'medicines',
-      supplements: 'supplements',
-      clothing: 'clothing',
-      shoes: 'shoes',
-      electronics: 'electronics',
-      tableware: 'tableware',
-      furniture: 'furniture',
-    'medical-equipment': 'medical-equipment',
-    underwear: 'underwear',
-    headwear: 'headwear'
-    }
-
-    categoryType = categoryMap[slug as string] || 'medicines'
+    const routeSlug = Array.isArray(slug) ? slug[0] : (slug as string | undefined)
+    let categoryType: CategoryTypeKey = resolveCategoryTypeFromSlug(routeSlug)
 
     const api = getApiForCategory(categoryType)
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
@@ -956,6 +1020,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const brands = brandRes.data.results || []
 
       const productParams: Record<string, any> = { page, page_size: pageSize }
+      if (routeSlug) {
+        productParams.category_slug = routeSlug
+      }
       if (brandId) {
         productParams.brand_id = brandId
       } else if (brandSlug) {
@@ -1013,7 +1080,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const [prodRes, catRes] = await Promise.all([
         axios
           .get(`${base}/api/catalog/${categoryType}/products`, {
-            params: productParams
+            params: { ...productParams, category_slug: routeSlug }
           })
           .catch(() => ({ data: { results: [], count: 0 } })),
         axios.get(`${base}/api/catalog/${categoryType}/categories`).catch(() => ({ data: { results: [] } }))
@@ -1031,6 +1098,10 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         supplements: { name: 'БАДы', description: 'Биологически активные добавки' },
         tableware: { name: 'Посуда', description: 'Кухонная посуда и аксессуары' },
         furniture: { name: 'Мебель', description: 'Мебель для дома и офиса' },
+        accessories: { name: 'Аксессуары', description: 'Сумки, ремни, кошельки и другие аксессуары' },
+        jewelry: { name: 'Украшения', description: 'Украшения и бижутерия из Турции' },
+        underwear: { name: 'Нижнее бельё', description: 'Базовое и повседневное нижнее бельё' },
+        headwear: { name: 'Головные уборы', description: 'Кепки, шапки и другие головные уборы' },
         'medical-equipment': { name: 'Медицинский инвентарь', description: 'Инструменты и оборудование для медицины' }
       }
 
