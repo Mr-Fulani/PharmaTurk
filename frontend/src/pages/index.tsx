@@ -213,7 +213,7 @@ export default function Home({ brands, categories }: HomePageProps) {
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
 
   const handleBrandClick = (brand: Brand) => {
-    const slug = mapCategoryToRouteSlug(brand.primary_category_slug || '')
+    const slug = mapCategoryToRouteSlug(brand.primary_category_slug || brand.slug || '')
     router.push(`/categories/${slug}?brand_id=${brand.id}`)
   }
 

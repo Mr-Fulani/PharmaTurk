@@ -1,5 +1,6 @@
 """Сериализаторы для API каталога товаров."""
 
+from django.db.models import Count
 from rest_framework import serializers
 from .models import (
     Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
@@ -80,6 +81,7 @@ class BrandSerializer(serializers.ModelSerializer):
             "medicines": "medicines",
             "supplements": "supplements",
             "medical_equipment": "medical-equipment",
+            "medical-equipment": "medical-equipment",
             "clothing": "clothing",
             "underwear": "underwear",
             "headwear": "headwear",
@@ -97,51 +99,30 @@ class BrandSerializer(serializers.ModelSerializer):
             slug = slug.replace("_", "-").lower()
             return allowed_map.get(slug, slug)
 
-        # 1) Пытаемся по основной модели Product
-        product = obj.products.filter(is_active=True).select_related("category").first()
-        if product:
-            if product.category and product.category.slug:
-                norm = normalize(product.category.slug)
-                if norm in allowed_map.values():
-                    return norm
-            norm = normalize(product.product_type)
+        # 1) Считаем самые частые категории (берём корневой/родительский slug если есть)
+        products_qs = obj.products.filter(is_active=True).select_related("category__parent")
+        category_counts = (
+            products_qs
+            .values("category__slug", "category__parent__slug")
+            .annotate(cnt=Count("id"))
+            .order_by("-cnt")
+        )
+        for row in category_counts:
+            slug_candidate = row.get("category__parent__slug") or row.get("category__slug")
+            norm = normalize(slug_candidate)
             if norm in allowed_map.values():
                 return norm
 
-        # 2) Одежда
-        clothing_product = getattr(obj, "clothingproduct_set", None)
-        if clothing_product:
-            cp = clothing_product.filter(is_active=True).select_related("category").first()
-            if cp and cp.category and cp.category.slug:
-                norm = normalize(cp.category.slug)
-                if norm in allowed_map.values():
-                    return norm
-            if cp:
-                norm = normalize("clothing")
-                return norm
-
-        # 3) Обувь
-        shoe_product = getattr(obj, "shoeproduct_set", None)
-        if shoe_product:
-            sp = shoe_product.filter(is_active=True).select_related("category").first()
-            if sp and sp.category and sp.category.slug:
-                norm = normalize(sp.category.slug)
-                if norm in allowed_map.values():
-                    return norm
-            if sp:
-                norm = normalize("shoes")
-                return norm
-
-        # 4) Электроника
-        electronics_product = getattr(obj, "electronicsproduct_set", None)
-        if electronics_product:
-            ep = electronics_product.filter(is_active=True).select_related("category").first()
-            if ep and ep.category and ep.category.slug:
-                norm = normalize(ep.category.slug)
-                if norm in allowed_map.values():
-                    return norm
-            if ep:
-                norm = normalize("electronics")
+        # 2) Если по категориям не нашли — берём самые частые product_type
+        product_type_counts = (
+            products_qs
+            .values("product_type")
+            .annotate(cnt=Count("id"))
+            .order_by("-cnt")
+        )
+        for row in product_type_counts:
+            norm = normalize(row.get("product_type"))
+            if norm in allowed_map.values():
                 return norm
 
         return None
