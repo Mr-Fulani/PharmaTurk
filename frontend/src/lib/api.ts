@@ -222,20 +222,9 @@ export const electronicsApi = {
 export function getApiForCategory(
   categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'medical-equipment' | 'furniture' | 'tableware' | 'accessories' | 'jewelry' | 'underwear' | 'headwear'
 ) {
-  const mapping: Record<string, 'medicines' | 'clothing' | 'shoes' | 'electronics'> = {
-    supplements: 'medicines',
-    'medical-equipment': 'medicines',
-    furniture: 'medicines',
-    tableware: 'medicines',
-    accessories: 'medicines',
-    jewelry: 'medicines',
-    underwear: 'medicines',
-    headwear: 'medicines',
-  }
-  const normalized = mapping[categoryType] || categoryType
-  switch (normalized) {
-    case 'medicines':
-      return medicinesApi
+  // Специализированные эндпоинты есть только для одежды/обуви/электроники.
+  // Всё остальное идёт через базовый каталог (medicinesApi) без попытки принудительного маппинга.
+  switch (categoryType) {
     case 'clothing':
       return clothingApi
     case 'shoes':

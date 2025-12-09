@@ -146,7 +146,7 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
         {/* Main banner from CMS */}
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8">
           <BannerCarousel position="main" />
-        </div>
+              </div>
 
         {/* Cards grid */}
         <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
@@ -163,18 +163,18 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
                     <div className="text-center text-white drop-shadow">
                       <h3 className="text-xl font-bold mb-1">{c.name}</h3>
-                      {c.description ? (
+              {c.description ? (
                         <p className="text-sm opacity-90 line-clamp-2">{c.description}</p>
                       ) : null}
                       {c.products_count ? (
                         <p className="text-xs opacity-80 mt-2">{c.products_count} товаров</p>
-                      ) : null}
+              ) : null}
                     </div>
                   </div>
-                </Link>
+            </Link>
               )
             })}
-          </div>
+        </div>
         </section>
       </main>
     </>
@@ -185,39 +185,15 @@ export async function getServerSideProps(ctx: any) {
   try {
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
 
-    const canonicalOrder = [
-      'medicines',
-      'supplements',
-      'medical-equipment',
-      'clothing',
-      'shoes',
-      'electronics',
-      'furniture',
-      'tableware',
-      'accessories',
-      'jewelry',
-      'underwear',
-      'headwear',
-    ]
-    const canonicalSet = new Set(canonicalOrder)
-
-    let all: Category[] = []
-    let nextUrl: string | null = `${base}/api/catalog/categories?page_size=200`
-
-    while (nextUrl) {
-      const res = await axios.get(nextUrl)
-      const data = res.data
-      const pageItems: Category[] = Array.isArray(data) ? data : (data.results || [])
-      all = all.concat(pageItems)
-      nextUrl = data.next || null
-    }
-
-    // Только верхний уровень и только канонические слуги
-    const top = all.filter((c) => (c.parent === null || typeof c.parent === 'undefined') && canonicalSet.has((c.slug || '').replace(/_/g, '-')))
+    // Берём только корневые с бэкенда (top_level), чтобы не тянуть весь список
+    const res = await axios.get(`${base}/api/catalog/categories`, {
+      params: { top_level: true, page_size: 200 }
+    })
+    const all: Category[] = Array.isArray(res.data) ? res.data : (res.data.results || [])
 
     // Нормализуем слуги (underscores -> dash) и устраняем дубли
     const uniqueMap = new Map<string, Category>()
-    top.forEach((c) => {
+    all.forEach((c) => {
       const normSlug = (c.slug || '').replace(/_/g, '-')
       if (!uniqueMap.has(normSlug)) {
         uniqueMap.set(normSlug, { ...c, slug: normSlug })
@@ -226,13 +202,10 @@ export async function getServerSideProps(ctx: any) {
 
     const categories = Array.from(uniqueMap.values())
       .sort((a, b) => {
-      const ia = canonicalOrder.indexOf(a.slug)
-      const ib = canonicalOrder.indexOf(b.slug)
-      if (ia === -1 && ib === -1) return (a.id || 0) - (b.id || 0)
-      if (ia === -1) return 1
-      if (ib === -1) return -1
-      return ia - ib
-    })
+        const sa = (a as any).sort_order ?? 0
+        const sb = (b as any).sort_order ?? 0
+        return sa - sb
+      })
 
     return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories } }
   } catch (e) {

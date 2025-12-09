@@ -56,6 +56,7 @@ interface Category {
   description: string
   children_count: number
   product_count?: number
+  parent?: number | null
   gender?: string
   gender_display?: string
   clothing_type?: string
@@ -75,6 +76,7 @@ interface Brand {
 interface CategoryPageProps {
   products: Product[]
   categories: Category[]
+  sidebarCategories: Category[]
   brands: Brand[]
   subcategories?: Category[]
   categoryName: string
@@ -82,27 +84,61 @@ interface CategoryPageProps {
   totalCount: number
   currentPage: number
   totalPages: number
+  initialRouteSlug?: string
   categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'medical-equipment' | 'furniture' | 'tableware' | 'accessories' | 'jewelry' | 'underwear' | 'headwear'
 }
 
 type CategoryTypeKey = CategoryPageProps['categoryType']
 
-const brandProductTypeMap: Record<CategoryTypeKey, 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'medical-equipment'> = {
+const brandProductTypeMap: Record<CategoryTypeKey, string> = {
   medicines: 'medicines',
-  supplements: 'medicines',
+  supplements: 'supplements',
   clothing: 'clothing',
   shoes: 'shoes',
   electronics: 'electronics',
-  'medical-equipment': 'medical-equipment',
-  furniture: 'medicines',
-  tableware: 'medicines',
-  accessories: 'medicines',
-  jewelry: 'medicines',
-  underwear: 'medicines',
-  headwear: 'medicines',
+  'medical-equipment': 'medical_equipment',
+  furniture: 'furniture',
+  tableware: 'tableware',
+  accessories: 'accessories',
+  jewelry: 'jewelry',
+  underwear: 'underwear',
+  headwear: 'headwear',
 }
 
 const resolveBrandProductType = (type: CategoryTypeKey) => brandProductTypeMap[type] || 'medicines'
+
+const normalizeSlug = (value: any) =>
+  (value || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, '-')
+
+const filterBrandsByProducts = (
+  brands: any[],
+  products: any[],
+  categoryType: CategoryTypeKey,
+  routeSlug?: string
+) => {
+  const allowedForMedicines = ['medicines', 'supplements', 'medical-equipment']
+  const categorySlug = normalizeSlug(routeSlug || categoryType)
+
+  const matchesCategory = (value?: string | null) => {
+    const v = normalizeSlug(value)
+    if (!v) return false
+    if (categoryType === 'medicines') {
+      return allowedForMedicines.includes(v)
+    }
+    return v === categorySlug
+  }
+
+  return brands.filter((b: any) => {
+    const bPrim = normalizeSlug(b.primary_category_slug)
+    const bType = normalizeSlug((b as any).product_type)
+    const bSlug = normalizeSlug(b.slug || b.name)
+    return matchesCategory(bPrim) || matchesCategory(bType) || matchesCategory(bSlug)
+  })
+}
 
 const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): CategoryTypeKey => {
   const slug = Array.isArray(slugRaw) ? slugRaw[0] : slugRaw || ''
@@ -445,9 +481,61 @@ const normalizePageParam = (value: string | string[] | undefined): number => {
   return parsed
 }
 
+// Фронтовая фильтрация по дополнительным фильтрам (без нагрузки на бэкенд)
+const filterProductsByExtraFilters = (products: Product[], filters: FilterState, categoryType: CategoryTypeKey) => {
+  const norm = (v: any) => normalizeSlug(v)
+  const getCatSlug = (p: any) => norm(p?.category?.slug || (p as any).category_slug || '')
+
+  let result = products
+
+  if (categoryType === 'shoes' && filters.shoeTypes && filters.shoeTypes.length) {
+    const wanted = new Set(filters.shoeTypes.map(norm))
+    result = result.filter((p) => {
+      const cat = getCatSlug(p)
+      return Array.from(wanted).some((w) => cat.includes(w) || norm(p.slug).includes(w))
+    })
+  }
+
+  if (categoryType === 'clothing' && filters.clothingItems && filters.clothingItems.length) {
+    const wanted = new Set(filters.clothingItems.map(norm))
+    result = result.filter((p) => {
+      const cat = getCatSlug(p)
+      return Array.from(wanted).some((w) => cat.includes(w) || norm(p.slug).includes(w))
+    })
+  }
+
+  if (categoryType === 'jewelry') {
+    if (filters.jewelryMaterials && filters.jewelryMaterials.length) {
+      const wanted = new Set(filters.jewelryMaterials.map(norm))
+      result = result.filter((p) => {
+        const cat = getCatSlug(p)
+        return Array.from(wanted).some((w) => cat.includes(w) || norm(p.slug).includes(w))
+      })
+    }
+    if (filters.jewelryGender && filters.jewelryGender.length) {
+      const wantedG = new Set(filters.jewelryGender.map(norm))
+      result = result.filter((p) => {
+        const cat = getCatSlug(p)
+        return Array.from(wantedG).some((w) => cat.includes(w) || norm(p.slug).includes(w))
+      })
+    }
+  }
+
+  if (categoryType === 'headwear' && filters.headwearTypes && filters.headwearTypes.length) {
+    const wanted = new Set(filters.headwearTypes.map(norm))
+    result = result.filter((p) => {
+      const cat = getCatSlug(p)
+      return Array.from(wanted).some((w) => cat.includes(w) || norm(p.slug).includes(w))
+    })
+  }
+
+  return result
+}
+
 export default function CategoryPage({
   products: initialProducts,
   categories,
+  sidebarCategories,
   brands,
   subcategories = [],
   categoryName,
@@ -455,7 +543,8 @@ export default function CategoryPage({
   totalCount: initialTotalCount,
   currentPage: initialCurrentPage,
   totalPages: initialTotalPages,
-  categoryType
+  categoryType,
+  initialRouteSlug
 }: CategoryPageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
@@ -468,7 +557,13 @@ export default function CategoryPage({
   const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [brandOptions, setBrandOptions] = useState(brands)
+  const initialBrandsRef = useRef<Brand[]>(brands || [])
+  useEffect(() => {
+    if (initialBrandsRef.current.length === 0 && brands.length > 0) {
+      initialBrandsRef.current = brands
+    }
+  }, [brands])
+  const brandOptions = initialBrandsRef.current
   const [filters, setFilters] = useState<FilterState>({
     categories: [],
     categorySlugs: [],
@@ -477,7 +572,11 @@ export default function CategoryPage({
     subcategories: [],
     subcategorySlugs: [],
     inStock: false,
-    sortBy: 'name_asc'
+    sortBy: 'name_asc',
+    shoeTypes: [],
+    clothingItems: [],
+    jewelryMaterials: [],
+    jewelryGender: [],
   })
   const categoryGroups = useMemo(() => getCategorySections(categoryType, categories), [categoryType, categories])
   const resolvedBrandType = useMemo(() => resolveBrandProductType(categoryType), [categoryType])
@@ -509,10 +608,6 @@ export default function CategoryPage({
     const nextPage = normalizePageParam(router.query.page)
     setCurrentPage((prev) => (prev === nextPage ? prev : nextPage))
   }, [router.isReady, router.query.page])
-
-  useEffect(() => {
-    setBrandOptions(brands)
-  }, [brands])
 
   // Инициализация фильтров из query параметров
   useEffect(() => {
@@ -566,6 +661,10 @@ export default function CategoryPage({
         const params: Record<string, any> = {
           product_type: resolvedBrandType
         }
+        const normalizedSlug = (routeSlug || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
+        if (normalizedSlug) {
+          params.primary_category_slug = normalizedSlug
+        }
         if (filters.categories.length > 0) {
           params.category_id = filters.categories
         } else if (filters.categorySlugs.length > 0) {
@@ -577,7 +676,9 @@ export default function CategoryPage({
         const base = process.env.NEXT_PUBLIC_API_BASE || '/api'
         const response = await axios.get(`${base}/catalog/brands`, { params })
         const list = Array.isArray(response.data) ? response.data : response.data.results || []
-        setBrandOptions(list)
+        if (initialBrandsRef.current.length === 0 && list.length > 0) {
+          initialBrandsRef.current = list
+        }
         // НЕ обновляем filters.brands если brand_id есть в URL - он должен быть установлен через инициализацию
         const { brand_id } = router.query
         if (brand_id) {
@@ -696,11 +797,12 @@ export default function CategoryPage({
         const response = await api.getProducts(params)
         const data = response.data
         const productsList = Array.isArray(data) ? data : (data.results || [])
-        const count = data.count || productsList.length
+        const filteredList = filterProductsByExtraFilters(productsList, filters, categoryType)
+        const count = filteredList.length
 
-        console.log(`Loaded ${productsList.length} products (total: ${count})`)
+        console.log(`Loaded ${productsList.length} products (after filters: ${count})`)
         if (isCancelled) return
-        setProducts(productsList)
+        setProducts(filteredList)
         setTotalCount(count)
         setTotalPages(Math.ceil(count / 12))
       } catch (error) {
@@ -756,24 +858,41 @@ export default function CategoryPage({
     updatePageQuery(1, { replace: true })
   }, [updatePageQuery])
 
-  const getCategoryColor = () => {
-    const colors: Record<string, string> = {
-      medicines: 'from-green-600 to-emerald-500',
-      supplements: 'from-amber-600 to-yellow-500',
-      clothing: 'from-rose-600 to-pink-500',
-      shoes: 'from-blue-600 to-indigo-500',
-      electronics: 'from-slate-700 to-gray-600',
-      tableware: 'from-orange-600 to-red-500',
-      furniture: 'from-amber-800 to-orange-700',
-      'medical-equipment': 'from-teal-600 to-cyan-500'
-    }
-    return colors[categoryType] || 'from-violet-600 to-purple-500'
-  }
-
-  const routeSlug = useMemo(() => {
+  const routeSlugFromQuery = useMemo(() => {
     const slugParam = router.query.slug
     return Array.isArray(slugParam) ? slugParam[0] : slugParam || ''
   }, [router.query.slug])
+
+  // Используем серверный slug на первом рендере, чтобы избежать «all categories» до гидратации
+  const [routeSlug, setRouteSlug] = useState(initialRouteSlug || routeSlugFromQuery)
+  useEffect(() => {
+    if (routeSlugFromQuery && routeSlugFromQuery !== routeSlug) {
+      setRouteSlug(routeSlugFromQuery)
+    }
+  }, [routeSlugFromQuery, routeSlug])
+
+  // Фиксируем список категорий для сайтбара на первом рендере, чтобы он не затирался гидрацией
+  const initialSidebarCategoriesRef = useRef<Category[]>(Array.isArray(sidebarCategories) && sidebarCategories.length > 0 ? sidebarCategories : categories)
+  useEffect(() => {
+    if (initialSidebarCategoriesRef.current.length === 0 && sidebarCategories.length > 0) {
+      initialSidebarCategoriesRef.current = sidebarCategories
+    }
+  }, [sidebarCategories])
+  const sidebarCategoriesData = useMemo(() => {
+    const base = initialSidebarCategoriesRef.current || []
+    if (!base.length) return base
+
+    const normSlug = (routeSlug || '').toLowerCase().replace(/_/g, '-')
+    const main = base.find((c) => (c.slug || '').toLowerCase().replace(/_/g, '-') === normSlug)
+
+    if (main) {
+      const children = base.filter((c) => c.parent === main.id)
+      return [main, ...children]
+    }
+
+    // Если не нашли категорию по slug — как fallback берём только корневые
+    return base.filter((c) => c.parent === null)
+  }, [routeSlug])
 
   const brandLabel = useMemo(() => {
     const brandIdParam = router.query.brand_id
@@ -812,7 +931,7 @@ export default function CategoryPage({
       </Head>
       
       {/* Hero Section */}
-      <div className={`bg-gradient-to-r ${getCategoryColor()} text-white py-12`}>
+      <div className="bg-gray-900 text-white py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div>
@@ -852,14 +971,17 @@ export default function CategoryPage({
           {/* Sidebar */}
           <div className="lg:w-1/4">
             <CategorySidebar
-              categories={categoryGroups.length > 0 ? [] : categories}
+              key={routeSlug || categoryType}
+              categories={categoryGroups.length > 0 ? [] : sidebarCategoriesData}
               brands={brandOptions}
               subcategories={subcategories}
-              categoryGroups={categoryGroups}
+              categoryGroups={[]} // отключаем группировки, используем предфильтрованный список
               onFilterChange={handleFilterChange}
               isOpen={sidebarOpen}
               onToggle={() => setSidebarOpen(!sidebarOpen)}
               initialFilters={filters}
+              showSubcategories={true}
+              categoryType={categoryType}
             />
           </div>
 
@@ -1006,122 +1128,141 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const routeSlug = Array.isArray(slug) ? slug[0] : (slug as string | undefined)
     let categoryType: CategoryTypeKey = resolveCategoryTypeFromSlug(routeSlug)
 
-    const api = getApiForCategory(categoryType)
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
 
     const brandSlug = Array.isArray(brand) ? brand[0] : brand
     const brandId = Array.isArray(brand_id) ? brand_id[0] : brand_id
     const brandProductType = resolveBrandProductType(categoryType)
 
-    if (categoryType === 'medicines') {
-      const brandRes = await axios
-        .get(`${base}/api/catalog/brands`, { params: { product_type: brandProductType } })
-        .catch(() => ({ data: { results: [] } }))
-      const brands = brandRes.data.results || []
+    // --- Бренды ---
+    let brands: any[] = []
+    try {
+      const primarySlug = routeSlug ? routeSlug.replace(/_/g, '-') : undefined
+      const brandParams: any = { page_size: 500 }
+      if (primarySlug) {
+        brandParams.primary_category_slug = primarySlug
+      } else {
+        brandParams.product_type = brandProductType
+      }
+      const brandRes = await axios.get(`${base}/api/catalog/brands`, { params: brandParams })
+      brands = brandRes.data.results || []
+    } catch {
+      brands = []
+    }
 
-      const productParams: Record<string, any> = { page, page_size: pageSize }
+    // --- Товары: всегда общий эндпоинт, чтобы не получать 404 для кастомных категорий ---
+    const productParams: any = { page, page_size: 500 }
+    if (routeSlug) productParams.category_slug = routeSlug
+    if (brandId) {
+      productParams.brand_id = brandId
+    } else if (brandSlug) {
+      const selectedBrand = brands.find((b: any) => b.slug === brandSlug)
+      if (selectedBrand) {
+        productParams.brand_id = selectedBrand.id
+      }
+    }
+
+    let productsData: any = { results: [], count: 0 }
+    try {
+      const prodRes = await axios.get(`${base}/api/catalog/products`, { params: productParams })
+      productsData = prodRes.data || {}
+    } catch {
+      productsData = { results: [], count: 0 }
+    }
+
+    const products = Array.isArray(productsData) ? productsData : (productsData.results || [])
+    const totalCount = productsData.count || products.length
+
+    // --- Категории: фильтрованные на бэке ---
+    let categories: any[] = []
+    let subcategories: any[] = []
+    try {
+      const catParams: any = {}
       if (routeSlug) {
-        productParams.category_slug = routeSlug
+        catParams.slug = routeSlug
+        catParams.include_children = true
+      } else {
+        catParams.top_level = true
       }
-      if (brandId) {
-        productParams.brand_id = brandId
-      } else if (brandSlug) {
-        const selectedBrand = brands.find((b: any) => b.slug === brandSlug)
-        if (selectedBrand) {
-          productParams.brand_id = selectedBrand.id
-        }
-      }
+      catParams.page_size = 200
+      const catRes = await axios.get(`${base}/api/catalog/categories`, { params: catParams })
+      categories = catRes.data.results || []
+    } catch {
+      categories = []
+    }
 
-      const prodRes = await axios.get(`${base}/api/catalog/products`, {
-        params: productParams
-      })
-      const productsData = prodRes.data
-      let products = Array.isArray(productsData) ? productsData : (productsData.results || [])
-      const totalCount = prodRes.data.count || products.length
-      
-      const categories = [
-        { id: 1, name: 'Обезболивающие', slug: 'painkillers', children_count: 0 },
-        { id: 2, name: 'Антибиотики', slug: 'antibiotics', children_count: 0 },
-        { id: 3, name: 'Витамины', slug: 'vitamins', children_count: 0 },
-        { id: 4, name: 'БАДы', slug: 'supplements', children_count: 0 }
-      ]
-      
-      return {
-        props: {
-          products,
-          categories,
-          brands,
-          subcategories: [],
-          categoryName: 'Медикаменты',
-          categoryDescription: 'Лекарственные препараты и медикаменты из Турции',
-          totalCount,
-          currentPage: Number(page),
-          totalPages: Math.ceil(totalCount / pageSize),
-          categoryType,
-          ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
-        },
-      }
-    } else {
-      const brandRes = await axios
-        .get(`${base}/api/catalog/brands`, { params: { product_type: brandProductType } })
-        .catch(() => ({ data: { results: [] } }))
-      const brands = brandRes.data.results || []
-
-      const productParams: any = { page, page_size: pageSize }
-      if (brandId) {
-        productParams.brand_id = brandId
-      } else if (brandSlug) {
-        const selectedBrand = brands.find((b: any) => b.slug === brandSlug)
-        if (selectedBrand) {
-          productParams.brand_id = selectedBrand.id
-        }
-      }
-
-      const [prodRes, catRes] = await Promise.all([
-        axios
-          .get(`${base}/api/catalog/${categoryType}/products`, {
-            params: { ...productParams, category_slug: routeSlug }
+    // Если детей не вернулось, пытаемся догрузить по parent_slug
+    if (routeSlug) {
+      const hasChildren = categories.some((c: any) => c.parent !== null && typeof c.parent !== 'undefined')
+      if (!hasChildren) {
+        try {
+          const childRes = await axios.get(`${base}/api/catalog/categories`, {
+            params: { parent_slug: routeSlug, page_size: 200 }
           })
-          .catch(() => ({ data: { results: [], count: 0 } })),
-        axios.get(`${base}/api/catalog/${categoryType}/categories`).catch(() => ({ data: { results: [] } }))
-      ])
-
-      const productsData = prodRes.data
-      const products = Array.isArray(productsData) ? productsData : (productsData.results || [])
-      const categories = catRes.data.results || []
-      const totalCount = productsData.count || products.length
-      
-      const categoryNames: Record<string, { name: string; description: string }> = {
-        clothing: { name: 'Одежда', description: 'Модная одежда для всей семьи из Турции' },
-        shoes: { name: 'Обувь', description: 'Качественная обувь для всей семьи' },
-        electronics: { name: 'Электроника', description: 'Современные гаджеты и техника' },
-        supplements: { name: 'БАДы', description: 'Биологически активные добавки' },
-        tableware: { name: 'Посуда', description: 'Кухонная посуда и аксессуары' },
-        furniture: { name: 'Мебель', description: 'Мебель для дома и офиса' },
-        accessories: { name: 'Аксессуары', description: 'Сумки, ремни, кошельки и другие аксессуары' },
-        jewelry: { name: 'Украшения', description: 'Украшения и бижутерия из Турции' },
-        underwear: { name: 'Нижнее бельё', description: 'Базовое и повседневное нижнее бельё' },
-        headwear: { name: 'Головные уборы', description: 'Кепки, шапки и другие головные уборы' },
-        'medical-equipment': { name: 'Медицинский инвентарь', description: 'Инструменты и оборудование для медицины' }
+          const childList = childRes.data.results || []
+          if (childList.length) {
+            categories = [...categories, ...childList]
+          }
+        } catch {
+          // ignore
+        }
       }
+    }
 
-      const categoryInfo = categoryNames[categoryType] || { name: 'Товары', description: '' }
+    // Оставляем только текущую категорию и её дочерние, чтобы сайтбар не засорялся
+    const routeNorm = routeSlug ? routeSlug.toLowerCase().replace(/_/g, '-') : ''
+    const mainCat = categories.find((c: any) => (c.slug || '').toLowerCase().replace(/_/g, '-') === routeNorm)
+    let sidebarCategories: any[] = categories
+    if (mainCat) {
+      const childCats = categories.filter((c: any) => c.parent === mainCat.id)
+      sidebarCategories = [mainCat]
+      subcategories = childCats
+    } else if (routeNorm) {
+      sidebarCategories = categories.filter((c: any) => (c.slug || '').toLowerCase().replace(/_/g, '-') === routeNorm)
+    }
+    // Перезаписываем categories отфильтрованным набором, чтобы на клиенте не было лишних категорий
+    categories = sidebarCategories
 
-      return {
-        props: {
-          products,
-          categories,
-          brands,
-          subcategories: [],
-          categoryName: categoryInfo.name,
-          categoryDescription: categoryInfo.description,
-          totalCount,
-          currentPage: Number(page),
-          totalPages: Math.ceil(totalCount / pageSize),
-          categoryType,
-          ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
-        },
-      }
+    // --- Фильтр брендов ---
+    brands = filterBrandsByProducts(brands, products, categoryType, routeSlug)
+
+    const categoryNames: Record<string, { name: string; description: string }> = {
+      medicines: { name: 'Медикаменты', description: 'Лекарственные препараты и медикаменты из Турции' },
+      supplements: { name: 'БАДы', description: 'Биологически активные добавки' },
+      clothing: { name: 'Одежда', description: 'Модная одежда для всей семьи из Турции' },
+      shoes: { name: 'Обувь', description: 'Качественная обувь для всей семьи' },
+      electronics: { name: 'Электроника', description: 'Современные гаджеты и техника' },
+      tableware: { name: 'Посуда', description: 'Кухонная посуда и аксессуары' },
+      furniture: { name: 'Мебель', description: 'Мебель для дома и офиса' },
+      accessories: { name: 'Аксессуары', description: 'Сумки, ремни, кошельки и другие аксессуары' },
+      jewelry: { name: 'Украшения', description: 'Украшения и бижутерия из Турции' },
+      underwear: { name: 'Нижнее бельё', description: 'Базовое и повседневное нижнее бельё' },
+      headwear: { name: 'Головные уборы', description: 'Кепки, шапки и другие головные уборы' },
+      'medical-equipment': { name: 'Медицинский инвентарь', description: 'Инструменты и оборудование для медицины' }
+    }
+
+    const categoryInfo = categoryNames[categoryType] || { name: 'Товары', description: '' }
+
+    // Заменяем categories на уже отфильтрованный список для сайтбара,
+    // чтобы на клиенте не пришёл полный набор и не затёр отображение.
+    categories = sidebarCategories
+
+    return {
+      props: {
+        products,
+        categories,
+        sidebarCategories,
+        brands,
+        subcategories,
+        categoryName: categoryInfo.name,
+        categoryDescription: categoryInfo.description,
+        totalCount,
+        currentPage: Number(page),
+        totalPages: Math.ceil(totalCount / pageSize),
+        categoryType,
+        initialRouteSlug: routeSlug || '',
+        ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
+      },
     }
   } catch (error) {
     console.error('Error fetching data:', error)

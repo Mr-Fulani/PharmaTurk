@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'next-i18next'
 
 export interface SidebarTreeItem {
@@ -29,6 +29,11 @@ export interface FilterState {
   sortBy: string
   colors?: string[]
   sizes?: string[]
+  shoeTypes?: string[]
+  clothingItems?: string[]
+  jewelryMaterials?: string[]
+  jewelryGender?: string[]
+  headwearTypes?: string[]
 }
 
 interface Category {
@@ -57,6 +62,8 @@ interface CategorySidebarProps {
   isOpen?: boolean
   onToggle?: () => void
   initialFilters?: FilterState
+  showSubcategories?: boolean
+  categoryType?: string
 }
 
 const toggleArrayValue = <T,>(arr: T[], value: T): T[] =>
@@ -73,7 +80,9 @@ export default function CategorySidebar({
   onFilterChange,
   isOpen = true,
   onToggle,
-  initialFilters
+  initialFilters,
+  showSubcategories = false,
+  categoryType
 }: CategorySidebarProps) {
   const { t } = useTranslation('common')
   const defaultFilters: FilterState = {
@@ -84,7 +93,12 @@ export default function CategorySidebar({
     subcategories: [],
     subcategorySlugs: [],
     inStock: false,
-    sortBy: 'name_asc'
+    sortBy: 'name_asc',
+    shoeTypes: [],
+    clothingItems: [],
+    jewelryMaterials: [],
+    jewelryGender: [],
+    headwearTypes: [],
   }
   const [filters, setFilters] = useState<FilterState>(initialFilters || defaultFilters)
   
@@ -249,7 +263,61 @@ export default function CategorySidebar({
     filters.subcategories.length > 0 ||
     filters.priceMin !== undefined ||
     filters.priceMax !== undefined ||
-    filters.inStock
+    filters.inStock ||
+    (filters.shoeTypes && filters.shoeTypes.length > 0) ||
+    (filters.clothingItems && filters.clothingItems.length > 0) ||
+    (filters.jewelryMaterials && filters.jewelryMaterials.length > 0) ||
+    (filters.jewelryGender && filters.jewelryGender.length > 0) ||
+    (filters.headwearTypes && filters.headwearTypes.length > 0)
+
+  const toggleCustomFilter = (field: 'shoeTypes' | 'clothingItems' | 'jewelryMaterials' | 'jewelryGender' | 'headwearTypes', value: string) => {
+    setFilters((prev) => {
+      const current = prev[field] || []
+      const exists = current.includes(value)
+      const nextArr = exists ? current.filter((v) => v !== value) : [...current, value]
+      return { ...prev, [field]: nextArr }
+    })
+  }
+
+  const shoeTypeOptions = [
+    { value: 'sneakers', label: 'Кроссовки' },
+    { value: 'boots', label: 'Ботинки/Ботильоны' },
+    { value: 'sandals', label: 'Сандалии/Шлёпанцы' },
+  ]
+
+  const clothingItemOptions = [
+    { value: 'jeans', label: 'Джинсы' },
+    { value: 'tshirts', label: 'Футболки' },
+    { value: 'hoodies', label: 'Худи' },
+    { value: 'sweaters', label: 'Джемперы/Свитеры' },
+    { value: 'shirts', label: 'Рубашки' },
+    { value: 'blouses', label: 'Блузки' },
+    { value: 'jackets', label: 'Куртки' },
+    { value: 'coats', label: 'Пальто' },
+    { value: 'trousers', label: 'Брюки' },
+    { value: 'shorts', label: 'Шорты' },
+    { value: 'socks', label: 'Носки' },
+    { value: 'dresses', label: 'Платья' },
+    { value: 'skirts', label: 'Юбки' },
+  ]
+
+  const jewelryMaterialOptions = [
+    { value: 'gold', label: 'Золото' },
+    { value: 'silver', label: 'Серебро' },
+    { value: 'bijouterie', label: 'Бижутерия' },
+  ]
+
+  const jewelryGenderOptions = [
+    { value: 'women', label: 'Женские' },
+    { value: 'men', label: 'Мужские' },
+    { value: 'kids', label: 'Детские' },
+  ]
+
+  const headwearTypeOptions = [
+    { value: 'caps', label: 'Кепки' },
+    { value: 'hats', label: 'Шапки' },
+    { value: 'panama', label: 'Панамки' },
+  ]
 
   return (
     <>
@@ -300,6 +368,180 @@ export default function CategorySidebar({
             </div>
           )}
 
+          {/* Спец-фильтры: обувь */}
+          {categoryType === 'shoes' && (
+            <div className="border-b pb-4">
+              <button
+                onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
+                className="flex items-center justify-between w-full mb-3"
+              >
+                <h3 className="text-base font-semibold text-gray-900">Тип обуви</h3>
+                <svg
+                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {expandedSections.filters && (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {shoeTypeOptions.map((opt) => (
+                    <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={filters.shoeTypes?.includes(opt.value) || false}
+                        onChange={() => toggleCustomFilter('shoeTypes', opt.value)}
+                        className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                      />
+                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Спец-фильтры: одежда */}
+          {categoryType === 'clothing' && (
+            <div className="border-b pb-4">
+              <button
+                onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
+                className="flex items-center justify-between w-full mb-3"
+              >
+                <h3 className="text-base font-semibold text-gray-900">Предметы одежды</h3>
+                <svg
+                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {expandedSections.filters && (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {clothingItemOptions.map((opt) => (
+                    <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={filters.clothingItems?.includes(opt.value) || false}
+                        onChange={() => toggleCustomFilter('clothingItems', opt.value)}
+                        className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                      />
+                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Спец-фильтры: украшения */}
+          {categoryType === 'jewelry' && (
+            <div className="border-b pb-4 space-y-4">
+              <div>
+                <button
+                  onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
+                  className="flex items-center justify-between w-full mb-3"
+                >
+                  <h3 className="text-base font-semibold text-gray-900">Материал</h3>
+                  <svg
+                    className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {expandedSections.filters && (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {jewelryMaterialOptions.map((opt) => (
+                      <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={filters.jewelryMaterials?.includes(opt.value) || false}
+                          onChange={() => toggleCustomFilter('jewelryMaterials', opt.value)}
+                          className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                        />
+                        <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <button
+                  onClick={() => setExpandedSections((prev) => ({ ...prev, brands: !prev.brands }))}
+                  className="flex items-center justify-between w-full mb-3"
+                >
+                  <h3 className="text-base font-semibold text-gray-900">Для кого</h3>
+                  <svg
+                    className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.brands ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {expandedSections.brands && (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {jewelryGenderOptions.map((opt) => (
+                      <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={filters.jewelryGender?.includes(opt.value) || false}
+                          onChange={() => toggleCustomFilter('jewelryGender', opt.value)}
+                          className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                        />
+                        <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Спец-фильтры: головные уборы */}
+          {categoryType === 'headwear' && (
+            <div className="border-b pb-4">
+              <button
+                onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
+                className="flex items-center justify-between w-full mb-3"
+              >
+                <h3 className="text-base font-semibold text-gray-900">Тип головного убора</h3>
+                <svg
+                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {expandedSections.filters && (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {headwearTypeOptions.map((opt) => (
+                    <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={filters.headwearTypes?.includes(opt.value) || false}
+                        onChange={() => toggleCustomFilter('headwearTypes', opt.value)}
+                        className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                      />
+                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {categories.length > 0 && categoryGroups.length === 0 && (
             <div className="border-b pb-4">
               <button
@@ -337,7 +579,7 @@ export default function CategorySidebar({
             </div>
           )}
 
-          {subcategories.length > 0 && (
+          {showSubcategories && subcategories.length > 0 && (
             <div className="border-b pb-4">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, subcategories: !prev.subcategories }))}
@@ -412,16 +654,7 @@ export default function CategorySidebar({
                         className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
                       />
                       <div className="flex items-center space-x-2 flex-1">
-                        {brand.logo && (
-                          <img
-                            src={brand.logo}
-                            alt={brand.name}
-                            className="w-6 h-6 object-contain"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none'
-                            }}
-                          />
-                        )}
+                        {/* Логотипы брендов временно скрыты по просьбе пользователя */}
                         <span className="text-sm text-gray-700 group-hover:text-violet-700">{brand.name}</span>
                       </div>
                       {brand.product_count !== undefined && (

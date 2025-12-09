@@ -50,10 +50,96 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Category.objects.filter(is_active=True)
     serializer_class = CategorySerializer
     pagination_class = StandardPagination
+
+    def _parse_bool(self, value: str | None) -> bool | None:
+        """Безопасно парсит булево из query-параметра."""
+        if value is None:
+            return None
+        return value.lower() in ('true', '1', 'yes')
+
+    def _parse_slug_list(self, param: str) -> list[str]:
+        """Парсит список slug из query-параметров."""
+        raw = self.request.query_params.get(param)
+        if not raw:
+            return []
+        return [s.strip() for s in raw.split(',') if s.strip()]
+
+    def _parse_int_list(self, param: str) -> list[int]:
+        """Парсит список ID из query-параметров."""
+        values = self.request.query_params.getlist(param) or self.request.query_params.getlist(f'{param}[]')
+        result: list[int] = []
+        for value in values:
+            try:
+                result.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        return result
+
+    def get_queryset(self):
+        """
+        Фильтрует категории.
+
+        Поддерживаемые параметры:
+        - all=true               — вернуть все активные категории без ограничений.
+        - top_level=true         — только корневые категории (parent is null).
+        - slug / category_slug   — одна или несколько через запятую; вернёт указанную категорию и (по умолчанию) её дочерние.
+        - include_children=false — если передан slug, можно отключить добавление детей.
+        - parent_slug            — вернуть только детей указанного родителя (slug).
+        - parent_id              — вернуть только детей указанного родителя (id).
+        """
+        base_qs = Category.objects.filter(is_active=True).order_by('sort_order', 'name')
+
+        # Явный запрос "все категории"
+        if self._parse_bool(self.request.query_params.get('all')) is True:
+            return base_qs
+
+        # Фильтр по parent_id / parent_slug
+        parent_ids = self._parse_int_list('parent_id')
+        parent_slugs = self._parse_slug_list('parent_slug')
+
+        # Фильтр по slug (или category_slug)
+        slug_list = self._parse_slug_list('slug') or self._parse_slug_list('category_slug')
+        include_children = self._parse_bool(self.request.query_params.get('include_children'))
+        if include_children is None:
+            include_children = True  # по умолчанию берём детей, если указан slug
+
+        # Если задан slug — возвращаем саму категорию и (опционально) её детей
+        if slug_list:
+            main_qs = base_qs.filter(slug__in=slug_list)
+            if not include_children:
+                return main_qs
+            parent_ids_set = list(main_qs.values_list('id', flat=True))
+            children_qs = base_qs.filter(parent_id__in=parent_ids_set)
+            return main_qs.union(children_qs).order_by('sort_order', 'name')
+
+        # Если задан parent — возвращаем только детей
+        if parent_ids or parent_slugs:
+            qs = base_qs
+            if parent_ids:
+                qs = qs.filter(parent_id__in=parent_ids)
+            if parent_slugs:
+                qs = qs.filter(parent__slug__in=parent_slugs)
+            return qs
+
+        # Если top_level=true — только корневые
+        if self._parse_bool(self.request.query_params.get('top_level')) is True:
+            return base_qs.filter(parent__isnull=True)
+
+        # По умолчанию безопасно отдаём только корневые, чтобы не засорять фронт
+        return base_qs.filter(parent__isnull=True)
     
     @extend_schema(
         summary="Получить список категорий",
-        description="Возвращает список активных категорий товаров"
+        description="Возвращает активные категории с серверной фильтрацией",
+        parameters=[
+            OpenApiParameter(name="all", type=bool, required=False, description="Вернуть все активные категории без ограничений"),
+            OpenApiParameter(name="top_level", type=bool, required=False, description="Только корневые категории"),
+            OpenApiParameter(name="slug", type=str, required=False, description="Slug категории (или несколько через запятую)"),
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Алиас slug категории"),
+            OpenApiParameter(name="include_children", type=bool, required=False, description="Добавлять ли дочерние при фильтре по slug (по умолчанию true)"),
+            OpenApiParameter(name="parent_slug", type=str, required=False, description="Вернуть только детей категории с указанным slug"),
+            OpenApiParameter(name="parent_id", type=int, required=False, description="Вернуть только детей категории с указанным ID"),
+        ],
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -146,6 +232,13 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         """Фильтрует бренды по типу товара/категории."""
         queryset = Brand.objects.filter(is_active=True).order_by('name')
+
+        # Прямой фильтр по primary_category_slug
+        primary_slugs = self._parse_slug_list('primary_category_slug')
+        if primary_slugs:
+            normalized_slugs = [slug.replace('-', '_') for slug in primary_slugs]
+            return queryset.filter(primary_category_slug__in=normalized_slugs).distinct()
+
         product_type = self._normalize_product_type(self.request.query_params.get('product_type'))
         if not product_type:
             return queryset
@@ -177,7 +270,14 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
     
     @extend_schema(
         summary="Получить список брендов",
-        description="Возвращает список активных брендов (можно фильтровать по типу товара)"
+        description="Возвращает список активных брендов (можно фильтровать по типу товара или основной категории)",
+        parameters=[
+            OpenApiParameter(name="primary_category_slug", type=str, required=False, description="Основная категория бренда (slug или несколько через запятую, например furniture)"),
+            OpenApiParameter(name="product_type", type=str, required=False, description="Тип товара для фильтра (medicines, supplements, shoes, clothing, electronics, furniture и т.д.)"),
+            OpenApiParameter(name="category_id", type=int, required=False, description="ID категории для фильтрации по товарам"),
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории для фильтрации по товарам"),
+            OpenApiParameter(name="in_stock", type=bool, required=False, description="Только бренды с товарами в наличии"),
+        ],
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
