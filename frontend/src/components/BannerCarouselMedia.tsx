@@ -37,7 +37,6 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   const [displayMedia, setDisplayMedia] = useState<BannerMedia[]>([])
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
-  const slideRef = useRef<HTMLDivElement>(null)
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
 
@@ -177,17 +176,6 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
       if (activeMedia) setActiveMediaId(activeMedia.id)
       return rotated
     })
-    
-    // Затем перемещаем DOM для плавной анимации
-    requestAnimationFrame(() => {
-      if (slideRef.current) {
-        const items = slideRef.current.querySelectorAll('[data-banner-item]')
-        if (items.length > 0) {
-          const lastItem = items[items.length - 1] as HTMLElement
-          slideRef.current.insertBefore(lastItem, slideRef.current.firstChild)
-        }
-      }
-    })
   }
 
   const goToNextMedia = () => {
@@ -208,17 +196,6 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
       const activeMedia = rotated.length === 1 ? rotated[0] : rotated[1]
       if (activeMedia) setActiveMediaId(activeMedia.id)
       return rotated
-    })
-    
-    // Затем перемещаем DOM для плавной анимации
-    requestAnimationFrame(() => {
-      if (slideRef.current) {
-        const items = slideRef.current.querySelectorAll('[data-banner-item]')
-        if (items.length > 0) {
-          const firstItem = items[0] as HTMLElement
-          slideRef.current.appendChild(firstItem)
-        }
-      }
     })
   }
 
@@ -271,11 +248,13 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   }
 
   const renderMediaItem = (media: BannerMedia, index: number) => {
-    // Определяем активный элемент по позиции в массиве
-    // Активный элемент всегда на позиции index 1 (или 0 если медиа одно)
-    // По CSS: nth-child(1) и nth-child(2) - большие картинки (index 0 и 1)
-    // nth-child(3) и далее - миниатюры (index >= 2)
-    const isActive = displayMedia.length === 1 ? index === 0 : index === 1
+    // Активность определяем по id, а не только по индексу, чтобы текст был сразу
+    const isActive =
+      activeMediaId !== null
+        ? media.id === activeMediaId
+        : displayMedia.length === 1
+          ? index === 0
+          : index === 1
     
     const fullUrl = getFullUrl(media.content_url)
     const embedUrl = media.content_type === 'video' ? getVideoEmbedUrl(fullUrl) : null
@@ -319,22 +298,18 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
       return trimmed.length > 0 ? trimmed : null
     }
     
-    const title = getTrimmedValue(media.title)
-    const description = getTrimmedValue(media.description)
-    const linkText = getTrimmedValue(media.link_text)
-    const linkUrl = getTrimmedValue(media.link_url)
+    // Берём данные из медиа, если их нет — подставляем из баннера, чтобы текст был сразу
+    const title = getTrimmedValue(media.title) ?? getTrimmedValue(banner?.title)
+    const description = getTrimmedValue(media.description) ?? getTrimmedValue(banner?.description)
+    const linkText = getTrimmedValue(media.link_text) ?? getTrimmedValue(banner?.link_text)
+    const linkUrl = getTrimmedValue(media.link_url) ?? getTrimmedValue(banner?.link_url)
     
     // Проверяем, есть ли у медиа свои собственные данные для отображения
     // Учитываем, что значения могут быть пустыми строками
     const hasMediaContent = !!(title || description || (linkText && linkUrl))
     
-    // Показываем контент ТОЛЬКО если:
-    // 1. Элемент активный (видимый пользователю) - это гарантирует, что контент не на неактивной большой картинке
-    // 2. Индекс меньше 2 (index 0 или 1) - это гарантирует, что контент не на миниатюре (index >= 2)
-    // 3. У медиа есть свои собственные данные
-    // Активный элемент всегда имеет index 0 (если медиа одно) или index 1 (если медиа несколько)
-    // И всегда является большой картинкой (nth-child(1) или nth-child(2) в CSS)
-    const shouldShowContent = isActive && hasMediaContent
+    // Контент показываем только для активного элемента с данными, и только для больших (index < 2)
+    const shouldShowContent = isActive && index < 2 && hasMediaContent
     
     // Отладка для активного элемента с данными
     if (isActive && typeof window !== 'undefined' && hasMediaContent) {
@@ -446,7 +421,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
 
   return (
     <div className={`${styles.container} ${className}`}>
-      <div ref={slideRef} className={styles.slide}>
+      <div className={styles.slide}>
         {displayMedia.map((media, index) => renderMediaItem(media, index))}
       </div>
 
