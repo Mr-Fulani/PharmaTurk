@@ -72,6 +72,19 @@ export default function Home({ brands, categories }: HomePageProps) {
     return categoryColorMap[slug] || { bgColor: 'from-gray-600 to-gray-400', textColor: 'text-white' }
   }
 
+  // Жёсткие переопределения для брендов, если в данных не задана категория
+  const brandCategoryOverrides: Record<string, string> = {
+    bellona: 'furniture',
+    nike: 'shoes',
+    adidas: 'shoes',
+    puma: 'shoes',
+    reebok: 'shoes',
+    demofoot: 'shoes',
+    zara: 'clothing',
+    'lc-waikiki': 'clothing',
+    lcwaikiki: 'clothing',
+  }
+
   const rootSlugSet = new Set([
     'medicines',
     'supplements',
@@ -213,7 +226,9 @@ export default function Home({ brands, categories }: HomePageProps) {
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
 
   const handleBrandClick = (brand: Brand) => {
-    const slug = mapCategoryToRouteSlug(brand.primary_category_slug || brand.slug || '')
+    const normalizedSlug = (brand.slug || '').toLowerCase()
+    const override = brandCategoryOverrides[normalizedSlug] || brandCategoryOverrides[(brand.name || '').toLowerCase()]
+    const slug = mapCategoryToRouteSlug(brand.primary_category_slug || override || brand.slug || '')
     router.push(`/categories/${slug}?brand_id=${brand.id}`)
   }
 
