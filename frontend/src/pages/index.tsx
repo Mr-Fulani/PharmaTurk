@@ -81,6 +81,24 @@ export default function Home({ brands }: HomePageProps) {
       textColor: 'text-white'
     },
     {
+      id: 'underwear',
+      name: 'Нижнее бельё',
+      slug: 'underwear',
+      description: 'Базовые и вариативные модели белья',
+      imageUrl: '/category-underwear.jpg',
+      bgColor: 'from-rose-500 to-red-500',
+      textColor: 'text-white'
+    },
+    {
+      id: 'headwear',
+      name: 'Головные уборы',
+      slug: 'headwear',
+      description: 'Кепки, шапки, панамы и др.',
+      imageUrl: '/category-headwear.jpg',
+      bgColor: 'from-blue-500 to-cyan-500',
+      textColor: 'text-white'
+    },
+    {
       id: 'shoes',
       name: 'Обувь',
       slug: 'shoes',

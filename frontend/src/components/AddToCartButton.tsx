@@ -40,7 +40,8 @@ export default function AddToCartButton({
       body.set('quantity', String(1))
       const baseTypes = [
         'medicines', 'supplements', 'medical-equipment', 'medical_equipment',
-        'furniture', 'tableware', 'accessories', 'jewelry'
+        'furniture', 'tableware', 'accessories', 'jewelry',
+        'underwear', 'headwear'
       ]
       const isBase = baseTypes.includes(productType)
       if (isBase && productId !== undefined) {

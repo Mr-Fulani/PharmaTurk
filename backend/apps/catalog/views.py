@@ -95,6 +95,8 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         'furniture': 'furniture',
         'tableware': 'tableware',
         'jewelry': 'jewelry',
+        'underwear': 'underwear',
+        'headwear': 'headwear',
     }
     
     PRODUCT_MODEL_MAP = {
@@ -105,6 +107,8 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         'tableware': Product,
         'accessories': Product,
         'jewelry': Product,
+        'underwear': Product,
+        'headwear': Product,
         'clothing': ClothingProduct,
         'shoes': ShoeProduct,
         'electronics': ElectronicsProduct,

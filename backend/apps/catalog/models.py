@@ -25,6 +25,8 @@ class Category(models.Model):
         ("supplements", _("БАДы")),
         ("medical_equipment", _("Медтехника")),
         ("clothing", _("Одежда")),
+        ("underwear", _("Нижнее бельё")),
+        ("headwear", _("Головные уборы")),
         ("shoes", _("Обувь")),
         ("electronics", _("Электроника")),
         ("furniture", _("Мебель")),
@@ -121,6 +123,20 @@ class CategoryJewelry(Category):
         verbose_name_plural = _("Категории — Украшения")
 
 
+class CategoryUnderwear(Category):
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Нижнее бельё")
+        verbose_name_plural = _("Категории — Нижнее бельё")
+
+
+class CategoryHeadwear(Category):
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Головные уборы")
+        verbose_name_plural = _("Категории — Головные уборы")
+
+
 class Brand(models.Model):
     """Бренд товаров."""
     
@@ -156,6 +172,8 @@ class Product(models.Model):
         ("supplements", _("БАДы")),
         ("medical_equipment", _("Медтехника")),
         ("clothing", _("Одежда")),
+        ("underwear", _("Нижнее бельё")),
+        ("headwear", _("Головные уборы")),
         ("shoes", _("Обувь")),
         ("electronics", _("Электроника")),
         ("furniture", _("Мебель")),
@@ -411,6 +429,20 @@ class ProductJewelry(Product):
         proxy = True
         verbose_name = _("Товар — Украшения")
         verbose_name_plural = _("Товары — Украшения")
+
+
+class ProductUnderwear(Product):
+    class Meta:
+        proxy = True
+        verbose_name = _("Товар — Нижнее бельё")
+        verbose_name_plural = _("Товары — Нижнее бельё")
+
+
+class ProductHeadwear(Product):
+    class Meta:
+        proxy = True
+        verbose_name = _("Товар — Головные уборы")
+        verbose_name_plural = _("Товары — Головные уборы")
 
 
 class ProductImage(models.Model):

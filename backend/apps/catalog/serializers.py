@@ -256,6 +256,8 @@ class AddToFavoriteSerializer(serializers.Serializer):
             'tableware': Product,
             'accessories': Product,
             'jewelry': Product,
+            'underwear': Product,
+            'headwear': Product,
             'clothing': ClothingProduct,
             'shoes': ShoeProduct,
             'electronics': ElectronicsProduct,

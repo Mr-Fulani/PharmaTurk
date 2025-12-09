@@ -29,6 +29,8 @@ PRODUCT_TYPE_ALIASES = {
     'furniture': 'furniture',
     'accessories': 'accessories',
     'jewelry': 'jewelry',
+    'underwear': 'underwear',
+    'headwear': 'headwear',
 }
 
 CATEGORY_PRESETS = {
@@ -46,6 +48,8 @@ BASE_PRODUCT_TYPES = {
     'furniture',
     'accessories',
     'jewelry',
+    'underwear',
+    'headwear',
 }
 
 

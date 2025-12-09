@@ -7,9 +7,11 @@ from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFor
 from .models import (
     Category, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
+    CategoryUnderwear, CategoryHeadwear,
     Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ProductMedicines, ProductSupplements, ProductMedicalEquipment,
     ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
+    ProductUnderwear, ProductHeadwear,
     ClothingCategory, ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
     ShoeCategory, ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
     ElectronicsCategory, ElectronicsProduct, ElectronicsProductImage,
@@ -98,6 +100,22 @@ class CategoryJewelryAdmin(BaseCategoryAdmin):
     required_category_type = "jewelry"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Украшения: кольца, цепочки, браслеты, серьги, подвески; есть женские/мужские.")}),
+    )
+
+
+@admin.register(CategoryUnderwear)
+class CategoryUnderwearAdmin(BaseCategoryAdmin):
+    required_category_type = "underwear"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Нижнее бельё: базовые и вариативные модели, подкатегории добавляются вручную.")}),
+    )
+
+
+@admin.register(CategoryHeadwear)
+class CategoryHeadwearAdmin(BaseCategoryAdmin):
+    required_category_type = "headwear"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Головные уборы: кепки, шапки, панамы и т.д.; подкатегории вручную.")}),
     )
 
 
@@ -372,6 +390,18 @@ class ProductAccessoriesAdmin(BaseProductProxyAdmin):
 @admin.register(ProductJewelry)
 class ProductJewelryAdmin(BaseProductProxyAdmin):
     required_product_type = "jewelry"
+    fieldsets = BaseProductAdmin.fieldsets
+
+
+@admin.register(ProductUnderwear)
+class ProductUnderwearAdmin(BaseProductProxyAdmin):
+    required_product_type = "underwear"
+    fieldsets = BaseProductAdmin.fieldsets
+
+
+@admin.register(ProductHeadwear)
+class ProductHeadwearAdmin(BaseProductProxyAdmin):
+    required_product_type = "headwear"
     fieldsets = BaseProductAdmin.fieldsets
 
 

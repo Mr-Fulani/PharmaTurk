@@ -18,6 +18,8 @@ type CategoryType =
   | 'tableware'
   | 'accessories'
   | 'jewelry'
+  | 'underwear'
+  | 'headwear'
 
 const CATEGORY_ALIASES: Record<string, CategoryType> = {
   supplements: 'supplements',
@@ -27,6 +29,8 @@ const CATEGORY_ALIASES: Record<string, CategoryType> = {
   tableware: 'tableware',
   accessories: 'accessories',
   jewelry: 'jewelry',
+  underwear: 'underwear',
+  headwear: 'headwear',
 }
 
 const normalizeCategoryType = (value?: string): CategoryType => {
@@ -35,7 +39,8 @@ const normalizeCategoryType = (value?: string): CategoryType => {
   if ([
     'medicines', 'clothing', 'shoes', 'electronics',
     'supplements', 'medical-equipment',
-    'furniture', 'tableware', 'accessories', 'jewelry'
+    'furniture', 'tableware', 'accessories', 'jewelry',
+    'underwear', 'headwear'
   ].includes(lower)) {
     return lower as CategoryType
   }
@@ -312,7 +317,8 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     const res = await axios.get(`${base}${endpoint}`)
     const baseProductTypes: CategoryType[] = [
       'medicines', 'supplements', 'medical-equipment',
-      'furniture', 'tableware', 'accessories', 'jewelry'
+      'furniture', 'tableware', 'accessories', 'jewelry',
+      'underwear', 'headwear'
     ]
     const isBaseProduct = baseProductTypes.includes(categoryType)
     return {
