@@ -7,6 +7,8 @@ interface AddToCartButtonProps {
   productId?: number
   productType?: string
   productSlug?: string
+  size?: string
+  requireSize?: boolean
   className?: string
   label?: string
 }
@@ -15,6 +17,8 @@ export default function AddToCartButton({
   productId,
   productType = 'medicines',
   productSlug,
+  size,
+  requireSize = false,
   className,
   label
 }: AddToCartButtonProps) {
@@ -26,6 +30,11 @@ export default function AddToCartButton({
   const add = async () => {
     setLoading(true)
     try {
+      if (requireSize && !size) {
+        alert('Выберите размер')
+        setLoading(false)
+        return
+      }
       initCartSession()
       const body = new URLSearchParams()
       body.set('quantity', String(1))
@@ -42,6 +51,9 @@ export default function AddToCartButton({
         }
         if (productSlug) {
           body.set('product_slug', productSlug)
+        }
+        if (size) {
+          body.set('size', size)
         }
       }
       try {

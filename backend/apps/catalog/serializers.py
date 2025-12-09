@@ -3,8 +3,8 @@
 from rest_framework import serializers
 from .models import (
     Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
-    ClothingCategory, ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage,
-    ShoeCategory, ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage,
+    ClothingCategory, ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
+    ShoeCategory, ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
     ElectronicsCategory, ElectronicsProduct, ElectronicsProductImage,
     Banner, BannerMedia
 )
@@ -317,17 +317,36 @@ class ClothingVariantImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
 
 
+class ClothingVariantSizeSerializer(serializers.ModelSerializer):
+    """Сериализатор размеров варианта одежды."""
+
+    class Meta:
+        model = ClothingVariantSize
+        fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
+        read_only_fields = ['id']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        stock = data.get('stock_quantity')
+        if stock is not None and stock == 0:
+            data['is_available'] = False
+        return data
+
+
 class ClothingVariantSerializer(serializers.ModelSerializer):
     """Сериализатор варианта одежды."""
 
     images = ClothingVariantImageSerializer(many=True, read_only=True)
+    sizes = ClothingVariantSizeSerializer(many=True, read_only=True)
 
     class Meta:
         model = ClothingVariant
         fields = [
-            'id', 'slug', 'name', 'color', 'size',
+            'id', 'slug', 'name', 'color',
+            'size',  # устаревшее поле оставлено для совместимости
+            'sizes',
             'price', 'old_price', 'currency',
-            'is_available', 'stock_quantity',
+            'is_available',
             'main_image', 'images',
             'sku', 'barcode', 'gtin', 'mpn',
             'is_active', 'sort_order',
@@ -655,17 +674,36 @@ class ShoeVariantImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
 
 
+class ShoeVariantSizeSerializer(serializers.ModelSerializer):
+    """Сериализатор размеров варианта обуви."""
+
+    class Meta:
+        model = ShoeVariantSize
+        fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
+        read_only_fields = ['id']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        stock = data.get('stock_quantity')
+        if stock is not None and stock == 0:
+            data['is_available'] = False
+        return data
+
+
 class ShoeVariantSerializer(serializers.ModelSerializer):
     """Сериализатор варианта обуви."""
 
     images = ShoeVariantImageSerializer(many=True, read_only=True)
+    sizes = ShoeVariantSizeSerializer(many=True, read_only=True)
 
     class Meta:
         model = ShoeVariant
         fields = [
-            'id', 'slug', 'name', 'color', 'size',
+            'id', 'slug', 'name', 'color',
+            'size',  # устаревшее поле оставлено для совместимости
+            'sizes',
             'price', 'old_price', 'currency',
-            'is_available', 'stock_quantity',
+            'is_available',
             'main_image', 'images',
             'sku', 'barcode', 'gtin', 'mpn',
             'is_active', 'sort_order',

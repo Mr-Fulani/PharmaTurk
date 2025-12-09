@@ -120,13 +120,14 @@ class CartItem(models.Model):
     quantity = models.PositiveIntegerField(_("Количество"), default=1, validators=[MinValueValidator(1)])
     price = models.DecimalField(_("Цена на момент добавления"), max_digits=10, decimal_places=2)
     currency = models.CharField(_("Валюта"), max_length=3, default="USD")
+    chosen_size = models.CharField(_("Выбранный размер"), max_length=50, blank=True, default="")
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
     class Meta:
         verbose_name = _("Позиция корзины")
         verbose_name_plural = _("Позиции корзины")
-        unique_together = ("cart", "product")
+        unique_together = ("cart", "product", "chosen_size")
 
     def __str__(self) -> str:
         return f"{self.product.name} x{self.quantity}"
@@ -187,6 +188,7 @@ class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items", verbose_name=_("Заказ"))
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name="order_items", verbose_name=_("Товар"))
     product_name = models.CharField(_("Название товара"), max_length=500)
+    chosen_size = models.CharField(_("Выбранный размер"), max_length=50, blank=True, default="")
     price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2)
     quantity = models.PositiveIntegerField(_("Количество"), default=1)
     total = models.DecimalField(_("Сумма"), max_digits=12, decimal_places=2)

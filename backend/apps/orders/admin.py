@@ -9,7 +9,7 @@ class CartItemInline(admin.TabularInline):
     model = CartItem
     extra = 0
     readonly_fields = ('price', 'currency', 'created_at', 'updated_at')
-    fields = ('product', 'quantity', 'price', 'currency')
+    fields = ('product', 'chosen_size', 'quantity', 'price', 'currency')
 
 
 @admin.register(Cart)
@@ -33,7 +33,7 @@ class CartAdmin(admin.ModelAdmin):
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):
     """Админка для позиций корзины."""
-    list_display = ('cart', 'product', 'quantity', 'price', 'currency', 'created_at')
+    list_display = ('cart', 'product', 'chosen_size', 'quantity', 'price', 'currency', 'created_at')
     list_filter = ('currency', 'created_at')
     search_fields = ('cart__user__email', 'product__name')
     ordering = ('-created_at',)
@@ -45,7 +45,7 @@ class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
     readonly_fields = ('price', 'total')
-    fields = ('product', 'product_name', 'price', 'quantity', 'total')
+    fields = ('product', 'product_name', 'chosen_size', 'price', 'quantity', 'total')
 
 
 @admin.register(Order)
@@ -73,7 +73,7 @@ class OrderAdmin(admin.ModelAdmin):
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
     """Админка для позиций заказа."""
-    list_display = ('order', 'product', 'product_name', 'price', 'quantity', 'total')
+    list_display = ('order', 'product', 'product_name', 'chosen_size', 'price', 'quantity', 'total')
     search_fields = ('order__number', 'product__name', 'product_name')
     ordering = ('order',)
     readonly_fields = ('price', 'total')

@@ -10,8 +10,8 @@ from .models import (
     Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ProductMedicines, ProductSupplements, ProductMedicalEquipment,
     ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
-    ClothingCategory, ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage,
-    ShoeCategory, ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage,
+    ClothingCategory, ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
+    ShoeCategory, ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
     ElectronicsCategory, ElectronicsProduct, ElectronicsProductImage,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia
 )
@@ -458,49 +458,58 @@ class ClothingVariantInline(admin.TabularInline):
     """Инлайн для вариантов одежды (основные поля)."""
     model = ClothingVariant
     extra = 0
-    fields = ('name', 'slug', 'color', 'size', 'price', 'currency', 'is_available', 'stock_quantity', 'is_active', 'sort_order')
+    fields = ('name', 'slug', 'color', 'price', 'currency', 'is_active', 'sort_order')
     readonly_fields = ('slug',)
     show_change_link = True
+
+
+class ClothingVariantSizeInline(admin.TabularInline):
+    """Инлайн размеров варианта одежды."""
+    model = ClothingVariantSize
+    extra = 0
+    fields = ('size', 'is_available', 'stock_quantity', 'sort_order')
+    ordering = ('sort_order', 'size')
 
 
 @admin.register(ClothingVariant)
 class ClothingVariantAdmin(admin.ModelAdmin):
     """Отдельная админка варианта одежды (для картинок)."""
-    list_display = ('name', 'product', 'color', 'size', 'price', 'currency', 'is_available', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'is_available', 'color', 'size', 'currency', 'created_at')
-    search_fields = ('name', 'product__name', 'slug', 'color', 'size', 'sku', 'barcode', 'gtin', 'mpn')
+    list_display = ('name', 'product', 'color', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'color', 'currency', 'created_at')
+    search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
     fieldsets = (
         (None, {'fields': ('product', 'name', 'slug')}),
-        (_('Характеристики'), {'fields': ('color', 'size')}),
-        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')}),
+        (_('Характеристики'), {
+            'fields': ('color',),
+            'description': _("Размеры задайте в таблице размеров ниже.")
+        }),
+        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Медиа'), {'fields': ('main_image',)}),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
     )
-    inlines = [ClothingVariantImageInline]
+    inlines = [ClothingVariantSizeInline, ClothingVariantImageInline]
 
 
 @admin.register(ClothingProduct)
 class ClothingProductAdmin(admin.ModelAdmin):
     """Админка для товаров одежды."""
-    list_display = ('name', 'slug', 'category', 'brand', 'size', 'color', 'price', 'currency', 'is_available', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_available', 'is_featured', 'category', 'brand', 'size', 'color', 'season', 'currency', 'created_at')
-    search_fields = ('name', 'slug', 'description', 'size', 'color', 'material')
+    list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_featured', 'category', 'brand', 'season', 'currency', 'created_at')
+    search_fields = ('name', 'slug', 'description', 'material')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
+    exclude = ('size', 'color', 'stock_quantity', 'is_available')
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {'fields': ('category', 'brand')}),
-        (_('Clothing (устаревшие поля)'), {
-            'fields': ('size', 'color', 'material', 'season'),
-            'description': _("Для цветов/размеров используйте варианты ниже; эти поля оставлены для совместимости.")
-        }),
+        (_('Clothing'), {'fields': ('material', 'season')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('Availability'), {'fields': ()}),
         (_('Media'), {'fields': ('main_image',)}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
@@ -538,54 +547,70 @@ class ShoeVariantInline(admin.TabularInline):
     """Инлайн для вариантов обуви (основные поля)."""
     model = ShoeVariant
     extra = 0
-    fields = ('name', 'slug', 'color', 'size', 'price', 'currency', 'is_available', 'stock_quantity', 'is_active', 'sort_order')
+    fields = (
+        'name', 'slug',
+        'color',
+        'price', 'currency',
+        'main_image',
+        'is_active', 'sort_order',
+    )
     readonly_fields = ('slug',)
     show_change_link = True
+
+
+class ShoeVariantSizeInline(admin.TabularInline):
+    """Инлайн размеров варианта обуви."""
+    model = ShoeVariantSize
+    extra = 0
+    fields = ('size', 'is_available', 'stock_quantity', 'sort_order')
+    ordering = ('sort_order', 'size')
 
 
 @admin.register(ShoeVariant)
 class ShoeVariantAdmin(admin.ModelAdmin):
     """Отдельная админка варианта обуви (для картинок)."""
-    list_display = ('name', 'product', 'color', 'size', 'price', 'currency', 'is_available', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'is_available', 'color', 'size', 'currency', 'created_at')
-    search_fields = ('name', 'product__name', 'slug', 'color', 'size', 'sku', 'barcode', 'gtin', 'mpn')
+    list_display = ('name', 'product', 'color', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'color', 'currency', 'created_at')
+    search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
     fieldsets = (
         (None, {'fields': ('product', 'name', 'slug')}),
-        (_('Характеристики'), {'fields': ('color', 'size', 'heel_height', 'sole_type')}),
-        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')}),
+        (_('Характеристики'), {
+            'fields': ('color',),
+            'description': _("Размеры задайте в таблице размеров ниже.")
+        }),
+        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Медиа'), {'fields': ('main_image',)}),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
     )
-    inlines = [ShoeVariantImageInline]
+    inlines = [ShoeVariantSizeInline, ShoeVariantImageInline]
 
 
 @admin.register(ShoeProduct)
 class ShoeProductAdmin(admin.ModelAdmin):
     """Админка для товаров обуви."""
-    list_display = ('name', 'slug', 'category', 'brand', 'size', 'color', 'price', 'currency', 'is_available', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_available', 'is_featured', 'category', 'brand', 'size', 'color', 'heel_height', 'currency', 'created_at')
-    search_fields = ('name', 'slug', 'description', 'size', 'color', 'material')
+    list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_featured', 'category', 'brand', 'heel_height', 'currency', 'created_at')
+    search_fields = ('name', 'slug', 'description', 'material')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
+    exclude = ('size', 'color', 'stock_quantity', 'is_available')
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {'fields': ('category', 'brand')}),
-        (_('Shoes (используйте варианты ниже)'), {
-            'fields': ('size', 'color', 'material', 'heel_height', 'sole_type'),
-            'description': _("Размер/цвет теперь задаются через варианты; здесь поля оставлены для совместимости.")
-        }),
+        (_('Shoes'), {'fields': ('material', 'heel_height', 'sole_type')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('Availability'), {'fields': ()}),
         (_('Media'), {'fields': ('main_image',)}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ShoeVariantInline, ShoeProductImageInline]
+    # Галерея для обуви теперь задается на уровне варианта (цвета), поэтому инлайн изображений товара убран
+    inlines = [ShoeVariantInline]
 
 
 @admin.register(ElectronicsCategory)

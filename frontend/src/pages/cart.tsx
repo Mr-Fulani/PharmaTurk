@@ -11,7 +11,9 @@ interface CartItem {
   product: number
   product_name?: string
   product_slug?: string
+  product_type?: string
   product_image_url?: string
+  chosen_size?: string
   quantity: number
   price: string
   currency: string
@@ -207,8 +209,11 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
     }
   }
 
-  const getProductLink = (slug?: string, productId?: number) => {
+  const getProductLink = (slug?: string, productId?: number, productType?: string) => {
     if (slug) {
+      if (productType === 'shoes' || productType === 'clothing') {
+        return `/product/${productType}/${slug}`
+      }
       return `/product/${slug}`
     }
     return `#`
@@ -270,7 +275,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                   >
                     {/* Изображение товара */}
                     <Link
-                      href={getProductLink(item.product_slug, item.product)}
+                      href={getProductLink(item.product_slug, item.product, item.product_type)}
                       className="relative w-full sm:w-32 h-32 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100"
                     >
                       {item.product_image_url ? (
@@ -292,13 +297,18 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     <div className="flex-1 flex flex-col justify-between">
                       <div>
                         <Link
-                          href={getProductLink(item.product_slug, item.product)}
+                          href={getProductLink(item.product_slug, item.product, item.product_type)}
                           className="block"
                         >
                           <h3 className="text-lg font-semibold text-gray-900 hover:text-violet-600 transition-colors line-clamp-2">
                             {item.product_name || `Товар #${item.product}`}
                           </h3>
                         </Link>
+                        {item.chosen_size ? (
+                          <div className="mt-1 text-sm text-gray-600">
+                            {t('size', 'Размер')}: <span className="font-medium text-gray-900">{item.chosen_size}</span>
+                          </div>
+                        ) : null}
                         <div className="mt-1 text-lg font-bold text-violet-600">
                           {item.price} {item.currency}
                         </div>

@@ -506,7 +506,9 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
         # Фильтр по размеру
         size = self.request.query_params.get('size')
         if size:
-            queryset = queryset.filter(models.Q(size=size) | models.Q(variants__size=size))
+            queryset = queryset.filter(
+                models.Q(size=size) | models.Q(variants__sizes__size=size)
+            )
         
         # Фильтр по цвету
         color = self.request.query_params.get('color')
@@ -708,7 +710,9 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
         # Фильтр по размеру
         size = self.request.query_params.get('size')
         if size:
-            queryset = queryset.filter(models.Q(size=size) | models.Q(variants__size=size))
+            queryset = queryset.filter(
+                models.Q(size=size) | models.Q(variants__sizes__size=size)
+            )
         
         # Фильтр по цвету
         color = self.request.query_params.get('color')

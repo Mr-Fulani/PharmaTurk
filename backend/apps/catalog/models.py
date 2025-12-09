@@ -171,7 +171,7 @@ class Product(models.Model):
         ("out_of_stock", _("Нет в наличии")),
         ("discontinued", _("Снят с производства")),
     ]
-
+    
     # Основная информация
     name = models.CharField(_("Название"), max_length=500)
     slug = models.SlugField(_("Slug"), max_length=500, unique=True)
@@ -441,7 +441,7 @@ class ProductImage(models.Model):
 
 
 class ClothingVariant(models.Model):
-    """Вариант одежды (цвет/размер, цена, остаток)."""
+    """Вариант одежды (цвет, цены, остаток, галерея). Размеры хранятся отдельно."""
 
     product = models.ForeignKey(
         "ClothingProduct",
@@ -452,7 +452,13 @@ class ClothingVariant(models.Model):
     name = models.CharField(_("Название варианта"), max_length=500, blank=True)
     slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/цвету/размеру, можно переопределить."))
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
-    size = models.CharField(_("Размер"), max_length=50, blank=True)
+    # size поле оставлено для обратной совместимости, но не используется как источник доступных размеров
+    size = models.CharField(
+        _("Размер (устарело)"),
+        max_length=50,
+        blank=True,
+        help_text=_("Используйте таблицу размеров ниже; поле оставлено для совместимости.")
+    )
     sku = models.CharField(_("SKU"), max_length=100, blank=True)
     barcode = models.CharField(_("Штрихкод"), max_length=100, blank=True)
     gtin = models.CharField(_("GTIN"), max_length=100, blank=True)
@@ -493,6 +499,40 @@ class ClothingVariant(models.Model):
             composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
             self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
         super().save(*args, **kwargs)
+
+
+class ClothingVariantSize(models.Model):
+    """Размер внутри цветового варианта одежды."""
+
+    variant = models.ForeignKey(
+        ClothingVariant,
+        on_delete=models.CASCADE,
+        related_name="sizes",
+        verbose_name=_("Вариант одежды")
+    )
+    size = models.CharField(
+        _("Размер"),
+        max_length=50,
+        blank=True,
+        help_text=_("Например S, M, L или 48, 50.")
+    )
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Размер варианта одежды")
+        verbose_name_plural = _("Размеры варианта одежды")
+        ordering = ["variant", "sort_order", "size"]
+        indexes = [
+            models.Index(fields=["variant", "sort_order"]),
+            models.Index(fields=["variant", "size"]),
+        ]
+
+    def __str__(self):
+        return f"{self.variant} — {self.size}"
 
 
 class ClothingVariantImage(models.Model):
@@ -998,7 +1038,7 @@ class ShoeProductImage(models.Model):
 
 
 class ShoeVariant(models.Model):
-    """Вариант обуви (цвет/размер, цена, остаток)."""
+    """Вариант обуви (цвет, цены, остаток, галерея). Размеры хранятся отдельно."""
 
     product = models.ForeignKey(
         ShoeProduct,
@@ -1009,7 +1049,13 @@ class ShoeVariant(models.Model):
     name = models.CharField(_("Название варианта"), max_length=500, blank=True)
     slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/цвету/размеру, можно переопределить."))
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
-    size = models.CharField(_("Размер"), max_length=20, blank=True, help_text=_("Используйте EU размер; можно оставить пустым, если не применяется."))
+    # size поле оставлено для обратной совместимости, но не используется как источник доступных размеров
+    size = models.CharField(
+        _("Размер (устарело)"),
+        max_length=20,
+        blank=True,
+        help_text=_("Используйте таблицу размеров ниже; поле оставлено для совместимости.")
+    )
     sku = models.CharField(_("SKU"), max_length=100, blank=True)
     barcode = models.CharField(_("Штрихкод"), max_length=100, blank=True)
     gtin = models.CharField(_("GTIN"), max_length=100, blank=True)
@@ -1050,6 +1096,40 @@ class ShoeVariant(models.Model):
             composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
             self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
         super().save(*args, **kwargs)
+
+
+class ShoeVariantSize(models.Model):
+    """Размер внутри цветового варианта обуви."""
+
+    variant = models.ForeignKey(
+        ShoeVariant,
+        on_delete=models.CASCADE,
+        related_name="sizes",
+        verbose_name=_("Вариант обуви")
+    )
+    size = models.CharField(
+        _("Размер"),
+        max_length=20,
+        blank=True,
+        help_text=_("EU размер, например 40, 41, 42.")
+    )
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Размер варианта обуви")
+        verbose_name_plural = _("Размеры варианта обуви")
+        ordering = ["variant", "sort_order", "size"]
+        indexes = [
+            models.Index(fields=["variant", "sort_order"]),
+            models.Index(fields=["variant", "size"]),
+        ]
+
+    def __str__(self):
+        return f"{self.variant} — {self.size}"
 
 
 class ShoeVariantImage(models.Model):

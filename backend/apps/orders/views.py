@@ -210,6 +210,11 @@ class CartViewSet(viewsets.ViewSet):
         ]
     )
     @action(detail=False, methods=['post'], url_path=r'add/?')
+    @extend_schema(
+        description="Добавить товар в корзину (для вариантов обуви/одежды требуется размер).",
+        request=AddToCartSerializer,
+        responses=CartSerializer,
+    )
     def add(self, request):
         cart = _get_or_create_cart(request)
         serializer = AddToCartSerializer(data=request.data)
@@ -224,19 +229,38 @@ class CartViewSet(viewsets.ViewSet):
             raise
         product = serializer.validated_data['product']
         quantity = serializer.validated_data['quantity']
+        product_currency = getattr(product, "currency", None) or cart.currency or "USD"
 
         item, created = CartItem.objects.get_or_create(
             cart=cart,
             product=product,
+            chosen_size=serializer.validated_data.get('chosen_size', ''),
             defaults={
                 'quantity': quantity,
                 'price': product.price or 0,
-                'currency': cart.currency,
+                'currency': product_currency,
+                'chosen_size': serializer.validated_data.get('chosen_size', ''),
             }
         )
         if not created:
+            # Если уже есть, обновляем цену/валюту по актуальному товару
+            updated = False
+            if item.price != (product.price or item.price):
+                item.price = product.price or item.price
+                updated = True
+            if item.currency != product_currency:
+                item.currency = product_currency
+                updated = True
             item.quantity += quantity
-            item.save()
+            if updated:
+                item.save(update_fields=['price', 'currency', 'quantity', 'updated_at'])
+            else:
+                item.save(update_fields=['quantity', 'updated_at'])
+
+        # Синхронизируем валюту корзины под валюту последнего товара (простая модель)
+        if cart.currency != product_currency:
+            cart.currency = product_currency
+            cart.save(update_fields=['currency', 'updated_at'])
         # Возвращаем свежую корзину с позициями
         cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
@@ -645,6 +669,7 @@ class OrderViewSet(viewsets.ViewSet):
                 order=order,
                 product=item.product,
                 product_name=item.product.name,
+                chosen_size=item.chosen_size,
                 price=item.price,
                 quantity=item.quantity,
                 total=item.price * item.quantity,

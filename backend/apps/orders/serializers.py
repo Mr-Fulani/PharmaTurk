@@ -125,12 +125,26 @@ def get_or_create_category_for_variant(product_type: str) -> Category | None:
 
 def ensure_product_from_variant(variant, source_type: str, effective_type: str) -> Product:
     external = variant.external_data or {}
+    product = None
     base_product_id = external.get('base_product_id')
     if base_product_id:
         try:
-            return Product.objects.get(id=base_product_id)
+            product = Product.objects.get(id=base_product_id)
         except Product.DoesNotExist:
-            pass
+            product = None
+
+    def _variant_main_image(v):
+        if getattr(v, "main_image", ""):
+            return v.main_image
+        images_qs = getattr(v, "images", None)
+        if images_qs is not None:
+            main_img = images_qs.filter(is_main=True).first()
+            if main_img:
+                return main_img.image_url
+            first_img = images_qs.first()
+            if first_img:
+                return first_img.image_url
+        return None
 
     base_slug = external.get('base_product_slug') or slugify(f"{source_type}-{variant.slug}")
     category = get_or_create_category_for_variant(source_type) or get_or_create_category_for_variant(effective_type)
@@ -138,16 +152,18 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
     brand = getattr(variant, "brand", None) if hasattr(variant, "brand") else None
     if not brand and parent_product:
         brand = getattr(parent_product, "brand", None)
+    main_image_candidate = _variant_main_image(variant) or (getattr(parent_product, "main_image", "") if parent_product else "")
     defaults = {
         'name': variant.name or (parent_product.name if parent_product else ""),
         'slug': base_slug,
         'description': getattr(variant, 'description', '') or (getattr(parent_product, "description", "") if parent_product else ''),
         'price': getattr(variant, 'price', None) or (getattr(parent_product, "price", None) or 0),
         'currency': getattr(variant, 'currency', None) or (getattr(parent_product, "currency", None) or 'TRY'),
+        'product_type': effective_type,
         'brand': brand,
         'category': category,
         'is_available': getattr(variant, 'is_available', True),
-        'main_image': getattr(variant, 'main_image', '') or (getattr(parent_product, "main_image", "") if parent_product else ''),
+        'main_image': main_image_candidate,
         'external_data': {
             'source_type': source_type,
             'effective_type': effective_type,
@@ -155,7 +171,11 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
             'source_variant_slug': variant.slug,
         },
     }
-    product, created = Product.objects.get_or_create(slug=base_slug, defaults=defaults)
+    if product is None:
+        product, created = Product.objects.get_or_create(slug=base_slug, defaults=defaults)
+    else:
+        created = False
+
     if not created:
         changed = False
         new_price = getattr(variant, 'price', None)
@@ -171,9 +191,13 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         if product.is_available != availability:
             product.is_available = availability
             changed = True
-        main_image = getattr(variant, 'main_image', None)
+        main_image = _variant_main_image(variant)
         if main_image and product.main_image != main_image:
             product.main_image = main_image
+            changed = True
+        # Обновляем тип продукта, если раньше был сохранён неверно (например, остался "medicines")
+        if product.product_type != effective_type:
+            product.product_type = effective_type
             changed = True
         if category and product.category_id is None:
             product.category = category
@@ -224,14 +248,16 @@ class CartItemSerializer(serializers.ModelSerializer):
     Сериализатор позиции корзины
     """
     product_name = serializers.CharField(source='product.name', read_only=True)
-    product_slug = serializers.CharField(source='product.slug', read_only=True)
+    product_slug = serializers.SerializerMethodField()
+    product_type = serializers.CharField(source='product.product_type', read_only=True)
     product_image_url = serializers.SerializerMethodField()
+    chosen_size = serializers.CharField(read_only=True)
 
     class Meta:
         model = CartItem
         fields = [
-            'id', 'product', 'product_name', 'product_slug', 'product_image_url',
-            'quantity', 'price', 'currency', 'created_at', 'updated_at'
+            'id', 'product', 'product_name', 'product_slug', 'product_type', 'product_image_url',
+            'quantity', 'price', 'currency', 'chosen_size', 'created_at', 'updated_at'
         ]
         read_only_fields = ['price', 'currency', 'created_at', 'updated_at']
     
@@ -256,6 +282,14 @@ class CartItemSerializer(serializers.ModelSerializer):
             return first_img.image_url
         
         return None
+
+    def get_product_slug(self, obj):
+        """Для варианта возвращаем исходный slug варианта, если сохранён в external_data."""
+        product = obj.product
+        if not product:
+            return None
+        ext = getattr(product, "external_data", {}) or {}
+        return ext.get("source_variant_slug") or product.slug
 
 
 class PromoCodeSerializer(serializers.ModelSerializer):
@@ -313,17 +347,19 @@ class AddToCartSerializer(serializers.Serializer):
     """
     Запрос на добавление товара в корзину.
     - Базовые товары: product_id
-    - Варианты (одежда/обувь): product_type + product_slug (slug варианта)
+    - Варианты (одежда/обувь): product_type + product_slug (slug варианта цвета) + size
     """
     product_id = serializers.IntegerField(required=False)
     product_type = serializers.CharField(required=False)
     product_slug = serializers.CharField(required=False)
+    size = serializers.CharField(required=False, allow_blank=True)
     quantity = serializers.IntegerField(min_value=1, default=1)
 
     def validate(self, attrs):
         product_id = attrs.get('product_id')
         product_type = attrs.get('product_type')
         product_slug = attrs.get('product_slug')
+        chosen_size = attrs.get('size') or ""
 
         # Конфликт: оба идентификатора одновременно
         if product_id and product_slug:
@@ -336,6 +372,7 @@ class AddToCartSerializer(serializers.Serializer):
             except Product.DoesNotExist:
                 raise serializers.ValidationError({"detail": _("Товар не найден по product_id")})
             attrs['product'] = product
+            attrs['chosen_size'] = chosen_size
             return attrs
 
         # Вариант по type + slug (или fallback на базовый по slug)
@@ -349,7 +386,27 @@ class AddToCartSerializer(serializers.Serializer):
         base = Product.objects.filter(slug=product_slug, is_active=True).first()
         if base:
             attrs['product'] = base
+            attrs['chosen_size'] = chosen_size
             return attrs
+
+        # Проверяем вариант напрямую, чтобы валидировать размер
+        variant = None
+        normalized = normalize_product_type(effective_type)
+        variant_model = VARIANT_MODEL_MAP.get(normalized)
+        if variant_model and variant_model in (ClothingVariant, ShoeVariant):
+            variant = variant_model.objects.filter(slug=product_slug, is_active=True).first()
+            if not variant:
+                raise serializers.ValidationError({"detail": _("Вариант не найден по slug")})
+            has_size_grid = variant.sizes.exists()
+            if has_size_grid:
+                if not chosen_size:
+                    raise serializers.ValidationError({"detail": _("Укажите размер для этого варианта")})
+                size_obj = variant.sizes.filter(size=chosen_size).first()
+                if not size_obj:
+                    raise serializers.ValidationError({"detail": _("Размер не найден для выбранного цвета")})
+                if not size_obj.is_available:
+                    raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
+            attrs['chosen_size'] = chosen_size
 
         # Если базового нет — пробуем как вариант/базовую карточку одежды/обуви
         try:
@@ -358,6 +415,7 @@ class AddToCartSerializer(serializers.Serializer):
             raise serializers.ValidationError({"detail": _("Товар не найден по slug")})
 
         attrs['product'] = product
+        attrs['chosen_size'] = chosen_size
         return attrs
 
 
@@ -377,7 +435,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'product_name', 'product_slug', 'product_image_url', 'price', 'quantity', 'total']
+        fields = ['id', 'product', 'product_name', 'product_slug', 'product_image_url', 'chosen_size', 'price', 'quantity', 'total']
         read_only_fields = ['product_name', 'price', 'total', 'product_slug', 'product_image_url']
     
     def get_product_image_url(self, obj):

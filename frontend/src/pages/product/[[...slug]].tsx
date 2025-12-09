@@ -86,7 +86,6 @@ interface Variant {
   slug: string
   name?: string
   color?: string
-  size?: string
   price?: number | string | null
   old_price?: number | string | null
   currency?: string
@@ -94,6 +93,7 @@ interface Variant {
   stock_quantity?: number | null
   main_image?: string
   images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
+  sizes?: { id: number; size?: string; is_available?: boolean; stock_quantity?: number | null }[]
 }
 
 export default function ProductPage({
@@ -110,14 +110,57 @@ export default function ProductPage({
     return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
   }
   const variants = product.variants || []
-  const [selectedVariantSlug, setSelectedVariantSlug] = useState<string | null>(
-    product.active_variant_slug || product.default_variant_slug || variants[0]?.slug || null
-  )
-  const selectedVariant = variants.find((v) => v.slug === selectedVariantSlug)
+
+  // Выбираем дефолтный вариант-цвет: активный, либо первый доступный
+  const initialVariant =
+    variants.find((v) => v.slug === product.active_variant_slug) ||
+    variants.find((v) => v.slug === product.default_variant_slug) ||
+    variants.find((v) => v.is_available) ||
+    variants[0] ||
+    null
+
+  const [selectedVariantSlug, setSelectedVariantSlug] = useState<string | null>(initialVariant?.slug || null)
+  const selectedVariant = variants.find((v) => v.slug === selectedVariantSlug) || initialVariant
+
+  // Цвет и размер исходя из выбранного варианта
+  const [selectedColor, setSelectedColor] = useState<string | undefined>(selectedVariant?.color)
+  // По умолчанию размер не выбран — пользователь должен выбрать вручную
+  const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined)
+
+  // Список цветов
+  const colors = Array.from(new Set((variants.map((v) => v.color).filter(Boolean) as string[])))
+
+  // Список размеров для выбранного цвета (берем из выбранного варианта-цвета)
+  const sizesForColor = selectedVariant?.sizes || []
+
+  // Подбор варианта при смене цвета
+  const pickVariant = (color?: string) => {
+    const found = variants.find((v) => v.color === color) || variants[0]
+    if (found) {
+      setSelectedVariantSlug(found.slug)
+      setSelectedColor(found.color)
+      // Сброс выбора размера — пользователь должен выбрать вручную
+      setSelectedSize(undefined)
+      const gallerySourceLocal = found.images?.length ? found.images : product.images || []
+      setActiveImage(
+        found.main_image ||
+          found.images?.find((img) => img.is_main)?.image_url ||
+          found.images?.[0]?.image_url ||
+          product.active_variant_main_image_url ||
+          product.main_image_url ||
+          product.main_image ||
+          gallerySourceLocal.find((img) => img.is_main)?.image_url ||
+          gallerySourceLocal[0]?.image_url ||
+          null
+      )
+    }
+  }
 
   const gallerySource = selectedVariant?.images?.length ? selectedVariant.images : (product.images || [])
   const initialImage =
     selectedVariant?.main_image ||
+    selectedVariant?.images?.find((img) => img.is_main)?.image_url ||
+    selectedVariant?.images?.[0]?.image_url ||
     product.active_variant_main_image_url ||
     product.main_image_url ||
     product.main_image ||
@@ -125,46 +168,10 @@ export default function ProductPage({
     gallerySource[0]?.image_url
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
 
-  const colors = Array.from(new Set((variants.map((v) => v.color).filter(Boolean) as string[])))
-  const sizes = Array.from(new Set((variants.map((v) => v.size).filter(Boolean) as string[])))
-
-  const [selectedColor, setSelectedColor] = useState<string | undefined>(selectedVariant?.color || colors[0])
-  const [selectedSize, setSelectedSize] = useState<string | undefined>(selectedVariant?.size || sizes[0])
-
-  // Подбор варианта при смене цвета/размера
-  const pickVariant = (color?: string, size?: string) => {
-    let found = variants.find((v) => {
-      const colorOk = color ? v.color === color : true
-      const sizeOk = size ? v.size === size : true
-      return colorOk && sizeOk
-    })
-    if (!found && color) {
-      found = variants.find((v) => v.color === color)
-    }
-    if (!found && size) {
-      found = variants.find((v) => v.size === size)
-    }
-    if (!found) {
-      found = variants[0]
-    }
-    if (found) {
-      setSelectedVariantSlug(found.slug)
-      setActiveImage(
-        found.main_image ||
-          found.images?.find((img) => img.is_main)?.image_url ||
-          found.images?.[0]?.image_url ||
-          product.main_image_url ||
-          product.main_image ||
-          gallerySource.find((img) => img.is_main)?.image_url ||
-          gallerySource[0]?.image_url ||
-          null
-      )
-    }
-  }
-
   const displayPrice = selectedVariant?.price
     ? `${selectedVariant.price} ${selectedVariant.currency || product.currency}`
     : product.active_variant_price || (product.price ? `${product.price} ${product.currency}` : t('price_on_request'))
+  const sizeRequired = sizesForColor.length > 0
   return (
     <>
       <Head>
@@ -200,47 +207,64 @@ export default function ProductPage({
             <div className="mt-3 text-xl font-semibold text-gray-900">
               {displayPrice || t('price_on_request')}
             </div>
-            {(colors.length > 0 || sizes.length > 0) && (
-              <div className="mt-4 flex flex-col gap-3">
+            {(colors.length > 0 || sizesForColor.length > 0) && (
+              <div className="mt-4 flex flex-col gap-4">
                 {colors.length > 0 && (
-                  <label className="flex flex-col text-sm text-gray-700 gap-1">
-                    {t('color', 'Цвет')}
-                    <select
-                      value={selectedColor || ''}
-                      onChange={(e) => {
-                        const val = e.target.value || undefined
-                        setSelectedColor(val)
-                        pickVariant(val, selectedSize)
-                      }}
-                      className="rounded-md border-gray-300 shadow-sm focus:border-violet-500 focus:ring-violet-500"
-                    >
-                      {colors.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-sm text-gray-700">{t('color', 'Цвет')}</span>
+                    <div className="flex flex-wrap gap-2">
+                      {colors.map((c) => {
+                        const isActive = c === selectedColor
+                        return (
+                          <button
+                            key={c}
+                            onClick={() => {
+                              setSelectedColor(c)
+                              pickVariant(c)
+                            }}
+                            className={`rounded-md px-3 py-1 text-sm border transition ${
+                              isActive
+                                ? 'border-violet-600 bg-violet-50 text-violet-700'
+                                : 'border-gray-300 bg-white text-gray-800 hover:border-violet-400'
+                            }`}
+                          >
+                            {c}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
                 )}
-                {sizes.length > 0 && (
-                  <label className="flex flex-col text-sm text-gray-700 gap-1">
-                    {t('size', 'Размер')}
-                    <select
-                      value={selectedSize || ''}
-                      onChange={(e) => {
-                        const val = e.target.value || undefined
-                        setSelectedSize(val)
-                        pickVariant(selectedColor, val)
-                      }}
-                      className="rounded-md border-gray-300 shadow-sm focus:border-violet-500 focus:ring-violet-500"
-                    >
-                      {sizes.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                {sizesForColor.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-sm text-gray-700">{t('size', 'Размер')}</span>
+                    <div className="flex flex-wrap gap-2">
+                      {sizesForColor.map((s) => {
+                        const sizeValue = s.size || ''
+                        const isAvailable = s.is_available !== false && (s.stock_quantity === null || s.stock_quantity === undefined || s.stock_quantity > 0)
+                        const isActive = sizeValue === selectedSize
+                        return (
+                          <button
+                            key={sizeValue}
+                            onClick={() => {
+                              if (!isAvailable) return
+                              setSelectedSize(sizeValue)
+                            }}
+                            className={`min-w-[56px] rounded-md px-3 py-2 text-sm border transition ${
+                              isAvailable
+                                ? isActive
+                                  ? 'border-violet-600 bg-violet-50 text-violet-700'
+                                  : 'border-gray-300 bg-white text-gray-800 hover:border-violet-400'
+                                : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                            }`}
+                            disabled={!isAvailable}
+                          >
+                            {sizeValue || t('size', 'Размер')}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -249,6 +273,8 @@ export default function ProductPage({
               productId={isBaseProduct ? product.id : undefined}
               productType={productType}
               productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+              size={selectedSize}
+              requireSize={!isBaseProduct && sizeRequired}
             />
               {product.id && (
                 <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
