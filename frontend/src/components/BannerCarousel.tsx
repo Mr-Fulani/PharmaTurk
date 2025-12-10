@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
+import { resolveMediaUrl } from '../lib/media'
 
 interface BannerMedia {
   id: number
@@ -215,29 +216,6 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
     return null
   }
 
-  const getFullUrl = (url: string) => {
-    if (!url) return ''
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url
-    }
-    // Динамически определяем базовый URL для работы на мобильных устройствах
-    let apiBase = process.env.NEXT_PUBLIC_API_BASE
-    if (!apiBase && typeof window !== 'undefined') {
-      const origin = window.location.origin
-      // Если порт 3001 (frontend), заменяем на 8000 (backend)
-      if (origin.includes(':3001')) {
-        apiBase = origin.replace(':3001', ':8000') + '/api'
-      } else if (origin.includes(':3000')) {
-        apiBase = origin.replace(':3000', ':8000') + '/api'
-      } else {
-        apiBase = '/api'
-      }
-    } else if (!apiBase) {
-      apiBase = '/api'
-    }
-    return `${apiBase}${url.startsWith('/') ? url : `/${url}`}`
-  }
-
   // Функция для определения типа видео URL (YouTube, Vimeo, прямой файл)
   const getVideoEmbedUrl = (url: string): string | null => {
     if (!url) return null
@@ -313,7 +291,7 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
     const isActive = displayBanners.length === 1 ? index === 0 : index === 1
     const mediaIndex = isActive ? currentMediaIndex : 0
     const media = banner.media_files[mediaIndex] || banner.media_files[0]
-    const fullUrl = media ? getFullUrl(media.content_url) : ''
+    const fullUrl = media ? resolveMediaUrl(media.content_url) : ''
     const embedUrl = media && media.content_type === 'video' ? getVideoEmbedUrl(fullUrl) : null
 
     // Отладка для КАЖДОГО элемента

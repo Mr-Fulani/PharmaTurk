@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
+import { resolveMediaUrl } from '../lib/media'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
@@ -201,10 +202,25 @@ export default function Home({ brands, categories }: HomePageProps) {
     router.push(`/categories/${slugForRoute}`)
   }
 
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+  const canonicalUrl = `${siteUrl}/`
+  const pageTitle = 'PharmaTurk — Главная'
+  const pageDescription = 'PharmaTurk: турецкие товары — лекарства, одежда, обувь, электроника, аксессуары и мебель с доставкой.'
+
   return (
     <>
       <Head>
-        <title>PharmaTurk - Главная</title>
+        <title>{pageTitle}</title>
+        <meta name="description" content={pageDescription} />
+        <link rel="canonical" href={canonicalUrl} />
+        <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
+        <meta property="og:title" content={pageTitle} />
+        <meta property="og:description" content={pageDescription} />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:type" content="website" />
+        <meta property="twitter:title" content={pageTitle} />
+        <meta property="twitter:description" content={pageDescription} />
+        <meta property="twitter:card" content="summary_large_image" />
       </Head>
       
       <main>

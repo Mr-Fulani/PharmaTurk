@@ -923,11 +923,46 @@ export default function CategoryPage({
     return items
   }, [brandLabel, categoryName, routeSlug, router.asPath])
 
+  const siteUrl = useMemo(() => (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, ''), [])
+  const canonicalUrl = useMemo(() => `${siteUrl}/categories/${routeSlug || categoryType}`, [siteUrl, routeSlug, categoryType])
+  const ogTitle = useMemo(() => `${categoryName} — PharmaTurk`, [categoryName])
+  const ogDescription = useMemo(
+    () => categoryDescription || `Каталог ${categoryName.toLowerCase()} в PharmaTurk`,
+    [categoryDescription, categoryName]
+  )
+  const breadcrumbSchema = useMemo(() => {
+    const items = breadcrumbs.map((item, idx) => ({
+      '@type': 'ListItem',
+      position: idx + 1,
+      name: item.label,
+      item: `${siteUrl}${item.href}`
+    }))
+    return {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: items
+    }
+  }, [breadcrumbs, siteUrl])
+
   return (
     <>
       <Head>
         <title>{categoryName} - PharmaTurk</title>
-        <meta name="description" content={categoryDescription || `Каталог ${categoryName.toLowerCase()} в PharmaTurk`} />
+        <meta name="description" content={ogDescription} />
+        <link rel="canonical" href={canonicalUrl} />
+        <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
+        <meta property="og:title" content={ogTitle} />
+        <meta property="og:description" content={ogDescription} />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:type" content="website" />
+        <meta property="twitter:title" content={ogTitle} />
+        <meta property="twitter:description" content={ogDescription} />
+        <meta property="twitter:card" content="summary_large_image" />
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        />
       </Head>
       
       {/* Hero Section */}

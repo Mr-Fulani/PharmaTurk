@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
+import { resolveMediaUrl } from '../lib/media'
 
 interface BannerMedia {
   id: number
@@ -199,27 +200,6 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     })
   }
 
-  const getFullUrl = (url: string) => {
-    if (!url) return ''
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url
-    }
-    let apiBase = process.env.NEXT_PUBLIC_API_BASE
-    if (!apiBase && typeof window !== 'undefined') {
-      const origin = window.location.origin
-      if (origin.includes(':3001')) {
-        apiBase = origin.replace(':3001', ':8000') + '/api'
-      } else if (origin.includes(':3000')) {
-        apiBase = origin.replace(':3000', ':8000') + '/api'
-      } else {
-        apiBase = '/api'
-      }
-    } else if (!apiBase) {
-      apiBase = '/api'
-    }
-    return `${apiBase}${url.startsWith('/') ? url : `/${url}`}`
-  }
-
   const getVideoEmbedUrl = (url: string): string | null => {
     if (!url) return null
     
@@ -256,7 +236,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
           ? index === 0
           : index === 1
     
-    const fullUrl = getFullUrl(media.content_url)
+    const fullUrl = resolveMediaUrl(media.content_url)
     const embedUrl = media.content_type === 'video' ? getVideoEmbedUrl(fullUrl) : null
 
     const handleThumbnailClick = () => {

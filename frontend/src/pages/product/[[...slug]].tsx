@@ -99,6 +99,7 @@ interface Variant {
   main_image?: string
   images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
   sizes?: { id: number; size?: string; is_available?: boolean; stock_quantity?: number | null }[]
+  active_variant_currency?: string | null
 }
 
 export default function ProductPage({
@@ -177,10 +178,55 @@ export default function ProductPage({
     ? `${selectedVariant.price} ${selectedVariant.currency || product.currency}`
     : product.active_variant_price || (product.price ? `${product.price} ${product.currency}` : t('price_on_request'))
   const sizeRequired = sizesForColor.length > 0
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+  const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
+  const canonicalUrl = `${siteUrl}${productPath}`
+  const metaTitle = `${product.name} — PharmaTurk`
+  const metaDescription = product.description?.slice(0, 200) || `${product.name} — купить на PharmaTurk`
+  const ogImage = activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
+  const availability =
+    selectedVariant?.is_available === false || selectedVariant?.stock_quantity === 0
+      ? 'https://schema.org/OutOfStock'
+      : 'https://schema.org/InStock'
+  const priceForSchema = selectedVariant?.price || product.price || product.active_variant_price
+  const currencyForSchema = selectedVariant?.currency || product.currency || selectedVariant?.active_variant_currency
+  const productSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.name,
+    description: metaDescription,
+    image: ogImage,
+    sku: product.slug,
+    offers: priceForSchema
+      ? {
+          '@type': 'Offer',
+          price: priceForSchema,
+          priceCurrency: currencyForSchema || 'USD',
+          availability,
+          url: canonicalUrl,
+        }
+      : undefined,
+  }
   return (
     <>
       <Head>
-        <title>{product.name} — Turk-Export</title>
+        <title>{metaTitle}</title>
+        <meta name="description" content={metaDescription} />
+        <link rel="canonical" href={canonicalUrl} />
+        <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
+        <meta property="og:title" content={metaTitle} />
+        <meta property="og:description" content={metaDescription} />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:type" content="product" />
+        <meta property="og:image" content={ogImage} />
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:title" content={metaTitle} />
+        <meta property="twitter:description" content={metaDescription} />
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
+        />
       </Head>
       <main className="mx-auto max-w-6xl p-6">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">

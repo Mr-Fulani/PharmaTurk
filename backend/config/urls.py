@@ -7,11 +7,15 @@ from django.urls import include, path
 from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from api import seo as seo_views
 
 
 urlpatterns = [
     # Админка
     path("admin/", admin.site.urls),
+    # SEO
+    path("robots.txt", seo_views.robots_txt, name="robots"),
+    path("sitemap.xml", seo_views.sitemap_xml, name="sitemap"),
 
     # OpenAPI / Swagger
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),

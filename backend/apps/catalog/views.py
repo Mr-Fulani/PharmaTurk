@@ -356,7 +356,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(name__icontains=search)
         
         # Фильтр по цене
-        min_price = self.request.query_params.get('min_price')
+        min_price = self.request.query_params.get('min_price') or self.request.query_params.get('price_min')
         if min_price:
             try:
                 min_price = Decimal(min_price)
@@ -364,7 +364,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError):
                 pass
         
-        max_price = self.request.query_params.get('max_price')
+        max_price = self.request.query_params.get('max_price') or self.request.query_params.get('price_max')
         if max_price:
             try:
                 max_price = Decimal(max_price)
@@ -635,7 +635,7 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(name__icontains=search)
         
         # Фильтр по цене
-        min_price = self.request.query_params.get('min_price')
+        min_price = self.request.query_params.get('min_price') or self.request.query_params.get('price_min')
         if min_price:
             try:
                 min_price = Decimal(min_price)
@@ -643,7 +643,7 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError):
                 pass
         
-        max_price = self.request.query_params.get('max_price')
+        max_price = self.request.query_params.get('max_price') or self.request.query_params.get('price_max')
         if max_price:
             try:
                 max_price = Decimal(max_price)
@@ -839,7 +839,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(name__icontains=search)
         
         # Фильтр по цене
-        min_price = self.request.query_params.get('min_price')
+        min_price = self.request.query_params.get('min_price') or self.request.query_params.get('price_min')
         if min_price:
             try:
                 min_price = Decimal(min_price)
@@ -847,7 +847,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError):
                 pass
         
-        max_price = self.request.query_params.get('max_price')
+        max_price = self.request.query_params.get('max_price') or self.request.query_params.get('price_max')
         if max_price:
             try:
                 max_price = Decimal(max_price)
@@ -1011,7 +1011,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(name__icontains=search)
         
         # Фильтр по цене
-        min_price = self.request.query_params.get('min_price')
+        min_price = self.request.query_params.get('min_price') or self.request.query_params.get('price_min')
         if min_price:
             try:
                 min_price = Decimal(min_price)
@@ -1019,7 +1019,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError):
                 pass
         
-        max_price = self.request.query_params.get('max_price')
+        max_price = self.request.query_params.get('max_price') or self.request.query_params.get('price_max')
         if max_price:
             try:
                 max_price = Decimal(max_price)

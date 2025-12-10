@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { useTranslation } from 'next-i18next'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
+import { resolveMediaUrl } from '../lib/media'
 
 interface ProductCardProps {
   id: number
@@ -38,13 +39,15 @@ export default function ProductCard({
 }: ProductCardProps) {
   const { t } = useTranslation('common')
   
+  const resolvedImage = resolveMediaUrl(imageUrl)
+
   if (viewMode === 'list') {
     return (
       <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
         <div className="relative w-full sm:w-48 h-48 flex-shrink-0">
-          {imageUrl ? (
+          {resolvedImage ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={imageUrl} alt={name} className="w-full h-full rounded-md object-cover" />
+            <img src={resolvedImage} alt={name} className="w-full h-full rounded-md object-cover" />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src="/product-placeholder.svg" alt="No image" className="w-full h-full rounded-md object-cover" />
@@ -111,9 +114,9 @@ export default function ProductCard({
   return (
     <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
       <div className="relative">
-        {imageUrl ? (
+        {resolvedImage ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt={name} className="aspect-[4/3] w-full rounded-lg object-cover" />
+          <img src={resolvedImage} alt={name} className="aspect-[4/3] w-full rounded-lg object-cover" />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img src="/product-placeholder.svg" alt="No image" className="aspect-[4/3] w-full rounded-lg object-cover bg-gray-100" />

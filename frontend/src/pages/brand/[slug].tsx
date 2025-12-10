@@ -59,6 +59,20 @@ export default function BrandPage({
   const productsPerPage = 24
   const currentPage = Number(page) || 1
   const totalPages = Math.max(1, Math.ceil((Number(brandData?.totalCount) || 0) / productsPerPage))
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+  const canonicalUrl = `${siteUrl}/brand/${slug || ''}`
+  const metaTitle = brandData ? `${brandData.name} — PharmaTurk` : 'Бренд — PharmaTurk'
+  const metaDescription =
+    brandData?.description?.slice(0, 200) ||
+    `Товары бренда ${brandData?.name || ''} на PharmaTurk`
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Главная', item: `${siteUrl}/` },
+      { '@type': 'ListItem', position: 2, name: brandData?.name || 'Бренд', item: canonicalUrl },
+    ],
+  }
 
   const goToPage = (nextPage: number) => {
     const p = Math.min(Math.max(1, nextPage), totalPages)
@@ -72,7 +86,22 @@ export default function BrandPage({
   return (
     <>
       <Head>
-        <title>{brandData.name} - PharmaTurk</title>
+        <title>{metaTitle}</title>
+        <meta name="description" content={metaDescription} />
+        <link rel="canonical" href={canonicalUrl} />
+        <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
+        <meta property="og:title" content={metaTitle} />
+        <meta property="og:description" content={metaDescription} />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:type" content="website" />
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:title" content={metaTitle} />
+        <meta property="twitter:description" content={metaDescription} />
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        />
       </Head>
       <div className="mx-auto flex max-w-6xl gap-6 px-6">
         {/* Sidebar */}

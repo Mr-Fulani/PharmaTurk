@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import styles from './ImageSlider.module.css'
+import { resolveMediaUrl } from '../lib/media'
 
 interface SliderItem {
   id: number
@@ -91,7 +92,7 @@ export default function ImageSlider({
             key={item.id}
             className={styles.item}
             style={{
-              backgroundImage: `url(${item.imageUrl})`,
+              backgroundImage: `url(${resolveMediaUrl(item.imageUrl)})`,
             }}
           >
             <div className={styles.content}>
