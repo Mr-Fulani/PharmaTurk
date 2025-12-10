@@ -151,7 +151,7 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
               const el = e.currentTarget
               setTimeout(() => {
                 el.style.opacity = '1'
-              }, 3000) // скрываем стартовые оверлеи YouTube
+              }, 3100) // скрываем стартовые оверлеи YouTube
             }}
             allowFullScreen={false}
           />

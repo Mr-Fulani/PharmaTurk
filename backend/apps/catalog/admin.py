@@ -177,7 +177,10 @@ class BrandAdmin(admin.ModelAdmin):
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Media'), {'fields': ('logo', 'website')}),
+        (_('Media'), {
+            'fields': ('logo', 'card_media', 'card_media_external_url', 'website'),
+            'description': _('Файл или внешняя ссылка (CDN/S3) для карточки бренда; ссылка приоритетнее файла.'),
+        }),
         (_('Settings'), {'fields': ('is_active',)}),
         (_('Категория'), {'fields': ('primary_category_slug',)}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
@@ -886,7 +889,10 @@ class MarketingBrandAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Медиа карточки'), {'fields': ('card_media', 'card_media_preview', 'logo')}),
+        (_('Медиа карточки'), {
+            'fields': ('card_media', 'card_media_external_url', 'card_media_preview', 'logo'),
+            'description': _('Изображение, GIF или видео для карточки бренда или внешняя ссылка (CDN/S3). Внешняя ссылка приоритетнее.'),
+        }),
         (_('Категория'), {'fields': ('primary_category_slug',)}),
         (_('Ссылки'), {'fields': ('website',)}),
         (_('Settings'), {'fields': ('is_active',)}),

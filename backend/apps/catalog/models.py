@@ -244,6 +244,13 @@ class Brand(models.Model):
         ],
         help_text=_("Изображение, GIF или видео для карточки бренда (до 50 МБ)."),
     )
+    card_media_external_url = models.URLField(
+        _("Внешний URL медиа"),
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=_("Ссылка на медиа (например, CDN или AWS S3). Если заполнено, приоритетнее файла."),
+    )
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
@@ -257,6 +264,8 @@ class Brand(models.Model):
 
     def get_card_media_url(self) -> str:
         """Возвращает URL медиа-файла карточки (или пустую строку)."""
+        if self.card_media_external_url:
+            return self.card_media_external_url
         if self.card_media:
             try:
                 return self.card_media.url

@@ -210,7 +210,7 @@ export default function Home({ brands, categories }: HomePageProps) {
               const el = e.currentTarget
               setTimeout(() => {
                 el.style.opacity = '1'
-              }, 3000) // прячем стартовые оверлеи YouTube
+              }, 3100) // прячем стартовые оверлеи YouTube
             }}
             allowFullScreen={false}
           />
