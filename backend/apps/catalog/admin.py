@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib import admin
+from django.contrib.admin import SimpleListFilter
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
@@ -7,7 +8,7 @@ from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFor
 from .models import (
     Category, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
-    CategoryUnderwear, CategoryHeadwear, MarketingCategory,
+    CategoryUnderwear, CategoryHeadwear, MarketingCategory, MarketingRootCategory,
     Brand, MarketingBrand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ProductMedicines, ProductSupplements, ProductMedicalEquipment,
     ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
@@ -19,11 +20,53 @@ from .models import (
 )
 
 
+class TopLevelCategoryFilter(SimpleListFilter):
+    """Фильтр по иерархии категорий (корневые/дочерние)."""
+    title = _("Уровень категории")
+    parameter_name = "level"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("root", _("Корневые")),
+            ("child", _("Дочерние")),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == "root":
+            return queryset.filter(parent__isnull=True)
+        if self.value() == "child":
+            return queryset.filter(parent__isnull=False)
+        return queryset
+
+
+class ActiveRootFilter(SimpleListFilter):
+    """Быстрый фильтр по активности и уровню (активные/активные корневые/неактивные)."""
+    title = _("Активность")
+    parameter_name = "active_state"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("active_root", _("Активные корневые")),
+            ("active", _("Активные (все)")),
+            ("inactive", _("Неактивные")),
+        )
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "active_root":
+            return queryset.filter(is_active=True, parent__isnull=True)
+        if value == "active":
+            return queryset.filter(is_active=True)
+        if value == "inactive":
+            return queryset.filter(is_active=False)
+        return queryset
+
+
 class BaseCategoryAdmin(admin.ModelAdmin):
     """Базовый админ для прокси категорий с фильтром по типу."""
     required_category_type: str | None = None
     list_display = ('name', 'slug', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'parent', 'created_at')
+    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'parent', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
@@ -31,6 +74,10 @@ class BaseCategoryAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Hierarchy'), {'fields': ('parent',)}),
+        (_('Медиа карточки'), {
+            'fields': ('card_media', 'card_media_external_url'),
+            'description': _('Можно указать файл или внешнюю ссылку (CDN/S3). Внешняя ссылка приоритетнее.'),
+        }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
@@ -852,7 +899,26 @@ class MarketingBrandAdmin(admin.ModelAdmin):
         if not url:
             return _("Нет медиа")
         lower_url = url.split('?')[0].lower()
-        if lower_url.endswith(("mp4", "mov", "webm")):
+
+        # YouTube превью (если ссылка не на файл с расширением)
+        import re
+        match = re.search(
+            r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})',
+            url,
+            re.IGNORECASE,
+        ) or re.search(
+            r'(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)',
+            url,
+            re.IGNORECASE,
+        )
+        if match and match.group(1):
+            thumb = f"https://img.youtube.com/vi/{match.group(1)}/hqdefault.jpg"
+            return format_html(
+                '<img src="{}" style="max-width: 180px; max-height: 100px;" />',
+                thumb,
+            )
+
+        if lower_url.endswith(("mp4", "mov", "webm", "m4v")):
             return format_html(
                 '<video src="{}" style="max-width: 180px; max-height: 100px;" muted loop playsinline></video>',
                 url,
@@ -868,7 +934,7 @@ class MarketingBrandAdmin(admin.ModelAdmin):
 class MarketingCategoryAdmin(admin.ModelAdmin):
     """Админка для карточек категорий (раздел «Маркетинг»)."""
     list_display = ('name', 'slug', 'card_media_preview', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'created_at')
+    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
@@ -878,8 +944,8 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Hierarchy'), {'fields': ('parent',)}),
         (_('Медиа карточки'), {
-            'fields': ('card_media', 'card_media_preview'),
-            'description': _('Изображение, GIF или видео для карточки категории.'),
+            'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),
+            'description': _('Изображение, GIF или видео для карточки категории или внешняя ссылка (CDN/S3). Внешняя ссылка приоритетнее.'),
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
@@ -891,7 +957,26 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
         if not url:
             return _("Нет медиа")
         lower_url = url.split('?')[0].lower()
-        if lower_url.endswith(("mp4", "mov", "webm")):
+
+        # YouTube превью (если ссылка не на файл с расширением)
+        import re
+        match = re.search(
+            r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})',
+            url,
+            re.IGNORECASE,
+        ) or re.search(
+            r'(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)',
+            url,
+            re.IGNORECASE,
+        )
+        if match and match.group(1):
+            thumb = f"https://img.youtube.com/vi/{match.group(1)}/hqdefault.jpg"
+            return format_html(
+                '<img src="{}" style="max-width: 180px; max-height: 100px;" />',
+                thumb,
+            )
+
+        if lower_url.endswith(("mp4", "mov", "webm", "m4v")):
             return format_html(
                 '<video src="{}" style="max-width: 180px; max-height: 100px;" muted loop playsinline></video>',
                 url,
@@ -901,3 +986,29 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
             url,
         )
     card_media_preview.short_description = _("Превью медиа")
+
+
+@admin.register(MarketingRootCategory)
+class MarketingRootCategoryAdmin(MarketingCategoryAdmin):
+    """Отдельный раздел для корневых маркетинговых категорий."""
+    list_display = ('name', 'slug', 'card_media_preview', 'is_active', 'sort_order', 'created_at')
+    list_filter = (ActiveRootFilter, 'is_active', 'created_at')
+    exclude = ('parent',)
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Медиа карточки'), {
+            'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),
+            'description': _('Изображение, GIF или видео для карточки категории или внешняя ссылка (CDN/S3). Внешняя ссылка приоритетнее.'),
+        }),
+        (_('Settings'), {'fields': ('is_active', 'sort_order')}),
+        (_('External'), {'fields': ('external_id', 'external_data')}),
+    )
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.filter(parent__isnull=True)
+
+    def save_model(self, request, obj, form, change):
+        # Всегда сохраняем как корневую категорию
+        obj.parent = None
+        super().save_model(request, obj, form, change)

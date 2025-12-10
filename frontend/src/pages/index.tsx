@@ -152,8 +152,73 @@ export default function Home({ brands, categories }: HomePageProps) {
     return url
   }
 
+  const extractYouTubeId = (url?: string | null) => {
+    if (!url) return null
+    const match =
+      url.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?/\\s]{11})/) ||
+      url.match(/(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?/\\s]+)/)
+    return match && match[1] ? match[1] : null
+  }
+
+  const getYouTubeThumbnail = (url?: string | null) => {
+    const youtubeId = extractYouTubeId(url)
+    return youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : null
+  }
+
   const renderMedia = (mediaUrl?: string | null, alt?: string) => {
     if (!mediaUrl) return null
+
+    const youtubeId = extractYouTubeId(mediaUrl)
+    if (youtubeId) {
+      const youtubeThumb = getYouTubeThumbnail(mediaUrl)
+      const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
+      const params = [
+        'autoplay=1',
+        'mute=1',
+        'loop=1',
+        `playlist=${youtubeId}`,
+        'controls=0',
+        'playsinline=1',
+        'rel=0',
+        'modestbranding=1',
+        'iv_load_policy=3',
+        'cc_load_policy=0',
+        'fs=0',
+        'disablekb=1',
+        'showinfo=0',
+        'autohide=1',
+      ].join('&')
+      const embedUrl = `${base}?${params}`
+      return (
+        <div className="absolute inset-0 h-full w-full overflow-hidden">
+          {youtubeThumb && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={youtubeThumb}
+              alt={alt || ''}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          )}
+          <iframe
+            src={embedUrl}
+            title={alt || 'YouTube'}
+            className="absolute inset-0 h-full w-full object-cover"
+            allow="autoplay; encrypted-media; picture-in-picture"
+            loading="lazy"
+            style={{ opacity: 0, transition: 'opacity 0.4s ease' }}
+            onLoad={(e) => {
+              const el = e.currentTarget
+              setTimeout(() => {
+                el.style.opacity = '1'
+              }, 3000) // прячем стартовые оверлеи YouTube
+            }}
+            allowFullScreen={false}
+          />
+        </div>
+      )
+    }
+
+    // Если YouTube не обнаружен — обычная обработка файла/изображения
     const src = resolveMediaUrl(mediaUrl)
     if (!src) return null
 

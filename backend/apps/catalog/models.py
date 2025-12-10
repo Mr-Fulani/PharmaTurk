@@ -86,6 +86,13 @@ class Category(models.Model):
         ],
         help_text=_("Изображение, GIF или видео для карточки категории (до 50 МБ)."),
     )
+    card_media_external_url = models.URLField(
+        _("Внешний URL медиа"),
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=_("Ссылка на медиа (например, CDN или AWS S3). Если заполнено, приоритетнее файла."),
+    )
     parent = models.ForeignKey(
         "self", 
         on_delete=models.CASCADE, 
@@ -115,6 +122,8 @@ class Category(models.Model):
 
     def get_card_media_url(self) -> str:
         """Возвращает URL медиа-файла карточки (или пустую строку)."""
+        if self.card_media_external_url:
+            return self.card_media_external_url
         if self.card_media:
             try:
                 return self.card_media.url
@@ -192,6 +201,14 @@ class MarketingCategory(Category):
         app_label = "marketing"
         verbose_name = _("Категория товара")
         verbose_name_plural = _("Маркетинг — Категории товаров")
+
+
+class MarketingRootCategory(Category):
+    class Meta:
+        proxy = True
+        app_label = "marketing"
+        verbose_name = _("Корневая категория")
+        verbose_name_plural = _("Маркетинг — Корневые категории")
 
 
 class Brand(models.Model):
