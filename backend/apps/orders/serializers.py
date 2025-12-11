@@ -34,9 +34,9 @@ PRODUCT_TYPE_ALIASES = {
 }
 
 CATEGORY_PRESETS = {
-    'clothing': ('clothing-general', 'Одежда'),
-    'shoes': ('shoes-general', 'Обувь'),
-    'electronics': ('electronics-general', 'Электроника'),
+    'clothing': ('clothing', 'Одежда'),
+    'shoes': ('shoes', 'Обувь'),
+    'electronics': ('electronics', 'Электроника'),
     'medical_equipment': ('medical-equipment', 'Медицинская техника'),
 }
 

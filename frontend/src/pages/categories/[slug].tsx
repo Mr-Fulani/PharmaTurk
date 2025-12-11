@@ -966,7 +966,7 @@ export default function CategoryPage({
       </Head>
       
       {/* Hero Section */}
-      <div className="bg-gradient-to-r from-violet-700 to-indigo-600 text-white py-12 dark:from-[#0a1222] dark:to-[#0f1b33]">
+      <div className="bg-[var(--accent)] text-white py-12 dark:bg-[#0a1222]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div>
@@ -1276,7 +1276,10 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       'medical-equipment': { name: 'Медицинский инвентарь', description: 'Инструменты и оборудование для медицины' }
     }
 
-    const categoryInfo = categoryNames[categoryType] || { name: 'Товары', description: '' }
+    const fallbackInfo =
+      (mainCat && { name: mainCat.name, description: mainCat.description || '' }) ||
+      { name: 'Товары', description: '' }
+    const categoryInfo = categoryNames[categoryType] || fallbackInfo
 
     // Заменяем categories на уже отфильтрованный список для сайтбара,
     // чтобы на клиенте не пришёл полный набор и не затёр отображение.
