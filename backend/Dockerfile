@@ -12,9 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gettext \
   && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 - --version ${POETRY_VERSION}
-ENV PATH="/root/.local/bin:$PATH"
+# Install Poetry (через pip, чтобы избежать отсутствия бинаря)
+RUN pip install --no-cache-dir "poetry==${POETRY_VERSION}"
+ENV PATH="/usr/local/bin:$PATH"
 
 WORKDIR /app
 

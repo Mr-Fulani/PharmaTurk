@@ -37,9 +37,13 @@ interface HomePageProps {
   categories: CategoryCard[]
 }
 
+// @ts-ignore: нет типов для @egjs/react-grid
+import Masonry from 'react-masonry-css'
+
 export default function Home({ brands, categories }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
+  const tileHeights = [224, 256, 288]
 
   // Функция для получения цветов баннера по бренду
   const getBrandColors = (brandName: string) => {
@@ -256,6 +260,7 @@ export default function Home({ brands, categories }: HomePageProps) {
       __isTopLevel: true,
     }))
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .slice(0, 12)
 
   const handleBrandClick = (brand: Brand) => {
     const slug = mapCategoryToRouteSlug(brand.primary_category_slug || brand.slug || '')
@@ -300,13 +305,19 @@ export default function Home({ brands, categories }: HomePageProps) {
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8 text-center">
             Популярные бренды
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {brands.map((brand) => {
+          <Masonry
+            breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
+            className="flex w-full gap-6"
+            columnClassName="flex flex-col gap-6"
+          >
+            {brands.map((brand, idx) => {
+              const cardHeight = tileHeights[idx % tileHeights.length]
               return (
                 <div
                   key={brand.id}
                   onClick={() => handleBrandClick(brand)}
-                  className="relative h-48 rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
+                  style={{ height: cardHeight }}
+                  className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
                 >
                   {renderMedia(brand.card_media_url || brand.logo, brand.name)}
                   <div className="absolute inset-0 bg-black/35" />
@@ -340,6 +351,14 @@ export default function Home({ brands, categories }: HomePageProps) {
                 </div>
               )
             })}
+          </Masonry>
+          <div className="mt-6 flex justify-center">
+            <Link
+              href="/brands"
+              className="inline-flex items-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-violet-700 transition-colors"
+            >
+              Все бренды
+            </Link>
           </div>
         </section>
 
@@ -353,13 +372,19 @@ export default function Home({ brands, categories }: HomePageProps) {
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8 text-center">
             Категории товаров
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {preparedCategories.map((category) => {
+          <Masonry
+            breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
+            className="flex w-full gap-6"
+            columnClassName="flex flex-col gap-6"
+          >
+            {preparedCategories.map((category, idx) => {
+              const cardHeight = tileHeights[idx % tileHeights.length]
               return (
               <div
                 key={category.id}
                 onClick={() => handleCategoryClick(category)}
-                className="relative h-40 rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
+                style={{ height: cardHeight }}
+                className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
               >
                   {renderMedia(category.card_media_url, category.name)}
                   <div className="absolute inset-0 bg-black/35" />
@@ -376,6 +401,14 @@ export default function Home({ brands, categories }: HomePageProps) {
               </div>
               )
             })}
+          </Masonry>
+          <div className="mt-6 flex justify-center">
+            <Link
+              href="/categories"
+              className="inline-flex items-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-violet-700 transition-colors"
+            >
+              Все категории
+            </Link>
           </div>
         </section>
 

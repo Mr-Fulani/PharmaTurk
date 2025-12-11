@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import axios from 'axios'
 import Link from 'next/link'
+import Masonry from 'react-masonry-css'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import BannerCarousel from '../../components/BannerCarouselMedia'
@@ -15,6 +16,7 @@ interface Category {
   card_media_url?: string | null
 }
 
+// @ts-ignore: нет типов для @egjs/react-grid
 export default function CategoriesPage({ categories }: { categories: Category[] }) {
   const { t } = useTranslation('common')
 
@@ -215,31 +217,50 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
 
         {/* Cards grid */}
         <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {categories.map((c) => {
+          <Masonry
+            breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
+            className="flex w-full gap-6"
+            columnClassName="flex flex-col gap-6"
+          >
+            {categories.map((c, idx) => {
+              const heights = [224, 256, 288]
+              const cardHeight = heights[idx % heights.length]
               return (
                 <Link
                   key={c.id}
                   href={`/categories/${c.slug}`}
-                  className="relative h-44 rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-gray-900/10"
+                  style={{ height: cardHeight }}
+                  className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-gray-900/10"
                 >
                   {renderMedia(c.card_media_url, c.name)}
                   <div className="absolute inset-0 bg-black/35" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
                     <div className="text-center text-white drop-shadow">
                       <h3 className="text-xl font-bold mb-1">{c.name}</h3>
-              {c.description ? (
+                      {c.description ? (
                         <p className="text-sm opacity-90 line-clamp-2">{c.description}</p>
                       ) : null}
                       {c.products_count ? (
                         <p className="text-xs opacity-80 mt-2">{c.products_count} товаров</p>
-              ) : null}
+                      ) : null}
                     </div>
                   </div>
-            </Link>
+                </Link>
               )
             })}
-        </div>
+          </Masonry>
+          <div className="mt-10 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 p-6 text-center text-white shadow-lg">
+            <h2 className="text-xl font-semibold mb-2">Не нашли нужную категорию?</h2>
+            <p className="text-sm opacity-90 mb-4">
+              Напишите нам в чат — подскажем и подберём товары под ваш запрос.
+            </p>
+            <Link
+              href="/brands"
+              className="inline-flex items-center rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+            >
+              Посмотреть бренды
+            </Link>
+          </div>
         </section>
       </main>
     </>
