@@ -966,7 +966,7 @@ export default function CategoryPage({
       </Head>
       
       {/* Hero Section */}
-      <div className="bg-gray-900 text-white py-12">
+      <div className="bg-gradient-to-r from-violet-700 to-indigo-600 text-white py-12 dark:from-[#0a1222] dark:to-[#0f1b33]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div>
@@ -983,19 +983,19 @@ export default function CategoryPage({
       </div>
 
       {/* Breadcrumbs */}
-      <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 text-sm text-gray-600 flex flex-wrap items-center gap-2">
+      <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 text-sm text-main flex flex-wrap items-center gap-2">
         {breadcrumbs.map((item, idx) => {
           const isLast = idx === breadcrumbs.length - 1
           return (
             <span key={`${item.href}-${idx}`} className="flex items-center gap-2">
               {!isLast ? (
-                <Link href={item.href} className="hover:text-violet-600 transition-colors">
+                <Link href={item.href} className="hover:text-[var(--accent)] transition-colors">
                   {item.label}
                 </Link>
               ) : (
-                <span className="text-gray-900 font-medium">{item.label}</span>
+                <span className="text-main font-medium">{item.label}</span>
               )}
-              {!isLast && <span className="text-gray-400">/</span>}
+              {!isLast && <span className="text-main/60">/</span>}
             </span>
           )
         })}
@@ -1141,7 +1141,7 @@ export default function CategoryPage({
                     })
                     setCurrentPage(1)
                   }}
-                  className="px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
+                  className="px-6 py-3 bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-strong)] transition-colors"
                 >
                   Сбросить фильтры
                 </button>

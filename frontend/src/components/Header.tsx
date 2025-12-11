@@ -104,7 +104,11 @@ export default function Header() {
   }, [query])
 
   return (
-    <header className={`sticky top-0 z-50 border-b backdrop-blur shadow-md transition-colors duration-200 ${isDark ? 'border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-800' : 'border-[var(--border)] bg-[var(--surface)]'}`}>
+    <header className={`sticky top-0 z-50 border-b backdrop-blur shadow-md transition-colors duration-200 ${
+      isDark
+        ? 'border-[#1f2a3d] bg-[#0a1222] shadow-[0_10px_40px_rgba(0,0,0,0.6)]'
+        : 'border-[var(--border)] bg-[var(--surface)]'
+    }`}>
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
         <Link href="/" className={`text-lg font-bold transition-all duration-200 hover:scale-105 ${isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900'}`}>Turk-Export</Link>
         <div className="hidden flex-1 items-center gap-3 md:flex">
@@ -192,9 +196,13 @@ export default function Header() {
               <Link 
                 href="/auth" 
                 onClick={() => setShowSuggestions(false)}
-              className={`rounded-md px-3 py-1.5 font-medium transition-all duration-200 hover:shadow-lg hover:scale-105 ${isDark ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-gray-900 text-white hover:bg-gray-800'}`}
+              className={`rounded-md px-3 py-1.5 font-medium transition-all duration-200 hover:shadow-lg hover:scale-105 ${
+                isDark
+                  ? 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]'
+                  : 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]'
+              }`}
               >
-                {t('menu_login_register', 'Войти / Регистрация')}
+                {t('login', 'Войти')}
               </Link>
           )}
           <button

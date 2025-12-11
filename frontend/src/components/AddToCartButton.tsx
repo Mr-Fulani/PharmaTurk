@@ -102,7 +102,7 @@ export default function AddToCartButton({
       onClick={add}
       disabled={loading}
       className={
-        `inline-flex items-center justify-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-60 transition-all duration-200 ${className || ''} ${
+        `inline-flex items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:opacity-60 transition-all duration-200 ${className || ''} ${
           isIconOnly ? 'group' : ''
         }`
       }

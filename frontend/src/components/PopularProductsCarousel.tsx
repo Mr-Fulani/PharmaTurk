@@ -272,13 +272,13 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                     href={`/product/${product.product_type || 'medicines'}/${product.slug}`}
                     className="block mb-2"
                   >
-                    <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 hover:text-red-600 transition-colors">
+                  <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 hover-text-warm transition-colors">
                       {product.name}
                     </h3>
                   </Link>
                   <div className="mb-3">
                     <div className="flex items-baseline gap-2">
-                      <div className="text-lg font-bold text-red-600">
+                      <div className="text-lg font-bold text-[var(--text-strong)]">
                         {product.price
                           ? `${product.price} ${product.currency}`
                           : t('price_on_request', 'Цена по запросу')}

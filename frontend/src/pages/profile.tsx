@@ -417,13 +417,13 @@ export default function ProfilePage() {
 
   const getOrderStatusColor = (status: string) => {
     const colors: Record<string, string> = {
-      new: 'bg-blue-100 text-blue-800',
-      pending_payment: 'bg-yellow-100 text-yellow-800',
-      paid: 'bg-green-100 text-green-800',
-      processing: 'bg-purple-100 text-purple-800',
-      shipped: 'bg-indigo-100 text-indigo-800',
-      delivered: 'bg-green-100 text-green-800',
-      cancelled: 'bg-red-100 text-red-800',
+      new: 'bg-[var(--accent-soft)] text-[var(--accent)]',
+      pending_payment: 'bg-[var(--surface)] text-[var(--text-strong)]',
+      paid: 'bg-[var(--accent-soft)] text-[var(--accent)]',
+      processing: 'bg-[var(--surface)] text-[var(--text-strong)]',
+      shipped: 'bg-[var(--accent-soft)] text-[var(--accent)]',
+      delivered: 'bg-[var(--accent-soft)] text-[var(--accent)]',
+      cancelled: 'bg-[var(--surface)] text-[var(--text-strong)]',
     }
     return colors[status] || 'bg-gray-100 text-gray-800'
   }
@@ -465,17 +465,17 @@ export default function ProfilePage() {
                       <img
                         src={displayAvatar}
                         alt={displayName}
-                        className="w-32 h-32 rounded-full object-cover border-4 border-violet-200"
+                        className="w-32 h-32 rounded-full object-cover border-4 border-[var(--accent-soft)]"
                       />
                     ) : (
-                      <div className="w-32 h-32 rounded-full bg-violet-100 flex items-center justify-center border-4 border-violet-200">
-                        <span className="text-4xl font-bold text-violet-600">
+                      <div className="w-32 h-32 rounded-full bg-[var(--surface)] flex items-center justify-center border-4 border-[var(--accent-soft)]">
+                        <span className="text-4xl font-bold text-[var(--text-strong)]">
                           {displayName.charAt(0).toUpperCase()}
                         </span>
                       </div>
                     )}
                     {editing && (
-                      <label className="absolute bottom-0 right-0 bg-violet-600 text-white rounded-full p-2 cursor-pointer hover:bg-violet-700 transition-colors">
+                      <label className="absolute bottom-0 right-0 bg-[var(--accent)] text-white rounded-full p-2 cursor-pointer hover:bg-[var(--accent-strong)] transition-colors">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -493,7 +493,7 @@ export default function ProfilePage() {
                   {!editing && !displayAvatar && (
                     <button
                       onClick={handleEdit}
-                      className="mt-2 text-sm text-violet-600 hover:text-violet-700"
+                      className="mt-2 text-sm text-main hover-text-warm"
                     >
                       {t('profile_upload_avatar')}
                     </button>
@@ -516,7 +516,7 @@ export default function ProfilePage() {
                           type="text"
                           value={formData.first_name}
                           onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                         />
                       </div>
                       <div>
@@ -527,7 +527,7 @@ export default function ProfilePage() {
                           type="text"
                           value={formData.last_name}
                           onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                         />
                       </div>
                       <div>
@@ -561,7 +561,7 @@ export default function ProfilePage() {
                           value={formData.whatsapp_phone}
                           onChange={(e) => setFormData({ ...formData, whatsapp_phone: e.target.value })}
                           placeholder="+1234567890"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                         />
                       </div>
                       <div>
@@ -573,14 +573,14 @@ export default function ProfilePage() {
                           value={formData.telegram_username}
                           onChange={(e) => setFormData({ ...formData, telegram_username: e.target.value })}
                           placeholder="@username"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                         />
                       </div>
                       <div className="flex gap-2 pt-4">
                         <button
                           onClick={handleSave}
                           disabled={saving}
-                          className="flex-1 bg-violet-600 text-white px-4 py-2 rounded-md hover:bg-violet-700 transition-colors disabled:opacity-50"
+                          className="flex-1 bg-[var(--accent)] text-white px-4 py-2 rounded-md hover:bg-[var(--accent-strong)] transition-colors disabled:opacity-50"
                         >
                           {saving ? t('profile_saving') : t('profile_save')}
                         </button>
@@ -642,11 +642,11 @@ export default function ProfilePage() {
                                 href={getTelegramLink(profile.telegram_username)!}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="group inline-flex h-10 w-10 items-center justify-center rounded-full border border-blue-200 bg-blue-50 transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md"
+                                className="group inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--accent-muted)] bg-[var(--accent-soft)] transition hover:-translate-y-0.5 hover:bg-[var(--surface)] hover:shadow-md"
                                 aria-label="Telegram"
                                 title={`@${profile.telegram_username.replace(/^@/, '')}`}
                               >
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-blue-500 transition group-hover:scale-110">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-[var(--accent)] transition group-hover:scale-110">
                                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.05-.2-.06-.06-.14-.04-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.75-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
                                 </svg>
                               </a>
@@ -656,7 +656,7 @@ export default function ProfilePage() {
                       )}
                       <button
                         onClick={handleEdit}
-                        className="w-full mt-4 bg-violet-600 text-white px-4 py-2 rounded-md hover:bg-violet-700 transition-colors"
+                        className="w-full mt-4 bg-[var(--accent)] text-white px-4 py-2 rounded-md hover:bg-[var(--accent-strong)] transition-colors"
                       >
                         {t('profile_edit')}
                       </button>
@@ -679,7 +679,7 @@ export default function ProfilePage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600">{t('profile_total_spent', 'Потрачено всего')}</span>
-                        <span className="text-base font-semibold text-violet-600">
+                        <span className="text-base font-semibold text-[var(--text-strong)]">
                           {profile.total_spent ? parseFloat(profile.total_spent).toFixed(2) : '0.00'} {orders.length > 0 && orders[0]?.currency ? orders[0].currency : 'RUB'}
                         </span>
                       </div>
@@ -719,7 +719,7 @@ export default function ProfilePage() {
                         className="group rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden"
                       >
                         {/* Заголовок заказа */}
-                        <div className="bg-gradient-to-r from-violet-50 to-purple-50 px-6 py-4 border-b border-gray-200">
+                        <div className="bg-[var(--surface)] px-6 py-4 border-b border-[var(--border)]">
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
@@ -765,7 +765,7 @@ export default function ProfilePage() {
                               </div>
                             </div>
                             <div className="text-right">
-                              <div className="text-2xl font-bold text-violet-600 mb-1">
+                              <div className="text-2xl font-bold text-[var(--text-strong)] mb-1">
                                 {order.total_amount} {order.currency}
                               </div>
                               <div className="text-sm text-gray-600">
@@ -815,7 +815,7 @@ export default function ProfilePage() {
                                         href={productLink}
                                         className="block"
                                       >
-                                        <h5 className="text-base font-semibold text-gray-900 hover:text-violet-600 transition-colors line-clamp-2">
+                                        <h5 className="text-base font-semibold text-gray-900 hover-text-warm transition-colors line-clamp-2">
                                           {item.product_name}
                                         </h5>
                                       </Link>
@@ -823,7 +823,7 @@ export default function ProfilePage() {
                                         <span className="font-medium">
                                           {t('cart_item_quantity', 'Количество')}: {item.quantity}
                                         </span>
-                                        <span className="text-violet-600 font-semibold">
+                                        <span className="text-[var(--text-strong)] font-semibold">
                                           {item.price} {order.currency}
                                         </span>
                                       </div>
@@ -852,7 +852,7 @@ export default function ProfilePage() {
                       <div className="flex justify-center pt-4">
                         <button
                           onClick={() => setShowAllOrders(!showAllOrders)}
-                          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border-2 border-violet-200 bg-white text-violet-700 font-semibold hover:bg-violet-50 hover:border-violet-300 transition-all duration-200"
+                          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border-2 border-[var(--accent-muted)] bg-white text-[var(--accent)] font-semibold hover:bg-[var(--surface)] hover:border-[var(--accent-muted)] transition-all duration-200"
                         >
                           {showAllOrders ? (
                             <>
@@ -886,7 +886,7 @@ export default function ProfilePage() {
                 {!showAddressForm && (
                   <button
                     onClick={handleAddAddress}
-                    className="bg-violet-600 text-white px-4 py-2 rounded-md hover:bg-violet-700 transition-colors"
+                    className="bg-[var(--accent)] text-white px-4 py-2 rounded-md hover:bg-[var(--accent-strong)] transition-colors"
                   >
                     {t('profile_add_address')}
                   </button>
@@ -931,7 +931,7 @@ export default function ProfilePage() {
                         onChange={(e) =>
                           setAddressFormData({ ...addressFormData, is_default: e.target.checked })
                         }
-                        className="h-4 w-4 text-violet-600 focus:ring-violet-500 border-gray-300 rounded"
+                        className="h-4 w-4 text-[var(--accent)] focus:ring-[var(--accent)] border-gray-300 rounded"
                       />
                       <label htmlFor="is_default" className="ml-2 text-sm text-gray-700">
                         {t('profile_address_set_default')}
@@ -1145,7 +1145,7 @@ export default function ProfilePage() {
                     <button
                       onClick={handleSaveAddress}
                       disabled={addressSaving}
-                      className="flex-1 bg-violet-600 text-white px-4 py-2 rounded-md hover:bg-violet-700 transition-colors disabled:opacity-50"
+                      className="flex-1 bg-[var(--accent)] text-white px-4 py-2 rounded-md hover:bg-[var(--accent-strong)] transition-colors disabled:opacity-50"
                     >
                       {addressSaving
                         ? editingAddress
@@ -1197,7 +1197,7 @@ export default function ProfilePage() {
                         className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow relative"
                       >
                         {address.is_default && (
-                          <span className="absolute top-2 right-2 bg-violet-100 text-violet-800 text-xs font-medium px-2 py-1 rounded">
+                          <span className="absolute top-2 right-2 bg-[var(--accent-soft)] text-[var(--accent)] text-xs font-medium px-2 py-1 rounded">
                             {t('profile_address_default')}
                           </span>
                         )}
@@ -1234,7 +1234,7 @@ export default function ProfilePage() {
                         <div className="flex gap-2 mt-4 pt-4 border-t">
                           <button
                             onClick={() => handleEditAddress(address)}
-                            className="flex-1 text-sm text-violet-600 hover:text-violet-700 font-medium"
+                            className="flex-1 text-sm text-[var(--text-strong)] hover-text-warm font-medium"
                           >
                             {t('profile_edit')}
                           </button>

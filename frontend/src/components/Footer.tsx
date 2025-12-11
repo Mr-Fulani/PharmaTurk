@@ -4,7 +4,7 @@ export default function Footer() {
   const { t } = useTranslation('common')
 
   return (
-    <footer className="mt-10 border-t border-[var(--border)] bg-[var(--surface)] shadow-xl transition-colors duration-200">
+    <footer className="mt-10 border-t border-[var(--border)] bg-[var(--surface)] shadow-xl transition-colors duration-200 dark:bg-[#0c1628] dark:border-[#1f2a3d] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.55)]">
       <div className="mx-auto max-w-6xl px-6 py-10 text-sm text-main">
         <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <div className="flex items-start justify-center sm:justify-start">

@@ -23,9 +23,9 @@ export default function AuthIndexPage() {
         <title>{tab === 'login' ? t('login') : t('register')} — Turk-Export</title>
       </Head>
       <main className="mx-auto max-w-md p-6">
-        <div className="mb-4 inline-flex rounded-md border border-gray-300 p-1">
-          <button onClick={()=>switchTo('login')} className={`rounded px-3 py-1.5 text-sm ${tab==='login' ? 'bg-violet-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>{t('login')}</button>
-          <button onClick={()=>switchTo('register')} className={`rounded px-3 py-1.5 text-sm ${tab==='register' ? 'bg-violet-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>{t('register')}</button>
+        <div className="mb-4 inline-flex rounded-md border border-[var(--border)] p-1 bg-[var(--surface)]">
+          <button onClick={()=>switchTo('login')} className={`rounded px-3 py-1.5 text-sm ${tab==='login' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}>{t('login')}</button>
+          <button onClick={()=>switchTo('register')} className={`rounded px-3 py-1.5 text-sm ${tab==='register' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}>{t('register')}</button>
         </div>
         {tab === 'login' ? <LoginForm /> : <RegisterForm />}
       </main>
@@ -89,7 +89,7 @@ function LoginForm() {
   return (
     <div className="space-y-4">
       {/* Переключатель метода входа */}
-      <div className="inline-flex rounded-md border border-gray-300 p-1 bg-gray-50">
+      <div className="inline-flex rounded-md border border-[var(--border)] p-1 bg-[var(--surface)]">
         <button
           type="button"
           onClick={() => {
@@ -100,8 +100,8 @@ function LoginForm() {
           }}
           className={`rounded px-3 py-1.5 text-sm transition-colors ${
             loginMethod === 'password'
-              ? 'bg-violet-600 text-white'
-              : 'text-gray-700 hover:bg-gray-100'
+              ? 'bg-[var(--accent)] text-white'
+              : 'text-main hover:bg-[var(--surface)]'
           }`}
         >
           Пароль
@@ -115,8 +115,8 @@ function LoginForm() {
           }}
           className={`rounded px-3 py-1.5 text-sm transition-colors ${
             loginMethod === 'sms'
-              ? 'bg-violet-600 text-white'
-              : 'text-gray-700 hover:bg-gray-100'
+              ? 'bg-[var(--accent)] text-white'
+              : 'text-main hover:bg-[var(--surface)]'
           }`}
         >
           SMS
@@ -177,7 +177,7 @@ function LoginForm() {
                 type="button"
                 onClick={handleSendSMS}
                 disabled={smsSent || loading}
-                className="rounded-md bg-gray-600 px-4 py-2 text-white hover:bg-gray-700 disabled:opacity-60 whitespace-nowrap"
+                className="rounded-md bg-[var(--accent)] px-4 py-2 text-white hover:bg-[var(--accent-strong)] disabled:opacity-60 whitespace-nowrap"
               >
                 {smsSent ? 'Отправлено' : 'Отправить код'}
               </button>
@@ -195,11 +195,11 @@ function LoginForm() {
             )}
           </>
         )}
-        {error ? <div className="text-sm text-red-600">{error}</div> : null}
+        {error ? <div className="text-sm text-[var(--text-strong)]">{error}</div> : null}
         <button
           type="submit"
           disabled={loading}
-          className="rounded-md bg-violet-600 px-4 py-2 text-white hover:bg-violet-700 disabled:opacity-60"
+          className="rounded-md bg-[var(--accent)] px-4 py-2 text-white hover:bg-[var(--accent-strong)] disabled:opacity-60"
         >
           {loading ? 'Входим...' : 'Войти'}
         </button>
@@ -242,8 +242,8 @@ function RegisterForm() {
       <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('email', 'Email')} value={email} onChange={(e)=>setEmail(e.target.value)} required />
       <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('username', 'Имя пользователя')} value={username} onChange={(e)=>setUsername(e.target.value)} required />
       <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('password_placeholder', 'Пароль (мин. 8 знаков, буквы и цифры)')} type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required />
-      {error ? <div className="text-sm text-red-600">{error}</div> : null}
-      <button type="submit" disabled={loading} className="rounded-md bg-violet-600 px-4 py-2 text-white hover:bg-violet-700 disabled:opacity-60">{loading ? 'Регистрируем...' : 'Зарегистрироваться'}</button>
+      {error ? <div className="text-sm text-[var(--text-strong)]">{error}</div> : null}
+      <button type="submit" disabled={loading} className="rounded-md bg-[var(--accent)] px-4 py-2 text-white hover:bg-[var(--accent-strong)] disabled:opacity-60">{loading ? 'Регистрируем...' : 'Зарегистрироваться'}</button>
     </form>
   )
 }

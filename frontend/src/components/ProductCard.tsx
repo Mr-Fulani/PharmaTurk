@@ -60,13 +60,13 @@ export default function ProductCard({
         </div>
         <div className="flex-1 flex flex-col justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2 group-hover:text-violet-700 transition-colors">{name}</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2 hover-text-warm transition-colors">{name}</h3>
             {description && (
               <p className="text-sm text-gray-600 line-clamp-2 mb-3">{description}</p>
             )}
             <div className="flex items-center gap-4 mb-3">
               <div className="flex items-baseline gap-2">
-                <div className="text-lg font-bold text-violet-600">
+                <div className="text-lg font-bold text-[var(--text-strong)]">
                   {price ? `${price} ${currency}` : t('price_on_request', 'Цена по запросу')}
                 </div>
                 {oldPrice && (
@@ -127,11 +127,11 @@ export default function ProductCard({
           </span>
         )}
       </div>
-      <h3 className="mt-3 line-clamp-2 text-base font-semibold text-gray-900 group-hover:text-violet-700 transition-colors">
+      <h3 className="mt-3 line-clamp-2 text-base font-semibold text-gray-900 hover-text-warm transition-colors">
         {name}
       </h3>
       <div className="mt-2 flex items-baseline gap-2">
-        <div className="text-lg font-bold text-violet-600">
+        <div className="text-lg font-bold text-[var(--text-strong)]">
           {price ? `${price} ${currency}` : t('price_on_request', 'Цена по запросу')}
         </div>
         {oldPrice && (

@@ -257,7 +257,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
             <div className="mt-6">
               <Link
                 href="/"
-                className="inline-block rounded-md bg-violet-600 px-6 py-3 text-sm font-medium text-white hover:bg-violet-700 transition-colors"
+                className="inline-block rounded-md bg-[var(--accent)] px-6 py-3 text-sm font-medium text-white hover:bg-[var(--accent-strong)] transition-colors"
               >
                 {t('cart_continue_shopping', 'Продолжить покупки')}
               </Link>
@@ -300,7 +300,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           href={getProductLink(item.product_slug, item.product, item.product_type)}
                           className="block"
                         >
-                          <h3 className="text-lg font-semibold text-gray-900 hover:text-violet-600 transition-colors line-clamp-2">
+                          <h3 className="text-lg font-semibold text-gray-900 hover-text-warm transition-colors line-clamp-2">
                             {item.product_name || `Товар #${item.product}`}
                           </h3>
                         </Link>
@@ -309,7 +309,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                             {t('size', 'Размер')}: <span className="font-medium text-gray-900">{item.chosen_size}</span>
                           </div>
                         ) : null}
-                        <div className="mt-1 text-lg font-bold text-violet-600">
+                        <div className="mt-1 text-lg font-bold text-[var(--text-strong)]">
                           {item.price} {item.currency}
                         </div>
                       </div>
@@ -352,7 +352,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           <button
                             onClick={() => removeItem(item.id)}
                             disabled={loading}
-                            className="rounded-md p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            className="rounded-md p-2 text-gray-400 transition-colors hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] disabled:opacity-50"
                             aria-label={t('remove', 'Удалить')}
                           >
                             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -376,7 +376,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                 <button
                   onClick={clearCart}
                   disabled={loading}
-                  className="text-sm text-gray-600 hover:text-red-600 transition-colors disabled:opacity-50"
+                  className="text-sm text-gray-600 hover-text-warm transition-colors disabled:opacity-50"
                 >
                   {t('cart_clear', 'Очистить корзину')}
                 </button>
@@ -429,13 +429,13 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                         <button
                           onClick={applyPromoCode}
                           disabled={promoLoading || !promoCode.trim()}
-                          className="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {promoLoading ? t('applying', 'Применение...') : t('apply', 'Применить')}
                         </button>
                       </div>
                       {promoError && (
-                        <div className="text-sm text-red-600">{promoError}</div>
+                        <div className="text-sm text-[var(--text-strong)]">{promoError}</div>
                       )}
                     </div>
                   )}
@@ -465,7 +465,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                   <div className="border-t border-gray-200 pt-4">
                     <div className="flex justify-between items-baseline">
                       <span className="text-lg font-semibold text-gray-900">{t('cart_total', 'Итого')}</span>
-                      <span className="text-2xl font-bold text-violet-600">
+                      <span className="text-2xl font-bold text-[var(--text-strong)]">
                         {cart.final_amount || cart.total_amount} {cart.currency || 'USD'}
                       </span>
                     </div>
@@ -475,7 +475,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                 <div className="mt-6 space-y-3">
                   <Link
                     href="/checkout"
-                    className="block w-full rounded-md bg-violet-600 px-6 py-3 text-center text-sm font-medium text-white hover:bg-violet-700 transition-colors"
+                    className="block w-full rounded-md bg-[var(--accent)] px-6 py-3 text-center text-sm font-medium text-white hover:bg-[var(--accent-strong)] transition-colors"
                   >
                     {t('cart_checkout', 'Перейти к оформлению заказа')}
                   </Link>
@@ -488,12 +488,12 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                 </div>
 
                 {/* Информация о доставке */}
-                <div className="mt-6 rounded-lg bg-violet-50 p-4">
+                <div className="mt-6 rounded-lg bg-[var(--surface)] p-4">
                   <div className="flex items-start gap-2">
-                    <svg className="h-5 w-5 text-violet-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-5 w-5 text-[var(--accent)] mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <div className="text-xs text-violet-800">
+                    <div className="text-xs text-[var(--text-strong)]">
                       <p className="font-medium">{t('cart_delivery_info_title', 'Бесплатная доставка')}</p>
                       <p className="mt-1">{t('cart_delivery_info_text', 'При заказе от определенной суммы')}</p>
                     </div>

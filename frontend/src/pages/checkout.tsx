@@ -256,7 +256,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
             <h3 className="text-lg font-semibold text-gray-900">{t('cart_empty', 'Корзина пуста')}</h3>
             <p className="mt-2 text-sm text-gray-600">{t('cart_empty_description', 'Добавьте товары в корзину, чтобы продолжить покупки')}</p>
             <div className="mt-6">
-              <Link href="/" className="inline-block rounded-md bg-violet-600 px-6 py-3 text-sm font-medium text-white hover:bg-violet-700 transition-colors">
+              <Link href="/" className="inline-block rounded-md bg-[var(--accent)] px-6 py-3 text-sm font-medium text-white hover:bg-[var(--accent-strong)] transition-colors">
                 {t('cart_continue_shopping', 'Продолжить покупки')}
               </Link>
             </div>
@@ -288,7 +288,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                         key={address.id}
                         className={`rounded-lg border-2 p-4 cursor-pointer transition-all ${
                           selectedAddressId === address.id && useSavedAddress
-                            ? 'border-violet-500 bg-violet-50'
+                            ? 'border-[var(--accent)] bg-[var(--surface)]'
                             : 'border-gray-200 hover:border-gray-300'
                         }`}
                         onClick={() => handleAddressSelect(address)}
@@ -298,7 +298,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-gray-900">{address.contact_name}</span>
                               {address.is_default && (
-                                <span className="text-xs bg-violet-100 text-violet-700 px-2 py-1 rounded">
+                                <span className="text-xs bg-[var(--surface)] text-[var(--text-strong)] px-2 py-1 rounded">
                                   {t('profile_address_default', 'По умолчанию')}
                                 </span>
                               )}
@@ -310,7 +310,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                             <p className="text-sm text-gray-500 mt-1">{address.contact_phone}</p>
                           </div>
                           {selectedAddressId === address.id && useSavedAddress && (
-                            <svg className="h-5 w-5 text-violet-600" fill="currentColor" viewBox="0 0 20 20">
+                            <svg className="h-5 w-5 text-[var(--accent)]" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                             </svg>
                           )}
@@ -320,7 +320,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     <button
                       type="button"
                       onClick={handleUseManualAddress}
-                      className="w-full text-sm text-violet-600 hover:text-violet-700 font-medium py-2"
+                      className="w-full text-sm text-main hover-text-warm font-medium py-2"
                     >
                       {t('checkout_use_manual_address', 'Указать адрес вручную')}
                     </button>
@@ -380,13 +380,13 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
 
                   {/* Предложение сохранить адрес */}
                   {user && (
-                    <div className="mb-4 p-3 bg-violet-50 rounded-lg border border-violet-200">
+                    <div className="mb-4 p-3 bg-[var(--surface)] rounded-lg border border-[var(--border)]">
                       <label className="flex items-center cursor-pointer">
                         <input
                           type="checkbox"
                           checked={saveAddress}
                           onChange={(e) => setSaveAddress(e.target.checked)}
-                          className="h-4 w-4 text-violet-600 focus:ring-violet-500 border-gray-300 rounded"
+                          className="h-4 w-4 text-[var(--accent)] focus:ring-[var(--accent)] border-gray-300 rounded"
                         />
                         <span className="ml-2 text-sm text-gray-700">
                           {addresses.length > 0 
@@ -401,7 +401,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     {/* Тип адреса */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_address_type')} <span className="text-red-500">*</span>
+                        {t('profile_address_type')} <span className="text-[var(--text-strong)]">*</span>
                       </label>
                       <select
                         value={addressFormData.address_type}
@@ -429,7 +429,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                           onChange={(e) =>
                             setAddressFormData({ ...addressFormData, is_default: e.target.checked })
                           }
-                          className="h-4 w-4 text-violet-600 focus:ring-violet-500 border-gray-300 rounded"
+                          className="h-4 w-4 text-[var(--accent)] focus:ring-[var(--accent)] border-gray-300 rounded"
                         />
                         <label htmlFor="is_default" className="ml-2 text-sm text-gray-700">
                           {t('profile_address_set_default')}
@@ -440,7 +440,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     {/* Имя получателя */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_address_contact_name')} <span className="text-red-500">*</span>
+                        {t('profile_address_contact_name')} <span className="text-[var(--text-strong)]">*</span>
                       </label>
                       <input
                         type="text"
@@ -456,7 +456,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     {/* Телефон получателя */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_address_contact_phone')} <span className="text-red-500">*</span>
+                        {t('profile_address_contact_phone')} <span className="text-[var(--text-strong)]">*</span>
                       </label>
                       <input
                         type="tel"
@@ -472,7 +472,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     {/* Страна */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_address_country')} <span className="text-red-500">*</span>
+                        {t('profile_address_country')} <span className="text-[var(--text-strong)]">*</span>
                       </label>
                       <input
                         type="text"
@@ -503,7 +503,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     {/* Город */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_address_city')} <span className="text-red-500">*</span>
+                        {t('profile_address_city')} <span className="text-[var(--text-strong)]">*</span>
                       </label>
                       <input
                         type="text"
@@ -534,7 +534,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     {/* Улица */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_address_street')} <span className="text-red-500">*</span>
+                        {t('profile_address_street')} <span className="text-[var(--text-strong)]">*</span>
                       </label>
                       <input
                         type="text"
@@ -550,7 +550,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     {/* Дом */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_address_house')} <span className="text-red-500">*</span>
+                        {t('profile_address_house')} <span className="text-[var(--text-strong)]">*</span>
                       </label>
                       <input
                         type="text"
@@ -643,7 +643,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   <button
                     type="button"
                     onClick={handleSaveAddressFromForm}
-                    className="mt-4 w-full bg-violet-600 text-white px-4 py-2 rounded-md hover:bg-violet-700 transition-colors"
+                    className="mt-4 w-full bg-[var(--accent)] text-white px-4 py-2 rounded-md hover:bg-[var(--accent-strong)] transition-colors"
                   >
                     {t('checkout_use_this_address', 'Использовать этот адрес')}
                   </button>
@@ -666,7 +666,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   <button
                     type="button"
                     onClick={handleUseManualAddress}
-                    className="mt-3 text-sm text-violet-600 hover:text-violet-700 font-medium"
+                    className="mt-3 text-sm text-main hover-text-warm font-medium"
                   >
                     {t('checkout_fill_address_form', 'Заполнить подробный адрес')}
                   </button>
@@ -680,7 +680,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   {/* Наложенный платёж */}
                   <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
                     paymentMethod === 'cod' 
-                      ? 'border-violet-500 bg-violet-50' 
+                      ? 'border-[var(--accent)] bg-[var(--surface)]' 
                       : 'border-gray-200 hover:bg-gray-50'
                   }`}>
                     <input
@@ -689,7 +689,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       value="cod"
                       checked={paymentMethod === 'cod'}
                       onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="h-4 w-4 text-violet-600 focus:ring-violet-500"
+                      className="h-4 w-4 text-[var(--accent)] focus:ring-[var(--accent)]"
                     />
                     <div className="ml-3 flex-1">
                       <div className="flex items-center gap-2">
@@ -705,7 +705,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   {/* Банковская карта */}
                   <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
                     paymentMethod === 'card' 
-                      ? 'border-violet-500 bg-violet-50' 
+                      ? 'border-[var(--accent)] bg-[var(--surface)]' 
                       : 'border-gray-200 hover:bg-gray-50'
                   }`}>
                     <input
@@ -714,7 +714,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       value="card"
                       checked={paymentMethod === 'card'}
                       onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="h-4 w-4 text-violet-600 focus:ring-violet-500"
+                      className="h-4 w-4 text-[var(--accent)] focus:ring-[var(--accent)]"
                     />
                     <div className="ml-3 flex-1">
                       <div className="flex items-center gap-2">

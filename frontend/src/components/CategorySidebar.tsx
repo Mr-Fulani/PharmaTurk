@@ -338,7 +338,7 @@ export default function CategorySidebar({
             <h2 className="text-xl font-bold text-main dark:text-gray-900">Фильтры</h2>
             <div className="flex items-center gap-2">
               {hasActiveFilters && (
-                <button onClick={clearFilters} className="text-sm text-violet-600 hover:text-violet-800 font-medium">
+                <button onClick={clearFilters} className="text-sm text-[var(--accent)] hover:text-[var(--accent-strong)] font-medium">
                   Сбросить
                 </button>
               )}
