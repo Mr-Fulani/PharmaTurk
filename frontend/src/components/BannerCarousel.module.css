@@ -83,7 +83,7 @@
   text-align: left;
   color: #eee;
   transform: translate(0, -50%);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: 'InkVerse', 'Poppins', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   z-index: 1000;
   pointer-events: auto;
 }

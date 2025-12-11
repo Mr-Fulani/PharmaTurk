@@ -2,8 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Импорт шрифта Quicksand */
-@import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap');
+/* Подключение локального шрифта InkVerse (OFL) + веб-импорт Poppins как fallback */
+@font-face {
+  font-family: 'InkVerse';
+  src: url('/fonts/InkVerse.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
 
 /* Токены тем */
 :root {
@@ -90,7 +97,8 @@
 
 /* Базовые вспомогательные стили */
 html, body {
-  @apply p-0 m-0 font-sans;
+  @apply p-0 m-0;
+  font-family: 'InkVerse', 'Poppins', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   background-color: var(--bg);
   color: var(--text);
   transition: background-color 0.2s ease, color 0.2s ease;
