@@ -326,23 +326,23 @@ export default function CategorySidebar({
         className={`
           fixed lg:sticky top-16 lg:top-20 left-0 z-30
           h-full lg:h-auto lg:max-h-[calc(100vh-2rem)]
-          w-80 bg-white border-r lg:border-r-0 lg:border border-gray-200
-          shadow-xl lg:shadow-sm
+          w-80 bg-white/95 backdrop-blur text-gray-900 border-r lg:border-r-0 lg:border border-gray-200 rounded-2xl
+          shadow-[0_20px_60px_-20px_rgba(255,255,255,0.65),0_20px_50px_-18px_rgba(109,40,217,0.45)] lg:shadow-sm
           transform transition-transform duration-300 ease-in-out
           overflow-y-auto
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
       >
         <div className="p-6 space-y-6">
-          <div className="flex items-center justify-between border-b pb-4">
-            <h2 className="text-xl font-bold text-gray-900">Фильтры</h2>
+          <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
+            <h2 className="text-xl font-bold text-main dark:text-gray-900">Фильтры</h2>
             <div className="flex items-center gap-2">
               {hasActiveFilters && (
                 <button onClick={clearFilters} className="text-sm text-violet-600 hover:text-violet-800 font-medium">
                   Сбросить
                 </button>
               )}
-              <button onClick={onToggle} className="lg:hidden text-gray-500 hover:text-gray-700">
+              <button onClick={onToggle} className="lg:hidden text-main/70 hover:text-main dark:text-gray-500 dark:hover:text-gray-700">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -359,7 +359,7 @@ export default function CategorySidebar({
                 return (
                   <div key={group.title}>
                     {!shouldHideTitle && (
-                      <h3 className="text-base font-semibold text-gray-900 mb-3">{group.title}</h3>
+                      <h3 className="text-base font-semibold text-main mb-3 dark:text-gray-900">{group.title}</h3>
                     )}
                     <div className="space-y-1">{renderTreeItems(group.items)}</div>
                   </div>
@@ -375,9 +375,9 @@ export default function CategorySidebar({
                 onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
                 className="flex items-center justify-between w-full mb-3"
               >
-                <h3 className="text-base font-semibold text-gray-900">Тип обуви</h3>
+                <h3 className="text-base font-semibold text-main dark:text-gray-900">Тип обуви</h3>
                 <svg
-                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                  className={`w-5 h-5 text-main/60 dark:text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -395,7 +395,7 @@ export default function CategorySidebar({
                         onChange={() => toggleCustomFilter('shoeTypes', opt.value)}
                         className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
                       />
-                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                      <span className="text-sm text-main dark:text-gray-800 group-hover:text-violet-700 flex-1">{opt.label}</span>
                     </label>
                   ))}
                 </div>
@@ -410,9 +410,9 @@ export default function CategorySidebar({
                 onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
                 className="flex items-center justify-between w-full mb-3"
               >
-                <h3 className="text-base font-semibold text-gray-900">Предметы одежды</h3>
+                <h3 className="text-base font-semibold text-main dark:text-gray-900">Предметы одежды</h3>
                 <svg
-                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                  className={`w-5 h-5 text-main/60 dark:text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -430,7 +430,7 @@ export default function CategorySidebar({
                         onChange={() => toggleCustomFilter('clothingItems', opt.value)}
                         className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
                       />
-                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                      <span className="text-sm text-main dark:text-gray-800 group-hover:text-violet-700 flex-1">{opt.label}</span>
                     </label>
                   ))}
                 </div>

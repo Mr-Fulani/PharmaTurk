@@ -3,6 +3,7 @@ import '../../styles/globals.css'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 import { AuthProvider } from '../context/AuthContext'
+import { ThemeProvider } from '../context/ThemeContext'
 import { useEffect } from 'react'
 import { useCartStore } from '../store/cart'
 import { initCartSession } from '../lib/api'
@@ -20,13 +21,15 @@ function App({ Component, pageProps }: AppProps) {
   }, [])
   return (
     <AuthProvider>
-      <div className="min-h-screen flex flex-col">
-        <Header />
-        <div className="flex-1">
-          <Component {...pageProps} />
+      <ThemeProvider>
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <div className="flex-1">
+            <Component {...pageProps} />
+          </div>
+          <Footer />
         </div>
-        <Footer />
-      </div>
+      </ThemeProvider>
     </AuthProvider>
   )
 }

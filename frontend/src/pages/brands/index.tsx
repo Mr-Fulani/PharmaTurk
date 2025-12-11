@@ -143,8 +143,8 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
         <meta property="twitter:card" content="summary_large_image" />
       </Head>
 
-      <main className="bg-gray-50 min-h-screen">
-        <section className="bg-gradient-to-r from-violet-700 to-indigo-600 text-white py-12">
+      <main className="min-h-screen bg-page text-main transition-colors duration-200">
+        <section className="bg-gradient-to-r from-violet-700 to-indigo-600 text-white py-12 dark:from-slate-800 dark:to-slate-900">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-4">
             <div>
               <p className="text-sm uppercase tracking-widest opacity-80">Бренды</p>

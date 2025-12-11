@@ -196,9 +196,9 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
       <Head>
         <title>{t('menu_categories', 'Категории')} — Turk-Export</title>
       </Head>
-      <main className="bg-gray-50 min-h-screen">
+      <main className="min-h-screen bg-page text-main transition-colors duration-200">
         {/* Hero banner */}
-        <section className="bg-gradient-to-r from-violet-700 to-indigo-600 text-white py-12">
+        <section className="bg-gradient-to-r from-violet-700 to-indigo-600 text-white py-12 dark:from-slate-800 dark:to-slate-900">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-4">
             <div>
               <p className="text-sm uppercase tracking-widest opacity-80">Каталог</p>

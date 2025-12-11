@@ -5,6 +5,33 @@
 /* Импорт шрифта Quicksand */
 @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap');
 
+/* Токены тем */
+:root {
+  /* Кремовая палитра для светлой темы */
+  --bg: #fdf7f0;
+  --text: #1f2937;
+  --surface: #f6e7d8;
+  --border: #e6d4bd;
+}
+
+.dark {
+  --bg: #0f172a;
+  --text: #e5e7eb;
+  --surface: #0b162c;
+  --border: #1f2937;
+}
+
+/* Утилиты на переменных */
+.bg-page { background-color: var(--bg); }
+.bg-surface { background-color: var(--surface); }
+.text-main { color: var(--text); }
+.border-main { border-color: var(--border); }
+
 /* Базовые вспомогательные стили */
-html, body { @apply p-0 m-0 font-sans bg-gray-100 text-gray-900; }
+html, body {
+  @apply p-0 m-0 font-sans;
+  background-color: var(--bg);
+  color: var(--text);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
 *, *::before, *::after { box-sizing: border-box; }
