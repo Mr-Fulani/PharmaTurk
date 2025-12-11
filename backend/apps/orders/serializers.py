@@ -175,6 +175,13 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
             'source_variant_slug': variant.slug,
         },
     }
+    variant_external_payload = {
+        'source_type': source_type,
+        'effective_type': effective_type,
+        'source_variant_id': variant.id,
+        'source_variant_slug': variant.slug,
+    }
+
     if product is None:
         product, created = Product.objects.get_or_create(slug=base_slug, defaults=defaults)
     else:
@@ -209,8 +216,19 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         if brand and product.brand_id is None:
             product.brand = brand
             changed = True
+        # Всегда сохраняем external_data для связи с вариантом (нужно для картинок в корзине)
+        product_external = product.external_data or {}
+        merged_ext = {**product_external, **variant_external_payload}
+        if product.external_data != merged_ext:
+            product.external_data = merged_ext
+            changed = True
+
         if changed:
             product.save()
+    else:
+        # Новый продукт: добавляем external_data сразу
+        product.external_data = {**(product.external_data or {}), **variant_external_payload}
+        product.save(update_fields=['external_data'])
 
     external['base_product_id'] = product.id
     external['base_product_slug'] = product.slug
@@ -266,7 +284,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         read_only_fields = ['price', 'currency', 'created_at', 'updated_at']
     
     def get_product_image_url(self, obj):
-        """Получение URL изображения товара"""
+        """Получение URL изображения товара (с запасным поиском по варианту)."""
         product = obj.product
         if not product:
             return None
@@ -274,17 +292,67 @@ class CartItemSerializer(serializers.ModelSerializer):
         # Сначала проверяем main_image
         if product.main_image:
             return product.main_image
-        
-        # Затем ищем главное изображение в связанных изображениях
+
+        # Затем ищем главное изображение в связанных изображениях продукта
         main_img = product.images.filter(is_main=True).first()
         if main_img:
             return main_img.image_url
-        
-        # Если нет главного, берем первое изображение
+
         first_img = product.images.first()
         if first_img:
             return first_img.image_url
-        
+
+        # Фолбэк: пробуем подтянуть изображение из варианта по сохранённым external_data
+        ext = getattr(product, "external_data", {}) or {}
+        variant_slug = ext.get("source_variant_slug")
+        effective_type = ext.get("effective_type") or ext.get("source_type")
+        if not variant_slug or not effective_type:
+            return None
+
+        variant_model = VARIANT_MODEL_MAP.get(effective_type)
+        if variant_model and variant_model in (ClothingVariant, ShoeVariant):
+            variant = variant_model.objects.filter(slug=variant_slug, is_active=True).prefetch_related("images").first()
+            if variant:
+                if variant.main_image:
+                    return variant.main_image
+                v_main = variant.images.filter(is_main=True).first()
+                if v_main:
+                    return v_main.image_url
+                v_first = variant.images.first()
+                if v_first:
+                    return v_first.image_url
+
+        # Дополнительный фолбэк: пробуем найти базовую карточку обуви/одежды и взять первую активную вариацию
+        try:
+            if product.product_type == 'shoes':
+                base_shoe = ShoeProduct.objects.filter(slug=product.slug, is_active=True).prefetch_related('variants__images').first()
+                if base_shoe:
+                    v = base_shoe.variants.filter(is_active=True).order_by('sort_order', 'id').first()
+                    if v:
+                        if v.main_image:
+                            return v.main_image
+                        v_main = v.images.filter(is_main=True).first()
+                        if v_main:
+                            return v_main.image_url
+                        v_first = v.images.first()
+                        if v_first:
+                            return v_first.image_url
+            if product.product_type == 'clothing':
+                base_cloth = ClothingProduct.objects.filter(slug=product.slug, is_active=True).prefetch_related('variants__images').first()
+                if base_cloth:
+                    v = base_cloth.variants.filter(is_active=True).order_by('sort_order', 'id').first()
+                    if v:
+                        if v.main_image:
+                            return v.main_image
+                        v_main = v.images.filter(is_main=True).first()
+                        if v_main:
+                            return v_main.image_url
+                        v_first = v.images.first()
+                        if v_first:
+                            return v_first.image_url
+        except Exception:
+            pass
+
         return None
 
     def get_product_slug(self, obj):
@@ -386,31 +454,31 @@ class AddToCartSerializer(serializers.Serializer):
         # Если тип не передан, считаем базовым
         effective_type = product_type or 'medicines'
 
-        # Сначала пробуем базовый товар по slug (это также покрывает случаи, когда фронт прислал slug родителя)
-        base = Product.objects.filter(slug=product_slug, is_active=True).first()
-        if base:
-            attrs['product'] = base
-            attrs['chosen_size'] = chosen_size
-            return attrs
-
-        # Проверяем вариант напрямую, чтобы валидировать размер
-        variant = None
         normalized = normalize_product_type(effective_type)
+
+        # Проверяем вариант напрямую, чтобы валидировать размер (для одежды/обуви)
+        variant = None
         variant_model = VARIANT_MODEL_MAP.get(normalized)
         if variant_model and variant_model in (ClothingVariant, ShoeVariant):
             variant = variant_model.objects.filter(slug=product_slug, is_active=True).first()
-            if not variant:
-                raise serializers.ValidationError({"detail": _("Вариант не найден по slug")})
-            has_size_grid = variant.sizes.exists()
-            if has_size_grid:
-                if not chosen_size:
-                    raise serializers.ValidationError({"detail": _("Укажите размер для этого варианта")})
-                size_obj = variant.sizes.filter(size=chosen_size).first()
-                if not size_obj:
-                    raise serializers.ValidationError({"detail": _("Размер не найден для выбранного цвета")})
-                if not size_obj.is_available:
-                    raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
-            attrs['chosen_size'] = chosen_size
+            if variant:
+                has_size_grid = variant.sizes.exists()
+                if has_size_grid:
+                    if not chosen_size:
+                        raise serializers.ValidationError({"detail": _("Укажите размер для этого варианта")})
+                    size_obj = variant.sizes.filter(size=chosen_size).first()
+                    if not size_obj:
+                        raise serializers.ValidationError({"detail": _("Размер не найден для выбранного цвета")})
+                    if not size_obj.is_available:
+                        raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
+                attrs['chosen_size'] = chosen_size
+        else:
+            # Базовые типы (без вариантов) — пробуем найти продукт по slug сразу
+            base = Product.objects.filter(slug=product_slug, is_active=True).first()
+            if base:
+                attrs['product'] = base
+                attrs['chosen_size'] = chosen_size
+                return attrs
 
         # Если базового нет — пробуем как вариант/базовую карточку одежды/обуви
         try:
