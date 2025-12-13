@@ -552,6 +552,35 @@ export default function CategoryPage({
   const router = useRouter()
   const { slug } = router.query
 
+  // Локализация названия категории на клиенте (обновляется при смене языка)
+  const localizedCategoryName = useMemo(() => {
+    const categoryNameKeys: Record<string, string> = {
+      medicines: 'category_medicines',
+      supplements: 'category_supplements',
+      clothing: 'category_clothing',
+      shoes: 'category_shoes',
+      electronics: 'category_electronics',
+      tableware: 'category_tableware',
+      furniture: 'category_furniture',
+      accessories: 'category_accessories',
+      jewelry: 'category_jewelry',
+      underwear: 'category_underwear',
+      headwear: 'category_headwear',
+      'medical-equipment': 'category_medical_equipment',
+      'medical_equipment': 'category_medical_equipment' // поддержка формата с подчеркиванием
+    }
+    // Нормализуем categoryType (может быть с подчеркиваниями или дефисами)
+    const normalizedType = categoryType?.replace(/_/g, '-')
+    const key = categoryNameKeys[normalizedType] || categoryNameKeys[categoryType]
+    if (key) {
+      // Используем перевод без fallback, чтобы всегда получать локализованное значение
+      const translated = t(key, { defaultValue: categoryName })
+      return translated
+    }
+    // Если ключ не найден, используем переданное название
+    return categoryName
+  }, [categoryType, categoryName, t, router.locale])
+
   const [products, setProducts] = useState(initialProducts)
   const [totalCount, setTotalCount] = useState(initialTotalCount)
   const [currentPage, setCurrentPage] = useState(initialCurrentPage)
@@ -916,22 +945,22 @@ export default function CategoryPage({
 
   const breadcrumbs = useMemo(() => {
     const items = [
-      { href: '/', label: 'Главная' },
-      { href: '/categories', label: 'Категории' },
-      { href: `/categories/${routeSlug}`, label: categoryName || 'Категория' },
+      { href: '/', label: t('breadcrumb_home', 'Главная') },
+      { href: '/categories', label: t('breadcrumb_categories', 'Категории') },
+      { href: `/categories/${routeSlug}`, label: localizedCategoryName || t('category', 'Категория') },
     ]
     if (brandLabel) {
       items.push({ href: router.asPath, label: brandLabel })
     }
     return items
-  }, [brandLabel, categoryName, routeSlug, router.asPath])
+  }, [brandLabel, localizedCategoryName, routeSlug, router.asPath, t])
 
   const siteUrl = useMemo(() => (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, ''), [])
   const canonicalUrl = useMemo(() => `${siteUrl}/categories/${routeSlug || categoryType}`, [siteUrl, routeSlug, categoryType])
-  const ogTitle = useMemo(() => `${categoryName} — PharmaTurk`, [categoryName])
+  const ogTitle = useMemo(() => `${localizedCategoryName} — PharmaTurk`, [localizedCategoryName])
   const ogDescription = useMemo(
-    () => categoryDescription || `Каталог ${categoryName.toLowerCase()} в PharmaTurk`,
-    [categoryDescription, categoryName]
+    () => categoryDescription || t('catalog_of_category', 'Каталог {{category}} в PharmaTurk', { category: localizedCategoryName.toLowerCase() }),
+    [categoryDescription, localizedCategoryName, t]
   )
   const breadcrumbSchema = useMemo(() => {
     const items = breadcrumbs.map((item, idx) => ({
@@ -950,7 +979,7 @@ export default function CategoryPage({
   return (
     <>
       <Head>
-        <title>{categoryName} - PharmaTurk</title>
+        <title>{localizedCategoryName} - PharmaTurk</title>
         <meta name="description" content={ogDescription} />
         <link rel="canonical" href={canonicalUrl} />
         <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
@@ -973,12 +1002,12 @@ export default function CategoryPage({
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-4">{categoryName}</h1>
+              <h1 className="text-4xl md:text-5xl font-bold mb-4">{localizedCategoryName}</h1>
               {categoryDescription && (
                 <p className="text-lg md:text-xl opacity-90 max-w-2xl">{categoryDescription}</p>
               )}
               <p className="mt-4 text-sm opacity-80">
-                Найдено товаров: <span className="font-semibold">{totalCount}</span>
+                {t('products_found', 'Найдено товаров')}: <span className="font-semibold">{totalCount}</span>
               </p>
             </div>
           </div>
@@ -1035,7 +1064,7 @@ export default function CategoryPage({
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                 </svg>
-                Фильтры
+                {t('sidebar_filters', 'Фильтры')}
               </button>
 
               {/* View mode toggle */}
@@ -1125,10 +1154,10 @@ export default function CategoryPage({
               <div className="text-center py-20">
                 <div className="text-6xl mb-4">😔</div>
                 <h3 className="text-2xl font-semibold text-main mb-2">
-                  Товары не найдены
+                  {t('products_not_found', 'Товары не найдены')}
                 </h3>
                 <p className="text-main/80 mb-6">
-                  Попробуйте изменить параметры фильтров или выберите другую категорию
+                  {t('products_not_found_description', 'Попробуйте изменить параметры фильтров или выберите другую категорию')}
                 </p>
                 <button
                   onClick={() => {
@@ -1146,7 +1175,7 @@ export default function CategoryPage({
                   }}
                   className="px-6 py-3 bg-accent text-white rounded-lg hover:bg-[var(--accent-strong)] transition-colors"
                 >
-                  Сбросить фильтры
+                  {t('reset_filters', 'Сбросить фильтры')}
                 </button>
               </div>
             )}
@@ -1285,24 +1314,45 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     // --- Фильтр брендов ---
     brands = filterBrandsByProducts(brands, products, categoryType, routeSlug)
 
-    const categoryNames: Record<string, { name: string; description: string }> = {
-      medicines: { name: 'Медикаменты', description: 'Лекарственные препараты и медикаменты из Турции' },
-      supplements: { name: 'БАДы', description: 'Биологически активные добавки' },
-      clothing: { name: 'Одежда', description: 'Модная одежда для всей семьи из Турции' },
-      shoes: { name: 'Обувь', description: 'Качественная обувь для всей семьи' },
-      electronics: { name: 'Электроника', description: 'Современные гаджеты и техника' },
-      tableware: { name: 'Посуда', description: 'Кухонная посуда и аксессуары' },
-      furniture: { name: 'Мебель', description: 'Мебель для дома и офиса' },
-      accessories: { name: 'Аксессуары', description: 'Сумки, ремни, кошельки и другие аксессуары' },
-      jewelry: { name: 'Украшения', description: 'Украшения и бижутерия из Турции' },
-      underwear: { name: 'Нижнее бельё', description: 'Базовое и повседневное нижнее бельё' },
-      headwear: { name: 'Головные уборы', description: 'Кепки, шапки и другие головные уборы' },
-      'medical-equipment': { name: 'Медицинский инвентарь', description: 'Инструменты и оборудование для медицины' }
+    // Локализация названий категорий
+    const getCategoryNames = (locale: string = 'ru'): Record<string, { name: string; description: string }> => {
+      if (locale === 'en') {
+        return {
+          medicines: { name: 'Medicines', description: 'Medicinal preparations and medicines from Turkey' },
+          supplements: { name: 'Supplements', description: 'Dietary supplements' },
+          clothing: { name: 'Clothing', description: 'Fashionable clothing for the whole family from Turkey' },
+          shoes: { name: 'Shoes', description: 'Quality footwear for the whole family' },
+          electronics: { name: 'Electronics', description: 'Modern gadgets and technology' },
+          tableware: { name: 'Tableware', description: 'Kitchenware and accessories' },
+          furniture: { name: 'Furniture', description: 'Furniture for home and office' },
+          accessories: { name: 'Accessories', description: 'Bags, belts, wallets and other accessories' },
+          jewelry: { name: 'Jewelry', description: 'Jewelry and costume jewelry from Turkey' },
+          underwear: { name: 'Underwear', description: 'Basic and everyday underwear' },
+          headwear: { name: 'Headwear', description: 'Caps, hats and other headwear' },
+          'medical-equipment': { name: 'Medical Equipment', description: 'Medical tools and equipment' }
+        }
+      }
+      return {
+        medicines: { name: 'Медикаменты', description: 'Лекарственные препараты и медикаменты из Турции' },
+        supplements: { name: 'БАДы', description: 'Биологически активные добавки' },
+        clothing: { name: 'Одежда', description: 'Модная одежда для всей семьи из Турции' },
+        shoes: { name: 'Обувь', description: 'Качественная обувь для всей семьи' },
+        electronics: { name: 'Электроника', description: 'Современные гаджеты и техника' },
+        tableware: { name: 'Посуда', description: 'Кухонная посуда и аксессуары' },
+        furniture: { name: 'Мебель', description: 'Мебель для дома и офиса' },
+        accessories: { name: 'Аксессуары', description: 'Сумки, ремни, кошельки и другие аксессуары' },
+        jewelry: { name: 'Украшения', description: 'Украшения и бижутерия из Турции' },
+        underwear: { name: 'Нижнее бельё', description: 'Базовое и повседневное нижнее бельё' },
+        headwear: { name: 'Головные уборы', description: 'Кепки, шапки и другие головные уборы' },
+        'medical-equipment': { name: 'Медицинский инвентарь', description: 'Инструменты и оборудование для медицины' }
+      }
     }
 
+    const categoryNames = getCategoryNames(context.locale)
+    const fallbackName = context.locale === 'en' ? 'Products' : 'Товары'
     const fallbackInfo =
       (mainCat && { name: mainCat.name, description: mainCat.description || '' }) ||
-      { name: 'Товары', description: '' }
+      { name: fallbackName, description: '' }
     const categoryInfo = categoryNames[categoryType] || fallbackInfo
 
     // Заменяем categories на уже отфильтрованный список для сайтбара,
@@ -1337,7 +1387,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         sidebarCategories: [],
         brands: [],
         subcategories: [],
-        categoryName: 'Товары',
+        categoryName: context.locale === 'en' ? 'Products' : 'Товары',
         categoryDescription: '',
         totalCount: 0,
         currentPage: 1,

@@ -124,8 +124,8 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
 
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
   const canonicalUrl = `${siteUrl}/brands`
-  const pageTitle = 'Бренды — PharmaTurk'
-  const pageDescription = 'Популярные бренды из Турции: одежда, обувь, электроника, аксессуары и товары для здоровья.'
+  const pageTitle = t('brands_page_title', 'Бренды — PharmaTurk')
+  const pageDescription = t('brands_page_description', 'Популярные бренды из Турции: одежда, обувь, электроника, аксессуары и товары для здоровья.')
 
   return (
     <>
@@ -147,10 +147,10 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
         <section className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-4">
             <div>
-              <p className="text-sm uppercase tracking-widest opacity-80">Бренды</p>
-              <h1 className="text-3xl md:text-4xl font-bold mt-1">Популярные бренды</h1>
+              <p className="text-sm uppercase tracking-widest opacity-80">{t('brands', 'Бренды')}</p>
+              <h1 className="text-3xl md:text-4xl font-bold mt-1">{t('popular_brands', 'Популярные бренды')}</h1>
               <p className="mt-2 text-lg opacity-90">
-                Выберите бренд, чтобы увидеть товары. Видео и внешние медиа поддерживаются.
+                {t('brands_description', 'Выберите бренд, чтобы увидеть товары. Видео и внешние медиа поддерживаются.')}
               </p>
             </div>
           </div>
@@ -183,7 +183,7 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
                         <p className="text-sm opacity-90 line-clamp-2">{brand.description}</p>
                       ) : null}
                       {brand.products_count ? (
-                        <p className="text-xs opacity-80 mt-2">{brand.products_count} товаров</p>
+                        <p className="text-xs opacity-80 mt-2">{brand.products_count} {t('products_count', 'товаров')}</p>
                       ) : null}
                     </div>
                   </div>
@@ -192,15 +192,15 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
             })}
           </Masonry>
           <div className="mt-10 rounded-2xl p-6 text-center text-white shadow-lg dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
-            <h2 className="text-xl font-semibold mb-2">Не нашли нужный бренд?</h2>
+            <h2 className="text-xl font-semibold mb-2">{t('brands_not_found_title', 'Не нашли нужный бренд?')}</h2>
             <p className="text-sm opacity-90 mb-4">
-              Напишите нам в чат — поможем подобрать и добавить товары по запросу.
+              {t('brands_not_found_description', 'Напишите нам в чат — поможем подобрать и добавить товары по запросу.')}
             </p>
             <Link
               href="/categories"
               className="inline-flex items-center rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
             >
-              Перейти в каталог
+              {t('go_to_catalog', 'Перейти в каталог')}
             </Link>
           </div>
         </section>

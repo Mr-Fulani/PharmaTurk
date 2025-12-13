@@ -201,10 +201,10 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
         <section className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-4">
             <div>
-              <p className="text-sm uppercase tracking-widest opacity-80">Каталог</p>
-              <h1 className="text-3xl md:text-4xl font-bold mt-1">Категории товаров</h1>
+              <p className="text-sm uppercase tracking-widest opacity-80">{t('categories_catalog', 'Каталог')}</p>
+              <h1 className="text-3xl md:text-4xl font-bold mt-1">{t('categories_title', 'Категории товаров')}</h1>
               <p className="mt-2 text-lg opacity-90">
-                Выберите основную категорию — карточки и баннеры как на главной.
+                {t('categories_description', 'Выберите основную категорию — карточки и баннеры как на главной.')}
               </p>
             </div>
           </div>
@@ -241,7 +241,7 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
                         <p className="text-sm opacity-90 line-clamp-2">{c.description}</p>
                       ) : null}
                       {c.products_count ? (
-                        <p className="text-xs opacity-80 mt-2">{c.products_count} товаров</p>
+                        <p className="text-xs opacity-80 mt-2">{c.products_count} {t('products_count', 'товаров')}</p>
                       ) : null}
                     </div>
                   </div>
@@ -250,15 +250,15 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
             })}
           </Masonry>
           <div className="mt-10 rounded-2xl p-6 text-center text-white shadow-lg dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
-            <h2 className="text-xl font-semibold mb-2">Не нашли нужную категорию?</h2>
+            <h2 className="text-xl font-semibold mb-2">{t('categories_not_found_title', 'Не нашли нужную категорию?')}</h2>
             <p className="text-sm opacity-90 mb-4">
-              Напишите нам в чат — подскажем и подберём товары под ваш запрос.
+              {t('categories_not_found_description', 'Напишите нам в чат — подскажем и подберём товары под ваш запрос.')}
             </p>
             <Link
               href="/brands"
               className="inline-flex items-center rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
             >
-              Посмотреть бренды
+              {t('view_brands', 'Посмотреть бренды')}
             </Link>
           </div>
         </section>

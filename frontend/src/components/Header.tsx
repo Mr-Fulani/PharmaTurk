@@ -63,8 +63,9 @@ export default function Header() {
 
   const toggleLocale = () => {
     const next = router.locale === 'ru' ? 'en' : 'ru'
+    // Используем replace вместо push для более быстрого переключения без добавления в историю
     // Меняем только pathname + locale, без asPath (чтобы сработал перевод и SSR словарей)
-    router.push({ pathname: router.pathname, query: router.query }, undefined, { locale: next })
+    router.replace({ pathname: router.pathname, query: router.query }, undefined, { locale: next, scroll: false })
   }
 
   // i18n placeholder - используем fallback для предотвращения ошибки гидратации
@@ -208,7 +209,7 @@ export default function Header() {
           <button
             onClick={() => { setShowSuggestions(false); toggleTheme() }}
             className={`inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`}
-            title={isDark ? 'Тёмная тема' : 'Светлая тема'}
+            title={isDark ? t('theme_dark_title', 'Тёмная тема') : t('theme_light_title', 'Светлая тема')}
           >
             {isDark ? (
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -220,12 +221,12 @@ export default function Header() {
                 <path d="M12 2v2m0 16v2m10-10h-2M4 12H2m15.536-7.536-1.414 1.414M7.879 16.121 6.465 17.535m12.071 0-1.414-1.414M7.879 7.879 6.465 6.465" />
               </svg>
             )}
-            <span>{isDark ? 'Тёмная' : 'Светлая'}</span>
+            <span>{isDark ? t('theme_dark', 'Тёмная') : t('theme_light', 'Светлая')}</span>
           </button>
           <button 
             onClick={() => { setShowSuggestions(false); toggleLocale() }} 
             className={`rounded-md border px-2 py-1 text-xs transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`} 
-            title="Язык"
+            title={t('language', 'Язык')}
           >
             {router.locale?.toUpperCase() || 'EN'}
           </button>
