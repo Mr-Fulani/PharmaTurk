@@ -107,6 +107,16 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       if (r.data) {
         let shouldUpdateCount = false
         setCart(prevCart => {
+          // Сохраняем порядок товаров из предыдущего состояния
+          const prevItemOrder = new Map(prevCart.items.map((item, index) => [item.id, index]))
+          
+          // Сортируем новые товары по старому порядку
+          const sortedItems = [...r.data.items].sort((a, b) => {
+            const aIndex = prevItemOrder.get(a.id) ?? Infinity
+            const bIndex = prevItemOrder.get(b.id) ?? Infinity
+            return aIndex - bIndex
+          })
+          
           // Обновляем только если данные изменились
           const hasChanged = 
             prevCart.items_count !== r.data.items_count ||
@@ -123,7 +133,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
           }
           
           if (hasChanged) {
-            return r.data
+            return { ...r.data, items: sortedItems }
           }
           return prevCart
         })
@@ -140,11 +150,20 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
   const updateQty = async (itemId: number, qty: number) => {
     if (qty < 1) return
     setLoading(true)
+    // Оптимистичное обновление - обновляем количество сразу
+    setCart(prevCart => ({
+      ...prevCart,
+      items: prevCart.items.map(item => 
+        item.id === itemId ? { ...item, quantity: qty } : item
+      )
+    }))
     try {
       await api.post(`/orders/cart/${itemId}/update`, { quantity: qty })
       await refreshCart()
     } catch (error) {
       console.error('Failed to update quantity:', error)
+      // В случае ошибки обновляем корзину с сервера
+      await refreshCart()
     } finally {
       setLoading(false)
     }
@@ -424,12 +443,12 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           }}
                           onKeyPress={(e) => e.key === 'Enter' && applyPromoCode()}
                           placeholder={t('promo_code_placeholder', 'Промокод')}
-                          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                          className="flex-1 min-w-0 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                         />
                         <button
                           onClick={applyPromoCode}
                           disabled={promoLoading || !promoCode.trim()}
-                          className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 whitespace-nowrap"
                         >
                           {promoLoading ? t('applying', 'Применение...') : t('apply', 'Применить')}
                         </button>
