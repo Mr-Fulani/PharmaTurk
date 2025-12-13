@@ -33,42 +33,44 @@
               left 0.5s ease-in-out, 
               top 0.5s ease-in-out, 
               transform 0.5s ease-in-out,
-              border-radius 0.5s ease-in-out;
+              border-radius 0.5s ease-in-out,
+              z-index 0.5s ease-in-out,
+              opacity 0.5s ease-in-out;
   cursor: pointer;
   overflow: hidden;
 }
 
-/* Первые два элемента - большие на весь экран (как в примере) */
-.slide .item:nth-child(1),
-.slide .item:nth-child(2) {
+/* Первый элемент - активный, большой на весь экран */
+.slide .item:nth-child(1) {
   top: 0;
   left: 0;
   transform: translate(0, 0);
   border-radius: 18px;
   width: 100%;
   height: 100%;
+  z-index: 2;
 }
 
-/* Третий элемент - первая миниатюра справа */
-.slide .item:nth-child(3) {
+/* Второй элемент - первая миниатюра справа */
+.slide .item:nth-child(2) {
   left: 50%;
   z-index: 10;
 }
 
-/* Четвертый элемент - вторая миниатюра */
-.slide .item:nth-child(4) {
+/* Третий элемент - вторая миниатюра */
+.slide .item:nth-child(3) {
   left: calc(50% + 220px);
   z-index: 11;
 }
 
-/* Пятый элемент - третья миниатюра */
-.slide .item:nth-child(5) {
+/* Четвертый элемент - третья миниатюра */
+.slide .item:nth-child(4) {
   left: calc(50% + 440px);
   z-index: 12;
 }
 
-/* Все элементы начиная с 6-го - скрыты справа */
-.slide .item:nth-child(n + 6) {
+/* Все элементы начиная с 5-го - скрыты справа */
+.slide .item:nth-child(n + 5) {
   left: calc(50% + 660px);
   opacity: 0;
   z-index: 13;
@@ -88,16 +90,15 @@
   pointer-events: auto;
 }
 
-/* Скрываем контент на миниатюрах (nth-child(3) и далее) */
-.slide .item:nth-child(n + 3) .content {
+/* Скрываем контент на миниатюрах (nth-child(2) и далее) */
+.slide .item:nth-child(n + 2) .content {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
 }
 
-/* Убеждаемся, что контент виден на больших картинках (nth-child(1) и nth-child(2)) */
-.slide .item:nth-child(1) .content,
-.slide .item:nth-child(2) .content {
+/* Убеждаемся, что контент виден только на активном элементе (nth-child(1)) */
+.slide .item:nth-child(1) .content {
   display: block !important;
   visibility: visible !important;
   opacity: 1 !important;

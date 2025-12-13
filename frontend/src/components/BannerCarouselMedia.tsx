@@ -51,12 +51,22 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     if (list.length <= 1) return list
     const res = [...list]
     const max = res.length
+    
+    console.log('🔄 rotateActiveToContent called')
+    console.log('Input:', res.map((m, i) => `${i}:${m.id}`))
+    
     for (let i = 0; i < max; i++) {
-      const active = res.length === 1 ? res[0] : res[1]
-      if (hasMediaContent(active)) return res
+      // Активный элемент теперь ВСЕГДА на позиции 0 (nth-child(1))
+      const active = res[0]
+      if (hasMediaContent(active)) {
+        console.log('Output (after', i, 'rotations):', res.map((m, i) => `${i}:${m.id}`))
+        return res
+      }
       const first = res.shift()
       if (first) res.push(first)
     }
+    
+    console.log('Output (after max rotations):', res.map((m, i) => `${i}:${m.id}`))
     return res
   }
 
@@ -151,7 +161,8 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   // Принудительное обновление при изменении активного медиа для запуска анимации
   useEffect(() => {
     if (displayMedia.length > 0) {
-      const activeMedia = displayMedia.length === 1 ? displayMedia[0] : displayMedia[1]
+      // Активный элемент всегда на позиции 0 (nth-child(1))
+      const activeMedia = displayMedia[0]
       if (activeMedia) {
         setActiveMediaId(activeMedia.id)
       }
@@ -161,43 +172,61 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   const goToPreviousMedia = () => {
     if (!banner || displayMedia.length <= 1) return
     
+    console.log('⬅️ PREVIOUS button clicked')
+    console.log('Before:', displayMedia.map((m, i) => `${i}:${m.id}`))
+    
     // Отмечаем ручное действие
     lastManualActionRef.current = Date.now()
     resetAutoPlay()
     
-    // Сначала обновляем состояние
-    setDisplayMedia((prev) => {
-      const newMedia = [...prev]
-      const lastMedia = newMedia.pop()
-      if (lastMedia) {
-        newMedia.unshift(lastMedia)
-      }
-      const rotated = rotateActiveToContent(newMedia)
-      const activeMedia = rotated.length === 1 ? rotated[0] : rotated[1]
-      if (activeMedia) setActiveMediaId(activeMedia.id)
-      return rotated
-    })
+    // Для PREVIOUS: берем ПОСЛЕДНИЙ элемент и помещаем его в НАЧАЛО (активная позиция nth-child(1))
+    // Текущий активный (nth-child(1)) сдвинется на nth-child(2) и станет миниатюрой
+    const newMedia = [...displayMedia]
+    const lastItem = newMedia.pop()
+    if (lastItem) {
+      newMedia.unshift(lastItem)
+    }
+    
+    console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
+    
+    setDisplayMedia(newMedia)
+    
+    // Активный элемент всегда на позиции 0 (первый элемент, nth-child(1))
+    const activeMedia = newMedia[0]
+    if (activeMedia) {
+      console.log('New active media:', activeMedia.id)
+      setActiveMediaId(activeMedia.id)
+    }
   }
 
   const goToNextMedia = () => {
     if (!banner || displayMedia.length <= 1) return
     
+    console.log('➡️ NEXT button clicked')
+    console.log('Before:', displayMedia.map((m, i) => `${i}:${m.id}`))
+    
     // Отмечаем ручное действие
     lastManualActionRef.current = Date.now()
     resetAutoPlay()
     
-    // Сначала обновляем состояние
-    setDisplayMedia((prev) => {
-      const newMedia = [...prev]
-      const firstMedia = newMedia.shift()
-      if (firstMedia) {
-        newMedia.push(firstMedia)
-      }
-      const rotated = rotateActiveToContent(newMedia)
-      const activeMedia = rotated.length === 1 ? rotated[0] : rotated[1]
-      if (activeMedia) setActiveMediaId(activeMedia.id)
-      return rotated
-    })
+    // Для NEXT: берем ПЕРВЫЙ элемент (активный nth-child(1)) и перемещаем в КОНЕЦ
+    // Второй элемент (nth-child(2)) станет активным (переместится на nth-child(1))
+    const newMedia = [...displayMedia]
+    const firstItem = newMedia.shift()
+    if (firstItem) {
+      newMedia.push(firstItem)
+    }
+    
+    console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
+    
+    setDisplayMedia(newMedia)
+    
+    // Активный элемент всегда на позиции 0 (первый элемент, nth-child(1))
+    const activeMedia = newMedia[0]
+    if (activeMedia) {
+      console.log('New active media:', activeMedia.id)
+      setActiveMediaId(activeMedia.id)
+    }
   }
 
   const getVideoEmbedUrl = (url: string): string | null => {

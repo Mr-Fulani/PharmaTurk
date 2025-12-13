@@ -144,45 +144,61 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
 
   const goToPreviousBanner = () => {
     if (banners.length <= 1) return
-    // Берем последний элемент и добавляем в начало (как в примере)
-    setDisplayBanners((prev) => {
-      const newBanners = [...prev]
-      const lastBanner = newBanners.pop()
-      if (lastBanner) {
-        newBanners.unshift(lastBanner)
+    
+    console.log('⬅️ PREVIOUS button clicked')
+    console.log('Before:', displayBanners.map((b, i) => `${i}:${b.id}`))
+    
+    // Вычисляем новый порядок баннеров
+    const newBanners = [...displayBanners]
+    const lastBanner = newBanners.pop()
+    if (lastBanner) {
+      newBanners.unshift(lastBanner)
+    }
+    
+    console.log('After:', newBanners.map((b, i) => `${i}:${b.id}`))
+    
+    // Определяем новый активный баннер (на позиции 1)
+    const activeBanner = newBanners[1] || newBanners[0]
+    if (activeBanner) {
+      const bannerIndex = banners.findIndex(b => b.id === activeBanner.id)
+      if (bannerIndex !== -1) {
+        console.log('New active banner index:', bannerIndex, 'ID:', activeBanner.id)
+        setCurrentBannerIndex(bannerIndex)
       }
-      // После перемещения активный баннер - это элемент на позиции 1
-      const activeBanner = newBanners[1] || newBanners[0]
-      if (activeBanner) {
-        const bannerIndex = banners.findIndex(b => b.id === activeBanner.id)
-        if (bannerIndex !== -1) {
-          setCurrentBannerIndex(bannerIndex)
-        }
-      }
-      return newBanners
-    })
+    }
+    
+    // Обновляем состояния
+    setDisplayBanners(newBanners)
     setCurrentMediaIndex(0)
   }
 
   const goToNextBanner = () => {
     if (banners.length <= 1) return
-    // Берем первый элемент и добавляем в конец (как в примере)
-    setDisplayBanners((prev) => {
-      const newBanners = [...prev]
-      const firstBanner = newBanners.shift()
-      if (firstBanner) {
-        newBanners.push(firstBanner)
+    
+    console.log('➡️ NEXT button clicked')
+    console.log('Before:', displayBanners.map((b, i) => `${i}:${b.id}`))
+    
+    // Вычисляем новый порядок баннеров
+    const newBanners = [...displayBanners]
+    const firstBanner = newBanners.shift()
+    if (firstBanner) {
+      newBanners.push(firstBanner)
+    }
+    
+    console.log('After:', newBanners.map((b, i) => `${i}:${b.id}`))
+    
+    // Определяем новый активный баннер (на позиции 1)
+    const activeBanner = newBanners[1] || newBanners[0]
+    if (activeBanner) {
+      const bannerIndex = banners.findIndex(b => b.id === activeBanner.id)
+      if (bannerIndex !== -1) {
+        console.log('New active banner index:', bannerIndex, 'ID:', activeBanner.id)
+        setCurrentBannerIndex(bannerIndex)
       }
-      // После перемещения активный баннер - это элемент на позиции 1
-      const activeBanner = newBanners[1] || newBanners[0]
-      if (activeBanner) {
-        const bannerIndex = banners.findIndex(b => b.id === activeBanner.id)
-        if (bannerIndex !== -1) {
-          setCurrentBannerIndex(bannerIndex)
-        }
-      }
-      return newBanners
-    })
+    }
+    
+    // Обновляем состояния
+    setDisplayBanners(newBanners)
     setCurrentMediaIndex(0)
   }
 
@@ -355,7 +371,7 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
 
     return (
       <div
-        key={banner.id}
+        key={`banner-${banner.id}-pos-${index}`}
         className={styles.item}
         style={{
           backgroundImage: media && (media.content_type === 'image' || media.content_type === 'gif') 
