@@ -144,7 +144,7 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
       </Head>
 
       <main className="min-h-screen bg-page text-main transition-colors duration-200">
-        <section className="bg-[var(--accent)] text-white py-12 dark:bg-[#0a1222]">
+        <section className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-4">
             <div>
               <p className="text-sm uppercase tracking-widest opacity-80">Бренды</p>
@@ -191,7 +191,7 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
               )
             })}
           </Masonry>
-          <div className="mt-10 rounded-2xl bg-[var(--accent)] p-6 text-center text-white shadow-lg dark:bg-[#0a1222]">
+          <div className="mt-10 rounded-2xl p-6 text-center text-white shadow-lg dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
             <h2 className="text-xl font-semibold mb-2">Не нашли нужный бренд?</h2>
             <p className="text-sm opacity-90 mb-4">
               Напишите нам в чат — поможем подобрать и добавить товары по запросу.

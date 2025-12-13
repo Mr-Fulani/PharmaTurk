@@ -101,6 +101,10 @@
   fill: #1f2335;
 }
 
+.logoutButtonLight .figure {
+  fill: #ffffff;
+}
+
 /* Темная тема */
 .logoutButtonDark::before {
   background-color: #1f2335;
@@ -113,6 +117,10 @@
 .logoutButtonDark .door,
 .logoutButtonDark .doorway {
   fill: #f4f7ff;
+}
+
+.logoutButtonDark .figure {
+  fill: #4371f7;
 }
 
 .buttonText {

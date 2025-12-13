@@ -11,7 +11,7 @@
 #   --logs           - Показать логи после запуска
 #   --help           - Показать справку
 
-set -e  # Остановить при ошибке
+# set -e  # Отключено, чтобы скрипт продолжал работу даже если контейнеры не запущены
 
 # Цвета для вывода
 RED='\033[0;31m'
@@ -117,21 +117,54 @@ fi
 
 info "Начинаем перезапуск проекта PharmaTurk..."
 
+# КАПИТАЛЬНАЯ ОЧИСТКА КЭША ПЕРЕД ОСТАНОВКОЙ
+info "🧹 Очищаем весь кэш перед перезапуском..."
+# Очистка кэша Next.js (с обработкой ошибок прав доступа)
+if [ -d "frontend/.next" ]; then
+    rm -rf frontend/.next 2>/dev/null || sudo rm -rf frontend/.next 2>/dev/null || true
+    success "Кэш Next.js (.next) очищен"
+fi
+if [ -d "frontend/node_modules/.cache" ]; then
+    rm -rf frontend/node_modules/.cache 2>/dev/null || sudo rm -rf frontend/node_modules/.cache 2>/dev/null || true
+    success "Кэш node_modules очищен"
+fi
+# Очистка кэша Python
+find backend -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+find backend -type f -name "*.pyc" -delete 2>/dev/null || true
+find backend -type f -name "*.pyo" -delete 2>/dev/null || true
+success "Кэш Python очищен"
+
 # Остановка контейнеров
 info "Останавливаем контейнеры..."
-docker compose down
-
-# Удаление volumes (если указано)
-if [ "$CLEAN_VOLUMES" = true ]; then
-    warning "Удаляем volumes (база данных будет очищена!)"
-    read -p "Вы уверены? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        docker compose down -v
-        success "Volumes удалены"
+if docker compose ps 2>/dev/null | grep -q "Up"; then
+    if [ "$CLEAN_VOLUMES" = true ]; then
+        warning "Удаляем volumes (база данных будет очищена!)"
+        read -p "Вы уверены? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            docker compose down -v || true
+            success "Контейнеры остановлены и volumes удалены"
+        else
+            info "Отменено пользователем"
+            exit 0
+        fi
     else
-        info "Отменено пользователем"
-        exit 0
+        docker compose down || true
+        success "Контейнеры остановлены"
+    fi
+else
+    info "Контейнеры не запущены, пропускаем остановку"
+    if [ "$CLEAN_VOLUMES" = true ]; then
+        warning "Удаляем volumes (база данных будет очищена!)"
+        read -p "Вы уверены? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            docker compose down -v || true
+            success "Volumes удалены"
+        else
+            info "Отменено пользователем"
+            exit 0
+        fi
     fi
 fi
 

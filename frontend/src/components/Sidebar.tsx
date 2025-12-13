@@ -45,7 +45,7 @@ export default function Sidebar({
   ]
 
   return (
-    <aside className={`${isOpen ? 'translate-x-0' : '-translate-x-full'} fixed md:sticky md:top-6 left-0 z-[5] w-64 bg-[var(--surface)] text-main border border-[var(--border)] rounded-2xl shadow-[0_20px_60px_-20px_rgba(255,255,255,0.65),0_20px_50px_-18px_rgba(109,40,217,0.45)] p-4 space-y-6 transition-transform duration-300 ease-in-out md:translate-x-0 max-h-[calc(100vh-2rem)] overflow-y-auto dark:bg-white/95 dark:text-gray-900 dark:border-gray-200`}>
+    <aside className={`${isOpen ? 'translate-x-0' : '-translate-x-full'} fixed md:sticky md:top-6 left-0 z-[5] w-64 bg-[var(--surface)] text-main border border-[var(--border)] rounded-2xl shadow-[0_20px_60px_-20px_rgba(255,255,255,0.65),0_20px_50px_-18px_rgba(109,40,217,0.45)] p-4 space-y-6 transition-transform duration-300 ease-in-out md:translate-x-0 max-h-[calc(100vh-2rem)] overflow-y-auto`}>
       {/* Mobile overlay */}
       {isOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden" onClick={onToggle} />
@@ -54,7 +54,7 @@ export default function Sidebar({
       {/* Mobile close button */}
       <button
         onClick={onToggle}
-        className="absolute top-4 right-4 md:hidden text-main/70 hover:text-main dark:text-gray-500 dark:hover:text-gray-700"
+        className="absolute top-4 right-4 md:hidden text-main/70 hover:text-main"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -63,7 +63,7 @@ export default function Sidebar({
       
       {/* Категории */}
       <div>
-        <h3 className="text-base font-semibold text-main mb-3 dark:text-gray-900">{t('sidebar_categories')}</h3>
+        <h3 className="text-base font-semibold text-main mb-3">{t('sidebar_categories')}</h3>
         <div className="space-y-1 max-h-48 overflow-y-auto">
           {displayedCategories.map((category) => (
             <button
@@ -72,13 +72,13 @@ export default function Sidebar({
             className={`w-full text-left px-2 py-1.5 rounded-lg text-sm transition-colors duration-200 ${
                 selectedCategory === category.id
                   ? 'bg-violet-100 text-violet-700 border border-violet-200'
-                  : 'text-main/80 hover:bg-violet-50 hover:text-violet-700 dark:text-gray-700'
+                  : 'text-main/80 hover:bg-violet-50 hover:text-violet-700'
               }`}
             >
               <div className="flex justify-between items-center">
                 <span className="truncate">{category.name}</span>
                 {category.count && (
-                  <span className="text-xs text-main/60 ml-2 dark:text-gray-500">({category.count})</span>
+                  <span className="text-xs text-main/60 ml-2">({category.count})</span>
                 )}
               </div>
             </button>
@@ -96,7 +96,7 @@ export default function Sidebar({
 
       {/* Бренды */}
       <div>
-        <h3 className="text-base font-semibold text-main mb-3 dark:text-gray-900">{t('sidebar_brands')}</h3>
+        <h3 className="text-base font-semibold text-main mb-3">{t('sidebar_brands')}</h3>
         <div className="space-y-1 max-h-48 overflow-y-auto">
           {displayedBrands.map((brand) => (
             <button
@@ -105,13 +105,13 @@ export default function Sidebar({
             className={`w-full text-left px-2 py-1.5 rounded-lg text-sm transition-colors duration-200 ${
                 selectedBrand === brand.id
                   ? 'bg-violet-100 text-violet-700 border border-violet-200'
-                  : 'text-main/80 hover:bg-violet-50 hover:text-violet-700 dark:text-gray-700'
+                  : 'text-main/80 hover:bg-violet-50 hover:text-violet-700'
               }`}
             >
               <div className="flex justify-between items-center">
                 <span className="truncate">{brand.name}</span>
                 {brand.count && (
-                  <span className="text-xs text-main/60 ml-2 dark:text-gray-500">({brand.count})</span>
+                  <span className="text-xs text-main/60 ml-2">({brand.count})</span>
                 )}
               </div>
             </button>
@@ -129,11 +129,11 @@ export default function Sidebar({
 
       {/* Фильтры */}
       <div>
-        <h3 className="text-base font-semibold text-main mb-3 dark:text-gray-900">{t('sidebar_filters')}</h3>
+        <h3 className="text-base font-semibold text-main mb-3">{t('sidebar_filters')}</h3>
         
         {/* Сортировка */}
         <div className="mb-4">
-          <h4 className="text-sm font-medium text-main mb-2 dark:text-gray-800">{t('sidebar_sort_by')}</h4>
+          <h4 className="text-sm font-medium text-main mb-2">{t('sidebar_sort_by')}</h4>
           <div className="space-y-1">
             {sortOptions.map((option) => (
               <button
@@ -142,7 +142,7 @@ export default function Sidebar({
                 className={`w-full text-left px-2 py-1.5 rounded-lg text-sm transition-colors duration-200 ${
                   sortBy === option.value
                     ? 'bg-violet-100 text-violet-700 border border-violet-200'
-                    : 'text-main/80 hover:bg-violet-50 hover:text-violet-700 dark:text-gray-700'
+                    : 'text-main/80 hover:bg-violet-50 hover:text-violet-700'
                 }`}
               >
                 {option.label}
@@ -153,7 +153,7 @@ export default function Sidebar({
 
         {/* Наличие */}
         <div>
-          <h4 className="text-sm font-medium text-main mb-2 dark:text-gray-800">{t('sidebar_availability')}</h4>
+          <h4 className="text-sm font-medium text-main mb-2">{t('sidebar_availability')}</h4>
           <label className="flex items-center space-x-2 cursor-pointer">
             <input
               type="checkbox"
@@ -161,7 +161,7 @@ export default function Sidebar({
               onChange={(e) => onAvailabilityChange?.(e.target.checked)}
               className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
             />
-            <span className="text-sm text-main dark:text-gray-800">{t('sidebar_in_stock')}</span>
+            <span className="text-sm text-main">{t('sidebar_in_stock')}</span>
           </label>
         </div>
       </div>

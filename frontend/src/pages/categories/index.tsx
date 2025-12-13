@@ -198,7 +198,7 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
       </Head>
       <main className="min-h-screen bg-page text-main transition-colors duration-200">
         {/* Hero banner */}
-        <section className="bg-[var(--accent)] text-white py-12 dark:bg-[#0a1222]">
+        <section className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-4">
             <div>
               <p className="text-sm uppercase tracking-widest opacity-80">Каталог</p>
@@ -230,10 +230,10 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
                   key={c.id}
                   href={`/categories/${c.slug}`}
                   style={{ height: cardHeight }}
-                  className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-gray-900/10"
+                  className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-[var(--surface)]"
                 >
                   {renderMedia(c.card_media_url, c.name)}
-                  <div className="absolute inset-0 bg-black/35" />
+                  <div className="absolute inset-0 bg-[var(--text-strong)]/20" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
                     <div className="text-center text-white drop-shadow">
                       <h3 className="text-xl font-bold mb-1">{c.name}</h3>
@@ -249,7 +249,7 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
               )
             })}
           </Masonry>
-          <div className="mt-10 rounded-2xl bg-[var(--accent)] p-6 text-center text-white shadow-lg dark:bg-[#0a1222]">
+          <div className="mt-10 rounded-2xl p-6 text-center text-white shadow-lg dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
             <h2 className="text-xl font-semibold mb-2">Не нашли нужную категорию?</h2>
             <p className="text-sm opacity-90 mb-4">
               Напишите нам в чат — подскажем и подберём товары под ваш запрос.

@@ -969,7 +969,7 @@ export default function CategoryPage({
       </Head>
       
       {/* Hero Section */}
-      <div className="bg-[var(--accent)] text-white py-12 dark:bg-[#0a1222]">
+      <div className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div>
@@ -1030,7 +1030,7 @@ export default function CategoryPage({
               {/* Mobile filter button */}
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="lg:hidden flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                className="lg:hidden flex items-center gap-2 px-4 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg hover:bg-[var(--accent-soft)] transition-colors text-main"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -1044,8 +1044,8 @@ export default function CategoryPage({
                   onClick={() => setViewMode('grid')}
                   className={`p-2 rounded-lg transition-colors ${
                     viewMode === 'grid'
-                      ? 'bg-violet-100 text-violet-700'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                      : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
                   }`}
                   aria-label="Grid view"
                 >
@@ -1057,8 +1057,8 @@ export default function CategoryPage({
                   onClick={() => setViewMode('list')}
                   className={`p-2 rounded-lg transition-colors ${
                     viewMode === 'list'
-                      ? 'bg-violet-100 text-violet-700'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                      : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
                   }`}
                   aria-label="List view"
                 >
@@ -1124,10 +1124,10 @@ export default function CategoryPage({
             ) : (
               <div className="text-center py-20">
                 <div className="text-6xl mb-4">😔</div>
-                <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+                <h3 className="text-2xl font-semibold text-main mb-2">
                   Товары не найдены
                 </h3>
-                <p className="text-gray-600 mb-6">
+                <p className="text-main/80 mb-6">
                   Попробуйте изменить параметры фильтров или выберите другую категорию
                 </p>
                 <button
@@ -1144,7 +1144,7 @@ export default function CategoryPage({
                     })
                     setCurrentPage(1)
                   }}
-                  className="px-6 py-3 bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-strong)] transition-colors"
+                  className="px-6 py-3 bg-accent text-white rounded-lg hover:bg-[var(--accent-strong)] transition-colors"
                 >
                   Сбросить фильтры
                 </button>

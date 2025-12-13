@@ -269,26 +269,42 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     const embedUrl = media.content_type === 'video' ? getVideoEmbedUrl(fullUrl) : null
 
     const handleThumbnailClick = () => {
-      // Если кликнули на миниатюру (index >= 2), делаем её активной
-      if (index >= 2 && displayMedia.length > 1) {
+      // Если кликнули на миниатюру (index >= 1, так как активный на позиции 0), делаем её активной
+      if (index >= 1 && displayMedia.length > 1) {
+        console.log('🖱️ Thumbnail clicked:', { clickedIndex: index, clickedMediaId: media.id })
+        console.log('Before:', displayMedia.map((m, i) => `${i}:${m.id}`))
+        
         // Отмечаем ручное действие
         lastManualActionRef.current = Date.now()
         resetAutoPlay()
         
-        const steps = index - 1
+        // Находим индекс кликнутого медиа в массиве displayMedia
+        const clickedMediaIndex = displayMedia.findIndex(m => m.id === media.id)
+        if (clickedMediaIndex === -1) {
+          console.error('❌ Clicked media not found in displayMedia')
+          return
+        }
+        
+        // Сдвигаем массив так, чтобы кликнутый элемент оказался на позиции 0 (активный)
         const newMedia = [...displayMedia]
+        const steps = clickedMediaIndex
         for (let i = 0; i < steps; i++) {
           const firstMedia = newMedia.shift()
           if (firstMedia) {
             newMedia.push(firstMedia)
           }
         }
-        const rotated = rotateActiveToContent(newMedia)
-        const activeMedia = rotated.length === 1 ? rotated[0] : rotated[1]
+        
+        console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
+        
+        // НЕ вызываем rotateActiveToContent - это может переставить элементы не так, как нужно
+        // Просто устанавливаем кликнутый элемент как активный
+        const activeMedia = newMedia[0]
         if (activeMedia) {
+          console.log('✅ New active media:', activeMedia.id)
           setActiveMediaId(activeMedia.id)
         }
-        setDisplayMedia(rotated)
+        setDisplayMedia(newMedia)
       }
     }
     
@@ -348,7 +364,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
             ? `url(${fullUrl})` 
             : 'none',
         }}
-        onClick={index >= 2 ? handleThumbnailClick : handleLargeImageClick}
+        onClick={index >= 1 ? handleThumbnailClick : handleLargeImageClick}
       >
         {/* Видео контент */}
         {media.content_type === 'video' && embedUrl && (

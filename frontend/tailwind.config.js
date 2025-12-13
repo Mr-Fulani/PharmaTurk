@@ -8,6 +8,14 @@ module.exports = {
     extend: {},
   },
   plugins: [],
+  safelist: [
+    'bg-accent',
+    'bg-surface',
+    'bg-page',
+    'text-accent',
+    'text-main',
+    'border-main',
+  ],
 }
 
 

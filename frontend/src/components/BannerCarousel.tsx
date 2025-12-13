@@ -150,22 +150,22 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
     
     // Вычисляем новый порядок баннеров
     const newBanners = [...displayBanners]
-    const lastBanner = newBanners.pop()
-    if (lastBanner) {
-      newBanners.unshift(lastBanner)
-    }
+      const lastBanner = newBanners.pop()
+      if (lastBanner) {
+        newBanners.unshift(lastBanner)
+      }
     
     console.log('After:', newBanners.map((b, i) => `${i}:${b.id}`))
     
     // Определяем новый активный баннер (на позиции 1)
-    const activeBanner = newBanners[1] || newBanners[0]
-    if (activeBanner) {
-      const bannerIndex = banners.findIndex(b => b.id === activeBanner.id)
-      if (bannerIndex !== -1) {
+      const activeBanner = newBanners[1] || newBanners[0]
+      if (activeBanner) {
+        const bannerIndex = banners.findIndex(b => b.id === activeBanner.id)
+        if (bannerIndex !== -1) {
         console.log('New active banner index:', bannerIndex, 'ID:', activeBanner.id)
-        setCurrentBannerIndex(bannerIndex)
+          setCurrentBannerIndex(bannerIndex)
+        }
       }
-    }
     
     // Обновляем состояния
     setDisplayBanners(newBanners)
@@ -180,22 +180,22 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
     
     // Вычисляем новый порядок баннеров
     const newBanners = [...displayBanners]
-    const firstBanner = newBanners.shift()
-    if (firstBanner) {
-      newBanners.push(firstBanner)
-    }
+      const firstBanner = newBanners.shift()
+      if (firstBanner) {
+        newBanners.push(firstBanner)
+      }
     
     console.log('After:', newBanners.map((b, i) => `${i}:${b.id}`))
     
     // Определяем новый активный баннер (на позиции 1)
-    const activeBanner = newBanners[1] || newBanners[0]
-    if (activeBanner) {
-      const bannerIndex = banners.findIndex(b => b.id === activeBanner.id)
-      if (bannerIndex !== -1) {
+      const activeBanner = newBanners[1] || newBanners[0]
+      if (activeBanner) {
+        const bannerIndex = banners.findIndex(b => b.id === activeBanner.id)
+        if (bannerIndex !== -1) {
         console.log('New active banner index:', bannerIndex, 'ID:', activeBanner.id)
-        setCurrentBannerIndex(bannerIndex)
+          setCurrentBannerIndex(bannerIndex)
+        }
       }
-    }
     
     // Обновляем состояния
     setDisplayBanners(newBanners)
