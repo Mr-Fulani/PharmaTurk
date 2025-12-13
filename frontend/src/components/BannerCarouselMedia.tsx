@@ -179,12 +179,12 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     lastManualActionRef.current = Date.now()
     resetAutoPlay()
     
-    // Для PREVIOUS: берем ПОСЛЕДНИЙ элемент и помещаем его в НАЧАЛО (активная позиция nth-child(1))
-    // Текущий активный (nth-child(1)) сдвинется на nth-child(2) и станет миниатюрой
+    // Логика из оригинала: prepend(items[items.length - 1])
+    // Берем ПОСЛЕДНИЙ элемент и добавляем его в НАЧАЛО
     const newMedia = [...displayMedia]
-    const lastItem = newMedia.pop()
+    const lastItem = newMedia.pop()  // Берем последний элемент
     if (lastItem) {
-      newMedia.unshift(lastItem)
+      newMedia.unshift(lastItem)  // Добавляем в начало (станет активным на nth-child(1))
     }
     
     console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
@@ -209,12 +209,12 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     lastManualActionRef.current = Date.now()
     resetAutoPlay()
     
-    // Для NEXT: берем ПЕРВЫЙ элемент (активный nth-child(1)) и перемещаем в КОНЕЦ
-    // Второй элемент (nth-child(2)) станет активным (переместится на nth-child(1))
+    // Логика из оригинала: appendChild(items[0])
+    // Берем ПЕРВЫЙ элемент (активный nth-child(1)) и добавляем в КОНЕЦ
     const newMedia = [...displayMedia]
-    const firstItem = newMedia.shift()
+    const firstItem = newMedia.shift()  // Берем первый элемент
     if (firstItem) {
-      newMedia.push(firstItem)
+      newMedia.push(firstItem)  // Добавляем в конец
     }
     
     console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
