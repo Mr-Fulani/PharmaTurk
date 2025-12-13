@@ -8,6 +8,7 @@ from .models import (
     ProductImage,
     ClothingVariantImage,
     ShoeVariantImage,
+    Category,
 )
 
 
@@ -66,4 +67,18 @@ class ProductForm(forms.ModelForm):
         if value is not None and value < 1:
             raise ValidationError(_("Минимальное количество заказа должно быть не меньше 1."))
         return value
+
+
+class CategoryForm(forms.ModelForm):
+    """Форма для категории с валидацией типа."""
+    
+    class Meta:
+        model = Category
+        fields = "__all__"
+    
+    def clean_category_type(self):
+        category_type = self.cleaned_data.get("category_type")
+        if not category_type:
+            raise ValidationError(_("Необходимо выбрать тип категории! Если нужного типа нет, создайте его в разделе 'Типы категорий'."))
+        return category_type
 

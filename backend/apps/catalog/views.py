@@ -47,7 +47,7 @@ class StandardPagination(PageNumberPagination):
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями."""
     
-    queryset = Category.objects.filter(is_active=True)
+    queryset = Category.objects.filter(is_active=True).select_related('category_type')
     serializer_class = CategorySerializer
     pagination_class = StandardPagination
 

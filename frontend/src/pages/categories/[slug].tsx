@@ -86,6 +86,7 @@ interface CategoryPageProps {
   totalPages: number
   initialRouteSlug?: string
   categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'medical-equipment' | 'furniture' | 'tableware' | 'accessories' | 'jewelry' | 'underwear' | 'headwear'
+  categoryTypeSlug?: string // Реальный тип категории из API (может быть кастомным)
 }
 
 type CategoryTypeKey = CategoryPageProps['categoryType']
@@ -544,7 +545,8 @@ export default function CategoryPage({
   currentPage: initialCurrentPage,
   totalPages: initialTotalPages,
   categoryType,
-  initialRouteSlug
+  initialRouteSlug,
+  categoryTypeSlug
 }: CategoryPageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
@@ -579,7 +581,8 @@ export default function CategoryPage({
     jewelryGender: [],
   })
   const categoryGroups = useMemo(() => getCategorySections(categoryType, categories), [categoryType, categories])
-  const resolvedBrandType = useMemo(() => resolveBrandProductType(categoryType), [categoryType])
+  // Используем реальный тип из API если есть, иначе fallback на маппинг
+  const resolvedBrandType = useMemo(() => categoryTypeSlug || resolveBrandProductType(categoryType), [categoryTypeSlug, categoryType])
   const filtersInitialized = useRef<string>('')
   
   const updatePageQuery = useCallback((page: number, options: { replace?: boolean } = {}) => {
@@ -1161,13 +1164,33 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
   try {
     const routeSlug = Array.isArray(slug) ? slug[0] : (slug as string | undefined)
-    let categoryType: CategoryTypeKey = resolveCategoryTypeFromSlug(routeSlug)
-
+    
     const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    
+    // Получаем категорию из API чтобы узнать её реальный тип
+    let categoryTypeFromApi: string | null = null
+    if (routeSlug) {
+      try {
+        const catApiRes = await axios.get(`${base}/api/catalog/categories`, {
+          params: { slug: routeSlug, page_size: 1 }
+        })
+        const catData = catApiRes.data.results?.[0]
+        if (catData?.category_type_slug) {
+          categoryTypeFromApi = catData.category_type_slug.replace(/_/g, '-')
+        }
+      } catch {
+        // ignore
+      }
+    }
+    
+    // Используем тип из API, если есть, иначе угадываем из слага
+    let categoryType: CategoryTypeKey = categoryTypeFromApi as CategoryTypeKey || resolveCategoryTypeFromSlug(routeSlug)
 
     const brandSlug = Array.isArray(brand) ? brand[0] : brand
     const brandId = Array.isArray(brand_id) ? brand_id[0] : brand_id
-    const brandProductType = resolveBrandProductType(categoryType)
+    
+    // Используем реальный тип из API для запросов, иначе fallback
+    const brandProductType = categoryTypeFromApi || resolveBrandProductType(categoryType)
 
     // --- Бренды ---
     let brands: any[] = []
@@ -1176,9 +1199,10 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const brandParams: any = { page_size: 500 }
       if (primarySlug) {
         brandParams.primary_category_slug = primarySlug
-      } else {
-        brandParams.product_type = brandProductType
       }
+      // Всегда добавляем product_type для более точной фильтрации
+      brandParams.product_type = brandProductType
+      
       const brandRes = await axios.get(`${base}/api/catalog/brands`, { params: brandParams })
       brands = brandRes.data.results || []
     } catch {
@@ -1298,6 +1322,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         currentPage: Number(page),
         totalPages: Math.ceil(totalCount / pageSize),
         categoryType,
+        categoryTypeSlug: categoryTypeFromApi || undefined,
         initialRouteSlug: routeSlug || '',
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
@@ -1309,6 +1334,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       props: {
         products: [],
         categories: [],
+        sidebarCategories: [],
         brands: [],
         subcategories: [],
         categoryName: 'Товары',
@@ -1317,6 +1343,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         currentPage: 1,
         totalPages: 1,
         categoryType: 'medicines',
+        categoryTypeSlug: undefined,
+        initialRouteSlug: '',
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }

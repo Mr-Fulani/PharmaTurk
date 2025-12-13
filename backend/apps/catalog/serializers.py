@@ -16,13 +16,16 @@ class CategorySerializer(serializers.ModelSerializer):
     
     children_count = serializers.SerializerMethodField()
     card_media_url = serializers.SerializerMethodField()
+    category_type = serializers.SerializerMethodField()
+    category_type_slug = serializers.SerializerMethodField()
     
     class Meta:
         model = Category
         fields = [
             'id', 'name', 'slug', 'description', 'card_media_url', 'parent',
             'external_id', 'is_active', 'sort_order',
-            'children_count', 'created_at', 'updated_at'
+            'children_count', 'created_at', 'updated_at',
+            'category_type', 'category_type_slug',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -39,6 +42,18 @@ class CategorySerializer(serializers.ModelSerializer):
         if request:
             return request.build_absolute_uri(url)
         return url
+
+    def get_category_type(self, obj):
+        """Название типа категории."""
+        if not obj.category_type_id:
+            return None
+        return obj.category_type.name
+
+    def get_category_type_slug(self, obj):
+        """Slug типа категории."""
+        if not obj.category_type_id:
+            return None
+        return obj.category_type.slug
 
 
 class BrandSerializer(serializers.ModelSerializer):

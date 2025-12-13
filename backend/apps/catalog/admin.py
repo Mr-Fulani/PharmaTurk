@@ -1,12 +1,13 @@
 from django import forms
 from django.contrib import admin
 from django.contrib.admin import SimpleListFilter
+from django.core.exceptions import ValidationError
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
 from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFormSet
 from .models import (
-    Category, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
+    CategoryType, Category, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
     CategoryUnderwear, CategoryHeadwear, MarketingCategory, MarketingRootCategory,
     Brand, MarketingBrand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
@@ -62,17 +63,43 @@ class ActiveRootFilter(SimpleListFilter):
         return queryset
 
 
-class BaseCategoryAdmin(admin.ModelAdmin):
-    """Базовый админ для прокси категорий с фильтром по типу."""
-    required_category_type: str | None = None
-    list_display = ('name', 'slug', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'parent', 'created_at')
+@admin.register(CategoryType)
+class CategoryTypeAdmin(admin.ModelAdmin):
+    """Админка для типов категорий."""
+    list_display = ('name', 'slug', 'is_active', 'sort_order', 'categories_count', 'created_at')
+    list_filter = ('is_active', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
-    exclude = ('category_type',)
+    
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Настройки'), {'fields': ('is_active', 'sort_order')}),
+    )
+    
+    def categories_count(self, obj):
+        """Количество категорий этого типа."""
+        if obj.pk:
+            return obj.categories.count()
+        return 0
+    categories_count.short_description = _("Количество категорий")
+
+
+class BaseCategoryAdmin(admin.ModelAdmin):
+    """Базовый админ для прокси категорий с фильтром по типу."""
+    required_category_type_slug: str | None = None
+    list_display = ('name', 'slug', 'category_type', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'parent', 'created_at')
+    search_fields = ('name', 'slug', 'description')
+    ordering = ('sort_order', 'name')
+    prepopulated_fields = {'slug': ('name',)}
+    autocomplete_fields = ('category_type',)
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Тип категории'), {
+            'fields': ('category_type',),
+            'description': _('Выберите тип категории. Если нужного типа нет, создайте его в разделе "Типы категорий".'),
+        }),
         (_('Hierarchy'), {'fields': ('parent',)}),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url'),
@@ -84,19 +111,25 @@ class BaseCategoryAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        if self.required_category_type:
-            qs = qs.filter(category_type=self.required_category_type)
+        if self.required_category_type_slug:
+            qs = qs.filter(category_type__slug=self.required_category_type_slug)
         return qs
 
     def save_model(self, request, obj, form, change):
-        if self.required_category_type:
-            obj.category_type = self.required_category_type
+        # НЕ перезаписываем тип категории, если он уже выбран в форме
+        # Автоматическая установка типа только если он не был выбран пользователем
+        if self.required_category_type_slug and not change and not obj.category_type_id:
+            try:
+                category_type = CategoryType.objects.get(slug=self.required_category_type_slug)
+                obj.category_type = category_type
+            except CategoryType.DoesNotExist:
+                pass
         super().save_model(request, obj, form, change)
 
 
 @admin.register(CategoryMedicines)
 class CategoryMedicinesAdmin(BaseCategoryAdmin):
-    required_category_type = "medicines"
+    required_category_type_slug = "medicines"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Категории для товаров медицины: антибиотики, обезболивающие и т.д.")}),
     )
@@ -104,7 +137,7 @@ class CategoryMedicinesAdmin(BaseCategoryAdmin):
 
 @admin.register(CategorySupplements)
 class CategorySupplementsAdmin(BaseCategoryAdmin):
-    required_category_type = "supplements"
+    required_category_type_slug = "supplements"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Категории БАДов: витамины, минералы, протеин, омега и т.д.")}),
     )
@@ -112,7 +145,7 @@ class CategorySupplementsAdmin(BaseCategoryAdmin):
 
 @admin.register(CategoryMedicalEquipment)
 class CategoryMedicalEquipmentAdmin(BaseCategoryAdmin):
-    required_category_type = "medical_equipment"
+    required_category_type_slug = "medical-equipment"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Медтехника: тонометры, глюкометры, небулайзеры, ортезы, расходники.")}),
     )
@@ -120,7 +153,7 @@ class CategoryMedicalEquipmentAdmin(BaseCategoryAdmin):
 
 @admin.register(CategoryTableware)
 class CategoryTablewareAdmin(BaseCategoryAdmin):
-    required_category_type = "tableware"
+    required_category_type_slug = "tableware"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Посуда: кухонная, сервировка, хранение, медь, фарфор, стекло/керамика.")}),
     )
@@ -128,7 +161,7 @@ class CategoryTablewareAdmin(BaseCategoryAdmin):
 
 @admin.register(CategoryFurniture)
 class CategoryFurnitureAdmin(BaseCategoryAdmin):
-    required_category_type = "furniture"
+    required_category_type_slug = "furniture"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Мебель: гостиная, спальня, офис, кухня/столовая.")}),
     )
@@ -136,7 +169,7 @@ class CategoryFurnitureAdmin(BaseCategoryAdmin):
 
 @admin.register(CategoryAccessories)
 class CategoryAccessoriesAdmin(BaseCategoryAdmin):
-    required_category_type = "accessories"
+    required_category_type_slug = "accessories"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Аксессуары общего назначения (ремни, брелоки и т.п.), подкатегории добавляются вручную.")}),
     )
@@ -144,7 +177,7 @@ class CategoryAccessoriesAdmin(BaseCategoryAdmin):
 
 @admin.register(CategoryJewelry)
 class CategoryJewelryAdmin(BaseCategoryAdmin):
-    required_category_type = "jewelry"
+    required_category_type_slug = "jewelry"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Украшения: кольца, цепочки, браслеты, серьги, подвески; есть женские/мужские.")}),
     )
@@ -152,7 +185,7 @@ class CategoryJewelryAdmin(BaseCategoryAdmin):
 
 @admin.register(CategoryUnderwear)
 class CategoryUnderwearAdmin(BaseCategoryAdmin):
-    required_category_type = "underwear"
+    required_category_type_slug = "underwear"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Нижнее бельё: базовые и вариативные модели, подкатегории добавляются вручную.")}),
     )
@@ -160,7 +193,7 @@ class CategoryUnderwearAdmin(BaseCategoryAdmin):
 
 @admin.register(CategoryHeadwear)
 class CategoryHeadwearAdmin(BaseCategoryAdmin):
-    required_category_type = "headwear"
+    required_category_type_slug = "headwear"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Головные уборы: кепки, шапки, панамы и т.д.; подкатегории вручную.")}),
     )
@@ -939,22 +972,44 @@ class MarketingBrandAdmin(admin.ModelAdmin):
 @admin.register(MarketingCategory)
 class MarketingCategoryAdmin(admin.ModelAdmin):
     """Админка для карточек категорий (раздел «Маркетинг»)."""
-    list_display = ('name', 'slug', 'card_media_preview', 'is_active', 'sort_order', 'created_at')
-    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'created_at')
+    from .forms import CategoryForm
+    form = CategoryForm
+    list_display = ('name', 'slug', 'category_type', 'card_media_preview', 'is_active', 'sort_order', 'created_at')
+    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
     readonly_fields = ('card_media_preview',)
+    autocomplete_fields = ('category_type',)
 
     fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Hierarchy'), {'fields': ('parent',)}),
+        (_('Основная информация'), {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Введите название категории. Slug будет автоматически сгенерирован из названия.'),
+        }),
+        (_('Тип категории (обязательно)'), {
+            'fields': ('category_type',),
+            'description': _(
+                '⚠️ ВАЖНО: Выберите тип категории из списка. Если нужного типа нет, создайте его в разделе "Типы категорий".\n'
+                'Это определяет, к какому разделу товаров относится категория.'
+            ),
+        }),
+        (_('Иерархия'), {
+            'fields': ('parent',),
+            'description': _('Оставьте пустым для создания корневой категории, или выберите родительскую категорию для создания подкатегории.'),
+        }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),
             'description': _('Изображение, GIF или видео для карточки категории или внешняя ссылка (CDN/S3). Внешняя ссылка приоритетнее.'),
         }),
-        (_('Settings'), {'fields': ('is_active', 'sort_order')}),
-        (_('External'), {'fields': ('external_id', 'external_data')}),
+        (_('Настройки'), {
+            'fields': ('is_active', 'sort_order'),
+            'description': _('Активируйте категорию, чтобы она отображалась на сайте. Порядок сортировки определяет последовательность отображения.'),
+        }),
+        (_('Внешние данные'), {
+            'fields': ('external_id', 'external_data'),
+            'classes': ('collapse',),
+        }),
     )
 
     def card_media_preview(self, obj):
@@ -995,19 +1050,43 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
 
 
 @admin.register(MarketingRootCategory)
-class MarketingRootCategoryAdmin(MarketingCategoryAdmin):
+class MarketingRootCategoryAdmin(admin.ModelAdmin):
     """Отдельный раздел для корневых маркетинговых категорий."""
-    list_display = ('name', 'slug', 'card_media_preview', 'is_active', 'sort_order', 'created_at')
-    list_filter = (ActiveRootFilter, 'is_active', 'created_at')
+    from .forms import CategoryForm
+    form = CategoryForm
+    list_display = ('name', 'slug', 'category_type', 'card_media_preview', 'is_active', 'sort_order', 'created_at')
+    list_filter = (ActiveRootFilter, 'is_active', 'category_type', 'created_at')
+    search_fields = ('name', 'slug', 'description')
+    ordering = ('sort_order', 'name')
+    prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ('card_media_preview',)
     exclude = ('parent',)
+    autocomplete_fields = ('category_type',)
+    
     fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Основная информация'), {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Введите название новой корневой категории. Slug будет автоматически сгенерирован из названия.'),
+        }),
+        (_('Тип категории (обязательно)'), {
+            'fields': ('category_type',),
+            'description': _(
+                '⚠️ ВАЖНО: Выберите тип категории из списка. Если нужного типа нет, создайте его в разделе "Типы категорий".\n'
+                'Это определяет, к какому разделу товаров относится категория.'
+            ),
+        }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),
             'description': _('Изображение, GIF или видео для карточки категории или внешняя ссылка (CDN/S3). Внешняя ссылка приоритетнее.'),
         }),
-        (_('Settings'), {'fields': ('is_active', 'sort_order')}),
-        (_('External'), {'fields': ('external_id', 'external_data')}),
+        (_('Настройки'), {
+            'fields': ('is_active', 'sort_order'),
+            'description': _('Активируйте категорию, чтобы она отображалась на сайте. Порядок сортировки определяет последовательность отображения.'),
+        }),
+        (_('Внешние данные'), {
+            'fields': ('external_id', 'external_data'),
+            'classes': ('collapse',),
+        }),
     )
 
     def get_queryset(self, request):
@@ -1017,4 +1096,47 @@ class MarketingRootCategoryAdmin(MarketingCategoryAdmin):
     def save_model(self, request, obj, form, change):
         # Всегда сохраняем как корневую категорию
         obj.parent = None
+        # Проверяем, что тип категории выбран (из формы или объекта)
+        category_type = form.cleaned_data.get('category_type') or obj.category_type
+        if not category_type:
+            raise ValidationError(_('Необходимо выбрать тип категории! Создайте тип в разделе "Типы категорий", если его нет.'))
+        # Убеждаемся, что тип категории установлен (из формы)
+        if form.cleaned_data.get('category_type'):
+            obj.category_type = form.cleaned_data['category_type']
         super().save_model(request, obj, form, change)
+
+    def card_media_preview(self, obj):
+        """Отображает превью медиа-файла карточки категории."""
+        url = obj.get_card_media_url()
+        if not url:
+            return _("Нет медиа")
+        lower_url = url.split('?')[0].lower()
+
+        # YouTube превью (если ссылка не на файл с расширением)
+        import re
+        match = re.search(
+            r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})',
+            url,
+            re.IGNORECASE,
+        ) or re.search(
+            r'(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)',
+            url,
+            re.IGNORECASE,
+        )
+        if match and match.group(1):
+            thumb = f"https://img.youtube.com/vi/{match.group(1)}/hqdefault.jpg"
+            return format_html(
+                '<img src="{}" style="max-width: 180px; max-height: 100px;" />',
+                thumb,
+            )
+
+        if lower_url.endswith(("mp4", "mov", "webm", "m4v")):
+            return format_html(
+                '<video src="{}" style="max-width: 180px; max-height: 100px;" muted loop playsinline></video>',
+                url,
+            )
+        return format_html(
+            '<img src="{}" style="max-width: 180px; max-height: 100px;" />',
+            url,
+        )
+    card_media_preview.short_description = _("Превью медиа")

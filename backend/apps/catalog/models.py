@@ -46,34 +46,39 @@ def validate_card_media_file_size(value):
         )
 
 
+class CategoryType(models.Model):
+    """Тип категории товаров (можно добавлять через админку)."""
+    
+    name = models.CharField(_("Название"), max_length=100, unique=True)
+    slug = models.SlugField(_("Slug"), max_length=100, unique=True)
+    description = models.TextField(_("Описание"), blank=True)
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Тип категории")
+        verbose_name_plural = _("Типы категорий")
+        ordering = ['sort_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+
 class Category(models.Model):
     """Категория товаров."""
-    
-    CATEGORY_TYPE_CHOICES = [
-        ("medicines", _("Медицина")),
-        ("supplements", _("БАДы")),
-        ("medical_equipment", _("Медтехника")),
-        ("clothing", _("Одежда")),
-        ("underwear", _("Нижнее бельё")),
-        ("headwear", _("Головные уборы")),
-        ("shoes", _("Обувь")),
-        ("electronics", _("Электроника")),
-        ("furniture", _("Мебель")),
-        ("tableware", _("Посуда")),
-        ("accessories", _("Аксессуары")),
-        ("jewelry", _("Украшения")),
-    ]
     
     name = models.CharField(_("Название"), max_length=200)
     slug = models.SlugField(_("Slug"), max_length=200, unique=True)
     description = models.TextField(_("Описание"), blank=True)
-    category_type = models.CharField(
-        _("Тип категории"),
-        max_length=32,
-        choices=CATEGORY_TYPE_CHOICES,
-        default="medicines",
+    category_type = models.ForeignKey(
+        CategoryType,
+        on_delete=models.PROTECT,
+        related_name="categories",
+        verbose_name=_("Тип категории"),
         db_index=True,
-        help_text=_("Определяет домен: медицина, БАДы, медтехника, посуда, мебель, аксессуары, украшения и т.д.")
+        help_text=_("Выберите тип категории. Если нужного типа нет, создайте его в разделе 'Типы категорий'.")
     )
     card_media = models.FileField(
         _("Медиа для карточки"),
@@ -298,6 +303,10 @@ class Product(models.Model):
         ("tableware", _("Посуда")),
         ("accessories", _("Аксессуары")),
         ("jewelry", _("Украшения")),
+        # Добавьте здесь новые типы товаров по необходимости (должны совпадать с CATEGORY_TYPE_CHOICES)
+        # Пример: ("cosmetics", _("Косметика")),
+        # Пример: ("books", _("Книги")),
+        # Пример: ("toys", _("Игрушки")),
     ]
 
     AVAILABILITY_STATUS_CHOICES = [
