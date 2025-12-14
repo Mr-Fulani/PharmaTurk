@@ -290,43 +290,43 @@ export default function CategorySidebar({
   }
 
   const shoeTypeOptions = [
-    { value: 'sneakers', label: 'Кроссовки' },
-    { value: 'boots', label: 'Ботинки/Ботильоны' },
-    { value: 'sandals', label: 'Сандалии/Шлёпанцы' },
+    { value: 'sneakers', label: t('filter_sneakers', 'Кроссовки') },
+    { value: 'boots', label: t('filter_boots', 'Ботинки/Ботильоны') },
+    { value: 'sandals', label: t('filter_sandals', 'Сандалии/Шлёпанцы') },
   ]
 
   const clothingItemOptions = [
-    { value: 'jeans', label: 'Джинсы' },
-    { value: 'tshirts', label: 'Футболки' },
-    { value: 'hoodies', label: 'Худи' },
-    { value: 'sweaters', label: 'Джемперы/Свитеры' },
-    { value: 'shirts', label: 'Рубашки' },
-    { value: 'blouses', label: 'Блузки' },
-    { value: 'jackets', label: 'Куртки' },
-    { value: 'coats', label: 'Пальто' },
-    { value: 'trousers', label: 'Брюки' },
-    { value: 'shorts', label: 'Шорты' },
-    { value: 'socks', label: 'Носки' },
-    { value: 'dresses', label: 'Платья' },
-    { value: 'skirts', label: 'Юбки' },
+    { value: 'jeans', label: t('filter_jeans', 'Джинсы') },
+    { value: 'tshirts', label: t('filter_tshirts', 'Футболки') },
+    { value: 'hoodies', label: t('filter_hoodies', 'Худи') },
+    { value: 'sweaters', label: t('filter_sweaters', 'Джемперы/Свитеры') },
+    { value: 'shirts', label: t('filter_shirts', 'Рубашки') },
+    { value: 'blouses', label: t('filter_blouses', 'Блузки') },
+    { value: 'jackets', label: t('filter_jackets', 'Куртки') },
+    { value: 'coats', label: t('filter_coats', 'Пальто') },
+    { value: 'trousers', label: t('filter_trousers', 'Брюки') },
+    { value: 'shorts', label: t('filter_shorts', 'Шорты') },
+    { value: 'socks', label: t('filter_socks', 'Носки') },
+    { value: 'dresses', label: t('filter_dresses', 'Платья') },
+    { value: 'skirts', label: t('filter_skirts', 'Юбки') },
   ]
 
   const jewelryMaterialOptions = [
-    { value: 'gold', label: 'Золото' },
-    { value: 'silver', label: 'Серебро' },
-    { value: 'bijouterie', label: 'Бижутерия' },
+    { value: 'gold', label: t('filter_gold', 'Золото') },
+    { value: 'silver', label: t('filter_silver', 'Серебро') },
+    { value: 'bijouterie', label: t('filter_bijouterie', 'Бижутерия') },
   ]
 
   const jewelryGenderOptions = [
-    { value: 'women', label: 'Женские' },
-    { value: 'men', label: 'Мужские' },
-    { value: 'kids', label: 'Детские' },
+    { value: 'women', label: t('filter_women', 'Женские') },
+    { value: 'men', label: t('filter_men', 'Мужские') },
+    { value: 'kids', label: t('filter_kids', 'Детские') },
   ]
 
   const headwearTypeOptions = [
-    { value: 'caps', label: 'Кепки' },
-    { value: 'hats', label: 'Шапки' },
-    { value: 'panama', label: 'Панамки' },
+    { value: 'caps', label: t('filter_caps', 'Кепки') },
+    { value: 'hats', label: t('filter_hats', 'Шапки') },
+    { value: 'panama', label: t('filter_panama', 'Панамки') },
   ]
 
   return (
@@ -345,11 +345,11 @@ export default function CategorySidebar({
       >
         <div className="p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
-            <h2 className="text-xl font-bold text-main dark:text-gray-900">Фильтры</h2>
+            <h2 className="text-xl font-bold text-main dark:text-gray-900">{t('sidebar_filters', 'Фильтры')}</h2>
             <div className="flex items-center gap-2">
               {hasActiveFilters && (
                 <button onClick={clearFilters} className="text-sm text-[var(--accent)] hover:text-[var(--accent-strong)] font-medium">
-                  Сбросить
+                  {t('sidebar_reset', 'Сбросить')}
                 </button>
               )}
               <button onClick={onToggle} className="lg:hidden text-main/70 hover:text-main dark:text-gray-500 dark:hover:text-gray-700">
@@ -385,7 +385,7 @@ export default function CategorySidebar({
                 onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
                 className="flex items-center justify-between w-full mb-3"
               >
-                <h3 className="text-base font-semibold text-main dark:text-gray-900">Тип обуви</h3>
+                <h3 className="text-base font-semibold text-main dark:text-gray-900">{t('sidebar_shoe_types', 'Тип обуви')}</h3>
                 <svg
                   className={`w-5 h-5 text-main/60 dark:text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
                   fill="none"
@@ -420,7 +420,7 @@ export default function CategorySidebar({
                 onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
                 className="flex items-center justify-between w-full mb-3"
               >
-                <h3 className="text-base font-semibold text-main dark:text-gray-900">Предметы одежды</h3>
+                <h3 className="text-base font-semibold text-main dark:text-gray-900">{t('sidebar_clothing_items', 'Предметы одежды')}</h3>
                 <svg
                   className={`w-5 h-5 text-main/60 dark:text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
                   fill="none"
@@ -456,7 +456,7 @@ export default function CategorySidebar({
                   onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
                   className="flex items-center justify-between w-full mb-3"
                 >
-                  <h3 className="text-base font-semibold text-gray-900">Материал</h3>
+                  <h3 className="text-base font-semibold text-gray-900">{t('sidebar_jewelry_material', 'Материал')}</h3>
                   <svg
                     className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
                     fill="none"
@@ -488,7 +488,7 @@ export default function CategorySidebar({
                   onClick={() => setExpandedSections((prev) => ({ ...prev, brands: !prev.brands }))}
                   className="flex items-center justify-between w-full mb-3"
                 >
-                  <h3 className="text-base font-semibold text-gray-900">Для кого</h3>
+                  <h3 className="text-base font-semibold text-gray-900">{t('sidebar_jewelry_gender', 'Для кого')}</h3>
                   <svg
                     className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.brands ? 'rotate-180' : ''}`}
                     fill="none"
@@ -524,7 +524,7 @@ export default function CategorySidebar({
                 onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
                 className="flex items-center justify-between w-full mb-3"
               >
-                <h3 className="text-base font-semibold text-gray-900">Тип головного убора</h3>
+                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_headwear_types', 'Тип головного убора')}</h3>
                 <svg
                   className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
                   fill="none"
@@ -558,7 +558,7 @@ export default function CategorySidebar({
                 onClick={() => setExpandedSections((prev) => ({ ...prev, categories: !prev.categories }))}
                 className="flex items-center justify-between w-full mb-3"
               >
-                <h3 className="text-base font-semibold text-gray-900">Категории</h3>
+                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_categories', 'Категории')}</h3>
                 <svg
                   className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.categories ? 'rotate-180' : ''}`}
                   fill="none"
@@ -595,7 +595,7 @@ export default function CategorySidebar({
                 onClick={() => setExpandedSections((prev) => ({ ...prev, subcategories: !prev.subcategories }))}
                 className="flex items-center justify-between w-full mb-3"
               >
-                <h3 className="text-base font-semibold text-gray-900">Подкатегории</h3>
+                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_subcategories', 'Подкатегории')}</h3>
                 <svg
                   className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.subcategories ? 'rotate-180' : ''}`}
                   fill="none"
@@ -643,7 +643,7 @@ export default function CategorySidebar({
                 onClick={() => setExpandedSections((prev) => ({ ...prev, brands: !prev.brands }))}
                 className="flex items-center justify-between w-full mb-3"
               >
-                <h3 className="text-base font-semibold text-gray-900">Бренды</h3>
+                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_brands', 'Бренды')}</h3>
                 <svg
                   className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.brands ? 'rotate-180' : ''}`}
                   fill="none"
@@ -682,7 +682,7 @@ export default function CategorySidebar({
               onClick={() => setExpandedSections((prev) => ({ ...prev, price: !prev.price }))}
               className="flex items-center justify-between w-full mb-3"
             >
-              <h3 className="text-base font-semibold text-gray-900">Цена</h3>
+              <h3 className="text-base font-semibold text-gray-900">{t('sidebar_price', 'Цена')}</h3>
               <svg
                 className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.price ? 'rotate-180' : ''}`}
                 fill="none"
@@ -697,7 +697,7 @@ export default function CategorySidebar({
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
-                    placeholder="От"
+                    placeholder={t('sidebar_price_from', 'От')}
                     value={priceRange.min}
                     onChange={(e) => setPriceRange((prev) => ({ ...prev, min: e.target.value }))}
                     onBlur={handlePriceChange}
@@ -706,7 +706,7 @@ export default function CategorySidebar({
                   <span className="text-gray-500">—</span>
                   <input
                     type="number"
-                    placeholder="До"
+                    placeholder={t('sidebar_price_to', 'До')}
                     value={priceRange.max}
                     onChange={(e) => setPriceRange((prev) => ({ ...prev, max: e.target.value }))}
                     onBlur={handlePriceChange}
@@ -718,18 +718,18 @@ export default function CategorySidebar({
           </div>
 
           <div className="border-b pb-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-3">Сортировка</h3>
+            <h3 className="text-base font-semibold text-gray-900 mb-3">{t('sidebar_sort', 'Сортировка')}</h3>
             <select
               value={filters.sortBy}
               onChange={(e) => updateFilters((prev) => ({ ...prev, sortBy: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-violet-500 focus:border-violet-500"
             >
-              <option value="name_asc">По названию (А-Я)</option>
-              <option value="name_desc">По названию (Я-А)</option>
-              <option value="price_asc">По цене (возрастание)</option>
-              <option value="price_desc">По цене (убывание)</option>
-              <option value="newest">Сначала новые</option>
-              <option value="popular">Популярные</option>
+              <option value="name_asc">{t('sidebar_sort_name_asc_short', 'По названию (А-Я)')}</option>
+              <option value="name_desc">{t('sidebar_sort_name_desc_short', 'По названию (Я-А)')}</option>
+              <option value="price_asc">{t('sidebar_sort_price_asc_short', 'По цене (возрастание)')}</option>
+              <option value="price_desc">{t('sidebar_sort_price_desc_short', 'По цене (убывание)')}</option>
+              <option value="newest">{t('sidebar_sort_newest', 'Сначала новые')}</option>
+              <option value="popular">{t('sidebar_sort_popular', 'Популярные')}</option>
             </select>
           </div>
 
@@ -738,7 +738,7 @@ export default function CategorySidebar({
               onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
               className="flex items-center justify-between w-full mb-3"
             >
-              <h3 className="text-base font-semibold text-gray-900">Дополнительно</h3>
+              <h3 className="text-base font-semibold text-gray-900">{t('sidebar_additional', 'Дополнительно')}</h3>
               <svg
                 className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
                 fill="none"
