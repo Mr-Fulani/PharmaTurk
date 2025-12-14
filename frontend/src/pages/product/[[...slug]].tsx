@@ -1,11 +1,16 @@
 import { GetServerSideProps } from 'next'
 import Head from 'next/head'
 import axios from 'axios'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
+import BuyNowButton from '../../components/BuyNowButton'
+import SecurityAndService from '../../components/SecurityAndService'
 import FavoriteButton from '../../components/FavoriteButton'
+import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
+import { getLocalizedColor } from '../../lib/i18n'
 
 type CategoryType =
   | 'medicines'
@@ -132,6 +137,10 @@ export default function ProductPage({
   const [selectedColor, setSelectedColor] = useState<string | undefined>(selectedVariant?.color)
   // По умолчанию размер не выбран — пользователь должен выбрать вручную
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined)
+  // Количество товара
+  const [quantity, setQuantity] = useState(1)
+  // Состояние раскрытия описания
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
 
   // Список цветов
   const colors = Array.from(new Set((variants.map((v) => v.color).filter(Boolean) as string[])))
@@ -162,6 +171,7 @@ export default function ProductPage({
     }
   }
 
+  const router = useRouter()
   const gallerySource = selectedVariant?.images?.length ? selectedVariant.images : (product.images || [])
   const initialImage =
     selectedVariant?.main_image ||
@@ -174,15 +184,43 @@ export default function ProductPage({
     gallerySource[0]?.image_url
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
 
-  const displayPrice = selectedVariant?.price
-    ? `${selectedVariant.price} ${selectedVariant.currency || product.currency}`
-    : product.active_variant_price || (product.price ? `${product.price} ${product.currency}` : t('price_on_request'))
+  // Обновляем главную картинку при изменении товара или варианта
+  useEffect(() => {
+    const currentGallerySource = selectedVariant?.images?.length ? selectedVariant.images : (product.images || [])
+    const newImage =
+      selectedVariant?.main_image ||
+      selectedVariant?.images?.find((img) => img.is_main)?.image_url ||
+      selectedVariant?.images?.[0]?.image_url ||
+      product.active_variant_main_image_url ||
+      product.main_image_url ||
+      product.main_image ||
+      currentGallerySource.find((img) => img.is_main)?.image_url ||
+      currentGallerySource[0]?.image_url ||
+      null
+    setActiveImage(newImage)
+  }, [product.id, product.slug, product.main_image_url, product.main_image, product.active_variant_main_image_url, selectedVariantSlug, selectedVariant?.main_image, selectedVariant?.images, product.images, router.asPath])
+
+  // Получаем числовое значение цены для расчетов
+  const priceValue = selectedVariant?.price 
+    ? parseFloat(String(selectedVariant.price))
+    : (product.active_variant_price ? parseFloat(String(product.active_variant_price)) : (product.price ? parseFloat(String(product.price)) : null))
+  const currency = selectedVariant?.currency || product.currency || 'USD'
+  
+  // Вычисляем общую сумму с учетом количества
+  const totalPrice = priceValue !== null ? (priceValue * quantity).toFixed(2) : null
+  const displayPrice = priceValue !== null 
+    ? `${priceValue} ${currency}`
+    : t('price_on_request')
+  const displayTotalPrice = totalPrice !== null 
+    ? `${totalPrice} ${currency}`
+    : t('price_on_request')
+  
   const sizeRequired = sizesForColor.length > 0
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
   const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
   const canonicalUrl = `${siteUrl}${productPath}`
   const metaTitle = `${product.name} — PharmaTurk`
-  const metaDescription = product.description?.slice(0, 200) || `${product.name} — купить на PharmaTurk`
+  const metaDescription = product.description?.slice(0, 200) || `${product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
   const ogImage = activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
   const availability =
     selectedVariant?.is_available === false || selectedVariant?.stock_quantity === 0
@@ -229,40 +267,44 @@ export default function ProductPage({
         />
       </Head>
       <main className="mx-auto max-w-6xl p-6">
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <div>
-            {activeImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={activeImage} alt={product.name} className="w-full rounded-xl object-cover" />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src="/product-placeholder.svg" alt="No image" className="aspect-square w-full rounded-xl object-cover" />
-            )}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-[1.3fr_1fr] md:items-start">
+          <div className="flex gap-4 md:h-[calc(100vh-22rem)] md:sticky md:top-6 md:self-start">
+            {/* Миниатюры слева вертикально */}
             {gallerySource.length > 1 && (
-              <div className="mt-3 flex gap-2 overflow-x-auto">
+              <div className="flex flex-col gap-3 overflow-y-auto flex-shrink-0">
                 {gallerySource.map((img) => (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     key={img.id}
                     src={img.image_url}
                     alt={img.alt_text || product.name}
-                    className={`h-20 w-20 rounded-lg object-cover cursor-pointer border ${activeImage === img.image_url ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200'}`}
+                    className={`w-28 h-28 rounded-lg object-cover cursor-pointer border flex-shrink-0 ${activeImage === img.image_url ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200 hover:border-gray-300'}`}
                     onClick={() => setActiveImage(img.image_url)}
                   />
                 ))}
               </div>
             )}
+            {/* Главная картинка справа */}
+            <div className="flex-1 h-full flex items-center justify-center rounded-xl">
+              {activeImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={activeImage} alt={product.name} className="max-w-full max-h-full rounded-xl object-contain" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/product-placeholder.svg" alt="No image" className="max-w-full max-h-full rounded-xl object-contain" />
+              )}
+            </div>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
-            <div className="mt-3 text-xl font-semibold text-gray-900">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{product.name}</h1>
+            <div className="mt-3 text-xl font-semibold text-gray-900 dark:text-white">
               {displayPrice || t('price_on_request')}
             </div>
             {(colors.length > 0 || sizesForColor.length > 0) && (
               <div className="mt-4 flex flex-col gap-4">
                 {colors.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <span className="text-sm text-gray-700">{t('color', 'Цвет')}</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-200">{t('color', 'Цвет')}</span>
                     <div className="flex flex-wrap gap-2">
                       {colors.map((c) => {
                         const isActive = c === selectedColor
@@ -279,7 +321,7 @@ export default function ProductPage({
                                 : 'border-gray-300 bg-white text-gray-800 hover:border-violet-400'
                             }`}
                           >
-                            {c}
+                            {getLocalizedColor(c, t)}
                           </button>
                         )
                       })}
@@ -288,7 +330,7 @@ export default function ProductPage({
                 )}
                 {sizesForColor.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <span className="text-sm text-gray-700">{t('size', 'Размер')}</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-200">{t('size', 'Размер')}</span>
                     <div className="flex flex-wrap gap-2">
                       {sizesForColor.map((s) => {
                         const sizeValue = s.size || ''
@@ -319,23 +361,104 @@ export default function ProductPage({
                 )}
               </div>
             )}
-            <div className="mt-4 flex items-center gap-3">
-            <AddToCartButton
-              productId={isBaseProduct ? product.id : undefined}
-              productType={productType}
-              productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
-              size={selectedSize}
-              requireSize={!isBaseProduct && sizeRequired}
-            />
+            
+            {/* Селектор количества */}
+            <div className="mt-4 flex flex-col gap-2">
+              <span className="text-sm text-gray-700 dark:text-gray-200">{t('quantity', 'Количество')}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                  disabled={quantity <= 1}
+                  className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label={t('decrease_quantity', 'Уменьшить количество')}
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                  </svg>
+                </button>
+                <span className="min-w-[3rem] text-center text-base font-medium text-gray-900 dark:text-white">
+                  {quantity}
+                </span>
+                <button
+                  onClick={() => setQuantity(quantity + 1)}
+                  className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
+                  aria-label={t('increase_quantity', 'Увеличить количество')}
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Кнопки действий */}
+            <div className="mt-4 flex flex-col gap-3">
+              <AddToCartButton
+                productId={isBaseProduct ? product.id : undefined}
+                productType={productType}
+                productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+                size={selectedSize}
+                requireSize={!isBaseProduct && sizeRequired}
+                quantity={quantity}
+                showPrice={true}
+                price={displayTotalPrice}
+                className="w-full"
+                label={t('add_to_cart', 'В корзину')}
+              />
+              <BuyNowButton
+                productId={isBaseProduct ? product.id : undefined}
+                productType={productType}
+                productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+                size={selectedSize}
+                requireSize={!isBaseProduct && sizeRequired}
+                quantity={quantity}
+                className="w-full"
+              />
               {product.id && (
-                <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
+                <div className="flex justify-center">
+                  <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
+                </div>
               )}
             </div>
-            <div className="prose mt-6 max-w-none">
-              <p className="whitespace-pre-wrap text-gray-700">{product.description}</p>
-            </div>
+
+            {/* Безопасность и сервис */}
+            <SecurityAndService />
           </div>
         </div>
+
+        {/* Описание товара - на всю ширину */}
+        <div className="mt-6 rounded-lg border border-gray-200 bg-white overflow-hidden w-full">
+          <button
+            onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+            className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
+          >
+            <span className="font-medium text-gray-900">{t('description', 'Описание')}</span>
+            <svg
+              className={`w-5 h-5 text-gray-500 transition-transform ${isDescriptionExpanded ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {isDescriptionExpanded && (
+            <div className="border-t border-gray-200 p-4">
+              <div className="prose max-w-none">
+                <p className="whitespace-pre-wrap text-gray-700">{product.description}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Похожие товары */}
+        <SimilarProducts
+          productType={productType}
+          currentProductId={product.id}
+          currentProductSlug={product.slug}
+          limit={8}
+        />
       </main>
     </>
   )

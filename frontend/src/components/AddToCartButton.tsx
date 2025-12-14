@@ -11,6 +11,9 @@ interface AddToCartButtonProps {
   requireSize?: boolean
   className?: string
   label?: string
+  quantity?: number
+  showPrice?: boolean
+  price?: string
 }
 
 export default function AddToCartButton({
@@ -20,7 +23,10 @@ export default function AddToCartButton({
   size,
   requireSize = false,
   className,
-  label
+  label,
+  quantity = 1,
+  showPrice = false,
+  price
 }: AddToCartButtonProps) {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
@@ -31,13 +37,13 @@ export default function AddToCartButton({
     setLoading(true)
     try {
       if (requireSize && !size) {
-        alert('Выберите размер')
+        alert(t('select_size', 'Выберите размер'))
         setLoading(false)
         return
       }
       initCartSession()
       const body = new URLSearchParams()
-      body.set('quantity', String(1))
+      body.set('quantity', String(quantity))
       const baseTypes = [
         'medicines', 'supplements', 'medical-equipment', 'medical_equipment',
         'furniture', 'tableware', 'accessories', 'jewelry',
@@ -66,7 +72,7 @@ export default function AddToCartButton({
       setDone(true)
       setTimeout(()=>setDone(false), 1500)
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Ошибка добавления в корзину'
+      const detail = err?.response?.data?.detail || err?.message || t('add_to_cart_error', 'Ошибка добавления в корзину')
       // Быстрый видимый фидбек пользователю
       alert(String(detail))
       // И лог для диагностики
@@ -78,7 +84,14 @@ export default function AddToCartButton({
   }
 
   const isIconOnly = !label || label === ''
-  const displayText = done ? t('added', 'Добавлено') : (loading ? t('adding', 'Добавляем...') : (label || t('add_to_cart', 'В корзину')))
+  const baseLabel = label || t('add_to_cart', 'В корзину')
+  const displayText = done 
+    ? t('added', 'Добавлено') 
+    : (loading 
+      ? t('adding', 'Добавляем...') 
+      : (showPrice && price 
+        ? `${baseLabel} - ${price}` 
+        : baseLabel))
   
   // Иконка корзины для отображения при наведении
   const cartIcon = (
@@ -97,20 +110,26 @@ export default function AddToCartButton({
     </svg>
   )
   
+  // Если показываем цену, используем светлый стиль с границей, иначе - стандартный акцентный
+  const useLightStyle = showPrice && price
+  const buttonClassName = useLightStyle
+    ? `inline-flex items-center justify-center gap-2 rounded-md bg-stone-50 border border-gray-900 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-stone-100 disabled:opacity-60 transition-all duration-200 ${className || ''}`
+    : `inline-flex items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:opacity-60 transition-all duration-200 ${className || ''} ${
+        isIconOnly ? 'group' : ''
+      }`
+
   return (
     <button
       onClick={add}
       disabled={loading}
-      className={
-        `inline-flex items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:opacity-60 transition-all duration-200 ${className || ''} ${
-          isIconOnly ? 'group' : ''
-        }`
-      }
+      className={buttonClassName}
     >
       {loading ? (
         <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
+      ) : useLightStyle ? (
+        displayText
       ) : isIconOnly ? (
         <>
           <span className="group-hover:hidden transition-opacity duration-200">

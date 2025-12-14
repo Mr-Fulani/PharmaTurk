@@ -222,3 +222,38 @@ export function getLocalizedBrandDescription(
   return fallbackDescription
 }
 
+/**
+ * Нормализует название цвета для использования в ключах локализации
+ * Приводит к нижнему регистру, заменяет пробелы и спецсимволы на подчеркивания
+ */
+export function normalizeColorName(color: string): string {
+  return (color || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^\wа-яё]/gi, '')
+}
+
+/**
+ * Получает локализованное название цвета
+ * Приоритет: 1) JSON файлы, 2) fallback (оригинальное название)
+ * 
+ * @param color - название цвета с бэкенда
+ * @param t - функция перевода из next-i18next
+ * @returns локализованное название или оригинальное
+ */
+export function getLocalizedColor(color: string, t: TFunction): string {
+  if (!color) return color
+  
+  const normalizedColor = normalizeColorName(color)
+  const jsonKey = `color_${normalizedColor}`
+  const translated = t(jsonKey, { defaultValue: null })
+  
+  // Если перевод найден и отличается от ключа, возвращаем его
+  if (translated && translated !== jsonKey) {
+    return translated
+  }
+  
+  // Иначе возвращаем оригинальное название
+  return color
+}
