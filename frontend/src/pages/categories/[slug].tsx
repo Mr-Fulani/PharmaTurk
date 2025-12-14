@@ -905,6 +905,11 @@ export default function CategoryPage({
     filters.priceMax,
     filters.inStock,
     filters.sortBy,
+    filters.shoeTypes,
+    filters.clothingItems,
+    filters.jewelryMaterials,
+    filters.jewelryGender,
+    filters.headwearTypes,
     currentPage,
     categoryType
   ])

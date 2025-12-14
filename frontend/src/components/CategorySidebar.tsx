@@ -151,7 +151,12 @@ export default function CategorySidebar({
     filters.priceMin,
     filters.priceMax,
     filters.inStock,
-    filters.sortBy
+    filters.sortBy,
+    filters.shoeTypes?.join(','),
+    filters.clothingItems?.join(','),
+    filters.jewelryMaterials?.join(','),
+    filters.jewelryGender?.join(','),
+    filters.headwearTypes?.join(',')
   ])
 
   const updateFilters = (updater: (prev: FilterState) => FilterState) => {
@@ -199,7 +204,12 @@ export default function CategorySidebar({
       subcategories: [],
       subcategorySlugs: [],
       inStock: false,
-      sortBy: 'name_asc'
+      sortBy: 'name_asc',
+      shoeTypes: [],
+      clothingItems: [],
+      jewelryMaterials: [],
+      jewelryGender: [],
+      headwearTypes: []
     })
     setPriceRange({ min: '', max: '' })
   }
