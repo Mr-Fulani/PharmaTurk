@@ -3,7 +3,7 @@
 from django.db.models import Count
 from rest_framework import serializers
 from .models import (
-    Category, CategoryTranslation, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
+    Category, CategoryTranslation, Brand, BrandTranslation, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
     ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
     ElectronicsProduct, ElectronicsProductImage,
@@ -16,6 +16,14 @@ class CategoryTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = CategoryTranslation
+        fields = ['locale', 'name', 'description']
+
+
+class BrandTranslationSerializer(serializers.ModelSerializer):
+    """Сериализатор для переводов брендов."""
+    
+    class Meta:
+        model = BrandTranslation
         fields = ['locale', 'name', 'description']
 
 
@@ -79,6 +87,7 @@ class BrandSerializer(serializers.ModelSerializer):
     products_count = serializers.SerializerMethodField()
     card_media_url = serializers.SerializerMethodField()
     primary_category_slug = serializers.SerializerMethodField()
+    translations = BrandTranslationSerializer(many=True, read_only=True)
     
     class Meta:
         model = Brand
@@ -86,6 +95,7 @@ class BrandSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'description', 'logo', 'website', 'card_media_url',
             'primary_category_slug',
             'external_id', 'is_active', 'products_count', 
+            'translations',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']

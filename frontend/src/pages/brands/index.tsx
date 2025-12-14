@@ -1,10 +1,12 @@
 import Head from 'next/head'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import axios from 'axios'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Masonry from 'react-masonry-css'
 import { resolveMediaUrl } from '../../lib/media'
+import { getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../../lib/i18n'
 
 interface Brand {
   id: number
@@ -15,6 +17,7 @@ interface Brand {
   primary_category_slug?: string | null
   card_media_url?: string | null
   logo?: string | null
+  translations?: BrandTranslation[]
 }
 
 // @ts-ignore: нет типов для @egjs/react-grid
@@ -121,6 +124,7 @@ const renderMedia = (mediaUrl?: string | null, alt?: string) => {
 
 export default function BrandsPage({ brands }: { brands: Brand[] }) {
   const { t } = useTranslation('common')
+  const router = useRouter()
 
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
   const canonicalUrl = `${siteUrl}/brands`
@@ -178,9 +182,13 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
                   <div className="absolute inset-0 bg-black/35" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
                     <div className="text-center text-white drop-shadow">
-                      <h3 className="text-xl font-bold mb-1">{brand.name}</h3>
+                      <h3 className="text-xl font-bold mb-1">
+                        {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
+                      </h3>
                       {brand.description ? (
-                        <p className="text-sm opacity-90 line-clamp-2">{brand.description}</p>
+                        <p className="text-sm opacity-90 line-clamp-2">
+                          {getLocalizedBrandDescription(brand.slug, brand.description, t, brand.translations, router.locale)}
+                        </p>
                       ) : null}
                       {brand.products_count ? (
                         <p className="text-xs opacity-80 mt-2">{brand.products_count} {t('products_count', 'товаров')}</p>

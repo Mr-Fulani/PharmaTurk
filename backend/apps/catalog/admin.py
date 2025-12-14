@@ -11,7 +11,7 @@ from .models import (
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
     CategoryUnderwear, CategoryHeadwear, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
-    Brand, MarketingBrand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
+    Brand, BrandTranslation, MarketingBrand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ProductMedicines, ProductSupplements, ProductMedicalEquipment,
     ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
     ProductUnderwear, ProductHeadwear,
@@ -89,6 +89,15 @@ class CategoryTypeAdmin(admin.ModelAdmin):
 class CategoryTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов категорий."""
     model = CategoryTranslation
+    extra = 1
+    fields = ('locale', 'name', 'description')
+    verbose_name = _("Перевод")
+    verbose_name_plural = _("Переводы")
+
+
+class BrandTranslationInline(admin.TabularInline):
+    """Inline для редактирования переводов брендов."""
+    model = BrandTranslation
     extra = 1
     fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
@@ -218,6 +227,7 @@ class BrandAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug', 'description')
     ordering = ('name',)
     prepopulated_fields = {'slug': ('name',)}
+    inlines = [BrandTranslationInline]
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),

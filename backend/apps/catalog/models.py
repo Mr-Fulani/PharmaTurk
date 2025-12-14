@@ -347,6 +347,53 @@ class CategoryElectronics(Category):
         verbose_name_plural = _("Категории — Электроника")
 
 
+class BrandTranslation(models.Model):
+    """Переводы для брендов."""
+    
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+    ]
+    
+    brand = models.ForeignKey(
+        'Brand',
+        on_delete=models.CASCADE,
+        related_name='translations',
+        verbose_name=_("Бренд")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default='ru',
+        db_index=True
+    )
+    name = models.CharField(
+        _("Название"),
+        max_length=200,
+        help_text=_("Переведенное название бренда")
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+        help_text=_("Переведенное описание бренда")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Перевод бренда")
+        verbose_name_plural = _("Переводы брендов")
+        unique_together = [['brand', 'locale']]
+        ordering = ['brand', 'locale']
+        indexes = [
+            models.Index(fields=['brand', 'locale']),
+        ]
+    
+    def __str__(self):
+        return f"{self.brand.name} ({self.get_locale_display()})"
+
+
 class Brand(models.Model):
     """Бренд товаров."""
     

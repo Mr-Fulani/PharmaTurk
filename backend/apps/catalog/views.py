@@ -167,7 +167,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 class BrandViewSet(viewsets.ReadOnlyModelViewSet):
     """API для работы с брендами."""
     
-    queryset = Brand.objects.filter(is_active=True)
+    queryset = Brand.objects.filter(is_active=True).prefetch_related('translations')
     serializer_class = BrandSerializer
     pagination_class = StandardPagination
 

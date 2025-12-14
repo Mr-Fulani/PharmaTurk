@@ -9,7 +9,7 @@ import axios from 'axios'
 import BannerCarousel from '../components/BannerCarouselMedia'
 import PopularProductsCarousel from '../components/PopularProductsCarousel'
 import TestimonialsCarousel from '../components/TestimonialsCarousel'
-import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../lib/i18n'
+import { getLocalizedCategoryName, getLocalizedCategoryDescription, getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../lib/i18n'
 
 interface Brand {
   id: number
@@ -21,6 +21,7 @@ interface Brand {
   products_count?: number
   primary_category_slug?: string | null
   card_media_url?: string | null
+  translations?: BrandTranslation[]
 }
 
 interface CategoryTranslation {
@@ -344,10 +345,10 @@ export default function Home({ brands, categories }: HomePageProps) {
                         </div>
                       )}
                       <h3 className="text-2xl md:text-3xl font-bold mb-2">
-                        {brand.name}
+                        {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
                       </h3>
                       <p className="text-sm opacity-90 mb-2">
-                        {brand.description}
+                        {getLocalizedBrandDescription(brand.slug, brand.description, t, brand.translations, router.locale)}
                       </p>
                       {brand.products_count && (
                         <p className="text-xs opacity-75">
