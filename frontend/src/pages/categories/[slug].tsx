@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
+import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios from 'axios'
@@ -49,6 +50,12 @@ interface Product {
   power_consumption?: string
 }
 
+interface CategoryTranslation {
+  locale: string
+  name: string
+  description?: string
+}
+
 interface Category {
   id: number
   name: string
@@ -60,6 +67,7 @@ interface Category {
   gender?: string
   gender_display?: string
   clothing_type?: string
+  translations?: CategoryTranslation[]
   shoe_type?: string
   device_type?: string
 }
@@ -552,8 +560,40 @@ export default function CategoryPage({
   const router = useRouter()
   const { slug } = router.query
 
+  // Получаем текущую категорию с переводами из API
+  const currentCategory = useMemo(() => {
+    const routeSlug = Array.isArray(slug) ? slug[0] : slug
+    if (!routeSlug) return null
+    const normalizedSlug = routeSlug.toLowerCase().replace(/_/g, '-')
+    return categories.find((c: Category) => (c.slug || '').toLowerCase().replace(/_/g, '-') === normalizedSlug) || null
+  }, [categories, slug])
+
   // Локализация названия категории на клиенте (обновляется при смене языка)
   const localizedCategoryName = useMemo(() => {
+    const routeSlug = Array.isArray(slug) ? slug[0] : slug
+    const normalizedSlug = routeSlug ? routeSlug.toLowerCase().replace(/_/g, '-') : null
+    
+    // Используем функцию локализации, которая проверяет JSON, потом API, потом fallback
+    if (currentCategory) {
+      return getLocalizedCategoryName(
+        currentCategory.slug,
+        currentCategory.name,
+        t,
+        currentCategory.translations,
+        router.locale
+      )
+    }
+    
+    // Fallback на старый подход, если категория не найдена
+    if (normalizedSlug) {
+      const slugKey = `category_${normalizedSlug}_name`
+      const translatedBySlug = t(slugKey, { defaultValue: null })
+      if (translatedBySlug && translatedBySlug !== slugKey) {
+        return translatedBySlug
+      }
+    }
+    
+    // Fallback на статический маппинг по categoryType
     const categoryNameKeys: Record<string, string> = {
       medicines: 'category_medicines',
       supplements: 'category_supplements',
@@ -567,19 +607,17 @@ export default function CategoryPage({
       underwear: 'category_underwear',
       headwear: 'category_headwear',
       'medical-equipment': 'category_medical_equipment',
-      'medical_equipment': 'category_medical_equipment' // поддержка формата с подчеркиванием
+      'medical_equipment': 'category_medical_equipment', // поддержка формата с подчеркиванием
+      uslugi: 'category_uslugi_name' // услуги
     }
-    // Нормализуем categoryType (может быть с подчеркиваниями или дефисами)
     const normalizedType = categoryType?.replace(/_/g, '-')
     const key = categoryNameKeys[normalizedType] || categoryNameKeys[categoryType]
     if (key) {
-      // Используем перевод без fallback, чтобы всегда получать локализованное значение
       const translated = t(key, { defaultValue: categoryName })
       return translated
     }
-    // Если ключ не найден, используем переданное название
     return categoryName
-  }, [categoryType, categoryName, t, router.locale])
+  }, [categoryType, categoryName, t, router.locale, slug, currentCategory])
 
   const [products, setProducts] = useState(initialProducts)
   const [totalCount, setTotalCount] = useState(initialTotalCount)
@@ -1003,9 +1041,14 @@ export default function CategoryPage({
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-4xl md:text-5xl font-bold mb-4">{localizedCategoryName}</h1>
-              {categoryDescription && (
-                <p className="text-lg md:text-xl opacity-90 max-w-2xl">{categoryDescription}</p>
-              )}
+              {(() => {
+                const localizedDesc = currentCategory 
+                  ? getLocalizedCategoryDescription(currentCategory.slug, currentCategory.description, t, currentCategory.translations, router.locale)
+                  : categoryDescription
+                return localizedDesc ? (
+                  <p className="text-lg md:text-xl opacity-90 max-w-2xl">{localizedDesc}</p>
+                ) : null
+              })()}
               <p className="mt-4 text-sm opacity-80">
                 {t('products_found', 'Найдено товаров')}: <span className="font-semibold">{totalCount}</span>
               </p>
@@ -1329,7 +1372,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
           jewelry: { name: 'Jewelry', description: 'Jewelry and costume jewelry from Turkey' },
           underwear: { name: 'Underwear', description: 'Basic and everyday underwear' },
           headwear: { name: 'Headwear', description: 'Caps, hats and other headwear' },
-          'medical-equipment': { name: 'Medical Equipment', description: 'Medical tools and equipment' }
+          'medical-equipment': { name: 'Medical Equipment', description: 'Medical tools and equipment' },
+          uslugi: { name: 'Services', description: 'Services and consultations' }
         }
       }
       return {
@@ -1344,7 +1388,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         jewelry: { name: 'Украшения', description: 'Украшения и бижутерия из Турции' },
         underwear: { name: 'Нижнее бельё', description: 'Базовое и повседневное нижнее бельё' },
         headwear: { name: 'Головные уборы', description: 'Кепки, шапки и другие головные уборы' },
-        'medical-equipment': { name: 'Медицинский инвентарь', description: 'Инструменты и оборудование для медицины' }
+        'medical-equipment': { name: 'Медицинский инвентарь', description: 'Инструменты и оборудование для медицины' },
+        uslugi: { name: 'Услуги', description: 'Услуги и консультации' }
       }
     }
 
@@ -1372,7 +1417,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         currentPage: Number(page),
         totalPages: Math.ceil(totalCount / pageSize),
         categoryType,
-        categoryTypeSlug: categoryTypeFromApi || undefined,
+        categoryTypeSlug: categoryTypeFromApi || null,
         initialRouteSlug: routeSlug || '',
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
@@ -1393,7 +1438,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         currentPage: 1,
         totalPages: 1,
         categoryType: 'medicines',
-        categoryTypeSlug: undefined,
+        categoryTypeSlug: null,
         initialRouteSlug: '',
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },

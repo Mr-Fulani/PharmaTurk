@@ -7,16 +7,17 @@ from django.utils.translation import gettext_lazy as _
 
 from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFormSet
 from .models import (
-    CategoryType, Category, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
+    CategoryType, Category, CategoryTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
     CategoryUnderwear, CategoryHeadwear, MarketingCategory, MarketingRootCategory,
+    CategoryClothing, CategoryShoes, CategoryElectronics,
     Brand, MarketingBrand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ProductMedicines, ProductSupplements, ProductMedicalEquipment,
     ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
     ProductUnderwear, ProductHeadwear,
-    ClothingCategory, ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
-    ShoeCategory, ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
-    ElectronicsCategory, ElectronicsProduct, ElectronicsProductImage,
+    ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
+    ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
+    ElectronicsProduct, ElectronicsProductImage,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia
 )
 
@@ -85,15 +86,25 @@ class CategoryTypeAdmin(admin.ModelAdmin):
     categories_count.short_description = _("Количество категорий")
 
 
+class CategoryTranslationInline(admin.TabularInline):
+    """Inline для редактирования переводов категорий."""
+    model = CategoryTranslation
+    extra = 1
+    fields = ('locale', 'name', 'description')
+    verbose_name = _("Перевод")
+    verbose_name_plural = _("Переводы")
+
+
 class BaseCategoryAdmin(admin.ModelAdmin):
     """Базовый админ для прокси категорий с фильтром по типу."""
     required_category_type_slug: str | None = None
     list_display = ('name', 'slug', 'category_type', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'parent', 'created_at')
+    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'parent', 'gender', 'clothing_type', 'shoe_type', 'device_type', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
     autocomplete_fields = ('category_type',)
+    inlines = [CategoryTranslationInline]
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Тип категории'), {
@@ -550,7 +561,7 @@ class FavoriteAdmin(admin.ModelAdmin):
 # АДМИНКА ДЛЯ ОДЕЖДЫ, ОБУВИ И ЭЛЕКТРОНИКИ
 # ============================================================================
 
-@admin.register(ClothingCategory)
+@admin.register(CategoryClothing)
 class ClothingCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий одежды."""
     list_display = ('name', 'slug', 'gender', 'clothing_type', 'parent', 'is_active', 'sort_order', 'created_at')
@@ -558,6 +569,7 @@ class ClothingCategoryAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
+    inlines = [CategoryTranslationInline]
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
@@ -566,6 +578,10 @@ class ClothingCategoryAdmin(admin.ModelAdmin):
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
+    
+    def get_queryset(self, request):
+        """Фильтруем только корневые категории одежды (где clothing_type не пустое)."""
+        return super().get_queryset(request).filter(clothing_type__isnull=False).exclude(clothing_type='').filter(parent__isnull=True)
 
 
 class ClothingVariantInline(admin.TabularInline):
@@ -631,7 +647,7 @@ class ClothingProductAdmin(admin.ModelAdmin):
     inlines = [ClothingVariantInline, ClothingProductImageInline]
 
 
-@admin.register(ShoeCategory)
+@admin.register(CategoryShoes)
 class ShoeCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий обуви."""
     list_display = ('name', 'slug', 'gender', 'shoe_type', 'parent', 'is_active', 'sort_order', 'created_at')
@@ -639,6 +655,7 @@ class ShoeCategoryAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
+    inlines = [CategoryTranslationInline]
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
@@ -655,6 +672,10 @@ class ShoeCategoryAdmin(admin.ModelAdmin):
             )
         }),
     )
+    
+    def get_queryset(self, request):
+        """Фильтруем только корневые категории обуви (где shoe_type не пустое)."""
+        return super().get_queryset(request).filter(shoe_type__isnull=False).exclude(shoe_type='').filter(parent__isnull=True)
 
 
 class ShoeVariantInline(admin.TabularInline):
@@ -727,7 +748,7 @@ class ShoeProductAdmin(admin.ModelAdmin):
     inlines = [ShoeVariantInline]
 
 
-@admin.register(ElectronicsCategory)
+@admin.register(CategoryElectronics)
 class ElectronicsCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий электроники."""
     list_display = ('name', 'slug', 'device_type', 'parent', 'is_active', 'sort_order', 'created_at')
@@ -735,6 +756,7 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
+    inlines = [CategoryTranslationInline]
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
@@ -743,6 +765,10 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
+    
+    def get_queryset(self, request):
+        """Фильтруем только корневые категории электроники (где device_type не пустое)."""
+        return super().get_queryset(request).filter(device_type__isnull=False).exclude(device_type='').filter(parent__isnull=True)
 
 
 @admin.register(ElectronicsProduct)
@@ -981,6 +1007,7 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     readonly_fields = ('card_media_preview',)
     autocomplete_fields = ('category_type',)
+    inlines = [CategoryTranslationInline]
 
     fieldsets = (
         (_('Основная информация'), {
@@ -1062,6 +1089,7 @@ class MarketingRootCategoryAdmin(admin.ModelAdmin):
     readonly_fields = ('card_media_preview',)
     exclude = ('parent',)
     autocomplete_fields = ('category_type',)
+    inlines = [CategoryTranslationInline]
     
     fieldsets = (
         (_('Основная информация'), {

@@ -8,11 +8,8 @@ from apps.catalog.models import (
     Brand,
     Category,
     Product,
-    ClothingCategory,
     ClothingProduct,
-    ShoeCategory,
     ShoeProduct,
-    ElectronicsCategory,
     ElectronicsProduct,
 )
 
@@ -218,11 +215,11 @@ class Command(BaseCommand):
     # Clothing
 
     def _seed_clothing(self, brands: dict[str, Brand]):
-        root, _ = ClothingCategory.objects.get_or_create(
+        root, _ = Category.objects.get_or_create(
             slug="women-fashion",
-            defaults={"name": "Одежда", "gender": "women", "is_active": True, "sort_order": 1},
+            defaults={"name": "Одежда", "gender": "women", "clothing_type": "general", "is_active": True, "sort_order": 1},
         )
-        dresses, _ = ClothingCategory.objects.get_or_create(
+        dresses, _ = Category.objects.get_or_create(
             slug="dresses-turkish",
             defaults={
                 "name": "Платья",
@@ -262,11 +259,11 @@ class Command(BaseCommand):
     # Shoes
 
     def _seed_shoes(self, brands: dict[str, Brand]):
-        root, _ = ShoeCategory.objects.get_or_create(
+        root, _ = Category.objects.get_or_create(
             slug="unisex-shoes",
             defaults={"name": "Обувь", "gender": "unisex", "shoe_type": "general", "is_active": True, "sort_order": 1},
         )
-        sneakers, _ = ShoeCategory.objects.get_or_create(
+        sneakers, _ = Category.objects.get_or_create(
             slug="sneakers-turkish",
             defaults={
                 "name": "Кроссовки",
@@ -307,11 +304,11 @@ class Command(BaseCommand):
     # Electronics
 
     def _seed_electronics(self, brands: dict[str, Brand]):
-        phones, _ = ElectronicsCategory.objects.get_or_create(
+        phones, _ = Category.objects.get_or_create(
             slug="smartphones-tr",
             defaults={"name": "Смартфоны", "device_type": "phones", "is_active": True, "sort_order": 1},
         )
-        tvs, _ = ElectronicsCategory.objects.get_or_create(
+        tvs, _ = Category.objects.get_or_create(
             slug="smart-tv",
             defaults={"name": "Умные телевизоры", "device_type": "tv", "is_active": True, "sort_order": 2},
         )

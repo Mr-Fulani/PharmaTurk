@@ -3,12 +3,20 @@
 from django.db.models import Count
 from rest_framework import serializers
 from .models import (
-    Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
-    ClothingCategory, ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
-    ShoeCategory, ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
-    ElectronicsCategory, ElectronicsProduct, ElectronicsProductImage,
+    Category, CategoryTranslation, Brand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
+    ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
+    ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
+    ElectronicsProduct, ElectronicsProductImage,
     Banner, BannerMedia
 )
+
+
+class CategoryTranslationSerializer(serializers.ModelSerializer):
+    """Сериализатор для переводов категорий."""
+    
+    class Meta:
+        model = CategoryTranslation
+        fields = ['locale', 'name', 'description']
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -18,6 +26,8 @@ class CategorySerializer(serializers.ModelSerializer):
     card_media_url = serializers.SerializerMethodField()
     category_type = serializers.SerializerMethodField()
     category_type_slug = serializers.SerializerMethodField()
+    gender_display = serializers.SerializerMethodField()
+    translations = CategoryTranslationSerializer(many=True, read_only=True)
     
     class Meta:
         model = Category
@@ -25,7 +35,8 @@ class CategorySerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'description', 'card_media_url', 'parent',
             'external_id', 'is_active', 'sort_order',
             'children_count', 'created_at', 'updated_at',
-            'category_type', 'category_type_slug',
+            'category_type', 'category_type_slug', 'translations',
+            'gender', 'gender_display', 'clothing_type', 'shoe_type', 'device_type',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -54,6 +65,12 @@ class CategorySerializer(serializers.ModelSerializer):
         if not obj.category_type_id:
             return None
         return obj.category_type.slug
+    
+    def get_gender_display(self, obj):
+        """Отображение значения gender."""
+        if obj.gender:
+            return obj.get_gender_display()
+        return None
 
 
 class BrandSerializer(serializers.ModelSerializer):
@@ -381,10 +398,10 @@ class ClothingCategorySerializer(serializers.ModelSerializer):
     """Сериализатор для категорий одежды."""
     
     children_count = serializers.SerializerMethodField()
-    gender_display = serializers.CharField(source='get_gender_display', read_only=True)
+    gender_display = serializers.SerializerMethodField()
     
     class Meta:
-        model = ClothingCategory
+        model = Category
         fields = [
             'id', 'name', 'slug', 'description', 'parent', 
             'gender', 'gender_display', 'clothing_type',
@@ -396,6 +413,12 @@ class ClothingCategorySerializer(serializers.ModelSerializer):
     def get_children_count(self, obj):
         """Количество подкатегорий."""
         return obj.children.filter(is_active=True).count()
+    
+    def get_gender_display(self, obj):
+        """Отображение значения gender."""
+        if obj.gender:
+            return obj.get_gender_display()
+        return None
 
 
 class ClothingProductImageSerializer(serializers.ModelSerializer):
@@ -597,10 +620,10 @@ class ShoeCategorySerializer(serializers.ModelSerializer):
     """Сериализатор для категорий обуви."""
     
     children_count = serializers.SerializerMethodField()
-    gender_display = serializers.CharField(source='get_gender_display', read_only=True)
+    gender_display = serializers.SerializerMethodField()
     
     class Meta:
-        model = ShoeCategory
+        model = Category
         fields = [
             'id', 'name', 'slug', 'description', 'parent', 
             'gender', 'gender_display', 'shoe_type',
@@ -612,6 +635,12 @@ class ShoeCategorySerializer(serializers.ModelSerializer):
     def get_children_count(self, obj):
         """Количество подкатегорий."""
         return obj.children.filter(is_active=True).count()
+    
+    def get_gender_display(self, obj):
+        """Отображение значения gender."""
+        if obj.gender:
+            return obj.get_gender_display()
+        return None
 
 
 class ShoeProductSerializer(serializers.ModelSerializer):
@@ -815,7 +844,7 @@ class ElectronicsCategorySerializer(serializers.ModelSerializer):
     children_count = serializers.SerializerMethodField()
     
     class Meta:
-        model = ElectronicsCategory
+        model = Category
         fields = [
             'id', 'name', 'slug', 'description', 'parent', 
             'device_type', 'external_id', 'is_active', 'sort_order', 

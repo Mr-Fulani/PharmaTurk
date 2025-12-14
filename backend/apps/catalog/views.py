@@ -13,9 +13,9 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExampl
 
 from .models import (
     Category, Brand, Product, ProductAttribute, PriceHistory, Favorite,
-    ClothingCategory, ClothingProduct, ClothingVariant,
-    ShoeCategory, ShoeProduct, ShoeVariant,
-    ElectronicsCategory, ElectronicsProduct, Banner, BannerMedia
+    ClothingProduct, ClothingVariant,
+    ShoeProduct, ShoeVariant,
+    ElectronicsProduct, Banner, BannerMedia
 )
 from .services import CatalogService
 from .serializers import (
@@ -510,13 +510,13 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
 class ClothingCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями одежды."""
     
-    queryset = ClothingCategory.objects.filter(is_active=True)
+    queryset = Category.objects.filter(clothing_type__isnull=False).exclude(clothing_type='').filter(is_active=True)
     serializer_class = ClothingCategorySerializer
     pagination_class = StandardPagination
     
     def get_queryset(self):
         """Фильтрация категорий одежды."""
-        queryset = ClothingCategory.objects.filter(is_active=True)
+        queryset = Category.objects.filter(clothing_type__isnull=False).exclude(clothing_type='').filter(is_active=True)
         
         # Фильтр по полу
         gender = self.request.query_params.get('gender')
@@ -549,7 +549,7 @@ class ClothingCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     def children(self, request, pk=None):
         """Получить подкатегории."""
         category = self.get_object()
-        children = ClothingCategory.objects.filter(parent=category, is_active=True)
+        children = Category.objects.filter(parent=category, clothing_type__isnull=False).exclude(clothing_type='').filter(is_active=True)
         serializer = self.get_serializer(children, many=True)
         return Response(serializer.data)
 
@@ -714,13 +714,13 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
 class ShoeCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями обуви."""
     
-    queryset = ShoeCategory.objects.filter(is_active=True)
+    queryset = Category.objects.filter(shoe_type__isnull=False).exclude(shoe_type='').filter(is_active=True)
     serializer_class = ShoeCategorySerializer
     pagination_class = StandardPagination
     
     def get_queryset(self):
         """Фильтрация категорий обуви."""
-        queryset = ShoeCategory.objects.filter(is_active=True)
+        queryset = Category.objects.filter(shoe_type__isnull=False).exclude(shoe_type='').filter(is_active=True)
         
         # Фильтр по полу
         gender = self.request.query_params.get('gender')
@@ -753,7 +753,7 @@ class ShoeCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     def children(self, request, pk=None):
         """Получить подкатегории."""
         category = self.get_object()
-        children = ShoeCategory.objects.filter(parent=category, is_active=True)
+        children = Category.objects.filter(parent=category, shoe_type__isnull=False).exclude(shoe_type='').filter(is_active=True)
         serializer = self.get_serializer(children, many=True)
         return Response(serializer.data)
 
@@ -918,13 +918,13 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
 class ElectronicsCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями электроники."""
     
-    queryset = ElectronicsCategory.objects.filter(is_active=True)
+    queryset = Category.objects.filter(device_type__isnull=False).exclude(device_type='').filter(is_active=True)
     serializer_class = ElectronicsCategorySerializer
     pagination_class = StandardPagination
     
     def get_queryset(self):
         """Фильтрация категорий электроники."""
-        queryset = ElectronicsCategory.objects.filter(is_active=True)
+        queryset = Category.objects.filter(device_type__isnull=False).exclude(device_type='').filter(is_active=True)
         
         # Фильтр по типу устройства
         device_type = self.request.query_params.get('device_type')
@@ -951,7 +951,7 @@ class ElectronicsCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     def children(self, request, pk=None):
         """Получить подкатегории."""
         category = self.get_object()
-        children = ElectronicsCategory.objects.filter(parent=category, is_active=True)
+        children = Category.objects.filter(parent=category, device_type__isnull=False).exclude(device_type='').filter(is_active=True)
         serializer = self.get_serializer(children, many=True)
         return Response(serializer.data)
 

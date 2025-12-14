@@ -67,19 +67,33 @@ class CategoryType(models.Model):
 
 
 class Category(models.Model):
-    """Категория товаров."""
+    """Единая модель категорий товаров (медицина, БАДы, одежда, обувь, электроника и т.д.)."""
     
+    GENDER_CHOICES = [
+        ('men', _('Мужская')),
+        ('women', _('Женская')),
+        ('unisex', _('Унисекс')),
+        ('kids', _('Детская')),
+    ]
+    
+    # Основные поля
     name = models.CharField(_("Название"), max_length=200)
     slug = models.SlugField(_("Slug"), max_length=200, unique=True)
     description = models.TextField(_("Описание"), blank=True)
+    
+    # Тип категории (для медицины, БАДов, медтехники и т.д.)
     category_type = models.ForeignKey(
         CategoryType,
         on_delete=models.PROTECT,
         related_name="categories",
         verbose_name=_("Тип категории"),
         db_index=True,
-        help_text=_("Выберите тип категории. Если нужного типа нет, создайте его в разделе 'Типы категорий'.")
+        null=True,
+        blank=True,
+        help_text=_("Выберите тип категории для медицины/БАДов/медтехники. Для одежды/обуви/электроники не обязательно.")
     )
+    
+    # Медиа для карточки
     card_media = models.FileField(
         _("Медиа для карточки"),
         upload_to="marketing/cards/categories/",
@@ -98,6 +112,8 @@ class Category(models.Model):
         default="",
         help_text=_("Ссылка на медиа (например, CDN или AWS S3). Если заполнено, приоритетнее файла."),
     )
+    
+    # Иерархия
     parent = models.ForeignKey(
         "self", 
         on_delete=models.CASCADE, 
@@ -106,6 +122,36 @@ class Category(models.Model):
         related_name="children",
         verbose_name=_("Родительская категория")
     )
+    
+    # Специфичные поля для одежды и обуви
+    gender = models.CharField(
+        _("Пол"), 
+        max_length=10, 
+        choices=GENDER_CHOICES, 
+        blank=True,
+        null=True,
+        help_text=_("Для категорий одежды и обуви: мужская, женская, унисекс, детская")
+    )
+    clothing_type = models.CharField(
+        _("Тип одежды"), 
+        max_length=100, 
+        blank=True,
+        help_text=_("Для категорий одежды: платья, блузки, джинсы и т.д.")
+    )
+    shoe_type = models.CharField(
+        _("Тип обуви"), 
+        max_length=100, 
+        blank=True,
+        help_text=_("Для категорий обуви: туфли, кроссовки, сапоги и т.д.")
+    )
+    device_type = models.CharField(
+        _("Тип устройства"), 
+        max_length=100, 
+        blank=True,
+        help_text=_("Для категорий электроники: телефоны, ноутбуки, планшеты и т.д.")
+    )
+    
+    # Общие поля
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активна"), default=True)
@@ -118,12 +164,26 @@ class Category(models.Model):
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
     class Meta:
-        verbose_name = _("Категория (медицина/БАДы/медтехника/аксессуары)")
-        verbose_name_plural = _("Категории (медицина/БАДы/медтехника/аксессуары)")
+        verbose_name = _("Категория")
+        verbose_name_plural = _("Категории")
         ordering = ["sort_order", "name"]
 
     def __str__(self):
         return self.name
+
+    def get_translated_name(self, locale: str = 'ru') -> str:
+        """Получает переведенное название категории."""
+        translation = self.translations.filter(locale=locale).first()
+        if translation:
+            return translation.name
+        return self.name
+
+    def get_translated_description(self, locale: str = 'ru') -> str:
+        """Получает переведенное описание категории."""
+        translation = self.translations.filter(locale=locale).first()
+        if translation and translation.description:
+            return translation.description
+        return self.description or ''
 
     def get_card_media_url(self) -> str:
         """Возвращает URL медиа-файла карточки (или пустую строку)."""
@@ -135,6 +195,53 @@ class Category(models.Model):
             except ValueError:
                 return self.card_media.name or ""
         return ""
+
+
+class CategoryTranslation(models.Model):
+    """Переводы для категорий товаров."""
+    
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+    ]
+    
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.CASCADE,
+        related_name='translations',
+        verbose_name=_("Категория")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default='ru',
+        db_index=True
+    )
+    name = models.CharField(
+        _("Название"),
+        max_length=200,
+        help_text=_("Переведенное название категории")
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+        help_text=_("Переведенное описание категории")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Перевод категории")
+        verbose_name_plural = _("Переводы категорий")
+        unique_together = [['category', 'locale']]
+        ordering = ['category', 'locale']
+        indexes = [
+            models.Index(fields=['category', 'locale']),
+        ]
+    
+    def __str__(self):
+        return f"{self.category.name} ({self.get_locale_display()})"
 
 
 class CategoryMedicines(Category):
@@ -214,6 +321,30 @@ class MarketingRootCategory(Category):
         app_label = "marketing"
         verbose_name = _("Корневая категория")
         verbose_name_plural = _("Маркетинг — Корневые категории")
+
+
+class CategoryClothing(Category):
+    """Прокси-модель для категорий одежды."""
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Одежда")
+        verbose_name_plural = _("Категории — Одежда")
+
+
+class CategoryShoes(Category):
+    """Прокси-модель для категорий обуви."""
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Обувь")
+        verbose_name_plural = _("Категории — Обувь")
+
+
+class CategoryElectronics(Category):
+    """Прокси-модель для категорий электроники."""
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Электроника")
+        verbose_name_plural = _("Категории — Электроника")
 
 
 class Brand(models.Model):
@@ -841,47 +972,8 @@ class Favorite(models.Model):
 
 
 # ============================================================================
-# НОВЫЕ МОДЕЛИ ДЛЯ ОДЕЖДЫ, ОБУВИ И ЭЛЕКТРОНИКИ
+# МОДЕЛИ ДЛЯ ОДЕЖДЫ, ОБУВИ И ЭЛЕКТРОНИКИ
 # ============================================================================
-
-class ClothingCategory(models.Model):
-    """Категория одежды."""
-    
-    GENDER_CHOICES = [
-        ('men', _('Мужская')),
-        ('women', _('Женская')),
-        ('unisex', _('Унисекс')),
-        ('kids', _('Детская')),
-    ]
-    
-    name = models.CharField(_("Название"), max_length=200)
-    slug = models.SlugField(_("Slug"), max_length=200, unique=True)
-    description = models.TextField(_("Описание"), blank=True)
-    parent = models.ForeignKey(
-        "self", 
-        on_delete=models.CASCADE, 
-        null=True, 
-        blank=True, 
-        related_name="children",
-        verbose_name=_("Родительская категория")
-    )
-    gender = models.CharField(_("Пол"), max_length=10, choices=GENDER_CHOICES, default='unisex')
-    clothing_type = models.CharField(_("Тип одежды"), max_length=100, blank=True)  # платья, блузки, джинсы
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
-    is_active = models.BooleanField(_("Активна"), default=True)
-    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
-    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
-    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
-
-    class Meta:
-        verbose_name = _("Категория одежды")
-        verbose_name_plural = _("Категории одежды")
-        ordering = ["sort_order", "name"]
-
-    def __str__(self):
-        return self.name
-
 
 class ClothingProduct(models.Model):
     """Товар одежды."""
@@ -893,11 +985,11 @@ class ClothingProduct(models.Model):
     
     # Категоризация
     category = models.ForeignKey(
-        ClothingCategory, 
+        Category, 
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True,
-        related_name="products",
+        related_name="clothing_products",
         verbose_name=_("Категория")
     )
     brand = models.ForeignKey(
@@ -1005,45 +1097,6 @@ class ClothingProductImage(models.Model):
         return f"Изображение {self.product.name}"
 
 
-class ShoeCategory(models.Model):
-    """Категория обуви."""
-    
-    GENDER_CHOICES = [
-        ('men', _('Мужская')),
-        ('women', _('Женская')),
-        ('unisex', _('Унисекс')),
-        ('kids', _('Детская')),
-    ]
-    
-    name = models.CharField(_("Название"), max_length=200)
-    slug = models.SlugField(_("Slug"), max_length=200, unique=True)
-    description = models.TextField(_("Описание"), blank=True)
-    parent = models.ForeignKey(
-        "self", 
-        on_delete=models.CASCADE, 
-        null=True, 
-        blank=True, 
-        related_name="children",
-        verbose_name=_("Родительская категория")
-    )
-    gender = models.CharField(_("Пол"), max_length=10, choices=GENDER_CHOICES, default='unisex')
-    shoe_type = models.CharField(_("Тип обуви"), max_length=100, blank=True)  # туфли, кроссовки, сапоги
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
-    is_active = models.BooleanField(_("Активна"), default=True)
-    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
-    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
-    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
-
-    class Meta:
-        verbose_name = _("Категория обуви")
-        verbose_name_plural = _("Категории обуви")
-        ordering = ["sort_order", "name"]
-
-    def __str__(self):
-        return self.name
-
-
 class ShoeProduct(models.Model):
     """Товар обуви."""
 
@@ -1071,13 +1124,13 @@ class ShoeProduct(models.Model):
     
     # Категоризация
     category = models.ForeignKey(
-        ShoeCategory, 
+        Category, 
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True,
-        related_name="products",
+        related_name="shoe_products",
         verbose_name=_("Категория"),
-        help_text=_("Выберите категорию из дерева обуви; при необходимости создайте новую в ShoeCategory.")
+        help_text=_("Выберите категорию обуви.")
     )
     brand = models.ForeignKey(
         Brand, 
@@ -1318,37 +1371,6 @@ class ShoeVariantImage(models.Model):
         return f"Изображение варианта {self.variant}"
 
 
-class ElectronicsCategory(models.Model):
-    """Категория электроники."""
-    
-    name = models.CharField(_("Название"), max_length=200)
-    slug = models.SlugField(_("Slug"), max_length=200, unique=True)
-    description = models.TextField(_("Описание"), blank=True)
-    parent = models.ForeignKey(
-        "self", 
-        on_delete=models.CASCADE, 
-        null=True, 
-        blank=True, 
-        related_name="children",
-        verbose_name=_("Родительская категория")
-    )
-    device_type = models.CharField(_("Тип устройства"), max_length=100, blank=True)  # телефоны, ноутбуки, планшеты
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
-    is_active = models.BooleanField(_("Активна"), default=True)
-    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
-    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
-    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
-
-    class Meta:
-        verbose_name = _("Категория электроники")
-        verbose_name_plural = _("Категории электроники")
-        ordering = ["sort_order", "name"]
-
-    def __str__(self):
-        return self.name
-
-
 class ElectronicsProduct(models.Model):
     """Товар электроники."""
     
@@ -1359,11 +1381,11 @@ class ElectronicsProduct(models.Model):
     
     # Категоризация
     category = models.ForeignKey(
-        ElectronicsCategory, 
+        Category, 
         on_delete=models.SET_NULL, 
         null=True, 
         blank=True,
-        related_name="products",
+        related_name="electronics_products",
         verbose_name=_("Категория")
     )
     brand = models.ForeignKey(

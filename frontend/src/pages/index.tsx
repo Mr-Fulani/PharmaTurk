@@ -9,6 +9,7 @@ import axios from 'axios'
 import BannerCarousel from '../components/BannerCarouselMedia'
 import PopularProductsCarousel from '../components/PopularProductsCarousel'
 import TestimonialsCarousel from '../components/TestimonialsCarousel'
+import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../lib/i18n'
 
 interface Brand {
   id: number
@@ -22,6 +23,12 @@ interface Brand {
   card_media_url?: string | null
 }
 
+interface CategoryTranslation {
+  locale: string
+  name: string
+  description?: string
+}
+
 interface CategoryCard {
   id: number
   name: string
@@ -30,6 +37,7 @@ interface CategoryCard {
   card_media_url?: string | null
   parent?: number | null
   sort_order?: number | null
+  translations?: CategoryTranslation[]
 }
 
 interface HomePageProps {
@@ -370,7 +378,7 @@ export default function Home({ brands, categories }: HomePageProps) {
         {/* Categories Section */}
           <section className="mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8 text-center">
-            Категории товаров
+            {t('categories_section_title', 'Категории товаров')}
           </h2>
           <Masonry
             breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
@@ -386,16 +394,18 @@ export default function Home({ brands, categories }: HomePageProps) {
                 style={{ height: cardHeight }}
                 className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
               >
-                  {renderMedia(category.card_media_url, category.name)}
+                  {renderMedia(category.card_media_url, getLocalizedCategoryName(category.slug, category.name, t, category.translations))}
                   <div className="absolute inset-0 bg-black/35" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
                     <div className="text-center text-white drop-shadow">
                     <h3 className="text-xl font-bold mb-1">
-                      {category.name}
+                      {getLocalizedCategoryName(category.slug, category.name, t, category.translations)}
                     </h3>
-                    <p className="text-sm opacity-90">
-                      {category.description}
-                    </p>
+                    {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations) && (
+                      <p className="text-sm opacity-90">
+                        {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations)}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -407,7 +417,7 @@ export default function Home({ brands, categories }: HomePageProps) {
               href="/categories"
               className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
             >
-              Все категории
+              {t('all_categories', 'Все категории')}
             </Link>
           </div>
         </section>

@@ -3,8 +3,8 @@
 from django.core.management.base import BaseCommand
 from django.utils.text import slugify
 from apps.catalog.models import (
-    ClothingCategory, ClothingProduct, ShoeCategory, ShoeProduct,
-    ElectronicsCategory, ElectronicsProduct, Brand
+    Category, ClothingProduct, ShoeProduct,
+    ElectronicsProduct, Brand
 )
 
 
@@ -58,7 +58,7 @@ class Command(BaseCommand):
     def _create_clothing_data(self, brands):
         """Создает данные для одежды."""
         # Создаем категории одежды
-        women_clothing = ClothingCategory.objects.create(
+        women_clothing = Category.objects.create(
             name='Женская одежда',
             slug='women-clothing',
             gender='women',
@@ -67,7 +67,7 @@ class Command(BaseCommand):
             sort_order=1
         )
         
-        dresses = ClothingCategory.objects.create(
+        dresses = Category.objects.create(
             name='Платья',
             slug='dresses',
             gender='women',
@@ -77,7 +77,7 @@ class Command(BaseCommand):
             sort_order=1
         )
         
-        blouses = ClothingCategory.objects.create(
+        blouses = Category.objects.create(
             name='Блузки',
             slug='blouses',
             gender='women',
@@ -148,7 +148,7 @@ class Command(BaseCommand):
     def _create_shoes_data(self, brands):
         """Создает данные для обуви."""
         # Создаем категории обуви
-        women_shoes = ShoeCategory.objects.create(
+        women_shoes = Category.objects.create(
             name='Женская обувь',
             slug='women-shoes',
             gender='women',
@@ -157,7 +157,7 @@ class Command(BaseCommand):
             sort_order=1
         )
         
-        sneakers = ShoeCategory.objects.create(
+        sneakers = Category.objects.create(
             name='Кроссовки',
             slug='sneakers',
             gender='women',
@@ -220,7 +220,7 @@ class Command(BaseCommand):
     def _create_electronics_data(self, brands):
         """Создает данные для электроники."""
         # Создаем категории электроники
-        phones = ElectronicsCategory.objects.create(
+        phones = Category.objects.create(
             name='Смартфоны',
             slug='smartphones',
             device_type='phones',
@@ -228,7 +228,7 @@ class Command(BaseCommand):
             sort_order=1
         )
         
-        laptops = ElectronicsCategory.objects.create(
+        laptops = Category.objects.create(
             name='Ноутбуки',
             slug='laptops',
             device_type='laptops',

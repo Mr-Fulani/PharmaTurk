@@ -3,7 +3,7 @@
 from django.core.management.base import BaseCommand
 from django.utils.text import slugify
 from decimal import Decimal
-from apps.catalog.models import Brand, ClothingCategory, ClothingProduct
+from apps.catalog.models import Brand, Category, ClothingProduct
 
 
 class Command(BaseCommand):
@@ -91,7 +91,7 @@ class Command(BaseCommand):
         categories = {}
         
         # Получаем или создаем основные категории
-        women_clothing, _ = ClothingCategory.objects.get_or_create(
+        women_clothing, _ = Category.objects.get_or_create(
             slug='women-clothing',
             defaults={
                 'name': 'Женская одежда',
@@ -102,7 +102,7 @@ class Command(BaseCommand):
         )
         categories['women'] = women_clothing
         
-        men_clothing, _ = ClothingCategory.objects.get_or_create(
+        men_clothing, _ = Category.objects.get_or_create(
             slug='men-clothing',
             defaults={
                 'name': 'Мужская одежда',
