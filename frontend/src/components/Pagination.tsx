@@ -13,10 +13,14 @@ export default function Pagination({ currentPage, totalPages, onPageChange }: Pa
     if (onPageChange) {
       onPageChange(page)
     } else {
-      router.push({
-        pathname: router.pathname,
-        query: { ...router.query, page }
-      })
+      router.push(
+        {
+          pathname: router.pathname,
+          query: { ...router.query, page }
+        },
+        undefined,
+        { scroll: false }
+      )
     }
   }
 

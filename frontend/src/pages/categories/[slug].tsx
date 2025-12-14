@@ -560,6 +560,80 @@ export default function CategoryPage({
   const router = useRouter()
   const { slug } = router.query
 
+  // Сохранение и восстановление позиции скролла при возврате на страницу
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const scrollKey = `scroll_${router.asPath}`
+    let shouldRestoreScroll = false
+    
+    // Сохраняем позицию скролла при уходе со страницы
+    const handleRouteChangeStart = (url: string) => {
+      if (url !== router.asPath) {
+        sessionStorage.setItem(scrollKey, String(window.scrollY))
+      }
+    }
+
+    const handleRouteChangeComplete = (url: string) => {
+      if (url === router.asPath) {
+        shouldRestoreScroll = true
+        const savedScroll = sessionStorage.getItem(scrollKey)
+        if (savedScroll) {
+          const scrollY = parseInt(savedScroll, 10)
+          // Используем requestAnimationFrame для восстановления после рендера
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              window.scrollTo({ top: scrollY, behavior: 'auto' })
+            })
+          })
+        }
+      }
+    }
+
+    const handleBeforeUnload = () => {
+      sessionStorage.setItem(scrollKey, String(window.scrollY))
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        sessionStorage.setItem(scrollKey, String(window.scrollY))
+      } else if (shouldRestoreScroll) {
+        const savedScroll = sessionStorage.getItem(scrollKey)
+        if (savedScroll) {
+          const scrollY = parseInt(savedScroll, 10)
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              window.scrollTo({ top: scrollY, behavior: 'auto' })
+            })
+          })
+        }
+      }
+    }
+
+    // Восстанавливаем позицию скролла при монтировании (если это возврат на страницу)
+    const savedScroll = sessionStorage.getItem(scrollKey)
+    if (savedScroll && router.isReady) {
+      const scrollY = parseInt(savedScroll, 10)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: 'auto' })
+        })
+      })
+    }
+
+    router.events.on('routeChangeStart', handleRouteChangeStart)
+    router.events.on('routeChangeComplete', handleRouteChangeComplete)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      router.events.off('routeChangeStart', handleRouteChangeStart)
+      router.events.off('routeChangeComplete', handleRouteChangeComplete)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [router.asPath, router.isReady, router.events])
+
   // Получаем текущую категорию с переводами из API
   const currentCategory = useMemo(() => {
     const routeSlug = Array.isArray(slug) ? slug[0] : slug
@@ -921,9 +995,10 @@ export default function CategoryPage({
     const currentQueryPage = router.isReady ? normalizePageParam(router.query.page) : safePage
     if (safePage !== currentQueryPage) {
       updatePageQuery(safePage)
-    }
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      // Скроллим в начало только при явной смене страницы пагинации
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
     }
   }
 
@@ -1450,3 +1525,4 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
   }
 }
+

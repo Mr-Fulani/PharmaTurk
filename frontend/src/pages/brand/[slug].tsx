@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import axios from 'axios'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import ProductCard from '../../components/ProductCard'
 import Sidebar from '../../components/Sidebar'
@@ -76,8 +76,86 @@ export default function BrandPage({
 
   const goToPage = (nextPage: number) => {
     const p = Math.min(Math.max(1, nextPage), totalPages)
-    router.push({ pathname: `/brand/${slug}`, query: { ...router.query, page: p } })
+    router.push(
+      { pathname: `/brand/${slug}`, query: { ...router.query, page: p } },
+      undefined,
+      { scroll: false }
+    )
   }
+
+  // Сохранение и восстановление позиции скролла при возврате на страницу
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const scrollKey = `scroll_${router.asPath}`
+    let shouldRestoreScroll = false
+    
+    // Сохраняем позицию скролла при уходе со страницы
+    const handleRouteChangeStart = (url: string) => {
+      if (url !== router.asPath) {
+        sessionStorage.setItem(scrollKey, String(window.scrollY))
+      }
+    }
+
+    const handleRouteChangeComplete = (url: string) => {
+      if (url === router.asPath) {
+        shouldRestoreScroll = true
+        const savedScroll = sessionStorage.getItem(scrollKey)
+        if (savedScroll) {
+          const scrollY = parseInt(savedScroll, 10)
+          // Используем requestAnimationFrame для восстановления после рендера
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              window.scrollTo({ top: scrollY, behavior: 'auto' })
+            })
+          })
+        }
+      }
+    }
+
+    const handleBeforeUnload = () => {
+      sessionStorage.setItem(scrollKey, String(window.scrollY))
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        sessionStorage.setItem(scrollKey, String(window.scrollY))
+      } else if (shouldRestoreScroll) {
+        const savedScroll = sessionStorage.getItem(scrollKey)
+        if (savedScroll) {
+          const scrollY = parseInt(savedScroll, 10)
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              window.scrollTo({ top: scrollY, behavior: 'auto' })
+            })
+          })
+        }
+      }
+    }
+
+    // Восстанавливаем позицию скролла при монтировании (если это возврат на страницу)
+    const savedScroll = sessionStorage.getItem(scrollKey)
+    if (savedScroll && router.isReady) {
+      const scrollY = parseInt(savedScroll, 10)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: 'auto' })
+        })
+      })
+    }
+
+    router.events.on('routeChangeStart', handleRouteChangeStart)
+    router.events.on('routeChangeComplete', handleRouteChangeComplete)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      router.events.off('routeChangeStart', handleRouteChangeStart)
+      router.events.off('routeChangeComplete', handleRouteChangeComplete)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [router.asPath, router.isReady, router.events])
 
   if (!brandData) {
     return <div>Бренд не найден</div>
@@ -355,3 +433,4 @@ export async function getServerSideProps(ctx: any) {
     }
   }
 }
+
