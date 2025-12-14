@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
+import { getLocalizedCategoryName, getLocalizedBrandName, CategoryTranslation, BrandTranslation } from '../lib/i18n'
 
 export interface SidebarTreeItem {
   id: string
@@ -42,6 +44,7 @@ interface Category {
   slug: string
   children_count?: number
   product_count?: number
+  translations?: CategoryTranslation[]
 }
 
 interface Brand {
@@ -50,6 +53,7 @@ interface Brand {
   slug: string
   logo?: string
   product_count?: number
+  translations?: BrandTranslation[]
 }
 
 interface CategorySidebarProps {
@@ -85,6 +89,7 @@ export default function CategorySidebar({
   categoryType
 }: CategorySidebarProps) {
   const { t } = useTranslation('common')
+  const router = useRouter()
   const defaultFilters: FilterState = {
     categories: [],
     categorySlugs: [],
@@ -249,7 +254,14 @@ export default function CategorySidebar({
             }}
             disabled={!item.dataId && !hasChildren}
           >
-            <span className="flex-1 truncate">{item.name}</span>
+            <span className="flex-1 truncate">
+              {item.slug && item.type === 'category' 
+                ? getLocalizedCategoryName(item.slug, item.name, t, undefined, router.locale)
+                : item.type === 'brand' && item.slug
+                ? getLocalizedBrandName(item.slug, item.name, t, undefined, router.locale)
+                : item.name
+              }
+            </span>
             {item.count !== undefined && <span className="ml-3 text-xs text-gray-500">({item.count})</span>}
             {hasChildren && (
               <svg
@@ -578,7 +590,9 @@ export default function CategorySidebar({
                         onChange={() => toggleCategoryFilter(category.id, ensureSlug(category.slug))}
                         className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
                       />
-                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{category.name}</span>
+                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">
+                        {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
+                      </span>
                       {category.product_count !== undefined && (
                         <span className="text-xs text-gray-500">({category.product_count})</span>
                       )}
@@ -615,7 +629,9 @@ export default function CategorySidebar({
                         onChange={() => toggleSubcategoryFilter(subcategory.id, ensureSlug(subcategory.slug))}
                         className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
                       />
-                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{subcategory.name}</span>
+                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">
+                        {getLocalizedCategoryName(subcategory.slug, subcategory.name, t, subcategory.translations, router.locale)}
+                      </span>
                       {subcategory.product_count !== undefined && (
                         <span className="text-xs text-gray-500">({subcategory.product_count})</span>
                       )}
@@ -665,7 +681,9 @@ export default function CategorySidebar({
                       />
                       <div className="flex items-center space-x-2 flex-1">
                         {/* Логотипы брендов временно скрыты по просьбе пользователя */}
-                        <span className="text-sm text-gray-700 group-hover:text-violet-700">{brand.name}</span>
+                        <span className="text-sm text-gray-700 group-hover:text-violet-700">
+                          {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
+                        </span>
                       </div>
                       {brand.product_count !== undefined && (
                         <span className="text-xs text-gray-500">({brand.product_count})</span>

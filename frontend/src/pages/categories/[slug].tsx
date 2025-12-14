@@ -288,7 +288,7 @@ const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => 
         usedCategoryIds.add(match.id)
         subcategories.push({
           id: `cat-${match.id}`,
-          name: itemStruct.name,
+          name: match.name, // Используем реальное название категории для локализации
           slug: match.slug,
           dataId: match.id,
           count: match.product_count,
@@ -423,7 +423,7 @@ const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] =>
         usedCategoryIds.add(match.id)
         subcategories.push({
           id: `med-${match.id}`,
-          name: itemStruct.name,
+          name: match.name, // Используем реальное название категории для локализации
           slug: match.slug,
           dataId: match.id,
           count: match.product_count,

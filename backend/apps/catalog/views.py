@@ -47,7 +47,7 @@ class StandardPagination(PageNumberPagination):
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями."""
     
-    queryset = Category.objects.filter(is_active=True).select_related('category_type')
+    queryset = Category.objects.filter(is_active=True).select_related('category_type').prefetch_related('translations')
     serializer_class = CategorySerializer
     pagination_class = StandardPagination
 
@@ -87,7 +87,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
         - parent_slug            — вернуть только детей указанного родителя (slug).
         - parent_id              — вернуть только детей указанного родителя (id).
         """
-        base_qs = Category.objects.filter(is_active=True).order_by('sort_order', 'name')
+        base_qs = Category.objects.filter(is_active=True).select_related('category_type').prefetch_related('translations').order_by('sort_order', 'name')
 
         # Явный запрос "все категории"
         if self._parse_bool(self.request.query_params.get('all')) is True:
@@ -159,7 +159,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     def children(self, request, pk=None):
         """Получить подкатегории."""
         category = self.get_object()
-        children = Category.objects.filter(parent=category, is_active=True)
+        children = Category.objects.filter(parent=category, is_active=True).select_related('category_type').prefetch_related('translations')
         serializer = self.get_serializer(children, many=True)
         return Response(serializer.data)
 
