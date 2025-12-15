@@ -19,6 +19,14 @@ export interface BrandTranslation {
 }
 
 /**
+ * Интерфейс для перевода товара из API
+ */
+export interface ProductTranslation {
+  locale: string
+  description?: string
+}
+
+/**
  * Нормализует slug категории для использования в ключах локализации
  * Заменяет подчеркивания на дефисы и приводит к нижнему регистру
  */
@@ -256,4 +264,42 @@ export function getLocalizedColor(color: string, t: TFunction): string {
   
   // Иначе возвращаем оригинальное название
   return color
+}
+
+/**
+ * Получает локализованное описание товара
+ * Приоритет: 1) API переводы, 2) fallback (описание с бэкенда)
+ * 
+ * @param fallbackDescription - описание с бэкенда (используется если перевода нет)
+ * @param t - функция перевода из next-i18next
+ * @param translations - переводы из API (опционально)
+ * @param currentLocale - текущий язык (опционально, по умолчанию из t)
+ * @returns локализованное описание или fallback
+ */
+export function getLocalizedProductDescription(
+  fallbackDescription: string | null | undefined,
+  t: TFunction,
+  translations?: ProductTranslation[],
+  currentLocale?: string
+): string {
+  if (!fallbackDescription) return ''
+  
+  // Получаем текущий язык из роутера или из пути
+  let locale = currentLocale
+  if (!locale && typeof window !== 'undefined') {
+    const pathLocale = window.location.pathname.split('/')[1]
+    locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
+  }
+  locale = locale || 'ru'
+  
+  // Проверяем переводы из API
+  if (translations && translations.length > 0) {
+    const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
+    if (apiTranslation && apiTranslation.description) {
+      return apiTranslation.description
+    }
+  }
+  
+  // Fallback на описание с бэкенда
+  return fallbackDescription
 }

@@ -8,8 +8,10 @@ from apps.catalog.models import (
     ClothingProduct,
     ShoeProduct,
     ElectronicsProduct,
+    FurnitureProduct,
     ClothingVariant,
     ShoeVariant,
+    FurnitureVariant,
 )
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
 
@@ -17,6 +19,7 @@ VARIANT_MODEL_MAP = {
     'clothing': ClothingVariant,
     'shoes': ShoeVariant,
     'electronics': ElectronicsProduct,
+    'furniture': FurnitureVariant,
 }
 
 PRODUCT_TYPE_ALIASES = {

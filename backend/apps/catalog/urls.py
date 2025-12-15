@@ -8,6 +8,8 @@ from .views import (
     ClothingCategoryViewSet, ClothingProductViewSet,
     ShoeCategoryViewSet, ShoeProductViewSet,
     ElectronicsCategoryViewSet, ElectronicsProductViewSet,
+    FurnitureProductViewSet,
+    ServiceViewSet,
     BannerViewSet
 )
 
@@ -34,6 +36,14 @@ electronics_router = DefaultRouter(trailing_slash=False)
 electronics_router.register(r'categories', ElectronicsCategoryViewSet, basename='electronics-category')
 electronics_router.register(r'products', ElectronicsProductViewSet, basename='electronics-product')
 
+# Роутер для мебели
+furniture_router = DefaultRouter(trailing_slash=False)
+furniture_router.register(r'products', FurnitureProductViewSet, basename='furniture-product')
+
+# Роутер для услуг
+services_router = DefaultRouter(trailing_slash=False)
+services_router.register(r'services', ServiceViewSet, basename='service')
+
 urlpatterns = [
     # Основные маршруты для медикаментов
     path('', include(router.urls)),
@@ -46,4 +56,10 @@ urlpatterns = [
     
     # Маршруты для электроники
     path('electronics/', include(electronics_router.urls)),
+    
+    # Маршруты для мебели
+    path('furniture/', include(furniture_router.urls)),
+    
+    # Маршруты для услуг
+    path('', include(services_router.urls)),
 ]

@@ -686,6 +686,55 @@ class Product(models.Model):
     def __str__(self):
         return self.name
 
+    def get_translated_description(self, locale: str = 'ru') -> str:
+        """Получает переведенное описание товара."""
+        translation = self.translations.filter(locale=locale).first()
+        if translation and translation.description:
+            return translation.description
+        return self.description or ''
+
+
+class ProductTranslation(models.Model):
+    """Переводы для товаров."""
+    
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+    ]
+    
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='translations',
+        verbose_name=_("Товар")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default='ru',
+        db_index=True
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+        help_text=_("Переведенное описание товара")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Перевод товара")
+        verbose_name_plural = _("Переводы товаров")
+        unique_together = [['product', 'locale']]
+        ordering = ['product', 'locale']
+        indexes = [
+            models.Index(fields=['product', 'locale']),
+        ]
+    
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
 
 class ProductMedicines(Product):
     class Meta:
@@ -1113,6 +1162,55 @@ class ClothingProduct(models.Model):
     def __str__(self):
         return self.name
 
+    def get_translated_description(self, locale: str = 'ru') -> str:
+        """Получает переведенное описание товара одежды."""
+        translation = self.translations.filter(locale=locale).first()
+        if translation and translation.description:
+            return translation.description
+        return self.description or ''
+
+
+class ClothingProductTranslation(models.Model):
+    """Переводы для товаров одежды."""
+    
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+    ]
+    
+    product = models.ForeignKey(
+        ClothingProduct,
+        on_delete=models.CASCADE,
+        related_name='translations',
+        verbose_name=_("Товар одежды")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default='ru',
+        db_index=True
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+        help_text=_("Переведенное описание товара одежды")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Перевод товара одежды")
+        verbose_name_plural = _("Переводы товаров одежды")
+        unique_together = [['product', 'locale']]
+        ordering = ['product', 'locale']
+        indexes = [
+            models.Index(fields=['product', 'locale']),
+        ]
+    
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
 
 class ClothingProductImage(models.Model):
     """Изображение товара одежды."""
@@ -1264,6 +1362,55 @@ class ShoeProduct(models.Model):
 
     def __str__(self):
         return self.name
+
+    def get_translated_description(self, locale: str = 'ru') -> str:
+        """Получает переведенное описание товара обуви."""
+        translation = self.translations.filter(locale=locale).first()
+        if translation and translation.description:
+            return translation.description
+        return self.description or ''
+
+
+class ShoeProductTranslation(models.Model):
+    """Переводы для товаров обуви."""
+    
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+    ]
+    
+    product = models.ForeignKey(
+        ShoeProduct,
+        on_delete=models.CASCADE,
+        related_name='translations',
+        verbose_name=_("Товар обуви")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default='ru',
+        db_index=True
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+        help_text=_("Переведенное описание товара обуви")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Перевод товара обуви")
+        verbose_name_plural = _("Переводы товаров обуви")
+        unique_together = [['product', 'locale']]
+        ordering = ['product', 'locale']
+        indexes = [
+            models.Index(fields=['product', 'locale']),
+        ]
+    
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
 
 
 class ShoeProductImage(models.Model):
@@ -1509,6 +1656,188 @@ class ElectronicsProduct(models.Model):
     def __str__(self):
         return self.name
 
+    def get_translated_description(self, locale: str = 'ru') -> str:
+        """Получает переведенное описание товара электроники."""
+        translation = self.translations.filter(locale=locale).first()
+        if translation and translation.description:
+            return translation.description
+        return self.description or ''
+
+
+class ElectronicsProductTranslation(models.Model):
+    """Переводы для товаров электроники."""
+    
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+    ]
+    
+    product = models.ForeignKey(
+        ElectronicsProduct,
+        on_delete=models.CASCADE,
+        related_name='translations',
+        verbose_name=_("Товар электроники")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default='ru',
+        db_index=True
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+        help_text=_("Переведенное описание товара электроники")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Перевод товара электроники")
+        verbose_name_plural = _("Переводы товаров электроники")
+        unique_together = [['product', 'locale']]
+        ordering = ['product', 'locale']
+        indexes = [
+            models.Index(fields=['product', 'locale']),
+        ]
+    
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class Service(models.Model):
+    """Услуга (не товар, а услуга)."""
+    
+    # Основная информация
+    name = models.CharField(_("Название услуги"), max_length=500)
+    slug = models.SlugField(_("Slug"), max_length=500, unique=True)
+    description = models.TextField(_("Описание"), blank=True)
+    
+    # Категоризация
+    category = models.ForeignKey(
+        Category, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="services",
+        verbose_name=_("Категория")
+    )
+    
+    # Цена и валюта
+    price = models.DecimalField(
+        _("Цена"), 
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        validators=[MinValueValidator(0)],
+        help_text=_("Стоимость услуги")
+    )
+    currency = models.CharField(
+        _("Валюта"),
+        max_length=5,
+        choices=CURRENCY_CHOICES,
+        default="RUB",
+    )
+    
+    # Специфичные для услуг поля
+    duration = models.CharField(
+        _("Длительность"),
+        max_length=100,
+        blank=True,
+        help_text=_("Например: '1 час', '30 минут', '1 день'")
+    )
+    service_type = models.CharField(
+        _("Тип услуги"),
+        max_length=100,
+        blank=True,
+        help_text=_("Например: 'Консультация', 'Диагностика', 'Лечение'")
+    )
+    
+    # Изображения
+    main_image = models.URLField(
+        _("Главное изображение"),
+        blank=True,
+        help_text=_("URL основного изображения (ссылка на CDN или внутреннее хранилище).")
+    )
+    
+    # Внешние данные
+    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    
+    # Статус
+    is_active = models.BooleanField(_("Активна"), default=True)
+    is_featured = models.BooleanField(_("Рекомендуемая"), default=False)
+    
+    # Временные метки
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Услуга")
+        verbose_name_plural = _("Услуги")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active"]),
+            models.Index(fields=["category"]),
+            models.Index(fields=["price"]),
+        ]
+    
+    def __str__(self):
+        return self.name
+
+    def get_translated_description(self, locale: str = 'ru') -> str:
+        """Получает переведенное описание услуги."""
+        translation = self.translations.filter(locale=locale).first()
+        if translation and translation.description:
+            return translation.description
+        return self.description or ''
+
+
+class ServiceTranslation(models.Model):
+    """Переводы для услуг."""
+    
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+    ]
+    
+    service = models.ForeignKey(
+        Service,
+        on_delete=models.CASCADE,
+        related_name='translations',
+        verbose_name=_("Услуга")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default='ru',
+        db_index=True
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+        help_text=_("Переведенное описание услуги")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Перевод услуги")
+        verbose_name_plural = _("Переводы услуг")
+        unique_together = [['service', 'locale']]
+        ordering = ['service', 'locale']
+        indexes = [
+            models.Index(fields=['service', 'locale']),
+        ]
+    
+    def __str__(self):
+        return f"{self.service.name} ({self.get_locale_display()})"
+
 
 class ElectronicsProductImage(models.Model):
     """Изображение товара электроники."""
@@ -1538,6 +1867,226 @@ class ElectronicsProductImage(models.Model):
 
     def __str__(self):
         return f"Изображение {self.product.name}"
+
+
+class FurnitureProduct(models.Model):
+    """Товар мебели."""
+    
+    # Основная информация
+    name = models.CharField(_("Название"), max_length=500)
+    slug = models.SlugField(_("Slug"), max_length=500, unique=True)
+    description = models.TextField(_("Описание"), blank=True)
+    
+    # Категоризация
+    category = models.ForeignKey(
+        Category, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="furniture_products",
+        verbose_name=_("Категория")
+    )
+    brand = models.ForeignKey(
+        Brand, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name="furniture_products",
+        verbose_name=_("Бренд")
+    )
+    
+    # Цена
+    price = models.DecimalField(
+        _("Цена"), 
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        validators=[MinValueValidator(0)]
+    )
+    currency = models.CharField(
+        _("Валюта"),
+        max_length=5,
+        choices=CURRENCY_CHOICES,
+        default="RUB",
+    )
+    old_price = models.DecimalField(
+        _("Старая цена"), 
+        max_digits=10, 
+        decimal_places=2, 
+        null=True, 
+        blank=True,
+        validators=[MinValueValidator(0)]
+    )
+    
+    # Специфичные для мебели поля
+    material = models.CharField(_("Материал"), max_length=100, blank=True)
+    furniture_type = models.CharField(_("Тип мебели"), max_length=100, blank=True, help_text=_("Например: диван, стол, стул"))
+    dimensions = models.CharField(_("Размеры"), max_length=200, blank=True, help_text=_("Например: 200x100x80 см"))
+    
+    # Наличие и статус
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
+    
+    # Изображения
+    main_image = models.URLField(_("Главное изображение"), blank=True)
+    
+    # Внешние данные
+    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    
+    # Статус
+    is_active = models.BooleanField(_("Активен"), default=True)
+    is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
+    
+    # Временные метки
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Товар мебели")
+        verbose_name_plural = _("Товары мебели")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def get_translated_description(self, locale: str = 'ru') -> str:
+        """Получает переведенное описание товара мебели."""
+        translation = self.translations.filter(locale=locale).first()
+        if translation and translation.description:
+            return translation.description
+        return self.description or ''
+
+
+class FurnitureProductTranslation(models.Model):
+    """Переводы для товаров мебели."""
+    
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+    ]
+    
+    product = models.ForeignKey(
+        FurnitureProduct,
+        on_delete=models.CASCADE,
+        related_name='translations',
+        verbose_name=_("Товар мебели")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default='ru',
+        db_index=True
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+        help_text=_("Переведенное описание товара мебели")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Перевод товара мебели")
+        verbose_name_plural = _("Переводы товаров мебели")
+        unique_together = [['product', 'locale']]
+        ordering = ['product', 'locale']
+        indexes = [
+            models.Index(fields=['product', 'locale']),
+        ]
+    
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class FurnitureVariant(models.Model):
+    """Вариант мебели (цвет, цены, остаток, галерея)."""
+    
+    product = models.ForeignKey(
+        FurnitureProduct,
+        on_delete=models.CASCADE,
+        related_name="variants",
+        verbose_name=_("Товар мебели (родитель)")
+    )
+    name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/цвету, можно переопределить."))
+    color = models.CharField(_("Цвет"), max_length=50, blank=True)
+    sku = models.CharField(_("SKU"), max_length=100, blank=True)
+    barcode = models.CharField(_("Штрихкод"), max_length=100, blank=True)
+    gtin = models.CharField(_("GTIN"), max_length=100, blank=True)
+    mpn = models.CharField(_("MPN"), max_length=100, blank=True)
+    price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    currency = models.CharField(_("Валюта"), max_length=5, choices=CURRENCY_CHOICES, default="RUB")
+    old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Вариант мебели")
+        verbose_name_plural = _("Варианты мебели")
+        ordering = ["product", "sort_order", "-created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["slug"]),
+            models.Index(fields=["is_active", "is_available"]),
+        ]
+
+    def __str__(self):
+        base = self.name or self.product.name
+        attrs = f"{self.color or ''}".strip()
+        return f"{base} ({attrs})" if attrs else base
+
+    def save(self, *args, **kwargs):
+        """Автогенерация slug, если не заполнен."""
+        if not self.slug:
+            base_name = self.name or self.product.name
+            composed = f"{base_name}-{self.color or ''}".strip()
+            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+        super().save(*args, **kwargs)
+
+
+class FurnitureVariantImage(models.Model):
+    """Изображение варианта мебели."""
+    
+    variant = models.ForeignKey(
+        FurnitureVariant,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Вариант мебели")
+    )
+    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение варианта мебели")
+        verbose_name_plural = _("Изображения вариантов мебели")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["variant", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение варианта {self.variant}"
 
 
 class Banner(models.Model):

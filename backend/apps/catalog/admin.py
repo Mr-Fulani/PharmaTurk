@@ -11,13 +11,15 @@ from .models import (
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
     CategoryUnderwear, CategoryHeadwear, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
-    Brand, BrandTranslation, MarketingBrand, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
+    Brand, BrandTranslation, MarketingBrand, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ProductMedicines, ProductSupplements, ProductMedicalEquipment,
     ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
     ProductUnderwear, ProductHeadwear,
-    ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
-    ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
-    ElectronicsProduct, ElectronicsProductImage,
+    ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
+    ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
+    ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
+    FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
+    Service, ServiceTranslation,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia
 )
 
@@ -100,6 +102,91 @@ class BrandTranslationInline(admin.TabularInline):
     model = BrandTranslation
     extra = 1
     fields = ('locale', 'name', 'description')
+
+
+class ProductTranslationInline(admin.TabularInline):
+    """Inline для редактирования переводов товаров."""
+    model = ProductTranslation
+    extra = 1
+    fields = ('locale', 'description')
+    verbose_name = _("Перевод")
+    verbose_name_plural = _("Переводы")
+
+
+class ClothingProductTranslationInline(admin.TabularInline):
+    """Inline для редактирования переводов товаров одежды."""
+    model = ClothingProductTranslation
+    extra = 1
+    fields = ('locale', 'description')
+    verbose_name = _("Перевод")
+    verbose_name_plural = _("Переводы")
+
+
+class ShoeProductTranslationInline(admin.TabularInline):
+    """Inline для редактирования переводов товаров обуви."""
+    model = ShoeProductTranslation
+    extra = 1
+    fields = ('locale', 'description')
+    verbose_name = _("Перевод")
+    verbose_name_plural = _("Переводы")
+
+
+class ElectronicsProductTranslationInline(admin.TabularInline):
+    """Inline для редактирования переводов товаров электроники."""
+    model = ElectronicsProductTranslation
+    extra = 1
+    fields = ('locale', 'description')
+    verbose_name = _("Перевод")
+    verbose_name_plural = _("Переводы")
+
+
+class FurnitureProductTranslationInline(admin.TabularInline):
+    """Inline для редактирования переводов товаров мебели."""
+    model = FurnitureProductTranslation
+    extra = 1
+    fields = ('locale', 'description')
+    verbose_name = _("Перевод")
+    verbose_name_plural = _("Переводы")
+
+
+class FurnitureVariantInline(admin.TabularInline):
+    """Инлайн для вариантов мебели (основные поля)."""
+    model = FurnitureVariant
+    extra = 0
+    fields = (
+        'name', 'slug',
+        'color',
+        'price', 'currency',
+        'main_image',
+        'is_active', 'sort_order',
+    )
+    readonly_fields = ('slug',)
+    show_change_link = True
+
+
+class FurnitureVariantImageInline(admin.TabularInline):
+    """Инлайн изображений варианта мебели."""
+    model = FurnitureVariantImage
+    extra = 1
+    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
+    
+    def image_preview(self, obj):
+        """Превью изображения."""
+        if obj and obj.image_url:
+            return format_html(
+                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                obj.image_url
+            )
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
+class ServiceTranslationInline(admin.TabularInline):
+    """Inline для редактирования переводов услуг."""
+    model = ServiceTranslation
+    extra = 1
+    fields = ('locale', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -418,7 +505,7 @@ class BaseProductAdmin(admin.ModelAdmin):
         (_('Синхронизация'), {'fields': ('last_synced_at',)}),
     )
     
-    inlines = [ProductImageInline, ProductAttributeInline]
+    inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeInline]
 
     def slug_preview(self, obj):
         """Предпросмотр slug."""
@@ -433,6 +520,7 @@ class BaseProductProxyAdmin(BaseProductAdmin):
     required_product_type: str | None = None
     exclude = ('product_type',)
     autocomplete_fields = ('brand',)  # убираем category из autocomplete, чтобы избежать admin.E039
+    inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeInline]
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -654,7 +742,7 @@ class ClothingProductAdmin(admin.ModelAdmin):
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ClothingVariantInline, ClothingProductImageInline]
+    inlines = [ClothingProductTranslationInline, ClothingVariantInline, ClothingProductImageInline]
 
 
 @admin.register(CategoryShoes)
@@ -755,7 +843,7 @@ class ShoeProductAdmin(admin.ModelAdmin):
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     # Галерея для обуви теперь задается на уровне варианта (цвета), поэтому инлайн изображений товара убран
-    inlines = [ShoeVariantInline]
+    inlines = [ShoeProductTranslationInline, ShoeVariantInline]
 
 
 @admin.register(CategoryElectronics)
@@ -800,7 +888,72 @@ class ElectronicsProductAdmin(admin.ModelAdmin):
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ElectronicsProductImageInline]
+    inlines = [ElectronicsProductTranslationInline, ElectronicsProductImageInline]
+
+
+@admin.register(FurnitureVariant)
+class FurnitureVariantAdmin(admin.ModelAdmin):
+    """Отдельная админка варианта мебели (для картинок)."""
+    list_display = ('name', 'product', 'color', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'color', 'currency', 'created_at')
+    search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
+    ordering = ('product', 'sort_order', '-created_at')
+    readonly_fields = ('slug',)
+    fieldsets = (
+        (None, {'fields': ('product', 'name', 'slug')}),
+        (_('Характеристики'), {
+            'fields': ('color',),
+        }),
+        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
+        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
+        (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
+        (_('Статус'), {'fields': ('is_active', 'sort_order')}),
+    )
+    inlines = [FurnitureVariantImageInline]
+
+
+@admin.register(FurnitureProduct)
+class FurnitureProductAdmin(admin.ModelAdmin):
+    """Админка для товаров мебели."""
+    list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_featured', 'category', 'brand', 'furniture_type', 'currency', 'created_at')
+    search_fields = ('name', 'slug', 'description', 'material', 'furniture_type')
+    ordering = ('-created_at',)
+    prepopulated_fields = {'slug': ('name',)}
+    
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Categorization'), {'fields': ('category', 'brand')}),
+        (_('Furniture'), {'fields': ('material', 'furniture_type', 'dimensions')}),
+        (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
+        (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('Media'), {'fields': ('main_image',)}),
+        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
+        (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
+    )
+    inlines = [FurnitureProductTranslationInline, FurnitureVariantInline]
+
+
+@admin.register(Service)
+class ServiceAdmin(admin.ModelAdmin):
+    """Админка для услуг."""
+    list_display = ('name', 'slug', 'category', 'service_type', 'price', 'currency', 'duration', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_featured', 'category', 'service_type', 'currency', 'created_at')
+    search_fields = ('name', 'slug', 'description', 'service_type')
+    ordering = ('-created_at',)
+    prepopulated_fields = {'slug': ('name',)}
+    
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Categorization'), {'fields': ('category',)}),
+        (_('Service'), {'fields': ('service_type', 'duration')}),
+        (_('Pricing'), {'fields': ('price', 'currency')}),
+        (_('Media'), {'fields': ('main_image',)}),
+        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
+        (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
+    )
+    inlines = [ServiceTranslationInline]
 
 
 class BannerMediaInline(admin.StackedInline):

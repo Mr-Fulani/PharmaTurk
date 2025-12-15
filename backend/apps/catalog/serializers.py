@@ -3,10 +3,12 @@
 from django.db.models import Count
 from rest_framework import serializers
 from .models import (
-    Category, CategoryTranslation, Brand, BrandTranslation, Product, ProductImage, ProductAttribute, PriceHistory, Favorite,
-    ClothingProduct, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
-    ShoeProduct, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
-    ElectronicsProduct, ElectronicsProductImage,
+    Category, CategoryTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
+    ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
+    ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
+    ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
+    FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
+    Service, ServiceTranslation,
     Banner, BannerMedia
 )
 
@@ -25,6 +27,54 @@ class BrandTranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = BrandTranslation
         fields = ['locale', 'name', 'description']
+
+
+class ProductTranslationSerializer(serializers.ModelSerializer):
+    """Сериализатор для переводов товаров."""
+    
+    class Meta:
+        model = ProductTranslation
+        fields = ['locale', 'description']
+
+
+class FurnitureProductTranslationSerializer(serializers.ModelSerializer):
+    """Сериализатор для переводов товаров мебели."""
+    
+    class Meta:
+        model = FurnitureProductTranslation
+        fields = ['locale', 'description']
+
+
+class ServiceTranslationSerializer(serializers.ModelSerializer):
+    """Сериализатор для переводов услуг."""
+    
+    class Meta:
+        model = ServiceTranslation
+        fields = ['locale', 'description']
+
+
+class ClothingProductTranslationSerializer(serializers.ModelSerializer):
+    """Сериализатор для переводов товаров одежды."""
+    
+    class Meta:
+        model = ClothingProductTranslation
+        fields = ['locale', 'description']
+
+
+class ShoeProductTranslationSerializer(serializers.ModelSerializer):
+    """Сериализатор для переводов товаров обуви."""
+    
+    class Meta:
+        model = ShoeProductTranslation
+        fields = ['locale', 'description']
+
+
+class ElectronicsProductTranslationSerializer(serializers.ModelSerializer):
+    """Сериализатор для переводов товаров электроники."""
+    
+    class Meta:
+        model = ElectronicsProductTranslation
+        fields = ['locale', 'description']
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -204,6 +254,7 @@ class ProductSerializer(serializers.ModelSerializer):
     main_image_url = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
+    translations = ProductTranslationSerializer(many=True, read_only=True)
     
     class Meta:
         model = Product
@@ -221,7 +272,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
             'main_image_url',
-            'is_featured', 'created_at', 'updated_at'
+            'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -335,6 +386,9 @@ class FavoriteSerializer(serializers.ModelSerializer):
         elif isinstance(product, ElectronicsProduct):
             product_type = 'electronics'
             product_data = ElectronicsProductSerializer(product).data
+        elif isinstance(product, FurnitureProduct):
+            product_type = 'furniture'
+            product_data = FurnitureProductSerializer(product).data
         elif isinstance(product, Product):
             # Для Product нужно определить подтип по категории или другим признакам
             # Пока используем 'medicines' как базовый тип
@@ -368,13 +422,12 @@ class AddToFavoriteSerializer(serializers.Serializer):
         product_type = attrs.get('product_type', 'medicines')
         
         # Маппинг типов товаров на модели
-        from .models import Product, ClothingProduct, ShoeProduct, ElectronicsProduct
+        from .models import Product, ClothingProduct, ShoeProduct, ElectronicsProduct, FurnitureProduct
         
         PRODUCT_MODEL_MAP = {
             'medicines': Product,
             'supplements': Product,
             'medical_equipment': Product,
-            'furniture': Product,
             'tableware': Product,
             'accessories': Product,
             'jewelry': Product,
@@ -383,6 +436,7 @@ class AddToFavoriteSerializer(serializers.Serializer):
             'clothing': ClothingProduct,
             'shoes': ShoeProduct,
             'electronics': ElectronicsProduct,
+            'furniture': FurnitureProduct,
         }
         
         model_class = PRODUCT_MODEL_MAP.get(product_type, Product)
@@ -500,6 +554,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     active_variant_currency = serializers.SerializerMethodField()
     active_variant_stock_quantity = serializers.SerializerMethodField()
     active_variant_main_image_url = serializers.SerializerMethodField()
+    translations = ClothingProductTranslationSerializer(many=True, read_only=True)
     
     class Meta:
         model = ClothingProduct
@@ -512,7 +567,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url',
-            'is_featured', 'created_at', 'updated_at'
+            'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -669,6 +724,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     active_variant_currency = serializers.SerializerMethodField()
     active_variant_stock_quantity = serializers.SerializerMethodField()
     active_variant_main_image_url = serializers.SerializerMethodField()
+    translations = ShoeProductTranslationSerializer(many=True, read_only=True)
     
     class Meta:
         model = ShoeProduct
@@ -681,7 +737,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url',
-            'is_featured', 'created_at', 'updated_at'
+            'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -884,6 +940,7 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    translations = ElectronicsProductTranslationSerializer(many=True, read_only=True)
     
     class Meta:
         model = ElectronicsProduct
@@ -893,7 +950,7 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
             'currency', 'model', 'specifications', 'warranty', 'power_consumption',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
             'images',
-            'is_featured', 'created_at', 'updated_at'
+            'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -933,6 +990,211 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
         if not gallery:
             return []
         return ElectronicsProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+
+
+# ============================================================================
+# СЕРИАЛИЗАТОРЫ ДЛЯ МЕБЕЛИ
+# ============================================================================
+
+class FurnitureVariantImageSerializer(serializers.ModelSerializer):
+    """Сериализатор изображений варианта мебели."""
+
+    class Meta:
+        model = FurnitureVariantImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+
+class FurnitureVariantSerializer(serializers.ModelSerializer):
+    """Сериализатор для вариантов мебели."""
+
+    images = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FurnitureVariant
+        fields = [
+            'id', 'name', 'slug', 'color',
+            'price', 'old_price', 'currency',
+            'is_available', 'stock_quantity',
+            'main_image', 'images',
+            'sku', 'barcode', 'gtin', 'mpn',
+            'is_active', 'sort_order',
+        ]
+        read_only_fields = ['id', 'slug', 'sort_order']
+
+    def get_images(self, obj):
+        """Галерея изображений варианта."""
+        gallery = getattr(obj, "images", None)
+        if not gallery:
+            return []
+        return FurnitureVariantImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+
+
+class FurnitureProductSerializer(serializers.ModelSerializer):
+    """Сериализатор для товаров мебели (краткая информация)."""
+    
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
+    translations = FurnitureProductTranslationSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = FurnitureProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'price', 'price_formatted', 'old_price', 'old_price_formatted',
+            'currency', 'material', 'furniture_type', 'dimensions',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url',
+            'images',
+            'variants', 'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url',
+            'is_featured', 'created_at', 'updated_at', 'translations'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_main_image_url(self, obj):
+        """URL главного изображения."""
+        if obj.main_image:
+            return obj.main_image
+        # Пробуем активный вариант
+        variant = self._get_active_variant(obj)
+        if variant:
+            if variant.main_image:
+                return variant.main_image
+            v_main = variant.images.filter(is_main=True).first()
+            if v_main:
+                return v_main.image_url
+            v_first = variant.images.first()
+            if v_first:
+                return v_first.image_url
+        return None
+    
+    def get_price_formatted(self, obj):
+        """Форматированная цена."""
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return f"{variant.price} {variant.currency}"
+        if obj.price is not None:
+            return f"{obj.price} {obj.currency}"
+        return None
+    
+    def get_old_price_formatted(self, obj):
+        """Форматированная старая цена."""
+        variant = self._get_active_variant(obj)
+        if variant and variant.old_price is not None:
+            return f"{variant.old_price} {variant.currency}"
+        if obj.old_price is not None:
+            return f"{obj.old_price} {obj.currency}"
+        return None
+
+    def get_images(self, obj):
+        """Галерея изображений."""
+        variant = self._get_active_variant(obj)
+        if variant:
+            return FurnitureVariantImageSerializer(variant.images.all().order_by("sort_order"), many=True).data
+        return []
+
+    def _get_default_variant(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return None
+        return variants.filter(is_active=True).order_by("sort_order", "id").first()
+
+    def _get_active_variant(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return None
+        active_slug = self.context.get("active_variant_slug")
+        if active_slug:
+            return variants.filter(slug=active_slug, is_active=True).first()
+        return self._get_default_variant(obj)
+
+    def get_variants(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return []
+        qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images")
+        return FurnitureVariantSerializer(qs, many=True).data
+
+    def get_default_variant_slug(self, obj):
+        variant = self._get_default_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_slug(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_price(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return f"{variant.price} {variant.currency}"
+        return None
+
+    def get_active_variant_currency(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.currency if variant else None
+
+    def get_active_variant_stock_quantity(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.stock_quantity if variant else None
+
+    def get_active_variant_main_image_url(self, obj):
+        variant = self._get_active_variant(obj)
+        if not variant:
+            return None
+        if variant.main_image:
+            return variant.main_image
+        main_img = variant.images.filter(is_main=True).first()
+        if main_img:
+            return main_img.image_url
+        first_img = variant.images.first()
+        if first_img:
+            return first_img.image_url
+        return None
+
+
+# ============================================================================
+# СЕРИАЛИЗАТОРЫ ДЛЯ УСЛУГ
+# ============================================================================
+
+class ServiceSerializer(serializers.ModelSerializer):
+    """Сериализатор для услуг."""
+    
+    category = CategorySerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    translations = ServiceTranslationSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Service
+        fields = [
+            'id', 'name', 'slug', 'description', 'category',
+            'price', 'price_formatted', 'currency',
+            'duration', 'service_type',
+            'main_image', 'main_image_url',
+            'is_active', 'is_featured', 'created_at', 'updated_at', 'translations'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_main_image_url(self, obj):
+        """URL главного изображения."""
+        return obj.main_image if obj.main_image else None
+    
+    def get_price_formatted(self, obj):
+        """Форматированная цена."""
+        if obj.price is not None:
+            return f"{obj.price} {obj.currency}"
+        return None
 
 
 class BannerMediaSerializer(serializers.ModelSerializer):

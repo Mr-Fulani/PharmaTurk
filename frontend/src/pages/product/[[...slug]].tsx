@@ -10,7 +10,8 @@ import FavoriteButton from '../../components/FavoriteButton'
 import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
-import { getLocalizedColor } from '../../lib/i18n'
+import { getLocalizedColor, getLocalizedProductDescription, ProductTranslation } from '../../lib/i18n'
+import { useTheme } from '../../context/ThemeContext'
 
 type CategoryType =
   | 'medicines'
@@ -89,6 +90,7 @@ interface Product {
   active_variant_currency?: string | null
   active_variant_stock_quantity?: number | null
   active_variant_main_image_url?: string | null
+  translations?: ProductTranslation[]
 }
 
 interface Variant {
@@ -172,6 +174,7 @@ export default function ProductPage({
   }
 
   const router = useRouter()
+  const { theme } = useTheme()
   const gallerySource = selectedVariant?.images?.length ? selectedVariant.images : (product.images || [])
   const initialImage =
     selectedVariant?.main_image ||
@@ -296,15 +299,28 @@ export default function ProductPage({
             </div>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{product.name}</h1>
-            <div className="mt-3 text-xl font-semibold text-gray-900 dark:text-white">
+            <h1 
+              className="text-2xl font-bold"
+              style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
+            >
+              {product.name}
+            </h1>
+            <div 
+              className="mt-3 text-xl font-semibold"
+              style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
+            >
               {displayPrice || t('price_on_request')}
             </div>
             {(colors.length > 0 || sizesForColor.length > 0) && (
               <div className="mt-4 flex flex-col gap-4">
                 {colors.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <span className="text-sm text-gray-700 dark:text-gray-200">{t('color', 'Цвет')}</span>
+                    <span 
+                      className="text-sm font-semibold"
+                      style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
+                    >
+                      {t('color', 'Цвет')}
+                    </span>
                     <div className="flex flex-wrap gap-2">
                       {colors.map((c) => {
                         const isActive = c === selectedColor
@@ -330,7 +346,12 @@ export default function ProductPage({
                 )}
                 {sizesForColor.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <span className="text-sm text-gray-700 dark:text-gray-200">{t('size', 'Размер')}</span>
+                    <span 
+                      className="text-sm font-semibold"
+                      style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
+                    >
+                      {t('size', 'Размер')}
+                    </span>
                     <div className="flex flex-wrap gap-2">
                       {sizesForColor.map((s) => {
                         const sizeValue = s.size || ''
@@ -364,7 +385,12 @@ export default function ProductPage({
             
             {/* Селектор количества */}
             <div className="mt-4 flex flex-col gap-2">
-              <span className="text-sm text-gray-700 dark:text-gray-200">{t('quantity', 'Количество')}</span>
+              <span 
+                className="text-sm font-semibold"
+                style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
+              >
+                {t('quantity', 'Количество')}
+              </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setQuantity(Math.max(1, quantity - 1))}
@@ -376,7 +402,10 @@ export default function ProductPage({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                   </svg>
                 </button>
-                <span className="min-w-[3rem] text-center text-base font-medium text-gray-900 dark:text-white">
+                <span 
+                  className="min-w-[3rem] text-center text-2xl font-extrabold"
+                  style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
+                >
                   {quantity}
                 </span>
                 <button
@@ -427,26 +456,58 @@ export default function ProductPage({
         </div>
 
         {/* Описание товара - на всю ширину */}
-        <div className="mt-6 rounded-lg border border-gray-200 bg-white overflow-hidden w-full">
+        <div 
+          className="mt-6 rounded-lg border dark:border-gray-700 overflow-hidden w-full"
+          style={{ 
+            borderColor: theme === 'dark' ? '#374151' : '#E5E7EB',
+            backgroundColor: theme === 'dark' ? '#1F2937' : '#FFF8E7'
+          }}
+        >
           <button
             onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-            className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center justify-between p-4 text-left transition-colors"
+            style={{ 
+              backgroundColor: 'transparent'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = theme === 'dark' ? '#374151' : '#FFF5DC'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent'
+            }}
           >
-            <span className="font-medium text-gray-900">{t('description', 'Описание')}</span>
+            <span 
+              className="font-medium"
+              style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
+            >
+              {t('description', 'Описание')}
+            </span>
             <svg
-              className={`w-5 h-5 text-gray-500 transition-transform ${isDescriptionExpanded ? 'rotate-180' : ''}`}
+              className={`w-5 h-5 transition-transform ${isDescriptionExpanded ? 'rotate-180' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
 
           {isDescriptionExpanded && (
-            <div className="border-t border-gray-200 p-4">
-              <div className="prose max-w-none">
-                <p className="whitespace-pre-wrap text-gray-700">{product.description}</p>
+            <div 
+              className="border-t dark:border-gray-700 p-6"
+              style={{ 
+                borderTopColor: theme === 'dark' ? '#374151' : '#E5E7EB',
+                backgroundColor: theme === 'dark' ? '#111827' : '#FFFBF0'
+              }}
+            >
+              <div className="prose max-w-none dark:prose-invert">
+                <p 
+                  className="whitespace-pre-wrap leading-relaxed text-base"
+                  style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
+                >
+                  {getLocalizedProductDescription(product.description, t, product.translations, router.locale)}
+                </p>
               </div>
             </div>
           )}

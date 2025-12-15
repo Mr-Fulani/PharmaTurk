@@ -15,7 +15,10 @@ from .models import (
     Category, Brand, Product, ProductAttribute, PriceHistory, Favorite,
     ClothingProduct, ClothingVariant,
     ShoeProduct, ShoeVariant,
-    ElectronicsProduct, Banner, BannerMedia
+    ElectronicsProduct,
+    FurnitureProduct, FurnitureVariant,
+    Service,
+    Banner, BannerMedia
 )
 from .services import CatalogService
 from .serializers import (
@@ -33,6 +36,8 @@ from .serializers import (
     ShoeProductSerializer,
     ElectronicsCategorySerializer,
     ElectronicsProductSerializer,
+    FurnitureProductSerializer,
+    ServiceSerializer,
     BannerSerializer
 )
 
@@ -189,7 +194,6 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         'medicines': Product,
         'supplements': Product,
         'medical_equipment': Product,
-        'furniture': Product,
         'tableware': Product,
         'accessories': Product,
         'jewelry': Product,
@@ -198,6 +202,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         'clothing': ClothingProduct,
         'shoes': ShoeProduct,
         'electronics': ElectronicsProduct,
+        'furniture': FurnitureProduct,
     }
 
     PRODUCT_TYPE_CATEGORY_SLUGS = {
@@ -1065,6 +1070,157 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
+class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
+    """API для работы с товарами мебели."""
+    
+    queryset = FurnitureProduct.objects.filter(is_active=True)
+    serializer_class = FurnitureProductSerializer
+    pagination_class = StandardPagination
+    lookup_field = 'slug'
+    
+    def _normalize_ordering(self, ordering: str) -> str:
+        """Преобразует формат сортировки из фронтенда в формат Django."""
+        ordering_map = {
+            'name_asc': 'name',
+            'name_desc': '-name',
+            'price_asc': 'price',
+            'price_desc': '-price',
+            'newest': '-created_at',
+            'popular': '-is_featured',
+        }
+        return ordering_map.get(ordering, ordering)
+    
+    def get_queryset(self):
+        """Фильтрация товаров мебели по параметрам."""
+        queryset = FurnitureProduct.objects.filter(is_active=True)
+        
+        # Фильтр по категории (поддержка массивов)
+        category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
+        if category_ids:
+            try:
+                category_ids = [int(cid) for cid in category_ids if cid]
+                if category_ids:
+                    queryset = queryset.filter(category_id__in=category_ids)
+            except (ValueError, TypeError):
+                pass
+        
+        # Фильтр по бренду (поддержка массивов)
+        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
+        if brand_ids:
+            try:
+                brand_ids = [int(bid) for bid in brand_ids if bid]
+                if brand_ids:
+                    queryset = queryset.filter(brand_id__in=brand_ids)
+            except (ValueError, TypeError):
+                pass
+        
+        # Фильтр по типу мебели
+        furniture_type = self.request.query_params.get('furniture_type')
+        if furniture_type:
+            queryset = queryset.filter(furniture_type__icontains=furniture_type)
+        
+        # Фильтр по материалу
+        material = self.request.query_params.get('material')
+        if material:
+            queryset = queryset.filter(material__icontains=material)
+        
+        # Фильтр по поиску
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+        
+        # Фильтр по цене
+        min_price = self.request.query_params.get('min_price') or self.request.query_params.get('price_min')
+        if min_price:
+            try:
+                min_price = Decimal(min_price)
+                queryset = queryset.filter(price__gte=min_price)
+            except (ValueError, TypeError):
+                pass
+        
+        max_price = self.request.query_params.get('max_price') or self.request.query_params.get('price_max')
+        if max_price:
+            try:
+                max_price = Decimal(max_price)
+                queryset = queryset.filter(price__lte=max_price)
+            except (ValueError, TypeError):
+                pass
+        
+        # Сортировка
+        ordering = self.request.query_params.get('ordering', '-created_at')
+        ordering = self._normalize_ordering(ordering)
+        queryset = queryset.order_by(ordering)
+        
+        return queryset
+    
+    @extend_schema(
+        summary="Получить список товаров мебели",
+        description="Возвращает список товаров мебели с возможностью фильтрации",
+        parameters=[
+            OpenApiParameter(name="category_id", type=int, required=False, description="ID категории"),
+            OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
+            OpenApiParameter(name="furniture_type", type=str, required=False, description="Тип мебели"),
+            OpenApiParameter(name="material", type=str, required=False, description="Материал"),
+            OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
+            OpenApiParameter(name="min_price", type=float, required=False, description="Минимальная цена"),
+            OpenApiParameter(name="max_price", type=float, required=False, description="Максимальная цена"),
+            OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+    
+    @action(detail=False, methods=['get'])
+    @extend_schema(
+        summary="Рекомендуемые товары мебели",
+        description="Возвращает список рекомендуемых товаров мебели"
+    )
+    def featured(self, request):
+        """Получить рекомендуемые товары мебели."""
+        featured_products = FurnitureProduct.objects.filter(
+            is_active=True, 
+            is_featured=True
+        ).order_by('-created_at')[:10]
+        serializer = self.get_serializer(featured_products, many=True)
+        return Response(serializer.data)
+
+
+class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
+    """API для работы с услугами."""
+    
+    queryset = Service.objects.filter(is_active=True)
+    serializer_class = ServiceSerializer
+    pagination_class = StandardPagination
+    lookup_field = 'slug'
+    
+    def get_queryset(self):
+        """Фильтрация услуг по параметрам."""
+        queryset = Service.objects.filter(is_active=True)
+        
+        # Фильтр по категории
+        category_id = self.request.query_params.get('category_id')
+        if category_id:
+            try:
+                queryset = queryset.filter(category_id=int(category_id))
+            except (ValueError, TypeError):
+                pass
+        
+        # Фильтр по типу услуги
+        service_type = self.request.query_params.get('service_type')
+        if service_type:
+            queryset = queryset.filter(service_type__icontains=service_type)
+        
+        # Фильтр по поиску
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+        
+        # Сортировка
+        queryset = queryset.order_by('-created_at')
+        
+        return queryset
+
+
 class FavoriteViewSet(viewsets.ViewSet):
     """API для работы с избранным."""
     
@@ -1280,12 +1436,12 @@ class FavoriteViewSet(viewsets.ViewSet):
             'supplements': Product,
             'medical_equipment': Product,
             'tableware': Product,
-            'furniture': Product,
             'accessories': Product,
             'jewelry': Product,
             'clothing': ClothingProduct,
             'shoes': ShoeProduct,
             'electronics': ElectronicsProduct,
+            'furniture': FurnitureProduct,
         }
         
         model_class = PRODUCT_MODEL_MAP.get(product_type, Product)

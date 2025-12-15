@@ -40,7 +40,10 @@ interface Cart {
 
 export default function CartPage({ initialCart }: { initialCart: Cart }) {
   const { t } = useTranslation('common')
-  const [cart, setCart] = useState<Cart>(initialCart)
+  const [cart, setCart] = useState<Cart>({
+    ...initialCart,
+    items: initialCart.items || []
+  })
   const [loading, setLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [promoCode, setPromoCode] = useState('')
@@ -72,16 +75,21 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
           // Обновляем только если данные действительно изменились
           setCart(prevCart => {
             // Сравниваем только ключевые поля для избежания лишних обновлений
+            const prevItems = prevCart.items || []
+            const newItems = r.data.items || []
             const hasChanged = 
               prevCart.items_count !== r.data.items_count ||
-              prevCart.items.length !== r.data.items.length ||
+              prevItems.length !== newItems.length ||
               prevCart.total_amount !== r.data.total_amount ||
               prevCart.discount_amount !== r.data.discount_amount ||
               prevCart.final_amount !== r.data.final_amount ||
               (prevCart.promo_code?.code || null) !== (r.data.promo_code?.code || null)
             
             if (hasChanged) {
-              return r.data
+              return {
+                ...r.data,
+                items: r.data.items || []
+              }
             }
             return prevCart
           })
@@ -107,11 +115,14 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       if (r.data) {
         let shouldUpdateCount = false
         setCart(prevCart => {
+          const prevItems = prevCart.items || []
+          const newItems = r.data.items || []
+          
           // Сохраняем порядок товаров из предыдущего состояния
-          const prevItemOrder = new Map(prevCart.items.map((item, index) => [item.id, index]))
+          const prevItemOrder = new Map(prevItems.map((item, index) => [item.id, index]))
           
           // Сортируем новые товары по старому порядку
-          const sortedItems = [...r.data.items].sort((a, b) => {
+          const sortedItems = [...newItems].sort((a, b) => {
             const aIndex = prevItemOrder.get(a.id) ?? Infinity
             const bIndex = prevItemOrder.get(b.id) ?? Infinity
             return aIndex - bIndex
@@ -124,9 +135,9 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
             prevCart.discount_amount !== r.data.discount_amount ||
             prevCart.final_amount !== r.data.final_amount ||
             (prevCart.promo_code?.code || null) !== (r.data.promo_code?.code || null) ||
-            prevCart.items.length !== r.data.items.length ||
-            JSON.stringify(prevCart.items.map(i => ({ id: i.id, quantity: i.quantity }))) !== 
-            JSON.stringify(r.data.items.map((i: CartItem) => ({ id: i.id, quantity: i.quantity })))
+            prevItems.length !== newItems.length ||
+            JSON.stringify(prevItems.map(i => ({ id: i.id, quantity: i.quantity }))) !== 
+            JSON.stringify(newItems.map((i: CartItem) => ({ id: i.id, quantity: i.quantity })))
           
           if (hasChanged && prevCart.items_count !== r.data.items_count) {
             shouldUpdateCount = true
@@ -153,7 +164,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
     // Оптимистичное обновление - обновляем количество сразу
     setCart(prevCart => ({
       ...prevCart,
-      items: prevCart.items.map(item => 
+      items: (prevCart.items || []).map(item => 
         item.id === itemId ? { ...item, quantity: qty } : item
       )
     }))
@@ -253,7 +264,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
           )}
         </div>
 
-        {cart.items.length === 0 ? (
+        {(!cart.items || cart.items.length === 0) ? (
           <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-12 text-center">
             <svg
               className="mx-auto h-16 w-16 text-gray-400"
@@ -287,7 +298,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
             {/* Список товаров */}
             <div className="lg:col-span-2">
               <div className="space-y-4">
-                {cart.items.map((item) => (
+                {(cart.items || []).map((item) => (
                   <div
                     key={item.id}
                     className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all duration-200"
@@ -553,8 +564,26 @@ export async function getServerSideProps(ctx: any) {
       }
     })
     const data = await apiRes.json()
-    return { props: { ...(await serverSideTranslations(locale || 'en', ['common'])), initialCart: data } }
+    return { 
+      props: { 
+        ...(await serverSideTranslations(locale || 'en', ['common'])), 
+        initialCart: {
+          ...data,
+          items: data.items || []
+        }
+      } 
+    }
   } catch (e) {
-    return { props: { ...(await serverSideTranslations(locale || 'en', ['common'])), initialCart: { id: 0, items: [], items_count: 0, total_amount: '0.00' } } }
+    return { 
+      props: { 
+        ...(await serverSideTranslations(locale || 'en', ['common'])), 
+        initialCart: { 
+          id: 0, 
+          items: [], 
+          items_count: 0, 
+          total_amount: '0.00' 
+        } 
+      } 
+    }
   }
 }
