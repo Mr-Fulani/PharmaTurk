@@ -1088,7 +1088,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   return (
     <section className={`py-12 ${className}`}>
       <div className="mx-auto max-w-6xl px-4">
-        <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center">
+        <h2 className="text-3xl font-bold text-main mb-8 text-center">
           {t('testimonials_title', 'Что говорят наши клиенты')}
         </h2>
         <div className="relative mb-8">

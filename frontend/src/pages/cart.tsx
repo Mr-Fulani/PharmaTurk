@@ -256,9 +256,9 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       </Head>
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">{t('menu_cart', 'Корзина')}</h1>
+          <h1 className="text-3xl font-bold text-main">{t('menu_cart', 'Корзина')}</h1>
           {cart.items_count > 0 && (
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-main">
               {cart.items_count} {cart.items_count === 1 ? 'товар' : cart.items_count < 5 ? 'товара' : 'товаров'}
             </p>
           )}
@@ -406,7 +406,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                 <button
                   onClick={clearCart}
                   disabled={loading}
-                  className="text-sm text-gray-600 hover-text-warm transition-colors disabled:opacity-50"
+                  className="text-sm text-main hover-text-warm transition-colors disabled:opacity-50"
                 >
                   {t('cart_clear', 'Очистить корзину')}
                 </button>
@@ -472,9 +472,9 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex justify-between text-sm text-gray-600">
+                  <div className="flex justify-between text-sm text-main">
                     <span>{t('cart_items_count', 'Товаров')}</span>
-                    <span className="font-medium text-gray-900">{cart.items_count}</span>
+                    <span className="font-medium text-main">{cart.items_count}</span>
                   </div>
                   {cart.discount_amount && parseFloat(cart.discount_amount) > 0 && (
                     <div className="flex justify-between text-sm text-gray-600">
@@ -523,7 +523,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     <svg className="h-5 w-5 text-[var(--accent)] mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <div className="text-xs text-[var(--text-strong)]">
+                    <div className="text-xs text-main">
                       <p className="font-medium">{t('cart_delivery_info_title', 'Бесплатная доставка')}</p>
                       <p className="mt-1">{t('cart_delivery_info_text', 'При заказе от определенной суммы')}</p>
                     </div>

@@ -378,7 +378,7 @@ export default function Home({ brands, categories }: HomePageProps) {
 
         {/* Categories Section */}
           <section className="mb-12">
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8 text-center">
+          <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
             {t('categories_section_title', 'Категории товаров')}
           </h2>
           <Masonry
