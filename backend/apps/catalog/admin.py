@@ -9,7 +9,7 @@ from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFor
 from .models import (
     CategoryType, Category, CategoryTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
-    CategoryUnderwear, CategoryHeadwear, MarketingCategory, MarketingRootCategory,
+    CategoryUnderwear, CategoryHeadwear, CategoryServices, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
     Brand, BrandTranslation, MarketingBrand, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ProductMedicines, ProductSupplements, ProductMedicalEquipment,
@@ -303,6 +303,14 @@ class CategoryHeadwearAdmin(BaseCategoryAdmin):
     required_category_type_slug = "headwear"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Головные уборы: кепки, шапки, панамы и т.д.; подкатегории вручную.")}),
+    )
+
+
+@admin.register(CategoryServices)
+class CategoryServicesAdmin(BaseCategoryAdmin):
+    required_category_type_slug = "uslugi"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Категории услуг: ремонт, консультации, диагностика и т.д. Сами услуги добавляются в разделе \"Услуги\".")}),
     )
 
 
@@ -1163,14 +1171,19 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
     """Админка для карточек категорий (раздел «Маркетинг»)."""
     from .forms import CategoryForm
     form = CategoryForm
-    list_display = ('name', 'slug', 'category_type', 'card_media_preview', 'is_active', 'sort_order', 'created_at')
-    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'created_at')
+    list_display = ('name', 'slug', 'category_type', 'parent', 'card_media_preview', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'category_type', 'parent', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
     readonly_fields = ('card_media_preview',)
     autocomplete_fields = ('category_type',)
     inlines = [CategoryTranslationInline]
+    
+    def get_queryset(self, request):
+        """Фильтруем только подкатегории (не корневые)."""
+        qs = super().get_queryset(request)
+        return qs.filter(parent__isnull=False)
 
     fieldsets = (
         (_('Основная информация'), {

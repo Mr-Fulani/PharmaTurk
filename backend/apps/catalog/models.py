@@ -167,6 +167,10 @@ class Category(models.Model):
         verbose_name = _("Категория")
         verbose_name_plural = _("Категории")
         ordering = ["sort_order", "name"]
+        unique_together = [['name', 'parent']]
+        indexes = [
+            models.Index(fields=['name', 'parent']),
+        ]
 
     def __str__(self):
         return self.name
@@ -307,12 +311,20 @@ class CategoryHeadwear(Category):
         verbose_name_plural = _("Категории — Головные уборы")
 
 
+class CategoryServices(Category):
+    """Прокси-модель для категорий услуг."""
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Услуги")
+        verbose_name_plural = _("Категории — Услуги")
+
+
 class MarketingCategory(Category):
     class Meta:
         proxy = True
         app_label = "marketing"
-        verbose_name = _("Категория товара")
-        verbose_name_plural = _("Маркетинг — Категории товаров")
+        verbose_name = _("Подкатегория товара")
+        verbose_name_plural = _("Маркетинг — Подкатегории товаров")
 
 
 class MarketingRootCategory(Category):
