@@ -1006,7 +1006,8 @@ export async function getServerSideProps(ctx: any) {
   let initialCart = null
   
   try {
-    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    // Используем относительный путь, который работает через Next.js rewrites
+    const base = process.env.INTERNAL_API_BASE || ''
     const cookieHeader: string = req.headers.cookie || ''
     const cartSessionMatch = cookieHeader.match(/(?:^|;\s*)cart_session=([^;]+)/)
     let cartSession = cartSessionMatch ? cartSessionMatch[1] : ''

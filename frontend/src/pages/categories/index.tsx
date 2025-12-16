@@ -277,7 +277,8 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
 
 export async function getServerSideProps(ctx: any) {
   try {
-    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    // Используем относительный путь, который работает через Next.js rewrites
+    const base = process.env.INTERNAL_API_BASE || ''
 
     // Берём только корневые с бэкенда (top_level), чтобы не тянуть весь список
     const res = await axios.get(`${base}/api/catalog/categories`, {

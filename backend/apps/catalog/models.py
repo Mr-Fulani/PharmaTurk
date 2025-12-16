@@ -2325,3 +2325,5 @@ class MarketingBannerMedia(BannerMedia):
         app_label = "marketing"
         verbose_name = _("Медиа баннеров")
         verbose_name_plural = _("Маркетинг — Медиа баннеров")
+
+

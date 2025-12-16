@@ -14,7 +14,9 @@ echo "🧹 Очищаем кэш Django..."
 poetry run python manage.py clear_cache 2>/dev/null || true
 echo "✅ Кэш Django очищен"
 
-# Применяем миграции автоматически
+# Создаем и применяем миграции автоматически
+echo "Создаем миграции..."
+poetry run python manage.py makemigrations || true
 echo "Применяем миграции..."
 poetry run python manage.py migrate --noinput
 

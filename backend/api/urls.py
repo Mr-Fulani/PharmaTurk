@@ -28,6 +28,9 @@ urlpatterns = [
     # Каталог товаров
     path("catalog/", include("apps.catalog.urls")),
 
+    # Настройки сайта
+    path("settings/", include("apps.settings.urls")),
+
     # Корзина и заказы
     path("orders/", include("apps.orders.urls")),
 ]

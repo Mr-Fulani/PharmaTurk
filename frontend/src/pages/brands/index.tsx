@@ -219,7 +219,8 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
 
 export const getServerSideProps = async (ctx: any) => {
   try {
-    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    // Используем относительный путь, который работает через Next.js rewrites
+    const base = process.env.INTERNAL_API_BASE || ''
 
     let allBrands: Brand[] = []
     let nextUrl: string | null = `${base}/api/catalog/brands?page_size=200`

@@ -18,7 +18,7 @@ from .models import (
     ElectronicsProduct,
     FurnitureProduct, FurnitureVariant,
     Service,
-    Banner, BannerMedia
+    Banner, BannerMedia,
 )
 from .services import CatalogService
 from .serializers import (

@@ -1317,7 +1317,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   try {
     const routeSlug = Array.isArray(slug) ? slug[0] : (slug as string | undefined)
     
-    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    // Используем относительный путь, который работает через Next.js rewrites
+    const base = process.env.INTERNAL_API_BASE || ''
     
     // Получаем категорию из API чтобы узнать её реальный тип
     let categoryTypeFromApi: string | null = null

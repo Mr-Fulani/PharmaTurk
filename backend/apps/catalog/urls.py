@@ -10,7 +10,7 @@ from .views import (
     ElectronicsCategoryViewSet, ElectronicsProductViewSet,
     FurnitureProductViewSet,
     ServiceViewSet,
-    BannerViewSet
+    BannerViewSet,
 )
 
 # Основной роутер для медикаментов (существующий)

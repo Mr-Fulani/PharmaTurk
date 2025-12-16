@@ -422,12 +422,12 @@ export default function ProductPage({
 
             {/* Кнопки действий */}
             <div className="mt-4 flex flex-col gap-3">
-              <AddToCartButton
-                productId={isBaseProduct ? product.id : undefined}
-                productType={productType}
-                productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
-                size={selectedSize}
-                requireSize={!isBaseProduct && sizeRequired}
+            <AddToCartButton
+              productId={isBaseProduct ? product.id : undefined}
+              productType={productType}
+              productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+              size={selectedSize}
+              requireSize={!isBaseProduct && sizeRequired}
                 quantity={quantity}
                 showPrice={true}
                 price={displayTotalPrice}
@@ -442,10 +442,10 @@ export default function ProductPage({
                 requireSize={!isBaseProduct && sizeRequired}
                 quantity={quantity}
                 className="w-full"
-              />
+            />
               {product.id && (
                 <div className="flex justify-center">
-                  <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
+                <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
                 </div>
               )}
             </div>

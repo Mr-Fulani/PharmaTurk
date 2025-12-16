@@ -20,7 +20,7 @@ from .models import (
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     Service, ServiceTranslation,
-    Banner, BannerMedia, MarketingBanner, MarketingBannerMedia
+    Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
 )
 
 
@@ -1344,3 +1344,5 @@ class MarketingRootCategoryAdmin(admin.ModelAdmin):
             url,
         )
     card_media_preview.short_description = _("Превью медиа")
+
+

@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     "apps.scrapers",
     "apps.favorites",
     "apps.feedback",
+    "apps.settings",
 ]
 
 # Кастомная модель пользователя

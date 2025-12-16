@@ -9,7 +9,7 @@ from .models import (
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     Service, ServiceTranslation,
-    Banner, BannerMedia
+    Banner, BannerMedia,
 )
 
 
