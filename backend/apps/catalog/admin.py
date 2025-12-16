@@ -469,7 +469,7 @@ class BaseProductAdmin(admin.ModelAdmin):
         'is_active', 'is_featured', 'is_available', 'category', 'brand', 'currency', 'created_at'
     )
     search_fields = (
-        'name', 'name_en', 'slug', 'description', 'description_en',
+        'name', 'slug', 'description',
         'sku', 'barcode', 'gtin', 'mpn', 'meta_title'
     )
     ordering = ('-created_at',)
@@ -480,8 +480,8 @@ class BaseProductAdmin(admin.ModelAdmin):
     fieldsets = (
         (_('Основное'), {
             'fields': (
-                'name', 'name_en', 'slug', 'slug_preview',
-                'description', 'description_en'
+                'name', 'slug', 'slug_preview',
+                'description'
             )
         }),
         (_('Категоризация'), {'fields': ('product_type', 'category', 'brand')}),

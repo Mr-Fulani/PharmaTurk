@@ -511,8 +511,6 @@ class Product(models.Model):
     name = models.CharField(_("Название"), max_length=500)
     slug = models.SlugField(_("Slug"), max_length=500, unique=True)
     description = models.TextField(_("Описание"), blank=True)
-    name_en = models.CharField(_("Название (англ.)"), max_length=500, blank=True)
-    description_en = models.TextField(_("Описание (англ.)"), blank=True)
     product_type = models.CharField(
         _("Тип товара"),
         max_length=32,
