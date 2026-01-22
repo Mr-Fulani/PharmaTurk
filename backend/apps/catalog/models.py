@@ -1575,6 +1575,368 @@ class ShoeVariantImage(models.Model):
         return f"Изображение варианта {self.variant}"
 
 
+class JewelryProduct(models.Model):
+    """Товар украшений."""
+
+    JEWELRY_TYPE_CHOICES = [
+        ("ring", _("Кольцо")),
+        ("bracelet", _("Браслет")),
+        ("necklace", _("Цепь/ожерелье")),
+        ("earrings", _("Серьги")),
+        ("pendant", _("Подвеска")),
+    ]
+
+    # Основная информация
+    name = models.CharField(_("Название"), max_length=500)
+    slug = models.SlugField(_("Slug"), max_length=500, unique=True)
+    description = models.TextField(_("Описание"), blank=True)
+
+    # Категоризация
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="jewelry_products",
+        verbose_name=_("Категория")
+    )
+    brand = models.ForeignKey(
+        Brand,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="jewelry_products",
+        verbose_name=_("Бренд")
+    )
+
+    # Цена
+    price = models.DecimalField(
+        _("Цена"),
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)]
+    )
+    currency = models.CharField(
+        _("Валюта"),
+        max_length=5,
+        choices=CURRENCY_CHOICES,
+        default="RUB",
+        help_text=_("Выбирается из списка расчётных валют, используемых в прайсах.")
+    )
+    old_price = models.DecimalField(
+        _("Старая цена"),
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)]
+    )
+
+    # Специфичные поля для украшений
+    jewelry_type = models.CharField(
+        _("Тип украшения"),
+        max_length=32,
+        choices=JEWELRY_TYPE_CHOICES,
+        blank=True,
+        help_text=_("ring, bracelet, necklace, earrings, pendant")
+    )
+    material = models.CharField(_("Материал"), max_length=100, blank=True)
+    metal_purity = models.CharField(_("Проба металла"), max_length=50, blank=True)
+    stone_type = models.CharField(_("Тип камня"), max_length=100, blank=True)
+    carat_weight = models.DecimalField(
+        _("Вес камней, карат"),
+        max_digits=6,
+        decimal_places=2,
+        null=True,
+        blank=True
+    )
+
+    # Наличие и статус
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
+
+    # Изображения
+    main_image = models.URLField(_("Главное изображение"), blank=True)
+
+    # Внешние данные
+    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+
+    # Статус
+    is_active = models.BooleanField(_("Активен"), default=True)
+    is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
+
+    # Временные метки
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Товар — Украшения")
+        verbose_name_plural = _("Товары — Украшения")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+            models.Index(fields=["jewelry_type"]),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def get_translated_description(self, locale: str = 'ru') -> str:
+        """Получает переведенное описание товара украшений."""
+        translation = self.translations.filter(locale=locale).first()
+        if translation and translation.description:
+            return translation.description
+        return self.description or ''
+
+
+class JewelryProductTranslation(models.Model):
+    """Переводы для товаров украшений."""
+
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+    ]
+
+    product = models.ForeignKey(
+        JewelryProduct,
+        on_delete=models.CASCADE,
+        related_name='translations',
+        verbose_name=_("Товар украшений")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default='ru',
+        db_index=True
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+        help_text=_("Переведенное описание товара украшений")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Перевод товара украшений")
+        verbose_name_plural = _("Переводы товаров украшений")
+        unique_together = [['product', 'locale']]
+        ordering = ['product', 'locale']
+        indexes = [
+            models.Index(fields=['product', 'locale']),
+        ]
+
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class JewelryProductImage(models.Model):
+    """Изображение товара украшений."""
+
+    product = models.ForeignKey(
+        JewelryProduct,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Товар украшений")
+    )
+    image_url = models.URLField(
+        _("URL изображения"),
+        help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение товара украшений")
+        verbose_name_plural = _("Изображения товаров украшений")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
+
+
+class JewelryVariant(models.Model):
+    """Вариант украшения (цвет/материал + цены и остаток)."""
+
+    product = models.ForeignKey(
+        JewelryProduct,
+        on_delete=models.CASCADE,
+        related_name="variants",
+        verbose_name=_("Товар украшений (родитель)")
+    )
+    name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/цвету/материалу, можно переопределить."))
+    color = models.CharField(_("Цвет"), max_length=50, blank=True)
+    material = models.CharField(_("Материал варианта"), max_length=100, blank=True)
+    # size поле оставлено для совместимости с фронтом, но реальные размеры в таблице sizes
+    size = models.CharField(
+        _("Размер (устарело)"),
+        max_length=50,
+        blank=True,
+        help_text=_("Используйте таблицу размеров ниже; поле оставлено для совместимости.")
+    )
+    sku = models.CharField(_("SKU"), max_length=100, blank=True)
+    barcode = models.CharField(_("Штрихкод"), max_length=100, blank=True)
+    gtin = models.CharField(_("GTIN"), max_length=100, blank=True)
+    mpn = models.CharField(_("MPN"), max_length=100, blank=True)
+    price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    currency = models.CharField(_("Валюта"), max_length=5, choices=CURRENCY_CHOICES, default="RUB")
+    old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Вариант украшения")
+        verbose_name_plural = _("Варианты украшений")
+        ordering = ["product", "sort_order", "-created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["slug"]),
+            models.Index(fields=["is_active", "is_available"]),
+        ]
+
+    def __str__(self):
+        base = self.name or self.product.name
+        attrs = f"{self.color or ''} {self.material or ''}".strip()
+        return f"{base} ({attrs})" if attrs else base
+
+    def save(self, *args, **kwargs):
+        """Автогенерация slug, если не заполнен."""
+        if not self.slug:
+            base_name = self.name or self.product.name
+            composed = f"{base_name}-{self.color or ''}-{self.material or ''}".strip()
+            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+        super().save(*args, **kwargs)
+
+
+class JewelryVariantSize(models.Model):
+    """Размер внутри варианта украшения."""
+
+    SIZE_UNIT_CHOICES = [
+        ("mm", _("Миллиметры")),
+        ("cm", _("Сантиметры")),
+        ("standard", _("Стандарт")),
+    ]
+
+    SIZE_TYPE_CHOICES = [
+        ("ring_size", _("Размер кольца")),
+        ("bracelet_length", _("Длина браслета")),
+        ("necklace_length", _("Длина цепи/ожерелья")),
+        ("standard", _("Стандарт")),
+    ]
+
+    variant = models.ForeignKey(
+        JewelryVariant,
+        on_delete=models.CASCADE,
+        related_name="sizes",
+        verbose_name=_("Вариант украшения")
+    )
+    size_value = models.DecimalField(
+        _("Значение размера"),
+        max_digits=6,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=_("Числовое значение (например 16.5).")
+    )
+    size_unit = models.CharField(
+        _("Единица"),
+        max_length=16,
+        choices=SIZE_UNIT_CHOICES,
+        default="standard"
+    )
+    size_type = models.CharField(
+        _("Тип размера"),
+        max_length=32,
+        choices=SIZE_TYPE_CHOICES,
+        default="standard"
+    )
+    size_display = models.CharField(
+        _("Отображаемый размер"),
+        max_length=50,
+        blank=True,
+        help_text=_("Например: '16 мм', 'US 7', '18 см', 'Стандарт'.")
+    )
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Размер варианта украшения")
+        verbose_name_plural = _("Размеры варианта украшения")
+        ordering = ["variant", "sort_order", "size_display"]
+        indexes = [
+            models.Index(fields=["variant", "sort_order"]),
+            models.Index(fields=["variant", "size_display"]),
+        ]
+
+    def __str__(self):
+        return f"{self.variant} — {self.size_display or self.size_value or ''}".strip()
+
+    def save(self, *args, **kwargs):
+        """Автогенерация человекочитаемого отображения размера."""
+        if not self.size_display:
+            parts = []
+            if self.size_value is not None:
+                parts.append(f"{self.size_value}")
+            unit_map = {"mm": "мм", "cm": "см", "standard": ""}
+            unit = unit_map.get(self.size_unit, "")
+            if unit:
+                parts.append(unit)
+            self.size_display = " ".join([p for p in parts if p]).strip() or _("Стандарт")
+        super().save(*args, **kwargs)
+
+
+class JewelryVariantImage(models.Model):
+    """Изображение варианта украшения."""
+
+    variant = models.ForeignKey(
+        JewelryVariant,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Вариант украшения")
+    )
+    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение варианта украшения")
+        verbose_name_plural = _("Изображения вариантов украшений")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["variant", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение варианта {self.variant}"
+
+
 class ElectronicsProduct(models.Model):
     """Товар электроники."""
     

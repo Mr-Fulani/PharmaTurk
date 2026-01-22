@@ -9,6 +9,8 @@
 #   --rebuild        - Полная пересборка (--clean + --no-cache)
 #   --no-prune       - Не очищать неиспользуемые Docker ресурсы
 #   --logs           - Показать логи после запуска
+#   --fast           - Быстрый перезапуск: пропустить пересборку образов и prune (самый быстрый)
+#   --fast-rebuild   - Быстрая пересборка только frontend и backend (больше чем --fast, но быстрее чем полная сборка)
 #   --help           - Показать справку
 
 # set -e  # Отключено, чтобы скрипт продолжал работу даже если контейнеры не запущены
@@ -25,6 +27,8 @@ CLEAN_VOLUMES=false
 NO_CACHE=false
 SHOW_LOGS=false
 NO_PRUNE=false
+FAST=false
+FAST_REBUILD=false
 
 # Функция для вывода сообщений
 info() {
@@ -57,6 +61,8 @@ show_help() {
     --rebuild        Полная пересборка (--clean + --no-cache)
     --no-prune       Не очищать неиспользуемые Docker ресурсы (по умолчанию очистка включена)
     --logs           Показать логи после запуска
+    --fast           Быстрый перезапуск: пропускает очистку docker system prune и пересборку образов (docker compose up -d --no-build)
+    --fast-rebuild   Быстрая пересборка только frontend и backend (быстрее, чем полная пересборка всех сервисов)
     --help           Показать эту справку
 
 Примеры:
@@ -64,6 +70,8 @@ show_help() {
     ./restart.sh --no-cache         # Пересборка без кэша
     ./restart.sh --clean            # С очисткой базы данных
     ./restart.sh --rebuild --logs   # Полная пересборка с логами
+    ./restart.sh --fast             # Очень быстрый перезапуск (без пересборки образов)
+    ./restart.sh --fast-rebuild     # Пересобрать только frontend и backend
 
 EOF
 }
@@ -90,6 +98,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --logs)
             SHOW_LOGS=true
+            shift
+            ;;
+        --fast)
+            FAST=true
+            shift
+            ;;
+        --fast-rebuild)
+            FAST_REBUILD=true
             shift
             ;;
         --help|-h)
@@ -169,7 +185,7 @@ else
 fi
 
 # Очистка неиспользуемых Docker ресурсов (по умолчанию включена)
-if [ "$NO_PRUNE" = false ]; then
+if [ "$NO_PRUNE" = false ] && [ "$FAST" = false ]; then
     info "Очищаем неиспользуемые Docker ресурсы..."
     PRUNED=$(docker system prune -a --volumes -f 2>&1 | grep -i "reclaimed" || echo "")
     if [ -n "$PRUNED" ]; then
@@ -178,7 +194,11 @@ if [ "$NO_PRUNE" = false ]; then
         success "Очистка завершена (неиспользуемых ресурсов не найдено)"
     fi
 else
-    info "Пропускаем очистку неиспользуемых ресурсов (--no-prune)"
+    if [ "$FAST" = true ]; then
+        info "FAST режим: пропускаем очистку docker system prune"
+    else
+        info "Пропускаем очистку неиспользуемых ресурсов (--no-prune)"
+    fi
 fi
 
 # Дополнительная очистка при --no-cache
@@ -190,16 +210,36 @@ fi
 
 # Пересборка образов
 info "Пересобираем Docker образы..."
-if [ "$NO_CACHE" = true ]; then
-    docker compose build --no-cache
+# Логика сборки:
+# - если указан --fast: пропускаем сборку (используем ранее собранные образы)
+# - если указан --fast-rebuild: пересобираем только backend и frontend (быстрее полной сборки)
+# - если указан --no-cache: пересобираем все образы без кэша
+# - иначе: обычная полная сборка
+if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
+    info "FAST режим: пропускаем пересборку образов"
+elif [ "$FAST_REBUILD" = true ]; then
+    info "FAST-REBUILD: пересобираем только backend и frontend"
+    docker compose build backend frontend || warning "Ошибка при быстрой пересборке backend/frontend"
+elif [ "$NO_CACHE" = true ]; then
+    docker compose build --no-cache || warning "Ошибка при сборке образов без кэша"
 else
-    docker compose build
+    docker compose build || warning "Ошибка при сборке образов"
 fi
-success "Образы пересобраны"
+
+if [ "$FAST" = false ]; then
+    success "Образы обработаны (при необходимости пересобраны)"
+else
+    success "FAST: пересборка пропущена"
+fi
 
 # Запуск контейнеров
 info "Запускаем контейнеры..."
-docker compose up -d
+# В FAST режиме используем --no-build, чтобы docker compose не пытался собирать образы
+if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
+    docker compose up -d --no-build
+else
+    docker compose up -d
+fi
 success "Контейнеры запущены"
 
 # Ожидание готовности сервисов
@@ -264,4 +304,3 @@ info "Hot-reload включен:"
 info "  - Изменения в backend и frontend подхватываются автоматически"
 info "  - Backend использует runserver (автоперезагрузка при изменении .py файлов)"
 info "  - Frontend использует Next.js dev server (hot-reload для React компонентов)"
-

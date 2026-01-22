@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'next-i18next'
 import { useTheme } from '../context/ThemeContext'
 import api from '../lib/api'
+import Link from 'next/link'
 
 interface FooterSettings {
   phone: string
@@ -214,9 +215,9 @@ export default function Footer() {
           <div className="text-center sm:text-left">
             <div className="mb-2 text-sm font-medium text-main">{t('footer_information')}</div>
             <ul className="space-y-1 text-sm text-main/80">
-              <li><a href="#" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_delivery_payment')}</a></li>
-              <li><a href="#" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_return')}</a></li>
-              <li><a href="#" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_privacy')}</a></li>
+              <li><Link href="/delivery" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_delivery_payment')}</Link></li>
+              <li><Link href="/returns" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_return')}</Link></li>
+              <li><Link href="/privacy" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_privacy')}</Link></li>
             </ul>
           </div>
         </div>
@@ -227,5 +228,3 @@ export default function Footer() {
     </footer>
   )
 }
-
-

@@ -1,0 +1,3 @@
+# ...existing code...
+# Инициализация приложения pages
+default_app_config = 'apps.pages.apps.PagesConfig'
