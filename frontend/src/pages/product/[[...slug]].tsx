@@ -175,7 +175,28 @@ export default function ProductPage({
 
   const router = useRouter()
   const { theme } = useTheme()
-  const gallerySource = selectedVariant?.images?.length ? selectedVariant.images : (product.images || [])
+  
+  // Формируем галерею: главное изображение + дополнительные изображения
+  const buildGallerySource = () => {
+    const variantImages = selectedVariant?.images || []
+    const productImages = product.images || []
+    const mainImageUrl = selectedVariant?.main_image || product.main_image_url || product.main_image
+    
+    // Используем изображения варианта если есть, иначе изображения продукта
+    const baseImages = variantImages.length > 0 ? variantImages : productImages
+    
+    // Если есть главное изображение и его нет в списке, добавляем его первым
+    if (mainImageUrl && !baseImages.some(img => img.image_url === mainImageUrl)) {
+      return [
+        { id: 0, image_url: mainImageUrl, alt_text: product.name, is_main: true, sort_order: -1 },
+        ...baseImages
+      ]
+    }
+    
+    return baseImages
+  }
+  
+  const gallerySource = buildGallerySource()
   const initialImage =
     selectedVariant?.main_image ||
     selectedVariant?.images?.find((img) => img.is_main)?.image_url ||

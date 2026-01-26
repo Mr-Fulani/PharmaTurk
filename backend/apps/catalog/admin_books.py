@@ -2,11 +2,13 @@
 
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
+from django.utils.html import format_html
 from django.db import models as django_models
 from .models import (
     Author, ProductAuthor, Product, ProductBooks, 
     Category, CategoryBooks,
-    BookVariant, BookVariantSize, BookVariantImage
+    BookVariant, BookVariantSize, BookVariantImage,
+    ProductTranslation, ProductImage, ProductAttribute
 )
 
 
@@ -47,6 +49,43 @@ class BookVariantAdmin(admin.ModelAdmin):
     inlines = [BookVariantSizeInline, BookVariantImageInline]
 
 
+class ProductTranslationInline(admin.TabularInline):
+    """Inline для переводов товара."""
+    model = ProductTranslation
+    extra = 1
+    fields = ('locale', 'description')
+    verbose_name = _('Перевод')
+    verbose_name_plural = _('Переводы')
+
+
+class ProductImageInline(admin.TabularInline):
+    """Inline для изображений товара."""
+    model = ProductImage
+    extra = 1
+    fields = ('image_url', 'alt_text', 'is_main', 'sort_order', 'image_preview')
+    readonly_fields = ('image_preview',)
+    verbose_name = _('Изображение')
+    verbose_name_plural = _('Изображения')
+    
+    def image_preview(self, obj):
+        if obj and obj.image_url:
+            return format_html(
+                '<img src="{}" style="max-width: 100px; max-height: 100px;" />',
+                obj.image_url
+            )
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
+class ProductAttributeInline(admin.TabularInline):
+    """Inline для атрибутов товара."""
+    model = ProductAttribute
+    extra = 1
+    fields = ('attribute_type', 'name', 'value', 'sort_order')
+    verbose_name = _('Атрибут')
+    verbose_name_plural = _('Атрибуты')
+
+
 class ProductAuthorInline(admin.TabularInline):
     """Inline для авторов книги."""
     model = ProductAuthor
@@ -79,38 +118,61 @@ class ProductBooksAdmin(admin.ModelAdmin):
     list_editable = ['price', 'old_price', 'is_available', 'is_bestseller']
     search_fields = ['name', 'description', 'isbn', 'publisher']
     prepopulated_fields = {'slug': ('name',)}
-    readonly_fields = ['product_type', 'rating', 'reviews_count', 'created_at', 'updated_at']
+    readonly_fields = ['product_type', 'rating', 'reviews_count', 'slug_preview', 'last_synced_at', 'created_at', 'updated_at']
     
     fieldsets = (
-        (None, {
-            'fields': ('name', 'slug', 'category', 'product_type')
+        (_('Основное'), {
+            'fields': ('name', 'slug', 'slug_preview', 'description')
         }),
-        (_('Описание'), {
-            'fields': ('description',)
-        }),
-        (_('Цена'), {
-            'fields': ('price', 'old_price', 'currency')
+        (_('Категоризация'), {
+            'fields': ('product_type', 'category')
         }),
         (_('Информация о книге'), {
             'fields': ('isbn', 'publisher', 'publication_date', 'pages', 'language', 'cover_type')
         }),
-        (_('Рейтинг и отзывы'), {
-            'fields': ('rating', 'reviews_count'),
+        (_('Цены и наличие'), {
+            'fields': (
+                'price', 'currency', 'old_price', 'margin_percent_applied',
+                'availability_status', 'is_available', 'stock_quantity',
+                'min_order_quantity', 'pack_quantity'
+            )
+        }),
+        (_('Рейтинг и статус'), {
+            'fields': ('rating', 'reviews_count', 'is_featured', 'is_bestseller', 'is_new')
+        }),
+        (_('Логистика'), {
+            'fields': (
+                'gtin', 'mpn', 'weight_value', 'weight_unit', 'length',
+                'width', 'height', 'dimensions_unit', 'country_of_origin'
+            ),
             'classes': ('collapse',)
         }),
-        (_('Статус'), {
-            'fields': ('is_available', 'is_featured', 'is_bestseller', 'is_new')
+        (_('SEO (EN)'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'classes': ('collapse',),
+            'description': _('Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях.')
         }),
-        (_('Изображение'), {
+        (_('Медиа'), {
             'fields': ('main_image',)
         }),
-        (_('SEO метаданные'), {
-            'classes': ('collapse',),
-            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url')
+        (_('Мета'), {
+            'fields': ('sku', 'barcode'),
+            'classes': ('collapse',)
+        }),
+        (_('Внешние данные'), {
+            'fields': ('external_id', 'external_url', 'external_data'),
+            'classes': ('collapse',)
+        }),
+        (_('Синхронизация'), {
+            'fields': ('last_synced_at',),
+            'classes': ('collapse',)
         }),
     )
     
-    inlines = [ProductAuthorInline, BookVariantInline]
+    inlines = [ProductAuthorInline, ProductTranslationInline, ProductImageInline, ProductAttributeInline, BookVariantInline]
     
     def authors_list(self, obj):
         """Список авторов через запятую."""
@@ -130,6 +192,13 @@ class ProductBooksAdmin(admin.ModelAdmin):
                 django_models.Q(parent__slug='books')
             ).order_by('name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    
+    def slug_preview(self, obj):
+        """Предпросмотр slug."""
+        if obj:
+            return format_html('<code>{}</code>', obj.slug)
+        return "-"
+    slug_preview.short_description = _("Slug (предпросмотр)")
     
     def save_model(self, request, obj, form, change):
         """Автоматически устанавливаем product_type='books'."""
