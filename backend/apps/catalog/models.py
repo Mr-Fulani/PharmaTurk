@@ -312,6 +312,14 @@ class CategoryHeadwear(Category):
         verbose_name_plural = _("Категории — Головные уборы")
 
 
+class CategoryBooks(Category):
+    """Прокси-модель для категорий книг (жанров)."""
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Книги")
+        verbose_name_plural = _("Категории — Книги (Жанры)")
+
+
 class CategoryServices(Category):
     """Прокси-модель для категорий услуг."""
     class Meta:
@@ -2856,14 +2864,17 @@ class ProductAuthor(models.Model):
         related_name="books",
         verbose_name=_("Автор")
     )
+    sort_order = models.IntegerField(_("Порядок сортировки"), default=0, help_text=_("Порядок отображения авторов"))
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
 
     class Meta:
         verbose_name = _("Автор книги")
         verbose_name_plural = _("Авторы книг")
         unique_together = [['product', 'author']]
+        ordering = ['sort_order', 'created_at']
         indexes = [
             models.Index(fields=['product', 'author']),
+            models.Index(fields=['sort_order']),
         ]
 
     def __str__(self):
