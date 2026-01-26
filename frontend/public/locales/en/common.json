@@ -296,8 +296,30 @@
   "filter_bijouterie": "Costume Jewelry",
   "filter_women": "Women's",
   "filter_men": "Men's",
-  "filter_kids": "Kids'",
-  "filter_caps": "Caps",
+  "filter_kids": "Kids",
+  "books_page_title": "Books"
+  ,"books_page_subtitle": "Your book haven"
+  ,"books_not_found": "No books found"
+  ,"books_not_found_description": "Try changing search parameters or filters"
+  ,"books_search_placeholder": "Search books, authors..."
+  ,"books_all_categories": "All categories"
+  ,"books_sort_newest": "Newest"
+  ,"books_sort_name_asc": "By title A-Z"
+  ,"books_sort_name_desc": "By title Z-A"
+  ,"books_sort_price_asc": "Price: Low to High"
+  ,"books_sort_price_desc": "Price: High to Low"
+  ,"books_sort_rating": "By rating"
+  ,"category_islamic_fiqh": "Islamic Fiqh"
+  ,"category_tafsir": "Tafsir"
+  ,"category_adab": "Adab"
+  ,"category_hadith": "Hadith"
+  ,"category_history": "History"
+  ,"category_business": "Business Literature"
+  ,"category_science": "Scientific Literature"
+  ,"category_fiction": "Fiction"
+  ,"sidebar_book_categories": "Book Genres"
+  ,"sidebar_islamic_literature": "Islamic Literature"
+  ,"filter_caps": "Caps",
   "filter_hats": "Hats",
   "filter_panama": "Panama Hats",
   "category_medicines": "Medicines",

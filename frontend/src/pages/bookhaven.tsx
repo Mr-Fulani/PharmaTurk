@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Search, Filter, Grid, List } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import ProductCard from '../components/ProductCard';
 import api from '../lib/api';
 
@@ -29,6 +30,7 @@ interface Category {
 }
 
 const BookHavenPage: React.FC = () => {
+  const { t } = useTranslation('common');
   const [books, setBooks] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,8 +91,8 @@ const BookHavenPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-black">BookHaven</h1>
-              <p className="text-gray-600 mt-1">Ваша книжная гавань</p>
+              <h1 className="text-3xl font-bold text-black">{t('books_page_title', 'Книги')}</h1>
+              <p className="text-gray-600 mt-1">{t('books_page_subtitle', 'Ваша книжная гавань')}</p>
             </div>
             <div className="flex items-center gap-4">
               <button
@@ -127,7 +129,7 @@ const BookHavenPage: React.FC = () => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
                 type="text"
-                placeholder="Поиск книг, авторов..."
+                placeholder={t('books_search_placeholder', 'Поиск книг, авторов...')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff8c42] focus:border-transparent"
@@ -140,7 +142,7 @@ const BookHavenPage: React.FC = () => {
               onChange={(e) => setSelectedCategory(e.target.value)}
               className="w-full sm:w-48 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff8c42] focus:border-transparent bg-white"
             >
-              <option value="">Все категории</option>
+              <option value="">{t('books_all_categories', 'Все категории')}</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.slug}>
                   {category.name} ({category.product_count || 0})
@@ -154,12 +156,12 @@ const BookHavenPage: React.FC = () => {
               onChange={(e) => setSortBy(e.target.value)}
               className="w-full sm:w-48 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ff8c42] focus:border-transparent bg-white"
             >
-              <option value="-created_at">Новинки</option>
-              <option value="name">По названию А-Я</option>
-              <option value="-name">По названию Я-А</option>
-              <option value="price">Цена: по возрастанию</option>
-              <option value="-price">Цена: по убыванию</option>
-              <option value="-rating">По рейтингу</option>
+              <option value="-created_at">{t('books_sort_newest', 'Новинки')}</option>
+              <option value="name">{t('books_sort_name_asc', 'По названию А-Я')}</option>
+              <option value="-name">{t('books_sort_name_desc', 'По названию Я-А')}</option>
+              <option value="price">{t('books_sort_price_asc', 'Цена: по возрастанию')}</option>
+              <option value="-price">{t('books_sort_price_desc', 'Цена: по убыванию')}</option>
+              <option value="-rating">{t('books_sort_rating', 'По рейтингу')}</option>
             </select>
           </div>
         </div>
@@ -173,8 +175,8 @@ const BookHavenPage: React.FC = () => {
           </div>
         ) : books.length === 0 ? (
           <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Книги не найдены</h3>
-            <p className="text-gray-500">Попробуйте изменить параметры поиска или фильтры</p>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">{t('books_not_found', 'Книги не найдены')}</h3>
+            <p className="text-gray-500">{t('books_not_found_description', 'Попробуйте изменить параметры поиска или фильтры')}</p>
           </div>
         ) : (
           <motion.div
