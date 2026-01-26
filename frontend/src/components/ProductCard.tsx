@@ -19,6 +19,15 @@ interface ProductCardProps {
   href?: string
   productType?: string
   isBaseProduct?: boolean
+  // Поля специфичные для книг
+  isbn?: string
+  publisher?: string
+  pages?: number
+  language?: string
+  authors?: Array<{id: number, author: {full_name: string}}>
+  reviewsCount?: number
+  isBestseller?: boolean
+  isNew?: boolean
 }
 
 export default function ProductCard({ 
@@ -35,7 +44,15 @@ export default function ProductCard({
   description,
   href,
   productType = 'medicines',
-  isBaseProduct = true
+  isBaseProduct = true,
+  isbn,
+  publisher,
+  pages,
+  language,
+  authors,
+  reviewsCount,
+  isBestseller,
+  isNew
 }: ProductCardProps) {
   const { t } = useTranslation('common')
   
@@ -126,10 +143,46 @@ export default function ProductCard({
             {badge}
           </span>
         )}
+        {/* Бейджи для книг */}
+        {productType === 'books' && (
+          <>
+            {isBestseller && (
+              <span className="absolute left-2 top-2 rounded-md bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 ring-1 ring-orange-200">
+                Бестселлер
+              </span>
+            )}
+            {isNew && (
+              <span className="absolute left-2 top-2 rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-200">
+                Новинка
+              </span>
+            )}
+          </>
+        )}
       </div>
       <h3 className="mt-3 line-clamp-2 text-base font-semibold text-gray-900 hover-text-warm transition-colors">
         {name}
       </h3>
+      
+      {/* Информация специфичная для книг */}
+      {productType === 'books' && (
+        <div className="mt-2 space-y-1">
+          {authors && authors.length > 0 && (
+            <p className="text-sm text-gray-600">
+              {authors.map(a => a.author.full_name).join(', ')}
+            </p>
+          )}
+          {(publisher || pages) && (
+            <p className="text-xs text-gray-500">
+              {publisher && `${publisher}`}
+              {publisher && pages && ', '}
+              {pages && `${pages} стр.`}
+            </p>
+          )}
+          {isbn && (
+            <p className="text-xs text-gray-500">ISBN: {isbn}</p>
+          )}
+        </div>
+      )}
       <div className="mt-2 flex items-baseline gap-2">
         <div className="text-lg font-bold text-[var(--text-strong)]">
           {price ? `${price} ${currency}` : t('price_on_request', 'Цена по запросу')}
@@ -144,6 +197,9 @@ export default function ProductCard({
             <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
           </svg>
           <span>{rating.toFixed(1)}</span>
+          {productType === 'books' && reviewsCount && (
+            <span className="text-gray-500">({reviewsCount})</span>
+          )}
         </div>
       )}
       <div className="mt-3 flex items-center gap-2">

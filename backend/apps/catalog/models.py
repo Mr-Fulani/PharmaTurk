@@ -33,6 +33,7 @@ TOP_CATEGORY_SLUG_CHOICES = [
     ("jewelry", "jewelry"),
     ("underwear", "underwear"),
     ("headwear", "headwear"),
+    ("books", "books"),
 ]
 
 
@@ -493,9 +494,9 @@ class Product(models.Model):
         ("tableware", _("Посуда")),
         ("accessories", _("Аксессуары")),
         ("jewelry", _("Украшения")),
+        ("books", _("Книги")),
         # Добавьте здесь новые типы товаров по необходимости (должны совпадать с CATEGORY_TYPE_CHOICES)
         # Пример: ("cosmetics", _("Косметика")),
-        # Пример: ("books", _("Книги")),
         # Пример: ("toys", _("Игрушки")),
     ]
 
@@ -665,6 +666,18 @@ class Product(models.Model):
         help_text=_("Ссылка на изображение для OpenGraph, если оно отличается от основного.")
     )
     
+    # Специфичные поля для книг
+    isbn = models.CharField(_("ISBN"), max_length=20, blank=True, help_text=_("ISBN книги"))
+    publisher = models.CharField(_("Издательство"), max_length=200, blank=True)
+    publication_date = models.DateField(_("Дата публикации"), null=True, blank=True)
+    pages = models.PositiveIntegerField(_("Количество страниц"), null=True, blank=True)
+    language = models.CharField(_("Язык"), max_length=50, blank=True, default="Русский")
+    cover_type = models.CharField(_("Тип обложки"), max_length=50, blank=True, help_text=_("Твердая, мягкая и т.д."))
+    rating = models.DecimalField(_("Рейтинг"), max_digits=3, decimal_places=2, default=0.00, help_text=_("Рейтинг книги от 0 до 5"))
+    reviews_count = models.PositiveIntegerField(_("Количество отзывов"), default=0)
+    is_bestseller = models.BooleanField(_("Бестселлер"), default=False)
+    is_new = models.BooleanField(_("Новинка"), default=False)
+    
     # Метаданные
     sku = models.CharField(_("SKU"), max_length=100, blank=True)
     barcode = models.CharField(_("Штрихкод"), max_length=50, blank=True)
@@ -807,6 +820,13 @@ class ProductHeadwear(Product):
         proxy = True
         verbose_name = _("Товар — Головные уборы")
         verbose_name_plural = _("Товары — Головные уборы")
+
+
+class ProductBooks(Product):
+    class Meta:
+        proxy = True
+        verbose_name = _("Товар — Книги")
+        verbose_name_plural = _("Товары — Книги")
 
 
 class ProductImage(models.Model):
@@ -2677,6 +2697,177 @@ class BannerMedia(models.Model):
         elif self.content_type == 'gif':
             return 'image/gif'
         return ''
+
+
+class Author(models.Model):
+    """Автор книг."""
+    
+    first_name = models.CharField(_("Имя"), max_length=100)
+    last_name = models.CharField(_("Фамилия"), max_length=100)
+    bio = models.TextField(_("Биография"), blank=True)
+    photo = models.URLField(_("Фото"), blank=True, help_text=_("URL фотографии автора"))
+    birth_date = models.DateField(_("Дата рождения"), null=True, blank=True)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Автор")
+        verbose_name_plural = _("Авторы")
+        ordering = ['last_name', 'first_name']
+        indexes = [
+            models.Index(fields=['last_name', 'first_name']),
+        ]
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name}"
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}"
+
+
+class BookVariant(models.Model):
+    """Вариант книги (обложка, формат, цена)."""
+    
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="book_variants",
+        verbose_name=_("Книга (родитель)")
+    )
+    name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/формату"))
+    cover_type = models.CharField(_("Тип обложки"), max_length=50, blank=True, help_text=_("Твердая, мягкая, суперобложка"))
+    format_type = models.CharField(_("Формат"), max_length=50, blank=True, help_text=_("Твердый, мягкий, электронный"))
+    isbn = models.CharField(_("ISBN"), max_length=20, blank=True, help_text=_("ISBN для конкретного варианта"))
+    sku = models.CharField(_("SKU"), max_length=100, blank=True)
+    barcode = models.CharField(_("Штрихкод"), max_length=100, blank=True)
+    price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    currency = models.CharField(_("Валюта"), max_length=5, choices=CURRENCY_CHOICES, default="RUB")
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Вариант книги")
+        verbose_name_plural = _("Варианты книг")
+        ordering = ["product", "sort_order", "-created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["slug"]),
+            models.Index(fields=["is_active", "is_available"]),
+        ]
+
+    def __str__(self):
+        base = self.name or self.product.name
+        attrs = f"{self.cover_type or ''} {self.format_type or ''}".strip()
+        return f"{base} ({attrs})" if attrs else base
+
+    def save(self, *args, **kwargs):
+        """Автогенерация slug, если не заполнен."""
+        if not self.slug:
+            base_name = self.name or self.product.name
+            composed = f"{base_name}-{self.cover_type or ''}-{self.format_type or ''}".strip()
+            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+        super().save(*args, **kwargs)
+
+
+class BookVariantSize(models.Model):
+    """Формат/размер внутри варианта книги."""
+    
+    variant = models.ForeignKey(
+        BookVariant,
+        on_delete=models.CASCADE,
+        related_name="sizes",
+        verbose_name=_("Вариант книги")
+    )
+    size = models.CharField(
+        _("Формат/размер"),
+        max_length=50,
+        blank=True,
+        help_text=_("Например: Твердая, Мягкая, Электронная, 130x200, 140x215")
+    )
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Формат варианта книги")
+        verbose_name_plural = _("Форматы вариантов книг")
+        ordering = ["variant", "sort_order", "size"]
+        indexes = [
+            models.Index(fields=["variant", "sort_order"]),
+            models.Index(fields=["variant", "size"]),
+        ]
+
+    def __str__(self):
+        return f"{self.variant} — {self.size}"
+
+
+class BookVariantImage(models.Model):
+    """Изображение варианта книги."""
+    
+    variant = models.ForeignKey(
+        BookVariant,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Вариант книги")
+    )
+    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение варианта книги")
+        verbose_name_plural = _("Изображения вариантов книг")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["variant", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение варианта {self.variant}"
+
+
+class ProductAuthor(models.Model):
+    """Связь товара с авторами (для книг)."""
+    
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="book_authors",
+        verbose_name=_("Товар")
+    )
+    author = models.ForeignKey(
+        Author,
+        on_delete=models.CASCADE,
+        related_name="books",
+        verbose_name=_("Автор")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Автор книги")
+        verbose_name_plural = _("Авторы книг")
+        unique_together = [['product', 'author']]
+        indexes = [
+            models.Index(fields=['product', 'author']),
+        ]
+
+    def __str__(self):
+        return f"{self.product.name} - {self.author.full_name}"
 
 
 class MarketingBannerMedia(BannerMedia):

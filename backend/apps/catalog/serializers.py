@@ -9,7 +9,7 @@ from .models import (
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     Service, ServiceTranslation,
-    Banner, BannerMedia,
+    Banner, BannerMedia, Author, ProductAuthor,
 )
 
 
@@ -50,7 +50,7 @@ class ServiceTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ServiceTranslation
-        fields = ['locale', 'description']
+        fields = ['locale', 'name', 'description']
 
 
 class ClothingProductTranslationSerializer(serializers.ModelSerializer):
@@ -246,6 +246,24 @@ class PriceHistorySerializer(serializers.ModelSerializer):
         fields = ['price', 'currency', 'recorded_at', 'source']
 
 
+class AuthorSerializer(serializers.ModelSerializer):
+    """Сериализатор для авторов."""
+    full_name = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = Author
+        fields = ['id', 'first_name', 'last_name', 'full_name', 'bio', 'photo', 'birth_date', 'created_at']
+
+
+class ProductAuthorSerializer(serializers.ModelSerializer):
+    """Сериализатор для связи товаров с авторами."""
+    author = AuthorSerializer(read_only=True)
+    
+    class Meta:
+        model = ProductAuthor
+        fields = ['id', 'author', 'created_at']
+
+
 class ProductSerializer(serializers.ModelSerializer):
     """Сериализатор для товаров (краткая информация)."""
     
@@ -255,6 +273,7 @@ class ProductSerializer(serializers.ModelSerializer):
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     translations = ProductTranslationSerializer(many=True, read_only=True)
+    book_authors = ProductAuthorSerializer(many=True, read_only=True)
     
     class Meta:
         model = Product
@@ -269,6 +288,10 @@ class ProductSerializer(serializers.ModelSerializer):
             'min_order_quantity', 'pack_quantity',
             'country_of_origin', 'gtin', 'mpn',
             'weight_value', 'weight_unit', 'length', 'width', 'height', 'dimensions_unit',
+            # Поля специфичные для книг
+            'isbn', 'publisher', 'publication_date', 'pages', 'language',
+            'cover_type', 'rating', 'reviews_count', 'is_bestseller', 'is_new',
+            'book_authors',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
             'main_image_url',

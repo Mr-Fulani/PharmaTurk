@@ -21,6 +21,7 @@ from .models import (
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     Service, ServiceTranslation,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
+    Author, ProductAuthor,
 )
 
 
@@ -1346,3 +1347,7 @@ class MarketingRootCategoryAdmin(admin.ModelAdmin):
     card_media_preview.short_description = _("Превью медиа")
 
 
+
+
+# Импортируем админки для книг
+from .admin_books import *

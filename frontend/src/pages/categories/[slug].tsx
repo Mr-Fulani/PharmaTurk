@@ -93,7 +93,7 @@ interface CategoryPageProps {
   currentPage: number
   totalPages: number
   initialRouteSlug?: string
-  categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'medical-equipment' | 'furniture' | 'tableware' | 'accessories' | 'jewelry' | 'underwear' | 'headwear'
+  categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'medical-equipment' | 'furniture' | 'tableware' | 'accessories' | 'jewelry' | 'underwear' | 'headwear' | 'books'
   categoryTypeSlug?: string // Реальный тип категории из API (может быть кастомным)
 }
 
@@ -112,6 +112,7 @@ const brandProductTypeMap: Record<CategoryTypeKey, string> = {
   jewelry: 'jewelry',
   underwear: 'underwear',
   headwear: 'headwear',
+  books: 'books',
 }
 
 const resolveBrandProductType = (type: CategoryTypeKey) => brandProductTypeMap[type] || 'medicines'
@@ -164,6 +165,7 @@ const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): Ca
   if (norm.startsWith('medical-equipment')) return 'medical-equipment'
   if (norm.startsWith('supplements')) return 'supplements'
   if (norm.startsWith('medicines')) return 'medicines'
+  if (norm.startsWith('books')) return 'books'
   return 'medicines'
 }
 
@@ -475,8 +477,110 @@ const getCategorySections = (type: CategoryPageProps['categoryType'], categories
   if (type === 'medicines') {
     return buildMedicineSections(categories)
   }
+  if (type === 'books') {
+    return buildBookSections(categories)
+  }
   return []
 }
+
+const BOOK_GROUPS = [
+  {
+    label: 'Исламская литература',
+    keywords: ['ислам', 'islamic', 'фикх', 'fiqh', 'тафсир', 'tafsir', 'адаб', 'adab', 'хадис', 'hadith'],
+    subitems: [
+      { name: 'Исламский фикх', keywords: ['фикх', 'fiqh', 'islamic-fiqh'] },
+      { name: 'Тафсир', keywords: ['тафсир', 'tafsir'] },
+      { name: 'Адаб', keywords: ['адаб', 'adab'] },
+      { name: 'Хадис', keywords: ['хадис', 'hadith'] },
+      { name: 'История', keywords: ['история', 'history'] },
+    ]
+  },
+  {
+    label: 'Бизнес',
+    keywords: ['бизнес', 'business'],
+    subitems: [
+      { name: 'Бизнес литература', keywords: ['бизнес', 'business'] },
+    ]
+  },
+  {
+    label: 'Наука',
+    keywords: ['науч', 'science'],
+    subitems: [
+      { name: 'Научная литература', keywords: ['науч', 'science'] },
+    ]
+  },
+  {
+    label: 'Художественная',
+    keywords: ['худож', 'fiction'],
+    subitems: [
+      { name: 'Художественная литература', keywords: ['худож', 'fiction'] },
+    ]
+  }
+]
+
+const buildBookSections = (categories: Category[]): SidebarTreeSection[] =>
+  BOOK_GROUPS.map((group) => {
+    const groupCategories = categories.filter((category) =>
+      group.keywords.some((keyword) => category.slug.includes(keyword) || category.name.toLowerCase().includes(keyword))
+    )
+
+    const subcategories: SidebarTreeItem[] = []
+    const usedCategoryIds = new Set<number>()
+    
+    // Добавляем подкатегории для данной группы
+    group.subitems.forEach((itemStruct, index) => {
+      const match = groupCategories.find(cat => 
+        itemStruct.keywords.some(kw => cat.slug.toLowerCase().includes(kw) || cat.name.toLowerCase().includes(kw))
+      )
+      
+      if (match && !usedCategoryIds.has(match.id)) {
+        usedCategoryIds.add(match.id)
+        subcategories.push({
+          id: `book-${match.id}`,
+          name: match.name,
+          slug: match.slug,
+          dataId: match.id,
+          count: match.product_count,
+          type: 'category'
+        })
+      } else {
+        // Показываем подкатегорию даже если данных нет
+        subcategories.push({
+          id: `placeholder-book-${group.label}-${index}`,
+          name: itemStruct.name,
+          slug: undefined,
+          dataId: undefined,
+          count: undefined,
+          type: 'category'
+        })
+      }
+    })
+
+    // Добавляем оставшиеся категории группы, которых нет в структуре
+    groupCategories.forEach(cat => {
+        if (!usedCategoryIds.has(cat.id)) {
+            subcategories.push({
+              id: `book-${cat.id}`,
+              name: cat.name,
+              slug: cat.slug,
+              dataId: cat.id,
+              count: cat.product_count,
+              type: 'category'
+            })
+        }
+    })
+
+    // Создаем главный раздел с вложенными подкатегориями
+    return {
+      title: group.label,
+      items: [{
+        id: `section-book-${group.label}`,
+        name: group.label,
+        type: 'category',
+        children: subcategories
+      }]
+    }
+  })
 
 const normalizePageParam = (value: string | string[] | undefined): number => {
   if (!value) {
@@ -492,6 +596,8 @@ const normalizePageParam = (value: string | string[] | undefined): number => {
 
 // Фронтовая фильтрация по дополнительным фильтрам (без нагрузки на бэкенд)
 const filterProductsByExtraFilters = (products: Product[], filters: FilterState, categoryType: CategoryTypeKey) => {
+  console.log(`filterProductsByExtraFilters: ${products.length} products, categoryType: ${categoryType}`)
+  
   const norm = (v: any) => normalizeSlug(v)
   const getCatSlug = (p: any) => norm(p?.category?.slug || (p as any).category_slug || '')
 
@@ -537,6 +643,10 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
       return Array.from(wanted).some((w) => cat.includes(w) || norm(p.slug).includes(w))
     })
   }
+
+  // Для книг не применяем фильтрацию - показываем все книги
+  
+  console.log(`filterProductsByExtraFilters result: ${result.length} products`)
 
   return result
 }
@@ -901,7 +1011,12 @@ export default function CategoryPage({
         // Ограничиваем выдачу конкретным слагом категории из URL, чтобы не падать в default (medicines)
         const routeSlug = Array.isArray(router.query.slug) ? router.query.slug[0] : (router.query.slug as string | undefined)
         if (routeSlug) {
-          params.category_slug = routeSlug
+          // Для книг используем product_type чтобы показать все книги из всех жанров
+          if (categoryType === 'books') {
+            params.product_type = 'books'
+          } else {
+            params.category_slug = routeSlug
+          }
         }
 
         if (filters.categories.length > 0) {
@@ -920,7 +1035,12 @@ export default function CategoryPage({
           params.subcategory_id = filters.subcategories
         }
         if (filters.subcategorySlugs.length > 0) {
-          params.subcategory_slug = filters.subcategorySlugs.join(',')
+          // Для книг используем category_slug вместо subcategory_slug
+          if (categoryType === 'books') {
+            params.category_slug = filters.subcategorySlugs.join(',')
+          } else {
+            params.subcategory_slug = filters.subcategorySlugs.join(',')
+          }
         }
         if (filters.priceMin !== undefined) {
           params.price_min = filters.priceMin
@@ -945,6 +1065,8 @@ export default function CategoryPage({
         const count = filteredList.length
 
         console.log(`Loaded ${productsList.length} products (after filters: ${count})`)
+        console.log('Category type:', categoryType)
+        console.log('Sample product:', productsList[0])
         if (isCancelled) return
         setProducts(filteredList)
         setTotalCount(count)
@@ -1364,7 +1486,14 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     // --- Товары: всегда общий эндпоинт, чтобы не получать 404 для кастомных категорий ---
     const productParams: any = { page, page_size: 500 }
-    if (routeSlug) productParams.category_slug = routeSlug
+    if (routeSlug) {
+      // Для книг используем product_type чтобы показать все книги из всех жанров
+      if (categoryType === 'books') {
+        productParams.product_type = 'books'
+      } else {
+        productParams.category_slug = routeSlug
+      }
+    }
     if (brandId) {
       productParams.brand_id = brandId
     } else if (brandSlug) {
