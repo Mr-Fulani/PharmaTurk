@@ -630,6 +630,7 @@ class Product(models.Model):
     # Изображения
     main_image = models.URLField(
         _("Главное изображение"),
+        max_length=1000,
         blank=True,
         help_text=_("URL основного изображения (ссылка на CDN или внутреннее хранилище).")
     )

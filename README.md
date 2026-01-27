@@ -224,7 +224,46 @@ YUKASSA_SHOP_ID=your-shop-id
 YUKASSA_SECRET_KEY=your-secret-key
 ```
 
-## 📝 Лицензия
+## � Instagram Parser
+
+Парсер для автоматического сбора товаров из Instagram постов с медиа и описаниями.
+
+### Быстрый старт
+
+```bash
+# Инициализация парсера
+cd backend
+poetry run python manage.py init_instagram_scraper
+
+# Тестовый запуск
+poetry run python manage.py run_instagram_scraper \
+  --username bookstore_example \
+  --max-posts 5 \
+  --dry-run
+
+# Реальный запуск
+poetry run python manage.py run_instagram_scraper \
+  --username bookstore_example \
+  --max-posts 30 \
+  --category books
+```
+
+### Возможности
+
+- ✅ Парсинг постов из профилей Instagram
+- ✅ Парсинг по хештегам
+- ✅ Извлечение медиа (изображения/видео)
+- ✅ Автоматическое создание товаров в каталоге
+- ✅ Поддержка аутентификации
+
+### Документация
+
+- 📖 Полное руководство: [`INSTAGRAM_PARSER_GUIDE.md`](INSTAGRAM_PARSER_GUIDE.md)
+- 🚀 Быстрый старт: [`backend/INSTAGRAM_PARSER_QUICKSTART.md`](backend/INSTAGRAM_PARSER_QUICKSTART.md)
+
+**Важно**: Цены устанавливаются вручную через Django Admin после парсинга.
+
+## �📝 Лицензия
 
 Проект разработан для Turk-Export. Все права защищены.
 

@@ -11,6 +11,7 @@ from .views import (
     FurnitureProductViewSet,
     ServiceViewSet,
     BannerViewSet,
+    proxy_image,
 )
 
 # Основной роутер для медикаментов (существующий)
@@ -62,4 +63,7 @@ urlpatterns = [
     
     # Маршруты для услуг
     path('', include(services_router.urls)),
+    
+    # Прокси для Instagram изображений
+    path('proxy/image/', proxy_image, name='proxy_image'),
 ]

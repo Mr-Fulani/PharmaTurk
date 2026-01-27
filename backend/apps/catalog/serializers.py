@@ -223,9 +223,26 @@ class BrandSerializer(serializers.ModelSerializer):
 class ProductImageSerializer(serializers.ModelSerializer):
     """Сериализатор для изображений товара."""
     
+    image_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = ProductImage
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+    
+    def get_image_url(self, obj):
+        """URL изображения с прокси для Instagram."""
+        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+        return obj.image_url
 
 
 class ProductAttributeSerializer(serializers.ModelSerializer):
@@ -301,18 +318,51 @@ class ProductSerializer(serializers.ModelSerializer):
     
     def get_main_image_url(self, obj):
         """URL главного изображения."""
+        request = self.context.get('request')
+        
         # Сначала проверяем main_image
         if obj.main_image:
+            # Если это Instagram URL, используем прокси с ID товара
+            if 'instagram.f' in obj.main_image or 'cdninstagram.com' in obj.main_image:
+                if request:
+                    scheme = request.scheme
+                    host = request.get_host()
+                    if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                        base_url = f"{scheme}://localhost:8000"
+                    else:
+                        base_url = f"{scheme}://{host}"
+                    return f"{base_url}/api/catalog/proxy/image/?product_id={obj.id}&field=main_image"
+                return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.id}&field=main_image"
             return obj.main_image
         
         # Затем ищем главное изображение в связанных изображениях
         main_img = obj.images.filter(is_main=True).first()
         if main_img:
+            if 'instagram.f' in main_img.image_url or 'cdninstagram.com' in main_img.image_url:
+                if request:
+                    scheme = request.scheme
+                    host = request.get_host()
+                    if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                        base_url = f"{scheme}://localhost:8000"
+                    else:
+                        base_url = f"{scheme}://{host}"
+                    return f"{base_url}/api/catalog/proxy/image/?product_id={obj.id}&field=image_{main_img.id}"
+                return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.id}&field=image_{main_img.id}"
             return main_img.image_url
         
         # Если нет главного, берем первое изображение
         first_img = obj.images.first()
         if first_img:
+            if 'instagram.f' in first_img.image_url or 'cdninstagram.com' in first_img.image_url:
+                if request:
+                    scheme = request.scheme
+                    host = request.get_host()
+                    if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                        base_url = f"{scheme}://localhost:8000"
+                    else:
+                        base_url = f"{scheme}://{host}"
+                    return f"{base_url}/api/catalog/proxy/image/?product_id={obj.id}&field=image_{first_img.id}"
+                return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.id}&field=image_{first_img.id}"
             return first_img.image_url
         
         # Если изображений нет, возвращаем None
@@ -337,6 +387,7 @@ class ProductDetailSerializer(ProductSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
     attributes = ProductAttributeSerializer(many=True, read_only=True)
     price_history = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
     
     class Meta(ProductSerializer.Meta):
         fields = ProductSerializer.Meta.fields + [
@@ -348,6 +399,27 @@ class ProductDetailSerializer(ProductSerializer):
         """История цен (последние 10 записей)."""
         history = obj.price_history.all()[:10]
         return PriceHistorySerializer(history, many=True).data
+    
+    def get_og_image_url(self, obj):
+        """OG изображение с прокси для Instagram."""
+        request = self.context.get('request')
+        
+        # Если og_image_url заполнен, используем его
+        if obj.og_image_url:
+            if 'instagram.f' in obj.og_image_url or 'cdninstagram.com' in obj.og_image_url:
+                if request:
+                    scheme = request.scheme
+                    host = request.get_host()
+                    if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                        base_url = f"{scheme}://localhost:8000"
+                    else:
+                        base_url = f"{scheme}://{host}"
+                    return f"{base_url}/api/catalog/proxy/image/?product_id={obj.id}&field=main_image"
+                return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.id}&field=main_image"
+            return obj.og_image_url
+        
+        # Иначе используем main_image
+        return self.get_main_image_url(obj)
 
 
 class ProductSearchSerializer(serializers.ModelSerializer):
@@ -510,18 +582,52 @@ class ClothingCategorySerializer(serializers.ModelSerializer):
 
 class ClothingProductImageSerializer(serializers.ModelSerializer):
     """Сериализатор изображений одежды."""
+    
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = ClothingProductImage
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+    
+    def get_image_url(self, obj):
+        """URL изображения с прокси для Instagram."""
+        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+        return obj.image_url
 
 
 class ClothingVariantImageSerializer(serializers.ModelSerializer):
     """Сериализатор изображений варианта одежды."""
+    
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = ClothingVariantImage
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+    
+    def get_image_url(self, obj):
+        """URL изображения с прокси для Instagram."""
+        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+        return obj.image_url
 
 
 class ClothingVariantSizeSerializer(serializers.ModelSerializer):
@@ -875,18 +981,52 @@ class ShoeProductSerializer(serializers.ModelSerializer):
 
 class ShoeProductImageSerializer(serializers.ModelSerializer):
     """Сериализатор изображений обуви."""
+    
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = ShoeProductImage
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+    
+    def get_image_url(self, obj):
+        """URL изображения с прокси для Instagram."""
+        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+        return obj.image_url
 
 
 class ShoeVariantImageSerializer(serializers.ModelSerializer):
     """Сериализатор изображений варианта обуви."""
+    
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = ShoeVariantImage
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+    
+    def get_image_url(self, obj):
+        """URL изображения с прокси для Instagram."""
+        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+        return obj.image_url
 
 
 class ShoeVariantSizeSerializer(serializers.ModelSerializer):
@@ -926,7 +1066,6 @@ class ShoeVariantSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'slug', 'sort_order']
 
 
-
 class ElectronicsCategorySerializer(serializers.ModelSerializer):
     """Сериализатор для категорий электроники."""
     
@@ -948,10 +1087,27 @@ class ElectronicsCategorySerializer(serializers.ModelSerializer):
 
 class ElectronicsProductImageSerializer(serializers.ModelSerializer):
     """Сериализатор изображений электроники."""
+    
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = ElectronicsProductImage
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+    
+    def get_image_url(self, obj):
+        """URL изображения с прокси для Instagram."""
+        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+        return obj.image_url
 
 
 class ElectronicsProductSerializer(serializers.ModelSerializer):
@@ -1021,10 +1177,27 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
 
 class FurnitureVariantImageSerializer(serializers.ModelSerializer):
     """Сериализатор изображений варианта мебели."""
+    
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = FurnitureVariantImage
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+    
+    def get_image_url(self, obj):
+        """URL изображения с прокси для Instagram."""
+        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+        return obj.image_url
 
 
 class FurnitureVariantSerializer(serializers.ModelSerializer):

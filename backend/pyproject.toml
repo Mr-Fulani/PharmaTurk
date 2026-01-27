@@ -29,6 +29,7 @@ beautifulsoup4 = "^4.12.3"
 lxml = "^5.2.2"
 fake-useragent = "^1.5.1"
 selenium = "^4.21.0"
+instaloader = "^4.13"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"

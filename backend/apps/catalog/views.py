@@ -5,11 +5,16 @@ from decimal import Decimal
 
 from django.shortcuts import get_object_or_404
 from django.db import models
+from django.http import HttpResponse, JsonResponse
+from django.views.decorators.http import require_GET
+from django.core.cache import cache
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+import requests
+import hashlib
 
 from .models import (
     Category, Brand, Product, ProductAttribute, PriceHistory, Favorite,
@@ -1528,3 +1533,87 @@ class BannerViewSet(viewsets.ReadOnlyModelViewSet):
         
         serializer = self.get_serializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
+
+
+from django.views.decorators.http import require_GET, require_POST
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+
+@require_GET
+def proxy_image(request):
+    """
+    Прокси для Instagram изображений с кешированием.
+    Принимает ID товара и поле изображения.
+    """
+    # Получаем параметры
+    product_id = request.GET.get('product_id')
+    field = request.GET.get('field', 'main_image')  # main_image или image_id
+    
+    if not product_id:
+        return JsonResponse({'error': 'product_id parameter required'}, status=400)
+    
+    # Получаем товар и URL
+    try:
+        from apps.catalog.models import Product, ProductImage
+        product = Product.objects.get(id=product_id, is_active=True)
+        
+        if field == 'main_image':
+            image_url = product.main_image
+        elif field.startswith('image_'):
+            image_id = field.replace('image_', '')
+            image = ProductImage.objects.get(id=image_id, product=product)
+            image_url = image.image_url
+        else:
+            return JsonResponse({'error': 'Invalid field parameter'}, status=400)
+            
+    except (Product.DoesNotExist, ProductImage.DoesNotExist):
+        return JsonResponse({'error': 'Product or image not found'}, status=404)
+    
+    if not image_url:
+        return JsonResponse({'error': 'No image URL found'}, status=404)
+    
+    # Логирование для отладки
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Raw URL: {image_url}")
+    logger.info(f"URL length: {len(image_url)}")
+    logger.info(f"Contains instagram.f: {'instagram.f' in image_url}")
+    logger.info(f"Contains cdninstagram: {'cdninstagram.com' in image_url}")
+    
+    # Проверяем, что это Instagram домен
+    if not ('instagram.f' in image_url or 'cdninstagram.com' in image_url):
+        logger.error(f"Invalid domain check failed for URL: {image_url}")
+        return JsonResponse({'error': f'Invalid domain: {image_url[:100]}...'}, status=400)
+    
+    # Создаем ключ кеша
+    cache_key = f"insta_img_{hashlib.md5(image_url.encode()).hexdigest()}"
+    
+    # Проверяем кеш
+    cached_response = cache.get(cache_key)
+    if cached_response:
+        return HttpResponse(cached_response, content_type='image/jpeg')
+    
+    try:
+        # Загружаем изображение с правильными headers
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Referer': 'https://www.instagram.com/',
+            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+        }
+        
+        response = requests.get(image_url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            # Кешируем на 24 часа
+            cache.set(cache_key, response.content, 86400)
+            
+            # Возвращаем изображение с правильными headers
+            django_response = HttpResponse(response.content, content_type='image/jpeg')
+            django_response['Cache-Control'] = 'public, max-age=86400'
+            django_response['Access-Control-Allow-Origin'] = '*'
+            return django_response
+        else:
+            return JsonResponse({'error': f'Failed to fetch image: {response.status_code}'}, status=400)
+            
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
