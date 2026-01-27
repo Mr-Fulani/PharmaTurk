@@ -630,9 +630,15 @@ class Product(models.Model):
     # Изображения
     main_image = models.URLField(
         _("Главное изображение"),
-        max_length=1000,
+        max_length=2000,
         blank=True,
         help_text=_("URL основного изображения (ссылка на CDN или внутреннее хранилище).")
+    )
+    video_url = models.URLField(
+        _("URL видео"),
+        max_length=2000,
+        blank=True,
+        help_text=_("URL видео для товара (например, из Instagram постов).")
     )
     
     # Внешние данные
@@ -849,7 +855,7 @@ class ProductImage(models.Model):
     )
     image_url = models.URLField(
         _("URL изображения"),
-        max_length=1000,
+        max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
@@ -970,7 +976,11 @@ class ClothingVariantImage(models.Model):
         related_name="images",
         verbose_name=_("Вариант одежды")
     )
-    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    image_url = models.URLField(
+        _("URL изображения"),
+        max_length=2000,
+        help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -1263,7 +1273,7 @@ class ClothingProductImage(models.Model):
     )
     image_url = models.URLField(
         _("URL изображения"),
-        max_length=1000,
+        max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
@@ -1465,7 +1475,7 @@ class ShoeProductImage(models.Model):
     )
     image_url = models.URLField(
         _("URL изображения"),
-        max_length=1000,
+        max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
@@ -1589,7 +1599,11 @@ class ShoeVariantImage(models.Model):
         related_name="images",
         verbose_name=_("Вариант обуви")
     )
-    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    image_url = models.URLField(
+        _("URL изображения"),
+        max_length=2000,
+        help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -1781,7 +1795,7 @@ class JewelryProductImage(models.Model):
     )
     image_url = models.URLField(
         _("URL изображения"),
-        max_length=1000,
+        max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
@@ -1952,7 +1966,11 @@ class JewelryVariantImage(models.Model):
         related_name="images",
         verbose_name=_("Вариант украшения")
     )
-    image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    image_url = models.URLField(
+        _("URL изображения"),
+        max_length=2000,
+        help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -2255,7 +2273,7 @@ class ElectronicsProductImage(models.Model):
     )
     image_url = models.URLField(
         _("URL изображения"),
-        max_length=1000,
+        max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)

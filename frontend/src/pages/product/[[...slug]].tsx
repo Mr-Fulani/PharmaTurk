@@ -82,6 +82,7 @@ interface Product {
   currency: string
   main_image?: string
   main_image_url?: string
+  video_url?: string
   images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
   variants?: Variant[]
   default_variant_slug?: string | null
@@ -308,9 +309,18 @@ export default function ProductPage({
                 ))}
               </div>
             )}
-            {/* Главная картинка справа */}
+            {/* Главная картинка/видео справа */}
             <div className="flex-1 h-full flex items-center justify-center rounded-xl">
-              {activeImage ? (
+              {product.video_url ? (
+                <video 
+                  src={product.video_url} 
+                  poster={activeImage || '/product-placeholder.svg'}
+                  controls
+                  playsInline
+                  muted
+                  className="max-w-full max-h-full rounded-xl object-contain"
+                />
+              ) : activeImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={activeImage} alt={product.name} className="max-w-full max-h-full rounded-xl object-contain" />
               ) : (

@@ -266,3 +266,78 @@ class ScrapedProductLog(models.Model):
     
     def __str__(self):
         return f"{self.product_name} - {self.get_action_display()}"
+
+
+class InstagramScraperTask(models.Model):
+    """Задача для парсинга Instagram аккаунта."""
+    
+    STATUS_CHOICES = [
+        ('pending', _('Ожидает')),
+        ('running', _('Выполняется')),
+        ('completed', _('Завершено')),
+        ('failed', _('Ошибка')),
+    ]
+    
+    CATEGORY_CHOICES = [
+        ('books', _('Книги')),
+        ('clothing', _('Одежда')),
+        ('shoes', _('Обувь')),
+        ('electronics', _('Электроника')),
+        ('supplements', _('Добавки')),
+        ('medical-equipment', _('Медицинское оборудование')),
+        ('furniture', _('Мебель')),
+        ('tableware', _('Посуда')),
+        ('accessories', _('Аксессуары')),
+        ('jewelry', _('Ювелирные изделия')),
+        ('underwear', _('Нижнее белье')),
+        ('headwear', _('Головные уборы')),
+    ]
+    
+    # Параметры парсинга
+    instagram_username = models.CharField(
+        _('Instagram username'),
+        max_length=100,
+        help_text=_('Введите username без @ (например: book.warrior)')
+    )
+    category = models.CharField(
+        _('Категория товаров'),
+        max_length=50,
+        choices=CATEGORY_CHOICES,
+        default='books'
+    )
+    max_posts = models.PositiveIntegerField(
+        _('Максимум постов'),
+        default=50,
+        validators=[MinValueValidator(1), MaxValueValidator(500)],
+        help_text=_('Количество постов для парсинга (не критично если больше чем есть)')
+    )
+    
+    # Статус и результаты
+    status = models.CharField(_('Статус'), max_length=20, choices=STATUS_CHOICES, default='pending')
+    products_created = models.PositiveIntegerField(_('Создано товаров'), default=0)
+    products_updated = models.PositiveIntegerField(_('Обновлено товаров'), default=0)
+    products_skipped = models.PositiveIntegerField(_('Пропущено товаров'), default=0)
+    
+    # Логи
+    log_output = models.TextField(_('Лог выполнения'), blank=True)
+    error_message = models.TextField(_('Сообщение об ошибке'), blank=True)
+    
+    # Временные метки
+    created_at = models.DateTimeField(_('Создано'), auto_now_add=True)
+    started_at = models.DateTimeField(_('Начало выполнения'), null=True, blank=True)
+    finished_at = models.DateTimeField(_('Завершено'), null=True, blank=True)
+    
+    class Meta:
+        verbose_name = _('Задача парсинга Instagram')
+        verbose_name_plural = _('Задачи парсинга Instagram')
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"@{self.instagram_username} ({self.get_category_display()}) - {self.get_status_display()}"
+    
+    @property
+    def duration(self):
+        """Возвращает продолжительность выполнения."""
+        if self.started_at and self.finished_at:
+            return self.finished_at - self.started_at
+        return None

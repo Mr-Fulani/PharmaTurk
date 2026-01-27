@@ -1,5 +1,8 @@
 """Management команда для запуска Instagram парсера."""
 
+import os
+import requests
+from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
@@ -162,6 +165,53 @@ class Command(BaseCommand):
         self.stdout.write(f'Обновлено: {session.products_updated}')
         self.stdout.write(f'Пропущено: {session.products_skipped}')
 
+    def _download_image(self, url: str, product_id: str, index: int = 0) -> str:
+        """Скачивает изображение и сохраняет локально.
+        
+        Args:
+            url: URL изображения
+            product_id: ID товара для имени файла
+            index: Индекс изображения (0 для главного)
+            
+        Returns:
+            Путь к сохраненному файлу или пустую строку при ошибке
+        """
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://www.instagram.com/',
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                # Определяем расширение файла
+                ext = 'jpg'
+                if '.png' in url.lower():
+                    ext = 'png'
+                elif '.webp' in url.lower():
+                    ext = 'webp'
+                
+                # Формируем имя файла
+                filename = f"instagram_{product_id}_{index}.{ext}"
+                filepath = f"products/instagram/{filename}"
+                
+                # Сохраняем файл
+                from django.core.files.storage import default_storage
+                saved_path = default_storage.save(filepath, ContentFile(response.content))
+                
+                return saved_path
+            else:
+                self.stdout.write(
+                    self.style.WARNING(f'Не удалось скачать изображение: HTTP {response.status_code}')
+                )
+                return ''
+                
+        except Exception as e:
+            self.stdout.write(
+                self.style.WARNING(f'Ошибка при скачивании изображения: {e}')
+            )
+            return ''
+
     def _save_products(self, products, category: str):
         """Сохраняет спарсенные товары в базу данных."""
         from apps.catalog.models import Product, ProductImage, Category
@@ -194,6 +244,18 @@ class Command(BaseCommand):
                     # Если транслитерация не удалась, используем как есть
                     book_slug = slugify(product_data.name)[:200]
                 
+                # Скачиваем главное изображение (превью для видео)
+                main_image_path = ''
+                if product_data.images:
+                    main_image_path = self._download_image(
+                        product_data.images[0],
+                        product_data.external_id,
+                        0
+                    )
+                
+                # Извлекаем video_url из атрибутов если это видео
+                video_url = product_data.attributes.get('video_url', '') if product_data.attributes.get('is_video') else ''
+                
                 product, created = Product.objects.update_or_create(
                     external_id=product_data.external_id,
                     defaults={
@@ -205,26 +267,29 @@ class Command(BaseCommand):
                         'external_url': product_data.url,
                         'external_data': product_data.attributes,
                         'is_available': False,  # Недоступен пока не установлена цена
-                        'main_image': product_data.images[0] if product_data.images else '',
+                        'main_image': main_image_path,
+                        'video_url': video_url,
                         'last_synced_at': timezone.now(),
                     }
                 )
 
-                # Сохраняем изображения (всегда, не только при создании)
-                if product_data.images:
+                # Сохраняем дополнительные изображения (всегда, не только при создании)
+                if product_data.images and len(product_data.images) > 1:
                     # Удаляем старые изображения при обновлении
                     if not created:
                         product.images.all().delete()
                     
-                    # Сохраняем изображения со второго (первое уже в main_image)
+                    # Скачиваем и сохраняем изображения со второго
                     # Сохраняем максимум 5 дополнительных изображений
-                    for idx, image_url in enumerate(product_data.images[1:6]):
-                        ProductImage.objects.create(
-                            product=product,
-                            image_url=image_url,
-                            sort_order=idx,
-                            is_main=False,  # Главное уже в main_image
-                        )
+                    for idx, image_url in enumerate(product_data.images[1:6], start=1):
+                        local_path = self._download_image(image_url, product_data.external_id, idx)
+                        if local_path:
+                            ProductImage.objects.create(
+                                product=product,
+                                image_url=local_path,
+                                sort_order=idx - 1,
+                                is_main=False,
+                            )
 
                 if created:
                     created_count += 1

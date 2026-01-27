@@ -319,16 +319,14 @@ class InstagramParser(BaseScraper):
         media_urls = []
         
         try:
-            # Если это карусель (несколько изображений)
+            # Если это карусель (несколько изображений/видео)
             if post.typename == 'GraphSidecar':
                 for node in post.get_sidecar_nodes():
-                    if node.is_video:
-                        media_urls.append(node.video_url)
-                    else:
-                        media_urls.append(node.display_url)
-            # Если это видео
+                    # Для всех элементов используем display_url (превью для видео, изображение для фото)
+                    media_urls.append(node.display_url)
+            # Если это видео - используем превью изображение
             elif post.is_video:
-                media_urls.append(post.video_url)
+                media_urls.append(post.url)  # post.url - это превью для видео
             # Обычное изображение
             else:
                 media_urls.append(post.url)

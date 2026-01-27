@@ -65,5 +65,5 @@ urlpatterns = [
     path('', include(services_router.urls)),
     
     # Прокси для Instagram изображений
-    path('proxy/image/', proxy_image, name='proxy_image'),
+    path('proxy-image/', proxy_image, name='proxy_image'),
 ]

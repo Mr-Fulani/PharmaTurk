@@ -14,6 +14,7 @@ interface ProductCardProps {
   badge?: string | null
   rating?: number | null
   imageUrl?: string | null
+  videoUrl?: string | null
   viewMode?: 'grid' | 'list'
   description?: string
   href?: string
@@ -40,6 +41,7 @@ export default function ProductCard({
   badge, 
   rating, 
   imageUrl,
+  videoUrl,
   viewMode = 'grid',
   description,
   href,
@@ -62,7 +64,16 @@ export default function ProductCard({
     return (
       <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
         <div className="relative w-full sm:w-48 h-48 flex-shrink-0">
-          {resolvedImage ? (
+          {videoUrl ? (
+            <video 
+              src={videoUrl} 
+              poster={resolvedImage || '/product-placeholder.svg'}
+              controls
+              playsInline
+              muted
+              className="w-full h-full rounded-md object-cover"
+            />
+          ) : resolvedImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={resolvedImage} alt={name} className="w-full h-full rounded-md object-cover" />
           ) : (
@@ -131,7 +142,16 @@ export default function ProductCard({
   return (
     <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
       <div className="relative">
-        {resolvedImage ? (
+        {videoUrl ? (
+          <video 
+            src={videoUrl} 
+            poster={resolvedImage || '/product-placeholder.svg'}
+            controls
+            playsInline
+            muted
+            className="aspect-[4/3] w-full rounded-lg object-cover"
+          />
+        ) : resolvedImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={resolvedImage} alt={name} className="aspect-[4/3] w-full rounded-lg object-cover" />
         ) : (

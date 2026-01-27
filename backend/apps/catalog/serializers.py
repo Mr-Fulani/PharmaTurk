@@ -1,5 +1,6 @@
 """Сериализаторы для API каталога товаров."""
 
+from urllib.parse import quote
 from django.db.models import Count
 from rest_framework import serializers
 from .models import (
@@ -240,8 +241,20 @@ class ProductImageSerializer(serializers.ModelSerializer):
                     base_url = f"{scheme}://localhost:8000"
                 else:
                     base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
-            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+        # Если это локальный файл (не начинается с http), добавляем /media/
+        elif not obj.image_url.startswith('http'):
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/media/{obj.image_url}"
+            return f"http://localhost:8000/media/{obj.image_url}"
         return obj.image_url
 
 
@@ -311,7 +324,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'book_authors',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
-            'main_image_url',
+            'main_image_url', 'video_url',
             'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -322,7 +335,7 @@ class ProductSerializer(serializers.ModelSerializer):
         
         # Сначала проверяем main_image
         if obj.main_image:
-            # Если это Instagram URL, используем прокси с ID товара
+            # Если это Instagram URL, используем прокси
             if 'instagram.f' in obj.main_image or 'cdninstagram.com' in obj.main_image:
                 if request:
                     scheme = request.scheme
@@ -331,8 +344,19 @@ class ProductSerializer(serializers.ModelSerializer):
                         base_url = f"{scheme}://localhost:8000"
                     else:
                         base_url = f"{scheme}://{host}"
-                    return f"{base_url}/api/catalog/proxy/image/?product_id={obj.id}&field=main_image"
-                return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.id}&field=main_image"
+                    return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.main_image)}"
+                return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.main_image)}"
+            # Если это локальный файл (не начинается с http), добавляем /media/
+            elif not obj.main_image.startswith('http'):
+                if request:
+                    scheme = request.scheme
+                    host = request.get_host()
+                    if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                        base_url = f"{scheme}://localhost:8000"
+                    else:
+                        base_url = f"{scheme}://{host}"
+                    return f"{base_url}/media/{obj.main_image}"
+                return f"http://localhost:8000/media/{obj.main_image}"
             return obj.main_image
         
         # Затем ищем главное изображение в связанных изображениях
@@ -346,8 +370,8 @@ class ProductSerializer(serializers.ModelSerializer):
                         base_url = f"{scheme}://localhost:8000"
                     else:
                         base_url = f"{scheme}://{host}"
-                    return f"{base_url}/api/catalog/proxy/image/?product_id={obj.id}&field=image_{main_img.id}"
-                return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.id}&field=image_{main_img.id}"
+                    return f"{base_url}/api/catalog/proxy-image/?url={quote(main_img.image_url)}"
+                return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(main_img.image_url)}"
             return main_img.image_url
         
         # Если нет главного, берем первое изображение
@@ -361,8 +385,8 @@ class ProductSerializer(serializers.ModelSerializer):
                         base_url = f"{scheme}://localhost:8000"
                     else:
                         base_url = f"{scheme}://{host}"
-                    return f"{base_url}/api/catalog/proxy/image/?product_id={obj.id}&field=image_{first_img.id}"
-                return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.id}&field=image_{first_img.id}"
+                    return f"{base_url}/api/catalog/proxy-image/?url={quote(first_img.image_url)}"
+                return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(first_img.image_url)}"
             return first_img.image_url
         
         # Если изображений нет, возвращаем None
@@ -414,8 +438,8 @@ class ProductDetailSerializer(ProductSerializer):
                         base_url = f"{scheme}://localhost:8000"
                     else:
                         base_url = f"{scheme}://{host}"
-                    return f"{base_url}/api/catalog/proxy/image/?product_id={obj.id}&field=main_image"
-                return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.id}&field=main_image"
+                    return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.og_image_url)}"
+                return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.og_image_url)}"
             return obj.og_image_url
         
         # Иначе используем main_image
@@ -600,8 +624,20 @@ class ClothingProductImageSerializer(serializers.ModelSerializer):
                     base_url = f"{scheme}://localhost:8000"
                 else:
                     base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
-            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+        # Если это локальный файл (не начинается с http), добавляем /media/
+        elif not obj.image_url.startswith('http'):
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/media/{obj.image_url}"
+            return f"http://localhost:8000/media/{obj.image_url}"
         return obj.image_url
 
 
@@ -625,8 +661,20 @@ class ClothingVariantImageSerializer(serializers.ModelSerializer):
                     base_url = f"{scheme}://localhost:8000"
                 else:
                     base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
-            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+        # Если это локальный файл (не начинается с http), добавляем /media/
+        elif not obj.image_url.startswith('http'):
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/media/{obj.image_url}"
+            return f"http://localhost:8000/media/{obj.image_url}"
         return obj.image_url
 
 
@@ -999,8 +1047,20 @@ class ShoeProductImageSerializer(serializers.ModelSerializer):
                     base_url = f"{scheme}://localhost:8000"
                 else:
                     base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
-            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+        # Если это локальный файл (не начинается с http), добавляем /media/
+        elif not obj.image_url.startswith('http'):
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/media/{obj.image_url}"
+            return f"http://localhost:8000/media/{obj.image_url}"
         return obj.image_url
 
 
@@ -1024,8 +1084,20 @@ class ShoeVariantImageSerializer(serializers.ModelSerializer):
                     base_url = f"{scheme}://localhost:8000"
                 else:
                     base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
-            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+        # Если это локальный файл (не начинается с http), добавляем /media/
+        elif not obj.image_url.startswith('http'):
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/media/{obj.image_url}"
+            return f"http://localhost:8000/media/{obj.image_url}"
         return obj.image_url
 
 
@@ -1105,8 +1177,20 @@ class ElectronicsProductImageSerializer(serializers.ModelSerializer):
                     base_url = f"{scheme}://localhost:8000"
                 else:
                     base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
-            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+        # Если это локальный файл (не начинается с http), добавляем /media/
+        elif not obj.image_url.startswith('http'):
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/media/{obj.image_url}"
+            return f"http://localhost:8000/media/{obj.image_url}"
         return obj.image_url
 
 
@@ -1195,8 +1279,20 @@ class FurnitureVariantImageSerializer(serializers.ModelSerializer):
                     base_url = f"{scheme}://localhost:8000"
                 else:
                     base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
-            return f"http://localhost:8000/api/catalog/proxy/image/?product_id={obj.product.id}&field=image_{obj.id}"
+                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
+        # Если это локальный файл (не начинается с http), добавляем /media/
+        elif not obj.image_url.startswith('http'):
+            request = self.context.get('request')
+            if request:
+                scheme = request.scheme
+                host = request.get_host()
+                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                    base_url = f"{scheme}://localhost:8000"
+                else:
+                    base_url = f"{scheme}://{host}"
+                return f"{base_url}/media/{obj.image_url}"
+            return f"http://localhost:8000/media/{obj.image_url}"
         return obj.image_url
 
 

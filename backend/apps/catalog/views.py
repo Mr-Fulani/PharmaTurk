@@ -1543,34 +1543,13 @@ from django.views.decorators.csrf import csrf_exempt
 def proxy_image(request):
     """
     Прокси для Instagram изображений с кешированием.
-    Принимает ID товара и поле изображения.
+    Принимает URL изображения напрямую через параметр url.
     """
-    # Получаем параметры
-    product_id = request.GET.get('product_id')
-    field = request.GET.get('field', 'main_image')  # main_image или image_id
-    
-    if not product_id:
-        return JsonResponse({'error': 'product_id parameter required'}, status=400)
-    
-    # Получаем товар и URL
-    try:
-        from apps.catalog.models import Product, ProductImage
-        product = Product.objects.get(id=product_id, is_active=True)
-        
-        if field == 'main_image':
-            image_url = product.main_image
-        elif field.startswith('image_'):
-            image_id = field.replace('image_', '')
-            image = ProductImage.objects.get(id=image_id, product=product)
-            image_url = image.image_url
-        else:
-            return JsonResponse({'error': 'Invalid field parameter'}, status=400)
-            
-    except (Product.DoesNotExist, ProductImage.DoesNotExist):
-        return JsonResponse({'error': 'Product or image not found'}, status=404)
+    # Получаем URL напрямую
+    image_url = request.GET.get('url')
     
     if not image_url:
-        return JsonResponse({'error': 'No image URL found'}, status=404)
+        return JsonResponse({'error': 'url parameter required'}, status=400)
     
     # Логирование для отладки
     import logging

@@ -10,7 +10,7 @@ from django.http import HttpResponseRedirect
 
 from .models import (
     ScraperConfig, ScrapingSession, CategoryMapping, 
-    BrandMapping, ScrapedProductLog
+    BrandMapping, ScrapedProductLog, InstagramScraperTask
 )
 from .tasks import run_scraper_task, update_scraper_status
 
@@ -368,6 +368,274 @@ class ScrapedProductLogAdmin(admin.ModelAdmin):
             color, obj.get_action_display()
         )
     action_badge.short_description = 'Действие'
+
+
+@admin.register(InstagramScraperTask)
+class InstagramScraperTaskAdmin(admin.ModelAdmin):
+    """Админ для задач парсинга Instagram."""
+    
+    list_display = [
+        'instagram_username', 'category', 'status_badge', 
+        'max_posts', 'products_stats', 'created_at', 'duration_display', 'actions_column'
+    ]
+    list_filter = ['status', 'category', 'created_at']
+    search_fields = ['instagram_username', 'error_message']
+    ordering = ['-created_at']
+    
+    fieldsets = [
+        ('Параметры парсинга', {
+            'fields': ['instagram_username', 'category', 'max_posts'],
+            'description': 'Введите username Instagram аккаунта (без @), выберите категорию и укажите количество постов'
+        }),
+        ('Статус и результаты', {
+            'fields': ['status', 'products_created', 'products_updated', 'products_skipped']
+        }),
+        ('Временные метки', {
+            'fields': ['created_at', 'started_at', 'finished_at'],
+            'classes': ['collapse']
+        }),
+        ('Логи', {
+            'fields': ['log_output', 'error_message'],
+            'classes': ['collapse']
+        })
+    ]
+    
+    readonly_fields = [
+        'status', 'products_created', 'products_updated', 'products_skipped',
+        'log_output', 'error_message', 'created_at', 'started_at', 'finished_at'
+    ]
+    
+    actions = ['run_instagram_scraping', 'rerun_instagram_scraping']
+    
+    def status_badge(self, obj):
+        """Отображает статус с цветным бейджем."""
+        colors = {
+            'pending': 'blue',
+            'running': 'orange',
+            'completed': 'green',
+            'failed': 'red'
+        }
+        color = colors.get(obj.status, 'gray')
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">●</span> {}',
+            color, obj.get_status_display()
+        )
+    status_badge.short_description = 'Статус'
+    
+    def products_stats(self, obj):
+        """Отображает статистику товаров."""
+        if obj.status == 'pending':
+            return '-'
+        return format_html(
+            '<span style="color: green;">+{}</span> / '
+            '<span style="color: blue;">~{}</span> / '
+            '<span style="color: gray;">-{}</span>',
+            obj.products_created, obj.products_updated, obj.products_skipped
+        )
+    products_stats.short_description = 'Создано / Обновлено / Пропущено'
+    
+    def duration_display(self, obj):
+        """Отображает продолжительность."""
+        if obj.duration:
+            total_seconds = int(obj.duration.total_seconds())
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            
+            if hours:
+                return f'{hours}ч {minutes}м'
+            elif minutes:
+                return f'{minutes}м {seconds}с'
+            else:
+                return f'{seconds}с'
+        return '-'
+    duration_display.short_description = 'Длительность'
+    
+    def run_instagram_scraping(self, request, queryset):
+        """Действие: запустить парсинг для выбранных задач."""
+        import subprocess
+        from django.utils import timezone
+        
+        for task in queryset.filter(status='pending'):
+            try:
+                task.status = 'running'
+                task.started_at = timezone.now()
+                task.save()
+                
+                # Запускаем команду парсинга
+                result = subprocess.run(
+                    [
+                        'poetry', 'run', 'python', 'manage.py', 
+                        'run_instagram_scraper',
+                        '--username', task.instagram_username,
+                        '--category', task.category,
+                        '--max-posts', str(task.max_posts)
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=600  # 10 минут таймаут
+                )
+                
+                task.log_output = result.stdout + '\n' + result.stderr
+                
+                # Парсим результаты из вывода
+                output = result.stdout
+                if 'создано' in output.lower():
+                    import re
+                    created_match = re.search(r'создано (\d+)', output.lower())
+                    updated_match = re.search(r'обновлено (\d+)', output.lower())
+                    skipped_match = re.search(r'пропущено (\d+)', output.lower())
+                    
+                    if created_match:
+                        task.products_created = int(created_match.group(1))
+                    if updated_match:
+                        task.products_updated = int(updated_match.group(1))
+                    if skipped_match:
+                        task.products_skipped = int(skipped_match.group(1))
+                
+                if result.returncode == 0:
+                    task.status = 'completed'
+                    messages.success(request, f'Парсинг @{task.instagram_username} завершен успешно')
+                else:
+                    task.status = 'failed'
+                    task.error_message = result.stderr
+                    messages.error(request, f'Ошибка парсинга @{task.instagram_username}')
+                
+            except subprocess.TimeoutExpired:
+                task.status = 'failed'
+                task.error_message = 'Превышен таймаут выполнения (10 минут)'
+                messages.error(request, f'Таймаут парсинга @{task.instagram_username}')
+            except Exception as e:
+                task.status = 'failed'
+                task.error_message = str(e)
+                messages.error(request, f'Ошибка: {e}')
+            finally:
+                task.finished_at = timezone.now()
+                task.save()
+    
+    run_instagram_scraping.short_description = 'Запустить парсинг Instagram'
+    
+    def rerun_instagram_scraping(self, request, queryset):
+        """Действие: повторно запустить парсинг для выбранных задач."""
+        import subprocess
+        from django.utils import timezone
+        
+        # Работаем с любыми задачами, кроме running
+        for task in queryset.exclude(status='running'):
+            try:
+                # Сбрасываем статус и результаты
+                task.status = 'running'
+                task.started_at = timezone.now()
+                task.finished_at = None
+                task.products_created = 0
+                task.products_updated = 0
+                task.products_skipped = 0
+                task.log_output = ''
+                task.error_message = ''
+                task.save()
+                
+                # Запускаем команду парсинга
+                result = subprocess.run(
+                    [
+                        'poetry', 'run', 'python', 'manage.py', 
+                        'run_instagram_scraper',
+                        '--username', task.instagram_username,
+                        '--category', task.category,
+                        '--max-posts', str(task.max_posts)
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=600  # 10 минут таймаут
+                )
+                
+                task.log_output = result.stdout + '\n' + result.stderr
+                
+                # Парсим результаты из вывода
+                output = result.stdout
+                if 'создано' in output.lower():
+                    import re
+                    created_match = re.search(r'создано (\d+)', output.lower())
+                    updated_match = re.search(r'обновлено (\d+)', output.lower())
+                    skipped_match = re.search(r'пропущено (\d+)', output.lower())
+                    
+                    if created_match:
+                        task.products_created = int(created_match.group(1))
+                    if updated_match:
+                        task.products_updated = int(updated_match.group(1))
+                    if skipped_match:
+                        task.products_skipped = int(skipped_match.group(1))
+                
+                if result.returncode == 0:
+                    task.status = 'completed'
+                    messages.success(request, f'Повторный парсинг @{task.instagram_username} завершен успешно')
+                else:
+                    task.status = 'failed'
+                    task.error_message = result.stderr
+                    messages.error(request, f'Ошибка повторного парсинга @{task.instagram_username}')
+                
+            except subprocess.TimeoutExpired:
+                task.status = 'failed'
+                task.error_message = 'Превышен таймаут выполнения (10 минут)'
+                messages.error(request, f'Таймаут парсинга @{task.instagram_username}')
+            except Exception as e:
+                task.status = 'failed'
+                task.error_message = str(e)
+                messages.error(request, f'Ошибка: {e}')
+            finally:
+                task.finished_at = timezone.now()
+                task.save()
+    
+    rerun_instagram_scraping.short_description = 'Запустить снова (повторный парсинг)'
+    
+    def actions_column(self, obj):
+        """Колонка с действиями."""
+        if obj.status != 'running':
+            rerun_url = reverse('admin:scrapers_instagramscrapertask_rerun', args=[obj.pk])
+            return format_html(
+                '<a href="{}" class="button">🔄 Запустить снова</a>',
+                rerun_url
+            )
+        return format_html('<span style="color: orange;">⏳ Выполняется...</span>')
+    actions_column.short_description = 'Действия'
+    
+    def get_urls(self):
+        """Добавляем кастомные URL."""
+        from django.urls import path
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:task_id>/rerun/',
+                self.admin_site.admin_view(self.rerun_task_view),
+                name='scrapers_instagramscrapertask_rerun'
+            ),
+        ]
+        return custom_urls + urls
+    
+    def rerun_task_view(self, request, task_id):
+        """Повторно запускает задачу парсинга."""
+        try:
+            task = InstagramScraperTask.objects.get(id=task_id)
+            
+            if task.status == 'running':
+                messages.warning(request, f'Задача @{task.instagram_username} уже выполняется')
+            else:
+                # Используем существующий метод для повторного запуска
+                self.rerun_instagram_scraping(request, InstagramScraperTask.objects.filter(pk=task_id))
+            
+        except InstagramScraperTask.DoesNotExist:
+            messages.error(request, 'Задача не найдена')
+        except Exception as e:
+            messages.error(request, f'Ошибка запуска: {e}')
+        
+        return HttpResponseRedirect(reverse('admin:scrapers_instagramscrapertask_changelist'))
+    
+    def save_model(self, request, obj, form, change):
+        """При создании новой задачи автоматически запускаем парсинг."""
+        is_new = obj.pk is None
+        super().save_model(request, obj, form, change)
+        
+        if is_new and obj.status == 'pending':
+            # Автоматически запускаем парсинг для новой задачи
+            self.run_instagram_scraping(request, InstagramScraperTask.objects.filter(pk=obj.pk))
 
 
 # Кастомизация админки
