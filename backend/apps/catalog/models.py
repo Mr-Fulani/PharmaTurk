@@ -849,6 +849,7 @@ class ProductImage(models.Model):
     )
     image_url = models.URLField(
         _("URL изображения"),
+        max_length=1000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
@@ -1262,6 +1263,7 @@ class ClothingProductImage(models.Model):
     )
     image_url = models.URLField(
         _("URL изображения"),
+        max_length=1000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
@@ -1463,6 +1465,7 @@ class ShoeProductImage(models.Model):
     )
     image_url = models.URLField(
         _("URL изображения"),
+        max_length=1000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
@@ -1778,6 +1781,7 @@ class JewelryProductImage(models.Model):
     )
     image_url = models.URLField(
         _("URL изображения"),
+        max_length=1000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
@@ -2251,6 +2255,7 @@ class ElectronicsProductImage(models.Model):
     )
     image_url = models.URLField(
         _("URL изображения"),
+        max_length=1000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)

@@ -166,6 +166,8 @@ class Command(BaseCommand):
         """Сохраняет спарсенные товары в базу данных."""
         from apps.catalog.models import Product, ProductImage, Category
         from django.utils.text import slugify
+        from django.utils import timezone
+        from transliterate import translit
 
         # Получаем категорию
         try:
@@ -183,11 +185,20 @@ class Command(BaseCommand):
         for product_data in products:
             try:
                 # Проверяем, существует ли товар с таким external_id
+                # Генерируем slug только из названия для SEO
+                # Транслитерируем кириллицу для slug
+                try:
+                    transliterated_name = translit(product_data.name, 'ru', reversed=True)
+                    book_slug = slugify(transliterated_name)[:200]
+                except:
+                    # Если транслитерация не удалась, используем как есть
+                    book_slug = slugify(product_data.name)[:200]
+                
                 product, created = Product.objects.update_or_create(
                     external_id=product_data.external_id,
                     defaults={
                         'name': product_data.name,
-                        'slug': slugify(product_data.name)[:200],
+                        'slug': book_slug if book_slug else product_data.external_id,
                         'description': product_data.description,
                         'product_type': category,
                         'category': cat,
@@ -199,14 +210,20 @@ class Command(BaseCommand):
                     }
                 )
 
-                # Сохраняем изображения
-                if created and product_data.images:
-                    for idx, image_url in enumerate(product_data.images):
+                # Сохраняем изображения (всегда, не только при создании)
+                if product_data.images:
+                    # Удаляем старые изображения при обновлении
+                    if not created:
+                        product.images.all().delete()
+                    
+                    # Сохраняем изображения со второго (первое уже в main_image)
+                    # Сохраняем максимум 5 дополнительных изображений
+                    for idx, image_url in enumerate(product_data.images[1:6]):
                         ProductImage.objects.create(
                             product=product,
                             image_url=image_url,
                             sort_order=idx,
-                            is_main=(idx == 0),
+                            is_main=False,  # Главное уже в main_image
                         )
 
                 if created:
@@ -218,9 +235,15 @@ class Command(BaseCommand):
 
             except Exception as e:
                 skipped_count += 1
+                # Выводим полную ошибку для отладки
+                import traceback
+                error_details = traceback.format_exc()
                 self.stdout.write(
                     self.style.WARNING(f'✗ Пропущен {product_data.name}: {str(e)}')
                 )
+                # Выводим детали только для первой ошибки
+                if skipped_count == 1:
+                    self.stdout.write(self.style.ERROR(f'Детали ошибки:\n{error_details}'))
 
         self.stdout.write(
             self.style.SUCCESS(

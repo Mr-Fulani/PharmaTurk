@@ -252,7 +252,7 @@ class InstagramParser(BaseScraper):
             self.logger.error(f"Ошибка при парсинге поста: {e}")
             return None
     
-    def _extract_product_name(self, caption: str, max_length: int = 10) -> str:
+    def _extract_product_name(self, caption: str, max_length: int = 50) -> str:
         """Извлекает название товара из описания поста.
         
         Args:
@@ -269,12 +269,37 @@ class InstagramParser(BaseScraper):
         text = re.sub(r'#\w+', '', caption)
         text = re.sub(r'@\w+', '', text)
         
-        # Берем первое предложение или первые N символов
-        sentences = text.split('.')
-        if sentences:
-            name = sentences[0].strip()
-        else:
-            name = text.strip()
+        # Ищем название книги - обычно идет после "Цена: 000₽"
+        lines = text.split('\n')
+        name = ""
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Если строка содержит "Цена:" в начале, извлекаем текст после цены
+            price_match = re.match(r'^Цена[:：]?\s*\d+[₽руб]?\s+(.+)', line, re.IGNORECASE)
+            if price_match:
+                # Берем текст после цены как название
+                name = price_match.group(1).strip()
+                break
+            
+            # Если строка не содержит цену, но это не "Автор:", берем как название
+            if line and len(line) > 3:
+                if not re.match(r'^Автор[:：]', line, re.IGNORECASE):
+                    name = line
+                    break
+        
+        # Если не нашли, берем первое предложение
+        if not name:
+            sentences = text.split('.')
+            if sentences:
+                name = sentences[0].strip()
+            else:
+                name = text.strip()
+        
+        # Убираем эмодзи и лишние символы
+        name = re.sub(r'[^\w\s\-.,!?а-яА-ЯёЁ]', '', name)
+        name = name.strip()
         
         # Обрезаем до максимальной длины
         if len(name) > max_length:
