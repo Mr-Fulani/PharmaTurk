@@ -1062,9 +1062,10 @@ export default function CategoryPage({
         const data = response.data
         const productsList = Array.isArray(data) ? data : (data.results || [])
         const filteredList = filterProductsByExtraFilters(productsList, filters, categoryType)
-        const count = filteredList.length
+        // Используем count из API для правильной пагинации
+        const count = data.count || filteredList.length
 
-        console.log(`Loaded ${productsList.length} products (after filters: ${count})`)
+        console.log(`Loaded ${productsList.length} products (after filters: ${filteredList.length}), total count: ${count}`)
         console.log('Category type:', categoryType)
         console.log('Sample product:', productsList[0])
         if (isCancelled) return
@@ -1485,7 +1486,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
 
     // --- Товары: всегда общий эндпоинт, чтобы не получать 404 для кастомных категорий ---
-    const productParams: any = { page, page_size: 500 }
+    const productParams: any = { page, page_size: pageSize }
     if (routeSlug) {
       // Для книг используем product_type чтобы показать все книги из всех жанров
       if (categoryType === 'books') {
