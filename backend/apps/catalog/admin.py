@@ -22,6 +22,8 @@ from .models import (
     Service, ServiceTranslation,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
     Author, ProductAuthor,
+    # Валютные модели
+    CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog,
 )
 
 
@@ -1351,3 +1353,6 @@ class MarketingRootCategoryAdmin(admin.ModelAdmin):
 
 # Импортируем админки для книг
 from .admin_books import *
+
+# Импортируем и регистрируем админки для валютных моделей
+from .admin_currency import *

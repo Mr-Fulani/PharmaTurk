@@ -94,7 +94,36 @@ class Cart(models.Model):
 
     @property
     def total_amount(self):
-        total = sum((item.price * item.quantity for item in self.items.all()))
+        """Рассчитать общую сумму корзины в предпочитаемой валюте."""
+        # Получаем предпочитаемую валюту (по умолчанию RUB)
+        preferred_currency = 'RUB'
+        
+        # Суммируем цены в предпочитаемой валюте
+        total = 0
+        for item in self.items.all():
+            try:
+                prices = item.product.get_all_prices()
+                if prices and preferred_currency in prices:
+                    price = prices[preferred_currency].get('price_with_margin', 0)
+                elif prices:
+                    # Если предпочитаемой валюты нет, используем базовую
+                    for currency, data in prices.items():
+                        if data.get('is_base_price'):
+                            price = data.get('price_with_margin', 0)
+                            break
+                    else:
+                        # Если базовой нет, берем первую
+                        first_currency = list(prices.keys())[0]
+                        price = prices[first_currency].get('price_with_margin', 0)
+                else:
+                    # Fallback к старому полю
+                    price = item.price
+                
+                total += price * item.quantity
+            except Exception:
+                # Fallback к старому полю
+                total += item.price * item.quantity
+        
         return round(total, 2)
     
     @property
@@ -131,6 +160,35 @@ class CartItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.product.name} x{self.quantity}"
+
+    @property
+    def total(self):
+        """Рассчитать сумму позиции в предпочитаемой валюте."""
+        # Получаем предпочитаемую валюту (по умолчанию RUB)
+        preferred_currency = 'RUB'
+        
+        try:
+            prices = self.product.get_all_prices()
+            if prices and preferred_currency in prices:
+                price = prices[preferred_currency].get('price_with_margin', 0)
+            elif prices:
+                # Если предпочитаемой валюты нет, используем базовую
+                for currency, data in prices.items():
+                    if data.get('is_base_price'):
+                        price = data.get('price_with_margin', 0)
+                        break
+                else:
+                    # Если базовой нет, берем первую
+                    first_currency = list(prices.keys())[0]
+                    price = prices[first_currency].get('price_with_margin', 0)
+            else:
+                # Fallback к старому полю
+                price = self.price
+            
+            return round(price * self.quantity, 2)
+        except Exception:
+            # Fallback к старому полю
+            return round(self.price * self.quantity, 2)
 
 
 class Order(models.Model):

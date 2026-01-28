@@ -300,8 +300,18 @@ class ProductSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()  # Изменено на метод
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()  # Изменено на метод
+    converted_price_rub = serializers.SerializerMethodField()  # Изменено на метод
+    converted_price_usd = serializers.SerializerMethodField()  # Изменено на метод
+    final_price_rub = serializers.SerializerMethodField()  # Изменено на метод
+    final_price_usd = serializers.SerializerMethodField()  # Изменено на метод
+    margin_percent_applied = serializers.SerializerMethodField()  # Изменено на метод
+    prices_in_currencies = serializers.SerializerMethodField()
+    current_price = serializers.SerializerMethodField()
+    price_breakdown = serializers.SerializerMethodField()
     translations = ProductTranslationSerializer(many=True, read_only=True)
     book_authors = ProductAuthorSerializer(many=True, read_only=True)
     
@@ -314,6 +324,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'converted_price_rub', 'converted_price_usd',
             'final_price_rub', 'final_price_usd', 'margin_percent_applied',
+            'prices_in_currencies', 'current_price', 'price_breakdown',
             'availability_status', 'is_available', 'stock_quantity',
             'min_order_quantity', 'pack_quantity',
             'country_of_origin', 'gtin', 'mpn',
@@ -402,6 +413,180 @@ class ProductSerializer(serializers.ModelSerializer):
         """Форматированная старая цена."""
         if obj.old_price is not None:
             return f"{obj.old_price} {obj.currency}"
+        return None
+    
+    def get_price(self, obj):
+        """Получает цену в предпочитаемой валюте."""
+        request = self.context.get('request')
+        preferred_currency = 'RUB'  # По умолчанию
+        
+        # Можно определить предпочитаемую валюту из заголовков или параметров запроса
+        if request:
+            # Проверяем заголовок X-Currency
+            preferred_currency = request.headers.get('X-Currency', 'RUB')
+            # Или параметр запроса currency
+            preferred_currency = request.query_params.get('currency', preferred_currency)
+        
+        # Получаем цену в предпочитаемой валюте
+        try:
+            prices = obj.get_all_prices()
+            if prices and preferred_currency in prices:
+                return prices[preferred_currency].get('price_with_margin')
+            elif prices:
+                # Если предпочитаемой валюты нет, вернем базовую
+                for currency, data in prices.items():
+                    if data.get('is_base_price'):
+                        return data.get('price_with_margin')
+                # Или просто первую
+                first_currency = list(prices.keys())[0]
+                return prices[first_currency].get('price_with_margin')
+        except Exception:
+            pass
+        
+        # Fallback к старому полю
+        return obj.price
+    
+    def get_currency(self, obj):
+        """Получает валюту товара."""
+        request = self.context.get('request')
+        preferred_currency = 'RUB'  # По умолчанию
+        
+        # Можно определить предпочитаемую валюту из заголовков или параметров запроса
+        if request:
+            # Проверяем заголовок X-Currency
+            preferred_currency = request.headers.get('X-Currency', 'RUB')
+            # Или параметр запроса currency
+            preferred_currency = request.query_params.get('currency', preferred_currency)
+        
+        # Получаем валюту из новой системы
+        try:
+            prices = obj.get_all_prices()
+            if prices and preferred_currency in prices:
+                return preferred_currency
+            elif prices:
+                # Если предпочитаемой валюты нет, вернем базовую
+                for currency, data in prices.items():
+                    if data.get('is_base_price'):
+                        return currency
+                # Или просто первую
+                return list(prices.keys())[0]
+        except Exception:
+            pass
+        
+        # Fallback к старому полю
+        return obj.currency if obj.currency else 'RUB'
+    
+    def get_converted_price_rub(self, obj):
+        """Получает конвертированную цену в RUB."""
+        try:
+            prices = obj.get_all_prices()
+            if 'RUB' in prices:
+                return prices['RUB'].get('converted_price')
+        except Exception:
+            pass
+        return None
+    
+    def get_converted_price_usd(self, obj):
+        """Получает конвертированную цену в USD."""
+        try:
+            prices = obj.get_all_prices()
+            if 'USD' in prices:
+                return prices['USD'].get('converted_price')
+        except Exception:
+            pass
+        return None
+    
+    def get_final_price_rub(self, obj):
+        """Получает финальную цену в RUB с маржой."""
+        try:
+            prices = obj.get_all_prices()
+            if 'RUB' in prices:
+                return prices['RUB'].get('price_with_margin')
+        except Exception:
+            pass
+        return None
+    
+    def get_final_price_usd(self, obj):
+        """Получает финальную цену в USD с маржой."""
+        try:
+            prices = obj.get_all_prices()
+            if 'USD' in prices:
+                return prices['USD'].get('price_with_margin')
+        except Exception:
+            pass
+        return None
+    
+    def get_margin_percent_applied(self, obj):
+        """Получает примененную маржу."""
+        try:
+            prices = obj.get_all_prices()
+            if prices:
+                # Найдем базовую валюту
+                for currency, data in prices.items():
+                    if data.get('is_base_price'):
+                        # Если это базовая валюта, маржа 0%
+                        return 0
+                
+                # Для других валют можно взять среднюю маржу
+                margins = []
+                for currency, data in prices.items():
+                    if not data.get('is_base_price') and data.get('price_with_margin') and data.get('converted_price'):
+                        if data['converted_price'] > 0:
+                            margin = ((data['price_with_margin'] - data['converted_price']) / data['converted_price']) * 100
+                            margins.append(margin)
+                
+                if margins:
+                    return sum(margins) / len(margins)
+        except Exception:
+            pass
+        return 0
+    
+    def get_prices_in_currencies(self, obj):
+        """Получает цены во всех валютах."""
+        try:
+            return obj.get_all_prices()
+        except Exception:
+            # Если ошибка, вернем базовую цену
+            if obj.price and obj.currency:
+                return {
+                    obj.currency: {
+                        'original_price': obj.price,
+                        'converted_price': obj.price,
+                        'price_with_margin': obj.price,
+                        'is_base_price': True
+                    }
+                }
+            return {}
+    
+    def get_current_price(self, obj):
+        """Получает текущую цену в предпочитаемой валюте."""
+        request = self.context.get('request')
+        preferred_currency = 'RUB'  # По умолчанию
+        
+        # Можно определить предпочитаемую валюту из заголовков или параметров запроса
+        if request:
+            # Проверяем заголовок X-Currency
+            preferred_currency = request.headers.get('X-Currency', 'RUB')
+            # Или параметр запроса currency
+            preferred_currency = request.query_params.get('currency', preferred_currency)
+        
+        price, currency = obj.get_current_price(preferred_currency)
+        
+        if price:
+            return {
+                'amount': price,
+                'currency': currency,
+                'formatted': f"{price} {currency}"
+            }
+        
+        return None
+    
+    def get_price_breakdown(self, obj):
+        """Получает детализацию цены для базовой валюты товара."""
+        if obj.price and obj.currency:
+            breakdown = obj.get_price_breakdown('RUB')  # По умолчанию для RUB
+            if breakdown:
+                return breakdown
         return None
 
 
