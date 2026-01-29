@@ -310,7 +310,7 @@ export default function ProductPage({
               </div>
             )}
             {/* Главная картинка/видео справа */}
-            <div className="flex-1 h-full flex items-center justify-center rounded-xl">
+            <div className="flex-1 h-full flex items-start justify-start rounded-xl">
               {product.video_url ? (
                 <video 
                   src={product.video_url} 
@@ -602,14 +602,40 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
       },
     }
   } catch (error) {
+    const localePrefix = ctx.locale ? `/${ctx.locale}` : ''
+
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines']
+    const typesToTry = probeTypes.filter((t) => t !== categoryType)
+
+    for (const t of typesToTry) {
+      const probeEndpoint = resolveDetailEndpoint(t, productSlug)
+      try {
+        await axios.get(`${base}${probeEndpoint}`, {
+          headers: {
+            'X-Currency': currency,
+            'Accept-Language': ctx.locale || 'en'
+          }
+        })
+        return {
+          redirect: {
+            destination: `${localePrefix}/product/${t}/${productSlug}`,
+            permanent: false,
+          },
+        }
+      } catch {
+        continue
+      }
+    }
+
     if (slugParts.length === 1) {
       return {
         redirect: {
-          destination: `/product/${categoryType}/${productSlug}`,
+          destination: `${localePrefix}/product/${categoryType}/${productSlug}`,
           permanent: false,
         },
       }
     }
+
     return { notFound: true }
   }
 }

@@ -1,5 +1,6 @@
 """Модели для каталога товаров."""
 
+import uuid
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
@@ -1151,7 +1152,16 @@ class ClothingVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -1774,7 +1784,16 @@ class ShoeVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -2095,7 +2114,16 @@ class JewelryVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}-{self.material or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -2704,7 +2732,16 @@ class FurnitureVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -3030,7 +3067,16 @@ class BookVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.cover_type or ''}-{self.format_type or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
