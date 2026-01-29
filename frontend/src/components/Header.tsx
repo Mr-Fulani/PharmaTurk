@@ -72,7 +72,9 @@ export default function Header() {
     if (user?.currency) {
       setCurrency(user.currency)
     } else {
-      setCurrency('RUB')
+      // Для гостей читаем валюту из cookie
+      const savedCurrency = Cookies.get('currency')
+      setCurrency(savedCurrency || 'RUB')
     }
   }, [user])
 
