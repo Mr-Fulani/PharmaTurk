@@ -14,8 +14,7 @@ CURRENCY_CHOICES = [
     ("USD", "USD"),
     ("EUR", "EUR"),
     ("TRY", "TRY"),
-    ("GBP", "GBP"),
-    ("USDT", "USDT"),
+    ("KZT", "KZT"),
 ]
 
 CARD_MEDIA_ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"]
