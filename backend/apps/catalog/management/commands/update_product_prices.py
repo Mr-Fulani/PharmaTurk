@@ -4,8 +4,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from decimal import Decimal
 import logging
-from catalog.models import Product
-from catalog.services.currency_service import CurrencyRateService
+from apps.catalog.models import Product
 
 logger = logging.getLogger(__name__)
 
@@ -59,15 +58,7 @@ class Command(BaseCommand):
         
         # Обновляем курсы валют если нужно
         if force_update_rates:
-            self.stdout.write('Обновляю курсы валют...')
-            rate_service = CurrencyRateService()
-            success, message = rate_service.update_rates()
-            
-            if success:
-                self.stdout.write(self.style.SUCCESS(f'Курсы обновлены: {message}'))
-            else:
-                self.stdout.write(self.style.ERROR(f'Ошибка обновления курсов: {message}'))
-                return
+            self.stdout.write(self.style.WARNING('Обновление курсов валют пропущено - используйте отдельную команду для обновления курсов'))
         
         # Получаем queryset товаров для обновления
         queryset = self._get_products_queryset(product_id, product_type)
@@ -86,29 +77,28 @@ class Command(BaseCommand):
         processed = 0
         errors = 0
         
-        with transaction.atomic():
-            for batch_start in range(0, total_count, batch_size):
-                batch_end = min(batch_start + batch_size, total_count)
-                batch = queryset[batch_start:batch_end]
-                
-                for product in batch:
-                    try:
-                        if not dry_run:
-                            self._update_product_prices(product, currency)
-                        else:
-                            self._preview_price_update(product, currency)
-                        
-                        processed += 1
-                        
-                        if processed % 10 == 0:
-                            self.stdout.write(f'Обработано: {processed}/{total_count}')
+        for batch_start in range(0, total_count, batch_size):
+            batch_end = min(batch_start + batch_size, total_count)
+            batch = queryset[batch_start:batch_end]
+            
+            for product in batch:
+                try:
+                    if not dry_run:
+                        self._update_product_prices(product, currency)
+                    else:
+                        self._preview_price_update(product, currency)
                     
-                    except Exception as e:
-                        errors += 1
-                        logger.error(f"Error updating product {product.id}: {str(e)}")
-                        self.stdout.write(
-                            self.style.ERROR(f'Ошибка обновления товара {product.id}: {str(e)}')
-                        )
+                    processed += 1
+                    
+                    if processed % 10 == 0:
+                        self.stdout.write(f'Обработано: {processed}/{total_count}')
+                
+                except Exception as e:
+                    errors += 1
+                    logger.error(f"Error updating product {product.id}: {str(e)}")
+                    self.stdout.write(
+                        self.style.ERROR(f'Ошибка обновления товара {product.id}: {str(e)}')
+                    )
         
         # Выводим результаты
         self.stdout.write(self.style.SUCCESS(

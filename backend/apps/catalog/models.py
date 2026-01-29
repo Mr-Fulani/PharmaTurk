@@ -736,7 +736,7 @@ class Product(models.Model):
     def update_currency_prices(self, target_currencies=None):
         """Обновляет цены товара в разных валютах"""
         if target_currencies is None:
-            target_currencies = ['RUB', 'USD', 'KZT', 'EUR']
+            target_currencies = ['RUB', 'USD', 'KZT', 'EUR', 'TRY']
         
         try:
             from apps.catalog.utils.currency_converter import currency_converter
@@ -794,8 +794,12 @@ class Product(models.Model):
                 price_info.eur_price = results['EUR']['converted_price']
                 price_info.eur_price_with_margin = results['EUR']['price_with_margin']
             
+            if 'TRY' in results and results['TRY']:
+                price_info.try_price = results['TRY']['converted_price']
+                price_info.try_price_with_margin = results['TRY']['price_with_margin']
+            
             price_info.save()
-            self.save()
+            # Не вызываем self.save() чтобы избежать бесконечной рекурсии
             
         except Exception as e:
             import logging

@@ -173,7 +173,7 @@ class ProductPriceAdmin(admin.ModelAdmin):
     list_display = [
         'product_link', 'base_currency', 'base_price', 
         'rub_price_with_margin', 'usd_price_with_margin', 
-        'kzt_price_with_margin', 'updated_at'
+        'kzt_price_with_margin', 'try_price_with_margin', 'updated_at'
     ]
     list_filter = ['base_currency', 'updated_at']
     search_fields = ['product__name', 'product__slug']
@@ -197,6 +197,10 @@ class ProductPriceAdmin(admin.ModelAdmin):
         }),
         ('Цены в евро', {
             'fields': ('eur_price', 'eur_price_with_margin'),
+            'classes': ('collapse',)
+        }),
+        ('Цены в турецких лирах', {
+            'fields': ('try_price', 'try_price_with_margin'),
             'classes': ('collapse',)
         }),
         ('Доставка', {
@@ -238,16 +242,12 @@ class ProductPriceAdmin(admin.ModelAdmin):
         
         for price_info in queryset:
             try:
-                product = price_info.product
-                if product.price and product.currency:
+                # Используем base_price и base_currency из ProductPrice
+                if price_info.base_price and price_info.base_currency:
                     # Конвертируем в целевые валюты
                     results = currency_converter.convert_to_multiple_currencies(
-                        product.price, product.currency, ['RUB', 'USD', 'KZT', 'EUR'], apply_margin=True
+                        price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY'], apply_margin=True
                     )
-                    
-                    # Обновляем поля
-                    price_info.base_currency = product.currency
-                    price_info.base_price = product.price
                     
                     if 'RUB' in results and results['RUB']:
                         price_info.rub_price = results['RUB']['converted_price']
@@ -264,6 +264,10 @@ class ProductPriceAdmin(admin.ModelAdmin):
                     if 'EUR' in results and results['EUR']:
                         price_info.eur_price = results['EUR']['converted_price']
                         price_info.eur_price_with_margin = results['EUR']['price_with_margin']
+                    
+                    if 'TRY' in results and results['TRY']:
+                        price_info.try_price = results['TRY']['converted_price']
+                        price_info.try_price_with_margin = results['TRY']['price_with_margin']
                     
                     price_info.save()
                     success_count += 1

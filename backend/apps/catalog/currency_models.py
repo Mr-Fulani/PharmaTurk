@@ -170,6 +170,22 @@ class ProductPrice(models.Model):
         verbose_name='Цена в EUR с маржой'
     )
     
+    try_price = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в TRY',
+        help_text="Конвертированная цена в турецких лирах"
+    )
+    try_price_with_margin = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в TRY с маржой'
+    )
+    
     # Будущие поля для доставки
     air_shipping_cost = models.DecimalField(
         max_digits=10, 
