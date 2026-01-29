@@ -2,12 +2,13 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useAuth } from '../context/AuthContext'
 import { useEffect, useState, useRef } from 'react'
-import api from '../lib/api'
+import api, { setPreferredCurrency } from '../lib/api'
 import { useTranslation } from 'next-i18next'
 import { useCartStore } from '../store/cart'
 import { useFavoritesStore } from '../store/favorites'
 import AnimatedLogoutButton from './AnimatedLogoutButton'
 import { useTheme } from '../context/ThemeContext'
+import Cookies from 'js-cookie'
 
 export default function Header() {
   const router = useRouter()
@@ -20,11 +21,15 @@ export default function Header() {
   const [loadingSuggest, setLoadingSuggest] = useState(false)
   const [isClient, setIsClient] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [showCurrencyMenu, setShowCurrencyMenu] = useState(false)
+  const [currency, setCurrency] = useState('RUB')
   const searchRef = useRef<HTMLDivElement>(null)
+  const currencyRef = useRef<HTMLDivElement>(null)
   const favoritesRefreshedRef = useRef(false)
   const { t } = useTranslation('common')
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
+  const currencyOptions = ['RUB', 'USD', 'EUR', 'TRY', 'KZT']
   
   useEffect(() => { 
     setIsClient(true)
@@ -35,6 +40,41 @@ export default function Header() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const handleCurrencyChange = async (nextCurrency: string) => {
+    if (nextCurrency === currency) {
+      setShowCurrencyMenu(false)
+      return
+    }
+    setShowCurrencyMenu(false)
+    
+    // Сохраняем валюту в cookie и глобальное состояние
+    Cookies.set('currency', nextCurrency, { sameSite: 'Lax', path: '/' })
+    setPreferredCurrency(nextCurrency)
+    setCurrency(nextCurrency)
+    
+    // Для авторизованных сохраняем в профиль
+    if (user) {
+      try {
+        await api.patch(`/users/profile/${user.id}`, { currency: nextCurrency })
+      } catch {
+        // no-op: UI already updated, API error will show in network logs
+      }
+    }
+    
+    // Даем время браузеру сохранить cookie, затем перезагружаем страницу
+    setTimeout(() => {
+      window.location.reload()
+    }, 100)
+  }
+
+  useEffect(() => {
+    if (user?.currency) {
+      setCurrency(user.currency)
+    } else {
+      setCurrency('RUB')
+    }
+  }, [user])
 
   // Закрываем выпадающее меню при переходе на другую страницу
   useEffect(() => {
@@ -48,12 +88,15 @@ export default function Header() {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setShowSuggestions(false)
       }
+      if (currencyRef.current && !currencyRef.current.contains(event.target as Node)) {
+        setShowCurrencyMenu(false)
+      }
     }
-    if (showSuggestions) {
+    if (showSuggestions || showCurrencyMenu) {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [showSuggestions])
+  }, [showSuggestions, showCurrencyMenu])
 
   const goSearch = () => {
     const q = query.trim()
@@ -147,6 +190,34 @@ export default function Header() {
           </div>
         </div>
         <nav className="relative z-50 flex items-center gap-3 text-sm">
+          <div ref={currencyRef} className="relative">
+            <button
+              type="button"
+              onClick={() => { setShowSuggestions(false); setShowCurrencyMenu((v) => !v) }}
+              className={`inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`}
+              title={t('currency', 'Валюта')}
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M8 12h8M10 8h4m-4 8h4" strokeLinecap="round" />
+              </svg>
+              <span>{currency}</span>
+            </button>
+            {showCurrencyMenu ? (
+              <div className={`absolute right-0 z-20 mt-2 w-28 overflow-hidden rounded-md border shadow-lg ${isDark ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'}`}>
+                {currencyOptions.map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => handleCurrencyChange(code)}
+                    className={`flex w-full items-center justify-between px-3 py-2 text-xs transition-colors duration-200 ${currency === code ? (isDark ? 'bg-slate-700 text-white' : 'bg-red-50 text-red-700') : (isDark ? 'text-slate-100 hover:bg-slate-700' : 'text-gray-700 hover:bg-red-50')}`}
+                  >
+                    <span>{code}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
           {user && (
             <Link 
               href="/profile" 

@@ -414,18 +414,37 @@ class ProductSerializer(serializers.ModelSerializer):
         if obj.old_price is not None:
             return f"{obj.old_price} {obj.currency}"
         return None
+
+    def _get_preferred_currency(self, request):
+        """Определяет валюту по приоритетам: explicit -> язык -> default."""
+        default_currency = 'RUB'
+        if not request:
+            return default_currency
+
+        # Явный выбор валюты имеет приоритет
+        preferred_currency = request.headers.get('X-Currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        preferred_currency = request.query_params.get('currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            user_currency = getattr(request.user, 'currency', None)
+            if user_currency:
+                return user_currency.upper()
+
+        language_code = getattr(request, 'LANGUAGE_CODE', None)
+        language_currency_map = {
+            'en': 'USD',
+            'ru': 'RUB',
+        }
+        return language_currency_map.get(language_code, default_currency)
     
     def get_price(self, obj):
         """Получает цену в предпочитаемой валюте."""
         request = self.context.get('request')
-        preferred_currency = 'RUB'  # По умолчанию
-        
-        # Можно определить предпочитаемую валюту из заголовков или параметров запроса
-        if request:
-            # Проверяем заголовок X-Currency
-            preferred_currency = request.headers.get('X-Currency', 'RUB')
-            # Или параметр запроса currency
-            preferred_currency = request.query_params.get('currency', preferred_currency)
+        preferred_currency = self._get_preferred_currency(request)
         
         # Получаем цену в предпочитаемой валюте
         try:
@@ -449,14 +468,7 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_currency(self, obj):
         """Получает валюту товара."""
         request = self.context.get('request')
-        preferred_currency = 'RUB'  # По умолчанию
-        
-        # Можно определить предпочитаемую валюту из заголовков или параметров запроса
-        if request:
-            # Проверяем заголовок X-Currency
-            preferred_currency = request.headers.get('X-Currency', 'RUB')
-            # Или параметр запроса currency
-            preferred_currency = request.query_params.get('currency', preferred_currency)
+        preferred_currency = self._get_preferred_currency(request)
         
         # Получаем валюту из новой системы
         try:
@@ -678,26 +690,27 @@ class FavoriteSerializer(serializers.ModelSerializer):
     def get_product(self, obj):
         """Сериализация товара в зависимости от его типа."""
         product = obj.product
+        request = self.context.get('request')
         
         # Определяем тип товара по модели
         product_type = 'medicines'  # По умолчанию
         if isinstance(product, ClothingProduct):
             product_type = 'clothing'
-            product_data = ClothingProductSerializer(product).data
+            product_data = ClothingProductSerializer(product, context={'request': request}).data
         elif isinstance(product, ShoeProduct):
             product_type = 'shoes'
-            product_data = ShoeProductSerializer(product).data
+            product_data = ShoeProductSerializer(product, context={'request': request}).data
         elif isinstance(product, ElectronicsProduct):
             product_type = 'electronics'
-            product_data = ElectronicsProductSerializer(product).data
+            product_data = ElectronicsProductSerializer(product, context={'request': request}).data
         elif isinstance(product, FurnitureProduct):
             product_type = 'furniture'
-            product_data = FurnitureProductSerializer(product).data
+            product_data = FurnitureProductSerializer(product, context={'request': request}).data
         elif isinstance(product, Product):
             # Для Product нужно определить подтип по категории или другим признакам
             # Пока используем 'medicines' как базовый тип
             product_type = 'medicines'
-            product_data = ProductSerializer(product).data
+            product_data = ProductSerializer(product, context={'request': request}).data
         else:
             # Fallback для неизвестных типов
             product_data = {

@@ -574,8 +574,19 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
 
   const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
   const endpoint = resolveDetailEndpoint(categoryType, productSlug)
+  
+  // Извлекаем валюту из cookie
+  const cookieHeader: string = ctx.req.headers.cookie || ''
+  const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
+  const currency = currencyMatch ? currencyMatch[1] : 'RUB'
+  
   try {
-    const res = await axios.get(`${base}${endpoint}`)
+    const res = await axios.get(`${base}${endpoint}`, {
+      headers: {
+        'X-Currency': currency,
+        'Accept-Language': ctx.locale || 'en'
+      }
+    })
     const baseProductTypes: CategoryType[] = [
       'medicines', 'supplements', 'medical-equipment',
       'furniture', 'tableware', 'accessories', 'jewelry',

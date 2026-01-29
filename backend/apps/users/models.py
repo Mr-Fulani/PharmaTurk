@@ -66,6 +66,7 @@ class User(AbstractUser):
         ('RUB', 'Рубль'),
         ('EUR', 'Евро'),
         ('TRY', 'Турецкая лира'),
+        ('KZT', 'Казахстанский тенге'),
     ], default='USD')
     
     USERNAME_FIELD = 'email'

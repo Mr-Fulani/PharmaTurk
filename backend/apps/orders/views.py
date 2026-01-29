@@ -163,7 +163,7 @@ class CartViewSet(viewsets.ViewSet):
             'items',
             Prefetch('items__product__images', queryset=ProductImage.objects.all().order_by('is_main', 'sort_order'))
         ).get()
-        return Response(CartSerializer(cart).data)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description=(
