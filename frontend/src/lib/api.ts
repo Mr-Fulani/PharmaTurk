@@ -64,6 +64,12 @@ export function initCartSession(): string {
   return ensureCartSession()
 }
 
+let preferredCurrency: string | null = null
+
+export function setPreferredCurrency(currency: string | null) {
+  preferredCurrency = currency
+}
+
 function cryptoRandom() {
   try {
     const arr = new Uint8Array(16)
@@ -127,6 +133,15 @@ api.interceptors.request.use((config) => {
   // Прокидываем язык для локализации ответов DRF/Django
   const locale = Cookies.get('NEXT_LOCALE') || (typeof navigator !== 'undefined' ? (navigator.language?.split('-')[0] || 'en') : 'en')
   ;(config.headers as AxiosRequestHeaders)['Accept-Language'] = locale
+
+  const storedCurrency = Cookies.get('currency')
+  const resolvedCurrency = storedCurrency || preferredCurrency || (!access ? 'RUB' : null)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[API Currency]', { storedCurrency, preferredCurrency, resolvedCurrency, url: config.url })
+  }
+  if (resolvedCurrency) {
+    ;(config.headers as AxiosRequestHeaders)['X-Currency'] = resolvedCurrency
+  }
   return config
 })
 

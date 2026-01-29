@@ -70,7 +70,19 @@ export default function FavoritesPage() {
             {favorites.map((favorite) => {
               const product = favorite.product
               const productType = product._product_type || 'medicines'
-              const isBaseProduct = ['medicines', 'supplements', 'medical-equipment'].includes(productType)
+              const baseProductTypes = [
+                'medicines',
+                'supplements',
+                'medical-equipment',
+                'medical_equipment',
+                'furniture',
+                'tableware',
+                'accessories',
+                'jewelry',
+                'underwear',
+                'headwear',
+              ]
+              const isBaseProduct = baseProductTypes.includes(productType)
               const productHref = isBaseProduct 
                 ? `/product/${product.slug}` 
                 : `/product/${productType}/${product.slug}`

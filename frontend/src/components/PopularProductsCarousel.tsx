@@ -40,12 +40,14 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
   useEffect(() => {
     const fetchProducts = async () => {
       try {
+        console.log('[PopularProducts] Fetching products...')
         const [medicinesRes, clothingRes, shoesRes, electronicsRes] = await Promise.allSettled([
           api.get('/catalog/products/featured'),
           api.get('/catalog/clothing/products/featured'),
           api.get('/catalog/shoes/products/featured'),
           api.get('/catalog/electronics/products/featured'),
         ])
+        console.log('[PopularProducts] Fetched, processing responses...')
 
         const allProducts: Product[] = []
         const processResponse = (res: PromiseSettledResult<any>, product_type: string) => {
@@ -75,6 +77,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
         }
 
         const shuffled = allProducts.sort(() => Math.random() - 0.5).slice(0, 20)
+        console.log('[PopularProducts] Sample product prices:', shuffled.slice(0, 3).map(p => ({ name: p.name, price: p.price, currency: p.currency })))
         setProducts(shuffled)
       } catch (error) {
         console.error('Failed to fetch popular products:', error)

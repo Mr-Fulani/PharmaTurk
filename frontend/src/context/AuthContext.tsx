@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, useRef } from 'react'
 import Cookies from 'js-cookie'
-import api from '../lib/api'
+import api, { setPreferredCurrency } from '../lib/api'
 import { useCartStore } from '../store/cart'
 import { useFavoritesStore } from '../store/favorites'
 
@@ -8,6 +8,7 @@ interface User {
   id: number
   email: string
   username: string
+  currency?: string
 }
 
 interface AuthContextValue {
@@ -47,7 +48,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profile = r.data?.[0]
       console.log('AuthContext: profile loaded:', profile ? 'success' : 'failed')
       if (profile) {
-        setUser({ id: profile.id, email: profile.user_email, username: profile.user_username })
+        setUser({
+          id: profile.id,
+          email: profile.user_email,
+          username: profile.user_username,
+          currency: profile.currency
+        })
+        if (profile.currency) {
+          Cookies.set('currency', profile.currency, { sameSite: 'Lax', path: '/' })
+          setPreferredCurrency(profile.currency)
+        }
         // Обновляем избранное после загрузки профиля пользователя
         refreshFavoritesRef.current()
       }
@@ -66,7 +76,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { tokens, user } = res.data
       if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
       if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
-      setUser({ id: user.id, email: user.email, username: user.username })
+      setUser({ id: user.id, email: user.email, username: user.username, currency: user.currency })
+      if (user.currency) {
+        Cookies.set('currency', user.currency, { sameSite: 'Lax', path: '/' })
+        setPreferredCurrency(user.currency)
+      }
       // Обновляем корзину после входа для переноса товаров с анонимной сессии
       refreshCartRef.current()
       // Обновляем избранное после входа для загрузки избранного пользователя
@@ -77,7 +91,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { tokens, user } = res.data
       if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
       if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
-      setUser({ id: user.id, email: user.email, username: user.username })
+      setUser({ id: user.id, email: user.email, username: user.username, currency: user.currency })
+      if (user.currency) {
+        Cookies.set('currency', user.currency, { sameSite: 'Lax', path: '/' })
+        setPreferredCurrency(user.currency)
+      }
       // Обновляем корзину после регистрации для переноса товаров с анонимной сессии
       refreshCartRef.current()
       // Обновляем избранное после регистрации для загрузки избранного пользователя
@@ -86,6 +104,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     logout() {
       Cookies.remove('access', { path: '/' })
       Cookies.remove('refresh', { path: '/' })
+      Cookies.remove('currency', { path: '/' })
+      setPreferredCurrency(null)
       setUser(null)
       // Очищаем избранное при выходе
       refreshFavoritesRef.current()

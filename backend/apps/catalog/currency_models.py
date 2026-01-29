@@ -34,8 +34,8 @@ class CurrencyRate(models.Model):
     class Meta:
         unique_together = ['from_currency', 'to_currency']
         ordering = ['-updated_at']
-        verbose_name = 'Курс валют'
-        verbose_name_plural = 'Курсы валют'
+        verbose_name = '💰 Курс валют'
+        verbose_name_plural = '💰 Валюты — Курсы валют'
     
     def __str__(self):
         return f"{self.from_currency} → {self.to_currency}: {self.rate}"
@@ -68,8 +68,8 @@ class MarginSettings(models.Model):
     class Meta:
         unique_together = ['currency_pair']
         ordering = ['currency_pair']
-        verbose_name = 'Настройка маржи'
-        verbose_name_plural = 'Настройки маржи'
+        verbose_name = '💰 Настройка маржи'
+        verbose_name_plural = '💰 Валюты — Настройки маржи'
     
     def __str__(self):
         return f"{self.currency_pair}: {self.margin_percentage}%"
@@ -170,6 +170,22 @@ class ProductPrice(models.Model):
         verbose_name='Цена в EUR с маржой'
     )
     
+    try_price = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в TRY',
+        help_text="Конвертированная цена в турецких лирах"
+    )
+    try_price_with_margin = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в TRY с маржой'
+    )
+    
     # Будущие поля для доставки
     air_shipping_cost = models.DecimalField(
         max_digits=10, 
@@ -200,8 +216,8 @@ class ProductPrice(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлено')
     
     class Meta:
-        verbose_name = 'Цены товара'
-        verbose_name_plural = 'Цены товаров'
+        verbose_name = '💰 Цены товара'
+        verbose_name_plural = '💰 Валюты — Цены товаров'
     
     def __str__(self):
         return f"{self.product.name} - {self.base_price} {self.base_currency}"
@@ -220,8 +236,8 @@ class CurrencyUpdateLog(models.Model):
     
     class Meta:
         ordering = ['-created_at']
-        verbose_name = 'Лог обновления курсов'
-        verbose_name_plural = 'Логи обновления курсов'
+        verbose_name = '💰 Лог обновления курсов'
+        verbose_name_plural = '💰 Валюты — Логи обновления курсов'
     
     def __str__(self):
         status = "Success" if self.success else "Failed"

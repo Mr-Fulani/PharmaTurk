@@ -28,8 +28,8 @@ class PromoCode(models.Model):
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
     class Meta:
-        verbose_name = _("Промокод")
-        verbose_name_plural = _("Промокоды")
+        verbose_name = _("🛒 Промокод")
+        verbose_name_plural = _("🛒 Заказы — Промокоды")
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
@@ -76,8 +76,8 @@ class Cart(models.Model):
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
     class Meta:
-        verbose_name = _("Корзина")
-        verbose_name_plural = _("Корзины")
+        verbose_name = _("🛒 Корзина")
+        verbose_name_plural = _("🛒 Заказы — Корзины")
         indexes = [
             models.Index(fields=["user", "session_key"]),
         ]
@@ -154,8 +154,8 @@ class CartItem(models.Model):
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
     class Meta:
-        verbose_name = _("Позиция корзины")
-        verbose_name_plural = _("Позиции корзины")
+        verbose_name = _("🛒 Позиция корзины")
+        verbose_name_plural = _("🛒 Заказы — Позиции корзины")
         unique_together = ("cart", "product", "chosen_size")
 
     def __str__(self) -> str:
@@ -233,8 +233,8 @@ class Order(models.Model):
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
     class Meta:
-        verbose_name = _("Заказ")
-        verbose_name_plural = _("Заказы")
+        verbose_name = _("🛒 Заказ")
+        verbose_name_plural = _("🛒 Заказы — Заказы")
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
@@ -252,8 +252,8 @@ class OrderItem(models.Model):
     total = models.DecimalField(_("Сумма"), max_digits=12, decimal_places=2)
 
     class Meta:
-        verbose_name = _("Позиция заказа")
-        verbose_name_plural = _("Позиции заказа")
+        verbose_name = _("🛒 Позиция заказа")
+        verbose_name_plural = _("🛒 Заказы — Позиции заказа")
 
     def __str__(self) -> str:
         return f"{self.product_name} x{self.quantity}"

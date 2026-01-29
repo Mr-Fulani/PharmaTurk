@@ -31,8 +31,8 @@ class FooterSettings(models.Model):
     updated_at = models.DateTimeField(_("Обновлено"), auto_now=True)
     
     class Meta:
-        verbose_name = _("Настройки футера")
-        verbose_name_plural = _("Настройки футера")
+        verbose_name = _("📄 Настройки футера")
+        verbose_name_plural = _("📄 Контент — Настройки футера")
     
     def __str__(self):
         return "Настройки футера"

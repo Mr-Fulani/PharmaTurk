@@ -234,6 +234,7 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
     'x-cart-session',  # Разрешаем заголовок для корзины
+    'x-currency',  # Разрешаем заголовок для валюты
 ]
 
 

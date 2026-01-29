@@ -34,8 +34,8 @@ class Page(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Статическая страница"
-        verbose_name_plural = "Статические страницы"
+        verbose_name = "📄 Статическая страница"
+        verbose_name_plural = "📄 Контент — Статические страницы"
         ordering = ("-updated_at",)
 
     def __str__(self) -> str:  # pragma: no cover - trivial

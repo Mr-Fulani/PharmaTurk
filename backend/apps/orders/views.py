@@ -1,5 +1,6 @@
 import logging
 import uuid
+from typing import Optional, Tuple
 
 from django.http import Http404, HttpResponse
 from django.db import transaction
@@ -11,6 +12,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.catalog.models import Product
+from apps.catalog.models import ClothingVariant, ClothingVariantSize, ShoeVariant, ShoeVariantSize
 from apps.users.models import UserAddress
 
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
@@ -29,6 +31,121 @@ from .services import build_order_receipt_payload, render_receipt_html  # TODO: 
 from .tasks import send_order_receipt_task  # TODO: Функционал чеков временно отключен. Будет доработан позже.
 
 logger = logging.getLogger(__name__)
+
+
+def _get_stock_for_cart_product(product: Product, chosen_size: Optional[str]) -> Tuple[Optional[int], Optional[str]]:
+    """Возвращает доступный остаток (или None, если лимита нет) и человеко-читаемый источник.
+
+    Приоритет:
+    1) Размер варианта одежды/обуви (если есть source_variant_id и задан chosen_size)
+    2) Вариант одежды/обуви (если есть source_variant_id)
+    3) Базовый Product.stock_quantity
+
+    None означает "не ограничено".
+    """
+    external = getattr(product, "external_data", None) or {}
+    source_variant_id = external.get("source_variant_id")
+
+    normalized_type = (getattr(product, "product_type", None) or "").lower()
+    size_value = (chosen_size or "").strip()
+
+    if source_variant_id and normalized_type in {"clothing", "shoes"}:
+        if normalized_type == "clothing":
+            variant = ClothingVariant.objects.filter(id=source_variant_id, is_active=True).first()
+            if not variant:
+                return product.stock_quantity, "product"
+            if size_value:
+                size_obj = ClothingVariantSize.objects.filter(variant=variant, size=size_value).first()
+                if size_obj and size_obj.stock_quantity is not None:
+                    return size_obj.stock_quantity, "variant_size"
+            if variant.stock_quantity is not None:
+                return variant.stock_quantity, "variant"
+        if normalized_type == "shoes":
+            variant = ShoeVariant.objects.filter(id=source_variant_id, is_active=True).first()
+            if not variant:
+                return product.stock_quantity, "product"
+            if size_value:
+                size_obj = ShoeVariantSize.objects.filter(variant=variant, size=size_value).first()
+                if size_obj and size_obj.stock_quantity is not None:
+                    return size_obj.stock_quantity, "variant_size"
+            if variant.stock_quantity is not None:
+                return variant.stock_quantity, "variant"
+
+    return product.stock_quantity, "product"
+
+
+def _decrement_stock_for_cart_item(product: Product, chosen_size: Optional[str], quantity: int) -> None:
+    """Атомарно списывает остаток (если он ограничен).
+
+    Должно вызываться внутри transaction.atomic().
+    """
+    if quantity <= 0:
+        return
+
+    external = getattr(product, "external_data", None) or {}
+    source_variant_id = external.get("source_variant_id")
+    normalized_type = (getattr(product, "product_type", None) or "").lower()
+    size_value = (chosen_size or "").strip()
+
+    if source_variant_id and normalized_type in {"clothing", "shoes"}:
+        if normalized_type == "clothing":
+            variant = ClothingVariant.objects.select_for_update().filter(id=source_variant_id, is_active=True).first()
+            if not variant:
+                source_variant_id = None
+            else:
+                if size_value:
+                    size_obj = ClothingVariantSize.objects.select_for_update().filter(variant=variant, size=size_value).first()
+                    if size_obj and size_obj.stock_quantity is not None:
+                        if size_obj.stock_quantity < quantity:
+                            raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                        size_obj.stock_quantity = size_obj.stock_quantity - quantity
+                        if size_obj.stock_quantity == 0:
+                            size_obj.is_available = False
+                        size_obj.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                        return
+                if variant.stock_quantity is not None:
+                    if variant.stock_quantity < quantity:
+                        raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                    variant.stock_quantity = variant.stock_quantity - quantity
+                    if variant.stock_quantity == 0:
+                        variant.is_available = False
+                    variant.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                    return
+
+        if normalized_type == "shoes":
+            variant = ShoeVariant.objects.select_for_update().filter(id=source_variant_id, is_active=True).first()
+            if not variant:
+                source_variant_id = None
+            else:
+                if size_value:
+                    size_obj = ShoeVariantSize.objects.select_for_update().filter(variant=variant, size=size_value).first()
+                    if size_obj and size_obj.stock_quantity is not None:
+                        if size_obj.stock_quantity < quantity:
+                            raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                        size_obj.stock_quantity = size_obj.stock_quantity - quantity
+                        if size_obj.stock_quantity == 0:
+                            size_obj.is_available = False
+                        size_obj.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                        return
+                if variant.stock_quantity is not None:
+                    if variant.stock_quantity < quantity:
+                        raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                    variant.stock_quantity = variant.stock_quantity - quantity
+                    if variant.stock_quantity == 0:
+                        variant.is_available = False
+                    variant.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                    return
+
+    # fallback: Product
+    locked_product = Product.objects.select_for_update().get(pk=product.pk)
+    if locked_product.stock_quantity is None:
+        return
+    if locked_product.stock_quantity < quantity:
+        raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+    locked_product.stock_quantity = locked_product.stock_quantity - quantity
+    if locked_product.stock_quantity == 0:
+        locked_product.is_available = False
+    locked_product.save(update_fields=["stock_quantity", "is_available", "updated_at"])
 
 
 def _get_or_create_cart(request) -> Cart:
@@ -163,7 +280,7 @@ class CartViewSet(viewsets.ViewSet):
             'items',
             Prefetch('items__product__images', queryset=ProductImage.objects.all().order_by('is_main', 'sort_order'))
         ).get()
-        return Response(CartSerializer(cart).data)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description=(
@@ -230,16 +347,27 @@ class CartViewSet(viewsets.ViewSet):
         product = serializer.validated_data['product']
         quantity = serializer.validated_data['quantity']
         product_currency = getattr(product, "currency", None) or cart.currency or "USD"
+        chosen_size = serializer.validated_data.get('chosen_size', '')
+
+        # Проверка остатка (учитываем суммарное количество в корзине)
+        existing = CartItem.objects.filter(cart=cart, product=product, chosen_size=chosen_size).first()
+        new_total_qty = quantity + (existing.quantity if existing else 0)
+        available_stock, _source = _get_stock_for_cart_product(product, chosen_size)
+        if available_stock is not None and new_total_qty > available_stock:
+            raise serializers.ValidationError({
+                "detail": _("Недостаточно товара в наличии"),
+                "available": available_stock,
+            })
 
         item, created = CartItem.objects.get_or_create(
             cart=cart,
             product=product,
-            chosen_size=serializer.validated_data.get('chosen_size', ''),
+            chosen_size=chosen_size,
             defaults={
                 'quantity': quantity,
                 'price': product.price or 0,
                 'currency': product_currency,
-                'chosen_size': serializer.validated_data.get('chosen_size', ''),
+                'chosen_size': chosen_size,
             }
         )
         if not created:
@@ -305,7 +433,16 @@ class CartViewSet(viewsets.ViewSet):
             return Response({"detail": _("Позиция не найдена")}, status=404)
         serializer = UpdateCartItemSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        item.quantity = serializer.validated_data['quantity']
+
+        desired_qty = serializer.validated_data['quantity']
+        available_stock, _source = _get_stock_for_cart_product(item.product, item.chosen_size)
+        if available_stock is not None and desired_qty > available_stock:
+            raise serializers.ValidationError({
+                "detail": _("Недостаточно товара в наличии"),
+                "available": available_stock,
+            })
+
+        item.quantity = desired_qty
         item.save()
         cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
         return Response(CartSerializer(cart).data)
@@ -663,8 +800,9 @@ class OrderViewSet(viewsets.ViewSet):
                 pass
 
 
-        # Позиции заказа
-        for item in cart.items.all():
+        # Позиции заказа + атомарное списание остатка
+        for item in cart.items.select_related('product').all():
+            _decrement_stock_for_cart_item(item.product, item.chosen_size, item.quantity)
             OrderItem.objects.create(
                 order=order,
                 product=item.product,

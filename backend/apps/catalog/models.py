@@ -1,5 +1,6 @@
 """Модели для каталога товаров."""
 
+import uuid
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
@@ -14,8 +15,7 @@ CURRENCY_CHOICES = [
     ("USD", "USD"),
     ("EUR", "EUR"),
     ("TRY", "TRY"),
-    ("GBP", "GBP"),
-    ("USDT", "USDT"),
+    ("KZT", "KZT"),
 ]
 
 CARD_MEDIA_ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"]
@@ -736,7 +736,7 @@ class Product(models.Model):
     def update_currency_prices(self, target_currencies=None):
         """Обновляет цены товара в разных валютах"""
         if target_currencies is None:
-            target_currencies = ['RUB', 'USD', 'KZT', 'EUR']
+            target_currencies = ['RUB', 'USD', 'KZT', 'EUR', 'TRY']
         
         try:
             from apps.catalog.utils.currency_converter import currency_converter
@@ -794,8 +794,12 @@ class Product(models.Model):
                 price_info.eur_price = results['EUR']['converted_price']
                 price_info.eur_price_with_margin = results['EUR']['price_with_margin']
             
+            if 'TRY' in results and results['TRY']:
+                price_info.try_price = results['TRY']['converted_price']
+                price_info.try_price_with_margin = results['TRY']['price_with_margin']
+            
             price_info.save()
-            self.save()
+            # Не вызываем self.save() чтобы избежать бесконечной рекурсии
             
         except Exception as e:
             import logging
@@ -1148,7 +1152,16 @@ class ClothingVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -1771,7 +1784,16 @@ class ShoeVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -2092,7 +2114,16 @@ class JewelryVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}-{self.material or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -2701,7 +2732,16 @@ class FurnitureVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -3027,7 +3067,16 @@ class BookVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.cover_type or ''}-{self.format_type or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 

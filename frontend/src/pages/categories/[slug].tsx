@@ -1360,9 +1360,9 @@ export default function CategoryPage({
                   }
                 >
                   {products.map((product) => {
-                    // Используем final_price_rub если доступно, иначе оригинальную цену
-                    const displayPrice = product.final_price_rub ?? product.price
-                    const displayCurrency = product.final_price_rub ? 'RUB' : product.currency
+                    // Используем price и currency из API (они уже в правильной валюте)
+                    const displayPrice = product.price
+                    const displayCurrency = product.currency
                     const displayOldPrice = product.old_price ? String(product.old_price) : null
                     const productHref = `/product/${categoryType}/${product.slug}`
                     const isBaseProductType = ['medicines', 'supplements', 'medical-equipment'].includes(categoryType)
