@@ -555,12 +555,16 @@ export async function getServerSideProps(ctx: any) {
       }
     }
 
+    const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
+    const currency = currencyMatch ? currencyMatch[1] : 'RUB'
+
     const apiRes = await fetch(`${base}/api/orders/cart`, {
       headers: {
         cookie: cookieHeader,
         'Accept-Language': locale || 'en',
         ...(cartSession ? { 'X-Cart-Session': cartSession } : {}),
-        ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {})
+        ...(accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {}),
+        'X-Currency': currency
       }
     })
     const data = await apiRes.json()

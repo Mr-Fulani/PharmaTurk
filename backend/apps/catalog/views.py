@@ -1283,7 +1283,7 @@ class FavoriteViewSet(viewsets.ViewSet):
         else:
             favorites = Favorite.objects.none()
         
-        serializer = FavoriteSerializer(favorites, many=True)
+        serializer = FavoriteSerializer(favorites, many=True, context={'request': request})
         return Response(serializer.data)
     
     @extend_schema(

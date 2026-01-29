@@ -1,8 +1,9 @@
 from django import forms
+from decimal import Decimal
 from django.contrib import admin
 from django.contrib.admin import SimpleListFilter
 from django.core.exceptions import ValidationError
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from django.utils.translation import gettext_lazy as _
 
 from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFormSet
@@ -22,6 +23,8 @@ from .models import (
     Service, ServiceTranslation,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
     Author, ProductAuthor,
+    # Валютные модели
+    CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog,
 )
 
 
@@ -711,7 +714,23 @@ class ClothingVariantSizeInline(admin.TabularInline):
 @admin.register(ClothingVariant)
 class ClothingVariantAdmin(admin.ModelAdmin):
     """Отдельная админка варианта одежды (для картинок)."""
-    list_display = ('name', 'product', 'color', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
+    list_display = (
+        'name',
+        'product',
+        'color',
+        'price',
+        'currency',
+        'price_source',
+        'effective_base',
+        'rub_price_with_margin',
+        'usd_price_with_margin',
+        'kzt_price_with_margin',
+        'eur_price_with_margin',
+        'try_price_with_margin',
+        'is_active',
+        'sort_order',
+        'created_at',
+    )
     list_filter = ('is_active', 'color', 'currency', 'created_at')
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
@@ -730,6 +749,67 @@ class ClothingVariantAdmin(admin.ModelAdmin):
     )
     inlines = [ClothingVariantSizeInline, ClothingVariantImageInline]
 
+    def _get_effective_price_currency(self, obj):
+        if obj.price is not None:
+            return obj.price, (obj.currency or obj.product.currency or 'RUB').upper(), 'variant'
+        return obj.product.price, (obj.product.currency or 'RUB').upper(), 'base'
+
+    def price_source(self, obj):
+        _, _, source = self._get_effective_price_currency(obj)
+        return source
+    price_source.short_description = _('Источник')
+
+    def effective_base(self, obj):
+        price, currency, _ = self._get_effective_price_currency(obj)
+        if price is None:
+            return '-'
+        return f"{price} {currency}"
+    effective_base.short_description = _('База')
+
+    def _converted_with_margin(self, obj, target_currency: str):
+        price, currency, _ = self._get_effective_price_currency(obj)
+        if price is None:
+            return None
+        from .utils.currency_converter import currency_converter
+        try:
+            results = currency_converter.convert_to_multiple_currencies(
+                Decimal(price),
+                currency,
+                [target_currency],
+                apply_margin=True,
+            )
+            data = results.get(target_currency)
+            if not data:
+                return None
+            return data.get('price_with_margin')
+        except Exception:
+            return None
+
+    def rub_price_with_margin(self, obj):
+        val = self._converted_with_margin(obj, 'RUB')
+        return '-' if val is None else val
+    rub_price_with_margin.short_description = _('RUB*')
+
+    def usd_price_with_margin(self, obj):
+        val = self._converted_with_margin(obj, 'USD')
+        return '-' if val is None else val
+    usd_price_with_margin.short_description = _('USD*')
+
+    def kzt_price_with_margin(self, obj):
+        val = self._converted_with_margin(obj, 'KZT')
+        return '-' if val is None else val
+    kzt_price_with_margin.short_description = _('KZT*')
+
+    def eur_price_with_margin(self, obj):
+        val = self._converted_with_margin(obj, 'EUR')
+        return '-' if val is None else val
+    eur_price_with_margin.short_description = _('EUR*')
+
+    def try_price_with_margin(self, obj):
+        val = self._converted_with_margin(obj, 'TRY')
+        return '-' if val is None else val
+    try_price_with_margin.short_description = _('TRY*')
+
 
 @admin.register(ClothingProduct)
 class ClothingProductAdmin(admin.ModelAdmin):
@@ -740,18 +820,153 @@ class ClothingProductAdmin(admin.ModelAdmin):
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
     exclude = ('size', 'color', 'stock_quantity', 'is_available')
+    readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {'fields': ('category', 'brand')}),
         (_('Clothing'), {'fields': ('material', 'season')}),
-        (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
+        (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ()}),
         (_('Media'), {'fields': ('main_image',)}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     inlines = [ClothingProductTranslationInline, ClothingVariantInline, ClothingProductImageInline]
+
+    def variant_prices_overview(self, obj):
+        if not obj or not obj.pk:
+            return "-"
+        variants = obj.variants.filter(is_active=True).order_by('sort_order', 'id')
+        if not variants.exists():
+            return "-"
+        base_price = obj.price
+        base_currency = obj.currency
+        rows = []
+        for v in variants:
+            effective_price = v.price if v.price is not None else base_price
+            effective_currency = (v.currency or base_currency) if v.price is not None else base_currency
+            price_str = '-' if effective_price is None else f"{effective_price} {effective_currency}"
+            rows.append((v.color or '-', v.slug, price_str, 'variant' if v.price is not None else 'base'))
+        header = format_html(
+            '<table style="width:100%; border-collapse:collapse;">'
+            '<thead>'
+            '<tr>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Цвет</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Slug</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Цена</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Источник</th>'
+            '</tr>'
+            '</thead><tbody>'
+        )
+        body = format_html(
+            '{}',
+            format_html_join(
+                '',
+                '<tr>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;"><code>{}</code></td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '</tr>',
+                ((c, s, p, src) for (c, s, p, src) in rows),
+            )
+        )
+        footer = format_html('</tbody></table>')
+        return format_html('{}{}{}', header, body, footer)
+
+    variant_prices_overview.short_description = _('Цены вариантов')
+
+    def variant_prices_converted_overview(self, obj):
+        if not obj or not obj.pk:
+            return "-"
+        variants = obj.variants.filter(is_active=True).order_by('sort_order', 'id')
+        if not variants.exists():
+            return "-"
+
+        from .utils.currency_converter import currency_converter
+
+        base_price = obj.price
+        base_currency = (obj.currency or 'RUB').upper()
+        targets = ['RUB', 'USD', 'KZT', 'EUR', 'TRY']
+
+        rows = []
+        for v in variants[:25]:
+            effective_price = v.price if v.price is not None else base_price
+            effective_currency = (v.currency or base_currency).upper() if v.price is not None else base_currency
+            if effective_price is None:
+                continue
+            try:
+                results = currency_converter.convert_to_multiple_currencies(
+                    Decimal(effective_price),
+                    effective_currency,
+                    targets,
+                    apply_margin=True,
+                )
+            except Exception:
+                results = {}
+
+            def fmt(cur: str) -> str:
+                data = results.get(cur)
+                if not data:
+                    return '-'
+                return str(data.get('price_with_margin') or '-')
+
+            rows.append(
+                (
+                    v.color or '-',
+                    v.slug,
+                    f"{effective_price} {effective_currency}",
+                    fmt('RUB'),
+                    fmt('USD'),
+                    fmt('KZT'),
+                    fmt('EUR'),
+                    fmt('TRY'),
+                    'variant' if v.price is not None else 'base',
+                )
+            )
+
+        if not rows:
+            return "-"
+
+        header = format_html(
+            '<table style="width:100%; border-collapse:collapse;">'
+            '<thead>'
+            '<tr>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Цвет</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Slug</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">База</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">RUB*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">USD*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">KZT*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">EUR*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">TRY*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Источник</th>'
+            '</tr>'
+            '</thead><tbody>'
+        )
+        body = format_html(
+            '{}',
+            format_html_join(
+                '',
+                '<tr>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;"><code>{}</code></td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '</tr>',
+                ((c, s, base, rub, usd, kzt, eur, tr, src) for (c, s, base, rub, usd, kzt, eur, tr, src) in rows),
+            )
+        )
+        footer = format_html('</tbody></table>')
+        return format_html('{}{}{}', header, body, footer)
+
+    variant_prices_converted_overview.short_description = _('Цены вариантов (конвертация)')
 
 
 @admin.register(CategoryShoes)
@@ -811,7 +1026,23 @@ class ShoeVariantSizeInline(admin.TabularInline):
 @admin.register(ShoeVariant)
 class ShoeVariantAdmin(admin.ModelAdmin):
     """Отдельная админка варианта обуви (для картинок)."""
-    list_display = ('name', 'product', 'color', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
+    list_display = (
+        'name',
+        'product',
+        'color',
+        'price',
+        'currency',
+        'price_source',
+        'effective_base',
+        'rub_price_with_margin',
+        'usd_price_with_margin',
+        'kzt_price_with_margin',
+        'eur_price_with_margin',
+        'try_price_with_margin',
+        'is_active',
+        'sort_order',
+        'created_at',
+    )
     list_filter = ('is_active', 'color', 'currency', 'created_at')
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
@@ -830,6 +1061,67 @@ class ShoeVariantAdmin(admin.ModelAdmin):
     )
     inlines = [ShoeVariantSizeInline, ShoeVariantImageInline]
 
+    def _get_effective_price_currency(self, obj):
+        if obj.price is not None:
+            return obj.price, (obj.currency or obj.product.currency or 'RUB').upper(), 'variant'
+        return obj.product.price, (obj.product.currency or 'RUB').upper(), 'base'
+
+    def price_source(self, obj):
+        _, _, source = self._get_effective_price_currency(obj)
+        return source
+    price_source.short_description = _('Источник')
+
+    def effective_base(self, obj):
+        price, currency, _ = self._get_effective_price_currency(obj)
+        if price is None:
+            return '-'
+        return f"{price} {currency}"
+    effective_base.short_description = _('База')
+
+    def _converted_with_margin(self, obj, target_currency: str):
+        price, currency, _ = self._get_effective_price_currency(obj)
+        if price is None:
+            return None
+        from .utils.currency_converter import currency_converter
+        try:
+            results = currency_converter.convert_to_multiple_currencies(
+                Decimal(price),
+                currency,
+                [target_currency],
+                apply_margin=True,
+            )
+            data = results.get(target_currency)
+            if not data:
+                return None
+            return data.get('price_with_margin')
+        except Exception:
+            return None
+
+    def rub_price_with_margin(self, obj):
+        val = self._converted_with_margin(obj, 'RUB')
+        return '-' if val is None else val
+    rub_price_with_margin.short_description = _('RUB*')
+
+    def usd_price_with_margin(self, obj):
+        val = self._converted_with_margin(obj, 'USD')
+        return '-' if val is None else val
+    usd_price_with_margin.short_description = _('USD*')
+
+    def kzt_price_with_margin(self, obj):
+        val = self._converted_with_margin(obj, 'KZT')
+        return '-' if val is None else val
+    kzt_price_with_margin.short_description = _('KZT*')
+
+    def eur_price_with_margin(self, obj):
+        val = self._converted_with_margin(obj, 'EUR')
+        return '-' if val is None else val
+    eur_price_with_margin.short_description = _('EUR*')
+
+    def try_price_with_margin(self, obj):
+        val = self._converted_with_margin(obj, 'TRY')
+        return '-' if val is None else val
+    try_price_with_margin.short_description = _('TRY*')
+
 
 @admin.register(ShoeProduct)
 class ShoeProductAdmin(admin.ModelAdmin):
@@ -840,12 +1132,13 @@ class ShoeProductAdmin(admin.ModelAdmin):
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
     exclude = ('size', 'color', 'stock_quantity', 'is_available')
+    readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {'fields': ('category', 'brand')}),
         (_('Shoes'), {'fields': ('material', 'heel_height', 'sole_type')}),
-        (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
+        (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ()}),
         (_('Media'), {'fields': ('main_image',)}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
@@ -853,6 +1146,142 @@ class ShoeProductAdmin(admin.ModelAdmin):
     )
     # Галерея для обуви теперь задается на уровне варианта (цвета), поэтому инлайн изображений товара убран
     inlines = [ShoeProductTranslationInline, ShoeVariantInline]
+
+    def variant_prices_overview(self, obj):
+        if not obj or not obj.pk:
+            return "-"
+        variants = obj.variants.filter(is_active=True).order_by('sort_order', 'id')
+        if not variants.exists():
+            return "-"
+        base_price = obj.price
+        base_currency = obj.currency
+        rows = []
+        for v in variants:
+            effective_price = v.price if v.price is not None else base_price
+            effective_currency = (v.currency or base_currency) if v.price is not None else base_currency
+            price_str = '-' if effective_price is None else f"{effective_price} {effective_currency}"
+            rows.append((v.color or '-', v.slug, price_str, 'variant' if v.price is not None else 'base'))
+        header = format_html(
+            '<table style="width:100%; border-collapse:collapse;">'
+            '<thead>'
+            '<tr>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Цвет</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Slug</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Цена</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Источник</th>'
+            '</tr>'
+            '</thead><tbody>'
+        )
+        body = format_html(
+            '{}',
+            format_html_join(
+                '',
+                '<tr>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;"><code>{}</code></td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '</tr>',
+                ((c, s, p, src) for (c, s, p, src) in rows),
+            )
+        )
+        footer = format_html('</tbody></table>')
+        return format_html('{}{}{}', header, body, footer)
+
+    variant_prices_overview.short_description = _('Цены вариантов')
+
+    def variant_prices_converted_overview(self, obj):
+        if not obj or not obj.pk:
+            return "-"
+        variants = obj.variants.filter(is_active=True).order_by('sort_order', 'id')
+        if not variants.exists():
+            return "-"
+
+        from .utils.currency_converter import currency_converter
+
+        base_price = obj.price
+        base_currency = (obj.currency or 'RUB').upper()
+        targets = ['RUB', 'USD', 'KZT', 'EUR', 'TRY']
+
+        rows = []
+        for v in variants[:25]:
+            effective_price = v.price if v.price is not None else base_price
+            effective_currency = (v.currency or base_currency).upper() if v.price is not None else base_currency
+            if effective_price is None:
+                continue
+
+            try:
+                results = currency_converter.convert_to_multiple_currencies(
+                    Decimal(effective_price),
+                    effective_currency,
+                    targets,
+                    apply_margin=True,
+                )
+            except Exception:
+                results = {}
+
+            def fmt(cur: str) -> str:
+                data = results.get(cur)
+                if not data:
+                    return '-'
+                return str(data.get('price_with_margin') or '-')
+
+            rows.append(
+                (
+                    v.color or '-',
+                    v.slug,
+                    f"{effective_price} {effective_currency}",
+                    fmt('RUB'),
+                    fmt('USD'),
+                    fmt('KZT'),
+                    fmt('EUR'),
+                    fmt('TRY'),
+                    'variant' if v.price is not None else 'base',
+                )
+            )
+
+        if not rows:
+            return "-"
+
+        header = format_html(
+            '<table style="width:100%; border-collapse:collapse;">'
+            '<thead>'
+            '<tr>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Цвет</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Slug</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">База</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">RUB*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">USD*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">KZT*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">EUR*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">TRY*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Источник</th>'
+            '</tr>'
+            '</thead><tbody>'
+        )
+        body = format_html(
+            '{}',
+            format_html_join(
+                '',
+                '<tr>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;"><code>{}</code></td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '</tr>',
+                ((c, s, base, rub, usd, kzt, eur, tr, src) for (c, s, base, rub, usd, kzt, eur, tr, src) in rows),
+            )
+        )
+        footer = format_html('</tbody></table>')
+        return format_html('{}{}{}', header, body, footer)
+
+    variant_prices_converted_overview.short_description = _('Цены вариантов (конвертация)')
 
 
 @admin.register(CategoryElectronics)
@@ -1351,3 +1780,6 @@ class MarketingRootCategoryAdmin(admin.ModelAdmin):
 
 # Импортируем админки для книг
 from .admin_books import *
+
+# Импортируем и регистрируем админки для валютных моделей
+from .admin_currency import *

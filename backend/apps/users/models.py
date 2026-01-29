@@ -66,14 +66,15 @@ class User(AbstractUser):
         ('RUB', 'Рубль'),
         ('EUR', 'Евро'),
         ('TRY', 'Турецкая лира'),
+        ('KZT', 'Казахстанский тенге'),
     ], default='USD')
     
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
     
     class Meta:
-        verbose_name = _('пользователь')
-        verbose_name_plural = _('пользователи')
+        verbose_name = _('👥 пользователь')
+        verbose_name_plural = _('👥 Пользователи — Пользователи')
         db_table = 'users'
         
     def __str__(self):
@@ -122,8 +123,8 @@ class UserAddress(models.Model):
     updated_at = models.DateTimeField(_('дата обновления'), auto_now=True)
     
     class Meta:
-        verbose_name = _('адрес пользователя')
-        verbose_name_plural = _('адреса пользователей')
+        verbose_name = _('👥 адрес пользователя')
+        verbose_name_plural = _('👥 Пользователи — Адреса пользователей')
         db_table = 'user_addresses'
         ordering = ['-is_default', '-created_at']
         
@@ -155,8 +156,8 @@ class UserSession(models.Model):
     expires_at = models.DateTimeField(_('истекает'), null=True, blank=True)
     
     class Meta:
-        verbose_name = _('сессия пользователя')
-        verbose_name_plural = _('сессии пользователей')
+        verbose_name = _('👥 сессия пользователя')
+        verbose_name_plural = _('👥 Пользователи — Сессии пользователей')
         db_table = 'user_sessions'
         ordering = ['-last_activity']
         

@@ -277,14 +277,29 @@ class CartItemSerializer(serializers.ModelSerializer):
     product_type = serializers.CharField(source='product.product_type', read_only=True)
     product_image_url = serializers.SerializerMethodField()
     chosen_size = serializers.CharField(read_only=True)
+    
+    # Добавляем поля из новой системы ценообразования
+    price = serializers.SerializerMethodField()  # Изменено на метод
+    currency = serializers.SerializerMethodField()  # Изменено на метод
+    converted_price_rub = serializers.SerializerMethodField()  # Новое поле
+    converted_price_usd = serializers.SerializerMethodField()  # Новое поле
+    final_price_rub = serializers.SerializerMethodField()  # Новое поле
+    final_price_usd = serializers.SerializerMethodField()  # Новое поле
+    margin_percent_applied = serializers.SerializerMethodField()  # Новое поле
+    prices_in_currencies = serializers.SerializerMethodField()  # Новое поле
 
     class Meta:
         model = CartItem
         fields = [
             'id', 'product', 'product_name', 'product_slug', 'product_type', 'product_image_url',
-            'quantity', 'price', 'currency', 'chosen_size', 'created_at', 'updated_at'
+            'quantity', 'price', 'currency', 'chosen_size', 'created_at', 'updated_at',
+            # Новые поля из системы ценообразования
+            'converted_price_rub', 'converted_price_usd', 'final_price_rub', 'final_price_usd',
+            'margin_percent_applied', 'prices_in_currencies', 'total'
         ]
-        read_only_fields = ['price', 'currency', 'created_at', 'updated_at']
+        read_only_fields = ['price', 'currency', 'created_at', 'updated_at', 
+                           'converted_price_rub', 'converted_price_usd', 'final_price_rub', 'final_price_usd',
+                           'margin_percent_applied', 'prices_in_currencies', 'total']
     
     def get_product_image_url(self, obj):
         """Получение URL изображения товара (с запасным поиском по варианту)."""
@@ -365,6 +380,150 @@ class CartItemSerializer(serializers.ModelSerializer):
             return None
         ext = getattr(product, "external_data", {}) or {}
         return ext.get("source_variant_slug") or product.slug
+    
+    def _get_preferred_currency(self, request):
+        """Определяет валюту по приоритетам: explicit -> user -> язык -> default."""
+        default_currency = 'RUB'
+        if not request:
+            return default_currency
+
+        # Явный выбор валюты имеет приоритет
+        preferred_currency = request.headers.get('X-Currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        preferred_currency = request.query_params.get('currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            user_currency = getattr(request.user, 'currency', None)
+            if user_currency:
+                return user_currency.upper()
+
+        language_code = getattr(request, 'LANGUAGE_CODE', None)
+        language_currency_map = {
+            'en': 'USD',
+            'ru': 'RUB',
+        }
+        return language_currency_map.get(language_code, default_currency)
+    
+    def get_price(self, obj):
+        """Получает цену в предпочитаемой валюте."""
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        
+        # Получаем цену в предпочитаемой валюте
+        try:
+            prices = obj.product.get_all_prices()
+            if prices and preferred_currency in prices:
+                return prices[preferred_currency].get('price_with_margin')
+            elif prices:
+                # Если предпочитаемой валюты нет, вернем базовую
+                for currency, data in prices.items():
+                    if data.get('is_base_price'):
+                        return data.get('price_with_margin')
+                # Или просто первую
+                first_currency = list(prices.keys())[0]
+                return prices[first_currency].get('price_with_margin')
+        except Exception:
+            pass
+        
+        # Fallback к старому полю
+        return obj.price
+    
+    def get_currency(self, obj):
+        """Получает валюту товара из новой системы."""
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        
+        # Получаем валюту из новой системы
+        try:
+            prices = obj.product.get_all_prices()
+            if prices and preferred_currency in prices:
+                return preferred_currency
+            elif prices:
+                # Если предпочитаемой валюты нет, вернем базовую
+                for currency, data in prices.items():
+                    if data.get('is_base_price'):
+                        return currency
+                # Или просто первую
+                return list(prices.keys())[0]
+        except Exception:
+            pass
+        
+        # Fallback к старому полю
+        return obj.currency if obj.currency else 'RUB'
+    
+    def get_converted_price_rub(self, obj):
+        """Получает конвертированную цену в RUB."""
+        try:
+            prices = obj.product.get_all_prices()
+            if 'RUB' in prices:
+                return prices['RUB'].get('converted_price')
+        except Exception:
+            pass
+        return None
+    
+    def get_converted_price_usd(self, obj):
+        """Получает конвертированную цену в USD."""
+        try:
+            prices = obj.product.get_all_prices()
+            if 'USD' in prices:
+                return prices['USD'].get('converted_price')
+        except Exception:
+            pass
+        return None
+    
+    def get_final_price_rub(self, obj):
+        """Получает финальную цену в RUB с маржой."""
+        try:
+            prices = obj.product.get_all_prices()
+            if 'RUB' in prices:
+                return prices['RUB'].get('price_with_margin')
+        except Exception:
+            pass
+        return None
+    
+    def get_final_price_usd(self, obj):
+        """Получает финальную цену в USD с маржой."""
+        try:
+            prices = obj.product.get_all_prices()
+            if 'USD' in prices:
+                return prices['USD'].get('price_with_margin')
+        except Exception:
+            pass
+        return None
+    
+    def get_margin_percent_applied(self, obj):
+        """Получает примененную маржу."""
+        try:
+            prices = obj.product.get_all_prices()
+            if prices:
+                # Найдем базовую валюту
+                for currency, data in prices.items():
+                    if data.get('is_base_price'):
+                        return 0  # Для базовой валюты маржа 0%
+                
+                # Для других валют можно взять среднюю маржу
+                margins = []
+                for currency, data in prices.items():
+                    if not data.get('is_base_price') and data.get('price_with_margin') and data.get('converted_price'):
+                        if data['converted_price'] > 0:
+                            margin = ((data['price_with_margin'] - data['converted_price']) / data['converted_price']) * 100
+                            margins.append(margin)
+                
+                if margins:
+                    return sum(margins) / len(margins)
+        except Exception:
+            pass
+        return 0
+    
+    def get_prices_in_currencies(self, obj):
+        """Получает цены во всех валютах."""
+        try:
+            return obj.product.get_all_prices()
+        except Exception:
+            return {}
 
 
 class PromoCodeSerializer(serializers.ModelSerializer):
@@ -402,10 +561,11 @@ class CartSerializer(serializers.ModelSerializer):
     """
     items = CartItemSerializer(many=True, read_only=True)
     items_count = serializers.IntegerField(read_only=True)
-    total_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
-    discount_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
-    final_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    total_amount = serializers.SerializerMethodField()
+    discount_amount = serializers.SerializerMethodField()
+    final_amount = serializers.SerializerMethodField()
     promo_code = PromoCodeSerializer(read_only=True)
+    currency = serializers.SerializerMethodField()  # Изменено на метод
 
     class Meta:
         model = Cart
@@ -415,7 +575,86 @@ class CartSerializer(serializers.ModelSerializer):
             'promo_code',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['user', 'created_at', 'updated_at', 'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount']
+        read_only_fields = ['user', 'created_at', 'updated_at', 'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount', 'currency']
+
+    def _get_preferred_currency(self, request):
+        """Определяет валюту по приоритетам: explicit -> user -> язык -> default."""
+        default_currency = 'RUB'
+        if not request:
+            return default_currency
+
+        # Явный выбор валюты имеет приоритет
+        preferred_currency = request.headers.get('X-Currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        preferred_currency = request.query_params.get('currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            user_currency = getattr(request.user, 'currency', None)
+            if user_currency:
+                return user_currency.upper()
+
+        language_code = getattr(request, 'LANGUAGE_CODE', None)
+        language_currency_map = {
+            'en': 'USD',
+            'ru': 'RUB',
+        }
+        return language_currency_map.get(language_code, default_currency)
+
+    def get_currency(self, obj):
+        """Получает валюту корзины (предпочитаемая валюта)."""
+        request = self.context.get('request')
+        return self._get_preferred_currency(request)
+    
+    def get_total_amount(self, obj):
+        """Рассчитать общую сумму корзины в предпочитаемой валюте."""
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        
+        total = 0
+        for item in obj.items.all():
+            try:
+                prices = item.product.get_all_prices()
+                if prices and preferred_currency in prices:
+                    price = prices[preferred_currency].get('price_with_margin', 0)
+                elif prices:
+                    # Если предпочитаемой валюты нет, используем базовую
+                    for currency, data in prices.items():
+                        if data.get('is_base_price'):
+                            price = data.get('price_with_margin', 0)
+                            break
+                    else:
+                        # Если базовой нет, берем первую
+                        first_currency = list(prices.keys())[0]
+                        price = prices[first_currency].get('price_with_margin', 0)
+                else:
+                    # Fallback к старому полю
+                    price = item.price
+                
+                total += price * item.quantity
+            except Exception:
+                # Fallback к старому полю
+                total += item.price * item.quantity
+        
+        return round(total, 2)
+    
+    def get_discount_amount(self, obj):
+        """Рассчитать скидку по промокоду."""
+        if not obj.promo_code:
+            return 0
+        total = self.get_total_amount(obj)
+        is_valid, error = obj.promo_code.is_valid(cart_total=total)
+        if not is_valid:
+            return 0
+        return obj.promo_code.calculate_discount(total)
+    
+    def get_final_amount(self, obj):
+        """Итоговая сумма с учётом скидки."""
+        total = self.get_total_amount(obj)
+        discount = self.get_discount_amount(obj)
+        return round(total - discount, 2)
 
 
 class AddToCartSerializer(serializers.Serializer):

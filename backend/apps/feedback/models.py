@@ -44,8 +44,8 @@ class Testimonial(models.Model):
     )
 
     class Meta:
-        verbose_name = 'Отзыв'
-        verbose_name_plural = 'Отзывы'
+        verbose_name = '💬 Отзыв'
+        verbose_name_plural = '💬 Отзывы — Отзывы'
         ordering = ['-created_at']
 
     def __str__(self):
@@ -106,8 +106,8 @@ class TestimonialMedia(models.Model):
     )
 
     class Meta:
-        verbose_name = 'Медиа отзыва'
-        verbose_name_plural = 'Медиа отзывов'
+        verbose_name = '💬 Медиа отзыва'
+        verbose_name_plural = '💬 Отзывы — Медиа отзывов'
         ordering = ['order', 'created_at']
 
     def __str__(self):

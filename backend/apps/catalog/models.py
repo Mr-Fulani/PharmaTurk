@@ -1,5 +1,6 @@
 """Модели для каталога товаров."""
 
+import uuid
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
@@ -7,14 +8,14 @@ from django.core.validators import MinValueValidator, FileExtensionValidator
 from django.utils.text import slugify
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
+from .currency_models import CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog
 
 CURRENCY_CHOICES = [
     ("RUB", "RUB"),
     ("USD", "USD"),
     ("EUR", "EUR"),
     ("TRY", "TRY"),
-    ("GBP", "GBP"),
-    ("USDT", "USDT"),
+    ("KZT", "KZT"),
 ]
 
 CARD_MEDIA_ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"]
@@ -730,6 +731,228 @@ class Product(models.Model):
         if translation and translation.description:
             return translation.description
         return self.description or ''
+    
+    # Методы для работы с системой ценообразования
+    def update_currency_prices(self, target_currencies=None):
+        """Обновляет цены товара в разных валютах"""
+        if target_currencies is None:
+            target_currencies = ['RUB', 'USD', 'KZT', 'EUR', 'TRY']
+        
+        try:
+            from apps.catalog.utils.currency_converter import currency_converter
+        except ImportError:
+            # Если конвертер недоступен, пропускаем обновление
+            return
+        
+        if not self.price or not self.currency:
+            return
+        
+        try:
+            # Конвертируем в целевые валюты
+            results = currency_converter.convert_to_multiple_currencies(
+                self.price, self.currency, target_currencies, apply_margin=True
+            )
+            
+            # Обновляем поля в модели
+            if 'RUB' in results and results['RUB']:
+                self.converted_price_rub = results['RUB']['converted_price']
+                self.final_price_rub = results['RUB']['price_with_margin']
+            
+            if 'USD' in results and results['USD']:
+                self.converted_price_usd = results['USD']['converted_price']
+                self.final_price_usd = results['USD']['price_with_margin']
+            
+            # Создаем или обновляем запись в ProductPrice
+            from .currency_models import ProductPrice
+            
+            price_info, created = ProductPrice.objects.get_or_create(
+                product=self,
+                defaults={
+                    'base_currency': self.currency,
+                    'base_price': self.price
+                }
+            )
+            
+            # Обновляем базовые данные
+            price_info.base_currency = self.currency
+            price_info.base_price = self.price
+            
+            # Обновляем цены в разных валютах
+            if 'RUB' in results and results['RUB']:
+                price_info.rub_price = results['RUB']['converted_price']
+                price_info.rub_price_with_margin = results['RUB']['price_with_margin']
+            
+            if 'USD' in results and results['USD']:
+                price_info.usd_price = results['USD']['converted_price']
+                price_info.usd_price_with_margin = results['USD']['price_with_margin']
+            
+            if 'KZT' in results and results['KZT']:
+                price_info.kzt_price = results['KZT']['converted_price']
+                price_info.kzt_price_with_margin = results['KZT']['price_with_margin']
+            
+            if 'EUR' in results and results['EUR']:
+                price_info.eur_price = results['EUR']['converted_price']
+                price_info.eur_price_with_margin = results['EUR']['price_with_margin']
+            
+            if 'TRY' in results and results['TRY']:
+                price_info.try_price = results['TRY']['converted_price']
+                price_info.try_price_with_margin = results['TRY']['price_with_margin']
+            
+            price_info.save()
+            # Не вызываем self.save() чтобы избежать бесконечной рекурсии
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error updating currency prices for product {self.id}: {str(e)}")
+    
+    def get_price_in_currency(self, target_currency):
+        """Получает цену в указанной валюте"""
+        try:
+            from .currency_models import ProductPrice
+            
+            # Пробуем получить из новой структуры
+            try:
+                price_info = self.price_info
+                
+                if target_currency == 'RUB' and price_info.rub_price_with_margin:
+                    return price_info.rub_price_with_margin
+                elif target_currency == 'USD' and price_info.usd_price_with_margin:
+                    return price_info.usd_price_with_margin
+                elif target_currency == 'KZT' and price_info.kzt_price_with_margin:
+                    return price_info.kzt_price_with_margin
+                elif target_currency == 'EUR' and price_info.eur_price_with_margin:
+                    return price_info.eur_price_with_margin
+                elif target_currency == self.currency:
+                    return price_info.base_price
+                    
+            except ProductPrice.DoesNotExist:
+                pass
+            
+            # Если цены нет в базе, пробуем конвертировать на лету
+            from .utils.currency_converter import currency_converter
+            
+            if self.price and self.currency:
+                _, _, price_with_margin = currency_converter.convert_price(
+                    self.price, self.currency, target_currency, apply_margin=True
+                )
+                return price_with_margin
+            
+        except Exception:
+            pass
+    
+        return None
+    
+    def get_all_prices(self):
+        """Получает цены во всех валютах"""
+        from .currency_models import ProductPrice
+        
+        prices = {}
+        
+        try:
+            price_info = self.price_info
+            
+            # Базовая цена
+            prices[self.currency] = {
+                'original_price': price_info.base_price,
+                'converted_price': price_info.base_price,
+                'price_with_margin': price_info.base_price,
+                'is_base_price': True
+            }
+            
+            # RUB
+            if price_info.rub_price_with_margin:
+                prices['RUB'] = {
+                    'original_price': price_info.rub_price,
+                    'converted_price': price_info.rub_price,
+                    'price_with_margin': price_info.rub_price_with_margin,
+                    'is_base_price': False
+                }
+            
+            # USD
+            if price_info.usd_price_with_margin:
+                prices['USD'] = {
+                    'original_price': price_info.usd_price,
+                    'converted_price': price_info.usd_price,
+                    'price_with_margin': price_info.usd_price_with_margin,
+                    'is_base_price': False
+                }
+            
+            # KZT
+            if price_info.kzt_price_with_margin:
+                prices['KZT'] = {
+                    'original_price': price_info.kzt_price,
+                    'converted_price': price_info.kzt_price,
+                    'price_with_margin': price_info.kzt_price_with_margin,
+                    'is_base_price': False
+                }
+            
+            # EUR
+            if price_info.eur_price_with_margin:
+                prices['EUR'] = {
+                    'original_price': price_info.eur_price,
+                    'converted_price': price_info.eur_price,
+                    'price_with_margin': price_info.eur_price_with_margin,
+                    'is_base_price': False
+                }
+                
+        except ProductPrice.DoesNotExist:
+            # Если цен нет, возвращаем базовую цену
+            if self.price and self.currency:
+                prices[self.currency] = {
+                    'original_price': self.price,
+                    'converted_price': self.price,
+                    'price_with_margin': self.price,
+                    'is_base_price': True
+                }
+        
+        return prices
+    
+    def get_current_price(self, preferred_currency='RUB'):
+        """Получает текущую цену в предпочитаемой валюте"""
+        # Сначала пробуем получить цену в предпочитаемой валюте
+        price = self.get_price_in_currency(preferred_currency)
+        if price:
+            return price, preferred_currency
+        
+        # Если нет, пробуем базовую валюту товара
+        price = self.get_price_in_currency(self.currency)
+        if price:
+            return price, self.currency
+        
+        # Если нет ни чего, возвращаем оригинальную цену
+        if self.price:
+            return self.price, self.currency
+        
+        return None, None
+    
+    def get_price_breakdown(self, target_currency):
+        """Получает детализацию цены для указанной валюты"""
+        from .utils.currency_converter import currency_converter
+        
+        if not self.price or not self.currency:
+            return None
+        
+        try:
+            return currency_converter.get_price_breakdown(
+                self.price, self.currency, target_currency
+            )
+        except Exception:
+            return None
+    
+    def save(self, *args, **kwargs):
+        """Переопределенный метод save с автоматическим обновлением цен."""
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        
+        # Если у товара есть цена и валюта, обновляем цены в разных валютах
+        if self.price and self.currency:
+            try:
+                self.update_currency_prices()
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error updating currency prices for product {self.id}: {str(e)}")
 
 
 class ProductTranslation(models.Model):
@@ -929,7 +1152,16 @@ class ClothingVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -1552,7 +1784,16 @@ class ShoeVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -1873,7 +2114,16 @@ class JewelryVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}-{self.material or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -2482,7 +2732,16 @@ class FurnitureVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.color or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
@@ -2808,7 +3067,16 @@ class BookVariant(models.Model):
         if not self.slug:
             base_name = self.name or self.product.name
             composed = f"{base_name}-{self.cover_type or ''}-{self.format_type or ''}".strip()
-            self.slug = slugify(composed)[:580] or slugify(base_name)[:580]
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
 
