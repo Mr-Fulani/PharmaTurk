@@ -80,6 +80,7 @@ interface Product {
   description: string
   price: string
   currency: string
+  stock_quantity?: number | null
   main_image?: string
   main_image_url?: string
   video_url?: string
@@ -108,6 +109,33 @@ interface Variant {
   images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
   sizes?: { id: number; size?: string; is_available?: boolean; stock_quantity?: number | null }[]
   active_variant_currency?: string | null
+}
+
+const resolveAvailableStock = (
+  product: Product,
+  selectedVariant: Variant | null | undefined,
+  selectedSize: string | undefined
+): number | null => {
+  const sizeCandidate = selectedSize
+    ? (selectedVariant?.sizes || []).find((s) => (s.size || '') === selectedSize)
+    : undefined
+
+  const sizeStock = sizeCandidate?.stock_quantity
+  if (sizeStock !== null && sizeStock !== undefined) {
+    return sizeStock
+  }
+
+  const variantStock = selectedVariant?.stock_quantity
+  if (variantStock !== null && variantStock !== undefined) {
+    return variantStock
+  }
+
+  const productStock = product.stock_quantity
+  if (productStock !== null && productStock !== undefined) {
+    return productStock
+  }
+
+  return null
 }
 
 export default function ProductPage({
@@ -150,6 +178,18 @@ export default function ProductPage({
 
   // Список размеров для выбранного цвета (берем из выбранного варианта-цвета)
   const sizesForColor = selectedVariant?.sizes || []
+
+  const maxAvailable = resolveAvailableStock(product, selectedVariant, selectedSize)
+
+  useEffect(() => {
+    if (maxAvailable === 0) {
+      setQuantity(1)
+      return
+    }
+    if (maxAvailable !== null && quantity > maxAvailable) {
+      setQuantity(Math.max(1, maxAvailable))
+    }
+  }, [maxAvailable])
 
   // Подбор варианта при смене цвета
   const pickVariant = (color?: string) => {
@@ -440,7 +480,14 @@ export default function ProductPage({
                   {quantity}
                 </span>
                 <button
-                  onClick={() => setQuantity(quantity + 1)}
+                  onClick={() => {
+                    if (maxAvailable !== null) {
+                      setQuantity(Math.min(maxAvailable, quantity + 1))
+                      return
+                    }
+                    setQuantity(quantity + 1)
+                  }}
+                  disabled={maxAvailable !== null && quantity >= maxAvailable}
                   className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
                   aria-label={t('increase_quantity', 'Увеличить количество')}
                 >
