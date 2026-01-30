@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 from django.utils.text import slugify
@@ -13,6 +15,7 @@ from apps.catalog.models import (
     ShoeVariant,
     FurnitureVariant,
 )
+from apps.catalog.utils.currency_converter import currency_converter
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
 
 VARIANT_MODEL_MAP = {
@@ -67,12 +70,14 @@ def ensure_product_from_base(base_obj, product_type: str) -> Product:
     Создает/возвращает базовый Product для карточки обуви/одежды, если Variants отсутствуют.
     """
     slug = base_obj.slug
+    desired_old_price = getattr(base_obj, 'old_price', None)
     defaults = {
         'name': getattr(base_obj, 'name', slug),
         'slug': slug,
         'description': getattr(base_obj, 'description', '') or '',
         'price': getattr(base_obj, 'price', None) or 0,
         'currency': getattr(base_obj, 'currency', None) or 'TRY',
+        'old_price': desired_old_price,
         'brand': getattr(base_obj, 'brand', None),
         # У базовой модели обуви/одежды категория относится к ShoeCategory/ClothingCategory,
         # поэтому для общего Product оставляем category пустым.
@@ -97,6 +102,9 @@ def ensure_product_from_base(base_obj, product_type: str) -> Product:
         new_currency = getattr(base_obj, 'currency', None)
         if new_currency and product.currency != new_currency:
             product.currency = new_currency
+            changed = True
+        if product.old_price != desired_old_price:
+            product.old_price = desired_old_price
             changed = True
         availability = getattr(base_obj, 'is_available', True)
         if product.is_available != availability:
@@ -160,12 +168,16 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
     if not brand and parent_product:
         brand = getattr(parent_product, "brand", None)
     main_image_candidate = _variant_main_image(variant) or (getattr(parent_product, "main_image", "") if parent_product else "")
+    desired_old_price = getattr(variant, 'old_price', None)
+    if desired_old_price is None and parent_product is not None:
+        desired_old_price = getattr(parent_product, 'old_price', None)
     defaults = {
         'name': variant.name or (parent_product.name if parent_product else ""),
         'slug': base_slug,
         'description': getattr(variant, 'description', '') or (getattr(parent_product, "description", "") if parent_product else ''),
         'price': getattr(variant, 'price', None) or (getattr(parent_product, "price", None) or 0),
         'currency': getattr(variant, 'currency', None) or (getattr(parent_product, "currency", None) or 'TRY'),
+        'old_price': desired_old_price,
         'product_type': effective_type,
         'brand': brand,
         'category': category,
@@ -200,6 +212,9 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         new_currency = getattr(variant, 'currency', None)
         if new_currency and product.currency != new_currency:
             product.currency = new_currency
+            changed = True
+        if product.old_price != desired_old_price:
+            product.old_price = desired_old_price
             changed = True
         availability = getattr(variant, 'is_available', True)
         if product.is_available != availability:
@@ -281,6 +296,8 @@ class CartItemSerializer(serializers.ModelSerializer):
     # Добавляем поля из новой системы ценообразования
     price = serializers.SerializerMethodField()  # Изменено на метод
     currency = serializers.SerializerMethodField()  # Изменено на метод
+    old_price = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
     converted_price_rub = serializers.SerializerMethodField()  # Новое поле
     converted_price_usd = serializers.SerializerMethodField()  # Новое поле
     final_price_rub = serializers.SerializerMethodField()  # Новое поле
@@ -292,7 +309,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         model = CartItem
         fields = [
             'id', 'product', 'product_name', 'product_slug', 'product_type', 'product_image_url',
-            'quantity', 'price', 'currency', 'chosen_size', 'created_at', 'updated_at',
+            'quantity', 'price', 'currency', 'old_price', 'old_price_formatted', 'chosen_size', 'created_at', 'updated_at',
             # Новые поля из системы ценообразования
             'converted_price_rub', 'converted_price_usd', 'final_price_rub', 'final_price_usd',
             'margin_percent_applied', 'prices_in_currencies', 'total'
@@ -453,6 +470,84 @@ class CartItemSerializer(serializers.ModelSerializer):
         
         # Fallback к старому полю
         return obj.currency if obj.currency else 'RUB'
+
+    def get_old_price(self, obj):
+        product = obj.product
+        if not product:
+            return None
+        old_price = product.old_price
+        from_currency = (product.currency or 'RUB').upper()
+        if old_price is None:
+            ext = getattr(product, "external_data", {}) or {}
+            variant_slug = ext.get("source_variant_slug")
+            effective_type = ext.get("effective_type") or ext.get("source_type")
+            variant_model = VARIANT_MODEL_MAP.get(effective_type)
+            if variant_slug and variant_model in (ClothingVariant, ShoeVariant, FurnitureVariant):
+                variant = variant_model.objects.filter(slug=variant_slug, is_active=True).first()
+                if variant:
+                    if variant.old_price is not None:
+                        old_price = variant.old_price
+                        from_currency = (variant.currency or product.currency or 'RUB').upper()
+                    elif getattr(variant, "product", None) is not None:
+                        parent_product = variant.product
+                        if parent_product.old_price is not None:
+                            old_price = parent_product.old_price
+                            from_currency = (parent_product.currency or variant.currency or product.currency or 'RUB').upper()
+        if old_price is None:
+            return None
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        if preferred_currency != from_currency:
+            try:
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return price_with_margin
+            except Exception:
+                pass
+        return old_price
+
+    def get_old_price_formatted(self, obj):
+        product = obj.product
+        if not product:
+            return None
+        old_price = product.old_price
+        from_currency = (product.currency or 'RUB').upper()
+        if old_price is None:
+            ext = getattr(product, "external_data", {}) or {}
+            variant_slug = ext.get("source_variant_slug")
+            effective_type = ext.get("effective_type") or ext.get("source_type")
+            variant_model = VARIANT_MODEL_MAP.get(effective_type)
+            if variant_slug and variant_model in (ClothingVariant, ShoeVariant, FurnitureVariant):
+                variant = variant_model.objects.filter(slug=variant_slug, is_active=True).first()
+                if variant:
+                    if variant.old_price is not None:
+                        old_price = variant.old_price
+                        from_currency = (variant.currency or product.currency or 'RUB').upper()
+                    elif getattr(variant, "product", None) is not None:
+                        parent_product = variant.product
+                        if parent_product.old_price is not None:
+                            old_price = parent_product.old_price
+                            from_currency = (parent_product.currency or variant.currency or product.currency or 'RUB').upper()
+        if old_price is None:
+            return None
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        if preferred_currency != from_currency:
+            try:
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                pass
+        return f"{old_price} {from_currency}"
     
     def get_converted_price_rub(self, obj):
         """Получает конвертированную цену в RUB."""
@@ -638,23 +733,36 @@ class CartSerializer(serializers.ModelSerializer):
                 # Fallback к старому полю
                 total += item.price * item.quantity
         
-        return round(total, 2)
+        return float(round(total, 2))
     
     def get_discount_amount(self, obj):
         """Рассчитать скидку по промокоду."""
         if not obj.promo_code:
             return 0
-        total = self.get_total_amount(obj)
-        is_valid, error = obj.promo_code.is_valid(cart_total=total)
+
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        total = float(self.get_total_amount(obj))
+        is_valid, error = obj.promo_code.is_valid(cart_total=total, cart_currency=preferred_currency)
         if not is_valid:
             return 0
-        return obj.promo_code.calculate_discount(total)
+        return obj.promo_code.calculate_discount(total, currency=preferred_currency)
     
     def get_final_amount(self, obj):
         """Итоговая сумма с учётом скидки."""
-        total = self.get_total_amount(obj)
-        discount = self.get_discount_amount(obj)
-        return round(total - discount, 2)
+        from decimal import Decimal, ROUND_HALF_UP
+
+        try:
+            total_dec = Decimal(str(self.get_total_amount(obj)))
+        except Exception:
+            total_dec = Decimal('0')
+
+        try:
+            discount_dec = Decimal(str(self.get_discount_amount(obj)))
+        except Exception:
+            discount_dec = Decimal('0')
+
+        return float((total_dec - discount_dec).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
 
 class AddToCartSerializer(serializers.Serializer):
@@ -746,11 +854,64 @@ class OrderItemSerializer(serializers.ModelSerializer):
     """
     product_slug = serializers.CharField(source='product.slug', read_only=True)
     product_image_url = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    total = serializers.SerializerMethodField()
     
     class Meta:
         model = OrderItem
         fields = ['id', 'product', 'product_name', 'product_slug', 'product_image_url', 'chosen_size', 'price', 'quantity', 'total']
         read_only_fields = ['product_name', 'price', 'total', 'product_slug', 'product_image_url']
+
+    def _get_preferred_currency(self, request, fallback: str = 'RUB') -> str:
+        if not request:
+            return fallback
+        preferred_currency = request.headers.get('X-Currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        preferred_currency = request.query_params.get('currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            user_currency = getattr(request.user, 'currency', None)
+            if user_currency:
+                return user_currency.upper()
+        language_code = getattr(request, 'LANGUAGE_CODE', None)
+        language_currency_map = {
+            'en': 'USD',
+            'ru': 'RUB',
+        }
+        return language_currency_map.get(language_code, fallback)
+
+    def _convert_money(self, amount: Decimal, from_currency: str, to_currency: str) -> Decimal:
+        if from_currency == to_currency:
+            return amount
+        _orig, converted, _with_margin = currency_converter.convert_price(
+            amount=amount,
+            from_currency=from_currency,
+            to_currency=to_currency,
+            apply_margin=False,
+        )
+        return converted
+
+    def get_price(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj.order, 'currency', 'RUB'))
+        order_currency = getattr(obj.order, 'currency', 'RUB')
+        try:
+            amount = Decimal(str(obj.price))
+            return self._convert_money(amount, order_currency, preferred_currency)
+        except Exception:
+            return obj.price
+
+    def get_total(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj.order, 'currency', 'RUB'))
+        order_currency = getattr(obj.order, 'currency', 'RUB')
+        try:
+            amount = Decimal(str(obj.total))
+            return self._convert_money(amount, order_currency, preferred_currency)
+        except Exception:
+            return obj.total
     
     def get_product_image_url(self, obj):
         """Получение URL изображения товара"""
@@ -815,6 +976,11 @@ class OrderSerializer(serializers.ModelSerializer):
     """
     items = OrderItemSerializer(many=True, read_only=True)
     promo_code = PromoCodeSerializer(read_only=True)
+    currency = serializers.SerializerMethodField()
+    subtotal_amount = serializers.SerializerMethodField()
+    shipping_amount = serializers.SerializerMethodField()
+    discount_amount = serializers.SerializerMethodField()
+    total_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -829,6 +995,80 @@ class OrderSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['number', 'status', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at']
+
+    def _get_preferred_currency(self, request, fallback: str = 'RUB') -> str:
+        if not request:
+            return fallback
+        preferred_currency = request.headers.get('X-Currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        preferred_currency = request.query_params.get('currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            user_currency = getattr(request.user, 'currency', None)
+            if user_currency:
+                return user_currency.upper()
+        language_code = getattr(request, 'LANGUAGE_CODE', None)
+        language_currency_map = {
+            'en': 'USD',
+            'ru': 'RUB',
+        }
+        return language_currency_map.get(language_code, fallback)
+
+    def _convert_money(self, amount: Decimal, from_currency: str, to_currency: str) -> Decimal:
+        if from_currency == to_currency:
+            return amount
+        _orig, converted, _with_margin = currency_converter.convert_price(
+            amount=amount,
+            from_currency=from_currency,
+            to_currency=to_currency,
+            apply_margin=False,
+        )
+        return converted
+
+    def get_currency(self, obj):
+        request = self.context.get('request')
+        return self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
+
+    def get_subtotal_amount(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
+        try:
+            return self._convert_money(Decimal(str(obj.subtotal_amount)), obj.currency, preferred_currency)
+        except Exception:
+            return obj.subtotal_amount
+
+    def get_shipping_amount(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
+        try:
+            return self._convert_money(Decimal(str(obj.shipping_amount)), obj.currency, preferred_currency)
+        except Exception:
+            return obj.shipping_amount
+
+    def get_discount_amount(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
+        try:
+            return self._convert_money(Decimal(str(obj.discount_amount)), obj.currency, preferred_currency)
+        except Exception:
+            return obj.discount_amount
+
+    def get_total_amount(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
+        try:
+            return self._convert_money(Decimal(str(obj.total_amount)), obj.currency, preferred_currency)
+        except Exception:
+            return obj.total_amount
+
+    def get_fields(self):
+        fields = super().get_fields()
+        # Прокидываем context (request) внутрь OrderItemSerializer, чтобы он тоже конвертировал.
+        if 'items' in fields and hasattr(fields['items'], 'child'):
+            fields['items'].child.context.update(self.context)
+        return fields
 
 
 class CreateOrderSerializer(serializers.Serializer):

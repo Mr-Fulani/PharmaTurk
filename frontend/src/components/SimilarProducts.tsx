@@ -7,9 +7,12 @@ interface Product {
   id: number
   name: string
   slug: string
-  price: string | null
-  currency: string
-  oldPrice?: string | null
+  price: string | number | null
+  currency?: string | null
+  oldPrice?: string | number | null
+  old_price?: string | number | null
+  active_variant_price?: string | number | null
+  active_variant_currency?: string | null
   main_image_url?: string | null
   main_image?: string | null
   product_type?: string
@@ -21,6 +24,21 @@ interface SimilarProductsProps {
   currentProductId?: number
   currentProductSlug?: string
   limit?: number
+}
+
+const parsePriceWithCurrency = (value?: string | number | null) => {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null }
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null }
+  }
+  const trimmed = value.trim()
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
+  }
+  return { price: trimmed, currency: null as string | null }
 }
 
 /**
@@ -114,23 +132,32 @@ export default function SimilarProducts({
         {t('similar_products', 'Похожие товары')}
       </h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {products.map((product) => (
-          <ProductCard
-            key={product.id}
-            id={product.id}
-            name={product.name}
-            slug={product.slug}
-            price={product.price}
-            currency={product.currency}
-            oldPrice={product.oldPrice}
-            imageUrl={product.main_image_url || product.main_image}
-            badge={product.is_featured ? t('product_featured', 'Хит') : null}
-            productType={product.product_type || productType}
-            isBaseProduct={isBaseProduct}
-          />
-        ))}
+        {products.map((product) => {
+          const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
+          const { price: parsedBasePrice, currency: parsedBaseCurrency } = parsePriceWithCurrency(product.price)
+          const displayPrice = parsedVariantPrice ?? parsedBasePrice ?? product.price
+          const displayCurrency = product.active_variant_currency || parsedVariantCurrency || parsedBaseCurrency || product.currency || 'RUB'
+          const oldPriceSource = product.old_price ?? product.oldPrice
+          const { price: parsedOldPrice } = parsePriceWithCurrency(oldPriceSource)
+          const displayOldPrice = parsedOldPrice ?? oldPriceSource
+
+          return (
+            <ProductCard
+              key={product.id}
+              id={product.id}
+              name={product.name}
+              slug={product.slug}
+              price={displayPrice ? String(displayPrice) : null}
+              currency={displayCurrency}
+              oldPrice={displayOldPrice ? String(displayOldPrice) : null}
+              imageUrl={product.main_image_url || product.main_image}
+              badge={product.is_featured ? t('product_featured', 'Хит') : null}
+              productType={product.product_type || productType}
+              isBaseProduct={isBaseProduct}
+            />
+          )
+        })}
       </div>
     </div>
   )
 }
-

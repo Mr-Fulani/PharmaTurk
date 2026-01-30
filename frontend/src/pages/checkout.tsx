@@ -964,15 +964,22 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 </div>
                 {cart.discount_amount && parseFloat(cart.discount_amount) > 0 && (
                   <>
-                    <div className="flex justify-between text-sm text-green-600">
+                    <div className="flex justify-between text-sm !text-red-600">
                       <span>{t('cart_discount', 'Скидка')}</span>
                       <span className="font-medium">
                         -{cart.discount_amount} {cart.currency || 'USD'}
                       </span>
                     </div>
                     {cart.promo_code && (
-                      <div className="text-xs text-gray-500">
-                        {t('promo_code_applied', 'Промокод')}: {cart.promo_code.code}
+                      <div className="text-xs !text-red-600">
+                        <div>
+                          {t('promo_code_applied', 'Промокод')}: {cart.promo_code.code}
+                        </div>
+                        <div className="mt-0.5">
+                          {cart.promo_code.discount_type === 'percent' 
+                            ? `${cart.promo_code.discount_value}%`
+                            : `${cart.promo_code.discount_value} ${cart.currency || 'USD'}`}
+                        </div>
                       </div>
                     )}
                   </>
@@ -1047,6 +1054,3 @@ export async function getServerSideProps(ctx: any) {
     }
   }
 }
-
-
-

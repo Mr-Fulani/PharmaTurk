@@ -73,12 +73,37 @@ const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
   }
 }
 
+const parsePriceWithCurrency = (value?: string | number | null) => {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null }
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null }
+  }
+  const trimmed = value.trim()
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
+  }
+  return { price: trimmed, currency: null as string | null }
+}
+
+const parseNumber = (value: string | number | null | undefined) => {
+  if (value === null || typeof value === 'undefined') return null
+  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+  if (!normalized) return null
+  const num = Number(normalized)
+  return Number.isFinite(num) ? num : null
+}
+
 interface Product {
   id: number
   name: string
   slug: string
   description: string
   price: string
+  old_price?: string | number | null
+  old_price_formatted?: string | null
   currency: string
   stock_quantity?: number | null
   main_image?: string
@@ -148,15 +173,14 @@ export default function ProductPage({
   isBaseProduct: boolean
 }) {
   const { t } = useTranslation('common')
-  if (!product) {
-    return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
-  }
-  const variants = product.variants || []
+  const router = useRouter()
+  const { theme } = useTheme()
+  const variants = product?.variants || []
 
   // Выбираем дефолтный вариант-цвет: активный, либо первый доступный
   const initialVariant =
-    variants.find((v) => v.slug === product.active_variant_slug) ||
-    variants.find((v) => v.slug === product.default_variant_slug) ||
+    variants.find((v) => v.slug === product?.active_variant_slug) ||
+    variants.find((v) => v.slug === product?.default_variant_slug) ||
     variants.find((v) => v.is_available) ||
     variants[0] ||
     null
@@ -179,7 +203,7 @@ export default function ProductPage({
   // Список размеров для выбранного цвета (берем из выбранного варианта-цвета)
   const sizesForColor = selectedVariant?.sizes || []
 
-  const maxAvailable = resolveAvailableStock(product, selectedVariant, selectedSize)
+  const maxAvailable = product ? resolveAvailableStock(product, selectedVariant, selectedSize) : null
 
   useEffect(() => {
     if (maxAvailable === 0) {
@@ -189,7 +213,7 @@ export default function ProductPage({
     if (maxAvailable !== null && quantity > maxAvailable) {
       setQuantity(Math.max(1, maxAvailable))
     }
-  }, [maxAvailable])
+  }, [maxAvailable, quantity])
 
   // Подбор варианта при смене цвета
   const pickVariant = (color?: string) => {
@@ -214,11 +238,9 @@ export default function ProductPage({
     }
   }
 
-  const router = useRouter()
-  const { theme } = useTheme()
-  
   // Формируем галерею: главное изображение + дополнительные изображения
   const buildGallerySource = () => {
+    if (!product) return []
     const variantImages = selectedVariant?.images || []
     const productImages = product.images || []
     const mainImageUrl = selectedVariant?.main_image || product.main_image_url || product.main_image
@@ -242,15 +264,16 @@ export default function ProductPage({
     selectedVariant?.main_image ||
     selectedVariant?.images?.find((img) => img.is_main)?.image_url ||
     selectedVariant?.images?.[0]?.image_url ||
-    product.active_variant_main_image_url ||
-    product.main_image_url ||
-    product.main_image ||
+    product?.active_variant_main_image_url ||
+    product?.main_image_url ||
+    product?.main_image ||
     gallerySource.find((img) => img.is_main)?.image_url ||
     gallerySource[0]?.image_url
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
 
   // Обновляем главную картинку при изменении товара или варианта
   useEffect(() => {
+    if (!product) return
     const currentGallerySource = selectedVariant?.images?.length ? selectedVariant.images : (product.images || [])
     const newImage =
       selectedVariant?.main_image ||
@@ -263,13 +286,29 @@ export default function ProductPage({
       currentGallerySource[0]?.image_url ||
       null
     setActiveImage(newImage)
-  }, [product.id, product.slug, product.main_image_url, product.main_image, product.active_variant_main_image_url, selectedVariantSlug, selectedVariant?.main_image, selectedVariant?.images, product.images, router.asPath])
+  }, [product?.id, product?.slug, product?.main_image_url, product?.main_image, product?.active_variant_main_image_url, selectedVariantSlug, selectedVariant?.main_image, selectedVariant?.images, product?.images, router.asPath])
+
+  if (!product) {
+    return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
+  }
 
   // Получаем числовое значение цены для расчетов
   const priceValue = selectedVariant?.price 
     ? parseFloat(String(selectedVariant.price))
     : (product.active_variant_price ? parseFloat(String(product.active_variant_price)) : (product.price ? parseFloat(String(product.price)) : null))
-  const currency = selectedVariant?.currency || product.currency || 'USD'
+  const currency = selectedVariant?.currency || product.active_variant_currency || product.currency || 'USD'
+  const oldPriceSource = selectedVariant?.old_price ?? product.old_price_formatted ?? product.old_price
+  const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(
+    oldPriceSource !== null && typeof oldPriceSource !== 'undefined' ? String(oldPriceSource) : null
+  )
+  const displayOldPrice = parsedOldPrice ?? oldPriceSource
+  const displayOldCurrency = parsedOldCurrency || currency
+  const displayOldPriceLabel = displayOldPrice ? String(displayOldPrice) : null
+  const displayOldCurrencyLabel = displayOldCurrency ? String(displayOldCurrency) : null
+  const oldPriceValue = parseNumber(displayOldPrice)
+  const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
+    ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
+    : null
   
   // Вычисляем общую сумму с учетом количества
   const totalPrice = priceValue !== null ? (priceValue * quantity).toFixed(2) : null
@@ -292,7 +331,7 @@ export default function ProductPage({
       ? 'https://schema.org/OutOfStock'
       : 'https://schema.org/InStock'
   const priceForSchema = selectedVariant?.price || product.price || product.active_variant_price
-  const currencyForSchema = selectedVariant?.currency || product.currency || selectedVariant?.active_variant_currency
+  const currencyForSchema = selectedVariant?.currency || product.active_variant_currency || product.currency
   const productSchema = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -376,12 +415,21 @@ export default function ProductPage({
             >
               {product.name}
             </h1>
-            <div 
-              className="mt-3 text-xl font-semibold"
-              style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
-            >
+            <div className="mt-3 text-xl font-semibold text-red-600">
               {displayPrice || t('price_on_request')}
             </div>
+            {displayOldPriceLabel && (
+              <div className="mt-1 flex items-baseline gap-2">
+                <div className="text-sm text-gray-400 line-through">
+                  {displayOldCurrencyLabel
+                    ? `${displayOldPriceLabel} ${displayOldCurrencyLabel}`
+                    : displayOldPriceLabel}
+                </div>
+                {discountPercent !== null && (
+                  <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
+                )}
+              </div>
+            )}
             {(colors.length > 0 || sizesForColor.length > 0) && (
               <div className="mt-4 flex flex-col gap-4">
                 {colors.length > 0 && (
@@ -686,4 +734,3 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     return { notFound: true }
   }
 }
-

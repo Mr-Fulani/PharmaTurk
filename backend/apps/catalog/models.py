@@ -823,6 +823,8 @@ class Product(models.Model):
                     return price_info.kzt_price_with_margin
                 elif target_currency == 'EUR' and price_info.eur_price_with_margin:
                     return price_info.eur_price_with_margin
+                elif target_currency == 'TRY' and price_info.try_price_with_margin:
+                    return price_info.try_price_with_margin
                 elif target_currency == self.currency:
                     return price_info.base_price
                     
@@ -893,6 +895,15 @@ class Product(models.Model):
                     'original_price': price_info.eur_price,
                     'converted_price': price_info.eur_price,
                     'price_with_margin': price_info.eur_price_with_margin,
+                    'is_base_price': False
+                }
+            
+            # TRY
+            if price_info.try_price_with_margin:
+                prices['TRY'] = {
+                    'original_price': price_info.try_price,
+                    'converted_price': price_info.try_price,
+                    'price_with_margin': price_info.try_price_with_margin,
                     'is_base_price': False
                 }
                 
@@ -3179,5 +3190,4 @@ class MarketingBannerMedia(BannerMedia):
         app_label = "marketing"
         verbose_name = _("Медиа баннеров")
         verbose_name_plural = _("Маркетинг — Медиа баннеров")
-
 

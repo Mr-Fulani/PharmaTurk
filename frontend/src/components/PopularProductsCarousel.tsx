@@ -9,9 +9,13 @@ interface Product {
   id: number
   name: string
   slug: string
-  price: string | null
-  currency: string
-  oldPrice?: string | null
+  price: string | number | null
+  currency?: string | null
+  oldPrice?: string | number | null
+  old_price?: string | number | null
+  old_price_formatted?: string | null
+  active_variant_price?: string | number | null
+  active_variant_currency?: string | null
   badge?: string | null
   rating?: number | null
   main_image_url?: string | null
@@ -26,6 +30,29 @@ interface Product {
 
 interface PopularProductsCarouselProps {
   className?: string
+}
+
+const parsePriceWithCurrency = (value?: string | number | null) => {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null }
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null }
+  }
+  const trimmed = value.trim()
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
+  }
+  return { price: trimmed, currency: null as string | null }
+}
+
+const parseNumber = (value: string | number | null | undefined) => {
+  if (value === null || typeof value === 'undefined') return null
+  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+  if (!normalized) return null
+  const num = Number(normalized)
+  return Number.isFinite(num) ? num : null
 }
 
 export default function PopularProductsCarousel({ className = '' }: PopularProductsCarouselProps) {
@@ -207,7 +234,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
   const getPaginationDots = () => {
     const maxDots = 3
     if (totalPages <= maxDots) {
-      return [...Array(totalPages).keys()] // e.g., [0, 1, 2]
+      return Array.from({ length: totalPages }, (_, i) => i) // e.g., [0, 1, 2]
     }
     if (currentPage === 0) {
       return [0, 1, 2]
@@ -233,11 +260,30 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
               msOverflowStyle: 'none',
             }}
           >
-            {products.map((product) => (
-              <div
-                key={product.id}
-                className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden group"
-              >
+            {products.map((product) => {
+              const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
+              const { price: parsedBasePrice, currency: parsedBaseCurrency } = parsePriceWithCurrency(product.price)
+              const displayPrice = parsedVariantPrice ?? parsedBasePrice ?? product.price
+              const displayCurrency = product.active_variant_currency || parsedVariantCurrency || parsedBaseCurrency || product.currency
+              const oldPriceSource = product.old_price_formatted ?? product.old_price ?? product.oldPrice
+              const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(oldPriceSource)
+              const displayOldPrice = parsedOldPrice ?? oldPriceSource
+              const displayOldCurrency = parsedOldCurrency || displayCurrency || product.currency
+              const displayPriceLabel = displayPrice ? String(displayPrice) : null
+              const displayOldPriceLabel = displayOldPrice ? String(displayOldPrice) : null
+              const displayCurrencyLabel = displayCurrency ? String(displayCurrency) : null
+              const displayOldCurrencyLabel = displayOldCurrency ? String(displayOldCurrency) : null
+              const priceValue = parseNumber(displayPrice)
+              const oldPriceValue = parseNumber(displayOldPrice)
+              const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
+                ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
+                : null
+
+              return (
+                <div
+                  key={product.id}
+                  className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden group"
+                >
                 <Link
                   href={`/product/${product.product_type || 'medicines'}/${product.slug}`}
                   className="relative block w-full h-80 overflow-hidden bg-gray-100"
@@ -282,14 +328,21 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                   <div className="mb-3">
                     <div className="flex items-baseline gap-2">
                       <div className="text-lg font-bold text-[var(--text-strong)]">
-                        {product.price
-                          ? `${product.price} ${product.currency}`
+                        {displayPriceLabel
+                          ? displayCurrencyLabel
+                            ? `${displayPriceLabel} ${displayCurrencyLabel}`
+                            : displayPriceLabel
                           : t('price_on_request', 'Цена по запросу')}
                       </div>
-                      {product.oldPrice && (
+                      {displayOldPriceLabel && (
                         <div className="text-sm text-gray-400 line-through">
-                          {product.oldPrice} {product.currency}
+                          {displayOldCurrencyLabel
+                            ? `${displayOldPriceLabel} ${displayOldCurrencyLabel}`
+                            : displayOldPriceLabel}
                         </div>
+                      )}
+                      {displayOldPriceLabel && discountPercent !== null && (
+                        <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
                       )}
                     </div>
                   </div>
@@ -302,7 +355,8 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                   />
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
@@ -341,4 +395,3 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
     </section>
   )
 }
-

@@ -4,7 +4,9 @@ import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Link from 'next/link'
+import Cookies from 'js-cookie'
 import api from '../lib/api'
+import { setPreferredCurrency } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
 interface OrderItem {
@@ -90,6 +92,12 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [currency, setCurrency] = useState<string>('RUB')
+
+  const totalSpentFromOrders = orders.reduce((acc, o) => {
+    const v = parseFloat(String(o.total_amount || '0'))
+    return acc + (Number.isFinite(v) ? v : 0)
+  }, 0)
 
   // Состояние для адресов
   const [editingAddress, setEditingAddress] = useState<Address | null>(null)
@@ -139,6 +147,35 @@ export default function ProfilePage() {
       loadAddresses()
     }
   }, [user, authLoading, router])
+
+  useEffect(() => {
+    if (user?.currency) {
+      setCurrency(user.currency)
+      return
+    }
+    const savedCurrency = Cookies.get('currency')
+    setCurrency(savedCurrency || 'RUB')
+  }, [user])
+
+  const handleCurrencyChange = async (nextCurrency: string) => {
+    if (nextCurrency === currency) return
+
+    Cookies.set('currency', nextCurrency, { sameSite: 'Lax', path: '/' })
+    setPreferredCurrency(nextCurrency)
+    setCurrency(nextCurrency)
+
+    if (user?.id) {
+      try {
+        await api.patch(`/users/profile/${user.id}`, { currency: nextCurrency })
+      } catch {
+        // no-op
+      }
+    }
+
+    setTimeout(() => {
+      window.location.reload()
+    }, 100)
+  }
 
   const loadProfile = async () => {
     try {
@@ -670,6 +707,22 @@ export default function ProfilePage() {
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">
                       {t('profile_statistics')}
                     </h3>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {t('currency', 'Валюта')}
+                      </label>
+                      <select
+                        value={currency}
+                        onChange={(e) => handleCurrencyChange(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      >
+                        <option value="RUB">RUB</option>
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="TRY">TRY</option>
+                        <option value="KZT">KZT</option>
+                      </select>
+                    </div>
                     <div className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600">{t('profile_total_orders', 'Всего заказов')}</span>
@@ -680,7 +733,7 @@ export default function ProfilePage() {
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600">{t('profile_total_spent', 'Потрачено всего')}</span>
                         <span className="text-base font-semibold text-[var(--text-strong)]">
-                          {profile.total_spent ? parseFloat(profile.total_spent).toFixed(2) : '0.00'} {orders.length > 0 && orders[0]?.currency ? orders[0].currency : 'RUB'}
+                          {totalSpentFromOrders.toFixed(2)} {currency}
                         </span>
                       </div>
                     </div>

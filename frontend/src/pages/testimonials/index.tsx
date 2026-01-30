@@ -636,7 +636,7 @@ export default function TestimonialsPage() {
                   {/* Текст отзыва - по центру */}
                   <div className="flex-1 p-4 min-h-[100px]">
                     <p className="text-gray-600 text-sm line-clamp-4">
-                      "{testimonial.text}"
+                      &quot;{testimonial.text}&quot;
                     </p>
                   </div>
                   
@@ -1022,4 +1022,3 @@ export const getServerSideProps: GetServerSideProps = async ({ locale }) => {
     },
   }
 }
-

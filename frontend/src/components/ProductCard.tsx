@@ -59,6 +59,18 @@ export default function ProductCard({
   const { t } = useTranslation('common')
   
   const resolvedImage = resolveMediaUrl(imageUrl)
+  const parseNumber = (value: string | number | null | undefined) => {
+    if (value === null || typeof value === 'undefined') return null
+    const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+    if (!normalized) return null
+    const num = Number(normalized)
+    return Number.isFinite(num) ? num : null
+  }
+  const priceValue = parseNumber(price)
+  const oldPriceValue = parseNumber(oldPrice)
+  const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
+    ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
+    : null
 
   if (viewMode === 'list') {
     return (
@@ -99,6 +111,9 @@ export default function ProductCard({
                 </div>
                 {oldPrice && (
                   <div className="text-sm text-gray-400 line-through">{oldPrice} {currency}</div>
+                )}
+                {oldPrice && discountPercent !== null && (
+                  <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
                 )}
               </div>
               {typeof rating === 'number' && (
@@ -210,6 +225,9 @@ export default function ProductCard({
         {oldPrice && (
           <div className="text-sm text-gray-400 line-through">{oldPrice} {currency}</div>
         )}
+        {oldPrice && discountPercent !== null && (
+          <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
+        )}
       </div>
       {typeof rating === 'number' && (
         <div className="mt-1 flex items-center gap-1 text-sm text-amber-600">
@@ -248,5 +266,3 @@ export default function ProductCard({
     </div>
   )
 }
-
-

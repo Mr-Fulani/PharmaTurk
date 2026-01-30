@@ -22,6 +22,8 @@ interface Product {
   old_price?: number
   old_price_formatted?: string
   currency: string
+  active_variant_price?: string | number | null
+  active_variant_currency?: string | null
   final_price_rub?: number
   final_price_usd?: number
   main_image?: string
@@ -168,6 +170,34 @@ const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): Ca
   if (norm.startsWith('medicines')) return 'medicines'
   if (norm.startsWith('books')) return 'books'
   return 'medicines'
+}
+
+const resolveProductsEndpoint = (categoryType: CategoryTypeKey) => {
+  switch (categoryType) {
+    case 'clothing':
+      return '/api/catalog/clothing/products'
+    case 'shoes':
+      return '/api/catalog/shoes/products'
+    case 'electronics':
+      return '/api/catalog/electronics/products'
+    default:
+      return '/api/catalog/products'
+  }
+}
+
+const parsePriceWithCurrency = (value?: string | number | null) => {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null }
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null }
+  }
+  const trimmed = value.trim()
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
+  }
+  return { price: trimmed, currency: null as string | null }
 }
 
 const createTreeItem = (category: Category): SidebarTreeItem => ({
@@ -1360,9 +1390,9 @@ export default function CategoryPage({
                   }
                 >
                   {products.map((product) => {
-                    // Используем price и currency из API (они уже в правильной валюте)
-                    const displayPrice = product.price
-                    const displayCurrency = product.currency
+                    const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
+                    const displayPrice = parsedVariantPrice ?? product.price
+                    const displayCurrency = product.active_variant_currency || parsedVariantCurrency || product.currency
                     const displayOldPrice = product.old_price ? String(product.old_price) : null
                     const productHref = `/product/${categoryType}/${product.slug}`
                     const isBaseProductType = ['medicines', 'supplements', 'medical-equipment'].includes(categoryType)
@@ -1506,9 +1536,20 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
     }
 
+    const cookieHeader: string = context.req.headers.cookie || ''
+    const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
+    const currency = currencyMatch ? currencyMatch[1] : 'RUB'
+
     let productsData: any = { results: [], count: 0 }
     try {
-      const prodRes = await axios.get(`${base}/api/catalog/products`, { params: productParams })
+      const productsEndpoint = resolveProductsEndpoint(categoryType)
+      const prodRes = await axios.get(`${base}${productsEndpoint}`, {
+        params: productParams,
+        headers: {
+          'X-Currency': currency,
+          'Accept-Language': context.locale || 'en'
+        }
+      })
       productsData = prodRes.data || {}
     } catch {
       productsData = { results: [], count: 0 }
@@ -1658,4 +1699,3 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
   }
 }
-

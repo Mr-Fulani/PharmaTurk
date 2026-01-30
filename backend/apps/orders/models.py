@@ -1,3 +1,5 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinValueValidator
@@ -5,6 +7,7 @@ from django.utils import timezone
 
 from apps.users.models import User, UserAddress
 from apps.catalog.models import Product
+from apps.catalog.utils.currency_converter import currency_converter
 
 
 class PromoCode(models.Model):
@@ -17,8 +20,8 @@ class PromoCode(models.Model):
     description = models.TextField(_("Описание"), blank=True)
     discount_type = models.CharField(_("Тип скидки"), max_length=10, choices=DiscountType.choices, default=DiscountType.PERCENT)
     discount_value = models.DecimalField(_("Значение скидки"), max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
-    min_amount = models.DecimalField(_("Минимальная сумма заказа"), max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
-    max_discount = models.DecimalField(_("Максимальная скидка"), max_digits=12, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    min_amount = models.DecimalField(_("Минимальная сумма заказа (RUB)"), max_digits=12, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    max_discount = models.DecimalField(_("Максимальная скидка (RUB)"), max_digits=12, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
     max_uses = models.PositiveIntegerField(_("Максимальное количество использований"), null=True, blank=True)
     used_count = models.PositiveIntegerField(_("Количество использований"), default=0)
     valid_from = models.DateTimeField(_("Действителен с"), default=timezone.now)
@@ -35,7 +38,36 @@ class PromoCode(models.Model):
     def __str__(self) -> str:
         return f"{self.code} ({self.discount_value}{'%' if self.discount_type == 'percent' else ''})"
 
-    def is_valid(self, user=None, cart_total=0):
+    @property
+    def base_currency(self) -> str:
+        return 'RUB'
+
+    def _convert_money(self, amount, to_currency: str):
+        to_currency = (to_currency or self.base_currency).upper()
+        if to_currency == self.base_currency:
+            return amount
+        _orig, converted, _with_margin = currency_converter.convert_price(
+            amount=amount,
+            from_currency=self.base_currency,
+            to_currency=to_currency,
+            apply_margin=False,
+        )
+        return converted
+
+    def get_min_amount(self, currency: str = None):
+        return self._convert_money(self.min_amount, currency or self.base_currency)
+
+    def get_max_discount(self, currency: str = None):
+        if self.max_discount is None:
+            return None
+        return self._convert_money(self.max_discount, currency or self.base_currency)
+
+    def get_fixed_discount_value(self, currency: str = None):
+        if self.discount_type != self.DiscountType.FIXED:
+            return None
+        return self._convert_money(self.discount_value, currency or self.base_currency)
+
+    def is_valid(self, user=None, cart_total=0, cart_currency: str = None):
         """Проверка валидности промокода."""
         if not self.is_active:
             return False, _("Промокод неактивен")
@@ -49,21 +81,43 @@ class PromoCode(models.Model):
         if self.max_uses and self.used_count >= self.max_uses:
             return False, _("Промокод исчерпан")
         
-        if cart_total < self.min_amount:
+        cart_currency = (cart_currency or self.base_currency).upper()
+        min_amount_in_cart_currency = self.get_min_amount(cart_currency)
+        if cart_total < float(min_amount_in_cart_currency):
             return False, _("Минимальная сумма заказа не достигнута")
         
         return True, None
 
-    def calculate_discount(self, amount):
+    def calculate_discount(self, amount, currency: str = None):
         """Рассчитать размер скидки для указанной суммы."""
+        currency = (currency or self.base_currency).upper()
+
+        try:
+            amount_dec = Decimal(str(amount))
+        except Exception:
+            amount_dec = Decimal('0')
+
         if self.discount_type == self.DiscountType.PERCENT:
-            discount = amount * (self.discount_value / 100)
-            if self.max_discount:
-                discount = min(discount, self.max_discount)
-        else:
-            discount = min(self.discount_value, amount)
-        
-        return round(discount, 2)
+            percent = (self.discount_value or Decimal('0')) / Decimal('100')
+            discount = amount_dec * percent
+            max_discount = self.get_max_discount(currency)
+            if max_discount is not None:
+                discount = min(discount, Decimal(str(max_discount)))
+            return float(discount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+
+        fixed_value = self.get_fixed_discount_value(currency)
+        if fixed_value is None:
+            fixed_value = self.discount_value
+        try:
+            fixed_dec = Decimal(str(fixed_value))
+        except Exception:
+            fixed_dec = Decimal('0')
+
+        discount = min(fixed_dec, amount_dec)
+        max_discount = self.get_max_discount(currency)
+        if max_discount is not None:
+            discount = min(discount, Decimal(str(max_discount)))
+        return float(discount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
 
 class Cart(models.Model):

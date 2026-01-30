@@ -17,6 +17,8 @@ interface CartItem {
   quantity: number
   price: string
   currency: string
+  old_price?: string | number | null
+  old_price_formatted?: string | null
 }
 
 interface PromoCode {
@@ -36,6 +38,14 @@ interface Cart {
   final_amount?: string
   currency?: string
   promo_code?: PromoCode | null
+}
+
+const parseNumber = (value: string | number | null | undefined) => {
+  if (value === null || typeof value === 'undefined') return null
+  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+  if (!normalized) return null
+  const num = Number(normalized)
+  return Number.isFinite(num) ? num : null
 }
 
 export default function CartPage({ initialCart }: { initialCart: Cart }) {
@@ -298,11 +308,18 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
             {/* Список товаров */}
             <div className="lg:col-span-2">
               <div className="space-y-4">
-                {(cart.items || []).map((item) => (
-                  <div
-                    key={item.id}
-                    className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all duration-200"
-                  >
+                {(cart.items || []).map((item) => {
+                  const oldPriceSource = item.old_price_formatted ?? item.old_price
+                  const priceValue = parseNumber(item.price)
+                  const oldPriceValue = parseNumber(oldPriceSource)
+                  const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
+                    ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
+                    : null
+                  return (
+                    <div
+                      key={item.id}
+                      className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all duration-200"
+                    >
                     {/* Изображение товара */}
                     <Link
                       href={getProductLink(item.product_slug, item.product, item.product_type)}
@@ -339,9 +356,19 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                             {t('size', 'Размер')}: <span className="font-medium text-gray-900">{item.chosen_size}</span>
                           </div>
                         ) : null}
-                        <div className="mt-1 text-lg font-bold text-[var(--text-strong)]">
+                        <div className="mt-1 text-lg font-bold text-red-600">
                           {item.price} {item.currency}
                         </div>
+                        {(item.old_price_formatted || item.old_price) && (
+                          <div className="flex items-baseline gap-2">
+                            <div className="text-sm text-gray-400 line-through">
+                              {item.old_price_formatted || `${item.old_price} ${item.currency}`}
+                            </div>
+                            {discountPercent !== null && (
+                              <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Управление количеством и удалением */}
@@ -398,7 +425,8 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                       </div>
                     </div>
                   </div>
-                ))}
+                )
+                })}
               </div>
 
               {/* Кнопка очистки корзины */}
@@ -421,13 +449,13 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                 {/* Промокод */}
                 <div className="mb-4">
                   {cart.promo_code ? (
-                    <div className="rounded-lg bg-green-50 p-3 border border-green-200">
+                    <div className="rounded-lg bg-red-50 p-3 border border-red-200">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-sm font-medium text-green-800">
+                          <div className="text-sm font-medium !text-red-700">
                             {t('promo_code_applied', 'Промокод применён')}: {cart.promo_code.code}
                           </div>
-                          <div className="text-xs text-green-600 mt-1">
+                          <div className="text-xs !text-red-600 mt-1">
                             {cart.promo_code.discount_type === 'percent' 
                               ? `${cart.promo_code.discount_value}%`
                               : `${cart.promo_code.discount_value} ${cart.currency || 'USD'}`}
@@ -436,7 +464,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                         <button
                           onClick={removePromoCode}
                           disabled={promoLoading}
-                          className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50"
+                          className="!text-red-600 hover:!text-red-700 text-sm font-medium disabled:opacity-50"
                         >
                           {t('remove', 'Удалить')}
                         </button>
@@ -485,7 +513,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     </div>
                   )}
                   {cart.discount_amount && parseFloat(cart.discount_amount) > 0 && (
-                    <div className="flex justify-between text-sm text-green-600">
+                    <div className="flex justify-between text-sm !text-red-600">
                       <span>{t('cart_discount', 'Скидка')}</span>
                       <span className="font-medium">
                         -{cart.discount_amount} {cart.currency || 'USD'}

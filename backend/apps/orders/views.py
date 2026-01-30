@@ -1,5 +1,6 @@
 import logging
 import uuid
+from decimal import Decimal
 from typing import Optional, Tuple
 
 from django.http import Http404, HttpResponse
@@ -31,6 +32,38 @@ from .services import build_order_receipt_payload, render_receipt_html  # TODO: 
 from .tasks import send_order_receipt_task  # TODO: Функционал чеков временно отключен. Будет доработан позже.
 
 logger = logging.getLogger(__name__)
+
+
+def _get_preferred_currency(request, fallback: str = 'RUB') -> str:
+    if not request:
+        return fallback
+    preferred_currency = request.headers.get('X-Currency')
+    if preferred_currency:
+        return preferred_currency.upper()
+    preferred_currency = request.query_params.get('currency')
+    if preferred_currency:
+        return preferred_currency.upper()
+    if getattr(request, 'user', None) and request.user.is_authenticated:
+        user_currency = getattr(request.user, 'currency', None)
+        if user_currency:
+            return user_currency.upper()
+    return fallback
+
+
+def _get_product_price_for_currency(product, currency: str):
+    currency = (currency or 'RUB').upper()
+    try:
+        prices = product.get_all_prices() or {}
+        if currency in prices:
+            value = prices[currency].get('price_with_margin')
+            if value is not None:
+                return Decimal(str(value))
+    except Exception:
+        pass
+    try:
+        return Decimal(str(getattr(product, 'price', 0) or 0))
+    except Exception:
+        return Decimal('0')
 
 
 def _get_stock_for_cart_product(product: Product, chosen_size: Optional[str]) -> Tuple[Optional[int], Optional[str]]:
@@ -346,7 +379,8 @@ class CartViewSet(viewsets.ViewSet):
             raise
         product = serializer.validated_data['product']
         quantity = serializer.validated_data['quantity']
-        product_currency = getattr(product, "currency", None) or cart.currency or "USD"
+        preferred_currency = _get_preferred_currency(request, fallback=cart.currency or 'RUB')
+        item_price = _get_product_price_for_currency(product, preferred_currency)
         chosen_size = serializer.validated_data.get('chosen_size', '')
 
         # Проверка остатка (учитываем суммарное количество в корзине)
@@ -365,19 +399,19 @@ class CartViewSet(viewsets.ViewSet):
             chosen_size=chosen_size,
             defaults={
                 'quantity': quantity,
-                'price': product.price or 0,
-                'currency': product_currency,
+                'price': item_price,
+                'currency': preferred_currency,
                 'chosen_size': chosen_size,
             }
         )
         if not created:
             # Если уже есть, обновляем цену/валюту по актуальному товару
             updated = False
-            if item.price != (product.price or item.price):
-                item.price = product.price or item.price
+            if item.price != item_price:
+                item.price = item_price
                 updated = True
-            if item.currency != product_currency:
-                item.currency = product_currency
+            if item.currency != preferred_currency:
+                item.currency = preferred_currency
                 updated = True
             item.quantity += quantity
             if updated:
@@ -386,12 +420,12 @@ class CartViewSet(viewsets.ViewSet):
                 item.save(update_fields=['quantity', 'updated_at'])
 
         # Синхронизируем валюту корзины под валюту последнего товара (простая модель)
-        if cart.currency != product_currency:
-            cart.currency = product_currency
+        if cart.currency != preferred_currency:
+            cart.currency = preferred_currency
             cart.save(update_fields=['currency', 'updated_at'])
         # Возвращаем свежую корзину с позициями
         cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
-        return Response(CartSerializer(cart).data)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description="Изменить количество позиции корзины",
@@ -445,7 +479,7 @@ class CartViewSet(viewsets.ViewSet):
         item.quantity = desired_qty
         item.save()
         cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
-        return Response(CartSerializer(cart).data)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description="Удалить позицию из корзины",
@@ -549,8 +583,17 @@ class CartViewSet(viewsets.ViewSet):
         except PromoCode.DoesNotExist:
             return Response({"detail": _("Промокод не найден")}, status=404)
         
+        # Для валидности промокода используем те же числа, что и при create_from_cart:
+        # сумму по сохранённым CartItem.price (цена на момент добавления).
+        cart_total = float(sum((i.price * i.quantity for i in cart.items.all())))
+        cart_currency = cart.currency
+
         # Проверка валидности промокода
-        is_valid, error = promo_code.is_valid(user=request.user if request.user.is_authenticated else None, cart_total=float(cart.total_amount))
+        is_valid, error = promo_code.is_valid(
+            user=request.user if request.user.is_authenticated else None,
+            cart_total=cart_total,
+            cart_currency=cart_currency,
+        )
         if not is_valid:
             return Response({"detail": error}, status=400)
         
@@ -560,7 +603,7 @@ class CartViewSet(viewsets.ViewSet):
         
         # Возвращаем обновленную корзину
         cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
-        return Response(CartSerializer(cart).data)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description="Удалить промокод из корзины",
@@ -652,19 +695,19 @@ class OrderViewSet(viewsets.ViewSet):
             )
             .order_by('-created_at')
         )
-        return Response(OrderSerializer(orders, many=True).data)
+        return Response(OrderSerializer(orders, many=True, context={'request': request}).data)
 
     def retrieve(self, request, pk=None):
         order = Order.objects.filter(user=request.user, pk=pk).prefetch_related('items').first()
         if not order:
             raise Http404(_("Заказ не найден"))
-        return Response(OrderSerializer(order).data)
+        return Response(OrderSerializer(order, context={'request': request}).data)
 
     @extend_schema(description="Получить заказ по номеру", responses=OrderSerializer)
     @action(detail=False, methods=['get'], url_path=r'by-number/(?P<number>[^/]+)')
     def by_number(self, request, number: str):
         order = self._get_order_for_user(request.user, number)
-        return Response(OrderSerializer(order).data)
+        return Response(OrderSerializer(order, context={'request': request}).data)
 
     # TODO: Функционал чеков временно отключен. Будет доработан позже.
     # Включает: формирование чека, отправку по email, интеграцию с админкой.
@@ -755,9 +798,9 @@ class OrderViewSet(viewsets.ViewSet):
             try:
                 promo_code = PromoCode.objects.get(code=promo_code_value.upper())
                 # Проверка валидности промокода
-                is_valid, error = promo_code.is_valid(user=request.user, cart_total=float(subtotal))
+                is_valid, error = promo_code.is_valid(user=request.user, cart_total=float(subtotal), cart_currency=cart.currency)
                 if is_valid:
-                    discount = promo_code.calculate_discount(subtotal)
+                    discount = promo_code.calculate_discount(float(subtotal), currency=cart.currency)
                     # Увеличиваем счетчик использований
                     promo_code.used_count += 1
                     promo_code.save(update_fields=['used_count'])

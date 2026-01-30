@@ -4,8 +4,24 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { GetServerSideProps } from 'next'
 import Link from 'next/link'
+import Cookies from 'js-cookie'
 import { useFavoritesStore } from '../store/favorites'
 import ProductCard from '../components/ProductCard'
+
+const parsePriceWithCurrency = (value?: string | number | null) => {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null }
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null }
+  }
+  const trimmed = value.trim()
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
+  }
+  return { price: trimmed, currency: null as string | null }
+}
 
 export default function FavoritesPage() {
   const { t } = useTranslation('common')
@@ -16,7 +32,8 @@ export default function FavoritesPage() {
     // Загружаем избранное только один раз при монтировании
     if (!refreshedRef.current) {
       refreshedRef.current = true
-      refresh()
+      const currentCurrency = Cookies.get('currency')
+      refresh(currentCurrency)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -86,6 +103,9 @@ export default function FavoritesPage() {
               const productHref = isBaseProduct 
                 ? `/product/${product.slug}` 
                 : `/product/${productType}/${product.slug}`
+              const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
+              const displayPrice = parsedVariantPrice ?? product.price
+              const displayCurrency = product.active_variant_currency || parsedVariantCurrency || product.currency
               
               return (
                 <ProductCard
@@ -93,8 +113,8 @@ export default function FavoritesPage() {
                   id={product.id}
                   name={product.name}
                   slug={product.slug}
-                  price={product.price}
-                  currency={product.currency}
+                  price={displayPrice ? String(displayPrice) : null}
+                  currency={displayCurrency || undefined}
                   imageUrl={product.main_image_url}
                   href={productHref}
                   productType={productType}
@@ -116,4 +136,3 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     },
   }
 }
-
