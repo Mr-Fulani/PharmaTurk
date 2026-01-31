@@ -1243,6 +1243,27 @@ class FavoriteViewSet(viewsets.ViewSet):
                 request.session.save()
                 django_session = request.session.session_key
         return header_session or cookie_session or django_session
+
+    def _merge_session_favorites(self, user, session_key):
+        if not user or not session_key:
+            return
+
+        session_favorites = list(Favorite.objects.filter(session_key=session_key))
+        if not session_favorites:
+            return
+
+        existing_pairs = set(
+            Favorite.objects.filter(user=user).values_list('content_type_id', 'object_id')
+        )
+
+        for favorite in session_favorites:
+            pair = (favorite.content_type_id, favorite.object_id)
+            if pair in existing_pairs:
+                favorite.delete()
+            else:
+                favorite.user = user
+                favorite.session_key = None
+                favorite.save(update_fields=['user', 'session_key'])
     
     @extend_schema(
         summary="Получить список избранных товаров",
@@ -1271,10 +1292,11 @@ class FavoriteViewSet(viewsets.ViewSet):
     )
     def list(self, request):
         """Получить список избранных товаров."""
-        from django.contrib.contenttypes.models import ContentType
-        
         user = request.user if request.user.is_authenticated else None
-        session_key = None if user else self._get_session_key(request)
+        session_key = self._get_session_key(request)
+
+        if user and session_key:
+            self._merge_session_favorites(user, session_key)
         
         if user:
             favorites = Favorite.objects.filter(user=user).select_related('content_type')
@@ -1375,8 +1397,8 @@ class FavoriteViewSet(viewsets.ViewSet):
     def remove(self, request):
         """Удалить товар из избранного."""
         from django.contrib.contenttypes.models import ContentType
-        
-        serializer = AddToFavoriteSerializer(data=request.data)
+        payload = request.data if request.data else request.query_params
+        serializer = AddToFavoriteSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
         
         product = serializer.validated_data['_product']
@@ -1459,7 +1481,10 @@ class FavoriteViewSet(viewsets.ViewSet):
         content_type = ContentType.objects.get_for_model(product)
         
         user = request.user if request.user.is_authenticated else None
-        session_key = None if user else self._get_session_key(request)
+        session_key = self._get_session_key(request)
+
+        if user and session_key:
+            self._merge_session_favorites(user, session_key)
         
         if not user and not session_key:
             return Response({"is_favorite": False})
@@ -1488,7 +1513,10 @@ class FavoriteViewSet(viewsets.ViewSet):
     def count(self, request):
         """Получить количество товаров в избранном."""
         user = request.user if request.user.is_authenticated else None
-        session_key = None if user else self._get_session_key(request)
+        session_key = self._get_session_key(request)
+
+        if user and session_key:
+            self._merge_session_favorites(user, session_key)
         
         if user:
             count = Favorite.objects.filter(user=user).count()

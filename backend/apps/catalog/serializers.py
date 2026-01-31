@@ -763,7 +763,13 @@ class AddToFavoriteSerializer(serializers.Serializer):
     def validate(self, attrs):
         """Проверка существования товара в зависимости от типа."""
         product_id = attrs.get('product_id')
-        product_type = attrs.get('product_type', 'medicines')
+        product_type = (attrs.get('product_type') or 'medicines').strip().lower()
+        product_type = product_type.replace('-', '_')
+        product_type = {
+            'medical_accessories': 'accessories',
+            'medical_accessory': 'accessories',
+            'accessory': 'accessories',
+        }.get(product_type, product_type)
         
         # Маппинг типов товаров на модели
         from .models import Product, ClothingProduct, ShoeProduct, ElectronicsProduct, FurnitureProduct
@@ -777,6 +783,7 @@ class AddToFavoriteSerializer(serializers.Serializer):
             'jewelry': Product,
             'underwear': Product,
             'headwear': Product,
+            'books': Product,
             'clothing': ClothingProduct,
             'shoes': ShoeProduct,
             'electronics': ElectronicsProduct,
@@ -791,7 +798,15 @@ class AddToFavoriteSerializer(serializers.Serializer):
             if hasattr(product, 'is_active') and not product.is_active:
                 raise serializers.ValidationError({"product_id": "Товар неактивен"})
         except model_class.DoesNotExist:
-            raise serializers.ValidationError({"product_id": "Товар не найден"})
+            if model_class is not Product:
+                try:
+                    product = Product.objects.get(id=product_id, product_type=product_type)
+                    if hasattr(product, 'is_active') and not product.is_active:
+                        raise serializers.ValidationError({"product_id": "Товар неактивен"})
+                except Product.DoesNotExist:
+                    raise serializers.ValidationError({"product_id": "Товар не найден"})
+            else:
+                raise serializers.ValidationError({"product_id": "Товар не найден"})
         
         attrs['_product'] = product
         attrs['_product_type'] = product_type
