@@ -13,7 +13,6 @@ class MyDocument extends Document {
       <Html lang="ru">
         <Head>
           <meta charSet="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
           <meta name="theme-color" content="#4c1d95" />
@@ -33,4 +32,3 @@ class MyDocument extends Document {
 }
 
 export default MyDocument
-

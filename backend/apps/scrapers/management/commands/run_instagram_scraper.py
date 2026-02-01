@@ -165,6 +165,90 @@ class Command(BaseCommand):
         self.stdout.write(f'Обновлено: {session.products_updated}')
         self.stdout.write(f'Пропущено: {session.products_skipped}')
 
+    def _normalize_product_type(self, category: str) -> str:
+        value = (category or "").strip().lower()
+        replacements = {
+            "medical-equipment": "medical_equipment",
+            "medical equipment": "medical_equipment",
+        }
+        return replacements.get(value, value or "books")
+
+    def _resolve_category(self, category: str, product_type: str | None = None):
+        from apps.catalog.models import Category, CategoryType
+
+        value = (category or "").strip()
+        if not value:
+            return None
+
+        cat = Category.objects.filter(slug=value).first()
+        if cat:
+            return cat
+
+        category_type = CategoryType.objects.filter(slug=value).first()
+        if category_type:
+            cat = (
+                Category.objects.filter(category_type=category_type, parent__isnull=True)
+                .order_by("sort_order", "name")
+                .first()
+            )
+            if cat:
+                return cat
+            return Category.objects.filter(category_type=category_type).order_by("sort_order", "name").first()
+
+        cat = Category.objects.filter(name__iexact=value).first()
+        if cat:
+            return cat
+
+        presets = {
+            "clothing": ("clothing", "Одежда"),
+            "shoes": ("shoes", "Обувь"),
+            "electronics": ("electronics", "Электроника"),
+            "furniture": ("furniture", "Мебель"),
+            "tableware": ("tableware", "Посуда"),
+            "accessories": ("accessories", "Аксессуары"),
+            "jewelry": ("jewelry", "Украшения"),
+            "underwear": ("underwear", "Нижнее бельё"),
+            "headwear": ("headwear", "Головные уборы"),
+            "books": ("books", "Книги"),
+            "supplements": ("supplements", "БАДы"),
+            "medical_equipment": ("medical-equipment", "Медтехника"),
+            "medicines": ("medicines", "Медицина"),
+        }
+        preset = presets.get(product_type or "")
+        if not preset:
+            return None
+        slug, name = preset
+        cat, _ = Category.objects.get_or_create(
+            slug=slug,
+            defaults={'name': name, 'description': name, 'is_active': True}
+        )
+        return cat
+
+    def _make_unique_product_slug(
+        self,
+        base_slug: str,
+        fallback: str,
+        category_slug: str | None = None,
+        product_model=None,
+    ):
+        from apps.catalog.models import Product
+        from django.utils.text import slugify
+        import uuid
+        model = product_model or Product
+
+        category_part = (slugify(category_slug) if category_slug else "").strip("-")
+        raw = "-".join(part for part in [category_part, base_slug or fallback] if part)
+        base = (slugify(raw)[:200] if raw else "").strip("-")
+        if not base:
+            base = f"product-{uuid.uuid4().hex[:12]}"
+        slug = base
+        i = 2
+        while model.objects.filter(slug=slug).exists():
+            suffix = f"-{i}"
+            slug = f"{base[:200 - len(suffix)]}{suffix}"
+            i += 1
+        return slug
+
     def _download_image(self, url: str, product_id: str, index: int = 0) -> str:
         """Скачивает изображение и сохраняет локально.
         
@@ -214,23 +298,47 @@ class Command(BaseCommand):
 
     def _save_products(self, products, category: str):
         """Сохраняет спарсенные товары в базу данных."""
-        from apps.catalog.models import Product, ProductImage, Category
-        from django.utils.text import slugify
+        from apps.catalog.models import (
+            Product,
+            ProductImage,
+            ClothingProduct,
+            ClothingProductImage,
+            ShoeProduct,
+            ShoeProductImage,
+            ElectronicsProduct,
+            ElectronicsProductImage,
+            FurnitureProduct,
+        )
         from django.utils import timezone
         from transliterate import translit
 
-        # Получаем категорию
-        try:
-            cat = Category.objects.get(slug=category)
-        except Category.DoesNotExist:
+        normalized_product_type = self._normalize_product_type(category)
+        cat = self._resolve_category(category, normalized_product_type)
+        if not cat:
             self.stdout.write(
                 self.style.WARNING(f'Категория {category} не найдена, товары будут без категории')
             )
-            cat = None
 
         created_count = 0
         updated_count = 0
         skipped_count = 0
+
+        product_model_map = {
+            "clothing": ClothingProduct,
+            "shoes": ShoeProduct,
+            "electronics": ElectronicsProduct,
+            "furniture": FurnitureProduct,
+        }
+        image_model_map = {
+            "clothing": ClothingProductImage,
+            "shoes": ShoeProductImage,
+            "electronics": ElectronicsProductImage,
+        }
+        product_model = product_model_map.get(normalized_product_type, Product)
+        if product_model is Product:
+            image_model = ProductImage
+        else:
+            image_model = image_model_map.get(normalized_product_type)
 
         for product_data in products:
             try:
@@ -239,10 +347,15 @@ class Command(BaseCommand):
                 # Транслитерируем кириллицу для slug
                 try:
                     transliterated_name = translit(product_data.name, 'ru', reversed=True)
-                    book_slug = slugify(transliterated_name)[:200]
+                    base_slug = transliterated_name
                 except:
-                    # Если транслитерация не удалась, используем как есть
-                    book_slug = slugify(product_data.name)[:200]
+                    base_slug = product_data.name
+                unique_slug = self._make_unique_product_slug(
+                    base_slug,
+                    product_data.external_id,
+                    cat.slug if cat else None,
+                    product_model=product_model,
+                )
                 
                 # Скачиваем главное изображение (превью для видео)
                 main_image_path = ''
@@ -255,26 +368,42 @@ class Command(BaseCommand):
                 
                 # Извлекаем video_url из атрибутов если это видео
                 video_url = product_data.attributes.get('video_url', '') if product_data.attributes.get('is_video') else ''
-                
-                product, created = Product.objects.update_or_create(
+
+                defaults = {
+                    'name': product_data.name,
+                    'slug': unique_slug,
+                    'description': product_data.description,
+                    'category': cat,
+                    'external_url': product_data.url,
+                    'external_data': product_data.attributes,
+                    'is_available': False,
+                    'main_image': main_image_path,
+                }
+                if product_model is Product:
+                    defaults.update(
+                        {
+                            'product_type': normalized_product_type,
+                            'video_url': video_url,
+                            'last_synced_at': timezone.now(),
+                        }
+                    )
+
+                product, created = product_model.objects.get_or_create(
                     external_id=product_data.external_id,
-                    defaults={
-                        'name': product_data.name,
-                        'slug': book_slug if book_slug else product_data.external_id,
-                        'description': product_data.description,
-                        'product_type': category,
-                        'category': cat,
-                        'external_url': product_data.url,
-                        'external_data': product_data.attributes,
-                        'is_available': False,  # Недоступен пока не установлена цена
-                        'main_image': main_image_path,
-                        'video_url': video_url,
-                        'last_synced_at': timezone.now(),
-                    }
+                    defaults=defaults,
                 )
 
+                if not created:
+                    for field, value in defaults.items():
+                        if field == "slug":
+                            continue
+                        setattr(product, field, value)
+                    if not product.slug:
+                        product.slug = unique_slug
+                    product.save()
+
                 # Сохраняем дополнительные изображения (всегда, не только при создании)
-                if product_data.images and len(product_data.images) > 1:
+                if image_model and product_data.images and len(product_data.images) > 1:
                     # Удаляем старые изображения при обновлении
                     if not created:
                         product.images.all().delete()
@@ -284,7 +413,7 @@ class Command(BaseCommand):
                     for idx, image_url in enumerate(product_data.images[1:6], start=1):
                         local_path = self._download_image(image_url, product_data.external_id, idx)
                         if local_path:
-                            ProductImage.objects.create(
+                            image_model.objects.create(
                                 product=product,
                                 image_url=local_path,
                                 sort_order=idx - 1,

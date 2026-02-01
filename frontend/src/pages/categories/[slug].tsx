@@ -17,6 +17,7 @@ interface Product {
   name: string
   slug: string
   description: string
+  product_type?: string
   price: number
   price_formatted: string
   old_price?: number
@@ -1399,8 +1400,9 @@ export default function CategoryPage({
                     const displayCurrency = product.active_variant_currency || parsedVariantCurrency || product.currency
                     const displayOldCurrency = parsedOldCurrency || displayCurrency
                     const displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? product.old_price : null
-                    const productHref = `/product/${categoryType}/${product.slug}`
-                    const isBaseProductType = ['medicines', 'supplements', 'medical-equipment'].includes(categoryType)
+                    const effectiveProductType = (product.product_type || categoryType).replace(/_/g, '-')
+                    const productHref = `/product/${effectiveProductType}/${product.slug}`
+                    const isBaseProductType = ['medicines', 'supplements', 'medical-equipment'].includes(effectiveProductType)
                     
                     return (
                       <ProductCard
@@ -1417,7 +1419,7 @@ export default function CategoryPage({
                         viewMode={viewMode}
                         description={product.description}
                         href={productHref}
-                        productType={categoryType}
+                        productType={effectiveProductType as CategoryTypeKey}
                         isBaseProduct={isBaseProductType}
                       />
                     )

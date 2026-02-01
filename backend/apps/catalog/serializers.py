@@ -15,6 +15,32 @@ from .models import (
 )
 
 
+def _resolve_media_url(value, request):
+    if not value:
+        return None
+    if 'instagram.f' in value or 'cdninstagram.com' in value:
+        if request:
+            scheme = request.scheme
+            host = request.get_host()
+            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                base_url = f"{scheme}://localhost:8000"
+            else:
+                base_url = f"{scheme}://{host}"
+            return f"{base_url}/api/catalog/proxy-image/?url={quote(value)}"
+        return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(value)}"
+    if not value.startswith('http'):
+        if request:
+            scheme = request.scheme
+            host = request.get_host()
+            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                base_url = f"{scheme}://localhost:8000"
+            else:
+                base_url = f"{scheme}://{host}"
+            return f"{base_url}/media/{value}"
+        return f"http://localhost:8000/media/{value}"
+    return value
+
+
 class CategoryTranslationSerializer(serializers.ModelSerializer):
     """Сериализатор для переводов категорий."""
     
@@ -232,31 +258,8 @@ class ProductImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
     
     def get_image_url(self, obj):
-        """URL изображения с прокси для Instagram."""
-        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-        # Если это локальный файл (не начинается с http), добавляем /media/
-        elif not obj.image_url.startswith('http'):
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/media/{obj.image_url}"
-            return f"http://localhost:8000/media/{obj.image_url}"
-        return obj.image_url
+        request = self.context.get('request')
+        return _resolve_media_url(obj.image_url, request)
 
 
 class ProductAttributeSerializer(serializers.ModelSerializer):
@@ -854,31 +857,8 @@ class ClothingProductImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
     
     def get_image_url(self, obj):
-        """URL изображения с прокси для Instagram."""
-        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-        # Если это локальный файл (не начинается с http), добавляем /media/
-        elif not obj.image_url.startswith('http'):
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/media/{obj.image_url}"
-            return f"http://localhost:8000/media/{obj.image_url}"
-        return obj.image_url
+        request = self.context.get('request')
+        return _resolve_media_url(obj.image_url, request)
 
 
 class ClothingVariantImageSerializer(serializers.ModelSerializer):
@@ -891,31 +871,8 @@ class ClothingVariantImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
     
     def get_image_url(self, obj):
-        """URL изображения с прокси для Instagram."""
-        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-        # Если это локальный файл (не начинается с http), добавляем /media/
-        elif not obj.image_url.startswith('http'):
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/media/{obj.image_url}"
-            return f"http://localhost:8000/media/{obj.image_url}"
-        return obj.image_url
+        request = self.context.get('request')
+        return _resolve_media_url(obj.image_url, request)
 
 
 class ClothingProductSizeSerializer(serializers.ModelSerializer):
@@ -1039,27 +996,28 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         Сначала main_image, затем главное изображение из галереи,
         затем первое изображение.
         """
+        request = self.context.get('request')
         if obj.main_image:
-            return obj.main_image
+            return _resolve_media_url(obj.main_image, request)
         # Пробуем активный вариант
         variant = self._get_active_variant(obj)
         if variant:
             if variant.main_image:
-                return variant.main_image
+                return _resolve_media_url(variant.main_image, request)
             v_main = variant.images.filter(is_main=True).first()
             if v_main:
-                return v_main.image_url
+                return _resolve_media_url(v_main.image_url, request)
             v_first = variant.images.first()
             if v_first:
-                return v_first.image_url
+                return _resolve_media_url(v_first.image_url, request)
         gallery = getattr(obj, "images", None)
         if gallery:
             main_img = obj.images.filter(is_main=True).first()
             if main_img:
-                return main_img.image_url
+                return _resolve_media_url(main_img.image_url, request)
             first_img = obj.images.first()
             if first_img:
-                return first_img.image_url
+                return _resolve_media_url(first_img.image_url, request)
         return None
     
     def get_price_formatted(self, obj):
@@ -1225,14 +1183,15 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         variant = self._get_active_variant(obj)
         if not variant:
             return None
+        request = self.context.get('request')
         if variant.main_image:
-            return variant.main_image
+            return _resolve_media_url(variant.main_image, request)
         main_img = variant.images.filter(is_main=True).first()
         if main_img:
-            return main_img.image_url
+            return _resolve_media_url(main_img.image_url, request)
         first_img = variant.images.first()
         if first_img:
-            return first_img.image_url
+            return _resolve_media_url(first_img.image_url, request)
         return None
 
 
@@ -1294,6 +1253,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     active_variant_currency = serializers.SerializerMethodField()
     active_variant_stock_quantity = serializers.SerializerMethodField()
     active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = ShoeProductTranslationSerializer(many=True, read_only=True)
     
     class Meta:
@@ -1317,26 +1277,27 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         Сначала main_image, затем главное изображение из галереи,
         затем первое изображение.
         """
+        request = self.context.get('request')
         if obj.main_image:
-            return obj.main_image
+            return _resolve_media_url(obj.main_image, request)
         variant = self._get_active_variant(obj)
         if variant:
             if variant.main_image:
-                return variant.main_image
+                return _resolve_media_url(variant.main_image, request)
             v_main = variant.images.filter(is_main=True).first()
             if v_main:
-                return v_main.image_url
+                return _resolve_media_url(v_main.image_url, request)
             v_first = variant.images.first()
             if v_first:
-                return v_first.image_url
+                return _resolve_media_url(v_first.image_url, request)
         main_img = getattr(obj, "images", None)
         if main_img:
             main_img = obj.images.filter(is_main=True).first()
             if main_img:
-                return main_img.image_url
+                return _resolve_media_url(main_img.image_url, request)
             first_img = obj.images.first()
             if first_img:
-                return first_img.image_url
+                return _resolve_media_url(first_img.image_url, request)
         return None
     
     def get_price_formatted(self, obj):
@@ -1503,14 +1464,15 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         variant = self._get_active_variant(obj)
         if not variant:
             return None
+        request = self.context.get('request')
         if variant.main_image:
-            return variant.main_image
+            return _resolve_media_url(variant.main_image, request)
         main_img = variant.images.filter(is_main=True).first()
         if main_img:
-            return main_img.image_url
+            return _resolve_media_url(main_img.image_url, request)
         first_img = variant.images.first()
         if first_img:
-            return first_img.image_url
+            return _resolve_media_url(first_img.image_url, request)
         return None
 
 
@@ -1524,31 +1486,8 @@ class ShoeProductImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
     
     def get_image_url(self, obj):
-        """URL изображения с прокси для Instagram."""
-        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-        # Если это локальный файл (не начинается с http), добавляем /media/
-        elif not obj.image_url.startswith('http'):
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/media/{obj.image_url}"
-            return f"http://localhost:8000/media/{obj.image_url}"
-        return obj.image_url
+        request = self.context.get('request')
+        return _resolve_media_url(obj.image_url, request)
 
 
 class ShoeVariantImageSerializer(serializers.ModelSerializer):
@@ -1561,31 +1500,8 @@ class ShoeVariantImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
     
     def get_image_url(self, obj):
-        """URL изображения с прокси для Instagram."""
-        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-        # Если это локальный файл (не начинается с http), добавляем /media/
-        elif not obj.image_url.startswith('http'):
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/media/{obj.image_url}"
-            return f"http://localhost:8000/media/{obj.image_url}"
-        return obj.image_url
+        request = self.context.get('request')
+        return _resolve_media_url(obj.image_url, request)
 
 
 class ShoeVariantSizeSerializer(serializers.ModelSerializer):
@@ -1681,31 +1597,8 @@ class ElectronicsProductImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
     
     def get_image_url(self, obj):
-        """URL изображения с прокси для Instagram."""
-        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-        # Если это локальный файл (не начинается с http), добавляем /media/
-        elif not obj.image_url.startswith('http'):
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/media/{obj.image_url}"
-            return f"http://localhost:8000/media/{obj.image_url}"
-        return obj.image_url
+        request = self.context.get('request')
+        return _resolve_media_url(obj.image_url, request)
 
 
 class ElectronicsProductSerializer(serializers.ModelSerializer):
@@ -1737,16 +1630,17 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
         Сначала main_image, затем главное изображение из галереи,
         затем первое изображение.
         """
+        request = self.context.get('request')
         if obj.main_image:
-            return obj.main_image
+            return _resolve_media_url(obj.main_image, request)
         gallery = getattr(obj, "images", None)
         if gallery:
             main_img = obj.images.filter(is_main=True).first()
             if main_img:
-                return main_img.image_url
+                return _resolve_media_url(main_img.image_url, request)
             first_img = obj.images.first()
             if first_img:
-                return first_img.image_url
+                return _resolve_media_url(first_img.image_url, request)
         return None
     
     def get_price_formatted(self, obj):
@@ -1801,31 +1695,8 @@ class FurnitureVariantImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
     
     def get_image_url(self, obj):
-        """URL изображения с прокси для Instagram."""
-        if 'instagram.f' in obj.image_url or 'cdninstagram.com' in obj.image_url:
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-            return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.image_url)}"
-        # Если это локальный файл (не начинается с http), добавляем /media/
-        elif not obj.image_url.startswith('http'):
-            request = self.context.get('request')
-            if request:
-                scheme = request.scheme
-                host = request.get_host()
-                if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                    base_url = f"{scheme}://localhost:8000"
-                else:
-                    base_url = f"{scheme}://{host}"
-                return f"{base_url}/media/{obj.image_url}"
-            return f"http://localhost:8000/media/{obj.image_url}"
-        return obj.image_url
+        request = self.context.get('request')
+        return _resolve_media_url(obj.image_url, request)
 
 
 class FurnitureVariantSerializer(serializers.ModelSerializer):
@@ -1888,19 +1759,20 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
     
     def get_main_image_url(self, obj):
         """URL главного изображения."""
+        request = self.context.get('request')
         if obj.main_image:
-            return obj.main_image
+            return _resolve_media_url(obj.main_image, request)
         # Пробуем активный вариант
         variant = self._get_active_variant(obj)
         if variant:
             if variant.main_image:
-                return variant.main_image
+                return _resolve_media_url(variant.main_image, request)
             v_main = variant.images.filter(is_main=True).first()
             if v_main:
-                return v_main.image_url
+                return _resolve_media_url(v_main.image_url, request)
             v_first = variant.images.first()
             if v_first:
-                return v_first.image_url
+                return _resolve_media_url(v_first.image_url, request)
         return None
     
     def get_price_formatted(self, obj):
@@ -2030,14 +1902,15 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         variant = self._get_active_variant(obj)
         if not variant:
             return None
+        request = self.context.get('request')
         if variant.main_image:
-            return variant.main_image
+            return _resolve_media_url(variant.main_image, request)
         main_img = variant.images.filter(is_main=True).first()
         if main_img:
-            return main_img.image_url
+            return _resolve_media_url(main_img.image_url, request)
         first_img = variant.images.first()
         if first_img:
-            return first_img.image_url
+            return _resolve_media_url(first_img.image_url, request)
         return None
 
 

@@ -15,6 +15,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: '/favicon.ico',
+        destination: '/telegram-icon.png',
+      },
+      {
         source: '/api/:path*',
         destination: 'http://backend:8000/api/:path*',
       },
