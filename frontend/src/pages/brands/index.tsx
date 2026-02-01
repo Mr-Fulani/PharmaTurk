@@ -5,6 +5,7 @@ import axios from 'axios'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Masonry from 'react-masonry-css'
+import BannerCarousel from '../../components/BannerCarouselMedia'
 import { resolveMediaUrl } from '../../lib/media'
 import { getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../../lib/i18n'
 
@@ -160,6 +161,10 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
           </div>
         </section>
 
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8">
+          <BannerCarousel position="main" />
+        </div>
+
         <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <Masonry
             breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
@@ -296,4 +301,3 @@ export const getServerSideProps = async (ctx: any) => {
     }
   }
 }
-

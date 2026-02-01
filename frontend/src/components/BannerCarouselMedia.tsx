@@ -141,7 +141,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
         // Проверяем, не было ли ручного действия в последние 4 секунды
         const timeSinceLastManual = Date.now() - lastManualActionRef.current
         if (timeSinceLastManual > 4000) {
-          goToNextMedia()
+          goToNextMedia(false)
         }
       }, 5000)
     }
@@ -169,64 +169,60 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     }
   }, [displayMedia])
 
-  const goToPreviousMedia = () => {
+  const goToPreviousMedia = (isManual: boolean) => {
     if (!banner || displayMedia.length <= 1) return
     
     console.log('⬅️ PREVIOUS button clicked')
     console.log('Before:', displayMedia.map((m, i) => `${i}:${m.id}`))
     
-    // Отмечаем ручное действие
-    lastManualActionRef.current = Date.now()
-    resetAutoPlay()
-    
-    // Логика из оригинала: prepend(items[items.length - 1])
-    // Берем ПОСЛЕДНИЙ элемент и добавляем его в НАЧАЛО
-    const newMedia = [...displayMedia]
-    const lastItem = newMedia.pop()  // Берем последний элемент
-    if (lastItem) {
-      newMedia.unshift(lastItem)  // Добавляем в начало (станет активным на nth-child(1))
+    if (isManual) {
+      lastManualActionRef.current = Date.now()
+      resetAutoPlay()
     }
     
-    console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
-    
-    setDisplayMedia(newMedia)
-    
-    // Активный элемент всегда на позиции 0 (первый элемент, nth-child(1))
-    const activeMedia = newMedia[0]
-    if (activeMedia) {
-      console.log('New active media:', activeMedia.id)
-      setActiveMediaId(activeMedia.id)
-    }
+    setDisplayMedia((prev) => {
+      if (prev.length <= 1) return prev
+      const newMedia = [...prev]
+      const lastItem = newMedia.pop()
+      if (lastItem) {
+        newMedia.unshift(lastItem)
+      }
+      console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
+      const activeMedia = newMedia[0]
+      if (activeMedia) {
+        console.log('New active media:', activeMedia.id)
+        setActiveMediaId(activeMedia.id)
+      }
+      return newMedia
+    })
   }
 
-  const goToNextMedia = () => {
+  const goToNextMedia = (isManual: boolean) => {
     if (!banner || displayMedia.length <= 1) return
     
     console.log('➡️ NEXT button clicked')
     console.log('Before:', displayMedia.map((m, i) => `${i}:${m.id}`))
     
-    // Отмечаем ручное действие
-    lastManualActionRef.current = Date.now()
-    resetAutoPlay()
-    
-    // Логика из оригинала: appendChild(items[0])
-    // Берем ПЕРВЫЙ элемент (активный nth-child(1)) и добавляем в КОНЕЦ
-    const newMedia = [...displayMedia]
-    const firstItem = newMedia.shift()  // Берем первый элемент
-    if (firstItem) {
-      newMedia.push(firstItem)  // Добавляем в конец
+    if (isManual) {
+      lastManualActionRef.current = Date.now()
+      resetAutoPlay()
     }
     
-    console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
-    
-    setDisplayMedia(newMedia)
-    
-    // Активный элемент всегда на позиции 0 (первый элемент, nth-child(1))
-    const activeMedia = newMedia[0]
-    if (activeMedia) {
-      console.log('New active media:', activeMedia.id)
-      setActiveMediaId(activeMedia.id)
-    }
+    setDisplayMedia((prev) => {
+      if (prev.length <= 1) return prev
+      const newMedia = [...prev]
+      const firstItem = newMedia.shift()
+      if (firstItem) {
+        newMedia.push(firstItem)
+      }
+      console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
+      const activeMedia = newMedia[0]
+      if (activeMedia) {
+        console.log('New active media:', activeMedia.id)
+        setActiveMediaId(activeMedia.id)
+      }
+      return newMedia
+    })
   }
 
   const getVideoEmbedUrl = (url: string): string | null => {
@@ -454,7 +450,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
         <div className={styles.buttonContainer}>
           <button
             className={styles.navButton}
-            onClick={goToPreviousMedia}
+            onClick={() => goToPreviousMedia(true)}
             aria-label="Предыдущее медиа"
           >
             <svg className={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -463,7 +459,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
           </button>
           <button
             className={styles.navButton}
-            onClick={goToNextMedia}
+            onClick={() => goToNextMedia(true)}
             aria-label="Следующее медиа"
           >
             <svg className={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -475,4 +471,3 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     </div>
   )
 }
-
