@@ -809,10 +809,55 @@ class Product(models.Model):
             logger = logging.getLogger(__name__)
             logger.error(f"Error updating currency prices for product {self.id}: {str(e)}")
     
+    def _get_variant_price_info(self):
+        ext = self.external_data or {}
+        source_variant_id = ext.get("source_variant_id")
+        if not source_variant_id:
+            return None
+        product_type = (ext.get("effective_type") or ext.get("source_type") or self.product_type or "").lower()
+        variant_model_map = {
+            "clothing": ClothingVariant,
+            "shoes": ShoeVariant,
+            "jewelry": JewelryVariant,
+            "furniture": FurnitureVariant,
+            "books": BookVariant,
+        }
+        variant_model = variant_model_map.get(product_type)
+        if not variant_model:
+            return None
+        try:
+            from django.contrib.contenttypes.models import ContentType
+            from .currency_models import ProductVariantPrice
+
+            content_type = ContentType.objects.get_for_model(variant_model)
+            return ProductVariantPrice.objects.filter(
+                content_type=content_type,
+                object_id=source_variant_id
+            ).first()
+        except Exception:
+            return None
+
     def get_price_in_currency(self, target_currency):
         """Получает цену в указанной валюте"""
         try:
             from .currency_models import ProductPrice
+
+            variant_price = self._get_variant_price_info()
+            if variant_price:
+                base_currency = (variant_price.base_currency or '').upper()
+                target_currency = (target_currency or '').upper()
+                if target_currency == base_currency:
+                    return variant_price.base_price
+                currency_map = {
+                    'RUB': variant_price.rub_price_with_margin,
+                    'USD': variant_price.usd_price_with_margin,
+                    'KZT': variant_price.kzt_price_with_margin,
+                    'EUR': variant_price.eur_price_with_margin,
+                    'TRY': variant_price.try_price_with_margin,
+                }
+                price = currency_map.get(target_currency)
+                if price is not None:
+                    return price
             
             # Пробуем получить из новой структуры
             try:
@@ -855,6 +900,52 @@ class Product(models.Model):
         prices = {}
         
         try:
+            variant_price = self._get_variant_price_info()
+            if variant_price:
+                base_currency = (variant_price.base_currency or 'TRY').upper()
+                prices[base_currency] = {
+                    'original_price': variant_price.base_price,
+                    'converted_price': variant_price.base_price,
+                    'price_with_margin': variant_price.base_price,
+                    'is_base_price': True
+                }
+                if variant_price.rub_price_with_margin:
+                    prices['RUB'] = {
+                        'original_price': variant_price.rub_price,
+                        'converted_price': variant_price.rub_price,
+                        'price_with_margin': variant_price.rub_price_with_margin,
+                        'is_base_price': False
+                    }
+                if variant_price.usd_price_with_margin:
+                    prices['USD'] = {
+                        'original_price': variant_price.usd_price,
+                        'converted_price': variant_price.usd_price,
+                        'price_with_margin': variant_price.usd_price_with_margin,
+                        'is_base_price': False
+                    }
+                if variant_price.kzt_price_with_margin:
+                    prices['KZT'] = {
+                        'original_price': variant_price.kzt_price,
+                        'converted_price': variant_price.kzt_price,
+                        'price_with_margin': variant_price.kzt_price_with_margin,
+                        'is_base_price': False
+                    }
+                if variant_price.eur_price_with_margin:
+                    prices['EUR'] = {
+                        'original_price': variant_price.eur_price,
+                        'converted_price': variant_price.eur_price,
+                        'price_with_margin': variant_price.eur_price_with_margin,
+                        'is_base_price': False
+                    }
+                if variant_price.try_price_with_margin:
+                    prices['TRY'] = {
+                        'original_price': variant_price.try_price,
+                        'converted_price': variant_price.try_price,
+                        'price_with_margin': variant_price.try_price_with_margin,
+                        'is_base_price': False
+                    }
+                return prices
+
             price_info = self.price_info
             
             # Базовая цена
@@ -3277,6 +3368,125 @@ def cleanup_clothing_variant_products(sender, instance, **kwargs):
 def cleanup_clothing_variant_products_on_deactivate(sender, instance, **kwargs):
     if not instance.is_active:
         _cleanup_variant_products(instance)
+
+
+# Сигналы для автоматического создания цен вариантов
+@receiver(post_save, sender=ClothingVariant)
+def create_clothing_variant_price(sender, instance, created, **kwargs):
+    """Создать цену для варианта одежды при его создании или обновлении"""
+    from apps.catalog.utils.currency_converter import currency_converter
+    
+    # Если у варианта есть цена, создаем запись о цене
+    if instance.price is not None and instance.price > 0:
+        try:
+            currency_converter.update_or_create_variant_price(
+                variant_instance=instance,
+                base_price=instance.price,
+                base_currency=instance.currency or 'TRY'
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error creating ClothingVariant price for {instance}: {str(e)}")
+
+
+@receiver(post_save, sender=ShoeVariant)
+def create_shoe_variant_price(sender, instance, created, **kwargs):
+    """Создать цену для варианта обуви при его создании или обновлении"""
+    from apps.catalog.utils.currency_converter import currency_converter
+    
+    # Если у варианта есть цена, создаем запись о цене
+    if instance.price is not None and instance.price > 0:
+        try:
+            currency_converter.update_or_create_variant_price(
+                variant_instance=instance,
+                base_price=instance.price,
+                base_currency=instance.currency or 'TRY'
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error creating ShoeVariant price for {instance}: {str(e)}")
+
+
+@receiver(post_save, sender=JewelryVariant)
+def create_jewelry_variant_price(sender, instance, created, **kwargs):
+    """Создать цену для варианта украшений при его создании или обновлении"""
+    from apps.catalog.utils.currency_converter import currency_converter
+    
+    # Если у варианта есть цена, создаем запись о цене
+    if instance.price is not None and instance.price > 0:
+        try:
+            currency_converter.update_or_create_variant_price(
+                variant_instance=instance,
+                base_price=instance.price,
+                base_currency=instance.currency or 'TRY'
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error creating JewelryVariant price for {instance}: {str(e)}")
+
+
+@receiver(post_save, sender=FurnitureVariant)
+def create_furniture_variant_price(sender, instance, created, **kwargs):
+    """Создать цену для варианта мебели при его создании или обновлении"""
+    from apps.catalog.utils.currency_converter import currency_converter
+    
+    # Если у варианта есть цена, создаем запись о цене
+    if instance.price is not None and instance.price > 0:
+        try:
+            currency_converter.update_or_create_variant_price(
+                variant_instance=instance,
+                base_price=instance.price,
+                base_currency=instance.currency or 'TRY'
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error creating FurnitureVariant price for {instance}: {str(e)}")
+
+
+@receiver(post_save, sender=BookVariant)
+def create_book_variant_price(sender, instance, created, **kwargs):
+    """Создать цену для варианта книг при его создании или обновлении"""
+    from apps.catalog.utils.currency_converter import currency_converter
+    
+    # Если у варианта есть цена, создаем запись о цене
+    if instance.price is not None and instance.price > 0:
+        try:
+            currency_converter.update_or_create_variant_price(
+                variant_instance=instance,
+                base_price=instance.price,
+                base_currency=instance.currency or 'TRY'
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error creating BookVariant price for {instance}: {str(e)}")
+
+
+# Сигнал для очистки цен при удалении вариантов
+@receiver(post_delete, sender=ClothingVariant)
+@receiver(post_delete, sender=ShoeVariant)
+@receiver(post_delete, sender=JewelryVariant)
+@receiver(post_delete, sender=FurnitureVariant)
+@receiver(post_delete, sender=BookVariant)
+def cleanup_variant_prices(sender, instance, **kwargs):
+    """Удалить цену варианта при удалении самого варианта"""
+    from ..currency_models import ProductVariantPrice
+    from django.contrib.contenttypes.models import ContentType
+    
+    try:
+        content_type = ContentType.objects.get_for_model(instance)
+        ProductVariantPrice.objects.filter(
+            content_type=content_type,
+            object_id=instance.id
+        ).delete()
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error cleaning up variant price for {instance}: {str(e)}")
 
 
 @receiver(post_delete, sender=ShoeVariant)

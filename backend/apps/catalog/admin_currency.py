@@ -6,7 +6,7 @@ from django.db.models import Count
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 from decimal import Decimal
-from .currency_models import CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog
+from .currency_models import CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog, ProductVariantPrice
 
 
 @admin.register(CurrencyRate)
@@ -231,7 +231,7 @@ class ProductPriceAdmin(admin.ModelAdmin):
         """Оптимизация запросов."""
         return super().get_queryset(request).select_related('product')
     
-    actions = ['recalculate_prices', 'delete_all_prices']
+    actions = ['recalculate_prices', 'backfill_prices', 'delete_all_prices']
     
     def recalculate_prices(self, request, queryset):
         """Пересчитать выбранные цены."""
@@ -243,6 +243,155 @@ class ProductPriceAdmin(admin.ModelAdmin):
         for price_info in queryset:
             try:
                 # Используем base_price и base_currency из ProductPrice
+                if price_info.base_price and price_info.base_currency:
+                    # Конвертируем в целевые валюты
+                    results = currency_converter.convert_to_multiple_currencies(
+                        price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY'], apply_margin=True
+                    )
+                    
+                    if 'RUB' in results and results['RUB']:
+                        price_info.rub_price = results['RUB']['converted_price']
+                        price_info.rub_price_with_margin = results['RUB']['price_with_margin']
+                    
+                    if 'USD' in results and results['USD']:
+                        price_info.usd_price = results['USD']['converted_price']
+                        price_info.usd_price_with_margin = results['USD']['price_with_margin']
+                    
+                    if 'KZT' in results and results['KZT']:
+                        price_info.kzt_price = results['KZT']['converted_price']
+                        price_info.kzt_price_with_margin = results['KZT']['price_with_margin']
+                    
+                    if 'EUR' in results and results['EUR']:
+                        price_info.eur_price = results['EUR']['converted_price']
+                        price_info.eur_price_with_margin = results['EUR']['price_with_margin']
+                    
+                    if 'TRY' in results and results['TRY']:
+                        price_info.try_price = results['TRY']['converted_price']
+                        price_info.try_price_with_margin = results['TRY']['price_with_margin']
+                    
+                    price_info.save()
+                    success_count += 1
+                else:
+                    error_count += 1
+            except Exception:
+                error_count += 1
+        
+        self.message_user(
+            request, 
+            f'Пересчет завершен: успешно {success_count}, ошибок {error_count}'
+        )
+    recalculate_prices.short_description = 'Пересчитать цены'
+    
+    def delete_all_prices(self, request, queryset):
+        """Удалить все выбранные цены."""
+        count = queryset.count()
+        queryset.delete()
+        self.message_user(request, f'Удалено {count} записей цен')
+    delete_all_prices.short_description = 'Удалить цены'
+
+    def backfill_prices(self, request, queryset):
+        from apps.catalog.utils.currency_converter import currency_converter
+        result = currency_converter.backfill_variant_prices()
+        self.message_user(
+            request,
+            f"Создано: {result['created']}, обновлено: {result['updated']}, пропущено: {result['skipped']}"
+        )
+    backfill_prices.short_description = 'Заполнить цены вариантов'
+
+
+@admin.register(ProductVariantPrice)
+class ProductVariantPriceAdmin(admin.ModelAdmin):
+    """Админ-панель для цен вариантов товаров."""
+    
+    list_display = [
+        'variant_link', 'base_currency', 'base_price', 
+        'rub_price_with_margin', 'usd_price_with_margin', 
+        'kzt_price_with_margin', 'try_price_with_margin', 
+        'shipping_info', 'updated_at'
+    ]
+    list_filter = ['base_currency', 'updated_at']
+    search_fields = ['content_type__model', 'object_id']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('content_type', 'object_id', 'base_currency', 'base_price')
+        }),
+        ('Цены в рублях', {
+            'fields': ('rub_price', 'rub_price_with_margin'),
+            'classes': ('collapse',)
+        }),
+        ('Цены в долларах', {
+            'fields': ('usd_price', 'usd_price_with_margin'),
+            'classes': ('collapse',)
+        }),
+        ('Цены в тенге', {
+            'fields': ('kzt_price', 'kzt_price_with_margin'),
+            'classes': ('collapse',)
+        }),
+        ('Цены в евро', {
+            'fields': ('eur_price', 'eur_price_with_margin'),
+            'classes': ('collapse',)
+        }),
+        ('Цены в турецких лирах', {
+            'fields': ('try_price', 'try_price_with_margin'),
+            'classes': ('collapse',)
+        }),
+        ('Доставка', {
+            'fields': ('air_shipping_cost', 'sea_shipping_cost', 'ground_shipping_cost'),
+            'classes': ('collapse',)
+        }),
+        ('Временные метки', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def variant_link(self, obj):
+        """Ссылка на вариант."""
+        try:
+            variant = obj.variant
+            if variant:
+                # Определяем админ URL для разных типов вариантов
+                app_label = 'catalog'
+                model_name = obj.content_type.model
+                url = reverse(f'admin:{app_label}_{model_name}_change', args=[variant.id])
+                return format_html(
+                    '<a href="{}">{}</a>',
+                    url, str(variant)
+                )
+        except:
+            pass
+        return '-'
+    variant_link.short_description = 'Вариант'
+    
+    def shipping_info(self, obj):
+        """Информация о доставке."""
+        costs = []
+        if obj.air_shipping_cost:
+            costs.append(f"Авиа: {obj.air_shipping_cost}")
+        if obj.sea_shipping_cost:
+            costs.append(f"Море: {obj.sea_shipping_cost}")
+        if obj.ground_shipping_cost:
+            costs.append(f"Назем: {obj.ground_shipping_cost}")
+        
+        if costs:
+            return format_html('<br>'.join(costs))
+        return 'Не указана'
+    shipping_info.short_description = 'Доставка'
+    
+    actions = ['recalculate_prices', 'delete_all_prices']
+    
+    def recalculate_prices(self, request, queryset):
+        """Пересчитать выбранные цены."""
+        from apps.catalog.utils.currency_converter import currency_converter
+        
+        success_count = 0
+        error_count = 0
+        
+        for price_info in queryset:
+            try:
+                # Используем base_price и base_currency из ProductVariantPrice
                 if price_info.base_price and price_info.base_currency:
                     # Конвертируем в целевые валюты
                     results = currency_converter.convert_to_multiple_currencies(
@@ -348,9 +497,108 @@ class CurrencyUpdateLogAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
         ('Временные метки', {
-            'fields': ('created_at',)
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
         }),
     )
+    
+    def variant_link(self, obj):
+        """Ссылка на вариант."""
+        if obj.variant:
+            try:
+                # Получаем URL для редактирования варианта
+                content_type = obj.content_type
+                app_label = content_type.app_label
+                model_name = content_type.model
+                
+                # Определяем правильный URL для разных типов вариантов
+                if model_name == 'clothingvariant':
+                    url = reverse('admin:catalog_clothingvariant_change', args=[obj.object_id])
+                elif model_name == 'shoevariant':
+                    url = reverse('admin:catalog_shoevariant_change', args=[obj.object_id])
+                elif model_name == 'jewelryvariant':
+                    url = reverse('admin:catalog_jewelryvariant_change', args=[obj.object_id])
+                elif model_name == 'furniturevariant':
+                    url = reverse('admin:catalog_furniturevariant_change', args=[obj.object_id])
+                elif model_name == 'bookvariant':
+                    url = reverse('admin:catalog_bookvariant_change', args=[obj.object_id])
+                else:
+                    return str(obj.variant)
+                
+                variant_name = getattr(obj.variant, 'name', '') or str(obj.variant)
+                if len(variant_name) > 50:
+                    variant_name = variant_name[:50] + '...'
+                
+                return format_html(
+                    '<a href="{}">{}</a>',
+                    url, variant_name
+                )
+            except Exception as e:
+                return str(obj.variant)
+        return '-'
+    variant_link.short_description = 'Вариант'
+    
+    def get_queryset(self, request):
+        """Оптимизация запросов."""
+        return super().get_queryset(request).select_related('content_type')
+    
+    actions = ['recalculate_prices', 'delete_all_prices']
+    
+    def recalculate_prices(self, request, queryset):
+        """Пересчитать выбранные цены."""
+        from apps.catalog.utils.currency_converter import currency_converter
+        
+        success_count = 0
+        error_count = 0
+        
+        for price_info in queryset:
+            try:
+                # Используем base_price и base_currency из ProductVariantPrice
+                if price_info.base_price and price_info.base_currency:
+                    # Конвертируем в целевые валюты
+                    results = currency_converter.convert_to_multiple_currencies(
+                        price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY'], apply_margin=True
+                    )
+                    
+                    if 'RUB' in results and results['RUB']:
+                        price_info.rub_price = results['RUB']['converted_price']
+                        price_info.rub_price_with_margin = results['RUB']['price_with_margin']
+                    
+                    if 'USD' in results and results['USD']:
+                        price_info.usd_price = results['USD']['converted_price']
+                        price_info.usd_price_with_margin = results['USD']['price_with_margin']
+                    
+                    if 'KZT' in results and results['KZT']:
+                        price_info.kzt_price = results['KZT']['converted_price']
+                        price_info.kzt_price_with_margin = results['KZT']['price_with_margin']
+                    
+                    if 'EUR' in results and results['EUR']:
+                        price_info.eur_price = results['EUR']['converted_price']
+                        price_info.eur_price_with_margin = results['EUR']['price_with_margin']
+                    
+                    if 'TRY' in results and results['TRY']:
+                        price_info.try_price = results['TRY']['converted_price']
+                        price_info.try_price_with_margin = results['TRY']['price_with_margin']
+                    
+                    price_info.save()
+                    success_count += 1
+                else:
+                    error_count += 1
+            except Exception:
+                error_count += 1
+        
+        self.message_user(
+            request, 
+            f'Пересчет завершен: успешно {success_count}, ошибок {error_count}'
+        )
+    recalculate_prices.short_description = 'Пересчитать цены'
+    
+    def delete_all_prices(self, request, queryset):
+        """Удалить все выбранные цены."""
+        count = queryset.count()
+        queryset.delete()
+        self.message_user(request, f'Удалено {count} записей цен')
+    delete_all_prices.short_description = 'Удалить цены'
 
 
 # Настройка заголовка админ-панели

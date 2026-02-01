@@ -104,8 +104,13 @@ export default function FavoritesPage() {
                 ? `/product/${product.slug}` 
                 : `/product/${productType}/${product.slug}`
               const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
+              const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(
+                product.active_variant_old_price_formatted || product.old_price_formatted || product.old_price
+              )
               const displayPrice = parsedVariantPrice ?? product.price
               const displayCurrency = product.active_variant_currency || parsedVariantCurrency || product.currency
+              const displayOldCurrency = parsedOldCurrency || displayCurrency
+              const displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? product.old_price : null
               
               return (
                 <ProductCard
@@ -115,6 +120,7 @@ export default function FavoritesPage() {
                   slug={product.slug}
                   price={displayPrice ? String(displayPrice) : null}
                   currency={displayCurrency || undefined}
+                  oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                   imageUrl={product.main_image_url}
                   href={productHref}
                   productType={productType}

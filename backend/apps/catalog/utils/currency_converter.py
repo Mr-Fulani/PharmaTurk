@@ -224,5 +224,118 @@ class CurrencyConverter:
         }
 
 
+    def update_or_create_variant_price(self, variant_instance, base_price: Decimal, base_currency: str):
+        """
+        Обновить или создать цену для варианта товара
+        
+        Args:
+            variant_instance: Экземпляр варианта (ClothingVariant, ShoeVariant и т.д.)
+            base_price: Базовая цена варианта
+            base_currency: Валюта базовой цены
+        """
+        from ..currency_models import ProductVariantPrice
+        from django.contrib.contenttypes.models import ContentType
+        
+        try:
+            # Получаем ContentType для модели варианта
+            content_type = ContentType.objects.get_for_model(variant_instance)
+            
+            # Конвертируем в основные валюты
+            results = self.convert_to_multiple_currencies(
+                base_price, base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY'], apply_margin=True
+            )
+            
+            # Создаем или обновляем запись
+            price_obj, created = ProductVariantPrice.objects.update_or_create(
+                content_type=content_type,
+                object_id=variant_instance.id,
+                defaults={
+                    'base_currency': base_currency,
+                    'base_price': base_price,
+                    'rub_price': results['RUB']['converted_price'] if results['RUB'] else None,
+                    'rub_price_with_margin': results['RUB']['price_with_margin'] if results['RUB'] else None,
+                    'usd_price': results['USD']['converted_price'] if results['USD'] else None,
+                    'usd_price_with_margin': results['USD']['price_with_margin'] if results['USD'] else None,
+                    'kzt_price': results['KZT']['converted_price'] if results['KZT'] else None,
+                    'kzt_price_with_margin': results['KZT']['price_with_margin'] if results['KZT'] else None,
+                    'eur_price': results['EUR']['converted_price'] if results['EUR'] else None,
+                    'eur_price_with_margin': results['EUR']['price_with_margin'] if results['EUR'] else None,
+                    'try_price': results['TRY']['converted_price'] if results['TRY'] else None,
+                    'try_price_with_margin': results['TRY']['price_with_margin'] if results['TRY'] else None,
+                }
+            )
+            
+            return price_obj, created
+            
+        except Exception as e:
+            logger.error(f"Error updating variant price for {variant_instance}: {str(e)}")
+            return None, False
+
+    def update_variant_shipping_costs(self, variant_instance, air_cost=None, sea_cost=None, ground_cost=None):
+        """
+        Обновить стоимость доставки для варианта
+        
+        Args:
+            variant_instance: Экземпляр варианта
+            air_cost: Стоимость авиа доставки
+            sea_cost: Стоимость морской доставки  
+            ground_cost: Стоимость наземной доставки
+        """
+        from ..currency_models import ProductVariantPrice
+        from django.contrib.contenttypes.models import ContentType
+        
+        try:
+            content_type = ContentType.objects.get_for_model(variant_instance)
+            
+            price_obj, created = ProductVariantPrice.objects.update_or_create(
+                content_type=content_type,
+                object_id=variant_instance.id,
+                defaults={
+                    'air_shipping_cost': air_cost,
+                    'sea_shipping_cost': sea_cost,
+                    'ground_shipping_cost': ground_cost,
+                }
+            )
+            
+            return price_obj, created
+            
+        except Exception as e:
+            logger.error(f"Error updating variant shipping costs for {variant_instance}: {str(e)}")
+            return None, False
+
+    def backfill_variant_prices(self):
+        from apps.catalog.models import ClothingVariant, ShoeVariant, JewelryVariant, FurnitureVariant, BookVariant
+
+        created_count = 0
+        updated_count = 0
+        skipped_count = 0
+        models = [ClothingVariant, ShoeVariant, JewelryVariant, FurnitureVariant, BookVariant]
+
+        for model in models:
+            for variant in model.objects.all().iterator():
+                price = getattr(variant, "price", None)
+                if price is None or price <= 0:
+                    skipped_count += 1
+                    continue
+                price_obj, created = self.update_or_create_variant_price(
+                    variant_instance=variant,
+                    base_price=price,
+                    base_currency=getattr(variant, "currency", None) or "TRY",
+                )
+                if not price_obj:
+                    skipped_count += 1
+                    continue
+                if created:
+                    created_count += 1
+                else:
+                    updated_count += 1
+
+        return {
+            "created": created_count,
+            "updated": updated_count,
+            "skipped": skipped_count,
+        }
+
+
 # Глобальный экземпляр для использования в приложении
 currency_converter = CurrencyConverter()

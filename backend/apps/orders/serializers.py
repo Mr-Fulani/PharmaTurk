@@ -16,6 +16,8 @@ from apps.catalog.models import (
     FurnitureVariant,
 )
 from apps.catalog.utils.currency_converter import currency_converter
+from apps.catalog.currency_models import ProductVariantPrice
+from django.contrib.contenttypes.models import ContentType
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
 
 VARIANT_MODEL_MAP = {
@@ -140,14 +142,6 @@ def get_or_create_category_for_variant(product_type: str) -> Category | None:
 
 def ensure_product_from_variant(variant, source_type: str, effective_type: str) -> Product:
     parent_product = getattr(variant, "product", None)
-    if source_type in ("clothing", "shoes") and parent_product:
-        product = ensure_product_from_base(parent_product, effective_type)
-        external = variant.external_data or {}
-        external['base_product_id'] = product.id
-        external['base_product_slug'] = product.slug
-        variant.external_data = external
-        variant.save(update_fields=['external_data'])
-        return product
     external = variant.external_data or {}
     product = None
     base_product_id = external.get('base_product_id')
@@ -155,6 +149,10 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         try:
             product = Product.objects.get(id=base_product_id)
         except Product.DoesNotExist:
+            product = None
+    if product is not None:
+        product_external = product.external_data or {}
+        if product_external.get("source_variant_id") != variant.id:
             product = None
     def _variant_main_image(v):
         if getattr(v, "main_image", ""):
@@ -168,7 +166,9 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
             if first_img:
                 return first_img.image_url
         return None
-    base_slug = external.get('base_product_slug') or slugify(f"{source_type}-{variant.slug}")
+    base_slug = external.get('base_product_slug')
+    if source_type in ("clothing", "shoes") or not base_slug:
+        base_slug = slugify(f"{source_type}-{variant.slug}")
     category = get_or_create_category_for_variant(source_type) or get_or_create_category_for_variant(effective_type)
     brand = getattr(variant, "brand", None) if hasattr(variant, "brand") else None
     if not brand and parent_product:
@@ -177,12 +177,45 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
     desired_old_price = getattr(variant, 'old_price', None)
     if desired_old_price is None and parent_product is not None:
         desired_old_price = getattr(parent_product, 'old_price', None)
+    # Проверяем, есть ли цена для варианта с учетом маржи
+    variant_price_with_margin = None
+    variant_currency = getattr(variant, 'currency', None) or 'TRY'
+    
+    try:
+        content_type = ContentType.objects.get_for_model(variant)
+        variant_price_obj = ProductVariantPrice.objects.filter(
+            content_type=content_type,
+            object_id=variant.id
+        ).first()
+        
+        if variant_price_obj:
+            # Используем цену с маржой из ProductVariantPrice
+            if variant_currency == 'RUB' and variant_price_obj.rub_price_with_margin:
+                variant_price_with_margin = variant_price_obj.rub_price_with_margin
+            elif variant_currency == 'USD' and variant_price_obj.usd_price_with_margin:
+                variant_price_with_margin = variant_price_obj.usd_price_with_margin
+            elif variant_currency == 'KZT' and variant_price_obj.kzt_price_with_margin:
+                variant_price_with_margin = variant_price_obj.kzt_price_with_margin
+            elif variant_currency == 'EUR' and variant_price_obj.eur_price_with_margin:
+                variant_price_with_margin = variant_price_obj.eur_price_with_margin
+            elif variant_currency == 'TRY' and variant_price_obj.try_price_with_margin:
+                variant_price_with_margin = variant_price_obj.try_price_with_margin
+            else:
+                # Если цена с маржой не найдена, используем обычную цену
+                variant_price_with_margin = getattr(variant, 'price', None)
+        else:
+            # Если ProductVariantPrice не найден, используем обычную цену варианта
+            variant_price_with_margin = getattr(variant, 'price', None)
+    except Exception as e:
+        # В случае ошибки используем обычную цену варианта
+        variant_price_with_margin = getattr(variant, 'price', None)
+    
     defaults = {
         'name': variant.name or (parent_product.name if parent_product else ""),
         'slug': base_slug,
         'description': getattr(variant, 'description', '') or (getattr(parent_product, "description", "") if parent_product else ''),
-        'price': getattr(variant, 'price', None) or (getattr(parent_product, "price", None) or 0),
-        'currency': getattr(variant, 'currency', None) or (getattr(parent_product, "currency", None) or 'TRY'),
+        'price': variant_price_with_margin or (getattr(parent_product, "price", None) or 0),
+        'currency': variant_currency,
         'old_price': desired_old_price,
         'product_type': effective_type,
         'brand': brand,

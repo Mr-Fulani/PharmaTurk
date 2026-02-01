@@ -1,5 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 import uuid
 
 
@@ -242,3 +244,157 @@ class CurrencyUpdateLog(models.Model):
     def __str__(self):
         status = "Success" if self.success else "Failed"
         return f"{self.source} - {status} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+
+
+class ProductVariantPrice(models.Model):
+    """Модель для хранения цен вариантов товаров с конвертацией во все валюты"""
+    
+    CURRENCY_CHOICES = [
+        ('TRY', 'Турецкая лира'),
+        ('RUB', 'Российский рубль'),
+        ('KZT', 'Казахстанский тенге'),
+        ('USD', 'Доллар США'),
+        ('EUR', 'Евро'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Полиморфная связь с вариантами разных типов
+    content_type = models.ForeignKey('contenttypes.ContentType', on_delete=models.CASCADE, verbose_name='Тип варианта')
+    object_id = models.UUIDField(verbose_name='ID варианта')
+    variant = GenericForeignKey('content_type', 'object_id')
+    
+    # Базовая цена варианта
+    base_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='TRY', verbose_name='Базовая валюта')
+    base_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        default=0,
+        verbose_name='Базовая цена',
+        help_text="Цена в исходной валюте"
+    )
+    
+    # Цены в разных валютах
+    rub_price = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в RUB',
+        help_text="Конвертированная цена в рублях"
+    )
+    rub_price_with_margin = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в RUB с маржой'
+    )
+    
+    usd_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в USD',
+        help_text="Конвертированная цена в долларах"
+    )
+    usd_price_with_margin = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в USD с маржой'
+    )
+    
+    kzt_price = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в KZT',
+        help_text="Конвертированная цена в тенге"
+    )
+    kzt_price_with_margin = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в KZT с маржой'
+    )
+    
+    eur_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в EUR',
+        help_text="Конвертированная цена в евро"
+    )
+    eur_price_with_margin = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в EUR с маржой'
+    )
+    
+    try_price = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в TRY',
+        help_text="Конвертированная цена в турецких лирах"
+    )
+    try_price_with_margin = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в TRY с маржой'
+    )
+    
+    # Стоимость доставки для варианта
+    air_shipping_cost = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Стоимость авиадоставки',
+        help_text="Фиксированная стоимость доставки в валюте продажи (не в процентах)"
+    )
+    sea_shipping_cost = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Стоимость морской доставки',
+        help_text="Фиксированная стоимость доставки в валюте продажи (не в процентах)"
+    )
+    ground_shipping_cost = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Стоимость наземной доставки',
+        help_text="Фиксированная стоимость доставки в валюте продажи (не в процентах)"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлено')
+    
+    class Meta:
+        verbose_name = '💰 Цены варианта товара'
+        verbose_name_plural = '💰 Валюты — Цены вариантов товаров'
+        unique_together = ['content_type', 'object_id']
+        indexes = [
+            models.Index(fields=['content_type', 'object_id']),
+        ]
+    
+    def __str__(self):
+        try:
+            return f"{self.variant} - {self.base_price} {self.base_currency}"
+        except:
+            return f"Вариант {self.object_id} - {self.base_price} {self.base_currency}"

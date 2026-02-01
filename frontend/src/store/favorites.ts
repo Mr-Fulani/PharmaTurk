@@ -11,6 +11,9 @@ interface Favorite {
     currency: string | null
     active_variant_price?: string | number | null
     active_variant_currency?: string | null
+    old_price?: string | number | null
+    old_price_formatted?: string | null
+    active_variant_old_price_formatted?: string | null
     main_image_url?: string
     _product_type?: string
   }

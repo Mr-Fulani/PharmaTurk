@@ -24,6 +24,7 @@ interface Product {
   currency: string
   active_variant_price?: string | number | null
   active_variant_currency?: string | null
+  active_variant_old_price_formatted?: string | null
   final_price_rub?: number
   final_price_usd?: number
   main_image?: string
@@ -1391,9 +1392,13 @@ export default function CategoryPage({
                 >
                   {products.map((product) => {
                     const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
+                    const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(
+                      product.active_variant_old_price_formatted || product.old_price_formatted || product.old_price
+                    )
                     const displayPrice = parsedVariantPrice ?? product.price
                     const displayCurrency = product.active_variant_currency || parsedVariantCurrency || product.currency
-                    const displayOldPrice = product.old_price ? String(product.old_price) : null
+                    const displayOldCurrency = parsedOldCurrency || displayCurrency
+                    const displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? product.old_price : null
                     const productHref = `/product/${categoryType}/${product.slug}`
                     const isBaseProductType = ['medicines', 'supplements', 'medical-equipment'].includes(categoryType)
                     
@@ -1405,7 +1410,7 @@ export default function CategoryPage({
                         slug={product.slug}
                         price={displayPrice ? String(displayPrice) : null}
                         currency={displayCurrency}
-                        oldPrice={displayOldPrice}
+                        oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                         imageUrl={product.main_image_url || product.main_image}
                         videoUrl={product.video_url}
                         badge={product.is_featured ? 'Хит' : null}

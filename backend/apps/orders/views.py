@@ -845,7 +845,67 @@ class OrderViewSet(viewsets.ViewSet):
 
         # Расчет сумм
         subtotal = sum((i.price * i.quantity for i in cart.items.all()))
+        
+        # Расчет стоимости доставки на основе вариантов в корзине
         shipping = 0
+        from apps.catalog.currency_models import ProductVariantPrice
+        from django.contrib.contenttypes.models import ContentType
+        
+        for item in cart.items.all():
+            # Проверяем, есть ли у товара внешний источник (вариант)
+            if item.product.external_data and 'source_variant_id' in item.product.external_data:
+                try:
+                    # Определяем тип варианта по типу продукта
+                    variant_model = None
+                    if item.product.product_type == 'clothing':
+                        from apps.catalog.models import ClothingVariant
+                        variant_model = ClothingVariant
+                    elif item.product.product_type == 'shoes':
+                        from apps.catalog.models import ShoeVariant
+                        variant_model = ShoeVariant
+                    elif item.product.product_type == 'jewelry':
+                        from apps.catalog.models import JewelryVariant
+                        variant_model = JewelryVariant
+                    elif item.product.product_type == 'furniture':
+                        from apps.catalog.models import FurnitureVariant
+                        variant_model = FurnitureVariant
+                    elif item.product.product_type == 'books':
+                        from apps.catalog.models import BookVariant
+                        variant_model = BookVariant
+                    
+                    if variant_model:
+                        # Получаем вариант
+                        variant = variant_model.objects.filter(
+                            id=item.product.external_data['source_variant_id']
+                        ).first()
+                        
+                        if variant:
+                            # Получаем цену варианта
+                            content_type = ContentType.objects.get_for_model(variant)
+                            variant_price = ProductVariantPrice.objects.filter(
+                                content_type=content_type,
+                                object_id=variant.id
+                            ).first()
+                            
+                            if variant_price:
+                                # Определяем метод доставки и соответствующую стоимость
+                                shipping_method = serializer.validated_data.get('shipping_method', '').lower()
+                                if 'air' in shipping_method or 'авиа' in shipping_method:
+                                    if variant_price.air_shipping_cost:
+                                        shipping += float(variant_price.air_shipping_cost) * item.quantity
+                                elif 'sea' in shipping_method or 'мор' in shipping_method:
+                                    if variant_price.sea_shipping_cost:
+                                        shipping += float(variant_price.sea_shipping_cost) * item.quantity
+                                else:
+                                    # По умолчанию используем наземную доставку
+                                    if variant_price.ground_shipping_cost:
+                                        shipping += float(variant_price.ground_shipping_cost) * item.quantity
+                except Exception as e:
+                    # В случае ошибки продолжаем без учета доставки для этого товара
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Error calculating shipping for item {item}: {str(e)}")
+        
         discount = 0
         promo_code = None
 
