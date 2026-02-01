@@ -2,7 +2,7 @@
   position: relative;
   width: 100%;
   max-width: 1000px;
-  height: 600px;
+  height: clamp(280px, 55vw, 600px);
   margin: 0 auto;
   background: #f5f5f5;
   box-shadow: 0 30px 50px rgba(0, 0, 0, 0.2);
@@ -17,8 +17,8 @@
 }
 
 .item {
-  width: 200px;
-  height: 300px;
+  width: clamp(120px, 22vw, 200px);
+  height: clamp(160px, 30vw, 300px);
   position: absolute;
   top: 50%;
   transform: translate(0, -50%);
@@ -44,22 +44,22 @@
 
 /* Третий элемент - справа от центра */
 .slide .item:nth-child(3) {
-  left: 50%;
+  left: 52%;
 }
 
 /* Четвертый элемент */
 .slide .item:nth-child(4) {
-  left: calc(50% + 220px);
+  left: calc(52% + clamp(140px, 22vw, 220px));
 }
 
 /* Пятый элемент */
 .slide .item:nth-child(5) {
-  left: calc(50% + 440px);
+  left: calc(52% + clamp(280px, 44vw, 440px));
 }
 
 /* Все элементы начиная с 6-го - скрыты справа */
 .slide .item:nth-child(n + 6) {
-  left: calc(50% + 660px);
+  left: calc(52% + clamp(420px, 66vw, 660px));
   opacity: 0;
 }
 
@@ -67,8 +67,8 @@
 .item .content {
   position: absolute;
   top: 50%;
-  left: 100px;
-  width: 300px;
+  left: clamp(16px, 8vw, 100px);
+  width: clamp(220px, 40vw, 360px);
   text-align: left;
   color: #eee;
   transform: translate(0, -50%);
@@ -174,19 +174,19 @@
 /* Адаптивность для мобильных устройств */
 @media (max-width: 768px) {
   .container {
-    height: 400px;
+    height: clamp(260px, 70vw, 420px);
     max-width: 100%;
     border-radius: 0;
   }
 
   .item {
-    width: 150px;
-    height: 200px;
+    width: clamp(110px, 30vw, 160px);
+    height: clamp(140px, 40vw, 220px);
   }
 
   .item .content {
-    left: 50px;
-    width: 250px;
+    left: clamp(12px, 6vw, 48px);
+    width: clamp(200px, 70vw, 320px);
   }
 
   .content .name {
@@ -204,14 +204,21 @@
   }
 }
 
+@media (max-width: 640px) {
+  .slide .item:nth-child(n + 3) {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
 @media (max-width: 480px) {
   .container {
-    height: 300px;
+    height: clamp(220px, 80vw, 320px);
   }
 
   .item .content {
-    left: 20px;
-    width: calc(100% - 40px);
+    left: 16px;
+    width: calc(100% - 32px);
   }
 
   .content .name {
@@ -229,4 +236,3 @@
     font-size: 12px;
   }
 }
-

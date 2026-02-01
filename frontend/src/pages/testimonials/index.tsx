@@ -885,7 +885,7 @@ export default function TestimonialsPage() {
       {/* Modal for testimonial detail */}
       {selectedTestimonial && (
         <div 
-          className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/60 z-50 flex items-start md:items-center justify-center p-4 sm:p-6"
           onClick={() => {
             setSelectedTestimonial(null)
             setCurrentMediaIndex(0)
@@ -893,7 +893,7 @@ export default function TestimonialsPage() {
         >
           <div
             ref={modalRef}
-            className="bg-white rounded-3xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto relative"
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-[95vw] sm:max-w-lg md:max-w-4xl max-h-[90vh] overflow-y-auto relative"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close button - только для мобильных устройств */}
@@ -907,11 +907,11 @@ export default function TestimonialsPage() {
               <XMarkIcon className="w-6 h-6" />
             </button>
 
-            <div className="flex flex-col items-center gap-6 p-6">
+            <div className="flex flex-col md:flex-row md:items-start gap-6 p-4 sm:p-6">
               {/* Media Slider */}
               {allMedia.length > 0 && allMedia[currentMediaIndex] && (
                 <div 
-                  className="relative w-full max-w-sm aspect-[9/16] bg-black rounded-2xl overflow-hidden"
+                  className="relative w-full md:w-5/12 aspect-[9/16] sm:aspect-[4/5] md:aspect-[3/4] bg-black rounded-2xl overflow-hidden"
                   onTouchStart={handleTouchStart}
                   onTouchMove={handleTouchMove}
                   onTouchEnd={handleTouchEnd}
@@ -954,9 +954,9 @@ export default function TestimonialsPage() {
               )}
 
               {/* Content */}
-              <div className="w-full space-y-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center">
+              <div className="w-full md:w-7/12 space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-center min-w-0">
                     {selectedTestimonial.author_avatar_url && (
                       <img
                         src={selectedTestimonial.author_avatar_url}
@@ -964,7 +964,7 @@ export default function TestimonialsPage() {
                         className="w-12 h-12 rounded-full mr-4 object-cover"
                       />
                     )}
-                    <div>
+                    <div className="min-w-0">
                       <h2 className="text-2xl font-bold text-gray-900">{selectedTestimonial.author_name}</h2>
                       <p className="text-sm text-gray-500">
                         {new Date(selectedTestimonial.created_at).toLocaleDateString('ru-RU')}

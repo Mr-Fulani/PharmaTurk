@@ -181,7 +181,7 @@ export default function BrandPage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
         />
       </Head>
-      <div className="mx-auto flex max-w-6xl gap-6 px-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 sm:px-6 md:flex-row">
         {/* Sidebar */}
         <div className="hidden md:block mt-6">
           <Sidebar
@@ -219,7 +219,7 @@ export default function BrandPage({
         </div>
         
         {/* Main Content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-4 sm:p-6">
           {/* Mobile sidebar toggle */}
           <div className="md:hidden mb-4">
             <button
@@ -434,4 +434,3 @@ export async function getServerSideProps(ctx: any) {
     }
   }
 }
-

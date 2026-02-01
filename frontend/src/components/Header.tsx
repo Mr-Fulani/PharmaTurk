@@ -23,8 +23,11 @@ export default function Header() {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [showCurrencyMenu, setShowCurrencyMenu] = useState(false)
   const [currency, setCurrency] = useState('RUB')
+  const [mobileOpen, setMobileOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+  const mobileSearchRef = useRef<HTMLDivElement>(null)
   const currencyRef = useRef<HTMLDivElement>(null)
+  const mobileCurrencyRef = useRef<HTMLDivElement>(null)
   const favoritesRefreshedRef = useRef(false)
   const { t } = useTranslation('common')
   const { theme, toggleTheme } = useTheme()
@@ -87,10 +90,15 @@ export default function Header() {
   // Закрываем выпадающее меню при клике вне его области
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+      const target = event.target as Node
+      const isInsideSearch = (searchRef.current && searchRef.current.contains(target))
+        || (mobileSearchRef.current && mobileSearchRef.current.contains(target))
+      if (!isInsideSearch) {
         setShowSuggestions(false)
       }
-      if (currencyRef.current && !currencyRef.current.contains(event.target as Node)) {
+      const isInsideCurrency = (currencyRef.current && currencyRef.current.contains(target))
+        || (mobileCurrencyRef.current && mobileCurrencyRef.current.contains(target))
+      if (!isInsideCurrency) {
         setShowCurrencyMenu(false)
       }
     }
@@ -155,9 +163,10 @@ export default function Header() {
         ? 'border-[#1f2a3d] bg-[#0a1222] shadow-[0_10px_40px_rgba(0,0,0,0.6)]'
         : 'border-[var(--border)] bg-[var(--surface)]'
     }`}>
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-        <Link href="/" className={`text-lg font-bold transition-all duration-200 hover:scale-105 ${isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900'}`}>Turk-Export</Link>
-        <div className="hidden flex-1 items-center gap-3 md:flex">
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+        <div className="flex items-center justify-between gap-3 py-3">
+          <Link href="/" className={`text-lg font-bold transition-all duration-200 hover:scale-105 ${isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900'}`}>Turk-Export</Link>
+          <div className="hidden flex-1 items-center gap-3 md:flex">
           <div ref={searchRef} className="relative flex w-full max-w-xl items-center">
             <input
               value={query}
@@ -191,7 +200,74 @@ export default function Header() {
             ) : null}
           </div>
         </div>
-        <nav className="relative z-50 flex items-center gap-3 text-sm">
+        <div className="flex items-center gap-1 md:hidden">
+          <Link
+            href="/favorites"
+            onClick={() => setShowSuggestions(false)}
+            className={`relative inline-flex items-center justify-center rounded-md p-2 transition-all duration-200 ${isDark ? 'text-slate-100 hover:bg-slate-800' : 'text-main hover:bg-[var(--surface)] hover:text-gray-900'}`}
+            title={t('menu_favorites', 'Избранное')}
+            aria-label={t('menu_favorites', 'Избранное')}
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+              />
+            </svg>
+            {isClient && favoritesCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+                {favoritesCount > 99 ? '99+' : favoritesCount}
+              </span>
+            )}
+          </Link>
+          <Link
+            href="/cart"
+            onClick={() => setShowSuggestions(false)}
+            className={`relative inline-flex items-center justify-center rounded-md p-2 transition-all duration-200 ${path.startsWith('/cart') ? (isDark ? 'text-white' : 'text-gray-900') : (isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900')}`}
+            title={t('menu_cart', 'Корзина')}
+            aria-label={t('menu_cart', 'Корзина')}
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h15l-1.5 9h-12z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l-1-3H3" />
+              <circle cx="9" cy="20" r="1" />
+              <circle cx="18" cy="20" r="1" />
+            </svg>
+            {isClient && itemsCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+                {itemsCount > 99 ? '99+' : itemsCount}
+              </span>
+            )}
+          </Link>
+          {user ? (
+            <AnimatedLogoutButton
+              onLogout={() => { setShowSuggestions(false); logout() }}
+              isDark={isDark}
+              className="scale-90 origin-right"
+            />
+          ) : (
+            <Link
+              href="/auth"
+              onClick={() => setShowSuggestions(false)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-200 hover:shadow-lg hover:scale-105 ${isDark ? 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]' : 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]'}`}
+            >
+              {t('login', 'Войти')}
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={() => { setShowSuggestions(false); setMobileOpen((v) => !v) }}
+            className={`inline-flex items-center justify-center rounded-md border p-2 transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`}
+            aria-label="Toggle menu"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+        <nav className="relative z-50 hidden items-center gap-3 text-sm md:flex">
           <div ref={currencyRef} className="relative">
             <button
               type="button"
@@ -304,6 +380,91 @@ export default function Header() {
             {router.locale?.toUpperCase() || 'EN'}
           </button>
         </nav>
+        </div>
+        <div className="md:hidden pb-4">
+          <div ref={mobileSearchRef} className="relative flex w-full items-center">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => { if (query.trim().length >= 2) setShowSuggestions(true) }}
+              placeholder={placeholder}
+              onKeyDown={(e)=>{ if (e.key === 'Enter') { e.preventDefault(); setShowSuggestions(false); goSearch() } }}
+              className={`w-full rounded-l-lg border px-3 py-2 text-sm outline-none transition-colors duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-400 focus:border-slate-500' : 'border-gray-300 bg-white text-gray-900 focus:border-gray-400'}`}
+            />
+            <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`rounded-r-lg border border-l-0 px-3 py-2 text-sm transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:bg-slate-700 hover:border-slate-500' : 'border-gray-300 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:text-red-700 hover:font-medium'}`}>{t('search_button', 'Поиск')}</button>
+            {showSuggestions && query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
+              <div className={`absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-lg border shadow-lg ${isDark ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'}`}>
+                {loadingSuggest ? (
+                  <div className={`px-3 py-2 text-sm ${isDark ? 'text-slate-300' : 'text-gray-500'}`}>Поиск…</div>
+                ) : suggestions.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => { setShowSuggestions(false); router.push(`/product/${p.slug}`) }}
+                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors duration-200 ${isDark ? 'text-slate-100 hover:bg-slate-700' : 'text-gray-800 hover:bg-red-50'}`}
+                  >
+                    <span className="line-clamp-1 pr-2">{p.name}</span>
+                    <span className={isDark ? 'whitespace-nowrap text-slate-300' : 'whitespace-nowrap text-gray-600'}>{p.price ? `${p.price} ${p.currency}` : ''}</span>
+                  </button>
+                ))}
+                {suggestions.length > 0 && (
+                  <div className={`border-t px-3 py-2 text-right ${isDark ? 'border-slate-700' : 'border-gray-200'}`}>
+                    <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`text-xs transition-colors duration-200 ${isDark ? 'text-slate-100 hover:text-white underline' : 'text-red-700 hover:text-red-800 hover:underline'}`}>Показать все результаты</button>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        {mobileOpen && (
+          <div className="md:hidden pb-4">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              {user && (
+                <Link
+                  href="/profile"
+                  onClick={() => { setShowSuggestions(false); setMobileOpen(false) }}
+                  className={`rounded-md px-2 py-1 transition-all duration-200 ${path.startsWith('/profile') ? (isDark ? 'font-medium text-white' : 'font-medium text-red-800') : (isDark ? 'text-slate-100 hover:text-white' : 'text-gray-700 hover:text-red-700 hover:font-medium')}`}
+                >
+                  {t('header_profile', 'Профиль')}
+                </Link>
+              )}
+              <button
+                onClick={() => { setShowSuggestions(false); toggleTheme() }}
+                className={`rounded-md border px-2 py-1 text-xs transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`}
+              >
+                {isDark ? t('theme_dark', 'Тёмная') : t('theme_light', 'Светлая')}
+              </button>
+              <button 
+                onClick={() => { setShowSuggestions(false); toggleLocale() }} 
+                className={`rounded-md border px-2 py-1 text-xs transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`} 
+              >
+                {router.locale?.toUpperCase() || 'EN'}
+              </button>
+              <div ref={mobileCurrencyRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => { setShowSuggestions(false); setShowCurrencyMenu((v) => !v) }}
+                  className={`rounded-md border px-2 py-1 text-xs transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:border-slate-500' : 'border-red-200 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:shadow-md'}`}
+                >
+                  {currency}
+                </button>
+                {showCurrencyMenu ? (
+                  <div className={`absolute right-0 z-20 mt-2 w-24 overflow-hidden rounded-md border shadow-lg ${isDark ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'}`}>
+                    {currencyOptions.map((code) => (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => handleCurrencyChange(code)}
+                        className={`flex w-full items-center justify-between px-3 py-2 text-xs transition-colors duration-200 ${currency === code ? (isDark ? 'bg-slate-700 text-white' : 'bg-red-50 text-red-700') : (isDark ? 'text-slate-100 hover:bg-slate-700' : 'text-gray-700 hover:bg-red-50')}`}
+                      >
+                        <span>{code}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   )
