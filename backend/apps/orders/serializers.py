@@ -139,6 +139,15 @@ def get_or_create_category_for_variant(product_type: str) -> Category | None:
 
 
 def ensure_product_from_variant(variant, source_type: str, effective_type: str) -> Product:
+    parent_product = getattr(variant, "product", None)
+    if source_type in ("clothing", "shoes") and parent_product:
+        product = ensure_product_from_base(parent_product, effective_type)
+        external = variant.external_data or {}
+        external['base_product_id'] = product.id
+        external['base_product_slug'] = product.slug
+        variant.external_data = external
+        variant.save(update_fields=['external_data'])
+        return product
     external = variant.external_data or {}
     product = None
     base_product_id = external.get('base_product_id')
@@ -147,7 +156,6 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
             product = Product.objects.get(id=base_product_id)
         except Product.DoesNotExist:
             product = None
-
     def _variant_main_image(v):
         if getattr(v, "main_image", ""):
             return v.main_image
@@ -160,10 +168,8 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
             if first_img:
                 return first_img.image_url
         return None
-
     base_slug = external.get('base_product_slug') or slugify(f"{source_type}-{variant.slug}")
     category = get_or_create_category_for_variant(source_type) or get_or_create_category_for_variant(effective_type)
-    parent_product = getattr(variant, "product", None)
     brand = getattr(variant, "brand", None) if hasattr(variant, "brand") else None
     if not brand and parent_product:
         brand = getattr(parent_product, "brand", None)
@@ -196,12 +202,10 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         'source_variant_id': variant.id,
         'source_variant_slug': variant.slug,
     }
-
     if product is None:
         product, created = Product.objects.get_or_create(slug=base_slug, defaults=defaults)
     else:
         created = False
-
     if not created:
         changed = False
         new_price = getattr(variant, 'price', None)
@@ -224,7 +228,6 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         if main_image and product.main_image != main_image:
             product.main_image = main_image
             changed = True
-        # Обновляем тип продукта, если раньше был сохранён неверно (например, остался "medicines")
         if product.product_type != effective_type:
             product.product_type = effective_type
             changed = True
@@ -234,20 +237,16 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         if brand and product.brand_id is None:
             product.brand = brand
             changed = True
-        # Всегда сохраняем external_data для связи с вариантом (нужно для картинок в корзине)
         product_external = product.external_data or {}
         merged_ext = {**product_external, **variant_external_payload}
         if product.external_data != merged_ext:
             product.external_data = merged_ext
             changed = True
-
         if changed:
             product.save()
     else:
-        # Новый продукт: добавляем external_data сразу
         product.external_data = {**(product.external_data or {}), **variant_external_payload}
         product.save(update_fields=['external_data'])
-
     external['base_product_id'] = product.id
     external['base_product_slug'] = product.slug
     variant.external_data = external
@@ -822,6 +821,22 @@ class AddToCartSerializer(serializers.Serializer):
                     if not size_obj.is_available:
                         raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
                 attrs['chosen_size'] = chosen_size
+            else:
+                base_model_map = {
+                    'clothing': ClothingProduct,
+                    'shoes': ShoeProduct,
+                }
+                base_model = base_model_map.get(normalized)
+                if base_model:
+                    base_obj = base_model.objects.filter(slug=product_slug, is_active=True).first()
+                    if base_obj and base_obj.sizes.exists():
+                        if not chosen_size:
+                            raise serializers.ValidationError({"detail": _("Укажите размер для этого товара")})
+                        size_obj = base_obj.sizes.filter(size=chosen_size).first()
+                        if not size_obj:
+                            raise serializers.ValidationError({"detail": _("Размер не найден")})
+                        if not size_obj.is_available:
+                            raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
         else:
             # Базовые типы (без вариантов) — пробуем найти продукт по slug сразу
             base = Product.objects.filter(slug=product_slug, is_active=True).first()

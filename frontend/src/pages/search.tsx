@@ -45,7 +45,7 @@ export default function SearchPage() {
                 price={p.price}
                 currency={p.currency}
                 imageUrl={p.main_image_url || p.main_image}
-                productType="medicines"
+                productType={p.product_type || 'medicines'}
                 isBaseProduct
               />
             ))}
@@ -59,5 +59,4 @@ export default function SearchPage() {
 export async function getServerSideProps(ctx: any) {
   return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])) } }
 }
-
 

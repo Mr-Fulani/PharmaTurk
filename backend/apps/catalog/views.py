@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from django.shortcuts import get_object_or_404
 from django.db import models
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, Http404
 from django.views.decorators.http import require_GET
 from django.core.cache import cache
 from rest_framework import viewsets, status
@@ -332,6 +332,13 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         """Фильтрация товаров по параметрам."""
         queryset = Product.objects.filter(is_active=True)
+        queryset = queryset.exclude(
+            models.Q(product_type__in=['clothing', 'shoes']) &
+            (
+                models.Q(external_data__has_key='source_variant_id') |
+                models.Q(external_data__has_key='source_variant_slug')
+            )
+        )
         
         # Фильтр по категории (поддержка массивов)
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
@@ -442,7 +449,32 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         description="Возвращает детальную информацию о товаре"
     )
     def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
+        product = self.get_object()
+        external = getattr(product, "external_data", {}) or {}
+        source_variant_id = external.get("source_variant_id")
+        source_variant_slug = external.get("source_variant_slug")
+        source_type = (external.get("source_type") or external.get("effective_type") or product.product_type or "").lower()
+
+        if source_variant_id or source_variant_slug:
+            if source_type == "clothing":
+                qs = ClothingVariant.objects.filter(is_active=True)
+                if source_variant_id:
+                    qs = qs.filter(id=source_variant_id)
+                if source_variant_slug:
+                    qs = qs.filter(slug=source_variant_slug)
+                if not qs.exists():
+                    raise Http404()
+            elif source_type == "shoes":
+                qs = ShoeVariant.objects.filter(is_active=True)
+                if source_variant_id:
+                    qs = qs.filter(id=source_variant_id)
+                if source_variant_slug:
+                    qs = qs.filter(slug=source_variant_slug)
+                if not qs.exists():
+                    raise Http404()
+
+        serializer = self.get_serializer(product)
+        return Response(serializer.data)
     
     @action(detail=True, methods=['get'])
     @extend_schema(

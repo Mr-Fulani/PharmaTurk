@@ -6,8 +6,8 @@ from django.db.models import Count
 from rest_framework import serializers
 from .models import (
     Category, CategoryTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
-    ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
-    ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
+    ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
+    ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     Service, ServiceTranslation,
@@ -918,6 +918,20 @@ class ClothingVariantImageSerializer(serializers.ModelSerializer):
         return obj.image_url
 
 
+class ClothingProductSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ClothingProductSize
+        fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
+        read_only_fields = ['id']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        stock = data.get('stock_quantity')
+        if stock is not None and stock == 0:
+            data['is_available'] = False
+        return data
+
+
 class ClothingVariantSizeSerializer(serializers.ModelSerializer):
     """Сериализатор размеров варианта одежды."""
 
@@ -994,6 +1008,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    sizes = ClothingProductSizeSerializer(many=True, read_only=True)
     variants = serializers.SerializerMethodField()
     default_variant_slug = serializers.SerializerMethodField()
     active_variant_slug = serializers.SerializerMethodField()
@@ -1010,7 +1025,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color', 'material', 'season',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
-            'images',
+            'images', 'sizes',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url',
@@ -1232,6 +1247,20 @@ class ShoeCategorySerializer(serializers.ModelSerializer):
         return None
 
 
+class ShoeProductSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ShoeProductSize
+        fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
+        read_only_fields = ['id']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        stock = data.get('stock_quantity')
+        if stock is not None and stock == 0:
+            data['is_available'] = False
+        return data
+
+
 class ShoeProductSerializer(serializers.ModelSerializer):
     """Сериализатор для товаров обуви (краткая информация)."""
     
@@ -1241,6 +1270,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    sizes = ShoeProductSizeSerializer(many=True, read_only=True)
     variants = serializers.SerializerMethodField()
     default_variant_slug = serializers.SerializerMethodField()
     active_variant_slug = serializers.SerializerMethodField()
@@ -1257,7 +1287,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color', 'material',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
-            'images',
+            'images', 'sizes',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url',

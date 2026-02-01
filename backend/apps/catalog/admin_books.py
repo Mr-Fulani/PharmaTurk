@@ -12,6 +12,16 @@ from .models import (
 )
 
 
+@admin.action(description=_("Сделать активными"))
+def activate_book_variants(modeladmin, request, queryset):
+    queryset.update(is_active=True)
+
+
+@admin.action(description=_("Сделать неактивными"))
+def deactivate_book_variants(modeladmin, request, queryset):
+    queryset.update(is_active=False)
+
+
 class BookVariantSizeInline(admin.TabularInline):
     """Inline для форматов вариантов книг."""
     model = BookVariantSize
@@ -34,6 +44,7 @@ class BookVariantAdmin(admin.ModelAdmin):
     search_fields = ('name', 'product__name', 'slug', 'cover_type', 'format_type', 'sku', 'barcode')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
+    actions = [activate_book_variants, deactivate_book_variants]
     fieldsets = (
         (None, {'fields': ('product', 'name', 'slug')}),
         (_('Характеристики'), {

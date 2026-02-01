@@ -2,6 +2,9 @@
 
 import uuid
 from django.db import models
+from django.db.models import Q
+from django.db.models.signals import post_delete, post_save
+from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, FileExtensionValidator
@@ -1463,6 +1466,38 @@ class ClothingProduct(models.Model):
         return self.description or ''
 
 
+class ClothingProductSize(models.Model):
+    product = models.ForeignKey(
+        ClothingProduct,
+        on_delete=models.CASCADE,
+        related_name="sizes",
+        verbose_name=_("Товар одежды")
+    )
+    size = models.CharField(
+        _("Размер"),
+        max_length=50,
+        blank=True,
+        help_text=_("Например S, M, L или 48, 50.")
+    )
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Размер товара одежды")
+        verbose_name_plural = _("Размеры товара одежды")
+        ordering = ["product", "sort_order", "size"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["product", "size"]),
+        ]
+
+    def __str__(self):
+        return f"{self.product.name} - {self.size}"
+
+
 class ClothingProductTranslation(models.Model):
     """Переводы для товаров одежды."""
     
@@ -1663,6 +1698,38 @@ class ShoeProduct(models.Model):
         if translation and translation.description:
             return translation.description
         return self.description or ''
+
+
+class ShoeProductSize(models.Model):
+    product = models.ForeignKey(
+        ShoeProduct,
+        on_delete=models.CASCADE,
+        related_name="sizes",
+        verbose_name=_("Товар обуви")
+    )
+    size = models.CharField(
+        _("Размер"),
+        max_length=20,
+        blank=True,
+        help_text=_("EU размер, например 40, 41, 42.")
+    )
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Размер товара обуви")
+        verbose_name_plural = _("Размеры товара обуви")
+        ordering = ["product", "sort_order", "size"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["product", "size"]),
+        ]
+
+    def __str__(self):
+        return f"{self.product.name} - {self.size}"
 
 
 class ShoeProductTranslation(models.Model):
@@ -3191,3 +3258,33 @@ class MarketingBannerMedia(BannerMedia):
         verbose_name = _("Медиа баннеров")
         verbose_name_plural = _("Маркетинг — Медиа баннеров")
 
+
+def _cleanup_variant_products(variant):
+    external = variant.external_data or {}
+    base_product_id = external.get("base_product_id")
+    q = Q(external_data__source_variant_id=variant.id) | Q(external_data__source_variant_slug=variant.slug)
+    if base_product_id:
+        q |= Q(id=base_product_id, external_data__source_variant_id=variant.id)
+    Product.objects.filter(q).delete()
+
+
+@receiver(post_delete, sender=ClothingVariant)
+def cleanup_clothing_variant_products(sender, instance, **kwargs):
+    _cleanup_variant_products(instance)
+
+
+@receiver(post_save, sender=ClothingVariant)
+def cleanup_clothing_variant_products_on_deactivate(sender, instance, **kwargs):
+    if not instance.is_active:
+        _cleanup_variant_products(instance)
+
+
+@receiver(post_delete, sender=ShoeVariant)
+def cleanup_shoe_variant_products(sender, instance, **kwargs):
+    _cleanup_variant_products(instance)
+
+
+@receiver(post_save, sender=ShoeVariant)
+def cleanup_shoe_variant_products_on_deactivate(sender, instance, **kwargs):
+    if not instance.is_active:
+        _cleanup_variant_products(instance)

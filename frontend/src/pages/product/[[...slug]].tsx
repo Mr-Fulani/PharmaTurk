@@ -110,6 +110,7 @@ interface Product {
   main_image_url?: string
   video_url?: string
   images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
+  sizes?: { id: number; size?: string; is_available?: boolean; stock_quantity?: number | null }[]
   variants?: Variant[]
   default_variant_slug?: string | null
   active_variant_slug?: string | null
@@ -142,7 +143,7 @@ const resolveAvailableStock = (
   selectedSize: string | undefined
 ): number | null => {
   const sizeCandidate = selectedSize
-    ? (selectedVariant?.sizes || []).find((s) => (s.size || '') === selectedSize)
+    ? (selectedVariant?.sizes || product.sizes || []).find((s) => (s.size || '') === selectedSize)
     : undefined
 
   const sizeStock = sizeCandidate?.stock_quantity
@@ -201,7 +202,9 @@ export default function ProductPage({
   const colors = Array.from(new Set((variants.map((v) => v.color).filter(Boolean) as string[])))
 
   // Список размеров для выбранного цвета (берем из выбранного варианта-цвета)
-  const sizesForColor = selectedVariant?.sizes || []
+  const sizesForColor = (selectedVariant?.sizes && selectedVariant.sizes.length > 0)
+    ? selectedVariant.sizes
+    : (product?.sizes || [])
 
   const maxAvailable = product ? resolveAvailableStock(product, selectedVariant, selectedSize) : null
 
@@ -286,17 +289,23 @@ export default function ProductPage({
       currentGallerySource[0]?.image_url ||
       null
     setActiveImage(newImage)
-  }, [product?.id, product?.slug, product?.main_image_url, product?.main_image, product?.active_variant_main_image_url, selectedVariantSlug, selectedVariant?.main_image, selectedVariant?.images, product?.images, router.asPath])
+  }, [product, selectedVariant, router.asPath])
 
   if (!product) {
     return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
   }
 
   // Получаем числовое значение цены для расчетов
+  const parsedActiveVariantPrice = parsePriceWithCurrency(product.active_variant_price ?? null)
   const priceValue = selectedVariant?.price 
     ? parseFloat(String(selectedVariant.price))
     : (product.active_variant_price ? parseFloat(String(product.active_variant_price)) : (product.price ? parseFloat(String(product.price)) : null))
-  const currency = selectedVariant?.currency || product.active_variant_currency || product.currency || 'USD'
+  const currency =
+    selectedVariant?.currency ||
+    product.active_variant_currency ||
+    parsedActiveVariantPrice.currency ||
+    product.currency ||
+    'USD'
   const oldPriceSource = selectedVariant?.old_price ?? product.old_price_formatted ?? product.old_price
   const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(
     oldPriceSource !== null && typeof oldPriceSource !== 'undefined' ? String(oldPriceSource) : null
@@ -668,37 +677,71 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   }
 
   const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
-  const endpoint = resolveDetailEndpoint(categoryType, productSlug)
-  
   // Извлекаем валюту из cookie
   const cookieHeader: string = ctx.req.headers.cookie || ''
   const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
   const currency = currencyMatch ? currencyMatch[1] : 'RUB'
   
-  try {
-    const res = await axios.get(`${base}${endpoint}`, {
+  const localePrefix = ctx.locale ? `/${ctx.locale}` : ''
+  const baseProductTypes: CategoryType[] = [
+    'medicines', 'supplements', 'medical-equipment',
+    'furniture', 'tableware', 'accessories', 'jewelry',
+    'underwear', 'headwear'
+  ]
+
+  const fetchProduct = (type: CategoryType, slug: string) =>
+    axios.get(`${base}${resolveDetailEndpoint(type, slug)}`, {
       headers: {
         'X-Currency': currency,
         'Accept-Language': ctx.locale || 'en'
       }
     })
-    const baseProductTypes: CategoryType[] = [
-      'medicines', 'supplements', 'medical-equipment',
-      'furniture', 'tableware', 'accessories', 'jewelry',
-      'underwear', 'headwear'
-    ]
-    const isBaseProduct = baseProductTypes.includes(categoryType)
-    return {
-      props: {
-        ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
-        product: res.data,
-        productType: categoryType,
-        isBaseProduct,
-      },
-    }
-  } catch (error) {
-    const localePrefix = ctx.locale ? `/${ctx.locale}` : ''
 
+  const buildProps = async (res: any, type: CategoryType) => ({
+    props: {
+      ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
+      product: res.data,
+      productType: type,
+      isBaseProduct: baseProductTypes.includes(type),
+    },
+  })
+
+  if (slugParts.length === 1) {
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines']
+    for (const t of probeTypes) {
+      try {
+        await fetchProduct(t, productSlug)
+        if (t !== 'medicines') {
+          return {
+            redirect: {
+              destination: `${localePrefix}/product/${t}/${productSlug}`,
+              permanent: false,
+            },
+          }
+        }
+        const res = await fetchProduct(t, productSlug)
+        return buildProps(res, t)
+      } catch {
+        continue
+      }
+    }
+    return { notFound: true }
+  }
+
+  try {
+    const res = await fetchProduct(categoryType, productSlug)
+    const activeVariantSlug = res.data?.active_variant_slug
+    const baseSlug = res.data?.slug
+    if (activeVariantSlug && baseSlug && activeVariantSlug === productSlug && baseSlug !== productSlug) {
+      return {
+        redirect: {
+          destination: `${localePrefix}/product/${categoryType}/${baseSlug}`,
+          permanent: false,
+        },
+      }
+    }
+    return buildProps(res, categoryType)
+  } catch (error) {
     const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines']
     const typesToTry = probeTypes.filter((t) => t !== categoryType)
 
@@ -719,15 +762,6 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         }
       } catch {
         continue
-      }
-    }
-
-    if (slugParts.length === 1) {
-      return {
-        redirect: {
-          destination: `${localePrefix}/product/${categoryType}/${productSlug}`,
-          permanent: false,
-        },
       }
     }
 

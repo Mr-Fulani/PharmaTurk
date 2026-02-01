@@ -6,6 +6,7 @@ from decimal import Decimal
 from django.utils.text import slugify
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
 
 from .models import Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory
 from apps.vapi.client import ProductData
@@ -272,7 +273,10 @@ class CatalogService:
                     limit: int = 50,
                     offset: int = 0) -> List[Product]:
         """Получает товары с фильтрацией."""
-        queryset = Product.objects.filter(is_active=True)
+        queryset = Product.objects.filter(is_active=True).exclude(
+            Q(product_type__in=['clothing', 'shoes']) &
+            (Q(external_data__has_key='source_variant_id') | Q(external_data__has_key='source_variant_slug'))
+        )
         
         if category_id:
             queryset = queryset.filter(category_id=category_id)

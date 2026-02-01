@@ -16,8 +16,8 @@ from .models import (
     ProductMedicines, ProductSupplements, ProductMedicalEquipment,
     ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
     ProductUnderwear, ProductHeadwear,
-    ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
-    ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
+    ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
+    ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     Service, ServiceTranslation,
@@ -68,6 +68,16 @@ class ActiveRootFilter(SimpleListFilter):
         if value == "inactive":
             return queryset.filter(is_active=False)
         return queryset
+
+
+@admin.action(description=_("Сделать активными"))
+def activate_variants(modeladmin, request, queryset):
+    queryset.update(is_active=True)
+
+
+@admin.action(description=_("Сделать неактивными"))
+def deactivate_variants(modeladmin, request, queryset):
+    queryset.update(is_active=False)
 
 
 @admin.register(CategoryType)
@@ -711,6 +721,13 @@ class ClothingVariantSizeInline(admin.TabularInline):
     ordering = ('sort_order', 'size')
 
 
+class ClothingProductSizeInline(admin.TabularInline):
+    model = ClothingProductSize
+    extra = 0
+    fields = ('size', 'is_available', 'stock_quantity', 'sort_order')
+    ordering = ('sort_order', 'size')
+
+
 @admin.register(ClothingVariant)
 class ClothingVariantAdmin(admin.ModelAdmin):
     """Отдельная админка варианта одежды (для картинок)."""
@@ -735,6 +752,7 @@ class ClothingVariantAdmin(admin.ModelAdmin):
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
+    actions = [activate_variants, deactivate_variants]
     fieldsets = (
         (None, {'fields': ('product', 'name', 'slug')}),
         (_('Характеристики'), {
@@ -819,7 +837,7 @@ class ClothingProductAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug', 'description', 'material')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
-    exclude = ('size', 'color', 'stock_quantity', 'is_available')
+    exclude = ('size', 'color')
     readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
     
     fieldsets = (
@@ -827,12 +845,12 @@ class ClothingProductAdmin(admin.ModelAdmin):
         (_('Categorization'), {'fields': ('category', 'brand')}),
         (_('Clothing'), {'fields': ('material', 'season')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
-        (_('Availability'), {'fields': ()}),
+        (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('Media'), {'fields': ('main_image',)}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ClothingProductTranslationInline, ClothingVariantInline, ClothingProductImageInline]
+    inlines = [ClothingProductTranslationInline, ClothingProductSizeInline, ClothingVariantInline, ClothingProductImageInline]
 
     def variant_prices_overview(self, obj):
         if not obj or not obj.pk:
@@ -1015,6 +1033,13 @@ class ShoeVariantInline(admin.TabularInline):
     show_change_link = True
 
 
+class ShoeProductSizeInline(admin.TabularInline):
+    model = ShoeProductSize
+    extra = 0
+    fields = ('size', 'is_available', 'stock_quantity', 'sort_order')
+    ordering = ('sort_order', 'size')
+
+
 class ShoeVariantSizeInline(admin.TabularInline):
     """Инлайн размеров варианта обуви."""
     model = ShoeVariantSize
@@ -1047,6 +1072,7 @@ class ShoeVariantAdmin(admin.ModelAdmin):
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
+    actions = [activate_variants, deactivate_variants]
     fieldsets = (
         (None, {'fields': ('product', 'name', 'slug')}),
         (_('Характеристики'), {
@@ -1131,7 +1157,7 @@ class ShoeProductAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug', 'description', 'material')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
-    exclude = ('size', 'color', 'stock_quantity', 'is_available')
+    exclude = ('size', 'color')
     readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
     
     fieldsets = (
@@ -1139,13 +1165,13 @@ class ShoeProductAdmin(admin.ModelAdmin):
         (_('Categorization'), {'fields': ('category', 'brand')}),
         (_('Shoes'), {'fields': ('material', 'heel_height', 'sole_type')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
-        (_('Availability'), {'fields': ()}),
+        (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('Media'), {'fields': ('main_image',)}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     # Галерея для обуви теперь задается на уровне варианта (цвета), поэтому инлайн изображений товара убран
-    inlines = [ShoeProductTranslationInline, ShoeVariantInline]
+    inlines = [ShoeProductTranslationInline, ShoeProductSizeInline, ShoeVariantInline]
 
     def variant_prices_overview(self, obj):
         if not obj or not obj.pk:
@@ -1337,6 +1363,7 @@ class FurnitureVariantAdmin(admin.ModelAdmin):
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
+    actions = [activate_variants, deactivate_variants]
     fieldsets = (
         (None, {'fields': ('product', 'name', 'slug')}),
         (_('Характеристики'), {

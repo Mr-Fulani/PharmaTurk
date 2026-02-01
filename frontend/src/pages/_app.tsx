@@ -15,6 +15,7 @@ const nextI18NextConfig = require('../../next-i18next.config.js')
 function App({ Component, pageProps }: AppProps) {
   const router = useRouter()
   const { refresh } = useCartStore()
+  const is404 = router.pathname === '/404'
   
   useEffect(() => {
     // Гарантируем, что cookie cart_session создана до первого запроса
@@ -65,13 +66,17 @@ function App({ Component, pageProps }: AppProps) {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <div className="min-h-screen flex flex-col">
-          <Header />
-          <div className="flex-1">
-            <Component {...pageProps} />
+        {is404 ? (
+          <Component {...pageProps} />
+        ) : (
+          <div className="min-h-screen flex flex-col">
+            <Header />
+            <div className="flex-1">
+              <Component {...pageProps} />
+            </div>
+            <Footer />
           </div>
-          <Footer />
-        </div>
+        )}
       </ThemeProvider>
     </AuthProvider>
   )

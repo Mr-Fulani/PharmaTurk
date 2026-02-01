@@ -12,8 +12,17 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.catalog.models import Product
-from apps.catalog.models import ClothingVariant, ClothingVariantSize, ShoeVariant, ShoeVariantSize
+from apps.catalog.models import (
+    Product,
+    ClothingProduct,
+    ClothingProductSize,
+    ClothingVariant,
+    ClothingVariantSize,
+    ShoeProduct,
+    ShoeProductSize,
+    ShoeVariant,
+    ShoeVariantSize,
+)
 from apps.users.models import UserAddress
 
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
@@ -78,6 +87,8 @@ def _get_stock_for_cart_product(product: Product, chosen_size: Optional[str]) ->
     """
     external = getattr(product, "external_data", None) or {}
     source_variant_id = external.get("source_variant_id")
+    source_type = (external.get("source_type") or "").lower()
+    source_id = external.get("source_id")
 
     normalized_type = (getattr(product, "product_type", None) or "").lower()
     size_value = (chosen_size or "").strip()
@@ -104,6 +115,20 @@ def _get_stock_for_cart_product(product: Product, chosen_size: Optional[str]) ->
             if variant.stock_quantity is not None:
                 return variant.stock_quantity, "variant"
 
+    if source_type == "base_clothing":
+        base_obj = ClothingProduct.objects.filter(id=source_id, is_active=True).first()
+        if base_obj and size_value:
+            size_obj = ClothingProductSize.objects.filter(product=base_obj, size=size_value).first()
+            if size_obj and size_obj.stock_quantity is not None:
+                return size_obj.stock_quantity, "product_size"
+
+    if source_type == "base_shoes":
+        base_obj = ShoeProduct.objects.filter(id=source_id, is_active=True).first()
+        if base_obj and size_value:
+            size_obj = ShoeProductSize.objects.filter(product=base_obj, size=size_value).first()
+            if size_obj and size_obj.stock_quantity is not None:
+                return size_obj.stock_quantity, "product_size"
+
     return product.stock_quantity, "product"
 
 
@@ -117,6 +142,8 @@ def _decrement_stock_for_cart_item(product: Product, chosen_size: Optional[str],
 
     external = getattr(product, "external_data", None) or {}
     source_variant_id = external.get("source_variant_id")
+    source_type = (external.get("source_type") or "").lower()
+    source_id = external.get("source_id")
     normalized_type = (getattr(product, "product_type", None) or "").lower()
     size_value = (chosen_size or "").strip()
 
@@ -168,6 +195,36 @@ def _decrement_stock_for_cart_item(product: Product, chosen_size: Optional[str],
                         variant.is_available = False
                     variant.save(update_fields=["stock_quantity", "is_available", "updated_at"])
                     return
+
+    if source_type == "base_clothing":
+        base_obj = ClothingProduct.objects.select_for_update().filter(id=source_id, is_active=True).first()
+        if base_obj and size_value:
+            size_obj = ClothingProductSize.objects.select_for_update().filter(
+                product=base_obj, size=size_value
+            ).first()
+            if size_obj and size_obj.stock_quantity is not None:
+                if size_obj.stock_quantity < quantity:
+                    raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                size_obj.stock_quantity = size_obj.stock_quantity - quantity
+                if size_obj.stock_quantity == 0:
+                    size_obj.is_available = False
+                size_obj.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                return
+
+    if source_type == "base_shoes":
+        base_obj = ShoeProduct.objects.select_for_update().filter(id=source_id, is_active=True).first()
+        if base_obj and size_value:
+            size_obj = ShoeProductSize.objects.select_for_update().filter(
+                product=base_obj, size=size_value
+            ).first()
+            if size_obj and size_obj.stock_quantity is not None:
+                if size_obj.stock_quantity < quantity:
+                    raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                size_obj.stock_quantity = size_obj.stock_quantity - quantity
+                if size_obj.stock_quantity == 0:
+                    size_obj.is_available = False
+                size_obj.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                return
 
     # fallback: Product
     locked_product = Product.objects.select_for_update().get(pk=product.pk)
