@@ -36,6 +36,58 @@
   --border: #1b2536;
 }
 
+/* Пароль в тёмной теме: читаемые символы */
+.dark .auth-password-input {
+  color: #ffffff !important;
+  caret-color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background-color: #111827 !important;
+  border-color: #374151 !important;
+}
+
+/* Читаемые формы оформления в тёмной теме */
+.dark .checkout-form label {
+  color: #111827;
+}
+
+.dark .checkout-form .text-gray-500,
+.dark .checkout-form .text-gray-600,
+.dark .checkout-form .text-gray-700 {
+  color: #111827 !important;
+}
+
+.dark .checkout-form .text-main {
+  color: #374151;
+}
+
+.dark .checkout-form .hover-text-warm:hover {
+  color: var(--text-hover) !important;
+}
+
+.dark .checkout-form input,
+.dark .checkout-form select,
+.dark .checkout-form textarea {
+  background-color: #fef3c7;
+  border-color: #f59e0b;
+  color: #111827;
+}
+
+.dark .checkout-form input::placeholder,
+.dark .checkout-form textarea::placeholder {
+  color: #6b7280;
+}
+
+.dark .checkout-default-badge {
+  background-color: #f5f3ff;
+  color: #111827;
+}
+
+.dark .checkout-address-save {
+  background-color: #fef3c7;
+  border-color: #f59e0b;
+  color: #111827;
+}
+
 /* Утилиты на переменных */
 .bg-page { background-color: var(--bg); }
 .bg-surface { background-color: var(--surface); }

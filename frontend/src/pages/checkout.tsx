@@ -7,6 +7,7 @@ import Link from 'next/link'
 import api from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cart'
+import { useTheme } from '../context/ThemeContext'
 
 interface CartItem {
   id: number
@@ -62,6 +63,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const { user, loading: authLoading } = useAuth()
   const { refresh: refreshCart, setItemsCount } = useCartStore()
   const { t } = useTranslation('common')
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [cart, setCart] = useState<Cart | null>(initialCart || null)
   const [addresses, setAddresses] = useState<Address[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null)
@@ -277,7 +280,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           {/* Форма оформления */}
           <div className="lg:col-span-2">
-            <form onSubmit={submit} className="space-y-6">
+            <form onSubmit={submit} className="space-y-6 checkout-form">
               {/* Выбор адреса доставки */}
               {addresses.length > 0 && (
                 <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -288,7 +291,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                         key={address.id}
                         className={`rounded-lg border-2 p-4 cursor-pointer transition-all ${
                           selectedAddressId === address.id && useSavedAddress
-                            ? 'border-[var(--accent)] bg-[var(--surface)]'
+                            ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
                             : 'border-gray-200 hover:border-gray-300'
                         }`}
                         onClick={() => handleAddressSelect(address)}
@@ -298,7 +301,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-gray-900">{address.contact_name}</span>
                               {address.is_default && (
-                                <span className="text-xs bg-[var(--surface)] text-[var(--text-strong)] px-2 py-1 rounded">
+                                <span className="text-xs bg-[var(--surface)] text-[var(--text-strong)] px-2 py-1 rounded checkout-default-badge">
                                   {t('profile_address_default', 'По умолчанию')}
                                 </span>
                               )}
@@ -380,7 +383,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
 
                   {/* Предложение сохранить адрес */}
                   {user && (
-                    <div className="mb-4 p-3 bg-[var(--surface)] rounded-lg border border-[var(--border)]">
+                    <div className="mb-4 p-3 bg-[var(--surface)] rounded-lg border border-[var(--border)] checkout-address-save">
                       <label className="flex items-center cursor-pointer">
                         <input
                           type="checkbox"
@@ -680,7 +683,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   {/* Наложенный платёж */}
                   <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
                     paymentMethod === 'cod' 
-                      ? 'border-[var(--accent)] bg-[var(--surface)]' 
+                      ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
                       : 'border-gray-200 hover:bg-gray-50'
                   }`}>
                     <input
@@ -705,7 +708,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   {/* Банковская карта */}
                   <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
                     paymentMethod === 'card' 
-                      ? 'border-[var(--accent)] bg-[var(--surface)]' 
+                      ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
                       : 'border-gray-200 hover:bg-gray-50'
                   }`}>
                     <input

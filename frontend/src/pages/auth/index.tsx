@@ -3,6 +3,7 @@ import Head from 'next/head'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useAuth } from '../../context/AuthContext'
+import { useTheme } from '../../context/ThemeContext'
 import { useRouter } from 'next/router'
 
 export default function AuthIndexPage() {
@@ -48,6 +49,8 @@ function LoginForm() {
   const [smsCode, setSmsCode] = useState('')
   const [smsSent, setSmsSent] = useState(false)
   const { t } = useTranslation('common')
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -154,7 +157,9 @@ function LoginForm() {
               required
             />
             <input
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400"
+              className={`w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400 auth-password-input ${
+                isDark ? 'border-gray-700 bg-gray-900 placeholder:text-gray-400' : ''
+              }`}
               placeholder={t('password_placeholder', 'Пароль (мин. 8 знаков, буквы и цифры)')}
               type="password"
               value={password}
@@ -217,6 +222,8 @@ function RegisterForm() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { t } = useTranslation('common')
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -241,7 +248,16 @@ function RegisterForm() {
     <form onSubmit={submit} className="grid gap-3">
       <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('email', 'Email')} value={email} onChange={(e)=>setEmail(e.target.value)} required />
       <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('username', 'Имя пользователя')} value={username} onChange={(e)=>setUsername(e.target.value)} required />
-      <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('password_placeholder', 'Пароль (мин. 8 знаков, буквы и цифры)')} type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required />
+      <input
+        className={`w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400 auth-password-input ${
+          isDark ? 'border-gray-700 bg-gray-900 placeholder:text-gray-400' : ''
+        }`}
+        placeholder={t('password_placeholder', 'Пароль (мин. 8 знаков, буквы и цифры)')}
+        type="password"
+        value={password}
+        onChange={(e)=>setPassword(e.target.value)}
+        required
+      />
       {error ? <div className="text-sm text-[var(--text-strong)]">{error}</div> : null}
       <button type="submit" disabled={loading} className="rounded-md bg-[var(--accent)] px-4 py-2 text-white hover:bg-[var(--accent-strong)] disabled:opacity-60">{loading ? 'Регистрируем...' : 'Зарегистрироваться'}</button>
     </form>
