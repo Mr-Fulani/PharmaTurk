@@ -30,7 +30,6 @@ urlpatterns = [
 
     # Основной API
     path("api/", include("api.urls")),
-    # Примечание: users.urls уже включен в api/urls.py, поэтому здесь не дублируем
     path('api/orders/', include('apps.orders.urls')),
     path('api/favorites/', include('apps.favorites.urls')),
     path('api/feedback/', include('apps.feedback.urls')),
@@ -39,4 +38,7 @@ urlpatterns = [
 
 # Раздача медиа файлов в режиме разработки
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(
+        settings.MEDIA_URL,
+        document_root=settings.MEDIA_ROOT
+    )

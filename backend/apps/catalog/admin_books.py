@@ -33,7 +33,7 @@ class BookVariantImageInline(admin.TabularInline):
     """Inline для изображений вариантов книг."""
     model = BookVariantImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'is_main', 'sort_order')
+    fields = ('image_file', 'image_url', 'alt_text', 'is_main', 'sort_order')
 
 
 @admin.register(BookVariant)
@@ -52,7 +52,7 @@ class BookVariantAdmin(admin.ModelAdmin):
             'description': _("Форматы задайте в таблице форматов ниже.")
         }),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')}),
-        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
@@ -73,17 +73,19 @@ class ProductImageInline(admin.TabularInline):
     """Inline для изображений товара."""
     model = ProductImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'is_main', 'sort_order', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'is_main', 'sort_order', 'image_preview')
     readonly_fields = ('image_preview',)
     verbose_name = _('Изображение')
     verbose_name_plural = _('Изображения')
     
     def image_preview(self, obj):
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 100px; max-height: 100px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 100px; max-height: 100px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -111,7 +113,7 @@ class BookVariantInline(admin.TabularInline):
     """Inline для вариантов книг в ProductBooks."""
     model = BookVariant
     extra = 0
-    fields = ('name', 'cover_type', 'format_type', 'price', 'currency', 'is_active', 'sort_order')
+    fields = ('name', 'cover_type', 'format_type', 'price', 'currency', 'main_image', 'main_image_file', 'is_active', 'sort_order')
 
 
 @admin.register(ProductBooks)
@@ -167,7 +169,7 @@ class ProductBooksAdmin(admin.ModelAdmin):
             'description': _('Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях.')
         }),
         (_('Медиа'), {
-            'fields': ('main_image',)
+            'fields': ('main_image', 'main_image_file')
         }),
         (_('Мета'), {
             'fields': ('sku', 'barcode'),

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import api from '../lib/api'
 import { useEffect, useState, useCallback } from 'react'
 import { useCartStore } from '../store/cart'
+import { resolveMediaUrl } from '../lib/media'
 
 interface CartItem {
   id: number
@@ -315,6 +316,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                   const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
                     ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
                     : null
+                  const resolvedImage = resolveMediaUrl(item.product_image_url)
                   return (
                     <div
                       key={item.id}
@@ -325,9 +327,9 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                       href={getProductLink(item.product_slug, item.product, item.product_type)}
                       className="relative w-full sm:w-32 h-32 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100"
                     >
-                      {item.product_image_url ? (
+                      {resolvedImage ? (
                         <img
-                          src={item.product_image_url}
+                          src={resolvedImage}
                           alt={item.product_name || `Товар #${item.product}`}
                           className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
                         />

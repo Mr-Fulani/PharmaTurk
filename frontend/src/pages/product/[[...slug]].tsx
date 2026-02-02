@@ -11,6 +11,7 @@ import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedColor, getLocalizedProductDescription, ProductTranslation } from '../../lib/i18n'
+import { resolveMediaUrl } from '../../lib/media'
 import { useTheme } from '../../context/ThemeContext'
 
 type CategoryType =
@@ -228,15 +229,17 @@ export default function ProductPage({
       setSelectedSize(undefined)
       const gallerySourceLocal = found.images?.length ? found.images : product.images || []
       setActiveImage(
-        found.main_image ||
-          found.images?.find((img) => img.is_main)?.image_url ||
-          found.images?.[0]?.image_url ||
-          product.active_variant_main_image_url ||
-          product.main_image_url ||
-          product.main_image ||
-          gallerySourceLocal.find((img) => img.is_main)?.image_url ||
-          gallerySourceLocal[0]?.image_url ||
-          null
+        resolveMediaUrl(
+          found.main_image ||
+            found.images?.find((img) => img.is_main)?.image_url ||
+            found.images?.[0]?.image_url ||
+            product.active_variant_main_image_url ||
+            product.main_image_url ||
+            product.main_image ||
+            gallerySourceLocal.find((img) => img.is_main)?.image_url ||
+            gallerySourceLocal[0]?.image_url ||
+            null
+        ) || null
       )
     }
   }
@@ -246,7 +249,7 @@ export default function ProductPage({
     if (!product) return []
     const variantImages = selectedVariant?.images || []
     const productImages = product.images || []
-    const mainImageUrl = selectedVariant?.main_image || product.main_image_url || product.main_image
+    const mainImageUrl = resolveMediaUrl(selectedVariant?.main_image || product.main_image_url || product.main_image)
     
     // Используем изображения варианта если есть, иначе изображения продукта
     const baseImages = variantImages.length > 0 ? variantImages : productImages
@@ -264,14 +267,16 @@ export default function ProductPage({
   
   const gallerySource = buildGallerySource()
   const initialImage =
-    selectedVariant?.main_image ||
-    selectedVariant?.images?.find((img) => img.is_main)?.image_url ||
-    selectedVariant?.images?.[0]?.image_url ||
-    product?.active_variant_main_image_url ||
-    product?.main_image_url ||
-    product?.main_image ||
-    gallerySource.find((img) => img.is_main)?.image_url ||
-    gallerySource[0]?.image_url
+    resolveMediaUrl(
+      selectedVariant?.main_image ||
+        selectedVariant?.images?.find((img) => img.is_main)?.image_url ||
+        selectedVariant?.images?.[0]?.image_url ||
+        product?.active_variant_main_image_url ||
+        product?.main_image_url ||
+        product?.main_image ||
+        gallerySource.find((img) => img.is_main)?.image_url ||
+        gallerySource[0]?.image_url
+    ) || ''
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
 
   // Обновляем главную картинку при изменении товара или варианта
@@ -279,15 +284,17 @@ export default function ProductPage({
     if (!product) return
     const currentGallerySource = selectedVariant?.images?.length ? selectedVariant.images : (product.images || [])
     const newImage =
-      selectedVariant?.main_image ||
-      selectedVariant?.images?.find((img) => img.is_main)?.image_url ||
-      selectedVariant?.images?.[0]?.image_url ||
-      product.active_variant_main_image_url ||
-      product.main_image_url ||
-      product.main_image ||
-      currentGallerySource.find((img) => img.is_main)?.image_url ||
-      currentGallerySource[0]?.image_url ||
-      null
+      resolveMediaUrl(
+        selectedVariant?.main_image ||
+          selectedVariant?.images?.find((img) => img.is_main)?.image_url ||
+          selectedVariant?.images?.[0]?.image_url ||
+          product.active_variant_main_image_url ||
+          product.main_image_url ||
+          product.main_image ||
+          currentGallerySource.find((img) => img.is_main)?.image_url ||
+          currentGallerySource[0]?.image_url ||
+          null
+      ) || null
     setActiveImage(newImage)
   }, [product, selectedVariant, router.asPath])
 
@@ -385,16 +392,18 @@ export default function ProductPage({
             {/* Миниатюры слева вертикально */}
             {gallerySource.length > 1 && (
               <div className="flex flex-col gap-3 overflow-y-auto flex-shrink-0">
-                {gallerySource.map((img) => (
+                {gallerySource.map((img) => {
+                  const resolvedThumbnail = resolveMediaUrl(img.image_url)
+                  return (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     key={img.id}
-                    src={img.image_url}
+                    src={resolvedThumbnail}
                     alt={img.alt_text || product.name}
-                    className={`w-28 h-28 rounded-lg object-cover cursor-pointer border flex-shrink-0 ${activeImage === img.image_url ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200 hover:border-gray-300'}`}
-                    onClick={() => setActiveImage(img.image_url)}
+                    className={`w-28 h-28 rounded-lg object-cover cursor-pointer border flex-shrink-0 ${activeImage === resolvedThumbnail ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200 hover:border-gray-300'}`}
+                    onClick={() => setActiveImage(resolvedThumbnail || null)}
                   />
-                ))}
+                )})}
               </div>
             )}
             {/* Главная картинка/видео справа */}

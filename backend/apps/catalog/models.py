@@ -638,6 +638,12 @@ class Product(models.Model):
         blank=True,
         help_text=_("URL основного изображения (ссылка на CDN или внутреннее хранилище).")
     )
+    main_image_file = models.ImageField(
+        _("Главное изображение (файл)"),
+        upload_to="products/main/",
+        blank=True,
+        null=True,
+    )
     video_url = models.URLField(
         _("URL видео"),
         max_length=2000,
@@ -1186,6 +1192,12 @@ class ProductImage(models.Model):
         max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/gallery/",
+        blank=True,
+        null=True,
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -1229,6 +1241,12 @@ class ClothingVariant(models.Model):
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image_file = models.ImageField(
+        _("Главное изображение варианта (файл)"),
+        upload_to="products/variants/",
+        blank=True,
+        null=True,
+    )
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
@@ -1317,6 +1335,12 @@ class ClothingVariantImage(models.Model):
         _("URL изображения"),
         max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
+    )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/variants/gallery/",
+        blank=True,
+        null=True,
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -1521,6 +1545,12 @@ class ClothingProduct(models.Model):
     
     # Изображения
     main_image = models.URLField(_("Главное изображение"), blank=True)
+    main_image_file = models.ImageField(
+        _("Главное изображение (файл)"),
+        upload_to="products/clothing/main/",
+        blank=True,
+        null=True,
+    )
     
     # Внешние данные
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
@@ -1645,6 +1675,12 @@ class ClothingProductImage(models.Model):
         max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/clothing/gallery/",
+        blank=True,
+        null=True,
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -1754,6 +1790,12 @@ class ShoeProduct(models.Model):
         _("Главное изображение"),
         blank=True,
         help_text=_("URL главного фото; дополнительные фото задаются в галерее ниже.")
+    )
+    main_image_file = models.ImageField(
+        _("Главное изображение (файл)"),
+        upload_to="products/shoes/main/",
+        blank=True,
+        null=True,
     )
     
     # Внешние данные
@@ -1879,6 +1921,12 @@ class ShoeProductImage(models.Model):
         max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/shoes/gallery/",
+        blank=True,
+        null=True,
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -1925,6 +1973,12 @@ class ShoeVariant(models.Model):
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image_file = models.ImageField(
+        _("Главное изображение варианта (файл)"),
+        upload_to="products/shoes/variants/",
+        blank=True,
+        null=True,
+    )
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
@@ -2013,6 +2067,12 @@ class ShoeVariantImage(models.Model):
         _("URL изображения"),
         max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
+    )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/shoes/variants/gallery/",
+        blank=True,
+        null=True,
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -2115,6 +2175,12 @@ class JewelryProduct(models.Model):
 
     # Изображения
     main_image = models.URLField(_("Главное изображение"), blank=True)
+    main_image_file = models.ImageField(
+        _("Главное изображение (файл)"),
+        upload_to="products/jewelry/main/",
+        blank=True,
+        null=True,
+    )
 
     # Внешние данные
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
@@ -2208,6 +2274,12 @@ class JewelryProductImage(models.Model):
         max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/jewelry/gallery/",
+        blank=True,
+        null=True,
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -2255,6 +2327,12 @@ class JewelryVariant(models.Model):
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image_file = models.ImageField(
+        _("Главное изображение варианта (файл)"),
+        upload_to="products/jewelry/variants/",
+        blank=True,
+        null=True,
+    )
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
@@ -2390,6 +2468,12 @@ class JewelryVariantImage(models.Model):
         max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/jewelry/variants/gallery/",
+        blank=True,
+        null=True,
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -2470,6 +2554,12 @@ class ElectronicsProduct(models.Model):
     
     # Изображения
     main_image = models.URLField(_("Главное изображение"), blank=True)
+    main_image_file = models.ImageField(
+        _("Главное изображение (файл)"),
+        upload_to="products/electronics/main/",
+        blank=True,
+        null=True,
+    )
     
     # Внешние данные
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
@@ -2695,6 +2785,12 @@ class ElectronicsProductImage(models.Model):
         max_length=2000,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/electronics/gallery/",
+        blank=True,
+        null=True,
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -2773,6 +2869,12 @@ class FurnitureProduct(models.Model):
     
     # Изображения
     main_image = models.URLField(_("Главное изображение"), blank=True)
+    main_image_file = models.ImageField(
+        _("Главное изображение (файл)"),
+        upload_to="products/furniture/main/",
+        blank=True,
+        null=True,
+    )
     
     # Внешние данные
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
@@ -2873,6 +2975,12 @@ class FurnitureVariant(models.Model):
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image_file = models.ImageField(
+        _("Главное изображение варианта (файл)"),
+        upload_to="products/furniture/variants/",
+        blank=True,
+        null=True,
+    )
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
     external_url = models.URLField(_("Внешняя ссылка"), blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
@@ -2924,6 +3032,12 @@ class FurnitureVariantImage(models.Model):
         verbose_name=_("Вариант мебели")
     )
     image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/furniture/variants/gallery/",
+        blank=True,
+        null=True,
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
@@ -3293,6 +3407,12 @@ class BookVariantImage(models.Model):
         verbose_name=_("Вариант книги")
     )
     image_url = models.URLField(_("URL изображения"), help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте."))
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/books/variants/gallery/",
+        blank=True,
+        null=True,
+    )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)

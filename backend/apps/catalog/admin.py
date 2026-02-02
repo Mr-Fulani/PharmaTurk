@@ -20,6 +20,7 @@ from .models import (
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
+    JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
     Service, ServiceTranslation,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
     Author, ProductAuthor,
@@ -172,6 +173,7 @@ class FurnitureVariantInline(admin.TabularInline):
         'color',
         'price', 'currency',
         'main_image',
+        'main_image_file',
         'is_active', 'sort_order',
     )
     readonly_fields = ('slug',)
@@ -182,16 +184,18 @@ class FurnitureVariantImageInline(admin.TabularInline):
     """Инлайн изображений варианта мебели."""
     model = FurnitureVariantImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -354,17 +358,19 @@ class ProductImageInline(admin.TabularInline):
     """Инлайн для изображений товара."""
     model = ProductImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -373,17 +379,19 @@ class ShoeProductImageInline(admin.TabularInline):
     """Инлайн для изображений обуви."""
     model = ShoeProductImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -392,17 +400,19 @@ class ClothingProductImageInline(admin.TabularInline):
     """Инлайн для изображений одежды."""
     model = ClothingProductImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -411,17 +421,19 @@ class ElectronicsProductImageInline(admin.TabularInline):
     """Инлайн для изображений электроники."""
     model = ElectronicsProductImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -430,17 +442,19 @@ class ClothingVariantImageInline(admin.TabularInline):
     """Инлайн для изображений варианта одежды."""
     model = ClothingVariantImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = VariantImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -449,17 +463,88 @@ class ShoeVariantImageInline(admin.TabularInline):
     """Инлайн для изображений варианта обуви."""
     model = ShoeVariantImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = VariantImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
+class JewelryProductTranslationInline(admin.TabularInline):
+    model = JewelryProductTranslation
+    extra = 1
+    fields = ('locale', 'description')
+    verbose_name = _("Перевод")
+    verbose_name_plural = _("Переводы")
+
+
+class JewelryProductImageInline(admin.TabularInline):
+    model = JewelryProductImage
+    extra = 1
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
+    formset = ProductImageInlineFormSet
+    verbose_name = _("Изображение")
+    verbose_name_plural = _("Изображения")
+
+    def image_preview(self, obj):
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
+class JewelryVariantInline(admin.TabularInline):
+    model = JewelryVariant
+    extra = 0
+    fields = (
+        'name', 'slug',
+        'color', 'material',
+        'price', 'currency',
+        'main_image', 'main_image_file',
+        'is_active', 'sort_order',
+    )
+    readonly_fields = ('slug',)
+    show_change_link = True
+
+
+class JewelryVariantSizeInline(admin.TabularInline):
+    model = JewelryVariantSize
+    extra = 0
+    fields = ('size_value', 'size_unit', 'size_type', 'size_display', 'is_available', 'stock_quantity', 'sort_order')
+    ordering = ('sort_order',)
+
+
+class JewelryVariantImageInline(admin.TabularInline):
+    model = JewelryVariantImage
+    extra = 1
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
+    formset = VariantImageInlineFormSet
+
+    def image_preview(self, obj):
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -521,7 +606,7 @@ class BaseProductAdmin(admin.ModelAdmin):
                 "Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях."
             )
         }),
-        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
         (_('Мета'), {'fields': ('sku', 'barcode')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Синхронизация'), {'fields': ('last_synced_at',)}),
@@ -631,11 +716,13 @@ class ProductImageAdmin(admin.ModelAdmin):
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -708,7 +795,7 @@ class ClothingVariantInline(admin.TabularInline):
     """Инлайн для вариантов одежды (основные поля)."""
     model = ClothingVariant
     extra = 0
-    fields = ('name', 'slug', 'color', 'price', 'currency', 'is_active', 'sort_order')
+    fields = ('name', 'slug', 'color', 'price', 'currency', 'main_image', 'main_image_file', 'is_active', 'sort_order')
     readonly_fields = ('slug',)
     show_change_link = True
 
@@ -760,7 +847,7 @@ class ClothingVariantAdmin(admin.ModelAdmin):
             'description': _("Размеры задайте в таблице размеров ниже.")
         }),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
@@ -846,7 +933,7 @@ class ClothingProductAdmin(admin.ModelAdmin):
         (_('Clothing'), {'fields': ('material', 'season')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('Media'), {'fields': ('main_image',)}),
+        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
@@ -1027,6 +1114,7 @@ class ShoeVariantInline(admin.TabularInline):
         'color',
         'price', 'currency',
         'main_image',
+        'main_image_file',
         'is_active', 'sort_order',
     )
     readonly_fields = ('slug',)
@@ -1080,7 +1168,7 @@ class ShoeVariantAdmin(admin.ModelAdmin):
             'description': _("Размеры задайте в таблице размеров ниже.")
         }),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
@@ -1166,7 +1254,7 @@ class ShoeProductAdmin(admin.ModelAdmin):
         (_('Shoes'), {'fields': ('material', 'heel_height', 'sole_type')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('Media'), {'fields': ('main_image',)}),
+        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
@@ -1333,6 +1421,46 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
         return super().get_queryset(request).filter(device_type__isnull=False).exclude(device_type='').filter(parent__isnull=True)
 
 
+@admin.register(JewelryVariant)
+class JewelryVariantAdmin(admin.ModelAdmin):
+    list_display = ('name', 'product', 'color', 'material', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'color', 'material', 'currency', 'created_at')
+    search_fields = ('name', 'product__name', 'slug', 'color', 'material', 'sku', 'barcode', 'gtin', 'mpn')
+    ordering = ('product', 'sort_order', '-created_at')
+    readonly_fields = ('slug',)
+    actions = [activate_variants, deactivate_variants]
+    fieldsets = (
+        (None, {'fields': ('product', 'name', 'slug')}),
+        (_('Характеристики'), {'fields': ('color', 'material')}),
+        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
+        (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
+        (_('Статус'), {'fields': ('is_active', 'sort_order')}),
+    )
+    inlines = [JewelryVariantSizeInline, JewelryVariantImageInline]
+
+
+@admin.register(JewelryProduct)
+class JewelryProductAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug', 'category', 'brand', 'jewelry_type', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_featured', 'category', 'brand', 'jewelry_type', 'currency', 'created_at')
+    search_fields = ('name', 'slug', 'description', 'material', 'stone_type')
+    ordering = ('-created_at',)
+    prepopulated_fields = {'slug': ('name',)}
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Categorization'), {'fields': ('category', 'brand')}),
+        (_('Jewelry'), {'fields': ('jewelry_type', 'material', 'metal_purity', 'stone_type', 'carat_weight')}),
+        (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
+        (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
+        (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
+    )
+    inlines = [JewelryProductTranslationInline, JewelryProductImageInline, JewelryVariantInline]
+
+
 @admin.register(ElectronicsProduct)
 class ElectronicsProductAdmin(admin.ModelAdmin):
     """Админка для товаров электроники."""
@@ -1348,7 +1476,7 @@ class ElectronicsProductAdmin(admin.ModelAdmin):
         (_('Electronics'), {'fields': ('model', 'specifications', 'warranty', 'power_consumption')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('Media'), {'fields': ('main_image',)}),
+        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
@@ -1370,7 +1498,7 @@ class FurnitureVariantAdmin(admin.ModelAdmin):
             'fields': ('color',),
         }),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
@@ -1393,7 +1521,7 @@ class FurnitureProductAdmin(admin.ModelAdmin):
         (_('Furniture'), {'fields': ('material', 'furniture_type', 'dimensions')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('Media'), {'fields': ('main_image',)}),
+        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )

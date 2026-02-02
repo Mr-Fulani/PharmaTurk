@@ -41,6 +41,16 @@ def _resolve_media_url(value, request):
     return value
 
 
+def _resolve_file_url(file_field, request):
+    if not file_field:
+        return None
+    if hasattr(file_field, "url"):
+        if request:
+            return request.build_absolute_uri(file_field.url)
+        return file_field.url
+    return None
+
+
 class CategoryTranslationSerializer(serializers.ModelSerializer):
     """Сериализатор для переводов категорий."""
     
@@ -259,6 +269,9 @@ class ProductImageSerializer(serializers.ModelSerializer):
     
     def get_image_url(self, obj):
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
         return _resolve_media_url(obj.image_url, request)
 
 
@@ -347,6 +360,9 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_main_image_url(self, obj):
         """URL главного изображения."""
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
         
         # Сначала проверяем main_image
         if obj.main_image:
@@ -377,6 +393,9 @@ class ProductSerializer(serializers.ModelSerializer):
         # Затем ищем главное изображение в связанных изображениях
         main_img = obj.images.filter(is_main=True).first()
         if main_img:
+            file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
+            if file_url:
+                return file_url
             if 'instagram.f' in main_img.image_url or 'cdninstagram.com' in main_img.image_url:
                 if request:
                     scheme = request.scheme
@@ -392,6 +411,9 @@ class ProductSerializer(serializers.ModelSerializer):
         # Если нет главного, берем первое изображение
         first_img = obj.images.first()
         if first_img:
+            file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
+            if file_url:
+                return file_url
             if 'instagram.f' in first_img.image_url or 'cdninstagram.com' in first_img.image_url:
                 if request:
                     scheme = request.scheme
@@ -858,6 +880,9 @@ class ClothingProductImageSerializer(serializers.ModelSerializer):
     
     def get_image_url(self, obj):
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
         return _resolve_media_url(obj.image_url, request)
 
 
@@ -872,6 +897,9 @@ class ClothingVariantImageSerializer(serializers.ModelSerializer):
     
     def get_image_url(self, obj):
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
         return _resolve_media_url(obj.image_url, request)
 
 
@@ -997,26 +1025,44 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         затем первое изображение.
         """
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
         if obj.main_image:
             return _resolve_media_url(obj.main_image, request)
         # Пробуем активный вариант
         variant = self._get_active_variant(obj)
         if variant:
+            file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+            if file_url:
+                return file_url
             if variant.main_image:
                 return _resolve_media_url(variant.main_image, request)
             v_main = variant.images.filter(is_main=True).first()
             if v_main:
+                file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(v_main.image_url, request)
             v_first = variant.images.first()
             if v_first:
+                file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(v_first.image_url, request)
         gallery = getattr(obj, "images", None)
         if gallery:
             main_img = obj.images.filter(is_main=True).first()
             if main_img:
+                file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(main_img.image_url, request)
             first_img = obj.images.first()
             if first_img:
+                file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(first_img.image_url, request)
         return None
     
@@ -1184,13 +1230,22 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         if not variant:
             return None
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+        if file_url:
+            return file_url
         if variant.main_image:
             return _resolve_media_url(variant.main_image, request)
         main_img = variant.images.filter(is_main=True).first()
         if main_img:
+            file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
+            if file_url:
+                return file_url
             return _resolve_media_url(main_img.image_url, request)
         first_img = variant.images.first()
         if first_img:
+            file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
+            if file_url:
+                return file_url
             return _resolve_media_url(first_img.image_url, request)
         return None
 
@@ -1278,25 +1333,43 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         затем первое изображение.
         """
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
         if obj.main_image:
             return _resolve_media_url(obj.main_image, request)
         variant = self._get_active_variant(obj)
         if variant:
+            file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+            if file_url:
+                return file_url
             if variant.main_image:
                 return _resolve_media_url(variant.main_image, request)
             v_main = variant.images.filter(is_main=True).first()
             if v_main:
+                file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(v_main.image_url, request)
             v_first = variant.images.first()
             if v_first:
+                file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(v_first.image_url, request)
         main_img = getattr(obj, "images", None)
         if main_img:
             main_img = obj.images.filter(is_main=True).first()
             if main_img:
+                file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(main_img.image_url, request)
             first_img = obj.images.first()
             if first_img:
+                file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(first_img.image_url, request)
         return None
     
@@ -1465,13 +1538,22 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         if not variant:
             return None
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+        if file_url:
+            return file_url
         if variant.main_image:
             return _resolve_media_url(variant.main_image, request)
         main_img = variant.images.filter(is_main=True).first()
         if main_img:
+            file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
+            if file_url:
+                return file_url
             return _resolve_media_url(main_img.image_url, request)
         first_img = variant.images.first()
         if first_img:
+            file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
+            if file_url:
+                return file_url
             return _resolve_media_url(first_img.image_url, request)
         return None
 
@@ -1487,6 +1569,9 @@ class ShoeProductImageSerializer(serializers.ModelSerializer):
     
     def get_image_url(self, obj):
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
         return _resolve_media_url(obj.image_url, request)
 
 
@@ -1501,6 +1586,9 @@ class ShoeVariantImageSerializer(serializers.ModelSerializer):
     
     def get_image_url(self, obj):
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
         return _resolve_media_url(obj.image_url, request)
 
 
@@ -1598,6 +1686,9 @@ class ElectronicsProductImageSerializer(serializers.ModelSerializer):
     
     def get_image_url(self, obj):
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
         return _resolve_media_url(obj.image_url, request)
 
 
@@ -1631,15 +1722,24 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
         затем первое изображение.
         """
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
         if obj.main_image:
             return _resolve_media_url(obj.main_image, request)
         gallery = getattr(obj, "images", None)
         if gallery:
             main_img = obj.images.filter(is_main=True).first()
             if main_img:
+                file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(main_img.image_url, request)
             first_img = obj.images.first()
             if first_img:
+                file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(first_img.image_url, request)
         return None
     
@@ -1696,6 +1796,9 @@ class FurnitureVariantImageSerializer(serializers.ModelSerializer):
     
     def get_image_url(self, obj):
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
         return _resolve_media_url(obj.image_url, request)
 
 
@@ -1760,18 +1863,30 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
     def get_main_image_url(self, obj):
         """URL главного изображения."""
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
         if obj.main_image:
             return _resolve_media_url(obj.main_image, request)
         # Пробуем активный вариант
         variant = self._get_active_variant(obj)
         if variant:
+            file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+            if file_url:
+                return file_url
             if variant.main_image:
                 return _resolve_media_url(variant.main_image, request)
             v_main = variant.images.filter(is_main=True).first()
             if v_main:
+                file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(v_main.image_url, request)
             v_first = variant.images.first()
             if v_first:
+                file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                if file_url:
+                    return file_url
                 return _resolve_media_url(v_first.image_url, request)
         return None
     
@@ -1903,13 +2018,22 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         if not variant:
             return None
         request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+        if file_url:
+            return file_url
         if variant.main_image:
             return _resolve_media_url(variant.main_image, request)
         main_img = variant.images.filter(is_main=True).first()
         if main_img:
+            file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
+            if file_url:
+                return file_url
             return _resolve_media_url(main_img.image_url, request)
         first_img = variant.images.first()
         if first_img:
+            file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
+            if file_url:
+                return file_url
             return _resolve_media_url(first_img.image_url, request)
         return None
 

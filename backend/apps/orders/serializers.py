@@ -1,4 +1,5 @@
 from decimal import Decimal
+from urllib.parse import quote
 
 from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
@@ -11,6 +12,7 @@ from apps.catalog.models import (
     ShoeProduct,
     ElectronicsProduct,
     FurnitureProduct,
+    JewelryProduct,
     ClothingVariant,
     ShoeVariant,
     FurnitureVariant,
@@ -26,6 +28,42 @@ VARIANT_MODEL_MAP = {
     'electronics': ElectronicsProduct,
     'furniture': FurnitureVariant,
 }
+
+
+def _resolve_media_url(value, request):
+    if not value:
+        return None
+    if 'instagram.f' in value or 'cdninstagram.com' in value:
+        if request:
+            scheme = request.scheme
+            host = request.get_host()
+            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                base_url = f"{scheme}://localhost:8000"
+            else:
+                base_url = f"{scheme}://{host}"
+            return f"{base_url}/api/catalog/proxy-image/?url={quote(value)}"
+        return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(value)}"
+    if not value.startswith('http'):
+        if request:
+            scheme = request.scheme
+            host = request.get_host()
+            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                base_url = f"{scheme}://localhost:8000"
+            else:
+                base_url = f"{scheme}://{host}"
+            return f"{base_url}/media/{value}"
+        return f"http://localhost:8000/media/{value}"
+    return value
+
+
+def _resolve_file_url(file_field, request):
+    if not file_field:
+        return None
+    if hasattr(file_field, "url"):
+        if request:
+            return request.build_absolute_uri(file_field.url)
+        return file_field.url
+    return None
 
 PRODUCT_TYPE_ALIASES = {
     'supplements': 'supplements',
@@ -355,39 +393,124 @@ class CartItemSerializer(serializers.ModelSerializer):
         product = obj.product
         if not product:
             return None
+        request = self.context.get('request')
         
         # Сначала проверяем main_image
+        file_url = _resolve_file_url(getattr(product, "main_image_file", None), request)
+        if file_url:
+            return file_url
         if product.main_image:
-            return product.main_image
+            return _resolve_media_url(product.main_image, request)
 
         # Затем ищем главное изображение в связанных изображениях продукта
         main_img = product.images.filter(is_main=True).first()
         if main_img:
-            return main_img.image_url
+            file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(main_img.image_url, request)
 
         first_img = product.images.first()
         if first_img:
-            return first_img.image_url
+            file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(first_img.image_url, request)
+
+        # Для отдельных типов пробуем базовую модель по slug (если Product пустой)
+        try:
+            base_models = {
+                "shoes": ShoeProduct,
+                "clothing": ClothingProduct,
+                "jewelry": JewelryProduct,
+                "electronics": ElectronicsProduct,
+                "furniture": FurnitureProduct,
+            }
+            base_model = base_models.get(product.product_type)
+            if base_model:
+                base_obj = (
+                    base_model.objects.filter(slug=product.slug, is_active=True)
+                    .prefetch_related("images", "variants__images")
+                    .first()
+                )
+                if base_obj:
+                    file_url = _resolve_file_url(getattr(base_obj, "main_image_file", None), request)
+                    if file_url:
+                        return file_url
+                    if getattr(base_obj, "main_image", ""):
+                        return _resolve_media_url(base_obj.main_image, request)
+                    base_main = base_obj.images.filter(is_main=True).first()
+                    if base_main:
+                        file_url = _resolve_file_url(getattr(base_main, "image_file", None), request)
+                        if file_url:
+                            return file_url
+                        return _resolve_media_url(base_main.image_url, request)
+                    base_first = base_obj.images.first()
+                    if base_first:
+                        file_url = _resolve_file_url(getattr(base_first, "image_file", None), request)
+                        if file_url:
+                            return file_url
+                        return _resolve_media_url(base_first.image_url, request)
+                    # Фолбэк к первому варианту базового товара
+                    first_variant = base_obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
+                    if first_variant:
+                        file_url = _resolve_file_url(getattr(first_variant, "main_image_file", None), request)
+                        if file_url:
+                            return file_url
+                        if first_variant.main_image:
+                            return _resolve_media_url(first_variant.main_image, request)
+                        v_main = first_variant.images.filter(is_main=True).first()
+                        if v_main:
+                            file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                            if file_url:
+                                return file_url
+                            return _resolve_media_url(v_main.image_url, request)
+                        v_first = first_variant.images.first()
+                        if v_first:
+                            file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                            if file_url:
+                                return file_url
+                            return _resolve_media_url(v_first.image_url, request)
+        except Exception:
+            pass
 
         # Фолбэк: пробуем подтянуть изображение из варианта по сохранённым external_data
         ext = getattr(product, "external_data", {}) or {}
         variant_slug = ext.get("source_variant_slug")
         effective_type = ext.get("effective_type") or ext.get("source_type")
-        if not variant_slug or not effective_type:
-            return None
+        if not effective_type:
+            effective_type = product.product_type
+        if not variant_slug:
+            # Старые записи могли сохраниться без external_data.
+            # Для обуви/одежды slug базовой карточки создавался как "{type}-{variant_slug}".
+            if effective_type in ("shoes", "clothing"):
+                prefix = f"{effective_type}-"
+                if product.slug.startswith(prefix):
+                    variant_slug = product.slug.replace(prefix, "", 1)
+            if not variant_slug:
+                variant_slug = product.slug
 
         variant_model = VARIANT_MODEL_MAP.get(effective_type)
         if variant_model and variant_model in (ClothingVariant, ShoeVariant):
             variant = variant_model.objects.filter(slug=variant_slug, is_active=True).prefetch_related("images").first()
             if variant:
+                file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+                if file_url:
+                    return file_url
                 if variant.main_image:
-                    return variant.main_image
+                    return _resolve_media_url(variant.main_image, request)
                 v_main = variant.images.filter(is_main=True).first()
                 if v_main:
-                    return v_main.image_url
+                    file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                    if file_url:
+                        return file_url
+                    return _resolve_media_url(v_main.image_url, request)
                 v_first = variant.images.first()
                 if v_first:
-                    return v_first.image_url
+                    file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                    if file_url:
+                        return file_url
+                    return _resolve_media_url(v_first.image_url, request)
 
         # Дополнительный фолбэк: пробуем найти базовую карточку обуви/одежды и взять первую активную вариацию
         try:
@@ -396,27 +519,45 @@ class CartItemSerializer(serializers.ModelSerializer):
                 if base_shoe:
                     v = base_shoe.variants.filter(is_active=True).order_by('sort_order', 'id').first()
                     if v:
+                        file_url = _resolve_file_url(getattr(v, "main_image_file", None), request)
+                        if file_url:
+                            return file_url
                         if v.main_image:
-                            return v.main_image
+                            return _resolve_media_url(v.main_image, request)
                         v_main = v.images.filter(is_main=True).first()
                         if v_main:
-                            return v_main.image_url
+                            file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                            if file_url:
+                                return file_url
+                            return _resolve_media_url(v_main.image_url, request)
                         v_first = v.images.first()
                         if v_first:
-                            return v_first.image_url
+                            file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                            if file_url:
+                                return file_url
+                            return _resolve_media_url(v_first.image_url, request)
             if product.product_type == 'clothing':
                 base_cloth = ClothingProduct.objects.filter(slug=product.slug, is_active=True).prefetch_related('variants__images').first()
                 if base_cloth:
                     v = base_cloth.variants.filter(is_active=True).order_by('sort_order', 'id').first()
                     if v:
+                        file_url = _resolve_file_url(getattr(v, "main_image_file", None), request)
+                        if file_url:
+                            return file_url
                         if v.main_image:
-                            return v.main_image
+                            return _resolve_media_url(v.main_image, request)
                         v_main = v.images.filter(is_main=True).first()
                         if v_main:
-                            return v_main.image_url
+                            file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                            if file_url:
+                                return file_url
+                            return _resolve_media_url(v_main.image_url, request)
                         v_first = v.images.first()
                         if v_first:
-                            return v_first.image_url
+                            file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                            if file_url:
+                                return file_url
+                            return _resolve_media_url(v_first.image_url, request)
         except Exception:
             pass
 

@@ -1,20 +1,13 @@
 #!/usr/bin/env python
 """Скрипт для загрузки тестовых данных фармацевтического магазина."""
 
-import os
-import sys
-import django
 from decimal import Decimal
+import os
 
-# Настройка Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-django.setup()
-
-from apps.catalog.models import Category, Brand, Product, ProductImage
-from django.utils.text import slugify
+import django
 
 
-def create_categories():
+def create_categories(Category):
     """Создает категории товаров."""
     categories_data = [
         {
@@ -44,11 +37,13 @@ def create_categories():
         },
         {
             'name': 'Сердечно-сосудистые',
-            'description': 'Препараты для лечения сердечно-сосудистых заболеваний',
+            'description': (
+                'Препараты для лечения сердечно-сосудистых заболеваний'
+            ),
             'slug': 'cardiovascular'
         }
     ]
-    
+
     categories = {}
     for data in categories_data:
         category, created = Category.objects.get_or_create(
@@ -63,15 +58,15 @@ def create_categories():
             print(f"✅ Создана категория: {category.name}")
         else:
             print(f"📝 Категория уже существует: {category.name}")
-    
+
     return categories
 
 
-def create_brands():
+def create_brands(Brand, slugify):
     """Создает бренды."""
     brands_data = [
         'Bayer',
-        'Pfizer', 
+        'Pfizer',
         'Novartis',
         'Roche',
         'Merck',
@@ -81,7 +76,7 @@ def create_brands():
         'GlaxoSmithKline',
         'Eli Lilly'
     ]
-    
+
     brands = {}
     for name in brands_data:
         slug = slugify(name)
@@ -94,17 +89,20 @@ def create_brands():
             print(f"✅ Создан бренд: {brand.name}")
         else:
             print(f"📝 Бренд уже существует: {brand.name}")
-    
+
     return brands
 
 
-def create_products(categories, brands):
+def create_products(Product, categories, brands, slugify):
     """Создает тестовые товары."""
     products_data = [
         # Антибиотики
         {
             'name': 'Амоксициллин 500мг',
-            'description': 'Антибиотик широкого спектра действия для лечения бактериальных инфекций',
+            'description': (
+                'Антибиотик широкого спектра действия для лечения '
+                'бактериальных инфекций'
+            ),
             'price': Decimal('150.00'),
             'currency': 'RUB',
             'category': categories['antibiotics'],
@@ -115,7 +113,9 @@ def create_products(categories, brands):
         },
         {
             'name': 'Азитромицин 250мг',
-            'description': 'Антибиотик-макролид для лечения респираторных инфекций',
+            'description': (
+                'Антибиотик-макролид для лечения респираторных инфекций'
+            ),
             'price': Decimal('280.00'),
             'currency': 'RUB',
             'category': categories['antibiotics'],
@@ -135,11 +135,14 @@ def create_products(categories, brands):
             'stock_quantity': 20,
             'is_active': True
         },
-        
+
         # Обезболивающие
         {
             'name': 'Ибупрофен 400мг',
-            'description': 'Нестероидный противовоспалительный препарат для снятия боли и воспаления',
+            'description': (
+                'Нестероидный противовоспалительный препарат для снятия '
+                'боли и воспаления'
+            ),
             'price': Decimal('120.00'),
             'currency': 'RUB',
             'category': categories['painkillers'],
@@ -161,7 +164,10 @@ def create_products(categories, brands):
         },
         {
             'name': 'Диклофенак 50мг',
-            'description': 'Противовоспалительный препарат для лечения артрита и болей в суставах',
+            'description': (
+                'Противовоспалительный препарат для лечения артрита и '
+                'болей в суставах'
+            ),
             'price': Decimal('200.00'),
             'currency': 'RUB',
             'category': categories['painkillers'],
@@ -170,7 +176,7 @@ def create_products(categories, brands):
             'stock_quantity': 40,
             'is_active': True
         },
-        
+
         # Витамины
         {
             'name': 'Витамин C 1000мг',
@@ -196,7 +202,9 @@ def create_products(categories, brands):
         },
         {
             'name': 'Комплекс витаминов группы B',
-            'description': 'Комплекс витаминов B1, B6, B12 для нервной системы',
+            'description': (
+                'Комплекс витаминов B1, B6, B12 для нервной системы'
+            ),
             'price': Decimal('320.00'),
             'currency': 'RUB',
             'category': categories['vitamins'],
@@ -205,11 +213,13 @@ def create_products(categories, brands):
             'stock_quantity': 45,
             'is_active': True
         },
-        
+
         # БАДы
         {
             'name': 'Омега-3 1000мг',
-            'description': 'Рыбий жир с высоким содержанием омега-3 жирных кислот',
+            'description': (
+                'Рыбий жир с высоким содержанием омега-3 жирных кислот'
+            ),
             'price': Decimal('400.00'),
             'currency': 'RUB',
             'category': categories['supplements'],
@@ -231,7 +241,9 @@ def create_products(categories, brands):
         },
         {
             'name': 'Магний 400мг',
-            'description': 'Магниевая добавка для расслабления мышц и нервной системы',
+            'description': (
+                'Магниевая добавка для расслабления мышц и нервной системы'
+            ),
             'price': Decimal('220.00'),
             'currency': 'RUB',
             'category': categories['supplements'],
@@ -240,7 +252,7 @@ def create_products(categories, brands):
             'stock_quantity': 70,
             'is_active': True
         },
-        
+
         # Средства для кожи
         {
             'name': 'Крем с пантенолом 5%',
@@ -275,11 +287,13 @@ def create_products(categories, brands):
             'stock_quantity': 30,
             'is_active': True
         },
-        
+
         # Сердечно-сосудистые
         {
             'name': 'Аспирин 100мг',
-            'description': 'Ацетилсалициловая кислота для профилактики тромбозов',
+            'description': (
+                'Ацетилсалициловая кислота для профилактики тромбозов'
+            ),
             'price': Decimal('90.00'),
             'currency': 'RUB',
             'category': categories['cardiovascular'],
@@ -300,55 +314,61 @@ def create_products(categories, brands):
             'is_active': True
         }
     ]
-    
+
     created_count = 0
     for data in products_data:
         # Создаем качественный slug из названия
         base_slug = slugify(data['name'])
         # Добавляем уникальный суффикс для избежания конфликтов
         slug = f"{base_slug}-{data['sku'].lower()}"
-        
+
         product, created = Product.objects.get_or_create(
             slug=slug,
             defaults=data
         )
-        
+
         if created:
             created_count += 1
-            print(f"✅ Создан товар: {product.name} - {product.price} {product.currency}")
+            price_info = f"{product.price} {product.currency}"
+            print(f"✅ Создан товар: {product.name} - {price_info}")
         else:
             print(f"📝 Товар уже существует: {product.name}")
-    
+
     print(f"\n🎉 Создано новых товаров: {created_count}")
     return created_count
 
 
 def main():
     """Основная функция загрузки данных."""
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+    django.setup()
+    from apps.catalog.models import Category, Brand, Product
+    from django.utils.text import slugify
+
     print("🚀 Начинаем загрузку тестовых данных...\n")
-    
+
     # Создаем категории
     print("📂 Создание категорий:")
-    categories = create_categories()
+    categories = create_categories(Category)
     print()
-    
+
     # Создаем бренды
     print("🏷️ Создание брендов:")
-    brands = create_brands()
+    brands = create_brands(Brand, slugify)
     print()
-    
+
     # Создаем товары
     print("💊 Создание товаров:")
-    created_count = create_products(categories, brands)
+    created_count = create_products(Product, categories, brands, slugify)
     print()
-    
+
     # Итоговая статистика
     print("📊 ИТОГОВАЯ СТАТИСТИКА:")
     print(f"Категорий: {Category.objects.count()}")
     print(f"Брендов: {Brand.objects.count()}")
     print(f"Товаров: {Product.objects.count()}")
     print(f"Новых товаров создано: {created_count}")
-    
+
     print("\n✅ Загрузка тестовых данных завершена!")
 
 

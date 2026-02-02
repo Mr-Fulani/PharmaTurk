@@ -9,6 +9,7 @@ from .models import (
     ClothingVariantImage,
     ShoeVariantImage,
     Category,
+    validate_card_media_file_size,
 )
 
 
@@ -17,14 +18,21 @@ class ProductImageInlineFormSet(BaseInlineFormSet):
 
     def clean(self):
         super().clean()
-        images = [
+        active_forms = [
             form for form in self.forms
-            if not form.cleaned_data.get("DELETE", False) and form.cleaned_data.get("image_url")
+            if not form.cleaned_data.get("DELETE", False)
         ]
+        images = [
+            form for form in active_forms
+            if form.cleaned_data.get("image_url") or form.cleaned_data.get("image_file")
+        ]
+        for form in images:
+            image_file = form.cleaned_data.get("image_file")
+            if image_file:
+                validate_card_media_file_size(image_file)
         if len(images) > 5:
             raise ValidationError(_("Можно загрузить не более 5 изображений товара."))
         if images and not any(img.cleaned_data.get("is_main") for img in images):
-            # Если в объекте уже есть main_image, не требуем is_main в галерее
             instance = getattr(self, "instance", None)
             has_main_field = getattr(instance, "main_image", None) if instance else None
             if not has_main_field:
@@ -36,10 +44,18 @@ class VariantImageInlineFormSet(BaseInlineFormSet):
 
     def clean(self):
         super().clean()
-        images = [
+        active_forms = [
             form for form in self.forms
-            if not form.cleaned_data.get("DELETE", False) and form.cleaned_data.get("image_url")
+            if not form.cleaned_data.get("DELETE", False)
         ]
+        images = [
+            form for form in active_forms
+            if form.cleaned_data.get("image_url") or form.cleaned_data.get("image_file")
+        ]
+        for form in images:
+            image_file = form.cleaned_data.get("image_file")
+            if image_file:
+                validate_card_media_file_size(image_file)
         if len(images) > 5:
             raise ValidationError(_("Можно загрузить не более 5 изображений варианта."))
         if images and not any(img.cleaned_data.get("is_main") for img in images):
@@ -81,4 +97,3 @@ class CategoryForm(forms.ModelForm):
         if not category_type:
             raise ValidationError(_("Необходимо выбрать тип категории! Если нужного типа нет, создайте его в разделе 'Типы категорий'."))
         return category_type
-
