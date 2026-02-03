@@ -180,6 +180,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.scrapers.tasks.find_and_merge_duplicates",
         "schedule": 60 * 60 * 24,  # день
     },
+    # Очистка неиспользуемых медиа из R2/локального хранилища ежедневно в 3:00
+    "cleanup-orphaned-media": {
+        "task": "apps.catalog.tasks.cleanup_orphaned_media",
+        "schedule": 60 * 60 * 24,  # день (можно заменить на crontab(0, 3) при наличии celery.schedules)
+    },
 }
 
 
@@ -200,6 +205,55 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+# Cloudflare R2 (опционально: если не заданы — используется локальное хранилище)
+R2_ACCOUNT_ID = env("R2_ACCOUNT_ID", default="")
+R2_ACCESS_KEY_ID = env("R2_ACCESS_KEY_ID", default="")
+R2_SECRET_ACCESS_KEY = env("R2_SECRET_ACCESS_KEY", default="")
+R2_BUCKET_NAME = env("R2_BUCKET_NAME", default="")
+R2_PUBLIC_URL = env(
+    "R2_PUBLIC_URL",
+    default=f"https://{R2_BUCKET_NAME}.r2.dev" if R2_BUCKET_NAME else "",
+)
+R2_USE_SSL = env.bool("R2_USE_SSL", default=True)
+
+# Storage backends: R2 для медиа при наличии учётных данных, иначе локальный диск
+_USE_R2 = bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME)
+
+if _USE_R2:
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "OPTIONS": {
+                "access_key": R2_ACCESS_KEY_ID,
+                "secret_key": R2_SECRET_ACCESS_KEY,
+                "bucket_name": R2_BUCKET_NAME,
+                "endpoint_url": f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+                "region_name": "auto",
+                "file_overwrite": False,
+                "custom_domain": (
+                    R2_PUBLIC_URL.replace("https://", "").replace("http://", "") if R2_PUBLIC_URL else None
+                ),
+                "querystring_auth": False,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+else:
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {
+                "location": MEDIA_ROOT,
+                "base_url": MEDIA_URL,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
 
 
 # DRF + JWT
@@ -319,5 +373,4 @@ SIMPLE_JWT = {
     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
 }
 
-# WhiteNoise настройки для раздачи статики
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# WhiteNoise: раздача статики через STORAGES["staticfiles"]

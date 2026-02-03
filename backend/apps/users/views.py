@@ -320,7 +320,15 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
         if avatar_file.content_type not in allowed_types:
             return Response({'error': 'Недопустимый тип файла. Разрешены: JPEG, PNG, GIF, WebP'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # Оптимизация изображения перед сохранением (R2/локальное хранилище)
+        try:
+            from apps.catalog.utils.image_optimizer import ImageOptimizer
+            optimizer = ImageOptimizer()
+            avatar_file = optimizer.optimize_image(avatar_file, quality=85, max_size=(800, 800))
+        except Exception:
+            pass  # сохраняем как есть при ошибке оптимизации
+
         request.user.avatar = avatar_file
         request.user.save()
         

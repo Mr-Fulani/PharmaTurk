@@ -80,7 +80,14 @@ class TestimonialViewSet(viewsets.ModelViewSet):
             media_item = {'media_type': media_type}
             
             if media_type == 'image' and image_key in request.FILES:
-                media_item['image'] = request.FILES[image_key]
+                image_file = request.FILES[image_key]
+                try:
+                    from apps.catalog.utils.image_optimizer import ImageOptimizer
+                    optimizer = ImageOptimizer()
+                    image_file = optimizer.optimize_image(image_file, quality=85, max_size=(1200, 1200))
+                except Exception:
+                    pass
+                media_item['image'] = image_file
             elif media_type == 'video' and video_url_key in request.data:
                 media_item['video_url'] = request.data[video_url_key]
             elif media_type == 'video_file' and video_file_key in request.FILES:

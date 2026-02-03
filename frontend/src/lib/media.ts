@@ -4,10 +4,30 @@ export type MediaSource = {
   url: string | null | undefined
 }
 
+const VIDEO_EXT_REGEX = /\.(mp4|webm|mov|avi|mkv|m4v)(\?|$)/i
+
+/** Проверяет, что URL указывает на видео (по расширению или хосту), а не на картинку. */
+export const isVideoUrl = (url?: string | null): boolean => {
+  if (!url || typeof url !== 'string') return false
+  const path = url.split('?')[0].toLowerCase()
+  if (VIDEO_EXT_REGEX.test(path)) return true
+  // Прокси бэкенда: /api/catalog/proxy-media/?path=...file.MP4
+  if (/\/proxy-media\//i.test(url) && url.includes('path=')) {
+    try {
+      const pathParam = new URL(url).searchParams.get('path') || ''
+      if (VIDEO_EXT_REGEX.test(pathParam)) return true
+    } catch {
+      // ignore
+    }
+  }
+  if (/youtube\.com|youtu\.be|vimeo\.com/i.test(url)) return true
+  return false
+}
+
 const stripTrailingSlash = (value?: string | null) => (value || '').replace(/\/+$/, '')
 
 export const resolveMediaUrl = (url?: string | null) => {
-  if (!url) return ''
+  if (!url) return '/product-placeholder.svg'
 
   const clientApi = process.env.NEXT_PUBLIC_API_BASE
   const serverApi = process.env.INTERNAL_API_BASE

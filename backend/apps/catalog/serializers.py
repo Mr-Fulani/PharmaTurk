@@ -1,7 +1,8 @@
 """Сериализаторы для API каталога товаров."""
 
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from decimal import Decimal
+from django.conf import settings
 from django.db.models import Count
 from rest_framework import serializers
 from .models import (
@@ -13,6 +14,31 @@ from .models import (
     Service, ServiceTranslation,
     Banner, BannerMedia, Author, ProductAuthor,
 )
+
+
+def _r2_proxy_url(absolute_url, request):
+    """Если URL ведёт на R2 (pub-*.r2.dev), вернуть URL прокси через бэкенд (устраняет ERR_SSL_PROTOCOL_ERROR)."""
+    if not absolute_url or not absolute_url.startswith('http'):
+        return None
+    r2_public = (getattr(settings, 'R2_PUBLIC_URL', None) or '').rstrip('/')
+    if not r2_public or not absolute_url.startswith(r2_public):
+        return None
+    try:
+        path = urlparse(absolute_url).path.lstrip('/')
+        if not path:
+            return None
+        if request:
+            scheme = request.scheme
+            host = request.get_host()
+            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                base = 'http://localhost:8000'
+            else:
+                base = f"{scheme}://{host}"
+        else:
+            base = 'http://localhost:8000'
+        return f"{base}/api/catalog/proxy-media/?path={quote(path)}"
+    except Exception:
+        return None
 
 
 def _resolve_media_url(value, request):
@@ -38,6 +64,9 @@ def _resolve_media_url(value, request):
                 base_url = f"{scheme}://{host}"
             return f"{base_url}/media/{value}"
         return f"http://localhost:8000/media/{value}"
+    proxy = _r2_proxy_url(value, request)
+    if proxy:
+        return proxy
     return value
 
 
@@ -45,9 +74,13 @@ def _resolve_file_url(file_field, request):
     if not file_field:
         return None
     if hasattr(file_field, "url"):
+        raw_url = file_field.url
         if request:
-            return request.build_absolute_uri(file_field.url)
-        return file_field.url
+            raw_url = request.build_absolute_uri(raw_url)
+        proxy = _r2_proxy_url(raw_url, request)
+        if proxy:
+            return proxy
+        return raw_url
     return None
 
 
@@ -987,6 +1020,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     category = ClothingCategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
@@ -1009,7 +1043,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color', 'material', 'season',
-            'is_available', 'stock_quantity', 'main_image', 'main_image_url',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
             'images', 'sizes',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
@@ -1065,6 +1099,22 @@ class ClothingProductSerializer(serializers.ModelSerializer):
                     return file_url
                 return _resolve_media_url(first_img.image_url, request)
         return None
+    
+    def get_video_url(self, obj):
+        """URL видео для воспроизведения: только реальное видео, не изображения."""
+        request = self.context.get('request')
+        file_field = getattr(obj, "main_video_file", None)
+        if file_field and getattr(file_field, "name", None):
+            # main_video_file в модели допускает только видео-расширения
+            return _resolve_file_url(file_field, request)
+        raw_url = getattr(obj, "video_url", None) or ""
+        if not raw_url or not raw_url.strip():
+            return None
+        # Не возвращаем как видео URL на изображения (например .jpg из CDN)
+        path_lower = raw_url.split("?")[0].lower()
+        if path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+            return None
+        return _resolve_media_url(raw_url, request)
     
     def get_price_formatted(self, obj):
         variant = self._get_active_variant(obj)

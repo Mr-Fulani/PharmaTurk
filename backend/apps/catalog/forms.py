@@ -13,6 +13,31 @@ from .models import (
 )
 
 
+def _parent_has_main_media(formset, url_attr="main_image", file_attr="main_image_file"):
+    """Проверяет, что у родительской формы заполнено главное медиа: изображение или видео (из instance или request)."""
+    def has_media(url_key, file_key):
+        if instance:
+            if getattr(instance, url_key, None):
+                return True
+            f = getattr(instance, file_key, None)
+            if f and (hasattr(f, "name") and f.name):
+                return True
+        if data.get(url_key) and str(data.get(url_key)).strip():
+            return True
+        if files.get(file_key):
+            return True
+        return False
+
+    instance = getattr(formset, "instance", None)
+    data = getattr(formset, "data", None) or {}
+    files = getattr(formset, "files", None) or {}
+    if has_media(url_attr, file_attr):
+        return True
+    if has_media("video_url", "main_video_file"):
+        return True
+    return False
+
+
 class ProductImageInlineFormSet(BaseInlineFormSet):
     """Формсет для изображений с дополнительной валидацией."""
 
@@ -33,10 +58,8 @@ class ProductImageInlineFormSet(BaseInlineFormSet):
         if len(images) > 5:
             raise ValidationError(_("Можно загрузить не более 5 изображений товара."))
         if images and not any(img.cleaned_data.get("is_main") for img in images):
-            instance = getattr(self, "instance", None)
-            has_main_field = getattr(instance, "main_image", None) if instance else None
-            if not has_main_field:
-                raise ValidationError(_("Необходимо отметить как минимум одно изображение как главное."))
+            if not _parent_has_main_media(self):
+                raise ValidationError(_("Необходимо отметить как минимум одно изображение как главное, или заполнить поле 'Главное изображение (файл)'."))
 
 
 class VariantImageInlineFormSet(BaseInlineFormSet):
@@ -59,10 +82,8 @@ class VariantImageInlineFormSet(BaseInlineFormSet):
         if len(images) > 5:
             raise ValidationError(_("Можно загрузить не более 5 изображений варианта."))
         if images and not any(img.cleaned_data.get("is_main") for img in images):
-            instance = getattr(self, "instance", None)
-            has_main_field = getattr(instance, "main_image", None) if instance else None
-            if not has_main_field:
-                raise ValidationError(_("Необходимо отметить как минимум одно изображение варианта как главное."))
+            if not _parent_has_main_media(self):
+                raise ValidationError(_("Необходимо отметить как минимум одно изображение варианта как главное, или заполнить поле 'Главное изображение (файл)'."))
 
 
 class ProductForm(forms.ModelForm):

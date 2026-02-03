@@ -606,7 +606,10 @@ class BaseProductAdmin(admin.ModelAdmin):
                 "Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях."
             )
         }),
-        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Медиа'), {
+            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file'),
+            'description': _('Ссылка на изображение/видео или загрузка файла. При сохранении URL видео/картинки автоматически скачиваются в хранилище.'),
+        }),
         (_('Мета'), {'fields': ('sku', 'barcode')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Синхронизация'), {'fields': ('last_synced_at',)}),
@@ -933,7 +936,10 @@ class ClothingProductAdmin(admin.ModelAdmin):
         (_('Clothing'), {'fields': ('material', 'season')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Media'), {
+            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file'),
+            'description': _('Ссылка на изображение/видео или загрузка файла. При сохранении URL видео/картинки автоматически скачиваются в хранилище.'),
+        }),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )

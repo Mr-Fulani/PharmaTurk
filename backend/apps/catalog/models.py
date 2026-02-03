@@ -12,6 +12,11 @@ from django.utils.text import slugify
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
 from .currency_models import CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog
+from .utils.storage_paths import (
+    get_category_card_upload_path,
+    get_product_image_upload_path,
+    get_product_upload_path,
+)
 
 CURRENCY_CHOICES = [
     ("RUB", "RUB"),
@@ -101,7 +106,7 @@ class Category(models.Model):
     # Медиа для карточки
     card_media = models.FileField(
         _("Медиа для карточки"),
-        upload_to="marketing/cards/categories/",
+        upload_to=get_category_card_upload_path,
         null=True,
         blank=True,
         validators=[
@@ -640,7 +645,7 @@ class Product(models.Model):
     )
     main_image_file = models.ImageField(
         _("Главное изображение (файл)"),
-        upload_to="products/main/",
+        upload_to=get_product_upload_path,
         blank=True,
         null=True,
     )
@@ -649,6 +654,16 @@ class Product(models.Model):
         max_length=2000,
         blank=True,
         help_text=_("URL видео для товара (например, из Instagram постов).")
+    )
+    main_video_file = models.FileField(
+        _("Главное видео (файл)"),
+        upload_to=get_product_upload_path,
+        blank=True,
+        null=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=["mp4", "mov", "webm", "avi", "mkv"]),
+        ],
+        help_text=_("Видео-файл товара (загружается в R2/локальное хранилище).")
     )
     
     # Внешние данные
@@ -1194,9 +1209,25 @@ class ProductImage(models.Model):
     )
     image_file = models.ImageField(
         _("Изображение (файл)"),
-        upload_to="products/gallery/",
+        upload_to=get_product_image_upload_path,
         blank=True,
         null=True,
+    )
+    video_url = models.URLField(
+        _("URL видео"),
+        max_length=2000,
+        blank=True,
+        help_text=_("URL видео (Instagram, YouTube и т.д.).")
+    )
+    video_file = models.FileField(
+        _("Видео (файл)"),
+        upload_to=get_product_image_upload_path,
+        blank=True,
+        null=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=["mp4", "mov", "webm", "avi", "mkv"]),
+        ],
+        help_text=_("Видео-файл (загружается в R2/локальное хранилище).")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -1543,13 +1574,28 @@ class ClothingProduct(models.Model):
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     
-    # Изображения
+    # Изображения и видео
     main_image = models.URLField(_("Главное изображение"), blank=True)
     main_image_file = models.ImageField(
         _("Главное изображение (файл)"),
         upload_to="products/clothing/main/",
         blank=True,
         null=True,
+    )
+    video_url = models.URLField(
+        _("URL видео"),
+        max_length=2000,
+        blank=True,
+        help_text=_("URL видео для товара (например, из Instagram). При сохранении скачивается в хранилище."),
+    )
+    main_video_file = models.FileField(
+        _("Главное видео (файл)"),
+        upload_to="products/clothing/main/",
+        blank=True,
+        null=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=["mp4", "mov", "webm", "avi", "mkv"]),
+        ],
     )
     
     # Внешние данные

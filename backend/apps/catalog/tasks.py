@@ -94,6 +94,100 @@ def cleanup_old_currency_logs(days_to_keep=30):
         return {'status': 'error', 'message': str(e)}
 
 
+def _collect_db_media_paths():
+    """Собрать все пути к медиа-файлам из БД (все модели с FileField/ImageField)."""
+    from django.db.models import FileField, ImageField
+
+    paths = set()
+    models_to_scan = [
+        ("apps.catalog", "Product", "main_image_file"),
+        ("apps.catalog", "ProductImage", "image_file"),
+        ("apps.catalog", "Category", "card_media"),
+        ("apps.catalog", "Brand", "card_media"),
+        ("apps.catalog", "ClothingProduct", "main_image_file"),
+        ("apps.catalog", "ClothingProductImage", "image_file"),
+        ("apps.catalog", "ClothingVariant", "main_image_file"),
+        ("apps.catalog", "ClothingVariantImage", "image_file"),
+        ("apps.catalog", "ShoeProduct", "main_image_file"),
+        ("apps.catalog", "ShoeProductImage", "image_file"),
+        ("apps.catalog", "ShoeVariant", "main_image_file"),
+        ("apps.catalog", "ShoeVariantImage", "image_file"),
+        ("apps.catalog", "JewelryProduct", "main_image_file"),
+        ("apps.catalog", "JewelryProductImage", "image_file"),
+        ("apps.catalog", "JewelryVariant", "main_image_file"),
+        ("apps.catalog", "JewelryVariantImage", "image_file"),
+        ("apps.catalog", "ElectronicsProduct", "main_image_file"),
+        ("apps.catalog", "ElectronicsProductImage", "image_file"),
+        ("apps.catalog", "FurnitureProduct", "main_image_file"),
+        ("apps.catalog", "FurnitureVariant", "main_image_file"),
+        ("apps.catalog", "FurnitureVariantImage", "image_file"),
+        ("apps.catalog", "BookVariantImage", "image_file"),
+        ("apps.catalog", "BannerMedia", "image"),
+        ("apps.catalog", "BannerMedia", "video_file"),
+        ("apps.catalog", "BannerMedia", "gif_file"),
+        ("apps.users", "User", "avatar"),
+        ("apps.feedback", "Testimonial", "author_avatar"),
+        ("apps.feedback", "TestimonialMedia", "image"),
+        ("apps.feedback", "TestimonialMedia", "video_file"),
+    ]
+    from django.apps import apps
+    for app_label, model_name, field_name in models_to_scan:
+        try:
+            model = apps.get_model(app_label, model_name)
+            field = model._meta.get_field(field_name)
+            if isinstance(field, (FileField, ImageField)):
+                for obj in model.objects.only(field_name).iterator():
+                    val = getattr(obj, field_name)
+                    if val and getattr(val, "name", None):
+                        paths.add(val.name)
+        except (LookupError, Exception):
+            continue
+    return paths
+
+
+def _list_storage_files(storage, path=""):
+    """Рекурсивно собрать все ключи файлов в хранилище."""
+    collected = set()
+    try:
+        dirs, files = storage.listdir(path)
+        for f in files:
+            full = f"{path}/{f}" if path else f
+            collected.add(full)
+        for d in dirs:
+            prefix = f"{path}/{d}" if path else d
+            collected.update(_list_storage_files(storage, prefix))
+    except Exception:
+        pass
+    return collected
+
+
+@shared_task(name="catalog.cleanup_orphaned_media")
+def cleanup_orphaned_media():
+    """Удаление файлов из R2/локального хранилища, которых нет в БД."""
+    from django.core.files.storage import default_storage
+
+    try:
+        db_paths = _collect_db_media_paths()
+        try:
+            storage_paths = _list_storage_files(default_storage)
+        except Exception as e:
+            logger.warning("Could not list storage files (e.g. not using R2): %s", e)
+            return {"status": "skipped", "message": "Storage listing not supported", "deleted": 0}
+        orphaned = storage_paths - db_paths
+        deleted = 0
+        for path in orphaned:
+            try:
+                default_storage.delete(path)
+                deleted += 1
+            except Exception as e:
+                logger.warning("Failed to delete orphaned file %s: %s", path, e)
+        logger.info("cleanup_orphaned_media: deleted %s orphaned files", deleted)
+        return {"status": "success", "deleted": deleted}
+    except Exception as e:
+        logger.exception("cleanup_orphaned_media failed: %s", e)
+        return {"status": "error", "message": str(e), "deleted": 0}
+
+
 @shared_task(name='currency.health_check')
 def currency_system_health_check():
     """Проверка здоровья системы валют."""

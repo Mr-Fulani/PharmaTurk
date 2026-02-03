@@ -9,7 +9,7 @@
 #   --rebuild        - Полная пересборка (--clean + --no-cache)
 #   --no-prune       - Не очищать неиспользуемые Docker ресурсы
 #   --logs           - Показать логи после запуска
-#   --fast           - Быстрый перезапуск: пропустить пересборку образов и prune (самый быстрый)
+#   --fast, --quick  - Быстрый перезапуск: только stop + up без пересборки и prune (рекомендуется для повседневного рестарта)
 #   --fast-rebuild   - Быстрая пересборка только frontend и backend (больше чем --fast, но быстрее чем полная сборка)
 #   --help           - Показать справку
 
@@ -61,16 +61,17 @@ show_help() {
     --rebuild        Полная пересборка (--clean + --no-cache)
     --no-prune       Не очищать неиспользуемые Docker ресурсы (по умолчанию очистка включена)
     --logs           Показать логи после запуска
-    --fast           Быстрый перезапуск: пропускает очистку docker system prune и пересборку образов (docker compose up -d --no-build)
+    --fast, --quick  Быстрый перезапуск: только остановка и запуск контейнеров, без пересборки и prune (для повседневного рестарта)
     --fast-rebuild   Быстрая пересборка только frontend и backend (быстрее, чем полная пересборка всех сервисов)
     --help           Показать эту справку
 
 Примеры:
-    ./restart.sh                    # Обычный перезапуск
+    ./restart.sh --quick --logs     # Быстрый перезапуск с логами (рекомендуется для повседневного рестарта)
+    ./restart.sh --fast             # То же, что --quick (без логов)
+    ./restart.sh                    # Обычный перезапуск (с пересборкой)
     ./restart.sh --no-cache         # Пересборка без кэша
     ./restart.sh --clean            # С очисткой базы данных
     ./restart.sh --rebuild --logs   # Полная пересборка с логами
-    ./restart.sh --fast             # Очень быстрый перезапуск (без пересборки образов)
     ./restart.sh --fast-rebuild     # Пересобрать только frontend и backend
 
 EOF
@@ -100,7 +101,7 @@ while [[ $# -gt 0 ]]; do
             SHOW_LOGS=true
             shift
             ;;
-        --fast)
+        --fast|--quick)
             FAST=true
             shift
             ;;
@@ -158,14 +159,14 @@ if docker compose ps 2>/dev/null | grep -q "Up"; then
         read -p "Вы уверены? (y/N): " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            docker compose down -v || true
+            docker compose down -v --remove-orphans || true
             success "Контейнеры остановлены и volumes удалены"
         else
             info "Отменено пользователем"
             exit 0
         fi
     else
-        docker compose down || true
+        docker compose down --remove-orphans || true
         success "Контейнеры остановлены"
     fi
 else
@@ -175,7 +176,7 @@ else
         read -p "Вы уверены? (y/N): " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            docker compose down -v || true
+            docker compose down -v --remove-orphans || true
             success "Volumes удалены"
         else
             info "Отменено пользователем"
@@ -234,12 +235,11 @@ fi
 
 # Запуск контейнеров
 info "Запускаем контейнеры..."
-# В FAST режиме используем --no-build, чтобы docker compose не пытался собирать образы
+UP_OPTS="-d"
 if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
-    docker compose up -d --no-build
-else
-    docker compose up -d
+    UP_OPTS="-d --no-build"
 fi
+docker compose up $UP_OPTS
 success "Контейнеры запущены"
 
 # Ожидание готовности сервисов

@@ -5,3 +5,6 @@ class FeedbackConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.feedback'
     verbose_name = 'Обратная связь'
+
+    def ready(self):
+        import apps.feedback.signals  # noqa: F401

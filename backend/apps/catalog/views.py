@@ -1656,3 +1656,55 @@ def proxy_image(request):
             
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+# Content-Type по расширению для прокси R2-медиа
+_PROXY_MEDIA_TYPES = {
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mov': 'video/quicktime',
+    '.m4v': 'video/x-m4v',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+}
+
+
+@require_GET
+def proxy_media(request):
+    """
+    Прокси для медиафайлов из R2 (видео/изображения).
+    Устраняет ERR_SSL_PROTOCOL_ERROR при загрузке с pub-*.r2.dev.
+    Параметр: path — путь к файлу в бакете (например products/clothing/main/file.MP4).
+    """
+    from django.conf import settings
+    from django.core.files.storage import default_storage
+
+    path = request.GET.get('path')
+    if not path or '..' in path or path.startswith('/'):
+        return JsonResponse({'error': 'path parameter required and must be relative'}, status=400)
+
+    r2_public = getattr(settings, 'R2_PUBLIC_URL', '') or ''
+    if not r2_public:
+        return JsonResponse({'error': 'R2 proxy not configured'}, status=503)
+
+    try:
+        if not default_storage.exists(path):
+            return JsonResponse({'error': 'Not found'}, status=404)
+
+        ext = path.rsplit('.', 1)[-1].lower() if '.' in path else ''
+        content_type = _PROXY_MEDIA_TYPES.get(f'.{ext}', 'application/octet-stream')
+
+        with default_storage.open(path, 'rb') as fh:
+            content = fh.read()
+
+        response = HttpResponse(content, content_type=content_type)
+        response['Cache-Control'] = 'public, max-age=86400'
+        response['Access-Control-Allow-Origin'] = '*'
+        return response
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception('proxy_media error')
+        return JsonResponse({'error': str(e)}, status=500)

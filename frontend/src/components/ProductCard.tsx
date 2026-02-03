@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { useTranslation } from 'next-i18next'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
-import { resolveMediaUrl } from '../lib/media'
+import { resolveMediaUrl, isVideoUrl } from '../lib/media'
 
 interface ProductCardProps {
   id: number
@@ -59,6 +59,8 @@ export default function ProductCard({
   const { t } = useTranslation('common')
   
   const resolvedImage = resolveMediaUrl(imageUrl)
+  const resolvedVideoUrl = videoUrl ? resolveMediaUrl(videoUrl) : null
+  const showVideo = Boolean(videoUrl && isVideoUrl(videoUrl) && resolvedVideoUrl)
   const parseNumber = (value: string | number | null | undefined) => {
     if (value === null || typeof value === 'undefined') return null
     const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
@@ -76,13 +78,13 @@ export default function ProductCard({
     return (
       <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
         <div className="relative w-full sm:w-48 h-48 flex-shrink-0">
-          {videoUrl ? (
+          {showVideo ? (
             <video 
-              src={videoUrl} 
-              poster={resolvedImage || '/product-placeholder.svg'}
+              src={resolvedVideoUrl!} 
               controls
               playsInline
               muted
+              preload="metadata"
               className="w-full h-full rounded-md object-cover"
             />
           ) : resolvedImage ? (
@@ -157,13 +159,13 @@ export default function ProductCard({
   return (
     <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
       <div className="relative">
-        {videoUrl ? (
+        {showVideo ? (
           <video 
-            src={videoUrl} 
-            poster={resolvedImage || '/product-placeholder.svg'}
+            src={resolvedVideoUrl!} 
             controls
             playsInline
             muted
+            preload="metadata"
             className="aspect-[4/3] w-full rounded-lg object-cover"
           />
         ) : resolvedImage ? (

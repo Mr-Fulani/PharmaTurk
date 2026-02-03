@@ -25,6 +25,8 @@ sentry-sdk = {version = "^2.9.0", extras = ["django"]}
 python-json-logger = "^2.0.7"
 httpx = "^0.27.0"
 Pillow = "^10.2.0"
+boto3 = "^1.35.0"
+django-storages = {version = "^1.14.4", extras = ["s3"]}
 beautifulsoup4 = "^4.12.3"
 lxml = "^5.2.2"
 fake-useragent = "^1.5.1"

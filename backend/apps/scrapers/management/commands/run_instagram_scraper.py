@@ -1,8 +1,6 @@
 """Management команда для запуска Instagram парсера."""
 
 import os
-import requests
-from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
@@ -249,52 +247,36 @@ class Command(BaseCommand):
             i += 1
         return slug
 
-    def _download_image(self, url: str, product_id: str, index: int = 0) -> str:
-        """Скачивает изображение и сохраняет локально.
-        
-        Args:
-            url: URL изображения
-            product_id: ID товара для имени файла
-            index: Индекс изображения (0 для главного)
-            
+    def _get_instagram_headers(self):
+        """Заголовки для запросов к Instagram CDN."""
+        return {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://www.instagram.com/",
+        }
+
+    def _download_media(self, url: str, product_id: str, index: int = 0) -> str:
+        """Скачивает медиа (фото/видео/гиф) и сохраняет в R2/локальное хранилище.
+
+        Использует универсальную функцию для парсеров: автоматически определяет тип
+        медиа, оптимизирует фото, сохраняет в products/parsed/instagram/{images,videos,gifs}/.
+
         Returns:
-            Путь к сохраненному файлу или пустую строку при ошибке
+            URL сохраненного файла или пустая строка при ошибке.
         """
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://www.instagram.com/',
-            }
-            response = requests.get(url, headers=headers, timeout=10)
-            
-            if response.status_code == 200:
-                # Определяем расширение файла
-                ext = 'jpg'
-                if '.png' in url.lower():
-                    ext = 'png'
-                elif '.webp' in url.lower():
-                    ext = 'webp'
-                
-                # Формируем имя файла
-                filename = f"instagram_{product_id}_{index}.{ext}"
-                filepath = f"products/instagram/{filename}"
-                
-                # Сохраняем файл
-                from django.core.files.storage import default_storage
-                saved_path = default_storage.save(filepath, ContentFile(response.content))
-                
-                return saved_path
-            else:
-                self.stdout.write(
-                    self.style.WARNING(f'Не удалось скачать изображение: HTTP {response.status_code}')
-                )
-                return ''
-                
-        except Exception as e:
+        from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
+
+        result = download_and_optimize_parsed_media(
+            url=url,
+            parser_name="instagram",
+            product_id=product_id,
+            index=index,
+            headers=self._get_instagram_headers(),
+        )
+        if not result:
             self.stdout.write(
-                self.style.WARNING(f'Ошибка при скачивании изображения: {e}')
+                self.style.WARNING(f"Не удалось скачать медиа: {url[:80]}...")
             )
-            return ''
+        return result
 
     def _save_products(self, products, category: str):
         """Сохраняет спарсенные товары в базу данных."""
@@ -358,12 +340,12 @@ class Command(BaseCommand):
                 )
                 
                 # Скачиваем главное изображение (превью для видео)
-                main_image_path = ''
+                main_image_path = ""
                 if product_data.images:
-                    main_image_path = self._download_image(
+                    main_image_path = self._download_media(
                         product_data.images[0],
                         product_data.external_id,
-                        0
+                        0,
                     )
                 
                 # Извлекаем video_url из атрибутов если это видео
@@ -411,11 +393,13 @@ class Command(BaseCommand):
                     # Скачиваем и сохраняем изображения со второго
                     # Сохраняем максимум 5 дополнительных изображений
                     for idx, image_url in enumerate(product_data.images[1:6], start=1):
-                        local_path = self._download_image(image_url, product_data.external_id, idx)
-                        if local_path:
+                        media_url = self._download_media(
+                            image_url, product_data.external_id, idx
+                        )
+                        if media_url:
                             image_model.objects.create(
                                 product=product,
-                                image_url=local_path,
+                                image_url=media_url,
                                 sort_order=idx - 1,
                                 is_main=False,
                             )

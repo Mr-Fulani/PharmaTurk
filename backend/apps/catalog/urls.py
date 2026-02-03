@@ -12,6 +12,7 @@ from .views import (
     ServiceViewSet,
     BannerViewSet,
     proxy_image,
+    proxy_media,
 )
 
 # Основной роутер для медикаментов (существующий)
@@ -66,4 +67,6 @@ urlpatterns = [
     
     # Прокси для Instagram изображений
     path('proxy-image/', proxy_image, name='proxy_image'),
+    # Прокси для R2-медиа (видео/картинки) — устраняет ERR_SSL_PROTOCOL_ERROR
+    path('proxy-media/', proxy_media, name='proxy_media'),
 ]

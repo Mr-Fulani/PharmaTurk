@@ -11,7 +11,7 @@ import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedColor, getLocalizedProductDescription, ProductTranslation } from '../../lib/i18n'
-import { resolveMediaUrl } from '../../lib/media'
+import { resolveMediaUrl, isVideoUrl } from '../../lib/media'
 import { useTheme } from '../../context/ThemeContext'
 
 type CategoryType =
@@ -244,27 +244,35 @@ export default function ProductPage({
     }
   }
 
-  // Формируем галерею: главное изображение + дополнительные изображения
-  const buildGallerySource = () => {
+  // Элемент галереи: обычное фото или плейсхолдер «Видео»
+  type GalleryItem = { id: number | 'video'; image_url: string; alt_text?: string; is_main?: boolean; sort_order?: number; isVideo?: boolean }
+  const buildGallerySource = (): GalleryItem[] => {
     if (!product) return []
     const variantImages = selectedVariant?.images || []
     const productImages = product.images || []
     const mainImageUrl = resolveMediaUrl(selectedVariant?.main_image || product.main_image_url || product.main_image)
-    
-    // Используем изображения варианта если есть, иначе изображения продукта
-    const baseImages = variantImages.length > 0 ? variantImages : productImages
-    
-    // Если есть главное изображение и его нет в списке, добавляем его первым
-    if (mainImageUrl && !baseImages.some(img => img.image_url === mainImageUrl)) {
-      return [
-        { id: 0, image_url: mainImageUrl, alt_text: product.name, is_main: true, sort_order: -1 },
-        ...baseImages
-      ]
+    const hasVideo = Boolean(product.video_url && isVideoUrl(product.video_url))
+
+    const baseImages: GalleryItem[] = (variantImages.length > 0 ? variantImages : productImages).map((img) => ({
+      id: img.id,
+      image_url: img.image_url,
+      alt_text: img.alt_text,
+      is_main: img.is_main,
+      sort_order: (img as { sort_order?: number }).sort_order,
+    }))
+    let list: GalleryItem[] = []
+    if (mainImageUrl && !baseImages.some((img) => resolveMediaUrl(img.image_url) === mainImageUrl)) {
+      list = [{ id: 0, image_url: mainImageUrl, alt_text: product.name, is_main: true, sort_order: -1 }, ...baseImages]
+    } else {
+      list = baseImages
     }
-    
-    return baseImages
+    if (hasVideo) {
+      // Миниатюра «Видео» — без картинки из фото (не второстепенная), плейсхолдер; иконка воспроизведения поверх.
+      list = [{ id: 'video', image_url: '', alt_text: 'Видео', isVideo: true, sort_order: -2 }, ...list]
+    }
+    return list
   }
-  
+
   const gallerySource = buildGallerySource()
   const initialImage =
     resolveMediaUrl(
@@ -274,10 +282,13 @@ export default function ProductPage({
         product?.active_variant_main_image_url ||
         product?.main_image_url ||
         product?.main_image ||
-        gallerySource.find((img) => img.is_main)?.image_url ||
-        gallerySource[0]?.image_url
+        gallerySource.find((img) => img.id !== 'video' && img.is_main)?.image_url ||
+        gallerySource.find((img) => img.id !== 'video')?.image_url
     ) || ''
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
+  const [activeMediaType, setActiveMediaType] = useState<'video' | 'image'>(() =>
+    product?.video_url && isVideoUrl(product.video_url) ? 'video' : 'image'
+  )
 
   // Обновляем главную картинку при изменении товара или варианта
   useEffect(() => {
@@ -296,6 +307,7 @@ export default function ProductPage({
           null
       ) || null
     setActiveImage(newImage)
+    setActiveMediaType(product.video_url && isVideoUrl(product.video_url) ? 'video' : 'image')
   }, [product, selectedVariant, router.asPath])
 
   if (!product) {
@@ -389,32 +401,67 @@ export default function ProductPage({
       <main className="mx-auto max-w-6xl p-6">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1.3fr_1fr] md:items-start">
           <div className="flex gap-4 md:h-[calc(100vh-22rem)] md:sticky md:top-6 md:self-start">
-            {/* Миниатюры слева вертикально */}
-            {gallerySource.length > 1 && (
+            {/* Миниатюры слева: видео (если есть) + фото */}
+            {gallerySource.length > 0 && (
               <div className="flex flex-col gap-3 overflow-y-auto flex-shrink-0">
                 {gallerySource.map((img) => {
                   const resolvedThumbnail = resolveMediaUrl(img.image_url)
+                  const isVideoItem = (img as GalleryItem).isVideo === true
+                  const isActive =
+                    isVideoItem ? activeMediaType === 'video' : activeMediaType === 'image' && activeImage === resolvedThumbnail
                   return (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={img.id}
-                    src={resolvedThumbnail}
-                    alt={img.alt_text || product.name}
-                    className={`w-28 h-28 rounded-lg object-cover cursor-pointer border flex-shrink-0 ${activeImage === resolvedThumbnail ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200 hover:border-gray-300'}`}
-                    onClick={() => setActiveImage(resolvedThumbnail || null)}
-                  />
-                )})}
+                    <button
+                      key={String(img.id)}
+                      type="button"
+                      className={`relative w-28 h-28 rounded-lg overflow-hidden border flex-shrink-0 ${isActive ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200 hover:border-gray-300'}`}
+                      onClick={() => {
+                        if (isVideoItem) {
+                          setActiveMediaType('video')
+                        } else {
+                          setActiveMediaType('image')
+                          setActiveImage(resolvedThumbnail || null)
+                        }
+                      }}
+                    >
+                      {isVideoItem && product.video_url ? (
+                        <video
+                          src={resolveMediaUrl(product.video_url)}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="w-full h-full object-cover pointer-events-none"
+                          aria-label={img.alt_text || product.name}
+                        />
+                      ) : (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={resolvedThumbnail}
+                          alt={img.alt_text || product.name}
+                          className="w-full h-full object-cover pointer-events-none"
+                        />
+                      )}
+                      {isVideoItem && (
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg" aria-hidden>
+                          <svg className="w-10 h-10 text-white drop-shadow" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             )}
-            {/* Главная картинка/видео справа */}
+            {/* Главная область: видео или выбранное фото */}
             <div className="flex-1 h-full flex items-start justify-start rounded-xl">
-              {product.video_url ? (
-                <video 
-                  src={product.video_url} 
-                  poster={activeImage || '/product-placeholder.svg'}
+              {activeMediaType === 'video' && product.video_url && isVideoUrl(product.video_url) ? (
+                <video
+                  key="product-video"
+                  src={resolveMediaUrl(product.video_url)}
                   controls
                   playsInline
                   muted
+                  preload="metadata"
                   className="max-w-full max-h-full rounded-xl object-contain"
                 />
               ) : activeImage ? (
