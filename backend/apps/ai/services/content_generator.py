@@ -64,7 +64,7 @@ class ContentGenerator:
             # 2. Анализ изображений (Vision API)
             image_analysis_result = {}
             if processing_type in ['full', 'image_analysis'] and images_data:
-                vision_prompt = self._get_prompt_template('image_prompt', "Опиши этот товар, укажи цвет, материал и тип.")
+                vision_prompt = self._get_prompt_template('image_prompt', "Опиши этот товар, укажи цвет, материал и тип. Ответ предоставь в формате JSON.")
                 image_analysis_result = self.llm.analyze_images(
                     images=images_data,
                     prompt=vision_prompt

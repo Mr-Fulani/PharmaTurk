@@ -73,6 +73,7 @@ services:
       SENTRY_DSN: ${SENTRY_DSN:-}
       VAPI_BASE_URL: ${VAPI_BASE_URL:-https://api.vapi.co}
       VAPI_API_KEY: ${VAPI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       USE_RUNSERVER: ${USE_RUNSERVER:-1}
@@ -133,6 +134,7 @@ services:
       SENTRY_DSN: ${SENTRY_DSN:-}
       VAPI_BASE_URL: ${VAPI_BASE_URL:-https://api.vapi.co}
       VAPI_API_KEY: ${VAPI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
@@ -166,6 +168,7 @@ services:
       SENTRY_DSN: ${SENTRY_DSN:-}
       VAPI_BASE_URL: ${VAPI_BASE_URL:-https://api.vapi.co}
       VAPI_API_KEY: ${VAPI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
