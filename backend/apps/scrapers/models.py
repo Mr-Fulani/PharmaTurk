@@ -54,6 +54,12 @@ class ScraperConfig(models.Model):
     headers = models.JSONField(_('Дополнительные заголовки'), default=dict, blank=True)
     cookies = models.JSONField(_('Cookies'), default=dict, blank=True)
     
+    # Учетные данные парсера (если требуются)
+    scraper_username = models.CharField(_('Логин парсера'), max_length=100, blank=True, 
+                                      help_text=_('Логин для авторизации парсера на сайте (если нужно)'))
+    scraper_password = models.CharField(_('Пароль парсера'), max_length=100, blank=True,
+                                      help_text=_('Пароль для авторизации парсера на сайте (если нужно)'))
+    
     # Статистика
     last_run_at = models.DateTimeField(_('Последний запуск'), null=True, blank=True)
     last_success_at = models.DateTimeField(_('Последний успешный запуск'), null=True, blank=True)

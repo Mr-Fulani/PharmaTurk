@@ -47,7 +47,7 @@ class ScraperConfigAdmin(admin.ModelAdmin):
             'classes': ['collapse']
         }),
         ('Дополнительные настройки', {
-            'fields': ['use_proxy', 'user_agent', 'headers', 'cookies'],
+            'fields': ['use_proxy', 'user_agent', 'headers', 'cookies', 'scraper_username', 'scraper_password'],
             'classes': ['collapse']
         }),
         ('Статистика', {
@@ -455,21 +455,31 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
         import subprocess
         from django.utils import timezone
         
+        # Try to find Instagram scraper config to get credentials
+        from .models import ScraperConfig
+        scraper_config = ScraperConfig.objects.filter(parser_class='instagram', is_enabled=True).first()
+        
         for task in queryset.filter(status='pending'):
             try:
                 task.status = 'running'
                 task.started_at = timezone.now()
                 task.save()
                 
+                cmd = [
+                    'poetry', 'run', 'python', 'manage.py', 
+                    'run_instagram_scraper',
+                    '--username', task.instagram_username,
+                    '--category', task.category,
+                    '--max-posts', str(task.max_posts)
+                ]
+                
+                if scraper_config and scraper_config.scraper_username and scraper_config.scraper_password:
+                    cmd.extend(['--login', scraper_config.scraper_username])
+                    cmd.extend(['--password', scraper_config.scraper_password])
+                
                 # Запускаем команду парсинга
                 result = subprocess.run(
-                    [
-                        'poetry', 'run', 'python', 'manage.py', 
-                        'run_instagram_scraper',
-                        '--username', task.instagram_username,
-                        '--category', task.category,
-                        '--max-posts', str(task.max_posts)
-                    ],
+                    cmd,
                     capture_output=True,
                     text=True,
                     timeout=600  # 10 минут таймаут
@@ -519,6 +529,10 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
         import subprocess
         from django.utils import timezone
         
+        # Try to find Instagram scraper config to get credentials
+        from .models import ScraperConfig
+        scraper_config = ScraperConfig.objects.filter(parser_class='instagram', is_enabled=True).first()
+        
         # Работаем с любыми задачами, кроме running
         for task in queryset.exclude(status='running'):
             try:
@@ -533,15 +547,21 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
                 task.error_message = ''
                 task.save()
                 
+                cmd = [
+                    'poetry', 'run', 'python', 'manage.py', 
+                    'run_instagram_scraper',
+                    '--username', task.instagram_username,
+                    '--category', task.category,
+                    '--max-posts', str(task.max_posts)
+                ]
+                
+                if scraper_config and scraper_config.scraper_username and scraper_config.scraper_password:
+                    cmd.extend(['--login', scraper_config.scraper_username])
+                    cmd.extend(['--password', scraper_config.scraper_password])
+                
                 # Запускаем команду парсинга
                 result = subprocess.run(
-                    [
-                        'poetry', 'run', 'python', 'manage.py', 
-                        'run_instagram_scraper',
-                        '--username', task.instagram_username,
-                        '--category', task.category,
-                        '--max-posts', str(task.max_posts)
-                    ],
+                    cmd,
                     capture_output=True,
                     text=True,
                     timeout=600  # 10 минут таймаут

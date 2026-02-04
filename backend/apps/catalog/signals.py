@@ -250,6 +250,7 @@ def auto_download_product_media_from_url(sender, instance, **kwargs):
     """Автоматически скачивать медиа из URL полей в файловые поля Product (через default_storage → R2)."""
     from django.conf import settings
     r2_public = getattr(settings, "R2_PUBLIC_URL", "")
+    r2_bucket = getattr(settings, "R2_BUCKET_NAME", "")
 
     if instance.main_image and not instance.main_image_file:
         if not (instance.main_image.startswith("/media/") or (r2_public and instance.main_image.startswith(r2_public))):
@@ -258,12 +259,23 @@ def auto_download_product_media_from_url(sender, instance, **kwargs):
                 _save_downloaded_file_to_storage(instance, "main_image_file", file_obj)
                 logger.info("Auto-downloaded main_image URL to main_image_file for Product %s", instance.id or "new")
 
-    if instance.video_url and not instance.main_video_file:
-        if not (instance.video_url.startswith("/media/") or (r2_public and instance.video_url.startswith(r2_public))):
-            file_obj = _download_url_to_file(instance.video_url)
-            if file_obj:
-                _save_downloaded_file_to_storage(instance, "main_video_file", file_obj)
-                logger.info("Auto-downloaded video_url to main_video_file for Product %s", instance.id or "new")
+    # Check for common R2 domains to avoid re-downloading
+    is_r2_url = False
+    if instance.video_url:
+        url = instance.video_url
+        if r2_public and url.startswith(r2_public):
+            is_r2_url = True
+        elif r2_bucket and (f"{r2_bucket}.r2.dev" in url or "r2.cloudflarestorage.com" in url):
+            is_r2_url = True
+        elif "/media/" in url and not url.startswith("http"):
+            # Local media path
+            is_r2_url = True
+
+    if instance.video_url and not instance.main_video_file and not is_r2_url:
+        file_obj = _download_url_to_file(instance.video_url)
+        if file_obj:
+            _save_downloaded_file_to_storage(instance, "main_video_file", file_obj)
+            logger.info("Auto-downloaded video_url to main_video_file for Product %s", instance.id or "new")
 
 
 @receiver(pre_save, sender=ClothingProduct)
@@ -280,7 +292,18 @@ def auto_download_clothing_product_media_from_url(sender, instance, **kwargs):
                 logger.info("Auto-downloaded main_image URL to main_image_file for ClothingProduct %s", instance.id or "new")
 
     if instance.video_url and not instance.main_video_file:
-        if not (instance.video_url.startswith("/media/") or (r2_public and instance.video_url.startswith(r2_public))):
+        # Check for common R2 domains to avoid re-downloading
+        is_r2_url = False
+        url = instance.video_url
+        if r2_public and url.startswith(r2_public):
+            is_r2_url = True
+        elif (getattr(settings, "R2_BUCKET_NAME", "") and 
+              (f"{settings.R2_BUCKET_NAME}.r2.dev" in url or "r2.cloudflarestorage.com" in url)):
+            is_r2_url = True
+        elif "/media/" in url and not url.startswith("http"):
+            is_r2_url = True
+            
+        if not is_r2_url:
             file_obj = _download_url_to_file(instance.video_url)
             if file_obj:
                 _save_downloaded_file_to_storage(instance, "main_video_file", file_obj)

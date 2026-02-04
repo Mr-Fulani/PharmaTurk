@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "apps.feedback",
     "apps.settings",
     "apps.pages",
+    "apps.ai",
 ]
 
 # Кастомная модель пользователя
@@ -374,3 +375,29 @@ SIMPLE_JWT = {
 }
 
 # WhiteNoise: раздача статики через STORAGES["staticfiles"]
+
+# AI Configuration
+AI_CONFIG = {
+    'MODEL': env("AI_MODEL", default="gpt-4o-mini"),
+    'VISION_MODEL': env("AI_VISION_MODEL", default="gpt-4o-mini"),
+    'EMBEDDING_MODEL': env("AI_EMBEDDING_MODEL", default="text-embedding-3-small"),
+}
+
+# R2 Configuration (Used for AI processing)
+R2_CONFIG = {
+    'endpoint_url': f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+    'aws_access_key_id': R2_ACCESS_KEY_ID,
+    'aws_secret_access_key': R2_SECRET_ACCESS_KEY,
+    'region_name': 'auto',
+    'bucket_name': R2_BUCKET_NAME,
+}
+
+AI_R2_SETTINGS = {
+    'original_images_path': 'products/original/',
+    'processed_images_path': 'products/processed/',
+    'thumbnails_path': 'products/thumbs/',
+    'temp_processing_path': 'temp/ai_processing/',
+    'cdn_url': R2_PUBLIC_URL,
+}
+
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
