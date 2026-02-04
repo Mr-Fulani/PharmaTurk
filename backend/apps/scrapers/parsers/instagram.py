@@ -241,6 +241,7 @@ class InstagramParser(BaseScraper):
                     'owner_username': post.owner_username,
                     'is_video': post.is_video,
                     'video_url': post.video_url if post.is_video else None,
+                    'raw_caption': caption,  # Сохраняем сырое описание для AI
                 },
                 source=self.get_name(),
                 scraped_at=datetime.now().isoformat(),

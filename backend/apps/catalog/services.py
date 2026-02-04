@@ -105,6 +105,13 @@ class CatalogNormalizer:
             }
         )
         
+        # Обновляем video_url если есть в метаданных (от парсеров)
+        if hasattr(product_data, 'metadata') and product_data.metadata:
+            attributes = product_data.metadata.get('attributes', {})
+            if attributes.get('video_url'):
+                product.video_url = attributes['video_url']
+                product.save(update_fields=['video_url'])
+
         if not created:
             # Обновляем существующий товар
             old_price = product.price

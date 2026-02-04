@@ -630,6 +630,12 @@ class Product(models.Model):
     name = models.CharField(_("Название"), max_length=500)
     slug = models.SlugField(_("Slug"), max_length=500, unique=True)
     description = models.TextField(_("Описание"), blank=True)
+    
+    # SEO
+    seo_title = models.CharField(_("SEO заголовок"), max_length=70, blank=True, null=True)
+    seo_description = models.CharField(_("SEO описание"), max_length=160, blank=True, null=True)
+    keywords = models.JSONField(_("Ключевые слова"), default=list, blank=True)
+
     product_type = models.CharField(
         _("Тип товара"),
         max_length=32,
