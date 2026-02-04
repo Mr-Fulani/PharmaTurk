@@ -47,16 +47,28 @@ class ProductImageInlineFormSet(BaseInlineFormSet):
             form for form in self.forms
             if not form.cleaned_data.get("DELETE", False)
         ]
+        media_items = [
+            form for form in active_forms
+            if (
+                form.cleaned_data.get("image_url")
+                or form.cleaned_data.get("image_file")
+                or form.cleaned_data.get("video_url")
+                or form.cleaned_data.get("video_file")
+            )
+        ]
+        for form in media_items:
+            image_file = form.cleaned_data.get("image_file")
+            if image_file:
+                validate_card_media_file_size(image_file)
+            video_file = form.cleaned_data.get("video_file")
+            if video_file:
+                validate_card_media_file_size(video_file)
+        if len(media_items) > 5:
+            raise ValidationError(_("Можно загрузить не более 5 медиафайлов товара."))
         images = [
             form for form in active_forms
             if form.cleaned_data.get("image_url") or form.cleaned_data.get("image_file")
         ]
-        for form in images:
-            image_file = form.cleaned_data.get("image_file")
-            if image_file:
-                validate_card_media_file_size(image_file)
-        if len(images) > 5:
-            raise ValidationError(_("Можно загрузить не более 5 изображений товара."))
         if images and not any(img.cleaned_data.get("is_main") for img in images):
             if not _parent_has_main_media(self):
                 raise ValidationError(_("Необходимо отметить как минимум одно изображение как главное, или заполнить поле 'Главное изображение (файл)'."))

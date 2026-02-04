@@ -52,7 +52,7 @@ class BookVariantAdmin(admin.ModelAdmin):
             'description': _("Форматы задайте в таблице форматов ниже.")
         }),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')}),
-        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Медиа'), {'fields': ('main_image',)}),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
@@ -113,7 +113,7 @@ class BookVariantInline(admin.TabularInline):
     """Inline для вариантов книг в ProductBooks."""
     model = BookVariant
     extra = 0
-    fields = ('name', 'cover_type', 'format_type', 'price', 'currency', 'main_image', 'main_image_file', 'is_active', 'sort_order')
+    fields = ('name', 'cover_type', 'format_type', 'price', 'currency', 'main_image', 'is_active', 'sort_order')
 
 
 @admin.register(ProductBooks)

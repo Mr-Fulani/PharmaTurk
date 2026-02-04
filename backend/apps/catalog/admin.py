@@ -20,7 +20,6 @@ from .models import (
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
-    JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
     Service, ServiceTranslation,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
     Author, ProductAuthor,
@@ -358,7 +357,7 @@ class ProductImageInline(admin.TabularInline):
     """Инлайн для изображений товара."""
     model = ProductImage
     extra = 1
-    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'video_file', 'video_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = ProductImageInlineFormSet
 
@@ -370,6 +369,12 @@ class ProductImageInline(admin.TabularInline):
                 return format_html(
                     '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
                     image_url
+                )
+            video_url = obj.video_file.url if obj.video_file else obj.video_url
+            if video_url:
+                return format_html(
+                    '<video src="{}" style="max-width: 120px; max-height: 60px;" muted playsinline></video>',
+                    video_url
                 )
         return "-"
     image_preview.short_description = _("Превью")
@@ -480,75 +485,6 @@ class ShoeVariantImageInline(admin.TabularInline):
     image_preview.short_description = _("Превью")
 
 
-class JewelryProductTranslationInline(admin.TabularInline):
-    model = JewelryProductTranslation
-    extra = 1
-    fields = ('locale', 'description')
-    verbose_name = _("Перевод")
-    verbose_name_plural = _("Переводы")
-
-
-class JewelryProductImageInline(admin.TabularInline):
-    model = JewelryProductImage
-    extra = 1
-    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
-    readonly_fields = ('image_preview',)
-    formset = ProductImageInlineFormSet
-    verbose_name = _("Изображение")
-    verbose_name_plural = _("Изображения")
-
-    def image_preview(self, obj):
-        if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
-                return format_html(
-                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                    image_url
-                )
-        return "-"
-    image_preview.short_description = _("Превью")
-
-
-class JewelryVariantInline(admin.TabularInline):
-    model = JewelryVariant
-    extra = 0
-    fields = (
-        'name', 'slug',
-        'color', 'material',
-        'price', 'currency',
-        'main_image', 'main_image_file',
-        'is_active', 'sort_order',
-    )
-    readonly_fields = ('slug',)
-    show_change_link = True
-
-
-class JewelryVariantSizeInline(admin.TabularInline):
-    model = JewelryVariantSize
-    extra = 0
-    fields = ('size_value', 'size_unit', 'size_type', 'size_display', 'is_available', 'stock_quantity', 'sort_order')
-    ordering = ('sort_order',)
-
-
-class JewelryVariantImageInline(admin.TabularInline):
-    model = JewelryVariantImage
-    extra = 1
-    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
-    readonly_fields = ('image_preview',)
-    formset = VariantImageInlineFormSet
-
-    def image_preview(self, obj):
-        if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
-                return format_html(
-                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                    image_url
-                )
-        return "-"
-    image_preview.short_description = _("Превью")
-
-
 class ProductAttributeInline(admin.TabularInline):
     """Инлайн для атрибутов товара."""
     model = ProductAttribute
@@ -606,10 +542,7 @@ class BaseProductAdmin(admin.ModelAdmin):
                 "Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях."
             )
         }),
-        (_('Медиа'), {
-            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file'),
-            'description': _('Ссылка на изображение/видео или загрузка файла. При сохранении URL видео/картинки автоматически скачиваются в хранилище.'),
-        }),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
         (_('Мета'), {'fields': ('sku', 'barcode')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Синхронизация'), {'fields': ('last_synced_at',)}),
@@ -936,10 +869,7 @@ class ClothingProductAdmin(admin.ModelAdmin):
         (_('Clothing'), {'fields': ('material', 'season')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('Media'), {
-            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file'),
-            'description': _('Ссылка на изображение/видео или загрузка файла. При сохранении URL видео/картинки автоматически скачиваются в хранилище.'),
-        }),
+        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
@@ -1425,46 +1355,6 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         """Фильтруем только корневые категории электроники (где device_type не пустое)."""
         return super().get_queryset(request).filter(device_type__isnull=False).exclude(device_type='').filter(parent__isnull=True)
-
-
-@admin.register(JewelryVariant)
-class JewelryVariantAdmin(admin.ModelAdmin):
-    list_display = ('name', 'product', 'color', 'material', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'color', 'material', 'currency', 'created_at')
-    search_fields = ('name', 'product__name', 'slug', 'color', 'material', 'sku', 'barcode', 'gtin', 'mpn')
-    ordering = ('product', 'sort_order', '-created_at')
-    readonly_fields = ('slug',)
-    actions = [activate_variants, deactivate_variants]
-    fieldsets = (
-        (None, {'fields': ('product', 'name', 'slug')}),
-        (_('Характеристики'), {'fields': ('color', 'material')}),
-        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')}),
-        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
-        (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
-        (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
-        (_('Статус'), {'fields': ('is_active', 'sort_order')}),
-    )
-    inlines = [JewelryVariantSizeInline, JewelryVariantImageInline]
-
-
-@admin.register(JewelryProduct)
-class JewelryProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'category', 'brand', 'jewelry_type', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_featured', 'category', 'brand', 'jewelry_type', 'currency', 'created_at')
-    search_fields = ('name', 'slug', 'description', 'material', 'stone_type')
-    ordering = ('-created_at',)
-    prepopulated_fields = {'slug': ('name',)}
-    fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Categorization'), {'fields': ('category', 'brand')}),
-        (_('Jewelry'), {'fields': ('jewelry_type', 'material', 'metal_purity', 'stone_type', 'carat_weight')}),
-        (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
-        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
-        (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
-    )
-    inlines = [JewelryProductTranslationInline, JewelryProductImageInline, JewelryVariantInline]
 
 
 @admin.register(ElectronicsProduct)

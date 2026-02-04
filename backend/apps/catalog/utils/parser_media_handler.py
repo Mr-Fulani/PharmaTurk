@@ -9,6 +9,7 @@ from django.core.files.storage import default_storage
 
 from apps.catalog.utils.image_optimizer import ImageOptimizer
 from apps.catalog.utils.storage_paths import (
+    _build_readable_filename,
     detect_media_type,
     get_parsed_media_upload_path,
 )
@@ -69,7 +70,11 @@ def download_and_optimize_parsed_media(
             else:
                 ext = ext or ".jpg"
 
-        filename = f"{parser_slug}_{product_id}_{index}{ext}"
+        filename = _build_readable_filename(
+            [parser_slug, str(product_id), str(index)],
+            f"{parser_slug}-{product_id}-{index}{ext}",
+            f"{parser_slug}-{product_id}-{index}",
+        )
         path = get_parsed_media_upload_path(parser_name, media_type, filename)
         saved_path = default_storage.save(path, file_to_save)
         return default_storage.url(saved_path)

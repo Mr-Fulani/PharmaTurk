@@ -110,7 +110,7 @@ interface Product {
   main_image?: string
   main_image_url?: string
   video_url?: string
-  images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
+  images?: { id: number; image_url: string; video_url?: string | null; alt_text?: string; is_main?: boolean }[]
   sizes?: { id: number; size?: string; is_available?: boolean; stock_quantity?: number | null }[]
   variants?: Variant[]
   default_variant_slug?: string | null
@@ -245,7 +245,7 @@ export default function ProductPage({
   }
 
   // Элемент галереи: обычное фото или плейсхолдер «Видео»
-  type GalleryItem = { id: number | 'video'; image_url: string; alt_text?: string; is_main?: boolean; sort_order?: number; isVideo?: boolean }
+  type GalleryItem = { id: number | string; image_url: string; video_url?: string | null; alt_text?: string; is_main?: boolean; sort_order?: number; isVideo?: boolean }
   const buildGallerySource = (): GalleryItem[] => {
     if (!product) return []
     const variantImages = selectedVariant?.images || []
@@ -253,13 +253,27 @@ export default function ProductPage({
     const mainImageUrl = resolveMediaUrl(selectedVariant?.main_image || product.main_image_url || product.main_image)
     const hasVideo = Boolean(product.video_url && isVideoUrl(product.video_url))
 
-    const baseImages: GalleryItem[] = (variantImages.length > 0 ? variantImages : productImages).map((img) => ({
-      id: img.id,
-      image_url: img.image_url,
-      alt_text: img.alt_text,
-      is_main: img.is_main,
-      sort_order: (img as { sort_order?: number }).sort_order,
-    }))
+    const baseImages: GalleryItem[] = (variantImages.length > 0 ? variantImages : productImages).flatMap((img) => {
+      const videoUrl = (img as { video_url?: string | null }).video_url
+      if (videoUrl && isVideoUrl(videoUrl)) {
+        return [{
+          id: `video-${img.id}`,
+          image_url: img.image_url || '',
+          video_url: videoUrl,
+          alt_text: img.alt_text,
+          is_main: img.is_main,
+          sort_order: (img as { sort_order?: number }).sort_order,
+          isVideo: true
+        }]
+      }
+      return [{
+        id: img.id,
+        image_url: img.image_url,
+        alt_text: img.alt_text,
+        is_main: img.is_main,
+        sort_order: (img as { sort_order?: number }).sort_order,
+      }]
+    })
     let list: GalleryItem[] = []
     if (mainImageUrl && !baseImages.some((img) => resolveMediaUrl(img.image_url) === mainImageUrl)) {
       list = [{ id: 0, image_url: mainImageUrl, alt_text: product.name, is_main: true, sort_order: -1 }, ...baseImages]
@@ -267,8 +281,7 @@ export default function ProductPage({
       list = baseImages
     }
     if (hasVideo) {
-      // Миниатюра «Видео» — без картинки из фото (не второстепенная), плейсхолдер; иконка воспроизведения поверх.
-      list = [{ id: 'video', image_url: '', alt_text: 'Видео', isVideo: true, sort_order: -2 }, ...list]
+      list = [{ id: 'main-video', image_url: '', video_url: product.video_url, alt_text: 'Видео', isVideo: true, sort_order: -2 }, ...list]
     }
     return list
   }
@@ -286,8 +299,13 @@ export default function ProductPage({
         gallerySource.find((img) => img.id !== 'video')?.image_url
     ) || ''
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
+  const initialVideoUrl =
+    (product?.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
+    gallerySource.find((item) => item.isVideo && item.video_url)?.video_url ||
+    null
+  const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(initialVideoUrl)
   const [activeMediaType, setActiveMediaType] = useState<'video' | 'image'>(() =>
-    product?.video_url && isVideoUrl(product.video_url) ? 'video' : 'image'
+    initialVideoUrl ? 'video' : 'image'
   )
 
   // Обновляем главную картинку при изменении товара или варианта
@@ -307,7 +325,12 @@ export default function ProductPage({
           null
       ) || null
     setActiveImage(newImage)
-    setActiveMediaType(product.video_url && isVideoUrl(product.video_url) ? 'video' : 'image')
+    const freshVideoUrl =
+      (product.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
+      (currentGallerySource as { video_url?: string | null }[]).find((item) => item.video_url && isVideoUrl(item.video_url))?.video_url ||
+      null
+    setActiveVideoUrl(freshVideoUrl)
+    setActiveMediaType(freshVideoUrl ? 'video' : 'image')
   }, [product, selectedVariant, router.asPath])
 
   if (!product) {
@@ -408,7 +431,9 @@ export default function ProductPage({
                   const resolvedThumbnail = resolveMediaUrl(img.image_url)
                   const isVideoItem = (img as GalleryItem).isVideo === true
                   const isActive =
-                    isVideoItem ? activeMediaType === 'video' : activeMediaType === 'image' && activeImage === resolvedThumbnail
+                    isVideoItem
+                      ? activeMediaType === 'video' && Boolean(img.video_url && img.video_url === activeVideoUrl)
+                      : activeMediaType === 'image' && activeImage === resolvedThumbnail
                   return (
                     <button
                       key={String(img.id)}
@@ -417,15 +442,18 @@ export default function ProductPage({
                       onClick={() => {
                         if (isVideoItem) {
                           setActiveMediaType('video')
+                          if (img.video_url) {
+                            setActiveVideoUrl(img.video_url)
+                          }
                         } else {
                           setActiveMediaType('image')
                           setActiveImage(resolvedThumbnail || null)
                         }
                       }}
                     >
-                      {isVideoItem && product.video_url ? (
+                      {isVideoItem && img.video_url ? (
                         <video
-                          src={resolveMediaUrl(product.video_url)}
+                          src={resolveMediaUrl(img.video_url)}
                           muted
                           playsInline
                           preload="metadata"
@@ -454,10 +482,10 @@ export default function ProductPage({
             )}
             {/* Главная область: видео или выбранное фото */}
             <div className="flex-1 h-full flex items-start justify-start rounded-xl">
-              {activeMediaType === 'video' && product.video_url && isVideoUrl(product.video_url) ? (
+              {activeMediaType === 'video' && activeVideoUrl && isVideoUrl(activeVideoUrl) ? (
                 <video
                   key="product-video"
-                  src={resolveMediaUrl(product.video_url)}
+                  src={resolveMediaUrl(activeVideoUrl)}
                   controls
                   playsInline
                   muted

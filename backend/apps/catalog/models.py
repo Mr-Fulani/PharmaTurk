@@ -1,6 +1,7 @@
 """Модели для каталога товаров."""
 
 import uuid
+from urllib.parse import urlparse, urlunparse
 from django.db import models
 from django.db.models import Q
 from django.db.models.signals import post_delete, post_save
@@ -13,9 +14,14 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
 from .currency_models import CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog
 from .utils.storage_paths import (
+    detect_media_type,
     get_category_card_upload_path,
+    get_brand_card_upload_path,
     get_product_image_upload_path,
     get_product_upload_path,
+    get_banner_image_upload_path,
+    get_banner_video_upload_path,
+    get_banner_gif_upload_path,
 )
 
 CURRENCY_CHOICES = [
@@ -44,6 +50,92 @@ TOP_CATEGORY_SLUG_CHOICES = [
     ("headwear", "headwear"),
     ("books", "books"),
 ]
+
+
+def _card_media_folder_from_filename(filename: str) -> str:
+    media_type = detect_media_type(filename)
+    return {"image": "images", "video": "videos", "gif": "gifs"}.get(media_type, "images")
+
+
+def _normalize_card_media_path(path: str, category_base: str | None = None) -> str:
+    if not path:
+        return path
+
+    raw_path = path if path.startswith("/") else f"/{path}"
+    parts = raw_path.lstrip("/").split("/")
+    if len(parts) < 4:
+        return path
+
+    if parts[:3] == ["marketing", "cards", "brands"]:
+        if len(parts) >= 5 and parts[3] in {"images", "videos", "gifs"}:
+            return path
+        filename = "/".join(parts[3:])
+        if not filename:
+            return path
+        folder = _card_media_folder_from_filename(filename)
+        new_parts = parts[:3] + [folder] + parts[3:]
+        return "/" + "/".join(new_parts)
+
+    if parts[:3] == ["marketing", "cards", "categories"]:
+        if len(parts) >= 6 and parts[4] in {"images", "videos", "gifs"}:
+            return path
+        if len(parts) >= 5 and parts[3] in {"images", "videos", "gifs"}:
+            base = category_base or "other"
+            filename = "/".join(parts[4:])
+            if not filename:
+                return path
+            new_parts = parts[:3] + [base, parts[3]] + parts[4:]
+            return "/" + "/".join(new_parts)
+
+        if "." in parts[3]:
+            base = category_base or "other"
+            filename = "/".join(parts[3:])
+        else:
+            base = parts[3]
+            filename = "/".join(parts[4:])
+        if not filename:
+            return path
+        folder = _card_media_folder_from_filename(filename)
+        new_parts = parts[:3] + [base, folder] + filename.split("/")
+        return "/" + "/".join(new_parts)
+
+    return path
+
+
+def _normalize_card_media_url(url: str, category_base: str | None = None) -> str:
+    if not url:
+        return url
+    if url.startswith("http://") or url.startswith("https://"):
+        parsed = urlparse(url)
+        new_path = _normalize_card_media_path(parsed.path, category_base=category_base)
+        if new_path == parsed.path:
+            return url
+        return urlunparse(parsed._replace(path=new_path))
+    return _normalize_card_media_path(url, category_base=category_base)
+
+
+def _resolve_category_card_base(category) -> str:
+    category_slug = (getattr(category, "slug", "") or "").lower()
+    category_type = getattr(category, "category_type", None)
+    type_slug = (getattr(category_type, "slug", "") or "").lower()
+
+    if "medic" in type_slug or "medic" in category_slug or type_slug == "medicines":
+        return "medicines"
+    if "supplement" in type_slug or "supplement" in category_slug or "bad" in category_slug:
+        return "supplements"
+    if "equipment" in type_slug or "equipment" in category_slug or "medical-equipment" in type_slug:
+        return "medical-equipment"
+    if type_slug == "clothing" or "clothing" in category_slug:
+        return "clothing"
+    if type_slug == "shoes" or "shoes" in category_slug:
+        return "shoes"
+    if type_slug == "jewelry" or "jewelry" in category_slug:
+        return "jewelry"
+    if type_slug == "electronics" or "electronics" in category_slug:
+        return "electronics"
+    if type_slug == "furniture" or "furniture" in category_slug:
+        return "furniture"
+    return "other"
 
 
 def validate_card_media_file_size(value):
@@ -202,12 +294,21 @@ class Category(models.Model):
     def get_card_media_url(self) -> str:
         """Возвращает URL медиа-файла карточки (или пустую строку)."""
         if self.card_media_external_url:
-            return self.card_media_external_url
+            return _normalize_card_media_url(
+                self.card_media_external_url,
+                category_base=_resolve_category_card_base(self),
+            )
         if self.card_media:
             try:
-                return self.card_media.url
+                return _normalize_card_media_url(
+                    self.card_media.url,
+                    category_base=_resolve_category_card_base(self),
+                )
             except ValueError:
-                return self.card_media.name or ""
+                return _normalize_card_media_url(
+                    self.card_media.name or "",
+                    category_base=_resolve_category_card_base(self),
+                )
         return ""
 
 
@@ -448,7 +549,7 @@ class Brand(models.Model):
     )
     card_media = models.FileField(
         _("Медиа для карточки"),
-        upload_to="marketing/cards/brands/",
+        upload_to=get_brand_card_upload_path,
         null=True,
         blank=True,
         validators=[
@@ -478,12 +579,12 @@ class Brand(models.Model):
     def get_card_media_url(self) -> str:
         """Возвращает URL медиа-файла карточки (или пустую строку)."""
         if self.card_media_external_url:
-            return self.card_media_external_url
+            return _normalize_card_media_url(self.card_media_external_url)
         if self.card_media:
             try:
-                return self.card_media.url
+                return _normalize_card_media_url(self.card_media.url)
             except ValueError:
-                return self.card_media.name or ""
+                return _normalize_card_media_url(self.card_media.name or "")
         return ""
 
 
@@ -1205,6 +1306,7 @@ class ProductImage(models.Model):
     image_url = models.URLField(
         _("URL изображения"),
         max_length=2000,
+        blank=True,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     image_file = models.ImageField(
@@ -3225,7 +3327,7 @@ class BannerMedia(models.Model):
     # Поля для изображения
     image = models.ImageField(
         _("Изображение"),
-        upload_to='banners/',
+        upload_to=get_banner_image_upload_path,
         blank=True,
         null=True,
         help_text=_("Изображение для баннера (JPG, PNG)")
@@ -3244,7 +3346,7 @@ class BannerMedia(models.Model):
     )
     video_file = models.FileField(
         _("Видеофайл"),
-        upload_to='banners/videos/',
+        upload_to=get_banner_video_upload_path,
         blank=True,
         null=True,
         help_text=_("Локальный видеофайл (MP4, WebM)")
@@ -3258,7 +3360,7 @@ class BannerMedia(models.Model):
     )
     gif_file = models.FileField(
         _("GIF файл"),
-        upload_to='banners/gifs/',
+        upload_to=get_banner_gif_upload_path,
         blank=True,
         null=True,
         help_text=_("Локальный GIF файл")

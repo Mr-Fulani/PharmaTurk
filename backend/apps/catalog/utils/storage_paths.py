@@ -4,104 +4,120 @@
 и по парсерам (instagram, ilacabak, zara и т.д.) с подпапками images/videos/gifs.
 """
 import os
+import uuid
+from django.utils.text import slugify
+
+
+def _normalize_slug(value: str | None, fallback: str) -> str:
+    slug = slugify(value or "").strip("-")
+    return slug or fallback
+
+
+def _build_readable_filename(parts: list[str], filename: str, fallback: str = "media") -> str:
+    ext = os.path.splitext(str(filename).split("?")[0])[1].lower() or ".jpg"
+    base = "-".join(part for part in (slugify(p).strip("-") for p in parts) if part)
+    base = (base or fallback).strip("-")[:160]
+    suffix = uuid.uuid4().hex[:10]
+    return f"{base}-{suffix}{ext}"
+
+
+def _media_folder_from_filename(filename: str) -> str:
+    media_type = detect_media_type(filename)
+    return {
+        "image": "images",
+        "video": "videos",
+        "gif": "gifs",
+    }.get(media_type, "images")
 
 
 def get_product_upload_path(instance, filename):
     """Динамический upload_to для Product.main_image_file на основе product_type."""
-    product_type = getattr(instance, "product_type", None) or ""
-
-    # Медицинские категории (приоритет)
-    if product_type == "medicines":
-        return f"products/medicines/main/{filename}"
-    if product_type == "supplements":
-        return f"products/supplements/main/{filename}"
-    if product_type == "medical_equipment":
-        return f"products/medical-equipment/main/{filename}"
-
-    # Остальные категории
-    if product_type == "clothing":
-        return f"products/clothing/main/{filename}"
-    if product_type == "shoes":
-        return f"products/shoes/main/{filename}"
-    if product_type == "jewelry":
-        return f"products/jewelry/main/{filename}"
-    if product_type == "electronics":
-        return f"products/electronics/main/{filename}"
-    if product_type == "furniture":
-        return f"products/furniture/main/{filename}"
-    if product_type == "books":
-        return f"products/books/main/{filename}"
-    if product_type == "tableware":
-        return f"products/tableware/main/{filename}"
-    if product_type == "accessories":
-        return f"products/accessories/main/{filename}"
-    if product_type == "underwear":
-        return f"products/underwear/main/{filename}"
-    if product_type == "headwear":
-        return f"products/headwear/main/{filename}"
-
-    return f"products/main/{filename}"
+    product_type = (getattr(instance, "product_type", None) or "").replace("_", "-")
+    category_slug = _normalize_slug(getattr(getattr(instance, "category", None), "slug", None), "")
+    base = (category_slug or product_type or "other").lower()
+    media_folder = _media_folder_from_filename(filename)
+    readable_name = _build_readable_filename(
+        [category_slug or product_type, getattr(instance, "slug", None), getattr(instance, "name", None)],
+        filename,
+        "product-main",
+    )
+    return f"products/{base}/main/{media_folder}/{readable_name}"
 
 
 def get_product_image_upload_path(instance, filename):
     """Динамический upload_to для ProductImage.image_file."""
     product = getattr(instance, "product", None)
-    product_type = getattr(product, "product_type", None) if product else None
-
-    if product_type == "medicines":
-        return f"products/medicines/gallery/{filename}"
-    if product_type == "supplements":
-        return f"products/supplements/gallery/{filename}"
-    if product_type == "medical_equipment":
-        return f"products/medical-equipment/gallery/{filename}"
-    if product_type == "clothing":
-        return f"products/clothing/gallery/{filename}"
-    if product_type == "shoes":
-        return f"products/shoes/gallery/{filename}"
-    if product_type == "jewelry":
-        return f"products/jewelry/gallery/{filename}"
-    if product_type == "electronics":
-        return f"products/electronics/gallery/{filename}"
-    if product_type == "furniture":
-        return f"products/furniture/gallery/{filename}"
-    if product_type == "books":
-        return f"products/books/gallery/{filename}"
-    if product_type == "tableware":
-        return f"products/tableware/gallery/{filename}"
-    if product_type == "accessories":
-        return f"products/accessories/gallery/{filename}"
-    if product_type == "underwear":
-        return f"products/underwear/gallery/{filename}"
-    if product_type == "headwear":
-        return f"products/headwear/gallery/{filename}"
-
-    return f"products/gallery/{filename}"
+    product_type = (getattr(product, "product_type", None) or "").replace("_", "-")
+    category_slug = _normalize_slug(getattr(getattr(product, "category", None), "slug", None), "")
+    base = (category_slug or product_type or "other").lower()
+    media_folder = _media_folder_from_filename(filename)
+    readable_name = _build_readable_filename(
+        [category_slug or product_type, getattr(product, "slug", None), getattr(product, "name", None), "gallery"],
+        filename,
+        "product-gallery",
+    )
+    return f"products/{base}/gallery/{media_folder}/{readable_name}"
 
 
 def get_category_card_upload_path(instance, filename):
     """Динамический upload_to для Category.card_media."""
-    category_slug = (getattr(instance, "slug", None) or "").lower()
+    category_slug = _normalize_slug(getattr(instance, "slug", None), "category")
     category_type = getattr(instance, "category_type", None)
-    type_slug = getattr(category_type, "slug", "").lower() if category_type else ""
+    type_slug = (getattr(category_type, "slug", "") or "").lower()
+    media_folder = _media_folder_from_filename(filename)
 
     if "medic" in type_slug or "medic" in category_slug or type_slug == "medicines":
-        return f"marketing/cards/categories/medicines/{filename}"
-    if "supplement" in type_slug or "supplement" in category_slug or "bad" in category_slug:
-        return f"marketing/cards/categories/supplements/{filename}"
-    if "equipment" in type_slug or "equipment" in category_slug or "medical-equipment" in type_slug:
-        return f"marketing/cards/categories/medical-equipment/{filename}"
-    if type_slug == "clothing" or "clothing" in category_slug:
-        return f"marketing/cards/categories/clothing/{filename}"
-    if type_slug == "shoes" or "shoes" in category_slug:
-        return f"marketing/cards/categories/shoes/{filename}"
-    if type_slug == "jewelry" or "jewelry" in category_slug:
-        return f"marketing/cards/categories/jewelry/{filename}"
-    if type_slug == "electronics" or "electronics" in category_slug:
-        return f"marketing/cards/categories/electronics/{filename}"
-    if type_slug == "furniture" or "furniture" in category_slug:
-        return f"marketing/cards/categories/furniture/{filename}"
+        base = "medicines"
+    elif "supplement" in type_slug or "supplement" in category_slug or "bad" in category_slug:
+        base = "supplements"
+    elif "equipment" in type_slug or "equipment" in category_slug or "medical-equipment" in type_slug:
+        base = "medical-equipment"
+    elif type_slug == "clothing" or "clothing" in category_slug:
+        base = "clothing"
+    elif type_slug == "shoes" or "shoes" in category_slug:
+        base = "shoes"
+    elif type_slug == "jewelry" or "jewelry" in category_slug:
+        base = "jewelry"
+    elif type_slug == "electronics" or "electronics" in category_slug:
+        base = "electronics"
+    elif type_slug == "furniture" or "furniture" in category_slug:
+        base = "furniture"
+    else:
+        base = "other"
 
-    return f"marketing/cards/categories/{filename}"
+    readable_name = _build_readable_filename([category_slug, "card"], filename, "category-card")
+    return f"marketing/cards/categories/{base}/{media_folder}/{readable_name}"
+
+
+def get_brand_card_upload_path(instance, filename):
+    brand_slug = _normalize_slug(getattr(instance, "slug", None), "brand")
+    media_folder = _media_folder_from_filename(filename)
+    readable_name = _build_readable_filename([brand_slug, "card"], filename, "brand-card")
+    return f"marketing/cards/brands/{media_folder}/{readable_name}"
+
+
+def get_banner_image_upload_path(instance, filename):
+    banner = getattr(instance, "banner", None)
+    position = _normalize_slug(getattr(banner, "position", None), "banner")
+    title = getattr(banner, "title", None)
+    readable_name = _build_readable_filename([position, title, "image"], filename, "banner-image")
+    return f"marketing/banners/{position}/images/{readable_name}"
+
+
+def get_banner_video_upload_path(instance, filename):
+    banner = getattr(instance, "banner", None)
+    position = _normalize_slug(getattr(banner, "position", None), "banner")
+    title = getattr(banner, "title", None)
+    readable_name = _build_readable_filename([position, title, "video"], filename, "banner-video")
+    return f"marketing/banners/{position}/videos/{readable_name}"
+
+
+def get_banner_gif_upload_path(instance, filename):
+    banner = getattr(instance, "banner", None)
+    position = _normalize_slug(getattr(banner, "position", None), "banner")
+    title = getattr(banner, "title", None)
+    readable_name = _build_readable_filename([position, title, "gif"], filename, "banner-gif")
+    return f"marketing/banners/{position}/gifs/{readable_name}"
 
 
 def get_parsed_media_upload_path(parser_name, media_type, filename):

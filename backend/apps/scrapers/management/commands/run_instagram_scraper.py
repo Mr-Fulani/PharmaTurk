@@ -339,17 +339,26 @@ class Command(BaseCommand):
                     product_model=product_model,
                 )
                 
-                # Скачиваем главное изображение (превью для видео)
+                from apps.catalog.utils.storage_paths import detect_media_type
+
                 main_image_path = ""
+                main_video_url = ""
                 if product_data.images:
-                    main_image_path = self._download_media(
+                    main_media_url = self._download_media(
                         product_data.images[0],
                         product_data.external_id,
                         0,
                     )
-                
-                # Извлекаем video_url из атрибутов если это видео
+                    if main_media_url:
+                        main_media_type = detect_media_type(product_data.images[0] or main_media_url)
+                        if product_model is Product and main_media_type == "video":
+                            main_video_url = main_media_url
+                        else:
+                            main_image_path = main_media_url
+
                 video_url = product_data.attributes.get('video_url', '') if product_data.attributes.get('is_video') else ''
+                if main_video_url:
+                    video_url = main_video_url
 
                 defaults = {
                     'name': product_data.name,
@@ -397,12 +406,22 @@ class Command(BaseCommand):
                             image_url, product_data.external_id, idx
                         )
                         if media_url:
-                            image_model.objects.create(
-                                product=product,
-                                image_url=media_url,
-                                sort_order=idx - 1,
-                                is_main=False,
-                            )
+                            media_type = detect_media_type(image_url or media_url)
+                            if image_model is ProductImage and media_type == "video":
+                                image_model.objects.create(
+                                    product=product,
+                                    image_url="",
+                                    video_url=media_url,
+                                    sort_order=idx - 1,
+                                    is_main=False,
+                                )
+                            else:
+                                image_model.objects.create(
+                                    product=product,
+                                    image_url=media_url,
+                                    sort_order=idx - 1,
+                                    is_main=False,
+                                )
 
                 if created:
                     created_count += 1

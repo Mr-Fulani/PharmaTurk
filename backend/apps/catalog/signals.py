@@ -195,14 +195,15 @@ def delete_banner_media_files(sender, instance, **kwargs):
 
 
 def _get_download_headers(url):
-    """Заголовки для скачивания (Instagram CDN и др. требуют Referer/User-Agent)."""
+    """Заголовки для скачивания (Pinterest, Instagram и др. требуют Referer/User-Agent)."""
     url_lower = (url or "").lower()
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     if "instagram" in url_lower or "fbcdn.net" in url_lower or "cdninstagram" in url_lower:
-        return {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "https://www.instagram.com/",
-        }
-    return {}
+        return {"User-Agent": ua, "Referer": "https://www.instagram.com/"}
+    if "pinterest" in url_lower or "pinimg.com" in url_lower:
+        return {"User-Agent": ua, "Referer": "https://www.pinterest.com/"}
+    # Для остальных ссылок — браузерный User-Agent, иначе многие CDN отдают 403
+    return {"User-Agent": ua}
 
 
 def _download_url_to_file(url):
@@ -246,28 +247,28 @@ def _download_url_to_file(url):
 
 @receiver(pre_save, sender=Product)
 def auto_download_product_media_from_url(sender, instance, **kwargs):
-    """Автоматически скачивать медиа из URL полей в файловые поля Product."""
+    """Автоматически скачивать медиа из URL полей в файловые поля Product (через default_storage → R2)."""
     from django.conf import settings
     r2_public = getattr(settings, "R2_PUBLIC_URL", "")
-    
+
     if instance.main_image and not instance.main_image_file:
         if not (instance.main_image.startswith("/media/") or (r2_public and instance.main_image.startswith(r2_public))):
             file_obj = _download_url_to_file(instance.main_image)
             if file_obj:
-                instance.main_image_file = file_obj
+                _save_downloaded_file_to_storage(instance, "main_image_file", file_obj)
                 logger.info("Auto-downloaded main_image URL to main_image_file for Product %s", instance.id or "new")
 
     if instance.video_url and not instance.main_video_file:
         if not (instance.video_url.startswith("/media/") or (r2_public and instance.video_url.startswith(r2_public))):
             file_obj = _download_url_to_file(instance.video_url)
             if file_obj:
-                instance.main_video_file = file_obj
+                _save_downloaded_file_to_storage(instance, "main_video_file", file_obj)
                 logger.info("Auto-downloaded video_url to main_video_file for Product %s", instance.id or "new")
 
 
 @receiver(pre_save, sender=ClothingProduct)
 def auto_download_clothing_product_media_from_url(sender, instance, **kwargs):
-    """Автоматически скачивать медиа из URL полей в файловые поля ClothingProduct."""
+    """Автоматически скачивать медиа из URL полей в файловые поля ClothingProduct (через default_storage → R2)."""
     from django.conf import settings
     r2_public = getattr(settings, "R2_PUBLIC_URL", "")
 
@@ -275,33 +276,112 @@ def auto_download_clothing_product_media_from_url(sender, instance, **kwargs):
         if not (instance.main_image.startswith("/media/") or (r2_public and instance.main_image.startswith(r2_public))):
             file_obj = _download_url_to_file(instance.main_image)
             if file_obj:
-                instance.main_image_file = file_obj
+                _save_downloaded_file_to_storage(instance, "main_image_file", file_obj)
                 logger.info("Auto-downloaded main_image URL to main_image_file for ClothingProduct %s", instance.id or "new")
 
     if instance.video_url and not instance.main_video_file:
         if not (instance.video_url.startswith("/media/") or (r2_public and instance.video_url.startswith(r2_public))):
             file_obj = _download_url_to_file(instance.video_url)
             if file_obj:
-                instance.main_video_file = file_obj
+                _save_downloaded_file_to_storage(instance, "main_video_file", file_obj)
                 logger.info("Auto-downloaded video_url to main_video_file for ClothingProduct %s", instance.id or "new")
+
+
+def _save_downloaded_file_to_storage(instance, file_attr, file_obj):
+    """
+    Сохранить файл в то же хранилище, что и у поля (field.storage → R2 или локальный диск),
+    и присвоить полю сохранённое имя. Использование field.storage гарантирует, что файл
+    попадёт в R2, если у модели настроен R2, а не в локальный media.
+    В поле передаём только basename, иначе Django делает os.path.join(upload_to, filename)
+    и путь дублируется (products/clothing/gallery/products/clothing/gallery/xxx.jpg).
+    """
+    import os
+    import uuid
+    from django.core.files.base import ContentFile
+
+    field = instance._meta.get_field(file_attr)
+    storage = field.storage  # тот же бэкенд, что и при сохранении формы (R2 или local)
+    upload_to = getattr(field, "upload_to", None)
+    if callable(upload_to):
+        try:
+            path = upload_to(instance, getattr(file_obj, "name", "image.jpg") or "image.jpg")
+        except Exception:
+            path = f"products/gallery/{uuid.uuid4().hex[:12]}.jpg"
+    else:
+        base = (upload_to or "products/gallery/").rstrip("/")
+        path = f"{base}/{uuid.uuid4().hex[:12]}.jpg"
+    saved_name = storage.save(path, file_obj)
+    with storage.open(saved_name, "rb") as f:
+        content = f.read()
+    # Только basename, иначе FileField при save() дублирует upload_to в пути
+    setattr(instance, file_attr, ContentFile(content, name=os.path.basename(saved_name)))
+
+
+def _auto_download_image_url_to_file(instance, url_attr="image_url", file_attr="image_file", log_label=""):
+    """Общая логика: скачать по URL и записать в file-поле (через default_storage), если URL внешний и file пустой."""
+    from django.conf import settings
+    r2_public = getattr(settings, "R2_PUBLIC_URL", "")
+    url = getattr(instance, url_attr, None)
+    file_field = getattr(instance, file_attr, None)
+    if not url or (file_field and file_field.name):
+        return
+    if url.startswith("/media/") or (r2_public and url.startswith(r2_public)):
+        return
+    file_obj = _download_url_to_file(url)
+    if file_obj:
+        _save_downloaded_file_to_storage(instance, file_attr, file_obj)
+        logger.info("Auto-downloaded %s to %s for %s %s", url_attr, file_attr, log_label, instance.id or "new")
 
 
 @receiver(pre_save, sender=ProductImage)
 def auto_download_product_image_from_url(sender, instance, **kwargs):
     """Автоматически скачивать медиа из URL полей в файловые поля ProductImage."""
-    from django.conf import settings
-    r2_public = getattr(settings, "R2_PUBLIC_URL", "")
-    
-    if instance.image_url and not instance.image_file:
-        if not (instance.image_url.startswith("/media/") or (r2_public and instance.image_url.startswith(r2_public))):
-            file_obj = _download_url_to_file(instance.image_url)
-            if file_obj:
-                instance.image_file = file_obj
-                logger.info("Auto-downloaded image_url to image_file for ProductImage %s", instance.id or "new")
+    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ProductImage")
+    if hasattr(instance, "video_url") and instance.video_url and not getattr(instance, "video_file", None):
+        _auto_download_image_url_to_file(instance, "video_url", "video_file", "ProductImage")
 
-    if hasattr(instance, "video_url") and instance.video_url and not instance.video_file:
-        if not (instance.video_url.startswith("/media/") or (r2_public and instance.video_url.startswith(r2_public))):
-            file_obj = _download_url_to_file(instance.video_url)
-            if file_obj:
-                instance.video_file = file_obj
-                logger.info("Auto-downloaded video_url to video_file for ProductImage %s", instance.id or "new")
+
+@receiver(pre_save, sender=ClothingProductImage)
+def auto_download_clothing_product_image_from_url(sender, instance, **kwargs):
+    """Автоматически скачивать изображение из image_url в image_file для ClothingProductImage."""
+    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ClothingProductImage")
+
+
+@receiver(pre_save, sender=ClothingVariantImage)
+def auto_download_clothing_variant_image_from_url(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ClothingVariantImage")
+
+
+@receiver(pre_save, sender=ShoeProductImage)
+def auto_download_shoe_product_image_from_url(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ShoeProductImage")
+
+
+@receiver(pre_save, sender=ShoeVariantImage)
+def auto_download_shoe_variant_image_from_url(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ShoeVariantImage")
+
+
+@receiver(pre_save, sender=JewelryProductImage)
+def auto_download_jewelry_product_image_from_url(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(instance, "image_url", "image_file", "JewelryProductImage")
+
+
+@receiver(pre_save, sender=JewelryVariantImage)
+def auto_download_jewelry_variant_image_from_url(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(instance, "image_url", "image_file", "JewelryVariantImage")
+
+
+@receiver(pre_save, sender=ElectronicsProductImage)
+def auto_download_electronics_product_image_from_url(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ElectronicsProductImage")
+
+
+@receiver(pre_save, sender=FurnitureVariantImage)
+def auto_download_furniture_variant_image_from_url(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(instance, "image_url", "image_file", "FurnitureVariantImage")
+
+
+@receiver(pre_save, sender=BookVariantImage)
+def auto_download_book_variant_image_from_url(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(instance, "image_url", "image_file", "BookVariantImage")

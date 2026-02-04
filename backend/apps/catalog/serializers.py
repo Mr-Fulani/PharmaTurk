@@ -24,9 +24,12 @@ def _r2_proxy_url(absolute_url, request):
     if not r2_public or not absolute_url.startswith(r2_public):
         return None
     try:
+        from apps.catalog.utils.media_path import normalize_duplicated_media_path
+
         path = urlparse(absolute_url).path.lstrip('/')
         if not path:
             return None
+        path = normalize_duplicated_media_path(path)  # старые записи с дублированным путём — отдаём чистый URL
         if request:
             scheme = request.scheme
             host = request.get_host()
@@ -295,10 +298,11 @@ class ProductImageSerializer(serializers.ModelSerializer):
     """Сериализатор для изображений товара."""
     
     image_url = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
     
     class Meta:
         model = ProductImage
-        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+        fields = ['id', 'image_url', 'video_url', 'alt_text', 'sort_order', 'is_main']
     
     def get_image_url(self, obj):
         request = self.context.get('request')
@@ -306,6 +310,16 @@ class ProductImageSerializer(serializers.ModelSerializer):
         if file_url:
             return file_url
         return _resolve_media_url(obj.image_url, request)
+
+    def get_video_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "video_file", None), request)
+        if file_url:
+            return file_url
+        raw_url = getattr(obj, "video_url", None)
+        if not raw_url:
+            return None
+        return _resolve_media_url(raw_url, request)
 
 
 class ProductAttributeSerializer(serializers.ModelSerializer):

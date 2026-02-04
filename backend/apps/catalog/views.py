@@ -1672,12 +1672,24 @@ _PROXY_MEDIA_TYPES = {
 }
 
 
+def _expand_path_for_legacy_duplicated(path):
+    """
+    Для старых записей: файл мог сохраниться по пути с дублированным префиксом.
+    Возвращает список кандидатов: path с префиксом, «раздутым» после 1, 2, 3, ... сегментов.
+    """
+    if not path or '/' not in path:
+        return []
+    parts = path.split('/')
+    return ['/'.join(parts[:i] + parts) for i in range(1, len(parts))]
+
+
 @require_GET
 def proxy_media(request):
     """
     Прокси для медиафайлов из R2 (видео/изображения).
     Устраняет ERR_SSL_PROTOCOL_ERROR при загрузке с pub-*.r2.dev.
     Параметр: path — путь к файлу в бакете (например products/clothing/main/file.MP4).
+    Поддерживает дублированные пути (старые записи): пробует нормализованный path.
     """
     from django.conf import settings
     from django.core.files.storage import default_storage
@@ -1689,6 +1701,23 @@ def proxy_media(request):
     r2_public = getattr(settings, 'R2_PUBLIC_URL', '') or ''
     if not r2_public:
         return JsonResponse({'error': 'R2 proxy not configured'}, status=503)
+
+    from apps.catalog.utils.media_path import normalize_duplicated_media_path
+
+    # Старые записи: файл по дублированному path; новые — по нормализованному. Поддержка обоих.
+    if not default_storage.exists(path):
+        path_alt = normalize_duplicated_media_path(path)
+        if path_alt != path and default_storage.exists(path_alt):
+            path = path_alt
+        else:
+            for candidate in _expand_path_for_legacy_duplicated(path):
+                if default_storage.exists(candidate):
+                    path = candidate
+                    break
+    else:
+        path_alt = normalize_duplicated_media_path(path)
+        if path_alt != path and default_storage.exists(path_alt):
+            path = path_alt
 
     try:
         if not default_storage.exists(path):
