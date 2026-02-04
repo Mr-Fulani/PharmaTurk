@@ -102,6 +102,7 @@ def delete_clothing_variant_image_files(sender, instance, **kwargs):
 @receiver(post_delete, sender=ShoeProduct)
 def delete_shoe_product_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.main_image_file)
+    delete_file_from_storage(instance.main_video_file)
 
 
 @receiver(post_delete, sender=ShoeProductImage)
@@ -119,12 +120,46 @@ def delete_shoe_variant_image_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.image_file)
 
 
+# --- Electronics ---
+
+
+@receiver(post_delete, sender=ElectronicsProduct)
+def delete_electronics_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_file_from_storage(instance.main_video_file)
+
+
+@receiver(post_delete, sender=ElectronicsProductImage)
+def delete_electronics_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+
+
+# --- Furniture ---
+
+
+@receiver(post_delete, sender=FurnitureProduct)
+def delete_furniture_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_file_from_storage(instance.main_video_file)
+
+
+@receiver(post_delete, sender=FurnitureVariant)
+def delete_furniture_variant_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+
+
+@receiver(post_delete, sender=FurnitureVariantImage)
+def delete_furniture_variant_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+
+
 # --- Jewelry ---
 
 
 @receiver(post_delete, sender=JewelryProduct)
 def delete_jewelry_product_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.main_image_file)
+    delete_file_from_storage(instance.main_video_file)
 
 
 @receiver(post_delete, sender=JewelryProductImage)
@@ -142,37 +177,6 @@ def delete_jewelry_variant_image_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.image_file)
 
 
-# --- Electronics ---
-
-
-@receiver(post_delete, sender=ElectronicsProduct)
-def delete_electronics_product_files(sender, instance, **kwargs):
-    delete_file_from_storage(instance.main_image_file)
-
-
-@receiver(post_delete, sender=ElectronicsProductImage)
-def delete_electronics_product_image_files(sender, instance, **kwargs):
-    delete_file_from_storage(instance.image_file)
-
-
-# --- Furniture ---
-
-
-@receiver(post_delete, sender=FurnitureProduct)
-def delete_furniture_product_files(sender, instance, **kwargs):
-    delete_file_from_storage(instance.main_image_file)
-
-
-@receiver(post_delete, sender=FurnitureVariant)
-def delete_furniture_variant_files(sender, instance, **kwargs):
-    delete_file_from_storage(instance.main_image_file)
-
-
-@receiver(post_delete, sender=FurnitureVariantImage)
-def delete_furniture_variant_image_files(sender, instance, **kwargs):
-    delete_file_from_storage(instance.image_file)
-
-
 # --- Books ---
 
 
@@ -181,68 +185,113 @@ def delete_book_variant_image_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.image_file)
 
 
-# --- Banners ---
+# --- Banner ---
 
 
 @receiver(post_delete, sender=BannerMedia)
 def delete_banner_media_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.image)
-    delete_file_from_storage(instance.video_file)
-    delete_file_from_storage(instance.gif_file)
+    delete_file_from_storage(instance.video)
 
 
-# --- Автоскачивание URL → R2 ---
-
-
-def _get_download_headers(url):
-    """Заголовки для скачивания (Pinterest, Instagram и др. требуют Referer/User-Agent)."""
-    url_lower = (url or "").lower()
-    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    if "instagram" in url_lower or "fbcdn.net" in url_lower or "cdninstagram" in url_lower:
-        return {"User-Agent": ua, "Referer": "https://www.instagram.com/"}
-    if "pinterest" in url_lower or "pinimg.com" in url_lower:
-        return {"User-Agent": ua, "Referer": "https://www.pinterest.com/"}
-    # Для остальных ссылок — браузерный User-Agent, иначе многие CDN отдают 403
-    return {"User-Agent": ua}
+# --- Auto-download signals ---
 
 
 def _download_url_to_file(url):
-    """Скачать медиа из URL и вернуть file-like объект (ContentFile)."""
-    if not url or not url.startswith(("http://", "https://")):
-        return None
+    """Скачать файл по URL и вернуть ContentFile (или None)."""
+    import requests
+    from django.core.files.base import ContentFile
+    from urllib.parse import urlparse
+    import os
+
     try:
-        import httpx
-        from django.core.files.base import ContentFile
-        from apps.catalog.utils.storage_paths import detect_media_type
-        from apps.catalog.utils.image_optimizer import ImageOptimizer
-        from io import BytesIO
-        import os
-
-        headers = _get_download_headers(url)
-        media_type = detect_media_type(url)
-        timeout = 30 if media_type in ("video", "gif") else 15
-
-        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            response = client.get(url, headers=headers)
-            response.raise_for_status()
-            content = response.content
-
-        ext = os.path.splitext(url.split("?")[0].lower())[1] or ".jpg"
-
-        if media_type == "image":
-            try:
-                optimizer = ImageOptimizer()
-                file_obj = optimizer.optimize_image(BytesIO(content))
-                return file_obj
-            except Exception:
-                pass
-
-        filename = f"downloaded{ext}"
-        return ContentFile(content, name=filename)
-
+        response = requests.get(url, stream=True, timeout=10)
+        if response.status_code == 200:
+            filename = os.path.basename(urlparse(url).path)
+            if not filename:
+                filename = "image.jpg"
+            return ContentFile(response.content, name=filename)
     except Exception as e:
-        logger.warning("Failed to download URL %s: %s", url[:80], e)
-        return None
+        logger.warning(f"Failed to download image from {url}: {e}")
+    return None
+
+
+def _save_downloaded_file_to_storage(instance, file_attr, file_obj):
+    """
+    Сохранить файл в то же хранилище, что и у поля (field.storage → R2 или локальный диск),
+    и присвоить полю сохранённое имя. Использование field.storage гарантирует, что файл
+    попадёт в R2, если у модели настроен R2, а не в локальный media.
+    В поле передаём только basename, иначе Django делает os.path.join(upload_to, filename)
+    и путь дублируется (products/clothing/gallery/products/clothing/gallery/xxx.jpg).
+    """
+    import os
+    import uuid
+    from django.core.files.base import ContentFile
+
+    field = instance._meta.get_field(file_attr)
+    storage = field.storage  # тот же бэкенд, что и при сохранении формы (R2 или local)
+    upload_to = getattr(field, "upload_to", None)
+    if callable(upload_to):
+        try:
+            path = upload_to(instance, getattr(file_obj, "name", "image.jpg") or "image.jpg")
+        except Exception:
+            path = f"products/gallery/{uuid.uuid4().hex[:12]}.jpg"
+    else:
+        base = (upload_to or "products/gallery/").rstrip("/")
+        path = f"{base}/{uuid.uuid4().hex[:12]}.jpg"
+    saved_name = storage.save(path, file_obj)
+    with storage.open(saved_name, "rb") as f:
+        content = f.read()
+    # Только basename, иначе FileField при save() дублирует upload_to в пути
+    setattr(instance, file_attr, ContentFile(content, name=os.path.basename(saved_name)))
+
+
+@receiver(pre_save, sender=Product)
+def auto_set_product_type_from_category(sender, instance, **kwargs):
+    """
+    Автоматически выставляет product_type на основе категории,
+    если он стоит по умолчанию ('medicines') или не задан.
+    """
+    if not instance.category:
+        return
+
+    # Если тип уже задан и не равен дефолтному 'medicines', не трогаем
+    # (предполагаем, что 'medicines' - это дефолт, который мы хотим уточнить,
+    # если категория явно говорит о другом)
+    if instance.product_type and instance.product_type != 'medicines':
+        return
+
+    # Если категория сама по себе "medicines", то менять ничего не надо
+    if instance.category.slug == 'medicines':
+        return
+
+    # 1. Пробуем взять из CategoryType
+    if instance.category.category_type:
+        type_slug = instance.category.category_type.slug
+        # Проверяем, есть ли такой тип в PRODUCT_TYPE_CHOICES
+        valid_types = dict(Product.PRODUCT_TYPE_CHOICES).keys()
+        if type_slug in valid_types:
+            instance.product_type = type_slug
+            return
+
+    # 2. Пробуем определить по слагу категории (или родителей)
+    valid_types = dict(Product.PRODUCT_TYPE_CHOICES).keys()
+    
+    current = instance.category
+    while current:
+        slug = current.slug.lower()
+        # Проверяем точное совпадение
+        if slug in valid_types:
+            instance.product_type = slug
+            return
+            
+        # Проверяем частичное совпадение (префикс/суффикс)
+        for vt in valid_types:
+            if slug == vt or slug.startswith(f"{vt}-") or f"-{vt}" in slug:
+                instance.product_type = vt
+                return
+        
+        current = current.parent
 
 
 @receiver(pre_save, sender=Product)
@@ -310,36 +359,6 @@ def auto_download_clothing_product_media_from_url(sender, instance, **kwargs):
                 logger.info("Auto-downloaded video_url to main_video_file for ClothingProduct %s", instance.id or "new")
 
 
-def _save_downloaded_file_to_storage(instance, file_attr, file_obj):
-    """
-    Сохранить файл в то же хранилище, что и у поля (field.storage → R2 или локальный диск),
-    и присвоить полю сохранённое имя. Использование field.storage гарантирует, что файл
-    попадёт в R2, если у модели настроен R2, а не в локальный media.
-    В поле передаём только basename, иначе Django делает os.path.join(upload_to, filename)
-    и путь дублируется (products/clothing/gallery/products/clothing/gallery/xxx.jpg).
-    """
-    import os
-    import uuid
-    from django.core.files.base import ContentFile
-
-    field = instance._meta.get_field(file_attr)
-    storage = field.storage  # тот же бэкенд, что и при сохранении формы (R2 или local)
-    upload_to = getattr(field, "upload_to", None)
-    if callable(upload_to):
-        try:
-            path = upload_to(instance, getattr(file_obj, "name", "image.jpg") or "image.jpg")
-        except Exception:
-            path = f"products/gallery/{uuid.uuid4().hex[:12]}.jpg"
-    else:
-        base = (upload_to or "products/gallery/").rstrip("/")
-        path = f"{base}/{uuid.uuid4().hex[:12]}.jpg"
-    saved_name = storage.save(path, file_obj)
-    with storage.open(saved_name, "rb") as f:
-        content = f.read()
-    # Только basename, иначе FileField при save() дублирует upload_to в пути
-    setattr(instance, file_attr, ContentFile(content, name=os.path.basename(saved_name)))
-
-
 def _auto_download_image_url_to_file(instance, url_attr="image_url", file_attr="image_file", log_label=""):
     """Общая логика: скачать по URL и записать в file-поле (через default_storage), если URL внешний и file пустой."""
     from django.conf import settings
@@ -348,63 +367,9 @@ def _auto_download_image_url_to_file(instance, url_attr="image_url", file_attr="
     file_field = getattr(instance, file_attr, None)
     if not url or (file_field and file_field.name):
         return
-    if url.startswith("/media/") or (r2_public and url.startswith(r2_public)):
-        return
-    file_obj = _download_url_to_file(url)
-    if file_obj:
-        _save_downloaded_file_to_storage(instance, file_attr, file_obj)
-        logger.info("Auto-downloaded %s to %s for %s %s", url_attr, file_attr, log_label, instance.id or "new")
 
-
-@receiver(pre_save, sender=ProductImage)
-def auto_download_product_image_from_url(sender, instance, **kwargs):
-    """Автоматически скачивать медиа из URL полей в файловые поля ProductImage."""
-    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ProductImage")
-    if hasattr(instance, "video_url") and instance.video_url and not getattr(instance, "video_file", None):
-        _auto_download_image_url_to_file(instance, "video_url", "video_file", "ProductImage")
-
-
-@receiver(pre_save, sender=ClothingProductImage)
-def auto_download_clothing_product_image_from_url(sender, instance, **kwargs):
-    """Автоматически скачивать изображение из image_url в image_file для ClothingProductImage."""
-    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ClothingProductImage")
-
-
-@receiver(pre_save, sender=ClothingVariantImage)
-def auto_download_clothing_variant_image_from_url(sender, instance, **kwargs):
-    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ClothingVariantImage")
-
-
-@receiver(pre_save, sender=ShoeProductImage)
-def auto_download_shoe_product_image_from_url(sender, instance, **kwargs):
-    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ShoeProductImage")
-
-
-@receiver(pre_save, sender=ShoeVariantImage)
-def auto_download_shoe_variant_image_from_url(sender, instance, **kwargs):
-    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ShoeVariantImage")
-
-
-@receiver(pre_save, sender=JewelryProductImage)
-def auto_download_jewelry_product_image_from_url(sender, instance, **kwargs):
-    _auto_download_image_url_to_file(instance, "image_url", "image_file", "JewelryProductImage")
-
-
-@receiver(pre_save, sender=JewelryVariantImage)
-def auto_download_jewelry_variant_image_from_url(sender, instance, **kwargs):
-    _auto_download_image_url_to_file(instance, "image_url", "image_file", "JewelryVariantImage")
-
-
-@receiver(pre_save, sender=ElectronicsProductImage)
-def auto_download_electronics_product_image_from_url(sender, instance, **kwargs):
-    _auto_download_image_url_to_file(instance, "image_url", "image_file", "ElectronicsProductImage")
-
-
-@receiver(pre_save, sender=FurnitureVariantImage)
-def auto_download_furniture_variant_image_from_url(sender, instance, **kwargs):
-    _auto_download_image_url_to_file(instance, "image_url", "image_file", "FurnitureVariantImage")
-
-
-@receiver(pre_save, sender=BookVariantImage)
-def auto_download_book_variant_image_from_url(sender, instance, **kwargs):
-    _auto_download_image_url_to_file(instance, "image_url", "image_file", "BookVariantImage")
+    if not (url.startswith("/media/") or (r2_public and url.startswith(r2_public))):
+        file_obj = _download_url_to_file(url)
+        if file_obj:
+            _save_downloaded_file_to_storage(instance, file_attr, file_obj)
+            logger.info(f"{log_label} {instance.id or 'new'}")

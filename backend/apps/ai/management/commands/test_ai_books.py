@@ -54,6 +54,7 @@ class Command(BaseCommand):
                     'name': book['title'],
                     'description': book['description'],
                     'category': category,
+                    'product_type': 'books',
                     'external_id': f"test-{book['title'][:5]}",
                     'main_image': book['image_url']
                 }

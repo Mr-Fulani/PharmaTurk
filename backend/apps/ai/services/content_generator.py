@@ -4,7 +4,11 @@ import traceback
 from typing import Dict, Optional, List
 from django.db import transaction
 from django.utils import timezone
-from apps.catalog.models import Product, Category, ProductTranslation
+import uuid
+from django.core.files.base import ContentFile
+import requests
+from django.utils.text import slugify
+from apps.catalog.models import Product, Category, ProductTranslation, Author, ProductAuthor, ProductImage, Brand
 from apps.ai.models import AIProcessingLog, AIProcessingStatus, AITemplate
 from apps.ai.services.llm_client import LLMClient
 from apps.ai.services.media_processor import R2MediaProcessor
@@ -64,7 +68,13 @@ class ContentGenerator:
             # 2. Анализ изображений (Vision API)
             image_analysis_result = {}
             if processing_type in ['full', 'image_analysis'] and images_data:
-                vision_prompt = self._get_prompt_template('image_prompt', "Опиши этот товар, укажи цвет, материал и тип. Ответ предоставь в формате JSON.")
+                vision_prompt = self._get_prompt_template(
+                    'image_prompt', 
+                    "Опиши этот товар, укажи цвет, материал и тип. "
+                    "Если это книга - укажи автора и издательство. "
+                    "Если это одежда/обувь - укажи бренд. "
+                    "Ответ предоставь в формате JSON."
+                )
                 image_analysis_result = self.llm.analyze_images(
                     images=images_data,
                     prompt=vision_prompt
@@ -215,7 +225,18 @@ class ContentGenerator:
             }},
             "suggested_category_name": "Category Name (RU)",
             "category_confidence": 0.95,
-            "attributes": {{ "key": "value" }}
+            "attributes": {{
+                "author": ["Author Name 1", "Author Name 2"],
+                "pages": 123,
+                "price": 10.99,
+                "currency": "USD",
+                "isbn": "978-...",
+                "publisher": "Publisher Name",
+                "brand": "Brand Name",
+                "cover_type": "Hardcover",
+                "format_type": "Paperback",
+                "images": ["http://example.com/image1.jpg", "http://example.com/image2.jpg"]
+            }}
         }}
         """
         
@@ -274,8 +295,94 @@ class ContentGenerator:
             # Category logic
             if log.suggested_category and log.category_confidence > 0.8:
                 product.category = log.suggested_category
+            
+            # Применение извлеченных атрибутов
+            if log.extracted_attributes:
+                attrs = log.extracted_attributes
                 
-            product.save()
+                # Книжные атрибуты
+                if 'pages' in attrs and attrs['pages']:
+                    try:
+                        product.pages = int(attrs['pages'])
+                    except (ValueError, TypeError):
+                        pass
+                
+                if 'publisher' in attrs and attrs['publisher']:
+                    product.publisher = str(attrs['publisher'])
+                
+                if 'isbn' in attrs and attrs['isbn']:
+                    product.isbn = str(attrs['isbn'])
+                
+                if 'cover_type' in attrs and attrs['cover_type']:
+                    product.cover_type = str(attrs['cover_type'])
+                
+                # Цена и валюта
+                price_updated = False
+                if 'price' in attrs and attrs['price']:
+                    try:
+                        product.price = float(attrs['price'])
+                        price_updated = True
+                    except (ValueError, TypeError):
+                        pass
+                
+                if 'currency' in attrs and attrs['currency']:
+                    product.currency = str(attrs['currency'])
+                    price_updated = True
+                
+                product.save()
+                
+                # Обновление мультивалютных цен
+                if price_updated:
+                    product.update_currency_prices()
+                
+                # Авторы
+                if 'author' in attrs:
+                    authors_list = attrs['author']
+                    if isinstance(authors_list, str):
+                        authors_list = [authors_list]
+                    
+                    if isinstance(authors_list, list):
+                        # Очистка текущих авторов не производится, только добавление новых
+                        for idx, auth_name in enumerate(authors_list):
+                            parts = auth_name.strip().split()
+                            if len(parts) >= 2:
+                                first_name = parts[0]
+                                last_name = " ".join(parts[1:])
+                            else:
+                                first_name = auth_name
+                                last_name = ""
+                            
+                            author, _ = Author.objects.get_or_create(
+                                first_name=first_name,
+                                last_name=last_name
+                            )
+                            ProductAuthor.objects.get_or_create(
+                                product=product,
+                                author=author,
+                                defaults={'sort_order': idx}
+                            )
+
+                # Изображения из текста
+                if 'images' in attrs and isinstance(attrs['images'], list):
+                    for img_url in attrs['images']:
+                        if not img_url:
+                            continue
+                        try:
+                            # Проверяем, нет ли уже такого изображения
+                            if ProductImage.objects.filter(product=product, image_url=img_url).exists():
+                                continue
+
+                            resp = requests.get(img_url, timeout=10)
+                            if resp.status_code == 200:
+                                filename = img_url.split('/')[-1].split('?')[0] or f"image_{timezone.now().timestamp()}.jpg"
+                                img_obj = ProductImage(
+                                    product=product,
+                                    image_url=img_url, # Сохраняем исходный URL
+                                    is_main=not product.images.exists() # Если нет картинок, первая будет главной
+                                )
+                                img_obj.image_file.save(filename, ContentFile(resp.content), save=True)
+                        except Exception as e:
+                            logger.error(f"Failed to download image {img_url}: {e}")
             
             # 2. Сохраняем переводы (EN), если они есть в raw_llm_response
             if log.raw_llm_response and 'content' in log.raw_llm_response:

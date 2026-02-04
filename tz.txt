@@ -1,0 +1,1774 @@
+Отлично! Учитываю R2 для медиа и пишу детальное ТЗ с полной структурой проекта.
+ТЕХНИЧЕСКОЕ ЗАДАНИЕ
+AI-модуль для PharmaTurk: генерация описаний + автокатегоризация
+Версия: 1.0
+Дата: 2024
+Статус: Проектирование
+1.  ОБЩЕЕ ОПИСАНИЕ
+1.1 Цель
+Создание AI-модуля для автоматической обработки товаров, поступающих от парсеров:
+•  Генерация качественных описаний на русском языке
+•  Автоматическое определение категории
+•  Интеграция с существующей инфраструктурой (Django, Celery, R2)
+1.2 Ограничения и особенности
+•  Медиафайлы хранятся в Cloudflare R2 (не локально)
+•  Обработка асинхронная через Celery
+•  Поддержка высокой нагрузки (пакетная обработка)
+•  Возможность ручной модерации результатов
+----
+2.  АРХИТЕКТУРА СИСТЕМЫ
+2.1 Общая схема
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              ИСТОЧНИКИ ДАННЫХ                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │  Wildberries│  │  Instagram  │  │    Ozon     │  │   Сайты поставщиков │ │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘ │
+│         └─────────────────┴─────────────────┴────────────────────┘            │
+│                                   │                                         │
+│                                   ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                    PARSER SERVICE (Django + Celery)                     │ │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────────────────────┐  │ │
+│  │  │   Parser    │───▶│  Product    │───▶│   Celery Task:              │  │ │
+│  │  │   Runner    │    │  Creator    │    │   schedule_ai_processing    │  │ │
+│  │  └─────────────┘    └─────────────┘    └─────────────────────────────┘  │ │
+│  │                                                                          │ │
+│  │  ┌─────────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  MEDIA HANDLER (R2 Integration)                                    │ │ │
+│  │  │  - Скачивание изображений → R2                                    │ │ │
+│  │  │  - Генерация URL для AI сервиса                                   │ │ │
+│  │  │  - Оптимизация (resize, webp)                                     │ │ │
+│  │  └─────────────────────────────────────────────────────────────────────┘ │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                   │                                         │
+│                                   ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                    AI PROCESSING LAYER                                  │ │
+│  │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐  │ │
+│  │  │   Celery Worker │───▶│  AI Orchestrator│───▶│  LLM Service        │  │ │
+│  │  │   (Queue: ai)   │    │  (Django app)   │    │  (OpenAI/Local)     │  │ │
+│  │  └─────────────────┘    └─────────────────┘    └─────────────────────┘  │ │
+│  │                                │                      │                  │ │
+│  │                                ▼                      ▼                  │ │
+│  │  ┌─────────────────────────────────────────────────────────────────┐    │ │
+│  │  │              VECTOR DATABASE (Qdrant)                           │    │ │
+│  │  │  - Коллекция: categories (эмбеддинги категорий)                 │    │ │
+│  │  │  - Коллекция: description_templates (шаблоны описаний)          │    │ │
+│  │  │  - Коллекция: product_vectors (для future similarity search)    │    │ │
+│  │  └─────────────────────────────────────────────────────────────────┘    │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                   │                                         │
+│                                   ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────┐ │
+│  │                    STORAGE & MONITORING                                 │ │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────────────────────┐  │ │
+│  │  │  PostgreSQL │    │    Redis    │    │   Admin Interface           │  │ │
+│  │  │  (products, │    │  (cache,    │    │   - AIProcessingLog         │  │ │
+│  │  │   ai_logs)  │    │   queue)    │    │   - Moderation Queue        │  │ │
+│  │  └─────────────┘    └─────────────┘    └─────────────────────────────┘  │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
+----
+3.  СТРУККТУРА ПРОЕКТА (ФАЙЛОВАЯ)
+pharmaturk/
+├── backend/
+│   ├── apps/
+│   │   ├── ai/                              # НОВОЕ: AI модуль
+│   │   │   ├── init.py
+│   │   │   ├── apps.py
+│   │   │   ├── admin.py                     # Интерфейс модерации
+│   │   │   ├── models.py                    # AIProcessingLog, AITemplate
+│   │   │   ├── serializers.py               # DRF сериализаторы
+│   │   │   ├── urls.py                      # API endpoints
+│   │   │   ├── views.py                     # API views
+│   │   │   ├── tasks.py                     # Celery задачи
+│   │   │   ├── services/
+│   │   │   │   ├── init.py
+│   │   │   │   ├── llm_client.py            # Клиент OpenAI/локальных моделей
+│   │   │   │   ├── content_generator.py     # Генерация описаний (RAG)
+│   │   │   │   ├── categorizer.py           # Определение категорий
+│   │   │   │   ├── vector_store.py          # Qdrant менеджер
+│   │   │   │   ├── image_analyzer.py        # Анализ изображений (Vision API)
+│   │   │   │   ├── media_processor.py       # Интеграция с R2
+│   │   │   │   └── quality_checker.py       # Проверка качества результатов
+│   │   │   ├── management/
+│   │   │   │   └── commands/
+│   │   │   │       ├── init_qdrant.py       # Инициализация векторной БД
+│   │   │   │       ├── sync_categories.py   # Синхронизация категорий
+│   │   │   │       ├── import_templates.py  # Импорт шаблонов описаний
+│   │   │   │       └── benchmark_ai.py      # Тестирование качества
+│   │   │   ├── migrations/
+│   │   │   └── tests/
+│   │   │       ├── test_llm_client.py
+│   │   │       ├── test_categorizer.py
+│   │   │       └── test_integration.py
+│   │   │
+│   │   ├── parsers/                         # МОДИФИЦИРОВАТЬ
+│   │   │   ├── ...
+│   │   │   ├── services/
+│   │   │   │   ├── base_parser.py           # Добавить интеграцию с AI
+│   │   │   │   ├── wildberries_parser.py
+│   │   │   │   ├── instagram_parser.py
+│   │   │   │   └── ...
+│   │   │   └── signals.py                   # Сигналы post_save для AI
+│   │   │
+│   │   └── products/                        # МОДИФИЦИРОВАТЬ
+│   │       ├── models.py                    # Добавить поля для AI
+│   │       └── ...
+│   │
+│   ├── config/
+│   │   ├── settings/
+│   │   │   ├── base.py                      # Добавить AI конфигурацию
+│   │   │   └── ...
+│   │   └── urls.py                          # Подключить ai.urls
+│   │
+│   ├── utils/
+│   │   └── r2_storage.py                    # Утилиты для R2 (если нет)
+│   │
+│   ├── requirements/
+│   │   ├── base.txt                         # Добавить ai-зависимости
+│   │   └── ...
+│   │
+│   └── manage.py
+│
+├── ml_service/                              # НОВОЕ: FastAPI микросервис (опционально)
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── main.py
+│   ├── config.py
+│   ├── api/
+│   │   ├── init.py
+│   │   ├── routes.py
+│   │   ├── schemas.py
+│   │   └── dependencies.py
+│   ├── core/
+│   │   ├── llm_engine.py
+│   │   ├── embedding_engine.py
+│   │   └── prompt_templates.py
+│   └── models/                              # Локальные модели (если используются)
+│       └── .gitkeep
+│
+├── docker-compose.yml                       # МОДИФИЦИРОВАТЬ
+├── docker-compose.prod.yml                  # Добавить qdrant, ml_service
+├── .env.example                             # Добавить AI переменные
+└── scripts/
+└── ai_setup.sh                          # Скрипт первоначальной настройки
+----
+4.  МОДЕЛИ ДАННЫХ
+4.1 AIProcessingLog (основная таблица логов)
+apps/ai/models.py
+from django.db import models
+from django.contrib.postgres.fields import JSONField
+from apps.products.models import Product, Category
+from apps.users.models import User  # если есть
+class AIProcessingStatus(models.TextChoices):
+PENDING = 'pending', 'В очереди'
+PROCESSING = 'processing', 'Обработка'
+COMPLETED = 'completed', 'Завершено'
+FAILED = 'failed', 'Ошибка'
+MODERATION = 'moderation', 'На модерации'
+APPROVED = 'approved', 'Одобрено'
+REJECTED = 'rejected', 'Отклонено'
+class AIProcessingLog(models.Model):
+"""
+Полный лог AI обработки товара.
+Хранит входные данные, результаты, метрики для аудита.
+"""
+PROCESSING_TYPES = [
+    ('description_only', 'Только описание'),
+    ('categorization_only', 'Только категоризация'),
+    ('full', 'Полная обработка'),
+    ('image_analysis', 'Анализ изображений'),
+]
+
+# Связи
+product = models.ForeignKey(
+    Product,
+    on_delete=models.CASCADE,
+    related_name='ai_logs',
+    verbose_name='Товар'
+)
+processed_by = models.ForeignKey(
+    User,
+    on_delete=models.SET_NULL,
+    null=True,
+    blank=True,
+    related_name='ai_processed',
+    verbose_name='Обработал (модератор)'
+)
+
+# Тип и статус обработки
+processing_type = models.CharField(
+    max_length=20,
+    choices=PROCESSING_TYPES,
+    default='full',
+    verbose_name='Тип обработки'
+)
+status = models.CharField(
+    max_length=20,
+    choices=AIProcessingStatus.choices,
+    default=AIProcessingStatus.PENDING,
+    verbose_name='Статус'
+)
+
+# Входные данные (сохраняем полностью для воспроизводимости)
+input_data = models.JSONField(
+    verbose_name='Входные данные',
+    help_text='Сырые данные от парсера: title, description, specs, images_urls и т.д.'
+)
+input_images_urls = models.JSONField(
+    default=list,
+    verbose_name='URL изображений (вход)',
+    help_text='Ссылки на R2 или оригинальные URL'
+)
+
+# Результаты генерации описания
+generated_title = models.CharField(
+    max_length=255,
+    null=True,
+    blank=True,
+    verbose_name='Сгенерированный заголовок'
+)
+generated_description = models.TextField(
+    null=True,
+    blank=True,
+    verbose_name='Сгенерированное описание'
+)
+generated_seo_title = models.CharField(
+    max_length=70,
+    null=True,
+    blank=True,
+    verbose_name='SEO заголовок'
+)
+generated_seo_description = models.CharField(
+    max_length=160,
+    null=True,
+    blank=True,
+    verbose_name='SEO описание'
+)
+generated_keywords = models.JSONField(
+    default=list,
+    verbose_name='Ключевые слова'
+)
+
+# Результаты категоризации
+suggested_category = models.ForeignKey(
+    Category,
+    on_delete=models.SET_NULL,
+    null=True,
+    blank=True,
+    related_name='ai_suggestions',
+    verbose_name='Предложенная категория'
+)
+category_confidence = models.FloatField(
+    null=True,
+    blank=True,
+    verbose_name='Уверенность в категории',
+    help_text='0.0 - 1.0'
+)
+category_alternatives = models.JSONField(
+    default=list,
+    verbose_name='Альтернативные категории',
+    help_text='Топ-3 альтернативы с confidence score'
+)
+
+# Атрибуты, извлеченные AI
+extracted_attributes = models.JSONField(
+    default=dict,
+    verbose_name='Извлеченные атрибуты',
+    help_text='{"color": "красный", "material": "хлопок", "size": "M-L"}'
+)
+
+# Анализ изображений (если применялся)
+image_analysis = models.JSONField(
+    default=dict,
+    verbose_name='Анализ изображений',
+    help_text='{"dominant_colors": ["#FF0000"], "detected_objects": ["dress"], "quality_score": 0.85}'
+)
+
+# Технические метаданные
+llm_model = models.CharField(
+    max_length=50,
+    default='gpt-4o-mini',
+    verbose_name='Использованная модель'
+)
+tokens_used = models.JSONField(
+    default=dict,
+    verbose_name='Использовано токенов',
+    help_text='{"prompt": 150, "completion": 200, "total": 350}'
+)
+processing_time_ms = models.IntegerField(
+    null=True,
+    blank=True,
+    verbose_name='Время обработки (мс)'
+)
+cost_usd = models.DecimalField(
+    max_digits=10,
+    decimal_places=6,
+    null=True,
+    blank=True,
+    verbose_name='Стоимость ($)'
+)
+
+# Полный raw response для отладки
+raw_llm_response = models.JSONField(
+    null=True,
+    blank=True,
+    verbose_name='Полный ответ LLM'
+)
+error_message = models.TextField(
+    null=True,
+    blank=True,
+    verbose_name='Сообщение об ошибке'
+)
+stack_trace = models.TextField(
+    null=True,
+    blank=True,
+    verbose_name='Stack trace (при ошибке)'
+)
+
+# Модерация
+moderation_notes = models.TextField(
+    null=True,
+    blank=True,
+    verbose_name='Заметки модератора'
+)
+moderation_date = models.DateTimeField(
+    null=True,
+    blank=True,
+    verbose_name='Дата модерации'
+)
+
+# Таймстампы
+created_at = models.DateTimeField(auto_now_add=True)
+updated_at = models.DateTimeField(auto_now=True)
+completed_at = models.DateTimeField(null=True, blank=True)
+
+class Meta:
+    ordering = ['-created_at']
+    verbose_name = 'Лог AI обработки'
+    verbose_name_plural = 'Логи AI обработки'
+    indexes = [
+        models.Index(fields=['status', 'created_at']),
+        models.Index(fields=['product', 'created_at']),
+        models.Index(fields=['suggested_category', 'confidence']),
+    ]
+
+def __str__(self):
+    return f"#{self.id} {self.product.title[:30]} - {self.status}"
+
+class AITemplate(models.Model):
+"""
+Шаблоны для few-shot learning и промптов
+"""
+TEMPLATE_TYPES = [
+    ('description', 'Описание товара'),
+    ('category_example', 'Пример категории'),
+    ('attribute_extraction', 'Извлечение атрибутов'),
+    ('image_prompt', 'Анализ изображения'),
+]
+
+name = models.CharField(max_length=100, unique=True)
+template_type = models.CharField(max_length=20, choices=TEMPLATE_TYPES)
+category = models.ForeignKey(
+    Category,
+    on_delete=models.CASCADE,
+    null=True,
+    blank=True,
+    related_name='ai_templates'
+)
+
+# Контент для RAG
+content = models.TextField(help_text='Текст шаблона или примера')
+embedding_vector = models.JSONField(
+    null=True,
+    blank=True,
+    help_text='Кеш эмбеддинга (опционально)'
+)
+
+# Метаданные
+language = models.CharField(max_length=10, default='ru')
+is_active = models.BooleanField(default=True)
+usage_count = models.PositiveIntegerField(default=0)
+success_rate = models.FloatField(default=0.0)  # На основе модерации
+
+created_at = models.DateTimeField(auto_now_add=True)
+updated_at = models.DateTimeField(auto_now=True)
+
+class Meta:
+    verbose_name = 'AI шаблон'
+    verbose_name_plural = 'AI шаблоны'
+
+class AIModerationQueue(models.Model):
+"""
+Очередь на модерацию для сомнительных результатов
+"""
+PRIORITY_CHOICES = [
+    (1, 'Низкий'),
+    (2, 'Средний'),
+    (3, 'Высокий'),
+]
+
+log_entry = models.OneToOneField(
+    AIProcessingLog,
+    on_delete=models.CASCADE,
+    related_name='moderation_queue'
+)
+priority = models.PositiveSmallIntegerField(choices=PRIORITY_CHOICES, default=2)
+reason = models.CharField(
+    max_length=100,
+    help_text='Причина отправки на модерацию: low_confidence, sensitive_content и т.д.'
+)
+assigned_to = models.ForeignKey(
+    User,
+    on_delete=models.SET_NULL,
+    null=True,
+    blank=True,
+    related_name='ai_moderation_tasks'
+)
+
+created_at = models.DateTimeField(auto_now_add=True)
+resolved_at = models.DateTimeField(null=True, blank=True)
+
+class Meta:
+    ordering = ['-priority', 'created_at']
+
+----
+5.  ИНТЕГРАЦИЯ С R2 (МЕДИАФАЙЛЫ)
+5.1 Конфигурация R2
+config/settings/base.py
+R2 Configuration (Cloudflare R2)
+R2_CONFIG = {
+'endpoint_url': env('R2_ENDPOINT_URL'),  # https://<account>.r2.cloudflarestorage.com
+'aws_access_key_id': env('R2_ACCESS_KEY_ID'),
+'aws_secret_access_key': env('R2_SECRET_ACCESS_KEY'),
+'region_name': 'auto',
+'bucket_name': env('R2_BUCKET_NAME'),
+}
+AI-specific R2 settings
+AI_R2_SETTINGS = {
+'original_images_path': 'products/original/',      # Исходные из парсеров
+'processed_images_path': 'products/processed/',    # Оптимизированные для AI
+'thumbnails_path': 'products/thumbs/',             # Превью
+'temp_processing_path': 'temp/ai_processing/',     # Временные файлы
+'cdn_url': env('R2_PUBLIC_URL'),                   # Публичный URL для доступа
+}
+5.2 Сервис работы с медиа
+apps/ai/services/media_processor.py
+import boto3
+import requests
+from PIL import Image
+from io import BytesIO
+from typing import List, Dict, Optional
+from django.conf import settings
+import logging
+logger = logging.getLogger(name)
+class R2MediaProcessor:
+"""
+Обработка медиафайлов из R2 для AI сервисов.
+Оптимизация изображений перед отправкой в Vision API.
+"""
+def __init__(self):
+    self.s3 = boto3.client(
+        's3',
+        endpoint_url=settings.R2_CONFIG['endpoint_url'],
+        aws_access_key_id=settings.R2_CONFIG['aws_access_key_id'],
+        aws_secret_access_key=settings.R2_CONFIG['aws_secret_access_key'],
+        region_name=settings.R2_CONFIG['region_name']
+    )
+    self.bucket = settings.R2_CONFIG['bucket_name']
+    self.cdn_url = settings.AI_R2_SETTINGS['cdn_url']
+
+def get_image_for_analysis(
+    self,
+    image_url: str,
+    max_size: tuple = (1024, 1024),
+    quality: int = 85
+) -> Dict:
+    """
+    Получить оптимизированное изображение для AI анализа.
+    
+    Args:
+        image_url: URL изображения (R2 или внешний)
+        max_size: максимальные размеры (width, height)
+        quality: качество JPEG (1-100)
+    
+    Returns:
+        {
+            'url': str,           # URL для API (временный или оригинал)
+            'base64': str,        # Base64 encoded (для OpenAI Vision)
+            'format': str,        # 'jpeg', 'png', 'webp'
+            'size_bytes': int,
+            'dimensions': (w, h)
+        }
+    """
+    
+    try:
+        # Скачиваем изображение
+        if image_url.startswith(self.cdn_url):
+            # Из R2 - прямой доступ
+            key = image_url.replace(f"{self.cdn_url}/", "")
+            response = self.s3.get_object(Bucket=self.bucket, Key=key)
+            image_data = response['Body'].read()
+        else:
+            # Внешний URL
+            response = requests.get(image_url, timeout=30)
+            response.raise_for_status()
+            image_data = response.content
+        
+        # Оптимизация
+        img = Image.open(BytesIO(image_data))
+        original_format = img.format
+        
+        # Конвертация в RGB если нужно
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        
+        # Resize с сохранением пропорций
+        img.thumbnail(max_size, Image.Resampling.LANCZOS)
+        
+        # Сохранение в буфер
+        buffer = BytesIO()
+        img.save(buffer, format='JPEG', quality=quality, optimize=True)
+        buffer.seek(0)
+        
+        optimized_data = buffer.getvalue()
+        
+        # Base64 для OpenAI Vision API
+        import base64
+        base64_encoded = base64.b64encode(optimized_data).decode('utf-8')
+        
+        return {
+            'url': image_url,  # Оригинал для ссылки
+            'base64': f"data:image/jpeg;base64,{base64_encoded}",
+            'format': 'jpeg',
+            'size_bytes': len(optimized_data),
+            'dimensions': img.size,
+            'original_format': original_format
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing image {image_url}: {e}")
+        return {
+            'url': image_url,
+            'base64': None,
+            'error': str(e)
+        }
+
+def save_processed_image(
+    self,
+    product_id: int,
+    image_data: bytes,
+    image_type: str = 'optimized'
+) -> str:
+    """
+    Сохранить обработанное изображение обратно в R2.
+    
+    Returns:
+        Public URL сохраненного файла
+    """
+    key = f"{settings.AI_R2_SETTINGS['processed_images_path']}{product_id}/{image_type}.jpg"
+    
+    self.s3.put_object(
+        Bucket=self.bucket,
+        Key=key,
+        Body=image_data,
+        ContentType='image/jpeg',
+        CacheControl='max-age=31536000'  # 1 год кеширования
+    )
+    
+    return f"{self.cdn_url}/{key}"
+
+def get_product_images_batch(
+    self,
+    image_urls: List[str],
+    max_images: int = 5
+) -> List[Dict]:
+    """
+    Получить батч изображений товара для AI.
+    Ограничиваем количество для экономии токенов.
+    """
+    # Берем первые N изображений (обычно главные)
+    selected_urls = image_urls[:max_images]
+    
+    results = []
+    for url in selected_urls:
+        processed = self.get_image_for_analysis(url)
+        if not processed.get('error'):
+            results.append(processed)
+    
+    return results
+
+----
+6.  СЕРВИСЫ AI
+6.1 LLM Client (унифицированный)
+apps/ai/services/llm_client.py
+import os
+import json
+import time
+from typing import List, Dict, Optional, Union
+from openai import OpenAI, AsyncOpenAI
+from django.conf import settings
+import logging
+logger = logging.getLogger(name)
+class LLMClient:
+"""
+Унифицированный клиент для LLM операций.
+Поддержка OpenAI и локальных моделей (через настройку).
+"""
+def __init__(self, async_mode: bool = False):
+    self.model = settings.AI_CONFIG.get('MODEL', 'gpt-4o-mini')
+    self.vision_model = settings.AI_CONFIG.get('VISION_MODEL', 'gpt-4o-mini')
+    self.embedding_model = settings.AI_CONFIG.get('EMBEDDING_MODEL', 'text-embedding-3-small')
+    
+    client_class = AsyncOpenAI if async_mode else OpenAI
+    self.client = client_class(api_key=settings.OPENAI_API_KEY)
+    
+    # Pricing для подсчета стоимости (обновлять по мере изменений OpenAI)
+    self.pricing = {
+        'gpt-4o-mini': {'input': 0.00015, 'output': 0.0006},  # per 1K tokens
+        'gpt-4o': {'input': 0.005, 'output': 0.015},
+        'text-embedding-3-small': {'input': 0.00002, 'output': 0},
+    }
+
+def get_embedding(self, text: str) -> List[float]:
+    """Получить векторное представление текста."""
+    text = text[:8000]  # Лимит токенов
+    
+    response = self.client.embeddings.create(
+        model=self.embedding_model,
+        input=text
+    )
+    
+    return response.data[0].embedding
+
+def generate_content(
+    self,
+    system_prompt: str,
+    user_prompt: str,
+    json_mode: bool = True,
+    temperature: float = 0.7,
+    max_tokens: int = 1000
+) -> Dict:
+    """
+    Генерация текста с полным логированием.
+    
+    Returns:
+        {
+            'content': str или dict (если json_mode),
+            'tokens': {'prompt': int, 'completion': int, 'total': int},
+            'cost_usd': float,
+            'processing_time_ms': int,
+            'raw_response': dict
+        }
+    """
+    start_time = time.time()
+    
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+    
+    try:
+        if json_mode:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"}
+            )
+            content = json.loads(response.choices[0].message.content)
+        else:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            content = response.choices[0].message.content
+        
+        processing_time = int((time.time() - start_time) * 1000)
+        tokens = {
+            'prompt': response.usage.prompt_tokens,
+            'completion': response.usage.completion_tokens,
+            'total': response.usage.total_tokens
+        }
+        
+        # Подсчет стоимости
+        model_pricing = self.pricing.get(self.model, self.pricing['gpt-4o-mini'])
+        cost = (tokens['prompt'] * model_pricing['input'] + 
+               tokens['completion'] * model_pricing['output']) / 1000
+        
+        return {
+            'content': content,
+            'tokens': tokens,
+            'cost_usd': round(cost, 6),
+            'processing_time_ms': processing_time,
+            'raw_response': response.model_dump()
+        }
+        
+    except Exception as e:
+        logger.error(f"LLM generation error: {e}")
+        raise
+
+def analyze_images(
+    self,
+    images: List[Dict],  # Из R2MediaProcessor.get_product_images_batch
+    prompt: str,
+    json_mode: bool = True
+) -> Dict:
+    """
+    Анализ изображений через Vision API.
+    
+    Args:
+        images: список обработанных изображений с base64
+        prompt: текстовый промпт для анализа
+    """
+    start_time = time.time()
+    
+    # Формируем content для API
+    content = [{"type": "text", "text": prompt}]
+    
+    for img in images:
+        if img.get('base64'):
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": img['base64'],
+                    "detail": "auto"  # или "low" для экономии
+                }
+            })
+    
+    messages = [
+        {
+            "role": "user",
+            "content": content
+        }
+    ]
+    
+    try:
+        if json_mode:
+            response = self.client.chat.completions.create(
+                model=self.vision_model,
+                messages=messages,
+                max_tokens=1000,
+                response_format={"type": "json_object"}
+            )
+            result_content = json.loads(response.choices[0].message.content)
+        else:
+            response = self.client.chat.completions.create(
+                model=self.vision_model,
+                messages=messages,
+                max_tokens=1000
+            )
+            result_content = response.choices[0].message.content
+        
+        processing_time = int((time.time() - start_time) * 1000)
+        tokens = {
+            'prompt': response.usage.prompt_tokens,
+            'completion': response.usage.completion_tokens,
+            'total': response.usage.total_tokens
+        }
+        
+        model_pricing = self.pricing.get(self.vision_model, self.pricing['gpt-4o-mini'])
+        cost = (tokens['prompt'] * model_pricing['input'] + 
+               tokens['completion'] * model_pricing['output']) / 1000
+        
+        return {
+            'content': result_content,
+            'tokens': tokens,
+            'cost_usd': round(cost, 6),
+            'processing_time_ms': processing_time,
+            'analyzed_images_count': len(images),
+            'raw_response': response.model_dump()
+        }
+        
+    except Exception as e:
+        logger.error(f"Vision API error: {e}")
+        raise
+
+----
+6.2 Content Generator (основной сервис)
+apps/ai/services/content_generator.py
+from typing import Optional, Dict, List
+from django.db import transaction
+from apps.products.models import Product, Category
+from apps.ai.models import AIProcessingLog, AIProcessingStatus
+from apps.ai.services.llm_client import LLMClient
+from apps.ai.services.vector_store import QdrantManager
+from apps.ai.services.media_processor import R2MediaProcessor
+import logging
+logger = logging.getLogger(name)
+class ContentGenerator:
+"""
+Основной сервис генерации контента.
+Оркестрирует LLM, RAG, анализ изображений.
+"""
+def __init__(self):
+    self.llm = LLMClient()
+    self.vector_store = QdrantManager()
+    self.media_processor = R2MediaProcessor()
+
+def process_product(
+    self,
+    product: Product,
+    options: Optional[Dict] = None
+) -> AIProcessingLog:
+    """
+    Полная обработка товара.
+    
+    Args:
+        product: экземпляр Product
+        options: {
+            'generate_description': bool (default: True),
+            'categorize': bool (default: True if no category),
+            'analyze_images': bool (default: True if images exist),
+            'language': str (default: 'ru'),
+            'use_images': bool (default: True)
+        }
+    """
+    options = options or {}
+    gen_desc = options.get('generate_description', True)
+    categorize = options.get('categorize', not bool(product.category))
+    analyze_images = options.get('analyze_images', True)
+    language = options.get('language', 'ru')
+    use_images = options.get('use_images', True)
+    
+    # Подготовка входных данных
+    input_data = self._prepare_input_data(product)
+    
+    # Определяем тип обработки
+    processing_type = self._determine_processing_type(
+        gen_desc, categorize, analyze_images
+    )
+    
+    # Создаем лог
+    log = AIProcessingLog.objects.create(
+        product=product,
+        processing_type=processing_type,
+        status=AIProcessingStatus.PROCESSING,
+        input_data=input_data,
+        input_images_urls=input_data.get('image_urls', [])
+    )
+    
+    try:
+        results = {}
+        
+        # 1. Анализ изображений (если включено и есть фото)
+        if analyze_images and use_images and input_data.get('image_urls'):
+            image_analysis = self._analyze_product_images(
+                input_data['image_urls']
+            )
+            log.image_analysis = image_analysis.get('content', {})
+            results['image_analysis'] = image_analysis
+        
+        # 2. Категоризация (если нужна)
+        if categorize:
+            cat_result = self._categorize_product(
+                input_data=input_data,
+                image_analysis=log.image_analysis,
+                language=language
+            )
+            log.suggested_category = cat_result.get('category')
+            log.category_confidence = cat_result.get('confidence')
+            log.category_alternatives = cat_result.get('alternatives', [])
+            log.extracted_attributes = cat_result.get('attributes', {})
+            results['categorization'] = cat_result
+        
+        # 3. Генерация описания (если нужна)
+        if gen_desc:
+            desc_result = self._generate_description(
+                input_data=input_data,
+                category=log.suggested_category,
+                attributes=log.extracted_attributes,
+                image_analysis=log.image_analysis,
+                language=language
+            )
+            log.generated_title = desc_result.get('title')
+            log.generated_description = desc_result.get('description')
+            log.generated_seo_title = desc_result.get('seo_title')
+            log.generated_seo_description = desc_result.get('seo_description')
+            log.generated_keywords = desc_result.get('keywords', [])
+            results['description'] = desc_result
+        
+        # 4. Агрегация метрик
+        total_tokens = {'prompt': 0, 'completion': 0, 'total': 0}
+        total_cost = 0.0
+        total_time = 0
+        
+        for key, result in results.items():
+            if 'tokens' in result:
+                total_tokens['prompt'] += result['tokens']['prompt']
+                total_tokens['completion'] += result['tokens']['completion']
+                total_tokens['total'] += result['tokens']['total']
+            if 'cost_usd' in result:
+                total_cost += result['cost_usd']
+            if 'processing_time_ms' in result:
+                total_time += result['processing_time_ms']
+        
+        log.tokens_used = total_tokens
+        log.cost_usd = round(total_cost, 6)
+        log.processing_time_ms = total_time
+        
+        # 5. Определение необходимости модерации
+        needs_moderation = self._check_needs_moderation(log)
+        
+        if needs_moderation:
+            log.status = AIProcessingStatus.MODERATION
+            self._create_moderation_task(log)
+        else:
+            # Автоприменение к товару
+            self._apply_to_product(log, product)
+            log.status = AIProcessingStatus.APPROVED
+        
+        log.completed_at = timezone.now()
+        log.save()
+        
+        return log
+        
+    except Exception as e:
+        logger.exception(f"AI processing failed for product {product.id}")
+        log.status = AIProcessingStatus.FAILED
+        log.error_message = str(e)
+        log.save()
+        raise
+
+def _prepare_input_data(self, product: Product) -> Dict:
+    """Подготовка данных о товаре для AI."""
+    return {
+        'product_id': product.id,
+        'title': product.title,
+        'original_description': product.description,
+        'brand': product.brand.name if product.brand else None,
+        'price': str(product.price) if product.price else None,
+        'currency': product.currency if hasattr(product, 'currency') else 'RUB',
+        'supplier': product.supplier.name if product.supplier else None,
+        'source_url': product.source_url if hasattr(product, 'source_url') else None,
+        'image_urls': [
+            img.url for img in product.images.all()
+        ] if hasattr(product, 'images') else [],
+        'parsed_attributes': product.attributes if hasattr(product, 'attributes') else {},
+        'created_at': product.created_at.isoformat() if product.created_at else None,
+    }
+
+def _determine_processing_type(self, desc: bool, cat: bool, img: bool) -> str:
+    """Определить тип обработки для лога."""
+    if img and desc and cat:
+        return 'full'
+    elif desc and cat:
+        return 'full'
+    elif desc:
+        return 'description_only'
+    elif cat:
+        return 'categorization_only'
+    elif img:
+        return 'image_analysis'
+    return 'full'
+
+def _analyze_product_images(self, image_urls: List[str]) -> Dict:
+    """Анализ изображений через Vision API."""
+    
+    # Получаем оптимизированные изображения
+    images = self.media_processor.get_product_images_batch(
+        image_urls, max_images=3
+    )
+    
+    if not images:
+        return {'content': {}, 'error': 'No valid images'}
+    
+    prompt = """Проанализируй изображения одежды и верни JSON:
+
+{
+"dominant_colors": ["название цвета на русском", ...],
+"color_hex": ["#RRGGBB", ...],
+"clothing_type": "тип одежды (платье, брюки, футболка и т.д.)",
+"style": "casual/evening/sport/business",
+"pattern": "solid/striped/floral/printed/geometric",
+"neckline": "v-neck/round/scoop/off-shoulder (если видно)",
+"sleeve_length": "short/long/sleeveless/3-4 (если видно)",
+"length": "mini/midi/maxi/regular (если видно)",
+"fabric_appearance": "предполагаемый материал по внешнему виду",
+"quality_estimate": "budget/mid/premium (по внешнему виду)",
+"target_audience": "women/men/teen/unisex",
+"occasion": "повседневное/вечернее/деловое/спортивное",
+"key_features": ["особенность 1", "особенность 2"],
+"confidence": 0.85
+}"""
+    return self.llm.analyze_images(images, prompt, json_mode=True)
+
+def _categorize_product(
+    self,
+    input_data: Dict,
+    image_analysis: Dict,
+    language: str = 'ru'
+) -> Dict:
+    """Определение категории с RAG."""
+    
+    # RAG: ищем похожие категории
+    query_text = f"{input_data['title']} {input_data.get('original_description', '')}"
+    if image_analysis.get('clothing_type'):
+        query_text += f" {image_analysis['clothing_type']}"
+    
+    similar_categories = self.vector_store.search_similar_categories(
+        query_text, top_k=5
+    )
+    
+    # Формируем контекст для LLM
+    categories_context = "\n".join([
+        f"- {cat['category_name']} (родитель: {cat.get('parent', 'нет')}, "
+        f"схожесть: {cat['similarity']:.2f})\n  Примеры: {cat['examples'][:200]}"
+        for cat in similar_categories[:3]
+    ])
+    
+    system_prompt = f"""Ты — эксперт по категоризации товаров моды для маркетплейса.
+
+Определи категорию товара на основе названия, описания и анализа изображений.
+Доступные категории из каталога:
+{categories_context}
+Ответь строго в JSON формате:
+{{
+"category_name": "Точное название категории из списка выше или новая",
+"parent_category": "Родительская категория",
+"full_path": "Женская одежда > Платья > Вечерние платья",
+"confidence": 0.95,
+"attributes": {{
+"gender": "women/men/unisex/kids",
+"age_group": "adult/teen/child",
+"clothing_type": "конкретный тип",
+"season": "summer/winter/all_season",
+"style": "casual/formal/sport/bohemian/minimal"
+}},
+"alternatives": [
+{{"category": "альтернатива 1", "confidence": 0.75}},
+{{"category": "альтернатива 2", "confidence": 0.60}}
+],
+"reasoning": "Почему выбрана эта категория (2-3 предложения)"
+}}"""
+    user_prompt = f"""Категоризируй товар:
+
+Название: {input_data['title']}
+Описание: {input_data.get('original_description', 'Нет')}
+Бренд: {input_data.get('brand', 'Неизвестен')}
+Цена: {input_data.get('price', 'Не указана')}
+Данные с изображений:
+•  Тип одежды: {image_analysis.get('clothing_type', 'не определен')}
+•  Цвета: {', '.join(image_analysis.get('dominant_colors', []))}
+•  Стиль: {image_analysis.get('style', 'не определен')}
+•  Целевая аудитория: {image_analysis.get('target_audience', 'не определена')}"""
+  result = self.llm.generate_content(
+      system_prompt=system_prompt,
+      user_prompt=user_prompt,
+      json_mode=True,
+      temperature=0.3,
+      max_tokens=800
+  )
+  
+  content = result['content']
+  
+  # Резолвим категорию в БД
+  category = self._resolve_category_from_name(
+      content.get('category_name'),
+      content.get('parent_category')
+  )
+  
+  return {
+      'category': category,
+      'category_name': content.get('category_name'),
+      'confidence': content.get('confidence', 0.5),
+      'alternatives': content.get('alternatives', []),
+      'attributes': content.get('attributes', {}),
+      'reasoning': content.get('reasoning', ''),
+      **{k: v for k, v in result.items() if k != 'content'}
+  }
+
+def _generate_description(
+self,
+input_data: Dict,
+category: Optional[Category],
+attributes: Dict,
+image_analysis: Dict,
+language: str = 'ru'
+) -> Dict:
+"""Генерация продающего описания."""
+  # RAG: получаем шаблоны
+  product_type = image_analysis.get('clothing_type') or \
+                attributes.get('clothing_type') or \
+                input_data['title']
+  
+  templates = self.vector_store.get_relevant_templates(
+      product_type, top_k=2
+  )
+  
+  templates_context = ""
+  if templates:
+      templates_context = "Примеры хороших описаний для похожих товаров:\n\n" + \
+                        "\n\n---\n\n".join(templates) + "\n\n"
+  
+  system_prompt = f"""Ты — копирайтер для маркетплейса модной одежды.
+
+Создай продающее описание товара на {'русском' if language == 'ru' else 'английском'} языке.
+Правила:
+•  Начни с цепляющего заголовка (не более 100 символов)
+•  Описание: 150-250 слов, разбито на абзацы
+•  Выдели 3-5 ключевых преимуществ (маркированный список)
+•  Укажи материал и рекомендации по уходу
+•  Добавь совет по размеру (если применимо)
+•  Используй эмодзи умеренно (2-3 штуки)
+•  Стиль: разговорный, дружелюбный, вовлекающий
+•  Избегай: "уникальный", "лучший", "невероятный" — конкретика важнее хвалебных эпитетов
+Дополнительно сгенерируй:
+•  SEO title (50-60 символов)
+•  SEO description (150-160 символов)
+•  5-7 ключевых слов через запятую
+Ответ в JSON:
+{{
+"title": "Заголовок товара",
+"description": "Полное HTML описание с <p> и <ul>",
+"seo_title": "SEO заголовок",
+"seo_description": "SEO описание",
+"keywords": ["слово1", "слово2", ...],
+"key_benefits": ["выгода 1", "выгода 2", ...]
+}}"""
+    user_prompt = f"""{templates_context}Создай описание для товара:
+
+Название (исходное): {input_data['title']}
+Бренд: {input_data.get('brand', 'Неизвестен')}
+Категория: {category.name if category else 'Не определена'}
+Цена: {input_data.get('price', 'Не указана')}
+Характеристики с изображений:
+•  Тип: {image_analysis.get('clothing_type', 'не определен')}
+•  Цвет: {', '.join(image_analysis.get('dominant_colors', []))}
+•  Стиль: {image_analysis.get('style', 'не определен')}
+•  Длина: {image_analysis.get('length', 'не определена')}
+•  Рукав: {image_analysis.get('sleeve_length', 'не определен')}
+•  Материал (предположение): {image_analysis.get('fabric_appearance', 'не определен')}
+Дополнительные атрибуты: {attributes}
+Исходное описание (для справки): {input_data.get('original_description', 'Нет')}"""
+    result = self.llm.generate_content(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        json_mode=True,
+        temperature=0.7,
+        max_tokens=1500
+    )
+    
+    content = result['content']
+    
+    return {
+        'title': content.get('title'),
+        'description': content.get('description'),
+        'seo_title': content.get('seo_title'),
+        'seo_description': content.get('seo_description'),
+        'keywords': content.get('keywords', []),
+        'key_benefits': content.get('key_benefits', []),
+        **{k: v for k, v in result.items() if k != 'content'}
+    }
+
+def _resolve_category_from_name(
+    self,
+    name: str,
+    parent_name: Optional[str] = None
+) -> Optional[Category]:
+    """Найти категорию в БД по имени."""
+    # Точное совпадение
+    category = Category.objects.filter(name__iexact=name.strip()).first()
+    
+    if category:
+        return category
+    
+    # Поиск по частичному совпадению
+    category = Category.objects.filter(name__icontains=name.strip()).first()
+    
+    # TODO: Создание новой категории при высокой уверенности
+    # (требует бизнес-логики)
+    
+    return category
+
+def _check_needs_moderation(self, log: AIProcessingLog) -> bool:
+    """Определить, требуется ли модерация."""
+    
+    # Низкая уверенность в категории
+    if log.category_confidence and log.category_confidence < 0.75:
+        return True
+    
+    # Подозрительно низкая цена (возможен ошибка парсера)
+    if log.input_data.get('price'):
+        try:
+            price = float(log.input_data['price'])
+            if price < 100:  # Меньше 100 рублей
+                return True
+        except:
+            pass
+    
+    # Содержит подозрительные слова (можно расширить)
+    suspicious_words = ['реплика', 'копия', 'fake', 'подделка']
+    desc = (log.generated_description or '').lower()
+    if any(word in desc for word in suspicious_words):
+        return True
+    
+    # Очень короткое описание
+    if len(log.generated_description or '') < 100:
+        return True
+    
+    return False
+
+def _create_moderation_task(self, log: AIProcessingLog):
+    """Создать задачу на модерацию."""
+    from apps.ai.models import AIModerationQueue
+    
+    reason = 'low_confidence' if (log.category_confidence or 1) < 0.75 else 'manual_review'
+    
+    AIModerationQueue.objects.create(
+        log_entry=log,
+        priority=2 if reason == 'low_confidence' else 3,
+        reason=reason
+    )
+
+def _apply_to_product(self, log: AIProcessingLog, product: Product):
+    """Применить результаты к товару (автоматически)."""
+    with transaction.atomic():
+        if log.generated_description and not product.description_ru:
+            product.description_ru = log.generated_description
+        
+        if log.suggested_category and not product.category:
+            product.category = log.suggested_category
+        
+        # Сохраняем атрибуты
+        if log.extracted_attributes:
+            current_attrs = product.attributes or {}
+            current_attrs.update({
+                'ai_extracted': log.extracted_attributes,
+                'ai_processed_at': timezone.now().isoformat()
+            })
+            product.attributes = current_attrs
+        
+        product.save()
+
+----
+7.  CELERY ЗАДАЧИ
+apps/ai/tasks.py
+from celery import shared_task, chain, group
+from celery.exceptions import MaxRetriesExceededError
+from django.db import transaction
+from django.utils import timezone
+from apps.products.models import Product
+from apps.ai.models import AIProcessingLog, AIProcessingStatus
+from apps.ai.services.content_generator import ContentGenerator
+import logging
+logger = logging.getLogger(name)
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_product_ai(self, product_id: int, **options):
+"""
+Основная задача обработки товара.
+Args:
+    product_id: ID товара
+    options: см. ContentGenerator.process_product
+"""
+try:
+    product = Product.objects.get(id=product_id)
+    
+    # Проверяем, не обрабатывается ли уже
+    existing_processing = AIProcessingLog.objects.filter(
+        product=product,
+        status__in=[AIProcessingStatus.PENDING, AIProcessingStatus.PROCESSING]
+    ).exists()
+    
+    if existing_processing:
+        logger.warning(f"Product {product_id} already being processed")
+        return {"status": "skipped", "reason": "already_processing"}
+    
+    generator = ContentGenerator()
+    log = generator.process_product(product, options)
+    
+    return {
+        "status": log.status,
+        "log_id": log.id,
+        "product_id": product_id,
+        "category": log.suggested_category.name if log.suggested_category else None,
+        "confidence": log.category_confidence,
+        "cost_usd": str(log.cost_usd)
+    }
+    
+except Product.DoesNotExist:
+    logger.error(f"Product {product_id} not found")
+    return {"status": "error", "reason": "product_not_found"}
+    
+except Exception as exc:
+    logger.exception(f"AI processing failed for product {product_id}")
+    
+    if self.request.retries < 3:
+        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
+    
+    # Создаем failed лог
+    AIProcessingLog.objects.create(
+        product_id=product_id,
+        status=AIProcessingStatus.FAILED,
+        error_message=str(exc),
+        input_data={"error": "Failed to prepare input data"}
+    )
+    
+    return {"status": "failed", "error": str(exc)}
+
+@shared_task
+def batch_process_products(product_ids: List[int], options: dict = None):
+"""
+Пакетная обработка списка товаров.
+"""
+options = options or {}
+# Создаем группу задач
+job = group(
+    process_product_ai.s(pid, **options) for pid in product_ids
+)
+
+result = job.apply_async()
+
+return {
+    "task_id": result.id,
+    "total": len(product_ids),
+    "submitted": True
+}
+
+@shared_task
+def process_uncategorized(limit: int = 100):
+"""
+Задача по расписанию: обработать товары без категории.
+"""
+products = Product.objects.filter(
+category__isnull=True,
+ai_logs__isnull=True  # Не обрабатывали раньше
+).exclude(
+ai_logs__status=AIProcessingStatus.FAILED
+)[:limit]
+product_ids = list(products.values_list('id', flat=True))
+
+if not product_ids:
+    return {"processed": 0}
+
+return batch_process_products.delay(
+    product_ids,
+    options={'generate_description': False, 'categorize': True}
+)
+
+@shared_task
+def process_without_description(limit: int = 100):
+"""
+Задача по расписанию: обработать товары без описания.
+"""
+products = Product.objects.filter(
+description_ru__isnull=True,
+category__isnull=False,  # Категория должна быть
+ai_logs__isnull=True
+)[:limit]
+product_ids = list(products.values_list('id', flat=True))
+
+if not product_ids:
+    return {"processed": 0}
+
+return batch_process_products.delay(
+    product_ids,
+    options={'generate_description': True, 'categorize': False}
+)
+
+@shared_task
+def retry_failed_processing(limit: int = 50):
+"""
+Повторная обработка неудачных попыток.
+"""
+failed_logs = AIProcessingLog.objects.filter(
+status=AIProcessingStatus.FAILED,
+created_at__gte=timezone.now() - timezone.timedelta(days=7)
+)[:limit]
+retried = 0
+for log in failed_logs:
+    process_product_ai.delay(
+        log.product_id,
+        generate_description='description' in log.processing_type,
+        categorize='categorization' in log.processing_type
+    )
+    retried += 1
+
+return {"retried": retried}
+
+@shared_task
+def cleanup_old_ai_logs(days: int = 90):
+"""
+Очистка старых логов (GDPR/хранение).
+"""
+from django.utils import timezone
+cutoff = timezone.now() - timezone.timedelta(days=days)
+
+deleted, _ = AIProcessingLog.objects.filter(
+    created_at__lt=cutoff,
+    status__in=[AIProcessingStatus.COMPLETED, AIProcessingStatus.APPROVED]
+).delete()
+
+return {"deleted_logs": deleted}
+
+----
+8.  ИНТЕГРАЦИЯ С ПАРСЕРАМИ
+apps/parsers/signals.py
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from apps.products.models import Product
+from apps.ai.tasks import process_product_ai
+@receiver(post_save, sender=Product)
+def schedule_ai_processing(sender, instance, created, **kwargs):
+"""
+Автоматически запланировать AI обработку для новых спарсенных товаров.
+"""
+if not created:
+return
+# Проверяем, что товар от парсера (по полю source или supplier)
+is_from_parser = (
+    hasattr(instance, 'source') and instance.source == 'parser'
+) or (
+    hasattr(instance, 'supplier') and instance.supplier is not None
+)
+
+if not is_from_parser:
+    return
+
+# Задержка для гарантии сохранения связанных объектов (images и т.д.)
+process_product_ai.apply_async(
+    args=[instance.id],
+    kwargs={
+        'generate_description': True,
+        'categorize': True,
+        'analyze_images': True,
+        'language': 'ru'
+    },
+    countdown=10  # 10 секунд
+)
+
+Или явный вызов в парсере:
+apps/parsers/services/base_parser.py (модификация)
+from apps.ai.tasks import process_product_ai
+class BaseParser:
+def save_product(self, parsed_data: dict) -> Product:
+# ... создание товара ...
+product = Product.objects.create(**product_data)
+    # Сохраняем изображения в R2
+    self._save_images_to_r2(product, parsed_data['images'])
+    
+    # Запускаем AI обработку
+    process_product_ai.delay(
+        product.id,
+        generate_description=True,
+        categorize=True,
+        analyze_images=True
+    )
+    
+    return product
+
+----
+9.  API ENDPOINTS
+apps/ai/urls.py
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from apps.ai.views import (
+AIProcessingLogViewSet,
+AIModerationQueueViewSet,
+AITemplateViewSet,
+AIStatsView
+)
+router = DefaultRouter()
+router.register(r'logs', AIProcessingLogViewSet, basename='ai-logs')
+router.register(r'moderation', AIModerationQueueViewSet, basename='ai-moderation')
+router.register(r'templates', AITemplateViewSet, basename='ai-templates')
+urlpatterns = [
+path('', include(router.urls)),
+path('stats/', AIStatsView.as_view(), name='ai-stats'),
+path('process/int:product_id int:product_id/', ProcessProductView.as_view(), name='ai-process'),
+]
+apps/ai/views.py (основные)
+from rest_framework import viewsets, status, generics
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAdminUser
+from rest_framework.views import APIView
+from apps.ai.models import AIProcessingLog, AIModerationQueue, AITemplate
+from apps.ai.serializers import (
+AIProcessingLogSerializer,
+AIModerationQueueSerializer,
+AITemplateSerializer
+)
+from apps.ai.tasks import process_product_ai
+from apps.ai.services.categorizer import AutoCategorizer
+class AIProcessingLogViewSet(viewsets.ReadOnlyModelViewSet):
+"""API для просмотра логов AI обработки."""
+queryset = AIProcessingLog.objects.all()
+serializer_class = AIProcessingLogSerializer
+permission_classes = [IsAdminUser]
+
+def get_queryset(self):
+    queryset = super().get_queryset()
+    
+    # Фильтры
+    status = self.request.query_params.get('status')
+    if status:
+        queryset = queryset.filter(status=status)
+    
+    product_id = self.request.query_params.get('product_id')
+    if product_id:
+        queryset = queryset.filter(product_id=product_id)
+    
+    return queryset.select_related('product', 'suggested_category')
+
+@action(detail=True, methods=['post'])
+def approve(self, request, pk=None):
+    """Одобрить результат и применить к товару."""
+    log = self.get_object()
+    
+    if log.status not in ['completed', 'moderation']:
+        return Response(
+            {"error": "Can only approve completed or moderation status"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Применяем к товару
+    from apps.ai.services.content_generator import ContentGenerator
+    gen = ContentGenerator()
+    gen._apply_to_product(log, log.product)
+    
+    log.status = 'approved'
+    log.processed_by = request.user
+    log.moderation_date = timezone.now()
+    log.save()
+    
+    return Response({"status": "approved"})
+
+@action(detail=True, methods=['post'])
+def reject(self, request, pk=None):
+    """Отклонить результат."""
+    log = self.get_object()
+    
+    log.status = 'rejected'
+    log.processed_by = request.user
+    log.moderation_date = timezone.now()
+    log.moderation_notes = request.data.get('notes', '')
+    log.save()
+    
+    return Response({"status": "rejected"})
+
+@action(detail=True, methods=['post'])
+def reprocess(self, request, pk=None):
+    """Повторная обработка."""
+    log = self.get_object()
+    
+    task = process_product_ai.delay(
+        log.product_id,
+        generate_description='description' in log.processing_type,
+        categorize='categorization' in log.processing_type,
+        analyze_images=bool(log.image_analysis)
+    )
+    
+    return Response({"task_id": task.id})
+
+class AIModerationQueueViewSet(viewsets.ModelViewSet):
+"""API для очереди модерации."""
+queryset = AIModerationQueue.objects.all()
+serializer_class = AIModerationQueueSerializer
+permission_classes = [IsAdminUser]
+
+def get_queryset(self):
+    return super().get_queryset().select_related(
+        'log_entry', 'log_entry__product', 'assigned_to'
+    )
+
+@action(detail=True, methods=['post'])
+def assign(self, request, pk=None):
+    """Назначить на себя."""
+    task = self.get_object()
+    task.assigned_to = request.user
+    task.save()
+    return Response({"assigned": True})
+
+@action(detail=True, methods=['post'])
+def resolve(self, request, pk=None):
+    """Разрешить задачу (approve/reject)."""
+    task = self.get_object()
+    action_type = request.data.get('action')  # 'approve' или 'reject'
+    
+    if action_type == 'approve':
+        task.log_entry.approve(request)
+    else:
+        task.log_entry.reject(request)
+    
+    task.resolved_at = timezone.now()
+    task.save()
+    
+    return Response({"resolved": True})
+
+class ProcessProductView(APIView):
+"""Ручной запуск обработки товара."""
+permission_classes = [IsAdminUser]
+
+def post(self, request, product_id):
+    options = {
+        'generate_description': request.data.get('description', True),
+        'categorize': request.data.get('categorize', True),
+        'analyze_images': request.data.get('images', True),
+    }
+    
+    task = process_product_ai.delay(product_id, **options)
+    
+    return Response({
+        "task_id": task.id,
+        "product_id": product_id,
+        "status": "queued"
+    })
+
+class AIStatsView(APIView):
+"""Статистика AI обработки."""
+permission_classes = [IsAdminUser]
+
+def get(self, request):
+    from django.db.models import Count, Avg, Sum
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    # За последние 30 дней
+    since = timezone.now() - timedelta(days=30)
+    
+    stats = AIProcessingLog.objects.filter(created_at__gte=since).aggregate(
+        total_processed=Count('id'),
+        successful=Count('id', filter=models.Q(status='approved')),
+        failed=Count('id', filter=models.Q(status='failed')),
+        avg_confidence=Avg('category_confidence'),
+        total_cost=Sum('cost_usd'),
+        avg_processing_time=Avg('processing_time_ms')
+    )
+    
+    # По статусам
+    by_status = AIProcessingLog.objects.filter(
+        created_at__gte=since
+    ).values('status').annotate(count=Count('id'))
+    
+    return Response({
+        "period_days": 30,
+        "summary": stats,
+        "by_status": list(by_status)
+    })
+
+----
+10.  DOCKER COMPOSE (обновленный)
+docker-compose.yml (фрагмент)
+services:
+... существующие сервисы (db, redis, backend, celery, frontend) ...
+qdrant:
+image: qdrant/qdrant:v1.7.4
+container_name: pharmaturk_qdrant
+ports:
+- "6333:6333"
+volumes:
+- qdrant_storage:/qdrant/storage
+environment:
+QDRANT__SERVICE__HTTP_PORT: 6333
+QDRANT__LOG_LEVEL: INFO
+healthcheck:
+test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+interval: 30s
+timeout: 10s
+retries: 3
+networks:
+- pharmaturk_network
+celery_ai:
+build:
+context: ./backend
+dockerfile: Dockerfile
+container_name: pharmaturk_celery_ai
+command: celery -A config worker -Q ai -n ai_worker@%h --loglevel=info --concurrency=2
+environment:
+- DJANGO_SETTINGS_MODULE=config.settings.production
+- OPENAI_API_KEY=${OPENAI_API_KEY}
+- QDRANT_HOST=qdrant
+- QDRANT_PORT=6333
+- R2_ENDPOINT_URL=${R2_ENDPOINT_URL}
+- R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+- R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+- R2_BUCKET_NAME=${R2_BUCKET_NAME}
+volumes:
+- ./backend:/app
+depends_on:
+- db
+- redis
+- qdrant
+networks:
+- pharmaturk_network
+Опционально: отдельный ML сервис на FastAPI
+ml_service:
+build: ./ml_service
+container_name: pharmaturk_ml_service
+ports:
+- "8001:8000"
+environment:
+- OPENAI_API_KEY=${OPENAI_API_KEY}
+- QDRANT_HOST=qdrant
+- QDRANT_PORT=6333
+- R2_ENDPOINT_URL=${R2_ENDPOINT_URL}
+- R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+- R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+- R2_BUCKET_NAME=${R2_BUCKET_NAME}
+depends_on:
+- qdrant
+networks:
+- pharmaturk_network
+profiles:
+- ml_service  # Запускать только при необходимости
+volumes:
+... существующие ...
+qdrant_storage:
+networks:
+pharmaturk_network:
+driver: bridge
+----
+11.  ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
+.env.example (добавить к существующим)
+OpenAI
+OPENAI_API_KEY=sk-...
+Qdrant
+QDRANT_HOST=qdrant
+QDRANT_PORT=6333
+AI Configuration
+AI_MODEL=gpt-4o-mini
+AI_VISION_MODEL=gpt-4o-mini
+AI_EMBEDDING_MODEL=text-embedding-3-small
+AI_MAX_IMAGES_PER_PRODUCT=3
+AI_DEFAULT_LANGUAGE=ru
+R2 (Cloudflare) - уже должно быть
+R2_ENDPOINT_URL=https://<account>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET_NAME=pharmaturk-media
+R2_PUBLIC_URL=https://cdn.pharmaturk.com
+Celery
+CELERY_AI_CONCURRENCY=2
+----
+12.  ПЛАН ВНЕДРЕНИЯ
+Неделя 1: Инфраструктура
+•  [ ] Добавить Qdrant в docker-compose
+•  [ ] Создать Django app ai с моделями
+•  [ ] Настроить R2 интеграцию
+•  [ ] Миграции
+Неделя 2: Core AI
+•  [ ] LLMClient
+•  [ ] VectorStore (Qdrant)
+•  [ ] MediaProcessor (R2)
+•  [ ] ContentGenerator (без Vision)
+Неделя 3: Интеграция
+•  [ ] Celery задачи
+•  [ ] Сигналы в парсерах
+•  [ ] Админка Django
+•  [ ] Тестирование
+Неделя 4: Vision + Polish
+•  [ ] Анализ изображений
+•  [ ] API endpoints
+•  [ ] Модерация
+•  [ ] Мониторинг
+Неделя 5: Оптимизация
+•  [ ] Кеширование
+•  [ ] Batch processing
+•  [ ] Cost optimization
+•  [ ] Документация
+----
