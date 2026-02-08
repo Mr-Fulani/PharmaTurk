@@ -1,8 +1,31 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
+from django.conf import settings
 from .models import User, UserAddress, UserSession
 from django.utils import timezone
+from urllib.parse import urlparse, quote
+
+
+def _build_proxy_media_url(file_field, request):
+    if not file_field:
+        return None
+    path = getattr(file_field, 'name', None)
+    if not path:
+        url = getattr(file_field, 'url', None)
+        if not url:
+            return None
+        parsed = urlparse(url)
+        path = parsed.path.lstrip('/')
+        media_prefix = (settings.MEDIA_URL or '').lstrip('/')
+        if media_prefix and path.startswith(media_prefix):
+            path = path[len(media_prefix):]
+    if path.startswith('media/'):
+        path = path[len('media/'):]
+    if request:
+        base = request.build_absolute_uri('/').rstrip('/')
+        return f"{base}/api/catalog/proxy-media/?path={quote(path)}"
+    return f"/api/catalog/proxy-media/?path={quote(path)}"
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -181,9 +204,7 @@ class UserSerializer(serializers.ModelSerializer):
         """Получение URL аватара"""
         if obj.avatar:
             request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.avatar.url)
-            return obj.avatar.url
+            return _build_proxy_media_url(obj.avatar, request)
         return None
     
     def get_total_orders(self, obj):
@@ -383,9 +404,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         
         if obj.avatar:
-            if request:
-                return request.build_absolute_uri(obj.avatar.url)
-            return obj.avatar.url
+            return _build_proxy_media_url(obj.avatar, request)
         
         from apps.feedback.models import Testimonial
         testimonial_id = self.context.get('testimonial_id')
@@ -400,9 +419,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
                     author_avatar__isnull=False
                 ).first()
                 if testimonial and testimonial.author_avatar:
-                    if request:
-                        return request.build_absolute_uri(testimonial.author_avatar.url)
-                    return testimonial.author_avatar.url
+                    return _build_proxy_media_url(testimonial.author_avatar, request)
             except (ValueError, TypeError):
                 pass
         
@@ -413,12 +430,9 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
                 author_avatar__isnull=False
             ).first()
             if testimonial and testimonial.author_avatar:
-                if request:
-                    return request.build_absolute_uri(testimonial.author_avatar.url)
-                return testimonial.author_avatar.url
+                return _build_proxy_media_url(testimonial.author_avatar, request)
         except Exception:
             pass
-        
         return None
     
     def get_total_orders(self, obj):

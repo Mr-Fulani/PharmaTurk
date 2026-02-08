@@ -15,6 +15,7 @@ from rest_framework.pagination import PageNumberPagination
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 import requests
 import hashlib
+import os
 
 from .models import (
     Category, Brand, Product, ProductAttribute, PriceHistory, Favorite,
@@ -1704,29 +1705,61 @@ def proxy_media(request):
 
     from apps.catalog.utils.media_path import normalize_duplicated_media_path
 
-    # Старые записи: файл по дублированному path; новые — по нормализованному. Поддержка обоих.
-    if not default_storage.exists(path):
-        path_alt = normalize_duplicated_media_path(path)
-        if path_alt != path and default_storage.exists(path_alt):
-            path = path_alt
-        else:
-            for candidate in _expand_path_for_legacy_duplicated(path):
-                if default_storage.exists(candidate):
-                    path = candidate
-                    break
+    candidates = [path]
+    path_alt = normalize_duplicated_media_path(path)
+    if path_alt != path:
+        candidates.append(path_alt)
+    candidates.extend(_expand_path_for_legacy_duplicated(path))
+    if path.startswith('media/'):
+        candidates.append(path[len('media/'):])
     else:
-        path_alt = normalize_duplicated_media_path(path)
-        if path_alt != path and default_storage.exists(path_alt):
-            path = path_alt
+        candidates.append(f"media/{path}")
+
+    resolved_path = None
+    for candidate in candidates:
+        if default_storage.exists(candidate):
+            resolved_path = candidate
+            break
 
     try:
-        if not default_storage.exists(path):
+        if not resolved_path:
+            media_root = str(settings.MEDIA_ROOT)
+            resolved_local_path = None
+            for candidate in candidates:
+                local_path = os.path.normpath(os.path.join(media_root, candidate))
+                if not local_path.startswith(media_root):
+                    continue
+                if os.path.exists(local_path):
+                    resolved_local_path = local_path
+                    break
+            if resolved_local_path:
+                ext = resolved_local_path.rsplit('.', 1)[-1].lower() if '.' in resolved_local_path else ''
+                content_type = _PROXY_MEDIA_TYPES.get(f'.{ext}', 'application/octet-stream')
+                with open(resolved_local_path, 'rb') as fh:
+                    content = fh.read()
+                response = HttpResponse(content, content_type=content_type)
+                response['Cache-Control'] = 'public, max-age=86400'
+                response['Access-Control-Allow-Origin'] = '*'
+                return response
+            for candidate in candidates:
+                remote_url = f"{r2_public.rstrip('/')}/{candidate}"
+                try:
+                    remote_response = requests.get(remote_url, timeout=10)
+                except Exception:
+                    continue
+                if remote_response.status_code == 200:
+                    ext = candidate.rsplit('.', 1)[-1].lower() if '.' in candidate else ''
+                    content_type = _PROXY_MEDIA_TYPES.get(f'.{ext}', 'application/octet-stream')
+                    response = HttpResponse(remote_response.content, content_type=content_type)
+                    response['Cache-Control'] = 'public, max-age=86400'
+                    response['Access-Control-Allow-Origin'] = '*'
+                    return response
             return JsonResponse({'error': 'Not found'}, status=404)
 
-        ext = path.rsplit('.', 1)[-1].lower() if '.' in path else ''
+        ext = resolved_path.rsplit('.', 1)[-1].lower() if '.' in resolved_path else ''
         content_type = _PROXY_MEDIA_TYPES.get(f'.{ext}', 'application/octet-stream')
 
-        with default_storage.open(path, 'rb') as fh:
+        with default_storage.open(resolved_path, 'rb') as fh:
             content = fh.read()
 
         response = HttpResponse(content, content_type=content_type)

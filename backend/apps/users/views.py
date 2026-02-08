@@ -13,6 +13,8 @@ import random
 import string
 import uuid
 import logging
+import os
+from django.utils.text import slugify
 
 from .models import User, UserAddress, UserSession
 
@@ -42,6 +44,21 @@ def create_user_session(user, request):
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
             expires_at=timezone.now() + timedelta(days=30)
         )
+
+
+def _build_avatar_filename(user, original_name):
+    ext = os.path.splitext(str(original_name).split("?")[0])[1].lower() or ".jpg"
+    parts = []
+    if user.username:
+        parts.append(user.username)
+    full_name = f"{user.first_name} {user.last_name}".strip()
+    if full_name:
+        parts.append(full_name)
+    base = "-".join(slugify(p).strip("-") for p in parts if p).strip("-")
+    if not base:
+        base = f"user-{user.id or uuid.uuid4().hex[:6]}"
+    suffix = uuid.uuid4().hex[:10]
+    return f"avatars/{base}-{suffix}{ext}"
 
 
 def get_client_ip(request):
@@ -329,6 +346,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         except Exception:
             pass  # сохраняем как есть при ошибке оптимизации
 
+        avatar_file.name = _build_avatar_filename(request.user, avatar_file.name)
         request.user.avatar = avatar_file
         request.user.save()
         
