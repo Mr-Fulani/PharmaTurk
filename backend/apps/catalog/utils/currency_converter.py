@@ -2,6 +2,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Dict, Optional, Tuple
 import logging
 from ..currency_models import CurrencyRate, MarginSettings
+from .currency_service import CurrencyRateService
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -30,34 +32,52 @@ class CurrencyConverter:
             # Если валюты одинаковые, применяем только маржу если нужно
             if apply_margin:
                 margin_rate = self._get_margin_rate(from_currency, to_currency)
-                price_with_margin = amount * (1 + margin_rate / 100)
-                return amount, amount, price_with_margin
+                # Ensure amount is Decimal
+                amount_decimal = Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
+                # Ensure margin_rate is Decimal
+                margin_rate_decimal = Decimal(str(margin_rate)) if not isinstance(margin_rate, Decimal) else margin_rate
+                
+                price_with_margin = amount_decimal * (1 + margin_rate_decimal / 100)
+                return amount_decimal, amount_decimal, price_with_margin
             return amount, amount, amount
         
-        # Получаем курс конвертации
-        try:
-            rate_obj = CurrencyRate.objects.get(
-                from_currency=from_currency, 
-                to_currency=to_currency, 
-                is_active=True
-            )
-            rate = rate_obj.rate
-        except CurrencyRate.DoesNotExist:
-            logger.error(f"No rate found for {from_currency} → {to_currency}")
+        # Получаем курс конвертации с автообновлением при отсутствии
+        rate_service = CurrencyRateService()
+        rate = rate_service.get_rate(from_currency, to_currency)
+        if rate is None:
+            try:
+                should_refresh = cache.add("currency_rates_refresh_lock", True, 600)
+            except Exception as e:
+                logger.warning(f"Cache lock add failed: {e}")
+                should_refresh = False
+            if should_refresh:
+                logger.warning(f"Rate missing for {from_currency} → {to_currency}, attempting update")
+                success, message = rate_service.update_rates()
+                if not success:
+                    logger.error(f"Rate update failed: {message}")
+            rate = rate_service.get_rate(from_currency, to_currency)
+        if rate is None:
+            logger.error(f"No rate found for {from_currency} → {to_currency} after update attempt")
             raise ValueError(f"Currency rate not available: {from_currency} → {to_currency}")
         
+        # Ensure amount is Decimal
+        amount_decimal = Decimal(str(amount)) if not isinstance(amount, Decimal) else amount
+        
         # Конвертируем цену
-        converted_price = (amount * rate).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        converted_price = (amount_decimal * rate).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         
         if apply_margin:
             # Применяем маржу
             margin_rate = self._get_margin_rate(from_currency, to_currency)
-            price_with_margin = converted_price * (1 + margin_rate / 100)
+            # Ensure margin_rate is Decimal
+            margin_rate_decimal = Decimal(str(margin_rate)) if not isinstance(margin_rate, Decimal) else margin_rate
+            
+            price_with_margin = converted_price * (1 + margin_rate_decimal / 100)
             price_with_margin = price_with_margin.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         else:
             price_with_margin = converted_price
         
-        return amount, converted_price, price_with_margin
+        return amount_decimal, converted_price, price_with_margin
     
     def convert_to_multiple_currencies(
         self, 
@@ -130,14 +150,20 @@ class CurrencyConverter:
                 'final_price': final_price.quantize(Decimal('0.01'))
             }
         
-        try:
-            rate_obj = CurrencyRate.objects.get(
-                from_currency=from_currency, 
-                to_currency=to_currency, 
-                is_active=True
-            )
-            rate = rate_obj.rate
-        except CurrencyRate.DoesNotExist:
+        rate_service = CurrencyRateService()
+        rate = rate_service.get_rate(from_currency, to_currency)
+        if rate is None:
+            try:
+                should_refresh = cache.add("currency_rates_refresh_lock", True, 600)
+            except Exception as e:
+                logger.warning(f"Cache lock add failed: {e}")
+                should_refresh = False
+            if should_refresh:
+                success, message = rate_service.update_rates()
+                if not success:
+                    logger.error(f"Rate update failed: {message}")
+            rate = rate_service.get_rate(from_currency, to_currency)
+        if rate is None:
             raise ValueError(f"Currency rate not available: {from_currency} → {to_currency}")
         
         converted_price = (amount * rate).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)

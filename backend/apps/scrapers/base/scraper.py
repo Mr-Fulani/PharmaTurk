@@ -54,7 +54,7 @@ class ScrapedProduct:
         return {
             'name': self.name,
             'description': self.description,
-            'price': self.price,
+            'price': float(self.price) if self.price is not None else None,
             'currency': self.currency,
             'url': self.url,
             'images': self.images,
@@ -68,6 +68,12 @@ class ScrapedProduct:
             'attributes': self.attributes,
             'source': self.source,
             'scraped_at': self.scraped_at,
+            'metadata': {
+                'stock_quantity': self.stock_quantity,
+                'source': self.source,
+                'scraped_at': self.scraped_at,
+                'attributes': self.attributes
+            }
         }
 
 
@@ -79,21 +85,18 @@ class BaseScraper(ABC):
                  delay_range: tuple = (1, 3),
                  timeout: int = 30,
                  max_retries: int = 3,
-                 use_proxy: bool = False):
-        """Инициализация парсера.
-        
-        Args:
-            base_url: Базовый URL сайта
-            delay_range: Диапазон задержек между запросами (мин, макс)
-            timeout: Таймаут запросов в секундах
-            max_retries: Максимальное количество повторных попыток
-            use_proxy: Использовать ли прокси
-        """
+                 use_proxy: bool = False,
+                 username: Optional[str] = None,
+                 password: Optional[str] = None):
+        """Инициализация парсера."""
         self.base_url = base_url.rstrip('/')
         self.delay_range = delay_range
         self.timeout = timeout
         self.max_retries = max_retries
         self.use_proxy = use_proxy
+        self.username = username
+        self.password = password
+        self.max_products = None  # Лимит товаров
         
         # Настройка логгера
         self.logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")

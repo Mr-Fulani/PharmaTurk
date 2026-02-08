@@ -1,6 +1,7 @@
 """Сериализаторы для API каталога товаров."""
 
 from urllib.parse import quote, urlparse
+import re
 from decimal import Decimal
 from django.conf import settings
 from django.db.models import Count
@@ -378,6 +379,8 @@ class ProductSerializer(serializers.ModelSerializer):
     price_breakdown = serializers.SerializerMethodField()
     translations = ProductTranslationSerializer(many=True, read_only=True)
     book_authors = ProductAuthorSerializer(many=True, read_only=True)
+    isbn = serializers.SerializerMethodField()
+    pages = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
@@ -475,6 +478,42 @@ class ProductSerializer(serializers.ModelSerializer):
         
         # Если изображений нет, возвращаем None
         return None
+
+    def _get_external_attributes(self, obj):
+        data = obj.external_data or {}
+        attrs = data.get('attributes') or {}
+        return attrs if isinstance(attrs, dict) else {}
+
+    def _is_valid_isbn(self, value):
+        if not value:
+            return False
+        val = str(value).strip()
+        if not val or "..." in val or "00000" in val:
+            return False
+        digits = re.sub(r'\D', '', val)
+        return len(digits) in (10, 13)
+
+    def get_isbn(self, obj):
+        if self._is_valid_isbn(obj.isbn):
+            return obj.isbn
+        attrs = self._get_external_attributes(obj)
+        ext_isbn = attrs.get('isbn')
+        if self._is_valid_isbn(ext_isbn):
+            return str(ext_isbn).strip()
+        return None
+
+    def get_pages(self, obj):
+        if obj.pages and obj.pages > 0:
+            return obj.pages
+        attrs = self._get_external_attributes(obj)
+        pages = attrs.get('pages')
+        if pages is None:
+            return None
+        try:
+            pages_val = int(pages)
+        except (TypeError, ValueError):
+            return None
+        return pages_val if pages_val > 0 else None
     
     def get_price_formatted(self, obj):
         request = self.context.get('request')

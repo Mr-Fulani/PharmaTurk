@@ -1,9 +1,11 @@
 """Сервисы для работы с каталогом товаров."""
 
 import logging
+import re
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 from django.utils.text import slugify
+from transliterate import slugify as trans_slugify
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q
@@ -19,17 +21,75 @@ class CatalogNormalizer:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+
+    def _sync_product_fields_from_metadata(self, product: Product, metadata: Dict[str, Any]) -> None:
+        attrs = (metadata or {}).get("attributes") or {}
+        if not isinstance(attrs, dict):
+            return
+
+        updated_fields: List[str] = []
+
+        isbn = attrs.get("isbn")
+        if isbn:
+            new_isbn = str(isbn).strip()
+            digits = re.sub(r"\D", "", new_isbn)
+            is_valid_length = len(digits) in (10, 13)
+            is_placeholder = "00000" in new_isbn or "..." in new_isbn
+            if is_valid_length and not is_placeholder and new_isbn != (product.isbn or ""):
+                product.isbn = new_isbn
+                updated_fields.append("isbn")
+
+        pages = attrs.get("pages")
+        if pages is not None:
+            try:
+                pages_val = int(str(pages).strip())
+            except (ValueError, TypeError):
+                pages_val = None
+            if pages_val is not None and 0 < pages_val < 10000 and pages_val != product.pages:
+                product.pages = pages_val
+                updated_fields.append("pages")
+
+        publisher = attrs.get("publisher")
+        if publisher:
+            publisher_val = str(publisher).strip()
+            if publisher_val and publisher_val != (product.publisher or ""):
+                product.publisher = publisher_val
+                updated_fields.append("publisher")
+
+        cover_type = attrs.get("cover_type")
+        if cover_type:
+            cover_type_val = str(cover_type).strip()
+            if cover_type_val and cover_type_val != (product.cover_type or ""):
+                product.cover_type = cover_type_val
+                updated_fields.append("cover_type")
+
+        language = attrs.get("language")
+        if language:
+            language_val = str(language).strip()
+            if language_val and language_val != (product.language or ""):
+                product.language = language_val
+                updated_fields.append("language")
+
+        if updated_fields:
+            product.save(update_fields=updated_fields)
     
     def normalize_category(self, category_data: Dict[str, Any]) -> Category:
         """Нормализует данные категории из API."""
         external_id = category_data.get("id", "")
+        name = category_data.get("name", "Неизвестная категория")
+        
+        # Генерируем slug
+        base_slug = trans_slugify(name, language_code='ru') or slugify(name)
+        if not base_slug:
+            base_slug = "category"
+        slug = f"{base_slug}-{external_id}" if external_id else base_slug
         
         # Ищем существующую категорию по external_id
         category, created = Category.objects.get_or_create(
             external_id=external_id,
             defaults={
-                "name": category_data.get("name", "Неизвестная категория"),
-                "slug": slugify(category_data.get("name", "unknown")),
+                "name": name,
+                "slug": slug,
                 "description": category_data.get("description", ""),
                 "external_data": category_data,
             }
@@ -57,13 +117,20 @@ class CatalogNormalizer:
     def normalize_brand(self, brand_data: Dict[str, Any]) -> Brand:
         """Нормализует данные бренда из API."""
         external_id = brand_data.get("id", "")
+        name = brand_data.get("name", "Неизвестный бренд")
+        
+        # Генерируем slug
+        base_slug = trans_slugify(name, language_code='ru') or slugify(name)
+        if not base_slug:
+            base_slug = "brand"
+        slug = f"{base_slug}-{external_id}" if external_id else base_slug
         
         # Ищем существующий бренд по external_id
         brand, created = Brand.objects.get_or_create(
             external_id=external_id,
             defaults={
-                "name": brand_data.get("name", "Неизвестный бренд"),
-                "slug": slugify(brand_data.get("name", "unknown")),
+                "name": name,
+                "slug": slug,
                 "description": brand_data.get("description", ""),
                 "logo": brand_data.get("logo", ""),
                 "website": brand_data.get("website", ""),
@@ -90,21 +157,45 @@ class CatalogNormalizer:
         external_id = product_data.id
         
         # Ищем существующий товар по external_id
-        product, created = Product.objects.get_or_create(
-            external_id=external_id,
-            defaults={
-                "name": product_data.name,
-                "slug": slugify(product_data.name),
-                "description": product_data.description or "",
-                "price": product_data.price,
-                "currency": product_data.currency,
-                "is_available": product_data.availability,
-                "main_image": product_data.images[0] if product_data.images else "",
-                "external_url": product_data.url or "",
-                "external_data": product_data.metadata,
-            }
-        )
+        # Используем filter().first() вместо get_or_create, так как external_id не уникален
+        existing_products = Product.objects.filter(external_id=external_id)
         
+        # Генерируем slug
+        base_slug = trans_slugify(product_data.name, language_code='ru') or slugify(product_data.name)
+        if not base_slug:
+            base_slug = "product"
+        
+        # Добавляем external_id к slug для уникальности
+        slug = f"{base_slug}-{external_id}"
+        
+        defaults = {
+            "name": product_data.name,
+            "slug": slug,
+            "description": product_data.description or "",
+            "price": product_data.price,
+            "currency": product_data.currency,
+            "is_available": product_data.availability,
+            "main_image": product_data.images[0] if product_data.images else "",
+            "external_url": product_data.url or "",
+            "external_data": product_data.metadata,
+        }
+        
+        if existing_products.exists():
+            product = existing_products.first()
+            created = False
+            if existing_products.count() > 1:
+                self.logger.warning(f"Найдено {existing_products.count()} товаров с external_id {external_id}. Используется первый.")
+        else:
+            product = Product.objects.create(external_id=external_id, **defaults)
+            created = True
+        
+        # Обновляем stock_quantity если он есть в данных парсера
+        if hasattr(product_data, 'metadata') and product_data.metadata:
+            stock = product_data.metadata.get('stock_quantity')
+            if stock is not None:
+                product.stock_quantity = stock
+                product.save(update_fields=['stock_quantity'])
+
         # Обновляем video_url если есть в метаданных (от парсеров)
         if hasattr(product_data, 'metadata') and product_data.metadata:
             attributes = product_data.metadata.get('attributes', {})
@@ -136,15 +227,55 @@ class CatalogNormalizer:
                 )
             
             product.save()
+
+        if hasattr(product_data, "metadata") and product_data.metadata:
+            self._sync_product_fields_from_metadata(product, product_data.metadata)
         
         # Обрабатываем категорию
+        # Если категория пришла как строка (название), ищем или создаем по названию
         if product_data.category:
-            category = Category.objects.filter(
-                external_id=product_data.category
-            ).first()
-            if category:
+            if isinstance(product_data.category, str) and not product_data.category.isdigit():
+                # Это название категории (например "Книги")
+                # Ищем категорию по имени или slug
+                cat_name = product_data.category
+                cat_slug = trans_slugify(cat_name, language_code='ru') or slugify(cat_name)
+                normalized_name = (cat_name or "").strip().lower()
+                if cat_slug == "knigi" or normalized_name in {"книги", "книга", "books"}:
+                    books_category = Category.objects.filter(slug="books").first()
+                    if books_category:
+                        category = books_category
+                        cat_slug = "books"
+                    else:
+                        category = None
+                else:
+                    category = Category.objects.filter(
+                        Q(name__iexact=cat_name) | Q(slug=cat_slug)
+                    ).first()
+                
+                if not category:
+                    # Если не нашли, создаем
+                    self.logger.info(f"Создание новой категории из парсера: {cat_name}")
+                    category = Category.objects.create(
+                        name=cat_name,
+                        slug=cat_slug,
+                        is_active=True
+                    )
+                
                 product.category = category
+                
+                # Обновляем product_type если категория "Книги"
+                if cat_name.lower() == 'книги' or cat_slug == 'knigi' or cat_slug == 'books':
+                    product.product_type = 'books'
+                
                 product.save()
+            else:
+                # Это ID категории
+                category = Category.objects.filter(
+                    external_id=product_data.category
+                ).first()
+                if category:
+                    product.category = category
+                    product.save()
         
         # Обрабатываем бренд
         if product_data.brand:

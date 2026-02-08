@@ -1,6 +1,9 @@
 """Сервисы для интеграции парсеров с каталогом товаров."""
 
 import logging
+import re
+import hashlib
+from urllib.parse import urlparse
 from typing import Dict, List, Optional, Any, Tuple
 from django.utils import timezone
 from django.db import transaction
@@ -9,7 +12,9 @@ from .models import ScraperConfig, ScrapingSession, CategoryMapping, BrandMappin
 from .parsers.registry import get_parser
 from .base.scraper import ScrapedProduct
 from apps.catalog.services import CatalogNormalizer
-from apps.catalog.models import Product, Category, Brand
+from apps.catalog.models import Product, Category, Brand, Author, ProductAuthor
+from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
+import datetime
 
 
 class ScraperIntegrationService:
@@ -23,7 +28,8 @@ class ScraperIntegrationService:
                    scraper_config: ScraperConfig,
                    start_url: Optional[str] = None,
                    max_pages: int = None,
-                   max_products: int = None) -> ScrapingSession:
+                   max_products: int = None,
+                   max_images_per_product: int = None) -> ScrapingSession:
         """Запускает парсер и создает сессию.
         
         Args:
@@ -41,6 +47,7 @@ class ScraperIntegrationService:
             start_url=start_url or scraper_config.base_url,
             max_pages=max_pages or scraper_config.max_pages_per_run,
             max_products=max_products or scraper_config.max_products_per_run,
+            max_images_per_product=max_images_per_product or scraper_config.max_images_per_product,
             status='running',
             started_at=timezone.now()
         )
@@ -56,7 +63,9 @@ class ScraperIntegrationService:
                 base_url=scraper_config.base_url,
                 timeout=scraper_config.timeout,
                 max_retries=scraper_config.max_retries,
-                use_proxy=scraper_config.use_proxy
+                use_proxy=scraper_config.use_proxy,
+                username=scraper_config.scraper_username,
+                password=scraper_config.scraper_password
             ) as parser:
                 
                 # Устанавливаем задержки после создания
@@ -67,6 +76,10 @@ class ScraperIntegrationService:
                     parser.user_agent = scraper_config.user_agent
                 
                 # Запускаем парсинг
+                # Передаем лимит товаров в парсер
+                if session.max_products:
+                    parser.max_products = session.max_products
+                    
                 scraped_products = self._run_parser_scraping(
                     parser, session, start_url or scraper_config.base_url
                 )
@@ -180,6 +193,7 @@ class ScraperIntegrationService:
         
         for scraped_product in products:
             try:
+                self._normalize_scraped_media(session, scraped_product)
                 # Проверяем дубликаты с API данными
                 action, product = self._process_single_product(session, scraped_product)
                 
@@ -219,6 +233,46 @@ class ScraperIntegrationService:
                 )
         
         return results
+
+    def _normalize_scraped_media(self, session: ScrapingSession, scraped_product: ScrapedProduct) -> None:
+        if not scraped_product.images:
+            return
+
+        scraper_config = session.scraper_config
+        parser_name = scraped_product.source or scraper_config.parser_class
+        max_images = session.max_images_per_product or scraper_config.max_images_per_product or 0
+        images = scraped_product.images[:max_images] if max_images else scraped_product.images
+
+        headers = dict(scraper_config.headers or {})
+        if scraper_config.user_agent:
+            headers.setdefault("User-Agent", scraper_config.user_agent)
+
+        product_id = scraped_product.external_id or ""
+        if not product_id:
+            parsed_url = urlparse(scraped_product.url or "")
+            last_segment = parsed_url.path.rstrip("/").split("/")[-1]
+            product_id = last_segment or hashlib.md5(
+                (scraped_product.url or scraped_product.name or "").encode("utf-8")
+            ).hexdigest()[:12]
+
+        normalized_images = []
+        for index, url in enumerate(images):
+            parsed = urlparse(url or "")
+            if "/products/parsed/" in parsed.path:
+                normalized_images.append(url)
+                continue
+            r2_url = download_and_optimize_parsed_media(
+                url=url,
+                parser_name=parser_name,
+                product_id=product_id,
+                index=index,
+                headers=headers or None,
+            )
+            if r2_url:
+                normalized_images.append(r2_url)
+
+        if normalized_images:
+            scraped_product.images = normalized_images
     
     def _process_single_product(self, 
                               session: ScrapingSession, 
@@ -352,12 +406,172 @@ class ScraperIntegrationService:
         existing_product.external_data['scraped_sources'].append(source_info)
         existing_product.last_synced_at = timezone.now()
         updated = True
+
+        # Обновляем атрибуты книги (ISBN, издательство, страницы и т.д.)
+        if scraped_product.attributes:
+            if self._update_product_attributes(existing_product, scraped_product.attributes):
+                updated = True
         
         if updated:
             existing_product.save()
+            
+            # Обновляем авторов, если они есть в атрибутах
+            if scraped_product.attributes and 'author' in scraped_product.attributes:
+                try:
+                    author_str = scraped_product.attributes['author']
+                    if author_str:
+                        # Очищаем текущих авторов
+                        existing_product.book_authors.all().delete()
+                        
+                        author_names = [a.strip() for a in author_str.split(',') if a.strip()]
+                        for idx, name in enumerate(author_names):
+                            lowered = name.lower().strip()
+                            if lowered in ['не указано', 'нет', 'unknown', 'not specified', 'неизвестен', 'нет автора']:
+                                continue
+                            # Разбиваем имя на имя и фамилию
+                            parts = name.split()
+                            if len(parts) >= 2:
+                                first_name = parts[0]
+                                last_name = ' '.join(parts[1:])
+                            else:
+                                first_name = name
+                                last_name = ''
+                                
+                            # Создаем или находим автора
+                            author, _ = Author.objects.get_or_create(
+                                first_name=first_name,
+                                last_name=last_name,
+                                defaults={'bio': ''}
+                            )
+                            
+                            # Связываем с товаром
+                            ProductAuthor.objects.create(
+                                product=existing_product,
+                                author=author,
+                                sort_order=idx
+                            )
+                except Exception as e:
+                    self.logger.error(f"Ошибка при обновлении авторов для товара {existing_product.id}: {e}")
+            
+            # Если описание обновилось или его нет на английском, запускаем AI
+            # Для простоты запускаем всегда при обновлении, AI сам разберется
+            try:
+                from apps.ai.tasks import process_product_ai_task
+                
+                # Принудительно запускаем AI для генерации английского SEO
+                # Запускаем если:
+                # 1. Нет заголовка или описания
+                # 2. В заголовке есть кириллица (значит там русское SEO, а должно быть английское)
+                import re
+                has_cyrillic = bool(existing_product.meta_title and re.search('[а-яА-Я]', existing_product.meta_title))
+                
+                if not existing_product.meta_title or not existing_product.meta_description or has_cyrillic:
+                    process_product_ai_task.delay(
+                        product_id=existing_product.id,
+                        processing_type='full',
+                        auto_apply=True
+                    )
+                    reason = "кириллица в SEO" if has_cyrillic else "отсутствует SEO"
+                    self.logger.info(f"Запущена AI обработка для товара {existing_product.id} ({reason})")
+                else:
+                    self.logger.info(f"AI обработка пропущена для товара {existing_product.id} (SEO уже есть и корректно)")
+            except Exception as e:
+                self.logger.error(f"Не удалось запустить AI обработку для товара {existing_product.id}: {e}")
         
         return 'updated', existing_product
     
+    def _update_product_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
+        """Обновляет атрибуты товара из словаря."""
+        updated = False
+        
+        if 'isbn' in attrs and attrs['isbn']:
+            new_isbn = str(attrs['isbn']).strip()
+            digits = re.sub(r'\D', '', new_isbn)
+            is_valid_length = len(digits) in [10, 13]
+            is_placeholder = "00000" in new_isbn or "..." in new_isbn
+            if is_valid_length and not is_placeholder and new_isbn != product.isbn:
+                product.isbn = new_isbn
+                updated = True
+            
+        # Publisher
+        if 'publisher' in attrs and attrs['publisher'] != product.publisher:
+            product.publisher = attrs['publisher']
+            updated = True
+            
+        # Pages
+        if 'pages' in attrs:
+            try:
+                pages_val = int(attrs['pages'])
+                if 0 < pages_val < 10000 and pages_val != product.pages:
+                    product.pages = pages_val
+                    updated = True
+            except (ValueError, TypeError):
+                pass
+        
+        # Cover Type
+        if 'cover_type' in attrs and attrs['cover_type'] != product.cover_type:
+            product.cover_type = attrs['cover_type']
+            updated = True
+        
+        # Language
+        if 'language' in attrs and attrs['language'] != product.language:
+            product.language = attrs['language']
+            updated = True
+            
+        # Publication Date (from Year)
+        if 'publication_year' in attrs and attrs['publication_year']:
+            try:
+                year = int(attrs['publication_year'])
+                # Ставим 1 января указанного года
+                new_date = datetime.date(year, 1, 1)
+                if product.publication_date != new_date:
+                    product.publication_date = new_date
+                    updated = True
+            except (ValueError, TypeError):
+                pass
+        
+        # SEO Fields
+        # Внимание: Спарсенные SEO данные обычно на языке источника (Русский для Ummaland).
+        # Поля meta_title, meta_description в модели предназначены для АНГЛИЙСКОГО (EN).
+        # Поэтому спарсенные данные сохраняем в русские поля (seo_title, seo_description)
+        # или игнорируем, если они дублируют название/описание.
+        
+        # Meta Title -> seo_title (RU)
+        if 'meta_title' in attrs and attrs['meta_title'] and attrs['meta_title'] != product.seo_title:
+            product.seo_title = attrs['meta_title'][:70]
+            updated = True
+            
+        # Meta Description -> seo_description (RU)
+        if 'meta_description' in attrs and attrs['meta_description'] and attrs['meta_description'] != product.seo_description:
+            product.seo_description = attrs['meta_description'][:160]
+            updated = True
+            
+        # Keywords -> keywords (RU) - JSON field
+        if 'meta_keywords' in attrs and attrs['meta_keywords']:
+            keywords_list = [k.strip() for k in attrs['meta_keywords'].split(',') if k.strip()]
+            if keywords_list != product.keywords:
+                product.keywords = keywords_list
+                updated = True
+        
+        # OG Image URL (Universal)
+        if 'og_image_url' in attrs and attrs['og_image_url'] and attrs['og_image_url'] != product.og_image_url:
+            product.og_image_url = attrs['og_image_url']
+            updated = True
+
+        # OG Title/Description (RU) - не сохраняем в английские поля og_title/og_description
+        # Можно сохранить в external_data для справки
+        if 'og_title' in attrs or 'og_description' in attrs:
+            if 'seo_data' not in product.external_data:
+                product.external_data['seo_data'] = {}
+            
+            if 'og_title' in attrs:
+                product.external_data['seo_data']['source_og_title'] = attrs['og_title']
+            if 'og_description' in attrs:
+                product.external_data['seo_data']['source_og_description'] = attrs['og_description']
+            updated = True
+                
+        return updated
+
     def _create_new_product(self, 
                           session: ScrapingSession, 
                           scraped_product: ScrapedProduct) -> Tuple[str, Product]:
@@ -379,13 +593,71 @@ class ScraperIntegrationService:
             metadata={
                 'source': scraped_product.source,
                 'scraped_at': scraped_product.scraped_at,
-                'attributes': scraped_product.attributes
+                'attributes': scraped_product.attributes,
+                'stock_quantity': scraped_product.stock_quantity
             },
             barcode=scraped_product.barcode
         )
         
         # Создаем товар через CatalogNormalizer
         product = self.catalog_normalizer.normalize_product(product_data)
+        
+        # Обновляем дополнительные атрибуты (ISBN, SEO и т.д.)
+        updated = False
+        if scraped_product.attributes:
+            if self._update_product_attributes(product, scraped_product.attributes):
+                updated = True
+                
+        if updated:
+            product.save()
+            
+            # Обновляем авторов для нового товара
+            if 'author' in scraped_product.attributes:
+                try:
+                    author_str = scraped_product.attributes['author']
+                    if author_str:
+                        # Очищаем текущих (на всякий случай)
+                        product.book_authors.all().delete()
+                        
+                        author_names = [a.strip() for a in author_str.split(',') if a.strip()]
+                        for idx, name in enumerate(author_names):
+                            lowered = name.lower().strip()
+                            if lowered in ['не указано', 'нет', 'unknown', 'not specified', 'неизвестен', 'нет автора']:
+                                continue
+                            parts = name.split()
+                            if len(parts) >= 2:
+                                first_name = parts[0]
+                                last_name = ' '.join(parts[1:])
+                            else:
+                                first_name = name
+                                last_name = ''
+                                
+                            author, _ = Author.objects.get_or_create(
+                                first_name=first_name,
+                                last_name=last_name,
+                                defaults={'bio': ''}
+                            )
+                            
+                            ProductAuthor.objects.create(
+                                product=product,
+                                author=author,
+                                sort_order=idx
+                            )
+                except Exception as e:
+                    self.logger.error(f"Ошибка при добавлении авторов для нового товара {product.id}: {e}")
+        
+        # Запускаем AI обработку (перевод и улучшение) для новых товаров
+        try:
+            from apps.ai.tasks import process_product_ai_task
+            # Запускаем задачу асинхронно
+            process_product_ai_task.delay(
+                product_id=product.id,
+                processing_type='full',
+                auto_apply=True
+            )
+            self.logger.info(f"Запущена AI обработка для товара {product.name} (ID: {product.id})")
+        except Exception as e:
+            self.logger.error(f"Не удалось запустить AI обработку для товара {product.id}: {e}")
         
         return 'created', product
     

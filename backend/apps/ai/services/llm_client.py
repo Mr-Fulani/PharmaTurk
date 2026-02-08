@@ -45,7 +45,9 @@ class LLMClient:
         user_prompt: str,
         json_mode: bool = True,
         temperature: float = 0.7,
-        max_tokens: int = 1000
+        max_tokens: int = 1000,
+        max_retries: int = 6,
+        initial_backoff_ms: int = 250
     ) -> Dict:
         """
         Генерация текста с полным логированием.
@@ -66,54 +68,69 @@ class LLMClient:
             {"role": "user", "content": user_prompt}
         ]
         
-        try:
-            if json_mode:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    response_format={"type": "json_object"}
-                )
-                content = json.loads(response.choices[0].message.content)
-            else:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens
-                )
-                content = response.choices[0].message.content
-            
-            processing_time = int((time.time() - start_time) * 1000)
-            tokens = {
-                'prompt': response.usage.prompt_tokens,
-                'completion': response.usage.completion_tokens,
-                'total': response.usage.total_tokens
-            }
-            
-            # Подсчет стоимости
-            model_pricing = self.pricing.get(self.model, self.pricing.get('gpt-4o-mini'))
-            cost = (tokens['prompt'] * model_pricing['input'] + 
-                   tokens['completion'] * model_pricing['output']) / 1000
-            
-            return {
-                'content': content,
-                'tokens': tokens,
-                'cost_usd': round(cost, 6),
-                'processing_time_ms': processing_time,
-                'raw_response': response.model_dump()
-            }
-            
-        except Exception as e:
-            logger.error(f"LLM generation error: {e}")
-            raise
+        attempt = 0
+        backoff = initial_backoff_ms / 1000.0
+        response = None
+        content = None
+        while attempt <= max_retries:
+            try:
+                if json_mode:
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        response_format={"type": "json_object"}
+                    )
+                    content = json.loads(response.choices[0].message.content)
+                else:
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=max_tokens
+                    )
+                    content = response.choices[0].message.content
+                break
+            except Exception as e:
+                msg = str(e).lower()
+                is_rate_limit = "rate limit" in msg or "too many requests" in msg or "429" in msg
+                is_server_busy = "try again" in msg or "overloaded" in msg
+                logger.warning(f"LLM generation retry {attempt + 1}/{max_retries}: {e}")
+                if attempt >= max_retries or not (is_rate_limit or is_server_busy):
+                    logger.error(f"LLM generation error: {e}")
+                    raise
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 5.0)
+                attempt += 1
+
+        processing_time = int((time.time() - start_time) * 1000)
+        tokens = {
+            'prompt': response.usage.prompt_tokens,
+            'completion': response.usage.completion_tokens,
+            'total': response.usage.total_tokens
+        }
+        
+        model_pricing = self.pricing.get(self.model, self.pricing.get('gpt-4o-mini'))
+        cost = (tokens['prompt'] * model_pricing['input'] + 
+               tokens['completion'] * model_pricing['output']) / 1000
+        
+        return {
+            'content': content,
+            'tokens': tokens,
+            'cost_usd': round(cost, 6),
+            'processing_time_ms': processing_time,
+            'raw_response': response.model_dump()
+        }
+        
 
     def analyze_images(
         self,
         images: List[Dict],  # Из R2MediaProcessor.get_product_images_batch
         prompt: str,
-        json_mode: bool = True
+        json_mode: bool = True,
+        max_retries: int = 6,
+        initial_backoff_ms: int = 250
     ) -> Dict:
         """
         Анализ изображений через Vision API.
@@ -144,43 +161,56 @@ class LLMClient:
             }
         ]
         
-        try:
-            if json_mode:
-                response = self.client.chat.completions.create(
-                    model=self.vision_model,
-                    messages=messages,
-                    max_tokens=1000,
-                    response_format={"type": "json_object"}
-                )
-                result_content = json.loads(response.choices[0].message.content)
-            else:
-                response = self.client.chat.completions.create(
-                    model=self.vision_model,
-                    messages=messages,
-                    max_tokens=1000
-                )
-                result_content = response.choices[0].message.content
-            
-            processing_time = int((time.time() - start_time) * 1000)
-            tokens = {
-                'prompt': response.usage.prompt_tokens,
-                'completion': response.usage.completion_tokens,
-                'total': response.usage.total_tokens
-            }
-            
-            model_pricing = self.pricing.get(self.vision_model, self.pricing.get('gpt-4o-mini'))
-            cost = (tokens['prompt'] * model_pricing['input'] + 
-                   tokens['completion'] * model_pricing['output']) / 1000
-            
-            return {
-                'content': result_content,
-                'tokens': tokens,
-                'cost_usd': round(cost, 6),
-                'processing_time_ms': processing_time,
-                'analyzed_images_count': len(images),
-                'raw_response': response.model_dump()
-            }
-            
-        except Exception as e:
-            logger.error(f"Vision API error: {e}")
-            raise
+        attempt = 0
+        backoff = initial_backoff_ms / 1000.0
+        response = None
+        result_content = None
+        while attempt <= max_retries:
+            try:
+                if json_mode:
+                    response = self.client.chat.completions.create(
+                        model=self.vision_model,
+                        messages=messages,
+                        max_tokens=1000,
+                        response_format={"type": "json_object"}
+                    )
+                    result_content = json.loads(response.choices[0].message.content)
+                else:
+                    response = self.client.chat.completions.create(
+                        model=self.vision_model,
+                        messages=messages,
+                        max_tokens=1000
+                    )
+                    result_content = response.choices[0].message.content
+                break
+            except Exception as e:
+                msg = str(e).lower()
+                is_rate_limit = "rate limit" in msg or "too many requests" in msg or "429" in msg
+                is_server_busy = "try again" in msg or "overloaded" in msg
+                logger.warning(f"Vision API retry {attempt + 1}/{max_retries}: {e}")
+                if attempt >= max_retries or not (is_rate_limit or is_server_busy):
+                    logger.error(f"Vision API error: {e}")
+                    raise
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 5.0)
+                attempt += 1
+
+        processing_time = int((time.time() - start_time) * 1000)
+        tokens = {
+            'prompt': response.usage.prompt_tokens,
+            'completion': response.usage.completion_tokens,
+            'total': response.usage.total_tokens
+        }
+        
+        model_pricing = self.pricing.get(self.vision_model, self.pricing.get('gpt-4o-mini'))
+        cost = (tokens['prompt'] * model_pricing['input'] + 
+               tokens['completion'] * model_pricing['output']) / 1000
+        
+        return {
+            'content': result_content,
+            'tokens': tokens,
+            'cost_usd': round(cost, 6),
+            'processing_time_ms': processing_time,
+            'analyzed_images_count': len(images),
+            'raw_response': response.model_dump()
+        }

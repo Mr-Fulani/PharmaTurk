@@ -267,8 +267,8 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
               const displayCurrency = product.active_variant_currency || parsedVariantCurrency || parsedBaseCurrency || product.currency
               const oldPriceSource = product.old_price_formatted ?? product.old_price ?? product.oldPrice
               const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(oldPriceSource)
-              const displayOldPrice = parsedOldPrice ?? oldPriceSource
               const displayOldCurrency = parsedOldCurrency || displayCurrency || product.currency
+              const displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? oldPriceSource : null
               const displayPriceLabel = displayPrice ? String(displayPrice) : null
               const displayOldPriceLabel = displayOldPrice ? String(displayOldPrice) : null
               const displayCurrencyLabel = displayCurrency ? String(displayCurrency) : null

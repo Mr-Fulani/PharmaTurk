@@ -14,6 +14,7 @@ interface Product {
   description: string;
   price: number;
   old_price?: number;
+  old_price_formatted?: string | null;
   main_image?: string;
   main_image_url?: string;
   currency: string;
@@ -28,6 +29,21 @@ interface Category {
   description: string;
   product_count?: number;
 }
+
+const parsePriceWithCurrency = (value?: string | number | null) => {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null };
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null };
+  }
+  const trimmed = value.trim();
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/);
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() };
+  }
+  return { price: trimmed, currency: null as string | null };
+};
 
 const BookHavenPage: React.FC = () => {
   const { t } = useTranslation('common');
@@ -191,7 +207,12 @@ const BookHavenPage: React.FC = () => {
           >
             {books.map((book) => {
               const displayPrice = book.price ? String(book.price) : null;
-              const displayOldPrice = book.old_price ? String(book.old_price) : null;
+              const oldPriceSource = book.old_price_formatted ?? book.old_price ?? null;
+              const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(oldPriceSource);
+              const displayCurrency = book.currency || 'RUB';
+              const displayOldCurrency = parsedOldCurrency || displayCurrency;
+              const displayOldPriceValue = displayOldCurrency === displayCurrency ? (parsedOldPrice ?? oldPriceSource) : null;
+              const displayOldPrice = displayOldPriceValue ? String(displayOldPriceValue) : null;
               
               return (
                 <ProductCard

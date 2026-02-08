@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 from celery import shared_task
 from django.utils import timezone
 
-from .models import ScraperConfig, ScrapingSession
+from .models import ScraperConfig, ScrapingSession, SiteScraperTask
 from .services import ScraperIntegrationService, DeduplicationService
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,9 @@ def run_scraper_task(self,
                     scraper_config_id: int,
                     start_url: Optional[str] = None,
                     max_pages: Optional[int] = None,
-                    max_products: Optional[int] = None) -> Dict:
+                    max_products: Optional[int] = None,
+                    max_images_per_product: Optional[int] = None,
+                    site_task_id: Optional[int] = None) -> Dict:
     """Задача: запуск парсера.
     
     Args:
@@ -28,32 +30,74 @@ def run_scraper_task(self,
     Returns:
         Результаты парсинга
     """
+    site_task = None
+    if site_task_id:
+        site_task = SiteScraperTask.objects.filter(id=site_task_id).first()
+
     try:
         # Получаем конфигурацию
         scraper_config = ScraperConfig.objects.get(id=scraper_config_id)
         
         if not scraper_config.is_enabled:
-            return {
+            result = {
                 'status': 'skipped',
                 'message': 'Парсер отключен',
                 'scraper_name': scraper_config.name
             }
+            if site_task:
+                SiteScraperTask.objects.filter(id=site_task.id).update(
+                    status='failed',
+                    error_message='Парсер отключен',
+                    log_output='Парсер отключен',
+                    finished_at=timezone.now()
+                )
+            return result
         
         # Проверяем статус парсера
         if scraper_config.status == 'maintenance':
-            return {
+            result = {
                 'status': 'skipped',
                 'message': 'Парсер на обслуживании',
                 'scraper_name': scraper_config.name
             }
+            if site_task:
+                SiteScraperTask.objects.filter(id=site_task.id).update(
+                    status='failed',
+                    error_message='Парсер на обслуживании',
+                    log_output='Парсер на обслуживании',
+                    finished_at=timezone.now()
+                )
+            return result
         
+        log_lines = [
+            f"Парсер: {scraper_config.name}",
+            f"URL: {start_url or scraper_config.base_url}",
+            f"Макс. страниц: {max_pages or scraper_config.max_pages_per_run}",
+            f"Макс. товаров: {max_products or scraper_config.max_products_per_run}",
+            f"Макс. медиа: {max_images_per_product or scraper_config.max_images_per_product}",
+            f"Старт: {timezone.now().isoformat()}"
+        ]
+
+        if site_task:
+            SiteScraperTask.objects.filter(id=site_task.id, status='pending').update(
+                status='running'
+            )
+            SiteScraperTask.objects.filter(id=site_task.id, started_at__isnull=True).update(
+                started_at=timezone.now()
+            )
+            if max_images_per_product is None:
+                max_images_per_product = SiteScraperTask.objects.filter(id=site_task.id).values_list(
+                    'max_images_per_product', flat=True
+                ).first()
+
         # Запускаем парсер
         integration_service = ScraperIntegrationService()
         session = integration_service.run_scraper(
             scraper_config=scraper_config,
             start_url=start_url,
             max_pages=max_pages,
-            max_products=max_products
+            max_products=max_products,
+            max_images_per_product=max_images_per_product
         )
         
         result = {
@@ -69,6 +113,30 @@ def run_scraper_task(self,
             'duration': str(session.duration) if session.duration else None,
             'timestamp': timezone.now().isoformat()
         }
+
+        log_lines.extend([
+            f"Найдено товаров: {session.products_found}",
+            f"Создано: {session.products_created}",
+            f"Обновлено: {session.products_updated}",
+            f"Пропущено: {session.products_skipped}",
+            f"Обработано страниц: {session.pages_processed}",
+            f"Ошибок: {session.errors_count}",
+            f"Финиш: {timezone.now().isoformat()}"
+        ])
+
+        if site_task:
+            SiteScraperTask.objects.filter(id=site_task.id).update(
+                status='completed',
+                session=session,
+                products_found=session.products_found,
+                products_created=session.products_created,
+                products_updated=session.products_updated,
+                products_skipped=session.products_skipped,
+                pages_processed=session.pages_processed,
+                errors_count=session.errors_count,
+                log_output="\n".join(log_lines),
+                finished_at=timezone.now()
+            )
         
         logger.info(f"Парсер {scraper_config.name} завершен успешно: {session.products_found} товаров найдено")
         return result
@@ -76,6 +144,13 @@ def run_scraper_task(self,
     except ScraperConfig.DoesNotExist:
         error_msg = f"Конфигурация парсера с ID {scraper_config_id} не найдена"
         logger.error(error_msg)
+        if site_task:
+            SiteScraperTask.objects.filter(id=site_task.id).update(
+                status='failed',
+                error_message=error_msg,
+                log_output=error_msg,
+                finished_at=timezone.now()
+            )
         return {
             'status': 'error',
             'error': error_msg,
@@ -85,6 +160,13 @@ def run_scraper_task(self,
     except Exception as e:
         error_msg = f"Ошибка в задаче парсинга: {e}"
         logger.error(error_msg)
+        if site_task:
+            SiteScraperTask.objects.filter(id=site_task.id).update(
+                status='failed',
+                error_message=error_msg,
+                log_output=error_msg,
+                finished_at=timezone.now()
+            )
         
         if self.request.retries < self.max_retries:
             raise self.retry(exc=e)

@@ -14,19 +14,7 @@ import { getLocalizedColor, getLocalizedProductDescription, ProductTranslation }
 import { resolveMediaUrl, isVideoUrl } from '../../lib/media'
 import { useTheme } from '../../context/ThemeContext'
 
-type CategoryType =
-  | 'medicines'
-  | 'clothing'
-  | 'shoes'
-  | 'electronics'
-  | 'supplements'
-  | 'medical-equipment'
-  | 'furniture'
-  | 'tableware'
-  | 'accessories'
-  | 'jewelry'
-  | 'underwear'
-  | 'headwear'
+type CategoryType = string
 
 const CATEGORY_ALIASES: Record<string, CategoryType> = {
   supplements: 'supplements',
@@ -38,20 +26,14 @@ const CATEGORY_ALIASES: Record<string, CategoryType> = {
   jewelry: 'jewelry',
   underwear: 'underwear',
   headwear: 'headwear',
+  books: 'books',
 }
 
 const normalizeCategoryType = (value?: string): CategoryType => {
   if (!value) return 'medicines'
   const lower = value.toLowerCase()
-  if ([
-    'medicines', 'clothing', 'shoes', 'electronics',
-    'supplements', 'medical-equipment',
-    'furniture', 'tableware', 'accessories', 'jewelry',
-    'underwear', 'headwear'
-  ].includes(lower)) {
-    return lower as CategoryType
-  }
-  return CATEGORY_ALIASES[lower] || 'medicines'
+  // Если есть алиас - возвращаем его, иначе возвращаем как есть (для поддержки новых категорий)
+  return CATEGORY_ALIASES[lower] || lower
 }
 
 const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
@@ -62,14 +44,8 @@ const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
       return `/api/catalog/shoes/products/${slug}`
     case 'electronics':
       return `/api/catalog/electronics/products/${slug}`
-    case 'furniture':
-    case 'tableware':
-    case 'accessories':
-    case 'jewelry':
-    case 'medicines':
-    case 'supplements':
-    case 'medical-equipment':
     default:
+      // Для всех остальных категорий (включая новые динамические) используем общий эндпоинт
       return `/api/catalog/products/${slug}`
   }
 }
@@ -97,6 +73,15 @@ const parseNumber = (value: string | number | null | undefined) => {
   return Number.isFinite(num) ? num : null
 }
 
+const normalizeMediaValue = (value?: string | null) => {
+  if (!value) return null
+  const trimmed = String(value).trim()
+  if (!trimmed) return null
+  const lower = trimmed.toLowerCase()
+  if (lower === 'null' || lower === 'none' || lower === 'undefined') return null
+  return trimmed
+}
+
 interface Product {
   id: number
   name: string
@@ -117,6 +102,7 @@ interface Product {
   active_variant_slug?: string | null
   active_variant_price?: string | null
   active_variant_currency?: string | null
+  active_variant_old_price_formatted?: string | null
   active_variant_stock_quantity?: number | null
   active_variant_main_image_url?: string | null
   translations?: ProductTranslation[]
@@ -250,32 +236,42 @@ export default function ProductPage({
     if (!product) return []
     const variantImages = selectedVariant?.images || []
     const productImages = product.images || []
-    const mainImageUrl = resolveMediaUrl(selectedVariant?.main_image || product.main_image_url || product.main_image)
+    const mainImageUrl = resolveMediaUrl(
+      normalizeMediaValue(selectedVariant?.main_image) ||
+        normalizeMediaValue(product.main_image_url) ||
+        normalizeMediaValue(product.main_image)
+    )
     const hasVideo = Boolean(product.video_url && isVideoUrl(product.video_url))
 
     const baseImages: GalleryItem[] = (variantImages.length > 0 ? variantImages : productImages).flatMap((img) => {
-      const videoUrl = (img as { video_url?: string | null }).video_url
+      const imageUrl = normalizeMediaValue(img.image_url)
+      const videoUrl = normalizeMediaValue((img as { video_url?: string | null }).video_url)
       if (videoUrl && isVideoUrl(videoUrl)) {
         return [{
           id: `video-${img.id}`,
-          image_url: img.image_url || '',
+          image_url: imageUrl || '',
           video_url: videoUrl,
           alt_text: img.alt_text,
           is_main: img.is_main,
           sort_order: (img as { sort_order?: number }).sort_order,
           isVideo: true
-        }]
+        } as GalleryItem]
+      }
+      if (!imageUrl) {
+        return []
       }
       return [{
         id: img.id,
-        image_url: img.image_url,
+        image_url: imageUrl,
         alt_text: img.alt_text,
         is_main: img.is_main,
         sort_order: (img as { sort_order?: number }).sort_order,
-      }]
+      } as GalleryItem]
     })
     let list: GalleryItem[] = []
-    if (mainImageUrl && !baseImages.some((img) => resolveMediaUrl(img.image_url) === mainImageUrl)) {
+    const hasMainInBase = baseImages.some((img) => img.is_main || resolveMediaUrl(img.image_url) === mainImageUrl)
+
+    if (mainImageUrl && !hasMainInBase) {
       list = [{ id: 0, image_url: mainImageUrl, alt_text: product.name, is_main: true, sort_order: -1 }, ...baseImages]
     } else {
       list = baseImages
@@ -287,17 +283,29 @@ export default function ProductPage({
   }
 
   const gallerySource = buildGallerySource()
+  const galleryMainImageUrl = normalizeMediaValue(
+    gallerySource.find((img) => !img.isVideo && img.is_main)?.image_url ||
+      gallerySource.find((img) => !img.isVideo && img.image_url)?.image_url
+  )
   const initialImage =
     resolveMediaUrl(
-      selectedVariant?.main_image ||
-        selectedVariant?.images?.find((img) => img.is_main)?.image_url ||
-        selectedVariant?.images?.[0]?.image_url ||
-        product?.active_variant_main_image_url ||
-        product?.main_image_url ||
-        product?.main_image ||
-        gallerySource.find((img) => img.id !== 'video' && img.is_main)?.image_url ||
-        gallerySource.find((img) => img.id !== 'video')?.image_url
+      galleryMainImageUrl ||
+        normalizeMediaValue(selectedVariant?.main_image) ||
+        normalizeMediaValue(selectedVariant?.images?.find((img) => img.is_main)?.image_url) ||
+        normalizeMediaValue(selectedVariant?.images?.[0]?.image_url) ||
+        normalizeMediaValue(product?.active_variant_main_image_url || null) ||
+        normalizeMediaValue(product?.main_image_url || null) ||
+        normalizeMediaValue(product?.main_image || null) ||
+        normalizeMediaValue(gallerySource.find((img) => !img.isVideo && img.image_url)?.image_url)
     ) || ''
+  const hasImageSource = Boolean(
+    normalizeMediaValue(selectedVariant?.main_image) ||
+      selectedVariant?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
+      normalizeMediaValue(product?.main_image_url || null) ||
+      normalizeMediaValue(product?.main_image || null) ||
+      product?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
+      gallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
+  )
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
   const initialVideoUrl =
     (product?.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
@@ -305,23 +313,26 @@ export default function ProductPage({
     null
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(initialVideoUrl)
   const [activeMediaType, setActiveMediaType] = useState<'video' | 'image'>(() =>
-    initialVideoUrl ? 'video' : 'image'
+    !hasImageSource && initialVideoUrl ? 'video' : 'image'
   )
 
   // Обновляем главную картинку при изменении товара или варианта
   useEffect(() => {
     if (!product) return
     const currentGallerySource = selectedVariant?.images?.length ? selectedVariant.images : (product.images || [])
+    const imageFromGallery =
+      normalizeMediaValue(currentGallerySource.find((img) => img.is_main)?.image_url) ||
+      normalizeMediaValue(currentGallerySource.find((img) => img.image_url)?.image_url)
     const newImage =
       resolveMediaUrl(
-        selectedVariant?.main_image ||
-          selectedVariant?.images?.find((img) => img.is_main)?.image_url ||
-          selectedVariant?.images?.[0]?.image_url ||
-          product.active_variant_main_image_url ||
-          product.main_image_url ||
-          product.main_image ||
-          currentGallerySource.find((img) => img.is_main)?.image_url ||
-          currentGallerySource[0]?.image_url ||
+        imageFromGallery ||
+          normalizeMediaValue(selectedVariant?.main_image) ||
+          normalizeMediaValue(selectedVariant?.images?.find((img) => img.is_main)?.image_url) ||
+          normalizeMediaValue(selectedVariant?.images?.[0]?.image_url) ||
+          normalizeMediaValue(product.active_variant_main_image_url || null) ||
+          normalizeMediaValue(product.main_image_url || null) ||
+          normalizeMediaValue(product.main_image || null) ||
+          normalizeMediaValue(currentGallerySource[0]?.image_url) ||
           null
       ) || null
     setActiveImage(newImage)
@@ -330,7 +341,14 @@ export default function ProductPage({
       (currentGallerySource as { video_url?: string | null }[]).find((item) => item.video_url && isVideoUrl(item.video_url))?.video_url ||
       null
     setActiveVideoUrl(freshVideoUrl)
-    setActiveMediaType(freshVideoUrl ? 'video' : 'image')
+    const hasImages = Boolean(
+      normalizeMediaValue(selectedVariant?.main_image) ||
+        selectedVariant?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
+        normalizeMediaValue(product.main_image_url || null) ||
+        normalizeMediaValue(product.main_image || null) ||
+        (currentGallerySource as { image_url?: string | null }[]).some((img) => normalizeMediaValue(img.image_url))
+    )
+    setActiveMediaType(hasImages ? 'image' : (freshVideoUrl ? 'video' : 'image'))
   }, [product, selectedVariant, router.asPath])
 
   if (!product) {
@@ -348,11 +366,15 @@ export default function ProductPage({
     parsedActiveVariantPrice.currency ||
     product.currency ||
     'USD'
-  const oldPriceSource = selectedVariant?.old_price ?? product.old_price_formatted ?? product.old_price
+  const oldPriceSource =
+    product.active_variant_old_price_formatted ||
+    product.old_price_formatted ||
+    selectedVariant?.old_price ||
+    product.old_price
   const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(
     oldPriceSource !== null && typeof oldPriceSource !== 'undefined' ? String(oldPriceSource) : null
   )
-  const displayOldPrice = parsedOldPrice ?? oldPriceSource
+  const displayOldPrice = parsedOldCurrency && parsedOldCurrency !== currency ? null : (parsedOldPrice ?? oldPriceSource)
   const displayOldCurrency = parsedOldCurrency || currency
   const displayOldPriceLabel = displayOldPrice ? String(displayOldPrice) : null
   const displayOldCurrencyLabel = displayOldCurrency ? String(displayOldCurrency) : null
@@ -721,12 +743,11 @@ export default function ProductPage({
               }}
             >
               <div className="prose max-w-none dark:prose-invert">
-                <p 
+                <div 
                   className="whitespace-pre-wrap leading-relaxed text-base"
                   style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
-                >
-                  {getLocalizedProductDescription(product.description, t, product.translations, router.locale)}
-                </p>
+                  dangerouslySetInnerHTML={{ __html: getLocalizedProductDescription(product.description, t, product.translations, router.locale) }}
+                />
               </div>
             </div>
           )}
@@ -791,20 +812,22 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   })
 
   if (slugParts.length === 1) {
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines']
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines', 'books']
     for (const t of probeTypes) {
       try {
-        await fetchProduct(t, productSlug)
-        if (t !== 'medicines') {
+        const res = await fetchProduct(t, productSlug)
+        const product = res.data
+        const actualType = product.product_type || t
+
+        if (actualType !== 'medicines') {
           return {
             redirect: {
-              destination: `${localePrefix}/product/${t}/${productSlug}`,
+              destination: `${localePrefix}/product/${actualType}/${productSlug}`,
               permanent: false,
             },
           }
         }
-        const res = await fetchProduct(t, productSlug)
-        return buildProps(res, t)
+        return buildProps(res, 'medicines')
       } catch {
         continue
       }
@@ -814,6 +837,21 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
 
   try {
     const res = await fetchProduct(categoryType, productSlug)
+    const product = res.data
+    const actualType = product.product_type
+
+    // Если тип в URL не совпадает с реальным типом товара, делаем редирект
+    // Исключаем случай, когда мы на /product/slug (categoryType='medicines' по дефолту для baseProductTypes)
+    // Но если мы явно на /product/furniture/... а товар books, надо редиректить.
+    if (actualType && actualType !== categoryType && categoryType !== 'medicines') {
+         return {
+            redirect: {
+              destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
+              permanent: false,
+            },
+         }
+    }
+
     const activeVariantSlug = res.data?.active_variant_slug
     const baseSlug = res.data?.slug
     if (activeVariantSlug && baseSlug && activeVariantSlug === productSlug && baseSlug !== productSlug) {
@@ -826,21 +864,24 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     }
     return buildProps(res, categoryType)
   } catch (error) {
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines']
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines', 'books']
     const typesToTry = probeTypes.filter((t) => t !== categoryType)
 
     for (const t of typesToTry) {
       const probeEndpoint = resolveDetailEndpoint(t, productSlug)
       try {
-        await axios.get(`${base}${probeEndpoint}`, {
+        const res = await axios.get(`${base}${probeEndpoint}`, {
           headers: {
             'X-Currency': currency,
             'Accept-Language': ctx.locale || 'en'
           }
         })
+        const product = res.data
+        const actualType = product.product_type || t
+
         return {
           redirect: {
-            destination: `${localePrefix}/product/${t}/${productSlug}`,
+            destination: `${localePrefix}/product/${actualType}/${productSlug}`,
             permanent: false,
           },
         }

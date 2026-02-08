@@ -1,7 +1,9 @@
 import logging
 import json
 import traceback
+import re
 from typing import Dict, Optional, List
+from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 import uuid
@@ -167,6 +169,14 @@ class ContentGenerator:
                 # Используем сырое описание как основное, если оно богаче
                 if len(data['raw_description']) > len(data['description']):
                     data['description'] = data['raw_description']
+            
+            # Добавляем существующие атрибуты в контекст, чтобы AI их знал
+            if product.isbn:
+                data['isbn'] = product.isbn
+            if product.publisher:
+                data['publisher'] = product.publisher
+            if product.pages:
+                data['pages'] = product.pages
                     
         return data
 
@@ -200,12 +210,25 @@ class ContentGenerator:
             "product_name": input_data['name'],
             "current_description": input_data['description'], # Может быть raw_description
             "brand": input_data['brand'] or "Unknown",
+            "known_attributes": {
+                "isbn": input_data.get('isbn'),
+                "publisher": input_data.get('publisher'),
+                "pages": input_data.get('pages')
+            },
             "image_analysis": image_analysis
         }
         
         prompt = f"""
         Проанализируй следующие данные о товаре:
         {json.dumps(data, ensure_ascii=False)}
+        
+        Твоя задача:
+        1. Извлечь максимум информации из описания и изображений.
+        2. Перевести описание на английский язык (поле "en").
+        3. Если количество товара не указано явно, считай stock_quantity = 3.
+        4. Если в known_attributes уже есть данные (ISBN, publisher, pages), используй их и не выдумывай новые.
+        5. СТРОГО ЗАПРЕЩЕНО придумывать технические данные (ISBN, количество страниц, издательство), если их нет в тексте или known_attributes. 
+           Если данных нет - возвращай null или не включай поле в ответ.
         
         Необходимо сгенерировать JSON следующей структуры:
         {{
@@ -229,9 +252,13 @@ class ContentGenerator:
                 "author": ["Author Name 1", "Author Name 2"],
                 "pages": 123,
                 "price": 10.99,
+                "old_price": 12.99,
                 "currency": "USD",
+                "stock_quantity": 3,
                 "isbn": "978-...",
                 "publisher": "Publisher Name",
+                "publication_date": "YYYY-MM-DD",
+                "language": "Русский",
                 "brand": "Brand Name",
                 "cover_type": "Hardcover",
                 "format_type": "Paperback",
@@ -250,18 +277,32 @@ class ContentGenerator:
         data_source = content.get('ru', content)
         
         if 'generated_title' in data_source:
-            log.generated_title = data_source['generated_title']
+            log.generated_title = data_source['generated_title'][:255]
         if 'generated_description' in data_source:
             log.generated_description = data_source['generated_description']
         if 'seo_title' in data_source:
-            log.generated_seo_title = data_source['seo_title']
+            log.generated_seo_title = data_source['seo_title'][:70]
         if 'seo_description' in data_source:
-            log.generated_seo_description = data_source['seo_description']
+            log.generated_seo_description = data_source['seo_description'][:160]
         if 'keywords' in data_source:
             log.generated_keywords = data_source['keywords']
             
         if 'attributes' in content:
             log.extracted_attributes = content['attributes']
+            
+        # Сохраняем английские данные в attributes для последующего использования
+        if 'en' in content:
+            en_data = content['en']
+            if not log.extracted_attributes:
+                log.extracted_attributes = {}
+            
+            log.extracted_attributes['seo_en'] = {
+                'title': en_data.get('seo_title'),
+                'description': en_data.get('seo_description'),
+                'keywords': en_data.get('keywords'),
+                'generated_title': en_data.get('generated_title'),
+                'generated_description': en_data.get('generated_description')
+            }
             
         # Попытка найти категорию
         if 'suggested_category_name' in content:
@@ -279,19 +320,34 @@ class ContentGenerator:
         """Применение сгенерированных данных к товару."""
         with transaction.atomic():
             # 1. Применяем основные данные (RU)
-            if log.generated_title:
+            if log.generated_title and not product.name:
                 product.name = log.generated_title
-            if log.generated_description:
+            if log.generated_description and not product.description:
                 product.description = log.generated_description
             
             # SEO fields (RU)
             if log.generated_seo_title:
-                product.seo_title = log.generated_seo_title
+                product.seo_title = log.generated_seo_title[:70]
             if log.generated_seo_description:
-                product.seo_description = log.generated_seo_description
+                product.seo_description = log.generated_seo_description[:160]
             if log.generated_keywords:
                 product.keywords = log.generated_keywords
             
+            # SEO fields (EN)
+            if log.extracted_attributes and 'seo_en' in log.extracted_attributes:
+                seo_en = log.extracted_attributes['seo_en']
+                if seo_en.get('title'):
+                    product.meta_title = seo_en['title'][:255]
+                    product.og_title = seo_en['title'][:255]
+                if seo_en.get('description'):
+                    product.meta_description = seo_en['description'][:500]
+                    product.og_description = seo_en['description'][:500]
+                if seo_en.get('keywords'):
+                    if isinstance(seo_en['keywords'], list):
+                        product.meta_keywords = ", ".join(seo_en['keywords'])[:500]
+                    else:
+                        product.meta_keywords = str(seo_en['keywords'])[:500]
+
             # Category logic
             if log.suggested_category and log.category_confidence > 0.8:
                 product.category = log.suggested_category
@@ -300,34 +356,35 @@ class ContentGenerator:
             if log.extracted_attributes:
                 attrs = log.extracted_attributes
                 
-                # Книжные атрибуты
-                if 'pages' in attrs and attrs['pages']:
-                    try:
-                        product.pages = int(attrs['pages'])
-                    except (ValueError, TypeError):
-                        pass
-                
-                if 'publisher' in attrs and attrs['publisher']:
-                    product.publisher = str(attrs['publisher'])
-                
-                if 'isbn' in attrs and attrs['isbn']:
-                    product.isbn = str(attrs['isbn'])
-                
-                if 'cover_type' in attrs and attrs['cover_type']:
-                    product.cover_type = str(attrs['cover_type'])
-                
-                # Цена и валюта
+                # Цена, Старая цена и Валюта
                 price_updated = False
                 if 'price' in attrs and attrs['price']:
                     try:
-                        product.price = float(attrs['price'])
+                        product.price = Decimal(str(attrs['price']))
                         price_updated = True
-                    except (ValueError, TypeError):
+                    except (ValueError, TypeError, Exception):
+                        pass
+                
+                if 'old_price' in attrs and attrs['old_price']:
+                    try:
+                        product.old_price = Decimal(str(attrs['old_price']))
+                    except (ValueError, TypeError, Exception):
                         pass
                 
                 if 'currency' in attrs and attrs['currency']:
                     product.currency = str(attrs['currency'])
                     price_updated = True
+
+                # Количество на складе (stock_quantity)
+                # Если AI нашел значение - используем его.
+                # Если нет, и у товара оно не установлено - ставим 3 по умолчанию.
+                if 'stock_quantity' in attrs and attrs['stock_quantity'] is not None:
+                    try:
+                        product.stock_quantity = int(attrs['stock_quantity'])
+                    except (ValueError, TypeError):
+                        pass
+                elif product.stock_quantity is None:
+                    product.stock_quantity = 3
                 
                 product.save()
                 
@@ -336,7 +393,7 @@ class ContentGenerator:
                     product.update_currency_prices()
                 
                 # Авторы
-                if 'author' in attrs:
+                if 'author' in attrs and not product.book_authors.exists():
                     authors_list = attrs['author']
                     if isinstance(authors_list, str):
                         authors_list = [authors_list]
@@ -344,6 +401,10 @@ class ContentGenerator:
                     if isinstance(authors_list, list):
                         # Очистка текущих авторов не производится, только добавление новых
                         for idx, auth_name in enumerate(authors_list):
+                            # Пропускаем "пустые" имена
+                            if not auth_name or auth_name.lower().strip() in ['не указано', 'нет', 'unknown', 'not specified', 'неизвестен', 'нет автора']:
+                                continue
+                                
                             parts = auth_name.strip().split()
                             if len(parts) >= 2:
                                 first_name = parts[0]
@@ -397,7 +458,24 @@ class ContentGenerator:
                             defaults={'description': en_desc}
                         )
                     
-                    # Если нужно сохранить английское название или SEO, 
-                    # это потребовало бы расширения моделей перевода.
-                    # Пока сохраняем только описание, как поддерживается моделью.
-
+                    # Сохраняем английские SEO-поля
+                    if 'seo_title' in en_data and en_data['seo_title']:
+                        product.meta_title = en_data['seo_title'][:255]
+                        product.og_title = en_data['seo_title'][:255]
+                    
+                    if 'seo_description' in en_data and en_data['seo_description']:
+                        product.meta_description = en_data['seo_description'][:500]
+                        product.og_description = en_data['seo_description'][:500]
+                        
+                    if 'keywords' in en_data and en_data['keywords']:
+                        if isinstance(en_data['keywords'], list):
+                            product.meta_keywords = ", ".join(en_data['keywords'])
+                        else:
+                            product.meta_keywords = str(en_data['keywords'])
+                            
+                    product.save()
+            
+            # Если нет EN данных в ответе, но есть RU, переводим RU SEO для заполнения EN полей
+            elif log.generated_seo_title and not product.meta_title:
+                 # Это fallback, если LLM не вернул структуру "en"
+                 pass

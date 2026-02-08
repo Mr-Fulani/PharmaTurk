@@ -11,8 +11,10 @@ interface Product {
   currency?: string | null
   oldPrice?: string | number | null
   old_price?: string | number | null
+  old_price_formatted?: string | null
   active_variant_price?: string | number | null
   active_variant_currency?: string | null
+  active_variant_old_price_formatted?: string | null
   main_image_url?: string | null
   main_image?: string | null
   product_type?: string
@@ -137,9 +139,14 @@ export default function SimilarProducts({
           const { price: parsedBasePrice, currency: parsedBaseCurrency } = parsePriceWithCurrency(product.price)
           const displayPrice = parsedVariantPrice ?? parsedBasePrice ?? product.price
           const displayCurrency = product.active_variant_currency || parsedVariantCurrency || parsedBaseCurrency || product.currency || 'RUB'
-          const oldPriceSource = product.old_price ?? product.oldPrice
-          const { price: parsedOldPrice } = parsePriceWithCurrency(oldPriceSource)
-          const displayOldPrice = parsedOldPrice ?? oldPriceSource
+          const oldPriceSource =
+            product.active_variant_old_price_formatted ||
+            product.old_price_formatted ||
+            product.old_price ||
+            product.oldPrice
+          const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(oldPriceSource)
+          const displayOldCurrency = parsedOldCurrency || displayCurrency
+          const displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? oldPriceSource : null
 
           return (
             <ProductCard

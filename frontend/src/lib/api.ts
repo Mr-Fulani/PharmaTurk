@@ -235,7 +235,7 @@ export const electronicsApi = {
 
 // Универсальная функция для получения API в зависимости от типа товаров
 export function getApiForCategory(
-  categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'medical-equipment' | 'furniture' | 'tableware' | 'accessories' | 'jewelry' | 'underwear' | 'headwear' | 'books'
+  categoryType: string
 ) {
   // Специализированные эндпоинты есть только для одежды/обуви/электроники.
   // Всё остальное идёт через базовый каталог (medicinesApi) без попытки принудительного маппинга.

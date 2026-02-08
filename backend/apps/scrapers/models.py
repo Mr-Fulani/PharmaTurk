@@ -42,6 +42,8 @@ class ScraperConfig(models.Model):
                                                   validators=[MinValueValidator(1), MaxValueValidator(1000)])
     max_products_per_run = models.PositiveIntegerField(_('Макс. товаров за запуск'), default=100,
                                                      validators=[MinValueValidator(1), MaxValueValidator(10000)])
+    max_images_per_product = models.PositiveIntegerField(_('Макс. медиа на товар'), default=5,
+                                                       validators=[MinValueValidator(1), MaxValueValidator(20)])
     
     # Расписание
     sync_enabled = models.BooleanField(_('Автосинхронизация'), default=True)
@@ -120,6 +122,8 @@ class ScrapingSession(models.Model):
     start_url = models.URLField(_('Начальный URL'), blank=True)
     max_pages = models.PositiveIntegerField(_('Макс. страниц'), default=10)
     max_products = models.PositiveIntegerField(_('Макс. товаров'), default=100)
+    max_images_per_product = models.PositiveIntegerField(_('Макс. медиа на товар'), default=5,
+                                                       validators=[MinValueValidator(1), MaxValueValidator(20)])
     
     # Результаты
     pages_processed = models.PositiveIntegerField(_('Обработано страниц'), default=0)
@@ -344,6 +348,62 @@ class InstagramScraperTask(models.Model):
     @property
     def duration(self):
         """Возвращает продолжительность выполнения."""
+        if self.started_at and self.finished_at:
+            return self.finished_at - self.started_at
+        return None
+
+
+class SiteScraperTask(models.Model):
+    STATUS_CHOICES = [
+        ('pending', _('Ожидает')),
+        ('running', _('Выполняется')),
+        ('completed', _('Завершено')),
+        ('failed', _('Ошибка')),
+    ]
+
+    scraper_config = models.ForeignKey(
+        ScraperConfig,
+        on_delete=models.CASCADE,
+        related_name='site_tasks',
+        verbose_name=_('Конфигурация парсера')
+    )
+    start_url = models.URLField(_('Начальный URL'))
+    max_pages = models.PositiveIntegerField(_('Макс. страниц'), default=10,
+                                          validators=[MinValueValidator(1), MaxValueValidator(1000)])
+    max_products = models.PositiveIntegerField(_('Макс. товаров'), default=100,
+                                             validators=[MinValueValidator(1), MaxValueValidator(10000)])
+    max_images_per_product = models.PositiveIntegerField(_('Макс. медиа на товар'), default=5,
+                                                       validators=[MinValueValidator(1), MaxValueValidator(20)])
+
+    status = models.CharField(_('Статус'), max_length=20, choices=STATUS_CHOICES, default='pending')
+    task_id = models.CharField(_('ID задачи Celery'), max_length=100, blank=True)
+    session = models.ForeignKey(ScrapingSession, on_delete=models.SET_NULL, null=True, blank=True,
+                              related_name='site_tasks', verbose_name=_('Сессия парсинга'))
+
+    products_found = models.PositiveIntegerField(_('Найдено товаров'), default=0)
+    products_created = models.PositiveIntegerField(_('Создано товаров'), default=0)
+    products_updated = models.PositiveIntegerField(_('Обновлено товаров'), default=0)
+    products_skipped = models.PositiveIntegerField(_('Пропущено товаров'), default=0)
+    pages_processed = models.PositiveIntegerField(_('Обработано страниц'), default=0)
+    errors_count = models.PositiveIntegerField(_('Количество ошибок'), default=0)
+
+    log_output = models.TextField(_('Лог выполнения'), blank=True)
+    error_message = models.TextField(_('Сообщение об ошибке'), blank=True)
+
+    created_at = models.DateTimeField(_('Создано'), auto_now_add=True)
+    started_at = models.DateTimeField(_('Начало выполнения'), null=True, blank=True)
+    finished_at = models.DateTimeField(_('Завершено'), null=True, blank=True)
+
+    class Meta:
+        verbose_name = _('Задача парсинга сайта')
+        verbose_name_plural = _('Задачи парсинга сайтов')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.scraper_config.name} - {self.get_status_display()}"
+
+    @property
+    def duration(self):
         if self.started_at and self.finished_at:
             return self.finished_at - self.started_at
         return None

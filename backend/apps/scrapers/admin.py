@@ -10,7 +10,7 @@ from django.http import HttpResponseRedirect
 
 from .models import (
     ScraperConfig, ScrapingSession, CategoryMapping, 
-    BrandMapping, ScrapedProductLog, InstagramScraperTask
+    BrandMapping, ScrapedProductLog, InstagramScraperTask, SiteScraperTask
 )
 from .tasks import run_scraper_task, update_scraper_status
 
@@ -38,7 +38,7 @@ class ScraperConfigAdmin(admin.ModelAdmin):
             'fields': [
                 ('delay_min', 'delay_max'), 
                 ('timeout', 'max_retries'),
-                ('max_pages_per_run', 'max_products_per_run')
+                ('max_pages_per_run', 'max_products_per_run', 'max_images_per_product')
             ],
             'classes': ['collapse']
         }),
@@ -187,6 +187,167 @@ class ScraperConfigAdmin(admin.ModelAdmin):
     disable_scrapers.short_description = 'Отключить выбранные парсеры'
 
 
+@admin.register(SiteScraperTask)
+class SiteScraperTaskAdmin(admin.ModelAdmin):
+    list_display = [
+        'scraper_config', 'status_badge', 'max_pages', 'max_products',
+        'products_stats', 'created_at', 'duration_display', 'actions_column'
+    ]
+    list_filter = ['status', 'scraper_config', 'created_at']
+    search_fields = ['scraper_config__name', 'start_url', 'error_message']
+    ordering = ['-created_at']
+
+    fieldsets = [
+        ('Параметры парсинга', {
+            'fields': ['scraper_config', 'start_url', 'max_pages', 'max_products', 'max_images_per_product']
+        }),
+        ('Статус и результаты', {
+            'fields': [
+                'status', 'products_found', 'products_created',
+                'products_updated', 'products_skipped', 'pages_processed', 'errors_count'
+            ]
+        }),
+        ('Временные метки', {
+            'fields': ['created_at', 'started_at', 'finished_at'],
+            'classes': ['collapse']
+        }),
+        ('Логи', {
+            'fields': ['log_output', 'error_message'],
+            'classes': ['collapse']
+        })
+    ]
+
+    readonly_fields = [
+        'status', 'products_found', 'products_created', 'products_updated',
+        'products_skipped', 'pages_processed', 'errors_count', 'log_output',
+        'error_message', 'created_at', 'started_at', 'finished_at'
+    ]
+
+    actions = ['run_site_scraping', 'rerun_site_scraping']
+
+    def status_badge(self, obj):
+        colors = {
+            'pending': 'blue',
+            'running': 'orange',
+            'completed': 'green',
+            'failed': 'red'
+        }
+        color = colors.get(obj.status, 'gray')
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">●</span> {}',
+            color, obj.get_status_display()
+        )
+    status_badge.short_description = 'Статус'
+
+    def products_stats(self, obj):
+        if obj.status == 'pending':
+            return '-'
+        return format_html(
+            '<span style="color: green;">+{}</span> / '
+            '<span style="color: blue;">~{}</span> / '
+            '<span style="color: gray;">-{}</span>',
+            obj.products_created, obj.products_updated, obj.products_skipped
+        )
+    products_stats.short_description = 'Создано / Обновлено / Пропущено'
+
+    def duration_display(self, obj):
+        if obj.duration:
+            total_seconds = int(obj.duration.total_seconds())
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+
+            if hours:
+                return f'{hours}ч {minutes}м'
+            if minutes:
+                return f'{minutes}м {seconds}с'
+            return f'{seconds}с'
+        return '-'
+    duration_display.short_description = 'Длительность'
+
+    def actions_column(self, obj):
+        return format_html(
+            '<span>{}</span>',
+            obj.task_id or '-'
+        )
+    actions_column.short_description = 'ID задачи'
+
+    def run_site_scraping(self, request, queryset):
+        from django.utils import timezone
+
+        for task in queryset.filter(status='pending'):
+            try:
+                task.status = 'running'
+                task.started_at = timezone.now()
+                task.finished_at = None
+                task.error_message = ''
+                task.log_output = ''
+                task.products_found = 0
+                task.products_created = 0
+                task.products_updated = 0
+                task.products_skipped = 0
+                task.pages_processed = 0
+                task.errors_count = 0
+                task.save()
+
+                celery_task = run_scraper_task.delay(
+                    task.scraper_config_id,
+                    start_url=task.start_url,
+                    max_pages=task.max_pages,
+                    max_products=task.max_products,
+                    max_images_per_product=task.max_images_per_product,
+                    site_task_id=task.id
+                )
+                task.task_id = celery_task.id
+                task.save()
+
+                messages.success(request, f'Запущена задача для {task.scraper_config.name}')
+            except Exception as e:
+                task.status = 'failed'
+                task.error_message = str(e)
+                task.finished_at = timezone.now()
+                task.save()
+                messages.error(request, f'Ошибка запуска задачи: {e}')
+    run_site_scraping.short_description = 'Запустить парсинг сайта'
+
+    def rerun_site_scraping(self, request, queryset):
+        from django.utils import timezone
+
+        for task in queryset.exclude(status='running'):
+            try:
+                task.status = 'running'
+                task.started_at = timezone.now()
+                task.finished_at = None
+                task.error_message = ''
+                task.log_output = ''
+                task.products_found = 0
+                task.products_created = 0
+                task.products_updated = 0
+                task.products_skipped = 0
+                task.pages_processed = 0
+                task.errors_count = 0
+                task.save()
+
+                celery_task = run_scraper_task.delay(
+                    task.scraper_config_id,
+                    start_url=task.start_url,
+                    max_pages=task.max_pages,
+                    max_products=task.max_products,
+                    max_images_per_product=task.max_images_per_product,
+                    site_task_id=task.id
+                )
+                task.task_id = celery_task.id
+                task.save()
+
+                messages.success(request, f'Повторно запущена задача для {task.scraper_config.name}')
+            except Exception as e:
+                task.status = 'failed'
+                task.error_message = str(e)
+                task.finished_at = timezone.now()
+                task.save()
+                messages.error(request, f'Ошибка повторного запуска: {e}')
+    rerun_site_scraping.short_description = 'Повторно запустить парсинг сайта'
+
+
 @admin.register(ScrapingSession)
 class ScrapingSessionAdmin(admin.ModelAdmin):
     """Админ для сессий парсинга."""
@@ -206,7 +367,7 @@ class ScrapingSessionAdmin(admin.ModelAdmin):
             'fields': ['scraper_config', 'status', 'task_id']
         }),
         ('Параметры запуска', {
-            'fields': ['start_url', 'max_pages', 'max_products']
+            'fields': ['start_url', 'max_pages', 'max_products', 'max_images_per_product']
         }),
         ('Результаты', {
             'fields': [

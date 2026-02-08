@@ -98,13 +98,13 @@ interface CategoryPageProps {
   currentPage: number
   totalPages: number
   initialRouteSlug?: string
-  categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'medical-equipment' | 'furniture' | 'tableware' | 'accessories' | 'jewelry' | 'underwear' | 'headwear' | 'books'
+  categoryType: string
   categoryTypeSlug?: string // Реальный тип категории из API (может быть кастомным)
 }
 
-type CategoryTypeKey = CategoryPageProps['categoryType']
+type CategoryTypeKey = string
 
-const brandProductTypeMap: Record<CategoryTypeKey, string> = {
+const brandProductTypeMap: Record<string, string> = {
   medicines: 'medicines',
   supplements: 'supplements',
   clothing: 'clothing',
@@ -120,7 +120,7 @@ const brandProductTypeMap: Record<CategoryTypeKey, string> = {
   books: 'books',
 }
 
-const resolveBrandProductType = (type: CategoryTypeKey) => brandProductTypeMap[type] || 'medicines'
+const resolveBrandProductType = (type: string) => brandProductTypeMap[type] || 'medicines'
 
 const normalizeSlug = (value: any) =>
   (value || '')
@@ -155,26 +155,20 @@ const filterBrandsByProducts = (
   })
 }
 
-const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): CategoryTypeKey => {
+const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): string => {
   const slug = Array.isArray(slugRaw) ? slugRaw[0] : slugRaw || ''
   const norm = slug.toLowerCase().replace(/_/g, '-')
+  
+  // Известные специальные типы
   if (norm.startsWith('shoes')) return 'shoes'
   if (norm.startsWith('clothing')) return 'clothing'
   if (norm.startsWith('electronics')) return 'electronics'
-  if (norm.startsWith('furniture')) return 'furniture'
-  if (norm.startsWith('tableware')) return 'tableware'
-  if (norm.startsWith('accessories')) return 'accessories'
-  if (norm.startsWith('jewelry')) return 'jewelry'
-  if (norm.startsWith('underwear')) return 'underwear'
-  if (norm.startsWith('headwear')) return 'headwear'
-  if (norm.startsWith('medical-equipment')) return 'medical-equipment'
-  if (norm.startsWith('supplements')) return 'supplements'
-  if (norm.startsWith('medicines')) return 'medicines'
-  if (norm.startsWith('books')) return 'books'
-  return 'medicines'
+  
+  // Для всех остальных возвращаем нормализованный слаг как тип
+  return norm || 'medicines'
 }
 
-const resolveProductsEndpoint = (categoryType: CategoryTypeKey) => {
+const resolveProductsEndpoint = (categoryType: string) => {
   switch (categoryType) {
     case 'clothing':
       return '/api/catalog/clothing/products'

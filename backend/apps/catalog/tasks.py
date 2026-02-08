@@ -30,7 +30,7 @@ def update_currency_rates():
     try:
         logger.info("Starting currency rates update...")
         
-        from .services.currency_service import CurrencyRateService
+        from .utils.currency_service import CurrencyRateService
         service = CurrencyRateService()
         success, message = service.update_rates()
         
@@ -226,4 +226,3 @@ def currency_system_health_check():
     except Exception as e:
         logger.error(f"Exception in currency health check: {str(e)}")
         return {'status': 'error', 'message': str(e)}
-

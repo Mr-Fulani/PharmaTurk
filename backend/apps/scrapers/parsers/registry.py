@@ -163,10 +163,12 @@ def register_default_parsers():
         from .ilacabak import IlacabakParser
         from .zara import ZaraParser
         from .instagram import InstagramParser
+        from .ummaland import UmmalandParser
         
         _registry.register(IlacabakParser)
         _registry.register(ZaraParser)
         _registry.register(InstagramParser)
+        _registry.register(UmmalandParser)
         
     except ImportError as e:
         logging.getLogger(__name__).warning(f"Не удалось импортировать некоторые парсеры: {e}")

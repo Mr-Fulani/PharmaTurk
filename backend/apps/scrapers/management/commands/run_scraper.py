@@ -38,6 +38,11 @@ class Command(BaseCommand):
             help='Максимальное количество товаров для парсинга'
         )
         parser.add_argument(
+            '--max-images',
+            type=int,
+            help='Максимальное количество медиа на товар'
+        )
+        parser.add_argument(
             '--async',
             action='store_true',
             help='Запустить асинхронно через Celery'
@@ -56,6 +61,16 @@ class Command(BaseCommand):
     
     def handle(self, *args, **options):
         """Обработчик команды."""
+        # Настройка логирования в консоль
+        import logging
+        root_logger = logging.getLogger()
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)
+        root_logger.setLevel(logging.INFO)
+
         # Показать список парсеров
         if options['list']:
             self.show_scrapers_list(options.get('status'))
@@ -146,7 +161,8 @@ class Command(BaseCommand):
             scraper_config_id=scraper_config.id,
             start_url=options.get('url'),
             max_pages=options.get('max_pages'),
-            max_products=options.get('max_products')
+            max_products=options.get('max_products'),
+            max_images_per_product=options.get('max_images')
         )
         
         self.stdout.write(
@@ -172,7 +188,8 @@ class Command(BaseCommand):
                 scraper_config=scraper_config,
                 start_url=options.get('url'),
                 max_pages=options.get('max_pages'),
-                max_products=options.get('max_products')
+                max_products=options.get('max_products'),
+                max_images_per_product=options.get('max_images')
             )
             
             # Показываем результаты
