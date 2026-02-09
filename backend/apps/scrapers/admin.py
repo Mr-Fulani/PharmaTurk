@@ -4,84 +4,123 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.utils import timezone
-from django.db.models import Count, Q
 from django.contrib import messages
 from django.http import HttpResponseRedirect
 
 from .models import (
-    ScraperConfig, ScrapingSession, CategoryMapping, 
-    BrandMapping, ScrapedProductLog, InstagramScraperTask, SiteScraperTask
+    ScraperConfig,
+    ScrapingSession,
+    CategoryMapping,
+    BrandMapping,
+    ScrapedProductLog,
+    InstagramScraperTask,
+    SiteScraperTask,
 )
-from .tasks import run_scraper_task, update_scraper_status
+from .tasks import run_scraper_task
 
 
 @admin.register(ScraperConfig)
 class ScraperConfigAdmin(admin.ModelAdmin):
     """Админ для конфигураций парсеров."""
-    
+
     list_display = [
-        'name', 'status_badge', 'base_url', 'priority', 
-        'success_rate_display', 'last_run_display', 'actions_column'
+        "name",
+        "status_badge",
+        "base_url",
+        "priority",
+        "success_rate_display",
+        "last_run_display",
+        "actions_column",
     ]
-    list_filter = ['status', 'is_enabled', 'sync_enabled', 'use_proxy', 'created_at']
-    search_fields = ['name', 'base_url', 'description']
-    ordering = ['priority', 'name']
-    
+    list_filter = [
+        "status",
+        "is_enabled",
+        "sync_enabled",
+        "use_proxy",
+        "ai_on_create_enabled",
+        "ai_on_update_enabled",
+        "created_at",
+    ]
+    search_fields = ["name", "base_url", "description"]
+    ordering = ["priority", "name"]
+
     fieldsets = [
-        ('Основная информация', {
-            'fields': ['name', 'parser_class', 'base_url', 'description']
-        }),
-        ('Статус и настройки', {
-            'fields': ['status', 'is_enabled', 'priority']
-        }),
-        ('Параметры парсинга', {
-            'fields': [
-                ('delay_min', 'delay_max'), 
-                ('timeout', 'max_retries'),
-                ('max_pages_per_run', 'max_products_per_run', 'max_images_per_product')
-            ],
-            'classes': ['collapse']
-        }),
-        ('Расписание', {
-            'fields': ['sync_enabled', 'sync_interval_hours'],
-            'classes': ['collapse']
-        }),
-        ('Дополнительные настройки', {
-            'fields': ['use_proxy', 'user_agent', 'headers', 'cookies', 'scraper_username', 'scraper_password'],
-            'classes': ['collapse']
-        }),
-        ('Статистика', {
-            'fields': [
-                'last_run_at', 'last_success_at', 'last_error_at',
-                'total_runs', 'successful_runs', 'total_products_scraped'
-            ],
-            'classes': ['collapse'],
-            'description': 'Статистика обновляется автоматически'
-        })
+        ("Основная информация", {"fields": ["name", "parser_class", "base_url", "description"]}),
+        ("Статус и настройки", {"fields": ["status", "is_enabled", "priority"]}),
+        (
+            "Параметры парсинга",
+            {
+                "fields": [
+                    ("delay_min", "delay_max"),
+                    ("timeout", "max_retries"),
+                    ("max_pages_per_run", "max_products_per_run", "max_images_per_product"),
+                ],
+                "classes": ["collapse"],
+            },
+        ),
+        (
+            "Расписание",
+            {"fields": ["sync_enabled", "sync_interval_hours"], "classes": ["collapse"]},
+        ),
+        (
+            "AI обработка",
+            {"fields": ["ai_on_create_enabled", "ai_on_update_enabled"], "classes": ["collapse"]},
+        ),
+        (
+            "Дополнительные настройки",
+            {
+                "fields": [
+                    "use_proxy",
+                    "user_agent",
+                    "headers",
+                    "cookies",
+                    "scraper_username",
+                    "scraper_password",
+                ],
+                "classes": ["collapse"],
+            },
+        ),
+        (
+            "Статистика",
+            {
+                "fields": [
+                    "last_run_at",
+                    "last_success_at",
+                    "last_error_at",
+                    "total_runs",
+                    "successful_runs",
+                    "total_products_scraped",
+                ],
+                "classes": ["collapse"],
+                "description": "Статистика обновляется автоматически",
+            },
+        ),
     ]
-    
+
     readonly_fields = [
-        'last_run_at', 'last_success_at', 'last_error_at', 'last_error_message',
-        'total_runs', 'successful_runs', 'total_products_scraped'
+        "last_run_at",
+        "last_success_at",
+        "last_error_at",
+        "last_error_message",
+        "total_runs",
+        "successful_runs",
+        "total_products_scraped",
     ]
-    
-    actions = ['run_selected_scrapers', 'enable_scrapers', 'disable_scrapers']
-    
+
+    actions = ["run_selected_scrapers", "enable_scrapers", "disable_scrapers"]
+
     def status_badge(self, obj):
         """Отображает статус с цветным бейджем."""
-        colors = {
-            'active': 'green',
-            'inactive': 'gray',
-            'error': 'red',
-            'maintenance': 'orange'
-        }
-        color = colors.get(obj.status, 'gray')
+        colors = {"active": "green", "inactive": "gray", "error": "red", "maintenance": "orange"}
+        color = colors.get(obj.status, "gray")
         return format_html(
             '<span style="color: {}; font-weight: bold;">●</span> {}',
-            color, obj.get_status_display()
+            color,
+            obj.get_status_display(),
         )
-    status_badge.short_description = 'Статус'
-    
+
+    status_badge.short_description = "Статус"
+
     def success_rate_display(self, obj):
         """Отображает процент успешных запусков."""
         try:
@@ -89,166 +128,200 @@ class ScraperConfigAdmin(admin.ModelAdmin):
             if rate is None:
                 return "0.0%"
             rate_float = float(rate)
-            color = 'green' if rate_float >= 80 else 'orange' if rate_float >= 50 else 'red'
-            return format_html(
-                '<span style="color: {};">{:.1f}%</span>',
-                color, rate_float
-            )
+            color = "green" if rate_float >= 80 else "orange" if rate_float >= 50 else "red"
+            return format_html('<span style="color: {};">{:.1f}%</span>', color, rate_float)
         except (ValueError, TypeError, AttributeError):
             return "0.0%"
-    success_rate_display.short_description = 'Успешность'
-    
+
+    success_rate_display.short_description = "Успешность"
+
     def last_run_display(self, obj):
         """Отображает время последнего запуска."""
         if not obj.last_run_at:
-            return 'Никогда'
-        
+            return "Никогда"
+
         delta = timezone.now() - obj.last_run_at
         if delta.days > 0:
-            return f'{delta.days} дн. назад'
+            return f"{delta.days} дн. назад"
         elif delta.seconds > 3600:
             hours = delta.seconds // 3600
-            return f'{hours} ч. назад'
+            return f"{hours} ч. назад"
         else:
             minutes = delta.seconds // 60
-            return f'{minutes} мин. назад'
-    last_run_display.short_description = 'Последний запуск'
-    
+            return f"{minutes} мин. назад"
+
+    last_run_display.short_description = "Последний запуск"
+
     def actions_column(self, obj):
         """Колонка с действиями."""
-        run_url = reverse('admin:scrapers_scraperconfig_run', args=[obj.pk])
-        sessions_url = reverse('admin:scrapers_scrapingsession_changelist') + f'?scraper_config__id={obj.pk}'
-        
-        return format_html(
-            '<a href="{}" class="button">Запустить</a> '
-            '<a href="{}" class="button">Сессии</a>',
-            run_url, sessions_url
+        run_url = reverse("admin:scrapers_scraperconfig_run", args=[obj.pk])
+        sessions_url = (
+            reverse("admin:scrapers_scrapingsession_changelist") + f"?scraper_config__id={obj.pk}"
         )
-    actions_column.short_description = 'Действия'
-    
+
+        return format_html(
+            '<a href="{}" class="button">Запустить</a> ' '<a href="{}" class="button">Сессии</a>',
+            run_url,
+            sessions_url,
+        )
+
+    actions_column.short_description = "Действия"
+
     def get_urls(self):
         """Добавляем кастомные URL."""
         from django.urls import path
+
         urls = super().get_urls()
         custom_urls = [
             path(
-                '<int:scraper_id>/run/',
+                "<int:scraper_id>/run/",
                 self.admin_site.admin_view(self.run_scraper_view),
-                name='scrapers_scraperconfig_run'
+                name="scrapers_scraperconfig_run",
             ),
         ]
         return custom_urls + urls
-    
+
     def run_scraper_view(self, request, scraper_id):
         """Запускает парсер."""
         try:
             scraper_config = ScraperConfig.objects.get(id=scraper_id)
-            
+
             # Запускаем задачу Celery
             task = run_scraper_task.delay(scraper_id)
-            
+
             messages.success(
-                request, 
-                f'Парсер "{scraper_config.name}" запущен. ID задачи: {task.id}'
+                request, f'Парсер "{scraper_config.name}" запущен. ID задачи: {task.id}'
             )
-            
+
         except ScraperConfig.DoesNotExist:
-            messages.error(request, 'Парсер не найден')
+            messages.error(request, "Парсер не найден")
         except Exception as e:
-            messages.error(request, f'Ошибка запуска парсера: {e}')
-        
-        return HttpResponseRedirect(reverse('admin:scrapers_scraperconfig_changelist'))
-    
+            messages.error(request, f"Ошибка запуска парсера: {e}")
+
+        return HttpResponseRedirect(reverse("admin:scrapers_scraperconfig_changelist"))
+
     def run_selected_scrapers(self, request, queryset):
         """Действие: запустить выбранные парсеры."""
         started_count = 0
-        
+
         for scraper_config in queryset.filter(is_enabled=True):
             try:
                 run_scraper_task.delay(scraper_config.id)
                 started_count += 1
             except Exception as e:
-                messages.error(request, f'Ошибка запуска {scraper_config.name}: {e}')
-        
+                messages.error(request, f"Ошибка запуска {scraper_config.name}: {e}")
+
         if started_count:
-            messages.success(request, f'Запущено {started_count} парсеров')
-    run_selected_scrapers.short_description = 'Запустить выбранные парсеры'
-    
+            messages.success(request, f"Запущено {started_count} парсеров")
+
+    run_selected_scrapers.short_description = "Запустить выбранные парсеры"
+
     def enable_scrapers(self, request, queryset):
         """Действие: включить парсеры."""
-        updated = queryset.update(is_enabled=True, status='active')
-        messages.success(request, f'Включено {updated} парсеров')
-    enable_scrapers.short_description = 'Включить выбранные парсеры'
-    
+        updated = queryset.update(is_enabled=True, status="active")
+        messages.success(request, f"Включено {updated} парсеров")
+
+    enable_scrapers.short_description = "Включить выбранные парсеры"
+
     def disable_scrapers(self, request, queryset):
         """Действие: отключить парсеры."""
-        updated = queryset.update(is_enabled=False, status='inactive')
-        messages.success(request, f'Отключено {updated} парсеров')
-    disable_scrapers.short_description = 'Отключить выбранные парсеры'
+        updated = queryset.update(is_enabled=False, status="inactive")
+        messages.success(request, f"Отключено {updated} парсеров")
+
+    disable_scrapers.short_description = "Отключить выбранные парсеры"
 
 
 @admin.register(SiteScraperTask)
 class SiteScraperTaskAdmin(admin.ModelAdmin):
     list_display = [
-        'scraper_config', 'status_badge', 'max_pages', 'max_products',
-        'products_stats', 'created_at', 'duration_display', 'actions_column'
+        "scraper_config",
+        "status_badge",
+        "max_pages",
+        "max_products",
+        "products_stats",
+        "created_at",
+        "duration_display",
+        "actions_column",
     ]
-    list_filter = ['status', 'scraper_config', 'created_at']
-    search_fields = ['scraper_config__name', 'start_url', 'error_message']
-    ordering = ['-created_at']
+    list_filter = ["status", "scraper_config", "created_at"]
+    search_fields = ["scraper_config__name", "start_url", "error_message"]
+    ordering = ["-created_at"]
 
     fieldsets = [
-        ('Параметры парсинга', {
-            'fields': ['scraper_config', 'start_url', 'max_pages', 'max_products', 'max_images_per_product']
-        }),
-        ('Статус и результаты', {
-            'fields': [
-                'status', 'products_found', 'products_created',
-                'products_updated', 'products_skipped', 'pages_processed', 'errors_count'
-            ]
-        }),
-        ('Временные метки', {
-            'fields': ['created_at', 'started_at', 'finished_at'],
-            'classes': ['collapse']
-        }),
-        ('Логи', {
-            'fields': ['log_output', 'error_message'],
-            'classes': ['collapse']
-        })
+        (
+            "Параметры парсинга",
+            {
+                "fields": [
+                    "scraper_config",
+                    "start_url",
+                    "max_pages",
+                    "max_products",
+                    "max_images_per_product",
+                ]
+            },
+        ),
+        (
+            "Статус и результаты",
+            {
+                "fields": [
+                    "status",
+                    "products_found",
+                    "products_created",
+                    "products_updated",
+                    "products_skipped",
+                    "pages_processed",
+                    "errors_count",
+                ]
+            },
+        ),
+        (
+            "Временные метки",
+            {"fields": ["created_at", "started_at", "finished_at"], "classes": ["collapse"]},
+        ),
+        ("Логи", {"fields": ["log_output", "error_message"], "classes": ["collapse"]}),
     ]
 
     readonly_fields = [
-        'status', 'products_found', 'products_created', 'products_updated',
-        'products_skipped', 'pages_processed', 'errors_count', 'log_output',
-        'error_message', 'created_at', 'started_at', 'finished_at'
+        "status",
+        "products_found",
+        "products_created",
+        "products_updated",
+        "products_skipped",
+        "pages_processed",
+        "errors_count",
+        "log_output",
+        "error_message",
+        "created_at",
+        "started_at",
+        "finished_at",
     ]
 
-    actions = ['run_site_scraping', 'rerun_site_scraping']
+    actions = ["run_site_scraping", "rerun_site_scraping"]
 
     def status_badge(self, obj):
-        colors = {
-            'pending': 'blue',
-            'running': 'orange',
-            'completed': 'green',
-            'failed': 'red'
-        }
-        color = colors.get(obj.status, 'gray')
+        colors = {"pending": "blue", "running": "orange", "completed": "green", "failed": "red"}
+        color = colors.get(obj.status, "gray")
         return format_html(
             '<span style="color: {}; font-weight: bold;">●</span> {}',
-            color, obj.get_status_display()
+            color,
+            obj.get_status_display(),
         )
-    status_badge.short_description = 'Статус'
+
+    status_badge.short_description = "Статус"
 
     def products_stats(self, obj):
-        if obj.status == 'pending':
-            return '-'
+        if obj.status == "pending":
+            return "-"
         return format_html(
             '<span style="color: green;">+{}</span> / '
             '<span style="color: blue;">~{}</span> / '
             '<span style="color: gray;">-{}</span>',
-            obj.products_created, obj.products_updated, obj.products_skipped
+            obj.products_created,
+            obj.products_updated,
+            obj.products_skipped,
         )
-    products_stats.short_description = 'Создано / Обновлено / Пропущено'
+
+    products_stats.short_description = "Создано / Обновлено / Пропущено"
 
     def duration_display(self, obj):
         if obj.duration:
@@ -257,30 +330,29 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             minutes, seconds = divmod(remainder, 60)
 
             if hours:
-                return f'{hours}ч {minutes}м'
+                return f"{hours}ч {minutes}м"
             if minutes:
-                return f'{minutes}м {seconds}с'
-            return f'{seconds}с'
-        return '-'
-    duration_display.short_description = 'Длительность'
+                return f"{minutes}м {seconds}с"
+            return f"{seconds}с"
+        return "-"
+
+    duration_display.short_description = "Длительность"
 
     def actions_column(self, obj):
-        return format_html(
-            '<span>{}</span>',
-            obj.task_id or '-'
-        )
-    actions_column.short_description = 'ID задачи'
+        return format_html("<span>{}</span>", obj.task_id or "-")
+
+    actions_column.short_description = "ID задачи"
 
     def run_site_scraping(self, request, queryset):
         from django.utils import timezone
 
-        for task in queryset.filter(status='pending'):
+        for task in queryset.filter(status="pending"):
             try:
-                task.status = 'running'
+                task.status = "running"
                 task.started_at = timezone.now()
                 task.finished_at = None
-                task.error_message = ''
-                task.log_output = ''
+                task.error_message = ""
+                task.log_output = ""
                 task.products_found = 0
                 task.products_created = 0
                 task.products_updated = 0
@@ -295,30 +367,31 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     max_pages=task.max_pages,
                     max_products=task.max_products,
                     max_images_per_product=task.max_images_per_product,
-                    site_task_id=task.id
+                    site_task_id=task.id,
                 )
                 task.task_id = celery_task.id
                 task.save()
 
-                messages.success(request, f'Запущена задача для {task.scraper_config.name}')
+                messages.success(request, f"Запущена задача для {task.scraper_config.name}")
             except Exception as e:
-                task.status = 'failed'
+                task.status = "failed"
                 task.error_message = str(e)
                 task.finished_at = timezone.now()
                 task.save()
-                messages.error(request, f'Ошибка запуска задачи: {e}')
-    run_site_scraping.short_description = 'Запустить парсинг сайта'
+                messages.error(request, f"Ошибка запуска задачи: {e}")
+
+    run_site_scraping.short_description = "Запустить парсинг сайта"
 
     def rerun_site_scraping(self, request, queryset):
         from django.utils import timezone
 
-        for task in queryset.exclude(status='running'):
+        for task in queryset.exclude(status="running"):
             try:
-                task.status = 'running'
+                task.status = "running"
                 task.started_at = timezone.now()
                 task.finished_at = None
-                task.error_message = ''
-                task.log_output = ''
+                task.error_message = ""
+                task.log_output = ""
                 task.products_found = 0
                 task.products_created = 0
                 task.products_updated = 0
@@ -333,493 +406,605 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     max_pages=task.max_pages,
                     max_products=task.max_products,
                     max_images_per_product=task.max_images_per_product,
-                    site_task_id=task.id
+                    site_task_id=task.id,
                 )
                 task.task_id = celery_task.id
                 task.save()
 
-                messages.success(request, f'Повторно запущена задача для {task.scraper_config.name}')
+                messages.success(
+                    request, f"Повторно запущена задача для {task.scraper_config.name}"
+                )
             except Exception as e:
-                task.status = 'failed'
+                task.status = "failed"
                 task.error_message = str(e)
                 task.finished_at = timezone.now()
                 task.save()
-                messages.error(request, f'Ошибка повторного запуска: {e}')
-    rerun_site_scraping.short_description = 'Повторно запустить парсинг сайта'
+                messages.error(request, f"Ошибка повторного запуска: {e}")
+
+    rerun_site_scraping.short_description = "Повторно запустить парсинг сайта"
 
 
 @admin.register(ScrapingSession)
 class ScrapingSessionAdmin(admin.ModelAdmin):
     """Админ для сессий парсинга."""
-    
+
     list_display = [
-        'scraper_config', 'status_badge', 'started_at', 'duration_display',
-        'products_stats', 'pages_processed', 'errors_count'
+        "scraper_config",
+        "status_badge",
+        "started_at",
+        "duration_display",
+        "products_stats",
+        "pages_processed",
+        "errors_count",
+        "actions_column",
     ]
-    list_filter = [
-        'status', 'scraper_config', 'started_at', 'finished_at'
-    ]
-    search_fields = ['scraper_config__name', 'start_url', 'error_message']
-    ordering = ['-created_at']
-    
+    list_filter = ["status", "scraper_config", "started_at", "finished_at"]
+    search_fields = ["scraper_config__name", "start_url", "error_message"]
+    ordering = ["-created_at"]
+
     fieldsets = [
-        ('Основная информация', {
-            'fields': ['scraper_config', 'status', 'task_id']
-        }),
-        ('Параметры запуска', {
-            'fields': ['start_url', 'max_pages', 'max_products', 'max_images_per_product']
-        }),
-        ('Результаты', {
-            'fields': [
-                ('products_found', 'products_created'),
-                ('products_updated', 'products_skipped'),
-                ('pages_processed', 'errors_count')
-            ]
-        }),
-        ('Временные метки', {
-            'fields': ['started_at', 'finished_at', 'created_at'],
-            'classes': ['collapse']
-        }),
-        ('Логи и ошибки', {
-            'fields': ['error_message', 'log_messages'],
-            'classes': ['collapse']
-        })
+        ("Основная информация", {"fields": ["scraper_config", "status", "task_id"]}),
+        (
+            "Параметры запуска",
+            {"fields": ["start_url", "max_pages", "max_products", "max_images_per_product"]},
+        ),
+        (
+            "Результаты",
+            {
+                "fields": [
+                    ("products_found", "products_created"),
+                    ("products_updated", "products_skipped"),
+                    ("pages_processed", "errors_count"),
+                ]
+            },
+        ),
+        (
+            "Временные метки",
+            {"fields": ["started_at", "finished_at", "created_at"], "classes": ["collapse"]},
+        ),
+        ("Логи и ошибки", {"fields": ["error_message", "log_messages"], "classes": ["collapse"]}),
     ]
-    
-    readonly_fields = ['created_at', 'started_at', 'finished_at']
-    
+
+    readonly_fields = ["created_at", "started_at", "finished_at"]
+
     def status_badge(self, obj):
         """Отображает статус с цветным бейджем."""
         colors = {
-            'pending': 'blue',
-            'running': 'orange',
-            'completed': 'green',
-            'failed': 'red',
-            'cancelled': 'gray'
+            "pending": "blue",
+            "running": "orange",
+            "completed": "green",
+            "failed": "red",
+            "cancelled": "gray",
         }
-        color = colors.get(obj.status, 'gray')
+        color = colors.get(obj.status, "gray")
         return format_html(
             '<span style="color: {}; font-weight: bold;">●</span> {}',
-            color, obj.get_status_display()
+            color,
+            obj.get_status_display(),
         )
-    status_badge.short_description = 'Статус'
-    
+
+    status_badge.short_description = "Статус"
+
     def duration_display(self, obj):
         """Отображает продолжительность."""
         if obj.duration:
             total_seconds = int(obj.duration.total_seconds())
             hours, remainder = divmod(total_seconds, 3600)
             minutes, seconds = divmod(remainder, 60)
-            
+
             if hours:
-                return f'{hours}ч {minutes}м {seconds}с'
+                return f"{hours}ч {minutes}м {seconds}с"
             elif minutes:
-                return f'{minutes}м {seconds}с'
+                return f"{minutes}м {seconds}с"
             else:
-                return f'{seconds}с'
-        return '-'
-    duration_display.short_description = 'Длительность'
-    
+                return f"{seconds}с"
+        return "-"
+
+    duration_display.short_description = "Длительность"
+
     def products_stats(self, obj):
         """Отображает статистику товаров."""
         return format_html(
             '<span style="color: green;">+{}</span> / '
             '<span style="color: blue;">~{}</span> / '
             '<span style="color: gray;">-{}</span>',
-            int(obj.products_created), int(obj.products_updated), int(obj.products_skipped)
+            int(obj.products_created),
+            int(obj.products_updated),
+            int(obj.products_skipped),
         )
-    products_stats.short_description = 'Создано / Обновлено / Пропущено'
+
+    products_stats.short_description = "Создано / Обновлено / Пропущено"
+
+    def actions_column(self, obj):
+        run_ai_url = reverse("admin:scrapers_scrapingsession_run_ai", args=[obj.pk])
+        return format_html('<a href="{}" class="button">Запустить AI</a>', run_ai_url)
+
+    actions_column.short_description = "Действия"
+
+    def get_urls(self):
+        from django.urls import path
+
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "<int:session_id>/run-ai/",
+                self.admin_site.admin_view(self.run_ai_view),
+                name="scrapers_scrapingsession_run_ai",
+            ),
+        ]
+        return custom_urls + urls
+
+    def run_ai_view(self, request, session_id):
+        try:
+            session = ScrapingSession.objects.get(id=session_id)
+        except ScrapingSession.DoesNotExist:
+            messages.error(request, "Сессия парсинга не найдена")
+            return HttpResponseRedirect(reverse("admin:scrapers_scrapingsession_changelist"))
+
+        product_ids = (
+            ScrapedProductLog.objects.filter(
+                session=session,
+                product__isnull=False,
+                action__in=["created", "updated"],
+            )
+            .values_list("product_id", flat=True)
+            .distinct()
+        )
+
+        product_ids = list(product_ids)
+        if not product_ids:
+            messages.warning(request, "В сессии нет товаров для AI обработки")
+            return HttpResponseRedirect(reverse("admin:scrapers_scrapingsession_changelist"))
+
+        from apps.ai.tasks import process_product_ai_task
+
+        for product_id in product_ids:
+            process_product_ai_task.delay(
+                product_id=product_id,
+                processing_type="full",
+                auto_apply=True,
+            )
+
+        messages.success(
+            request,
+            f"Запущена AI обработка для {len(product_ids)} товаров",
+        )
+        return HttpResponseRedirect(reverse("admin:scrapers_scrapingsession_changelist"))
 
 
 @admin.register(CategoryMapping)
 class CategoryMappingAdmin(admin.ModelAdmin):
     """Админ для маппинга категорий."""
-    
+
     list_display = [
-        'external_category_name', 'internal_category', 
-        'scraper_config', 'is_active', 'priority'
+        "external_category_name",
+        "internal_category",
+        "scraper_config",
+        "is_active",
+        "priority",
     ]
-    list_filter = ['scraper_config', 'is_active', 'internal_category']
-    search_fields = ['external_category_name', 'internal_category__name']
-    ordering = ['scraper_config', 'priority', 'external_category_name']
-    
+    list_filter = ["scraper_config", "is_active", "internal_category"]
+    search_fields = ["external_category_name", "internal_category__name"]
+    ordering = ["scraper_config", "priority", "external_category_name"]
+
     fieldsets = [
-        ('Маппинг', {
-            'fields': [
-                'scraper_config', 'internal_category',
-                'external_category_name', 'external_category_url', 'external_category_id'
-            ]
-        }),
-        ('Настройки', {
-            'fields': ['is_active', 'priority']
-        })
+        (
+            "Маппинг",
+            {
+                "fields": [
+                    "scraper_config",
+                    "internal_category",
+                    "external_category_name",
+                    "external_category_url",
+                    "external_category_id",
+                ]
+            },
+        ),
+        ("Настройки", {"fields": ["is_active", "priority"]}),
     ]
 
 
 @admin.register(BrandMapping)
 class BrandMappingAdmin(admin.ModelAdmin):
     """Админ для маппинга брендов."""
-    
+
     list_display = [
-        'external_brand_name', 'internal_brand', 
-        'scraper_config', 'is_active', 'priority'
+        "external_brand_name",
+        "internal_brand",
+        "scraper_config",
+        "is_active",
+        "priority",
     ]
-    list_filter = ['scraper_config', 'is_active', 'internal_brand']
-    search_fields = ['external_brand_name', 'internal_brand__name']
-    ordering = ['scraper_config', 'priority', 'external_brand_name']
-    
+    list_filter = ["scraper_config", "is_active", "internal_brand"]
+    search_fields = ["external_brand_name", "internal_brand__name"]
+    ordering = ["scraper_config", "priority", "external_brand_name"]
+
     fieldsets = [
-        ('Маппинг', {
-            'fields': [
-                'scraper_config', 'internal_brand',
-                'external_brand_name', 'external_brand_url', 'external_brand_id'
-            ]
-        }),
-        ('Настройки', {
-            'fields': ['is_active', 'priority']
-        })
+        (
+            "Маппинг",
+            {
+                "fields": [
+                    "scraper_config",
+                    "internal_brand",
+                    "external_brand_name",
+                    "external_brand_url",
+                    "external_brand_id",
+                ]
+            },
+        ),
+        ("Настройки", {"fields": ["is_active", "priority"]}),
     ]
 
 
 @admin.register(ScrapedProductLog)
 class ScrapedProductLogAdmin(admin.ModelAdmin):
     """Админ для логов товаров."""
-    
-    list_display = [
-        'product_name', 'action_badge', 'session', 
-        'external_id', 'created_at'
-    ]
-    list_filter = [
-        'action', 'session__scraper_config', 'created_at'
-    ]
-    search_fields = [
-        'product_name', 'external_id', 'external_url', 'message'
-    ]
-    ordering = ['-created_at']
-    
+
+    list_display = ["product_name", "action_badge", "session", "external_id", "created_at"]
+    list_filter = ["action", "session__scraper_config", "created_at"]
+    search_fields = ["product_name", "external_id", "external_url", "message"]
+    ordering = ["-created_at"]
+
     fieldsets = [
-        ('Основная информация', {
-            'fields': ['session', 'product', 'action']
-        }),
-        ('Данные товара', {
-            'fields': [
-                'product_name', 'external_id', 'external_url'
-            ]
-        }),
-        ('Дополнительно', {
-            'fields': ['message', 'scraped_data'],
-            'classes': ['collapse']
-        })
+        ("Основная информация", {"fields": ["session", "product", "action"]}),
+        ("Данные товара", {"fields": ["product_name", "external_id", "external_url"]}),
+        ("Дополнительно", {"fields": ["message", "scraped_data"], "classes": ["collapse"]}),
     ]
-    
-    readonly_fields = ['created_at']
-    
+
+    readonly_fields = ["created_at"]
+
     def action_badge(self, obj):
         """Отображает действие с цветным бейджем."""
         colors = {
-            'created': 'green',
-            'updated': 'blue',
-            'skipped': 'gray',
-            'error': 'red',
-            'duplicate': 'orange'
+            "created": "green",
+            "updated": "blue",
+            "skipped": "gray",
+            "error": "red",
+            "duplicate": "orange",
         }
-        color = colors.get(obj.action, 'gray')
+        color = colors.get(obj.action, "gray")
         return format_html(
             '<span style="color: {}; font-weight: bold;">●</span> {}',
-            color, obj.get_action_display()
+            color,
+            obj.get_action_display(),
         )
-    action_badge.short_description = 'Действие'
+
+    action_badge.short_description = "Действие"
 
 
 @admin.register(InstagramScraperTask)
 class InstagramScraperTaskAdmin(admin.ModelAdmin):
     """Админ для задач парсинга Instagram."""
-    
+
     list_display = [
-        'instagram_username', 'category', 'status_badge', 
-        'max_posts', 'products_stats', 'created_at', 'duration_display', 'actions_column'
+        "instagram_username",
+        "category",
+        "status_badge",
+        "max_posts",
+        "products_stats",
+        "created_at",
+        "duration_display",
+        "actions_column",
     ]
-    list_filter = ['status', 'category', 'created_at']
-    search_fields = ['instagram_username', 'error_message']
-    ordering = ['-created_at']
-    
+    list_filter = ["status", "category", "created_at"]
+    search_fields = ["instagram_username", "error_message"]
+    ordering = ["-created_at"]
+
     fieldsets = [
-        ('Параметры парсинга', {
-            'fields': ['instagram_username', 'category', 'max_posts'],
-            'description': 'Введите username Instagram аккаунта (без @), выберите категорию и укажите количество постов'
-        }),
-        ('Статус и результаты', {
-            'fields': ['status', 'products_created', 'products_updated', 'products_skipped']
-        }),
-        ('Временные метки', {
-            'fields': ['created_at', 'started_at', 'finished_at'],
-            'classes': ['collapse']
-        }),
-        ('Логи', {
-            'fields': ['log_output', 'error_message'],
-            'classes': ['collapse']
-        })
+        (
+            "Параметры парсинга",
+            {
+                "fields": ["instagram_username", "category", "max_posts"],
+                "description": "Введите username Instagram аккаунта (без @), выберите категорию и укажите количество постов",
+            },
+        ),
+        (
+            "Статус и результаты",
+            {"fields": ["status", "products_created", "products_updated", "products_skipped"]},
+        ),
+        (
+            "Временные метки",
+            {"fields": ["created_at", "started_at", "finished_at"], "classes": ["collapse"]},
+        ),
+        ("Логи", {"fields": ["log_output", "error_message"], "classes": ["collapse"]}),
     ]
-    
+
     readonly_fields = [
-        'status', 'products_created', 'products_updated', 'products_skipped',
-        'log_output', 'error_message', 'created_at', 'started_at', 'finished_at'
+        "status",
+        "products_created",
+        "products_updated",
+        "products_skipped",
+        "log_output",
+        "error_message",
+        "created_at",
+        "started_at",
+        "finished_at",
     ]
-    
-    actions = ['run_instagram_scraping', 'rerun_instagram_scraping']
-    
+
+    actions = ["run_instagram_scraping", "rerun_instagram_scraping"]
+
     def status_badge(self, obj):
         """Отображает статус с цветным бейджем."""
-        colors = {
-            'pending': 'blue',
-            'running': 'orange',
-            'completed': 'green',
-            'failed': 'red'
-        }
-        color = colors.get(obj.status, 'gray')
+        colors = {"pending": "blue", "running": "orange", "completed": "green", "failed": "red"}
+        color = colors.get(obj.status, "gray")
         return format_html(
             '<span style="color: {}; font-weight: bold;">●</span> {}',
-            color, obj.get_status_display()
+            color,
+            obj.get_status_display(),
         )
-    status_badge.short_description = 'Статус'
-    
+
+    status_badge.short_description = "Статус"
+
     def products_stats(self, obj):
         """Отображает статистику товаров."""
-        if obj.status == 'pending':
-            return '-'
+        if obj.status == "pending":
+            return "-"
         return format_html(
             '<span style="color: green;">+{}</span> / '
             '<span style="color: blue;">~{}</span> / '
             '<span style="color: gray;">-{}</span>',
-            obj.products_created, obj.products_updated, obj.products_skipped
+            obj.products_created,
+            obj.products_updated,
+            obj.products_skipped,
         )
-    products_stats.short_description = 'Создано / Обновлено / Пропущено'
-    
+
+    products_stats.short_description = "Создано / Обновлено / Пропущено"
+
     def duration_display(self, obj):
         """Отображает продолжительность."""
         if obj.duration:
             total_seconds = int(obj.duration.total_seconds())
             hours, remainder = divmod(total_seconds, 3600)
             minutes, seconds = divmod(remainder, 60)
-            
+
             if hours:
-                return f'{hours}ч {minutes}м'
+                return f"{hours}ч {minutes}м"
             elif minutes:
-                return f'{minutes}м {seconds}с'
+                return f"{minutes}м {seconds}с"
             else:
-                return f'{seconds}с'
-        return '-'
-    duration_display.short_description = 'Длительность'
-    
+                return f"{seconds}с"
+        return "-"
+
+    duration_display.short_description = "Длительность"
+
     def run_instagram_scraping(self, request, queryset):
         """Действие: запустить парсинг для выбранных задач."""
         import subprocess
         from django.utils import timezone
-        
+
         # Try to find Instagram scraper config to get credentials
         from .models import ScraperConfig
-        scraper_config = ScraperConfig.objects.filter(parser_class='instagram', is_enabled=True).first()
-        
-        for task in queryset.filter(status='pending'):
+
+        scraper_config = ScraperConfig.objects.filter(
+            parser_class="instagram", is_enabled=True
+        ).first()
+
+        for task in queryset.filter(status="pending"):
             try:
-                task.status = 'running'
+                task.status = "running"
                 task.started_at = timezone.now()
                 task.save()
-                
+
                 cmd = [
-                    'poetry', 'run', 'python', 'manage.py', 
-                    'run_instagram_scraper',
-                    '--username', task.instagram_username,
-                    '--category', task.category,
-                    '--max-posts', str(task.max_posts)
+                    "poetry",
+                    "run",
+                    "python",
+                    "manage.py",
+                    "run_instagram_scraper",
+                    "--username",
+                    task.instagram_username,
+                    "--category",
+                    task.category,
+                    "--max-posts",
+                    str(task.max_posts),
                 ]
-                
-                if scraper_config and scraper_config.scraper_username and scraper_config.scraper_password:
-                    cmd.extend(['--login', scraper_config.scraper_username])
-                    cmd.extend(['--password', scraper_config.scraper_password])
-                
+
+                if (
+                    scraper_config
+                    and scraper_config.scraper_username
+                    and scraper_config.scraper_password
+                ):
+                    cmd.extend(["--login", scraper_config.scraper_username])
+                    cmd.extend(["--password", scraper_config.scraper_password])
+
                 # Запускаем команду парсинга
                 result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=600  # 10 минут таймаут
+                    cmd, capture_output=True, text=True, timeout=600  # 10 минут таймаут
                 )
-                
-                task.log_output = result.stdout + '\n' + result.stderr
-                
+
+                task.log_output = result.stdout + "\n" + result.stderr
+
                 # Парсим результаты из вывода
                 output = result.stdout
-                if 'создано' in output.lower():
+                if "создано" in output.lower():
                     import re
-                    created_match = re.search(r'создано (\d+)', output.lower())
-                    updated_match = re.search(r'обновлено (\d+)', output.lower())
-                    skipped_match = re.search(r'пропущено (\d+)', output.lower())
-                    
+
+                    created_match = re.search(r"создано (\d+)", output.lower())
+                    updated_match = re.search(r"обновлено (\d+)", output.lower())
+                    skipped_match = re.search(r"пропущено (\d+)", output.lower())
+
                     if created_match:
                         task.products_created = int(created_match.group(1))
                     if updated_match:
                         task.products_updated = int(updated_match.group(1))
                     if skipped_match:
                         task.products_skipped = int(skipped_match.group(1))
-                
+
                 if result.returncode == 0:
-                    task.status = 'completed'
-                    messages.success(request, f'Парсинг @{task.instagram_username} завершен успешно')
+                    task.status = "completed"
+                    messages.success(
+                        request, f"Парсинг @{task.instagram_username} завершен успешно"
+                    )
                 else:
-                    task.status = 'failed'
+                    task.status = "failed"
                     task.error_message = result.stderr
-                    messages.error(request, f'Ошибка парсинга @{task.instagram_username}')
-                
+                    messages.error(request, f"Ошибка парсинга @{task.instagram_username}")
+
             except subprocess.TimeoutExpired:
-                task.status = 'failed'
-                task.error_message = 'Превышен таймаут выполнения (10 минут)'
-                messages.error(request, f'Таймаут парсинга @{task.instagram_username}')
+                task.status = "failed"
+                task.error_message = "Превышен таймаут выполнения (10 минут)"
+                messages.error(request, f"Таймаут парсинга @{task.instagram_username}")
             except Exception as e:
-                task.status = 'failed'
+                task.status = "failed"
                 task.error_message = str(e)
-                messages.error(request, f'Ошибка: {e}')
+                messages.error(request, f"Ошибка: {e}")
             finally:
                 task.finished_at = timezone.now()
                 task.save()
-    
-    run_instagram_scraping.short_description = 'Запустить парсинг Instagram'
-    
+
+    run_instagram_scraping.short_description = "Запустить парсинг Instagram"
+
     def rerun_instagram_scraping(self, request, queryset):
         """Действие: повторно запустить парсинг для выбранных задач."""
         import subprocess
         from django.utils import timezone
-        
+
         # Try to find Instagram scraper config to get credentials
         from .models import ScraperConfig
-        scraper_config = ScraperConfig.objects.filter(parser_class='instagram', is_enabled=True).first()
-        
+
+        scraper_config = ScraperConfig.objects.filter(
+            parser_class="instagram", is_enabled=True
+        ).first()
+
         # Работаем с любыми задачами, кроме running
-        for task in queryset.exclude(status='running'):
+        for task in queryset.exclude(status="running"):
             try:
                 # Сбрасываем статус и результаты
-                task.status = 'running'
+                task.status = "running"
                 task.started_at = timezone.now()
                 task.finished_at = None
                 task.products_created = 0
                 task.products_updated = 0
                 task.products_skipped = 0
-                task.log_output = ''
-                task.error_message = ''
+                task.log_output = ""
+                task.error_message = ""
                 task.save()
-                
+
                 cmd = [
-                    'poetry', 'run', 'python', 'manage.py', 
-                    'run_instagram_scraper',
-                    '--username', task.instagram_username,
-                    '--category', task.category,
-                    '--max-posts', str(task.max_posts)
+                    "poetry",
+                    "run",
+                    "python",
+                    "manage.py",
+                    "run_instagram_scraper",
+                    "--username",
+                    task.instagram_username,
+                    "--category",
+                    task.category,
+                    "--max-posts",
+                    str(task.max_posts),
                 ]
-                
-                if scraper_config and scraper_config.scraper_username and scraper_config.scraper_password:
-                    cmd.extend(['--login', scraper_config.scraper_username])
-                    cmd.extend(['--password', scraper_config.scraper_password])
-                
+
+                if (
+                    scraper_config
+                    and scraper_config.scraper_username
+                    and scraper_config.scraper_password
+                ):
+                    cmd.extend(["--login", scraper_config.scraper_username])
+                    cmd.extend(["--password", scraper_config.scraper_password])
+
                 # Запускаем команду парсинга
                 result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=600  # 10 минут таймаут
+                    cmd, capture_output=True, text=True, timeout=600  # 10 минут таймаут
                 )
-                
-                task.log_output = result.stdout + '\n' + result.stderr
-                
+
+                task.log_output = result.stdout + "\n" + result.stderr
+
                 # Парсим результаты из вывода
                 output = result.stdout
-                if 'создано' in output.lower():
+                if "создано" in output.lower():
                     import re
-                    created_match = re.search(r'создано (\d+)', output.lower())
-                    updated_match = re.search(r'обновлено (\d+)', output.lower())
-                    skipped_match = re.search(r'пропущено (\d+)', output.lower())
-                    
+
+                    created_match = re.search(r"создано (\d+)", output.lower())
+                    updated_match = re.search(r"обновлено (\d+)", output.lower())
+                    skipped_match = re.search(r"пропущено (\d+)", output.lower())
+
                     if created_match:
                         task.products_created = int(created_match.group(1))
                     if updated_match:
                         task.products_updated = int(updated_match.group(1))
                     if skipped_match:
                         task.products_skipped = int(skipped_match.group(1))
-                
+
                 if result.returncode == 0:
-                    task.status = 'completed'
-                    messages.success(request, f'Повторный парсинг @{task.instagram_username} завершен успешно')
+                    task.status = "completed"
+                    messages.success(
+                        request, f"Повторный парсинг @{task.instagram_username} завершен успешно"
+                    )
                 else:
-                    task.status = 'failed'
+                    task.status = "failed"
                     task.error_message = result.stderr
-                    messages.error(request, f'Ошибка повторного парсинга @{task.instagram_username}')
-                
+                    messages.error(
+                        request, f"Ошибка повторного парсинга @{task.instagram_username}"
+                    )
+
             except subprocess.TimeoutExpired:
-                task.status = 'failed'
-                task.error_message = 'Превышен таймаут выполнения (10 минут)'
-                messages.error(request, f'Таймаут парсинга @{task.instagram_username}')
+                task.status = "failed"
+                task.error_message = "Превышен таймаут выполнения (10 минут)"
+                messages.error(request, f"Таймаут парсинга @{task.instagram_username}")
             except Exception as e:
-                task.status = 'failed'
+                task.status = "failed"
                 task.error_message = str(e)
-                messages.error(request, f'Ошибка: {e}')
+                messages.error(request, f"Ошибка: {e}")
             finally:
                 task.finished_at = timezone.now()
                 task.save()
-    
-    rerun_instagram_scraping.short_description = 'Запустить снова (повторный парсинг)'
-    
+
+    rerun_instagram_scraping.short_description = "Запустить снова (повторный парсинг)"
+
     def actions_column(self, obj):
         """Колонка с действиями."""
-        if obj.status != 'running':
-            rerun_url = reverse('admin:scrapers_instagramscrapertask_rerun', args=[obj.pk])
-            return format_html(
-                '<a href="{}" class="button">🔄 Запустить снова</a>',
-                rerun_url
-            )
+        if obj.status != "running":
+            rerun_url = reverse("admin:scrapers_instagramscrapertask_rerun", args=[obj.pk])
+            return format_html('<a href="{}" class="button">🔄 Запустить снова</a>', rerun_url)
         return format_html('<span style="color: orange;">⏳ Выполняется...</span>')
-    actions_column.short_description = 'Действия'
-    
+
+    actions_column.short_description = "Действия"
+
     def get_urls(self):
         """Добавляем кастомные URL."""
         from django.urls import path
+
         urls = super().get_urls()
         custom_urls = [
             path(
-                '<int:task_id>/rerun/',
+                "<int:task_id>/rerun/",
                 self.admin_site.admin_view(self.rerun_task_view),
-                name='scrapers_instagramscrapertask_rerun'
+                name="scrapers_instagramscrapertask_rerun",
             ),
         ]
         return custom_urls + urls
-    
+
     def rerun_task_view(self, request, task_id):
         """Повторно запускает задачу парсинга."""
         try:
             task = InstagramScraperTask.objects.get(id=task_id)
-            
-            if task.status == 'running':
-                messages.warning(request, f'Задача @{task.instagram_username} уже выполняется')
+
+            if task.status == "running":
+                messages.warning(request, f"Задача @{task.instagram_username} уже выполняется")
             else:
                 # Используем существующий метод для повторного запуска
-                self.rerun_instagram_scraping(request, InstagramScraperTask.objects.filter(pk=task_id))
-            
+                self.rerun_instagram_scraping(
+                    request, InstagramScraperTask.objects.filter(pk=task_id)
+                )
+
         except InstagramScraperTask.DoesNotExist:
-            messages.error(request, 'Задача не найдена')
+            messages.error(request, "Задача не найдена")
         except Exception as e:
-            messages.error(request, f'Ошибка запуска: {e}')
-        
-        return HttpResponseRedirect(reverse('admin:scrapers_instagramscrapertask_changelist'))
-    
+            messages.error(request, f"Ошибка запуска: {e}")
+
+        return HttpResponseRedirect(reverse("admin:scrapers_instagramscrapertask_changelist"))
+
     def save_model(self, request, obj, form, change):
         """При создании новой задачи автоматически запускаем парсинг."""
         is_new = obj.pk is None
         super().save_model(request, obj, form, change)
-        
-        if is_new and obj.status == 'pending':
+
+        if is_new and obj.status == "pending":
             # Автоматически запускаем парсинг для новой задачи
             self.run_instagram_scraping(request, InstagramScraperTask.objects.filter(pk=obj.pk))
 
 
 # Кастомизация админки
-admin.site.site_header = 'PharmaTurk - Управление парсерами'
-admin.site.site_title = 'PharmaTurk Admin'
-admin.site.index_title = 'Панель управления парсерами'
+admin.site.site_header = "PharmaTurk - Управление парсерами"
+admin.site.site_title = "PharmaTurk Admin"
+admin.site.index_title = "Панель управления парсерами"

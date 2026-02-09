@@ -58,9 +58,14 @@ export default function ProductCard({
 }: ProductCardProps) {
   const { t } = useTranslation('common')
   
-  const resolvedImage = resolveMediaUrl(imageUrl)
-  const resolvedVideoUrl = videoUrl ? resolveMediaUrl(videoUrl) : null
-  const showVideo = Boolean(videoUrl && isVideoUrl(videoUrl) && resolvedVideoUrl)
+  const resolvedImage =
+    imageUrl && !isVideoUrl(imageUrl) ? resolveMediaUrl(imageUrl) : null
+  const resolvedVideoUrl = videoUrl
+    ? resolveMediaUrl(videoUrl)
+    : imageUrl && isVideoUrl(imageUrl)
+      ? resolveMediaUrl(imageUrl)
+      : null
+  const showVideo = Boolean(!resolvedImage && resolvedVideoUrl && isVideoUrl(resolvedVideoUrl))
   const parseNumber = (value: string | number | null | undefined) => {
     if (value === null || typeof value === 'undefined') return null
     const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
