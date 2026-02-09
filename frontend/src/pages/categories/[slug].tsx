@@ -196,6 +196,26 @@ const parsePriceWithCurrency = (value?: string | number | null) => {
   return { price: trimmed, currency: null as string | null }
 }
 
+const areFilterArraysEqual = (left: Array<string | number>, right: Array<string | number>) =>
+  left.length === right.length && left.every((value, index) => value === right[index])
+
+const areFiltersEqual = (left: FilterState, right: FilterState) =>
+  areFilterArraysEqual(left.categories, right.categories) &&
+  areFilterArraysEqual(left.categorySlugs, right.categorySlugs) &&
+  areFilterArraysEqual(left.brands, right.brands) &&
+  areFilterArraysEqual(left.brandSlugs, right.brandSlugs) &&
+  areFilterArraysEqual(left.subcategories, right.subcategories) &&
+  areFilterArraysEqual(left.subcategorySlugs, right.subcategorySlugs) &&
+  areFilterArraysEqual(left.shoeTypes || [], right.shoeTypes || []) &&
+  areFilterArraysEqual(left.clothingItems || [], right.clothingItems || []) &&
+  areFilterArraysEqual(left.jewelryMaterials || [], right.jewelryMaterials || []) &&
+  areFilterArraysEqual(left.jewelryGender || [], right.jewelryGender || []) &&
+  areFilterArraysEqual(left.headwearTypes || [], right.headwearTypes || []) &&
+  left.inStock === right.inStock &&
+  left.sortBy === right.sortBy &&
+  left.priceMin === right.priceMin &&
+  left.priceMax === right.priceMax
+
 const createTreeItem = (category: Category): SidebarTreeItem => ({
   id: `cat-${category.id}`,
   name: category.name,
@@ -1154,9 +1174,12 @@ export default function CategoryPage({
 
   const handleFilterChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters)
+    if (areFiltersEqual(newFilters, filters)) {
+      return
+    }
     setCurrentPage((prev) => (prev === 1 ? prev : 1))
     updatePageQuery(1, { replace: true })
-  }, [updatePageQuery])
+  }, [filters, updatePageQuery])
 
   const routeSlugFromQuery = useMemo(() => {
     const slugParam = router.query.slug
