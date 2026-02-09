@@ -39,7 +39,7 @@ interface MediaItem {
 }
 
 export default function TestimonialsPage() {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const { user } = useAuth()
   const [testimonials, setTestimonials] = useState<Testimonial[]>([])
@@ -63,6 +63,13 @@ export default function TestimonialsPage() {
   const [touchStart, setTouchStart] = useState(0)
   const [touchEnd, setTouchEnd] = useState(0)
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  const isRu = i18n.language?.toLowerCase().startsWith('ru')
+  const filteredByUserLabel = isRu
+    ? t('filtered_by_user', { lng: 'ru', defaultValue: 'Отзывы пользователя' })
+    : t('filtered_by_user', 'Reviews by user')
+  const showAllTestimonialsLabel = isRu
+    ? t('show_all_testimonials', { lng: 'ru', defaultValue: 'Показать все отзывы' })
+    : t('show_all_testimonials', 'Show all reviews')
 
   useEffect(() => {
     const fetchTestimonials = async () => {
@@ -553,7 +560,7 @@ export default function TestimonialsPage() {
             </h1>
                 {router.query.username && (
                   <p className="text-lg text-gray-700">
-                    {t('filtered_by_user', 'Отзывы пользователя')}: <span className="font-semibold">@{router.query.username}</span>
+                    {filteredByUserLabel}: <span className="font-semibold">@{router.query.username}</span>
                   </p>
                 )}
                 {!router.query.username && (
@@ -567,7 +574,7 @@ export default function TestimonialsPage() {
                   href="/testimonials"
                   className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
                 >
-                  {t('show_all_testimonials', 'Показать все отзывы')}
+                  {showAllTestimonialsLabel}
                 </Link>
               )}
             </div>

@@ -73,18 +73,31 @@ class ProductImageInline(admin.TabularInline):
     """Inline для изображений товара."""
     model = ProductImage
     extra = 1
-    fields = ('image_file', 'image_url', 'alt_text', 'is_main', 'sort_order', 'image_preview')
+    fields = ('image_file', 'image_url', 'video_file', 'video_url', 'alt_text', 'is_main', 'sort_order', 'image_preview')
     readonly_fields = ('image_preview',)
     verbose_name = _('Изображение')
     verbose_name_plural = _('Изображения')
     
     def image_preview(self, obj):
         if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
+            media_url = None
+            if obj.image_file:
+                media_url = obj.image_file.url
+            elif obj.video_file:
+                media_url = obj.video_file.url
+            elif obj.image_url:
+                media_url = obj.image_url
+            elif obj.video_url:
+                media_url = obj.video_url
+            if media_url:
+                if obj.video_file or obj.video_url:
+                    return format_html(
+                        '<video src="{}" style="max-width: 140px; max-height: 100px;" muted controls />',
+                        media_url
+                    )
                 return format_html(
                     '<img src="{}" style="max-width: 100px; max-height: 100px;" />',
-                    image_url
+                    media_url
                 )
         return "-"
     image_preview.short_description = _("Превью")
@@ -169,7 +182,7 @@ class ProductBooksAdmin(admin.ModelAdmin):
             'description': _('Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях.')
         }),
         (_('Медиа'), {
-            'fields': ('main_image', 'main_image_file')
+            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')
         }),
         (_('Мета'), {
             'fields': ('sku', 'barcode'),

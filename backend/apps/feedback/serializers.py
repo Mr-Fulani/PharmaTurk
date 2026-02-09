@@ -4,42 +4,29 @@ from rest_framework import serializers
 from .models import Testimonial, TestimonialMedia
 
 
-def _r2_proxy_url(absolute_url, request):
-    if not absolute_url or not absolute_url.startswith('http'):
+def _build_proxy_media_url(file_field, request):
+    if not file_field:
         return None
-    r2_public = (getattr(settings, 'R2_PUBLIC_URL', None) or '').rstrip('/')
-    if not r2_public or not absolute_url.startswith(r2_public):
-        return None
-    try:
-        path = urlparse(absolute_url).path.lstrip('/')
-        if not path:
+    path = getattr(file_field, "name", None)
+    if not path:
+        url = getattr(file_field, "url", None)
+        if not url:
             return None
-        if request:
-            scheme = request.scheme
-            host = request.get_host()
-            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                base = 'http://localhost:8000'
-            else:
-                base = f"{scheme}://{host}"
-        else:
-            base = 'http://localhost:8000'
+        parsed = urlparse(url)
+        path = parsed.path.lstrip('/')
+        media_prefix = (settings.MEDIA_URL or '').lstrip('/')
+        if media_prefix and path.startswith(media_prefix):
+            path = path[len(media_prefix):]
+    if path.startswith('media/'):
+        path = path[len('media/'):]
+    if request:
+        base = request.build_absolute_uri('/').rstrip('/')
         return f"{base}/api/catalog/proxy-media/?path={quote(path)}"
-    except Exception:
-        return None
+    return f"/api/catalog/proxy-media/?path={quote(path)}"
 
 
 def _resolve_file_url(file_field, request):
-    if not file_field:
-        return None
-    if hasattr(file_field, "url"):
-        raw_url = file_field.url
-        if request:
-            raw_url = request.build_absolute_uri(raw_url)
-        proxy = _r2_proxy_url(raw_url, request)
-        if proxy:
-            return proxy
-        return raw_url
-    return None
+    return _build_proxy_media_url(file_field, request)
 
 
 class TestimonialMediaSerializer(serializers.ModelSerializer):

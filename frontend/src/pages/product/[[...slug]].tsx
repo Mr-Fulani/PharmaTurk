@@ -241,12 +241,18 @@ export default function ProductPage({
         normalizeMediaValue(product.main_image_url) ||
         normalizeMediaValue(product.main_image)
     )
-    const hasVideo = Boolean(product.video_url && isVideoUrl(product.video_url))
+    const normalizedProductVideoUrl = normalizeMediaValue(product.video_url)
+    const hasVideo = Boolean(normalizedProductVideoUrl && isVideoUrl(normalizedProductVideoUrl))
+    const seenVideoUrls = new Set<string>()
 
     const baseImages: GalleryItem[] = (variantImages.length > 0 ? variantImages : productImages).flatMap((img) => {
       const imageUrl = normalizeMediaValue(img.image_url)
       const videoUrl = normalizeMediaValue((img as { video_url?: string | null }).video_url)
       if (videoUrl && isVideoUrl(videoUrl)) {
+        if (seenVideoUrls.has(videoUrl)) {
+          return []
+        }
+        seenVideoUrls.add(videoUrl)
         return [{
           id: `video-${img.id}`,
           image_url: imageUrl || '',
@@ -276,8 +282,8 @@ export default function ProductPage({
     } else {
       list = baseImages
     }
-    if (hasVideo) {
-      list = [{ id: 'main-video', image_url: '', video_url: product.video_url, alt_text: 'Видео', isVideo: true, sort_order: -2 }, ...list]
+    if (hasVideo && normalizedProductVideoUrl && !seenVideoUrls.has(normalizedProductVideoUrl)) {
+      list = [{ id: 'main-video', image_url: '', video_url: normalizedProductVideoUrl, alt_text: 'Видео', isVideo: true, sort_order: -2 }, ...list]
     }
     return list
   }

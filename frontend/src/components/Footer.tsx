@@ -16,18 +16,20 @@ interface FooterSettings {
 }
 
 export default function Footer() {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const theme = useTheme()
+  const defaultLocation = t('footer_location', 'Стамбул, Турция')
+  const defaultCryptoText = t('footer_crypto_payment', 'Возможна оплата криптовалютой')
   // Инициализируем с дефолтными значениями, чтобы избежать проблем при SSR
   const [settings, setSettings] = useState<FooterSettings>({
     phone: '+90 552 582 14 97',
     email: 'fulani.dev@gmail.com',
-    location: 'Стамбул, Турция',
+    location: defaultLocation,
     telegram_url: '',
     whatsapp_url: '',
     vk_url: '',
     instagram_url: '',
-    crypto_payment_text: 'Возможна оплата криптовалютой'
+    crypto_payment_text: defaultCryptoText
   })
   
   useEffect(() => {
@@ -35,7 +37,26 @@ export default function Footer() {
     if (typeof window !== 'undefined') {
       api.get('/settings/footer-settings')
         .then(response => {
-          setSettings(response.data)
+          const data = response.data || {}
+          const rawLocation = (data.location || '').trim()
+          const rawCrypto = (data.crypto_payment_text || '').trim()
+          const isNonRu = !i18n.language?.toLowerCase().startsWith('ru')
+          const resolvedLocation = rawLocation
+            ? (isNonRu && rawLocation === 'Стамбул, Турция' ? defaultLocation : rawLocation)
+            : defaultLocation
+          const resolvedCrypto = rawCrypto
+            ? (isNonRu && rawCrypto === 'Возможна оплата криптовалютой' ? defaultCryptoText : rawCrypto)
+            : defaultCryptoText
+          setSettings({
+            phone: data.phone || '+90 552 582 14 97',
+            email: data.email || 'fulani.dev@gmail.com',
+            location: resolvedLocation,
+            telegram_url: data.telegram_url || '',
+            whatsapp_url: data.whatsapp_url || '',
+            vk_url: data.vk_url || '',
+            instagram_url: data.instagram_url || '',
+            crypto_payment_text: resolvedCrypto
+          })
         })
         .catch(error => {
           console.error('Ошибка загрузки настроек футера:', error)
@@ -43,12 +64,12 @@ export default function Footer() {
           setSettings({
             phone: '+90 552 582 14 97',
             email: 'fulani.dev@gmail.com',
-            location: 'Стамбул, Турция',
+            location: defaultLocation,
             telegram_url: '',
             whatsapp_url: '',
             vk_url: '',
             instagram_url: '',
-            crypto_payment_text: 'Возможна оплата криптовалютой'
+            crypto_payment_text: defaultCryptoText
           })
         })
     } else {
@@ -56,21 +77,21 @@ export default function Footer() {
       setSettings({
         phone: '+90 552 582 14 97',
         email: 'fulani.dev@gmail.com',
-        location: 'Стамбул, Турция',
+        location: defaultLocation,
         telegram_url: '',
         whatsapp_url: '',
         vk_url: '',
         instagram_url: '',
-        crypto_payment_text: 'Возможна оплата криптовалютой'
+        crypto_payment_text: defaultCryptoText
       })
     }
-  }, [])
+  }, [defaultLocation, defaultCryptoText, i18n.language])
   
   // Используем значения из API или значения по умолчанию
   const phone = settings.phone
   const email = settings.email
   const location = settings.location
-  const cryptoText = settings.crypto_payment_text || t('footer_crypto_payment', 'Возможна оплата криптовалютой')
+  const cryptoText = settings.crypto_payment_text || defaultCryptoText
 
   return (
     <footer className="mt-10 border-t border-main shadow-xl transition-colors duration-200 dark:bg-[#0c1628] dark:border-[#1f2a3d] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.55)]" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>

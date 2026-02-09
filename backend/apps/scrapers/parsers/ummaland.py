@@ -105,8 +105,7 @@ class UmmalandParser(BaseScraper):
                                 
                         api_product.images = all_images
                         
-                        # Устанавливаем категорию и количество
-                        api_product.category = "books"
+                        # Устанавливаем количество
                         api_product.stock_quantity = 3
                         
                         if self.validate_product(api_product):
@@ -266,6 +265,8 @@ class UmmalandParser(BaseScraper):
                     pass
 
             api_item = None
+            external_id = ""
+            sku = ""
             try:
                 slug = product_url.rstrip('/').split('/')[-1]
                 api_url = f"https://umma-land.com/wp-json/wc/store/products?slug={slug}"
@@ -278,6 +279,8 @@ class UmmalandParser(BaseScraper):
                 api_item = None
 
             if api_item:
+                external_id = str(api_item.get('id') or "").strip()
+                sku = str(api_item.get('sku') or "").strip()
                 api_desc = api_item.get('description') or api_item.get('short_description') or ''
                 if api_desc:
                     api_text = BeautifulSoup(api_desc, 'html.parser').get_text(separator='\n')
@@ -286,28 +289,28 @@ class UmmalandParser(BaseScraper):
                         description = api_text
                 api_attrs = api_item.get('attributes') or []
                 for attr in api_attrs:
-                    name = clean_text(attr.get('name', '')).lower()
+                    attr_name = clean_text(attr.get('name', '')).lower()
                     terms = attr.get('terms') or []
                     value = ''
                     if terms:
                         value = clean_text(terms[0].get('name', ''))
                     if not value:
                         continue
-                    if 'author' not in attributes and 'автор' in name:
+                    if 'author' not in attributes and 'автор' in attr_name:
                         attributes['author'] = value
-                    elif 'publisher' not in attributes and 'издатель' in name:
+                    elif 'publisher' not in attributes and 'издатель' in attr_name:
                         attributes['publisher'] = value
-                    elif 'pages' not in attributes and ('объем' in name or 'стр' in name):
+                    elif 'pages' not in attributes and ('объем' in attr_name or 'стр' in attr_name):
                         pages_match = re.search(r'\d+', value)
                         if pages_match:
                             attributes['pages'] = pages_match.group()
-                    elif 'isbn' not in attributes and ('исбн' in name or 'isbn' in name):
+                    elif 'isbn' not in attributes and ('исбн' in attr_name or 'isbn' in attr_name):
                         attributes['isbn'] = value
-                    elif 'circulation' not in attributes and 'тираж' in name:
+                    elif 'circulation' not in attributes and 'тираж' in attr_name:
                         circulation_match = re.search(r'\d+', value)
                         if circulation_match:
                             attributes['circulation'] = circulation_match.group()
-                    elif 'age_limit' not in attributes and 'возраст' in name:
+                    elif 'age_limit' not in attributes and 'возраст' in attr_name:
                         attributes['age_limit'] = value
             
             # 3. Характеристики
@@ -335,6 +338,15 @@ class UmmalandParser(BaseScraper):
             og_image = soup.find('meta', attrs={'property': 'og:image'})
             if og_image:
                 attributes['og_image_url'] = og_image.get('content', '')
+
+            generic_names = {'формат', 'format', 'серия', 'серии', 'series'}
+            bad_name = not name or name.strip().lower() in generic_names
+            if bad_name:
+                title_candidate = attributes.get('og_title') or attributes.get('meta_title') or ""
+                if title_candidate:
+                    normalized_title = re.split(r"\s+[—|-]\s+", title_candidate, maxsplit=1)[0].strip()
+                    if normalized_title:
+                        name = normalized_title
             
             # Перебираем .product-property
             properties = soup.select('.product-property')
@@ -443,9 +455,63 @@ class UmmalandParser(BaseScraper):
             # Галерея
             gallery_previews = soup.select('.product-gallery__preview-image')
             for img in gallery_previews:
+                preview_parent = img.find_parent(attrs={"data-video": True}) or img.find_parent(attrs={"data-video-src": True}) or img.find_parent(attrs={"data-video-url": True})
+                if preview_parent:
+                    continue
                 src = img.get('data-src') or img.get('src')
                 if src and src not in images:
                     images.append(src)
+
+            video_urls = []
+            video_posters = []
+            for video in soup.select('video'):
+                src = video.get('src') or video.get('data-src')
+                if src:
+                    video_urls.append(src)
+                poster = video.get('poster') or video.get('data-poster')
+                if poster:
+                    video_posters.append(poster)
+                for source in video.select('source'):
+                    source_src = source.get('src') or source.get('data-src')
+                    if source_src:
+                        video_urls.append(source_src)
+
+            for attr in ('data-video', 'data-video-src', 'data-video-url'):
+                for elem in soup.select(f'[{attr}]'):
+                    val = elem.get(attr)
+                    if val:
+                        video_urls.append(val)
+
+            video_pattern = re.compile(r'(https?://[^"\']+\.(?:mp4|webm|mov|m4v|m3u8)(?:\?[^"\']*)?)', re.IGNORECASE)
+            for match in video_pattern.findall(html or ""):
+                video_urls.append(match)
+
+            def collect_video_links(payload, results):
+                if isinstance(payload, dict):
+                    for item in payload.values():
+                        collect_video_links(item, results)
+                elif isinstance(payload, list):
+                    for item in payload:
+                        collect_video_links(item, results)
+                elif isinstance(payload, str):
+                    for match in video_pattern.findall(payload):
+                        results.append(match)
+
+            if api_item:
+                collect_video_links(api_item, video_urls)
+
+            if video_urls:
+                video_urls = list(dict.fromkeys([url for url in video_urls if isinstance(url, str) and url]))
+
+            for video_url in video_urls:
+                if video_url and video_url not in images:
+                    images.append(video_url)
+
+            if video_urls and video_posters:
+                images = [img for img in images if img not in set(video_posters)]
+                attributes['video_posters'] = list(dict.fromkeys(video_posters))
+            if video_urls and not attributes.get('video_url'):
+                attributes['video_url'] = video_urls[0]
             
             # 5. Цена и наличие
             price_elem = soup.select_one('.product-price')
@@ -474,6 +540,8 @@ class UmmalandParser(BaseScraper):
                 url=product_url,
                 images=images,
                 is_available=is_available,
+                external_id=external_id,
+                sku=sku,
                 attributes=attributes,
                 source="ummaland"
             )

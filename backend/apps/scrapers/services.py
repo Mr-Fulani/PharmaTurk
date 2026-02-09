@@ -12,8 +12,10 @@ from .models import ScraperConfig, ScrapingSession, CategoryMapping, BrandMappin
 from .parsers.registry import get_parser
 from .base.scraper import ScrapedProduct
 from apps.catalog.services import CatalogNormalizer
+from apps.catalog.seo_defaults import build_book_seo_defaults
 from apps.catalog.models import Product, Category, Brand, Author, ProductAuthor
 from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
+from apps.catalog.utils.storage_paths import detect_media_type
 import datetime
 
 
@@ -193,6 +195,7 @@ class ScraperIntegrationService:
         
         for scraped_product in products:
             try:
+                self._apply_category_mapping(session, scraped_product)
                 self._normalize_scraped_media(session, scraped_product)
                 # Проверяем дубликаты с API данными
                 action, product = self._process_single_product(session, scraped_product)
@@ -234,14 +237,84 @@ class ScraperIntegrationService:
         
         return results
 
+    def _apply_category_mapping(self, session: ScrapingSession, scraped_product: ScrapedProduct) -> None:
+        mappings = (
+            CategoryMapping.objects
+            .filter(scraper_config=session.scraper_config, is_active=True)
+            .select_related("internal_category")
+            .order_by("priority", "id")
+        )
+        if not mappings.exists():
+            return
+
+        category_value = (scraped_product.category or "").strip()
+        mapping = None
+
+        if category_value:
+            normalized = category_value.lower()
+            for item in mappings:
+                if item.external_category_name.lower() == normalized:
+                    mapping = item
+                    break
+                if item.external_category_id and item.external_category_id == category_value:
+                    mapping = item
+                    break
+                if item.external_category_url and item.external_category_url == category_value:
+                    mapping = item
+                    break
+        elif mappings.count() == 1:
+            mapping = mappings.first()
+
+        if not mapping:
+            return
+
+        internal_category = mapping.internal_category
+        if internal_category:
+            scraped_product.category = internal_category.slug or internal_category.name
+
+    def _get_first_image_url(self, media_urls: List[str]) -> Optional[str]:
+        for media_url in media_urls or []:
+            if self.catalog_normalizer._resolve_media_type(media_url) == "image":
+                return media_url
+        return media_urls[0] if media_urls else None
+
     def _normalize_scraped_media(self, session: ScrapingSession, scraped_product: ScrapedProduct) -> None:
-        if not scraped_product.images:
+        media_urls = list(scraped_product.images or [])
+        attributes = scraped_product.attributes or {}
+        video_url = attributes.get("video_url")
+        if isinstance(video_url, str) and video_url:
+            media_urls.append(video_url)
+        video_urls = attributes.get("video_urls")
+        if isinstance(video_urls, list):
+            media_urls.extend([url for url in video_urls if isinstance(url, str) and url])
+        video_posters = attributes.get("video_posters") or attributes.get("video_poster")
+        poster_urls = []
+        if isinstance(video_posters, list):
+            poster_urls.extend([url for url in video_posters if isinstance(url, str) and url])
+        elif isinstance(video_posters, str) and video_posters:
+            poster_urls.append(video_posters)
+
+        if poster_urls and (video_url or video_urls):
+            media_urls = [url for url in media_urls if url not in set(poster_urls)]
+
+        unique_media_urls = []
+        seen_urls = set()
+        for url in media_urls:
+            if not isinstance(url, str) or not url:
+                continue
+            if url in seen_urls:
+                continue
+            unique_media_urls.append(url)
+            seen_urls.add(url)
+        media_urls = unique_media_urls
+
+        if not media_urls:
             return
 
         scraper_config = session.scraper_config
         parser_name = scraped_product.source or scraper_config.parser_class
         max_images = session.max_images_per_product or scraper_config.max_images_per_product or 0
-        images = scraped_product.images[:max_images] if max_images else scraped_product.images
+        images = media_urls[:max_images] if max_images else media_urls
 
         headers = dict(scraper_config.headers or {})
         if scraper_config.user_agent:
@@ -312,8 +385,10 @@ class ScraperIntegrationService:
         
         # Обновляем изображения, если их нет
         if not api_product.main_image and scraped_product.images:
-            api_product.main_image = scraped_product.images[0]
-            updated = True
+            main_image_url = self._get_first_image_url(scraped_product.images)
+            if main_image_url:
+                api_product.main_image = main_image_url
+                updated = True
         
         # Обновляем описание, если его нет
         if not api_product.description and scraped_product.description:
@@ -389,12 +464,34 @@ class ScraperIntegrationService:
         
         # Обновляем изображения, если их нет
         if not existing_product.main_image and scraped_product.images:
-            existing_product.main_image = scraped_product.images[0]
-            updated = True
+            main_image_url = self._get_first_image_url(scraped_product.images)
+            if main_image_url:
+                existing_product.main_image = main_image_url
+                updated = True
+
+        if scraped_product.category:
+            normalized_name = scraped_product.category.strip().lower()
+            if normalized_name in {"книги", "книга", "books"}:
+                books_category = Category.objects.filter(slug="books").first()
+                if books_category and existing_product.category_id != books_category.id:
+                    existing_product.category = books_category
+                    updated = True
+                if existing_product.product_type != "books":
+                    existing_product.product_type = "books"
+                    updated = True
         
         # Обновляем external_data
+        if not isinstance(existing_product.external_data, dict):
+            existing_product.external_data = {}
         if 'scraped_sources' not in existing_product.external_data:
             existing_product.external_data['scraped_sources'] = []
+
+        if scraped_product.source:
+            existing_product.external_data.setdefault('source', scraped_product.source)
+        if scraped_product.scraped_at:
+            existing_product.external_data['scraped_at'] = scraped_product.scraped_at
+        if isinstance(scraped_product.attributes, dict):
+            existing_product.external_data['attributes'] = scraped_product.attributes
         
         source_info = {
             'source': scraped_product.source,
@@ -414,6 +511,12 @@ class ScraperIntegrationService:
         
         if updated:
             existing_product.save()
+
+            if scraped_product.images:
+                self.catalog_normalizer._normalize_product_images(
+                    existing_product,
+                    scraped_product.images
+                )
             
             # Обновляем авторов, если они есть в атрибутах
             if scraped_product.attributes and 'author' in scraped_product.attributes:
@@ -569,6 +672,39 @@ class ScraperIntegrationService:
             if 'og_description' in attrs:
                 product.external_data['seo_data']['source_og_description'] = attrs['og_description']
             updated = True
+
+        if product.product_type == "books":
+            defaults = build_book_seo_defaults(product)
+            meta_title = product.meta_title or ""
+            meta_description = product.meta_description or ""
+            meta_keywords = product.meta_keywords or ""
+            og_title = product.og_title or ""
+            og_description = product.og_description or ""
+            has_cyrillic = bool(re.search(r"[а-яА-Я]", "".join([
+                meta_title,
+                meta_description,
+                meta_keywords,
+                og_title,
+                og_description,
+            ])))
+            if not meta_title or has_cyrillic:
+                product.meta_title = defaults.get("meta_title") or ""
+                updated = True
+            if not meta_description or has_cyrillic:
+                product.meta_description = defaults.get("meta_description") or ""
+                updated = True
+            if not meta_keywords or has_cyrillic:
+                product.meta_keywords = defaults.get("meta_keywords") or ""
+                updated = True
+            if not og_title or has_cyrillic:
+                product.og_title = defaults.get("og_title") or ""
+                updated = True
+            if not og_description or has_cyrillic:
+                product.og_description = defaults.get("og_description") or ""
+                updated = True
+            if not product.og_image_url:
+                product.og_image_url = defaults.get("og_image_url") or ""
+                updated = True
                 
         return updated
 

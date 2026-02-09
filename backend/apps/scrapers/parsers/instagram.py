@@ -225,6 +225,8 @@ class InstagramParser(BaseScraper):
             hashtags = self._extract_hashtags(caption)
             
             # Создаем ScrapedProduct
+            video_posters = [post.url] if post.is_video and post.url else []
+
             product = ScrapedProduct(
                 name=product_name,
                 description=caption_clean,
@@ -241,6 +243,7 @@ class InstagramParser(BaseScraper):
                     'owner_username': post.owner_username,
                     'is_video': post.is_video,
                     'video_url': post.video_url if post.is_video else None,
+                    'video_posters': video_posters,
                     'raw_caption': caption,  # Сохраняем сырое описание для AI
                 },
                 source=self.get_name(),

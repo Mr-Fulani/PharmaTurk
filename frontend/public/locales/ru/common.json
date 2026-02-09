@@ -223,9 +223,12 @@
   ,"video_tag_unsupported": "Ваш браузер не поддерживает видео."
   ,"testimonials_page_title": "Отзывы клиентов"
   ,"testimonials_page_description": "Что говорят наши клиенты о наших товарах и услугах"
+  ,"filtered_by_user": "Отзывы пользователя"
+  ,"show_all_testimonials": "Показать все отзывы"
   ,"no_testimonials": "Пока нет отзывов"
   ,"loading": "Загрузка..."
   ,"testimonial_not_found": "Отзыв не найден"
+  ,"login_required_to_submit_testimonial": "Для отправки отзыва необходимо войти."
   ,"back_to_testimonials": "Вернуться к отзывам"
   ,"add_testimonial": "Оставить отзыв"
   ,"cancel": "Отмена"
@@ -775,5 +778,3 @@
   ,"color_слоновая_кость": "Слоновая кость"
   ,"color_ivory": "Слоновая кость"
 }
-
-

@@ -2,8 +2,27 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from django.utils.text import slugify
+import os
+import uuid
 from .models import Testimonial
 from .serializers import TestimonialSerializer, TestimonialCreateSerializer
+
+
+def _build_testimonial_media_filename(user, media_type, original_name):
+    ext = os.path.splitext(str(original_name).split("?")[0])[1].lower() or ".jpg"
+    parts = []
+    if getattr(user, 'username', None):
+        parts.append(user.username)
+    full_name = f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
+    if full_name:
+        parts.append(full_name)
+    parts.append(media_type)
+    base = "-".join(slugify(p).strip("-") for p in parts if p).strip("-")
+    if not base:
+        base = f"user-{getattr(user, 'id', '') or uuid.uuid4().hex[:6]}"
+    suffix = uuid.uuid4().hex[:10]
+    return f"{base}-{suffix}{ext}"
 
 
 class TestimonialViewSet(viewsets.ModelViewSet):
@@ -87,11 +106,14 @@ class TestimonialViewSet(viewsets.ModelViewSet):
                     image_file = optimizer.optimize_image(image_file, quality=85, max_size=(1200, 1200))
                 except Exception:
                     pass
+                image_file.name = _build_testimonial_media_filename(request.user, 'image', image_file.name)
                 media_item['image'] = image_file
             elif media_type == 'video' and video_url_key in request.data:
                 media_item['video_url'] = request.data[video_url_key]
             elif media_type == 'video_file' and video_file_key in request.FILES:
-                media_item['video_file'] = request.FILES[video_file_key]
+                video_file = request.FILES[video_file_key]
+                video_file.name = _build_testimonial_media_filename(request.user, 'video', video_file.name)
+                media_item['video_file'] = video_file
             
             if 'media_type' in media_item:
                 media_items.append(media_item)

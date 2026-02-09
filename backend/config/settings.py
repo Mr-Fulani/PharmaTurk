@@ -310,6 +310,7 @@ COMPANY_SUPPORT_EMAIL = env("COMPANY_SUPPORT_EMAIL", default=DEFAULT_FROM_EMAIL)
 COMPANY_SUPPORT_PHONE = env("COMPANY_SUPPORT_PHONE", default="+90 (000) 000-00-00")
 COMPANY_ADDRESS = env("COMPANY_ADDRESS", default="Istanbul, Turkey")
 COMPANY_SITE_URL = env("COMPANY_SITE_URL", default="https://pharmaturk.ru")
+BOOKS_SEO_SITE_NAME = env("BOOKS_SEO_SITE_NAME", default=COMPANY_NAME)
 
 
 # Sentry (неактивен, если DSN пуст)

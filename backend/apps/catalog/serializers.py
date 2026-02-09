@@ -15,6 +15,8 @@ from .models import (
     Service, ServiceTranslation,
     Banner, BannerMedia, Author, ProductAuthor,
 )
+from .seo_defaults import resolve_book_seo_value
+from .utils.storage_paths import detect_media_type
 
 
 def _r2_proxy_url(absolute_url, request):
@@ -307,6 +309,8 @@ class ProductImageSerializer(serializers.ModelSerializer):
     
     def get_image_url(self, obj):
         request = self.context.get('request')
+        if getattr(obj, "video_url", None) or getattr(obj, "video_file", None):
+            return None
         file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
         if file_url:
             return file_url
@@ -314,13 +318,17 @@ class ProductImageSerializer(serializers.ModelSerializer):
 
     def get_video_url(self, obj):
         request = self.context.get('request')
+        raw_url = getattr(obj, "video_url", None)
+        if not raw_url:
+            raw_url = ""
+        if raw_url:
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
         file_url = _resolve_file_url(getattr(obj, "video_file", None), request)
         if file_url:
             return file_url
-        raw_url = getattr(obj, "video_url", None)
-        if not raw_url:
-            return None
-        return _resolve_media_url(raw_url, request)
+        return None
 
 
 class ProductAttributeSerializer(serializers.ModelSerializer):
@@ -365,6 +373,7 @@ class ProductSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()  # Изменено на метод
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
@@ -381,6 +390,12 @@ class ProductSerializer(serializers.ModelSerializer):
     book_authors = ProductAuthorSerializer(many=True, read_only=True)
     isbn = serializers.SerializerMethodField()
     pages = serializers.SerializerMethodField()
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
@@ -478,6 +493,36 @@ class ProductSerializer(serializers.ModelSerializer):
         
         # Если изображений нет, возвращаем None
         return None
+
+    def get_video_url(self, obj):
+        request = self.context.get('request')
+        raw_url = getattr(obj, "video_url", None) or ""
+        if raw_url and raw_url.strip():
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+        file_field = getattr(obj, "main_video_file", None)
+        if file_field and getattr(file_field, "name", None):
+            return _resolve_file_url(file_field, request)
+        return None
+
+    def get_meta_title(self, obj):
+        return resolve_book_seo_value(obj, "meta_title")
+
+    def get_meta_description(self, obj):
+        return resolve_book_seo_value(obj, "meta_description")
+
+    def get_meta_keywords(self, obj):
+        return resolve_book_seo_value(obj, "meta_keywords")
+
+    def get_og_title(self, obj):
+        return resolve_book_seo_value(obj, "og_title")
+
+    def get_og_description(self, obj):
+        return resolve_book_seo_value(obj, "og_description")
+
+    def get_og_image_url(self, obj):
+        return resolve_book_seo_value(obj, "og_image_url")
 
     def _get_external_attributes(self, obj):
         data = obj.external_data or {}
@@ -746,7 +791,7 @@ class ProductSerializer(serializers.ModelSerializer):
 class ProductDetailSerializer(ProductSerializer):
     """Сериализатор для товаров (детальная информация)."""
     
-    images = ProductImageSerializer(many=True, read_only=True)
+    images = serializers.SerializerMethodField()
     attributes = ProductAttributeSerializer(many=True, read_only=True)
     price_history = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
@@ -761,14 +806,38 @@ class ProductDetailSerializer(ProductSerializer):
         """История цен (последние 10 записей)."""
         history = obj.price_history.all()[:10]
         return PriceHistorySerializer(history, many=True).data
+
+    def get_images(self, obj):
+        gallery = getattr(obj, "images", None)
+        if not gallery:
+            return []
+        request = self.context.get("request")
+        qs = gallery.all().order_by("sort_order", "id")
+        has_video = bool(getattr(obj, "video_url", None))
+        has_video_in_gallery = qs.filter(video_url__isnull=False).exclude(video_url="").exists()
+        context = {"request": request}
+        filtered = []
+        for img in qs:
+            raw_image_url = getattr(img, "image_url", "") or ""
+            raw_video_url = getattr(img, "video_url", "") or ""
+            image_is_video = raw_image_url and detect_media_type(raw_image_url) == "video"
+            if image_is_video and (has_video or has_video_in_gallery):
+                continue
+            data = ProductImageSerializer(img, context=context).data
+            if image_is_video and not raw_video_url:
+                data["video_url"] = _resolve_media_url(raw_image_url, request)
+                data["image_url"] = None
+            if data.get("image_url") or data.get("video_url"):
+                filtered.append(data)
+        return filtered
     
     def get_og_image_url(self, obj):
         """OG изображение с прокси для Instagram."""
         request = self.context.get('request')
         
-        # Если og_image_url заполнен, используем его
-        if obj.og_image_url:
-            if 'instagram.f' in obj.og_image_url or 'cdninstagram.com' in obj.og_image_url:
+        og_value = resolve_book_seo_value(obj, "og_image_url")
+        if og_value:
+            if 'instagram.f' in og_value or 'cdninstagram.com' in og_value:
                 if request:
                     scheme = request.scheme
                     host = request.get_host()
@@ -776,11 +845,10 @@ class ProductDetailSerializer(ProductSerializer):
                         base_url = f"{scheme}://localhost:8000"
                     else:
                         base_url = f"{scheme}://{host}"
-                    return f"{base_url}/api/catalog/proxy-image/?url={quote(obj.og_image_url)}"
-                return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(obj.og_image_url)}"
-            return obj.og_image_url
+                    return f"{base_url}/api/catalog/proxy-image/?url={quote(og_value)}"
+                return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(og_value)}"
+            return og_value
         
-        # Иначе используем main_image
         return self.get_main_image_url(obj)
 
 
@@ -1156,18 +1224,17 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     def get_video_url(self, obj):
         """URL видео для воспроизведения: только реальное видео, не изображения."""
         request = self.context.get('request')
-        file_field = getattr(obj, "main_video_file", None)
-        if file_field and getattr(file_field, "name", None):
-            # main_video_file в модели допускает только видео-расширения
-            return _resolve_file_url(file_field, request)
         raw_url = getattr(obj, "video_url", None) or ""
         if not raw_url or not raw_url.strip():
-            return None
-        # Не возвращаем как видео URL на изображения (например .jpg из CDN)
-        path_lower = raw_url.split("?")[0].lower()
-        if path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
-            return None
-        return _resolve_media_url(raw_url, request)
+            raw_url = ""
+        if raw_url:
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+        file_field = getattr(obj, "main_video_file", None)
+        if file_field and getattr(file_field, "name", None):
+            return _resolve_file_url(file_field, request)
+        return None
     
     def get_price_formatted(self, obj):
         variant = self._get_active_variant(obj)

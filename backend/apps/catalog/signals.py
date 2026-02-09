@@ -44,6 +44,47 @@ def delete_file_from_storage(file_field):
             logger.warning("Failed to delete file %s: %s", getattr(file_field, "name", ""), e)
 
 
+def delete_url_from_storage(url):
+    if not url:
+        return
+    try:
+        from urllib.parse import urlparse
+        from django.core.files.storage import default_storage
+
+        parsed = urlparse(url)
+        path = parsed.path or ""
+        if not path:
+            return
+        if not (path.startswith("/products/") or path.startswith("/media/")):
+            return
+        storage_path = path.lstrip("/")
+        if default_storage.exists(storage_path):
+            default_storage.delete(storage_path)
+    except Exception as e:
+        logger.warning("Failed to delete file by url %s: %s", url, e)
+
+
+def is_internal_storage_url(url):
+    if not url:
+        return False
+    try:
+        from urllib.parse import urlparse
+        from django.conf import settings
+
+        r2_public = getattr(settings, "R2_PUBLIC_URL", "")
+        r2_bucket = getattr(settings, "R2_BUCKET_NAME", "")
+        if r2_public and url.startswith(r2_public):
+            return True
+        if r2_bucket and (f"{r2_bucket}.r2.dev" in url or "r2.cloudflarestorage.com" in url):
+            return True
+        parsed = urlparse(url)
+        if parsed.path.startswith("/media/") or parsed.path.startswith("/products/"):
+            return True
+        return False
+    except Exception:
+        return False
+
+
 # --- Product ---
 
 
@@ -51,12 +92,16 @@ def delete_file_from_storage(file_field):
 def delete_product_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.main_image_file)
     delete_file_from_storage(instance.main_video_file)
+    delete_url_from_storage(instance.main_image)
+    delete_url_from_storage(instance.video_url)
 
 
 @receiver(post_delete, sender=ProductImage)
 def delete_product_image_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.image_file)
     delete_file_from_storage(instance.video_file)
+    delete_url_from_storage(instance.image_url)
+    delete_url_from_storage(instance.video_url)
 
 
 # --- Category, Brand ---
@@ -297,30 +342,22 @@ def auto_set_product_type_from_category(sender, instance, **kwargs):
 @receiver(pre_save, sender=Product)
 def auto_download_product_media_from_url(sender, instance, **kwargs):
     """Автоматически скачивать медиа из URL полей в файловые поля Product (через default_storage → R2)."""
-    from django.conf import settings
-    r2_public = getattr(settings, "R2_PUBLIC_URL", "")
-    r2_bucket = getattr(settings, "R2_BUCKET_NAME", "")
+    external_data = instance.external_data if isinstance(instance.external_data, dict) else {}
+    source = external_data.get("source")
+    if source and source != "api":
+        return
 
     if instance.main_image and not instance.main_image_file:
-        if not (instance.main_image.startswith("/media/") or (r2_public and instance.main_image.startswith(r2_public))):
+        if not is_internal_storage_url(instance.main_image):
             file_obj = _download_url_to_file(instance.main_image)
             if file_obj:
                 _save_downloaded_file_to_storage(instance, "main_image_file", file_obj)
                 logger.info("Auto-downloaded main_image URL to main_image_file for Product %s", instance.id or "new")
 
-    # Check for common R2 domains to avoid re-downloading
-    is_r2_url = False
-    if instance.video_url:
-        url = instance.video_url
-        if r2_public and url.startswith(r2_public):
-            is_r2_url = True
-        elif r2_bucket and (f"{r2_bucket}.r2.dev" in url or "r2.cloudflarestorage.com" in url):
-            is_r2_url = True
-        elif "/media/" in url and not url.startswith("http"):
-            # Local media path
-            is_r2_url = True
+    if instance.video_url and external_data.get("source") and not is_internal_storage_url(instance.video_url):
+        return
 
-    if instance.video_url and not instance.main_video_file and not is_r2_url:
+    if instance.video_url and not instance.main_video_file and not is_internal_storage_url(instance.video_url):
         file_obj = _download_url_to_file(instance.video_url)
         if file_obj:
             _save_downloaded_file_to_storage(instance, "main_video_file", file_obj)
@@ -330,29 +367,15 @@ def auto_download_product_media_from_url(sender, instance, **kwargs):
 @receiver(pre_save, sender=ClothingProduct)
 def auto_download_clothing_product_media_from_url(sender, instance, **kwargs):
     """Автоматически скачивать медиа из URL полей в файловые поля ClothingProduct (через default_storage → R2)."""
-    from django.conf import settings
-    r2_public = getattr(settings, "R2_PUBLIC_URL", "")
-
     if instance.main_image and not instance.main_image_file:
-        if not (instance.main_image.startswith("/media/") or (r2_public and instance.main_image.startswith(r2_public))):
+        if not is_internal_storage_url(instance.main_image):
             file_obj = _download_url_to_file(instance.main_image)
             if file_obj:
                 _save_downloaded_file_to_storage(instance, "main_image_file", file_obj)
                 logger.info("Auto-downloaded main_image URL to main_image_file for ClothingProduct %s", instance.id or "new")
 
     if instance.video_url and not instance.main_video_file:
-        # Check for common R2 domains to avoid re-downloading
-        is_r2_url = False
-        url = instance.video_url
-        if r2_public and url.startswith(r2_public):
-            is_r2_url = True
-        elif (getattr(settings, "R2_BUCKET_NAME", "") and 
-              (f"{settings.R2_BUCKET_NAME}.r2.dev" in url or "r2.cloudflarestorage.com" in url)):
-            is_r2_url = True
-        elif "/media/" in url and not url.startswith("http"):
-            is_r2_url = True
-            
-        if not is_r2_url:
+        if not is_internal_storage_url(instance.video_url):
             file_obj = _download_url_to_file(instance.video_url)
             if file_obj:
                 _save_downloaded_file_to_storage(instance, "main_video_file", file_obj)
@@ -361,14 +384,12 @@ def auto_download_clothing_product_media_from_url(sender, instance, **kwargs):
 
 def _auto_download_image_url_to_file(instance, url_attr="image_url", file_attr="image_file", log_label=""):
     """Общая логика: скачать по URL и записать в file-поле (через default_storage), если URL внешний и file пустой."""
-    from django.conf import settings
-    r2_public = getattr(settings, "R2_PUBLIC_URL", "")
     url = getattr(instance, url_attr, None)
     file_field = getattr(instance, file_attr, None)
     if not url or (file_field and file_field.name):
         return
 
-    if not (url.startswith("/media/") or (r2_public and url.startswith(r2_public))):
+    if not is_internal_storage_url(url):
         file_obj = _download_url_to_file(url)
         if file_obj:
             _save_downloaded_file_to_storage(instance, file_attr, file_obj)

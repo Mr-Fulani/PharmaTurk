@@ -2,6 +2,8 @@
 
 import logging
 import re
+import uuid
+import httpx
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 from django.utils.text import slugify
@@ -12,6 +14,7 @@ from django.db.models import Q
 
 from .models import Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory
 from apps.vapi.client import ProductData
+from apps.catalog.utils.storage_paths import detect_media_type
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,28 @@ class CatalogNormalizer:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+
+    def _resolve_media_type(self, media_url: str) -> str:
+        media_type = detect_media_type(media_url)
+        if media_type != "image":
+            return media_type
+        if "/products/parsed/" not in (media_url or ""):
+            return media_type
+        try:
+            with httpx.Client(timeout=10, follow_redirects=True) as client:
+                response = client.head(media_url)
+                if response.status_code >= 400:
+                    return media_type
+                content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                if content_type.startswith("video/"):
+                    return "video"
+                if content_type == "image/gif" or content_type.endswith("+gif"):
+                    return "gif"
+                if content_type.startswith("image/"):
+                    return "image"
+        except Exception:
+            return media_type
+        return media_type
 
     def _sync_product_fields_from_metadata(self, product: Product, metadata: Dict[str, Any]) -> None:
         attrs = (metadata or {}).get("attributes") or {}
@@ -154,11 +179,14 @@ class CatalogNormalizer:
     
     def normalize_product(self, product_data: ProductData) -> Product:
         """Нормализует данные товара из API."""
-        external_id = product_data.id
+        external_id = str(product_data.id).strip() if product_data.id is not None else ""
         
         # Ищем существующий товар по external_id
         # Используем filter().first() вместо get_or_create, так как external_id не уникален
-        existing_products = Product.objects.filter(external_id=external_id)
+        if external_id:
+            existing_products = Product.objects.filter(external_id=external_id)
+        else:
+            existing_products = Product.objects.none()
         
         # Генерируем slug
         base_slug = trans_slugify(product_data.name, language_code='ru') or slugify(product_data.name)
@@ -166,8 +194,17 @@ class CatalogNormalizer:
             base_slug = "product"
         
         # Добавляем external_id к slug для уникальности
-        slug = f"{base_slug}-{external_id}"
+        if external_id:
+            slug = f"{base_slug}-{external_id}"
+        else:
+            slug = f"{base_slug}-{uuid.uuid4().hex[:8]}"
         
+        main_image_url = ""
+        for media_url in product_data.images or []:
+            if self._resolve_media_type(media_url) == "image":
+                main_image_url = media_url
+                break
+
         defaults = {
             "name": product_data.name,
             "slug": slug,
@@ -175,7 +212,7 @@ class CatalogNormalizer:
             "price": product_data.price,
             "currency": product_data.currency,
             "is_available": product_data.availability,
-            "main_image": product_data.images[0] if product_data.images else "",
+            "main_image": main_image_url,
             "external_url": product_data.url or "",
             "external_data": product_data.metadata,
         }
@@ -298,30 +335,117 @@ class CatalogNormalizer:
         """Нормализует изображения товара."""
         if not image_urls:
             return
+
+        metadata = product.external_data if isinstance(product.external_data, dict) else {}
+        attrs = metadata.get("attributes") if isinstance(metadata.get("attributes"), dict) else {}
+        gallery_video_url = next(
+            (url for url in image_urls if self._resolve_media_type(url) == "video"),
+            None,
+        )
+        preferred_main_video_url = attrs.get("main_video_url") or attrs.get("main_media_url")
+        if not isinstance(preferred_main_video_url, str) or not preferred_main_video_url:
+            preferred_main_video_url = None
+        elif self._resolve_media_type(preferred_main_video_url) != "video":
+            preferred_main_video_url = None
+
+        if preferred_main_video_url and preferred_main_video_url not in image_urls:
+            image_urls = [preferred_main_video_url] + list(image_urls)
+
+        deduped_urls = []
+        seen_urls = set()
+        for url in image_urls:
+            if not url:
+                continue
+            if url in seen_urls:
+                continue
+            deduped_urls.append(url)
+            seen_urls.add(url)
+        image_urls = deduped_urls
         
         # Удаляем старые изображения, которых нет в новом списке
-        existing_urls = set(product.images.values_list("image_url", flat=True))
+        existing_image_urls = set(product.images.values_list("image_url", flat=True))
+        existing_video_urls = set(product.images.values_list("video_url", flat=True))
+        existing_urls = existing_image_urls | existing_video_urls
         new_urls = set(image_urls)
         
         # Удаляем изображения, которых больше нет
-        product.images.filter(image_url__in=existing_urls - new_urls).delete()
+        product.images.exclude(Q(image_url__in=new_urls) | Q(video_url__in=new_urls)).delete()
         
         # Добавляем новые изображения
+        main_image_url = None
         for i, image_url in enumerate(image_urls):
-            if image_url not in existing_urls:
-                is_main = i == 0  # Первое изображение - главное
-                ProductImage.objects.create(
-                    product=product,
-                    image_url=image_url,
-                    sort_order=i,
-                    is_main=is_main
-                )
+            media_type = self._resolve_media_type(image_url)
+            existing_item = product.images.filter(Q(image_url=image_url) | Q(video_url=image_url)).first()
+            desired_is_main = False
+            if preferred_main_video_url:
+                if media_type == "video" and image_url == preferred_main_video_url:
+                    desired_is_main = True
+            elif media_type == "image" and main_image_url is None:
+                desired_is_main = True
+                main_image_url = image_url
+            if existing_item:
+                updates = {}
+                if media_type == "video" and existing_item.video_url != image_url:
+                    updates = {"video_url": image_url, "image_url": "", "is_main": False}
+                elif media_type == "image" and existing_item.image_url != image_url:
+                    updates = {"image_url": image_url, "video_url": ""}
+                if existing_item.sort_order != i:
+                    updates["sort_order"] = i
+                if existing_item.is_main != desired_is_main:
+                    updates["is_main"] = desired_is_main
+                if updates:
+                    existing_item.__class__.objects.filter(pk=existing_item.pk).update(**updates)
+                continue
+            ProductImage.objects.create(
+                product=product,
+                image_url=image_url if media_type == "image" else "",
+                video_url=image_url if media_type == "video" else "",
+                sort_order=i,
+                is_main=desired_is_main
+            )
         
-        # Обновляем главное изображение товара
-        main_image = product.images.filter(is_main=True).first()
-        if main_image:
-            product.main_image = main_image.image_url
+        if preferred_main_video_url:
+            product.images.filter(is_main=True).exclude(video_url=preferred_main_video_url).update(is_main=False)
+            product.images.filter(video_url=preferred_main_video_url).update(is_main=True)
+            update_fields = []
+            if product.main_image:
+                product.main_image = ""
+                update_fields.append("main_image")
+            if product.video_url != preferred_main_video_url:
+                product.video_url = preferred_main_video_url
+                update_fields.append("video_url")
+            if update_fields:
+                product.save(update_fields=update_fields)
+            return
+
+        if gallery_video_url:
+            update_fields = []
+            if product.video_url != gallery_video_url:
+                product.video_url = gallery_video_url
+                update_fields.append("video_url")
+            if product.main_video_file:
+                product.main_video_file.delete(save=False)
+                product.main_video_file = None
+                update_fields.append("main_video_file")
+            if update_fields:
+                product.save(update_fields=update_fields)
+
+        main_image_url = None
+        for media_url in image_urls:
+            if self._resolve_media_type(media_url) == "image":
+                main_image_url = media_url
+                break
+
+        if main_image_url:
+            product.images.filter(is_main=True).exclude(image_url=main_image_url).update(is_main=False)
+            product.images.filter(image_url=main_image_url).update(is_main=True)
+            product.main_image = main_image_url
             product.save()
+        else:
+            product.images.filter(is_main=True).update(is_main=False)
+            if product.main_image:
+                product.main_image = ""
+                product.save()
     
     def normalize_product_attributes(self, product: Product, attributes_data: Dict[str, Any]):
         """Нормализует атрибуты товара из API."""

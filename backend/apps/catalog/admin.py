@@ -542,7 +542,7 @@ class BaseProductAdmin(admin.ModelAdmin):
                 "Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях."
             )
         }),
-        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
         (_('Мета'), {'fields': ('sku', 'barcode')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Синхронизация'), {'fields': ('last_synced_at',)}),
@@ -644,11 +644,32 @@ class ProductHeadwearAdmin(BaseProductProxyAdmin):
 @admin.register(ProductImage)
 class ProductImageAdmin(admin.ModelAdmin):
     """Админка для изображений товаров."""
-    list_display = ('product', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview', 'created_at')
+    list_display = (
+        'product',
+        'image_url',
+        'video_url',
+        'alt_text',
+        'sort_order',
+        'is_main',
+        'image_preview',
+        'created_at'
+    )
     list_filter = ('is_main', 'sort_order', 'created_at')
     search_fields = ('product__name', 'alt_text')
     ordering = ('product', 'sort_order')
     readonly_fields = ('image_preview',)
+    fields = (
+        'product',
+        'image_file',
+        'image_url',
+        'video_file',
+        'video_url',
+        'alt_text',
+        'sort_order',
+        'is_main',
+        'image_preview',
+        'created_at',
+    )
 
     def image_preview(self, obj):
         """Превью изображения."""
@@ -658,6 +679,12 @@ class ProductImageAdmin(admin.ModelAdmin):
                 return format_html(
                     '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
                     image_url
+                )
+            video_url = obj.video_file.url if obj.video_file else obj.video_url
+            if video_url:
+                return format_html(
+                    '<video src="{}" style="max-width: 120px; max-height: 60px;" muted playsinline></video>',
+                    video_url
                 )
         return "-"
     image_preview.short_description = _("Превью")

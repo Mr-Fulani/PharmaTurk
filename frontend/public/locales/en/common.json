@@ -223,9 +223,12 @@
   "video_tag_unsupported": "Your browser does not support the video tag.",
   "testimonials_page_title": "Customer Reviews",
   "testimonials_page_description": "What our customers say about our products and services",
+  "filtered_by_user": "Reviews by user",
+  "show_all_testimonials": "Show all reviews",
   "no_testimonials": "No reviews yet",
   "loading": "Loading...",
   "testimonial_not_found": "Review not found",
+  "login_required_to_submit_testimonial": "Please log in to submit a review.",
   "back_to_testimonials": "Back to reviews",
   "add_testimonial": "Leave a review",
   "cancel": "Cancel",
@@ -775,5 +778,3 @@
   "color_слоновая_кость": "Ivory",
   "color_ivory": "Ivory"
 }
-
-
