@@ -235,8 +235,12 @@ def delete_book_variant_image_files(sender, instance, **kwargs):
 
 @receiver(post_delete, sender=BannerMedia)
 def delete_banner_media_files(sender, instance, **kwargs):
-    delete_file_from_storage(instance.image)
-    delete_file_from_storage(instance.video)
+    if instance.image:
+        delete_file_from_storage(instance.image)
+    if instance.video_file:
+        delete_file_from_storage(instance.video_file)
+    if instance.gif_file:
+        delete_file_from_storage(instance.gif_file)
 
 
 # --- Auto-download signals ---

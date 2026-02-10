@@ -1669,7 +1669,9 @@ class BannerViewSet(viewsets.ReadOnlyModelViewSet):
     """API для работы с баннерами."""
     
     queryset = Banner.objects.filter(is_active=True).prefetch_related(
-        models.Prefetch('media_files', queryset=BannerMedia.objects.all().order_by('sort_order'))
+        # Важно: порядок media_files здесь должен совпадать с Meta.ordering у BannerMedia,
+        # чтобы API и админка показывали медиа в одном и том же порядке.
+        models.Prefetch('media_files', queryset=BannerMedia.objects.all())
     )
     serializer_class = BannerSerializer
     permission_classes = []  # Публичный доступ

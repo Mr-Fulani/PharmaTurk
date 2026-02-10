@@ -375,6 +375,8 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     Сериализатор для публичного профиля пользователя
     """
     user_username = serializers.CharField(source='username', read_only=True)
+    email = serializers.EmailField(read_only=True)
+    phone_number = serializers.CharField(read_only=True)
     avatar_url = serializers.SerializerMethodField()
     total_orders = serializers.SerializerMethodField()
     testimonial_id = serializers.SerializerMethodField()
@@ -385,6 +387,8 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'user_username',
+            'email',
+            'phone_number',
             'first_name',
             'last_name',
             'middle_name',
@@ -398,6 +402,25 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
             'total_orders',
             'social_links',
         ]
+
+    def to_representation(self, instance):
+        """
+        Учитываем настройки приватности контактов:
+        - email выводим только если пользователь включил show_email или это его собственный профиль
+        - phone_number выводим только если пользователь включил show_phone или это его собственный профиль
+        """
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+
+        is_own_profile = bool(request and request.user.is_authenticated and request.user == instance)
+
+        if not (instance.show_email or is_own_profile):
+            data.pop('email', None)
+
+        if not (instance.show_phone or is_own_profile):
+            data.pop('phone_number', None)
+
+        return data
     
     def get_avatar_url(self, obj):
         """Получение URL аватара из профиля или из отзыва"""

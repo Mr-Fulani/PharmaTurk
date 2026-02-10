@@ -3385,7 +3385,10 @@ class BannerMedia(models.Model):
     class Meta:
         verbose_name = _("Медиа баннера")
         verbose_name_plural = _("Медиа баннеров")
-        ordering = ['banner', 'sort_order', '-created_at']
+        # ВАЖНО: порядок должен быть детерминированным и совпадать в админке и API.
+        # Сначала сортируем по баннеру, затем по sort_order, затем по id по возрастанию.
+        # Так при одинаковом sort_order медиа идут в том порядке, в каком были созданы.
+        ordering = ['banner', 'sort_order', 'id']
         indexes = [
             models.Index(fields=['banner', 'sort_order']),
         ]

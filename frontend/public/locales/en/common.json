@@ -132,6 +132,8 @@
   ,"profile_saving": "Saving..."
   ,"profile_saved": "Saved"
   ,"profile_error": "Error"
+  ,"profile_not_public": "Profile is not public"
+  ,"back_to_home": "Back to home"
   ,"order_status_new": "New"
   ,"order_status_pending_payment": "Pending Payment"
   ,"order_status_paid": "Paid"
@@ -172,6 +174,9 @@
   ,"profile_whatsapp": "WhatsApp"
   ,"profile_telegram": "Telegram"
   ,"profile_messengers": "Messengers"
+  ,"social_networks": "Social networks"
+  ,"orders": "orders"
+  ,"currency": "Currency"
   ,"order_success_page_title": "Order completed"
   ,"order_success_heading": "Order confirmed!"
   ,"order_success_subheading": "Thank you for choosing us"
@@ -221,6 +226,7 @@
   ,"testimonials_title": "What Our Clients Say",
   "testimonial_image_alt": "Testimonial image from {{author_name}}",
   "testimonial_video_alt": "Testimonial video from {{author_name}}",
+  "view_testimonial": "View testimonial",
   "video_tag_unsupported": "Your browser does not support the video tag.",
   "testimonials_page_title": "Customer Reviews",
   "testimonials_page_description": "What our customers say about our products and services",

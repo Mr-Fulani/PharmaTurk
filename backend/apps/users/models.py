@@ -51,9 +51,9 @@ class User(AbstractUser):
     created_at = models.DateTimeField(_('дата создания'), auto_now_add=True)
     updated_at = models.DateTimeField(_('дата обновления'), auto_now=True)
     last_login_ip = models.GenericIPAddressField(_('последний IP входа'), null=True, blank=True)
-    is_public_profile = models.BooleanField(_('публичный профиль'), default=False)
-    show_email = models.BooleanField(_('показывать email'), default=False)
-    show_phone = models.BooleanField(_('показывать телефон'), default=False)
+    is_public_profile = models.BooleanField(_('публичный профиль'), default=True)
+    show_email = models.BooleanField(_('показывать email'), default=True)
+    show_phone = models.BooleanField(_('показывать телефон'), default=True)
     
     # Язык и валюта
     language = models.CharField(_('язык'), max_length=10, choices=[

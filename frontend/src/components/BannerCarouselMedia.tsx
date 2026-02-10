@@ -41,34 +41,9 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
 
-  const hasMediaContent = (media: BannerMedia | null | undefined) => {
-    if (!media) return false
-    const trimVal = (v: any) => (typeof v === 'string' ? v.trim() : '')
-    return !!(trimVal(media.title) || trimVal(media.description) || (trimVal(media.link_text) && trimVal(media.link_url)))
-  }
-
-  const rotateActiveToContent = (list: BannerMedia[]) => {
-    if (list.length <= 1) return list
-    const res = [...list]
-    const max = res.length
-    
-    console.log('🔄 rotateActiveToContent called')
-    console.log('Input:', res.map((m, i) => `${i}:${m.id}`))
-    
-    for (let i = 0; i < max; i++) {
-      // Активный элемент теперь ВСЕГДА на позиции 0 (nth-child(1))
-      const active = res[0]
-      if (hasMediaContent(active)) {
-        console.log('Output (after', i, 'rotations):', res.map((m, i) => `${i}:${m.id}`))
-        return res
-      }
-      const first = res.shift()
-      if (first) res.push(first)
-    }
-    
-    console.log('Output (after max rotations):', res.map((m, i) => `${i}:${m.id}`))
-    return res
-  }
+  // Важно: порядок медиа на фронте должен совпадать с порядком в админке.
+  // Поэтому НИЧЕГО не крутим и не переставляем — просто показываем media_files
+  // в том порядке, в котором пришли из API (там уже сортировка по sort_order, id).
 
   useEffect(() => {
     const fetchBanners = async () => {
@@ -89,12 +64,13 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
           // НЕ дублируем - показываем только реальные медиа
           const mediaFiles = firstBanner.media_files
           const initialList = mediaFiles.slice(0, Math.min(6, mediaFiles.length))
-          const displayMediaList = rotateActiveToContent(initialList)
+          // Без ротации: каждый медиа-элемент соответствует своему разделу в админке
+          const displayMediaList = initialList
           setDisplayMedia(displayMediaList)
           
-          // Устанавливаем активный медиа: если медиа одно - первое, если несколько - второе (index 1)
+          // Активный слайд — всегда первый (index 0), чтобы картинка и текст совпадали на большой области
           if (displayMediaList.length > 0) {
-            const activeMedia = displayMediaList.length === 1 ? displayMediaList[0] : displayMediaList[1]
+            const activeMedia = displayMediaList[0]
             setActiveMediaId(activeMedia.id)
           }
           
@@ -103,7 +79,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
             title: firstBanner.title,
             mediaCount: mediaFiles.length,
             displayCount: displayMediaList.length,
-            activeMediaId: displayMediaList.length === 1 ? displayMediaList[0]?.id : displayMediaList[1]?.id
+            activeMediaId: displayMediaList[0]?.id
           })
           
           // Детальное логирование данных медиа
@@ -253,13 +229,11 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   }
 
   const renderMediaItem = (media: BannerMedia, index: number) => {
-    // Активность определяем по id, а не только по индексу, чтобы текст был сразу
+    // Активный слайд — всегда первый (index 0), чтобы картинка и текст совпадали
     const isActive =
       activeMediaId !== null
         ? media.id === activeMediaId
-        : displayMedia.length === 1
-          ? index === 0
-          : index === 1
+        : index === 0
     
     const fullUrl = resolveMediaUrl(media.content_url)
     const embedUrl = media.content_type === 'video' ? getVideoEmbedUrl(fullUrl) : null
@@ -329,8 +303,8 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     // Учитываем, что значения могут быть пустыми строками
     const hasMediaContent = !!(title || description || (linkText && linkUrl))
     
-    // Контент показываем только для активного элемента с данными, и только для больших (index < 2)
-    const shouldShowContent = isActive && index < 2 && hasMediaContent
+    // Контент показываем только для активного слайда (index 0 — большая картинка), чтобы текст не путался с другим слайдом
+    const shouldShowContent = isActive && index === 0 && hasMediaContent
     
     // Отладка для активного элемента с данными
     if (isActive && typeof window !== 'undefined' && hasMediaContent) {

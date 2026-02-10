@@ -8,6 +8,8 @@ import Link from 'next/link'
 interface PublicUserProfile {
   id: number
   user_username: string
+  email?: string
+  phone_number?: string
   first_name?: string
   last_name?: string
   avatar_url?: string
@@ -59,7 +61,14 @@ export default function UserProfilePage() {
         setProfile(response.data)
       } catch (err: any) {
         console.error('Failed to load profile:', err)
-        setError(err?.response?.data?.error || 'Пользователь не найден')
+        const rawError = err?.response?.data?.error
+        if (rawError === 'Профиль не является публичным') {
+          setError('profile_not_public')
+        } else if (rawError === 'Пользователь не найден') {
+          setError('user_not_found')
+        } else {
+          setError(rawError || 'user_not_found')
+        }
       } finally {
         setLoading(false)
       }
@@ -84,7 +93,11 @@ export default function UserProfilePage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">
-            {error || t('user_not_found', 'Пользователь не найден')}
+            {error
+              ? error === 'profile_not_public'
+                ? t('profile_not_public', 'Профиль не является публичным')
+                : t('user_not_found', 'Пользователь не найден')
+              : t('user_not_found', 'Пользователь не найден')}
           </h1>
           <Link
             href="/"
@@ -123,6 +136,26 @@ export default function UserProfilePage() {
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">
                   {fullName}
                 </h1>
+                {(profile.email || profile.phone_number) && (
+                  <div className="mb-3 text-gray-700 space-y-1">
+                    {profile.email && (
+                      <p className="text-sm">
+                        <span className="font-semibold">{t('email', 'Email')}:</span>{' '}
+                        <a href={`mailto:${profile.email}`} className="text-red-600 hover:text-red-700">
+                          {profile.email}
+                        </a>
+                      </p>
+                    )}
+                    {profile.phone_number && (
+                      <p className="text-sm">
+                        <span className="font-semibold">{t('phone', 'Телефон')}:</span>{' '}
+                        <a href={`tel:${profile.phone_number}`} className="text-red-600 hover:text-red-700">
+                          {profile.phone_number}
+                        </a>
+                      </p>
+                    )}
+                  </div>
+                )}
                 {profile.bio && (
                   <p className="text-gray-600 mb-4">{profile.bio}</p>
                 )}
@@ -132,7 +165,9 @@ export default function UserProfilePage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                     </svg>
                     <span className="font-semibold">{profile.total_orders}</span>
-                    <span className="text-sm">{t('orders', 'заказов')}</span>
+                    <span className="text-sm">
+                      {t('orders', 'заказов')}
+                    </span>
                   </div>
                 </div>
               </div>

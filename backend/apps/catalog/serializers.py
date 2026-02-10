@@ -2312,6 +2312,11 @@ class BannerSerializer(serializers.ModelSerializer):
         ]
 
     def get_media_files(self, obj):
-        """Получить отсортированные медиа-файлы баннера."""
-        media = obj.media_files.all().order_by('sort_order')
+        """
+        Получить отсортированные медиа-файлы баннера.
+        ВАЖНО: порядок должен совпадать с тем, как их показывает админка.
+        У модели BannerMedia в Meta уже задан ordering = ['banner', 'sort_order', '-created_at'],
+        поэтому здесь не переопределяем сортировку и используем этот же порядок.
+        """
+        media = obj.media_files.all()
         return BannerMediaSerializer(media, many=True, context=self.context).data
