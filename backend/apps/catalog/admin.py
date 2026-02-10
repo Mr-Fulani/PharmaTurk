@@ -1,6 +1,6 @@
 from django import forms
 from decimal import Decimal
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.core.exceptions import ValidationError
 from django.utils.html import format_html, format_html_join
@@ -492,9 +492,30 @@ class ProductAttributeInline(admin.TabularInline):
     fields = ('attribute_type', 'name', 'value', 'sort_order')
 
 
-class BaseProductAdmin(admin.ModelAdmin):
+class RunAIActionMixin:
+    """Миксин: действие «Запустить AI обработку» для выбранных товаров."""
+
+    def run_ai(self, request, queryset):
+        from apps.ai.tasks import process_product_ai_task
+        for product in queryset:
+            process_product_ai_task.delay(
+                product_id=product.id,
+                processing_type="full",
+                auto_apply=False,
+            )
+        self.message_user(
+            request,
+            _("Запущена AI обработка для %(count)s товаров. Результаты появятся в разделе «Логи AI»; применить к товару — вручную после одобрения.")
+            % {"count": queryset.count()},
+            level=messages.SUCCESS,
+        )
+    run_ai.short_description = _("Запустить AI обработку")
+
+
+class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Базовый админ для товаров (используется прокси)."""
     form = ProductForm
+    actions = ["run_ai"]
     list_display = (
         'name', 'slug', 'product_type', 'category', 'brand', 'price', 'currency',
         'availability_status', 'country_of_origin', 'is_active', 'created_at'
@@ -880,8 +901,9 @@ class ClothingVariantAdmin(admin.ModelAdmin):
 
 
 @admin.register(ClothingProduct)
-class ClothingProductAdmin(admin.ModelAdmin):
+class ClothingProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров одежды."""
+    actions = ["run_ai"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_featured', 'category', 'brand', 'season', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material')
@@ -1201,8 +1223,9 @@ class ShoeVariantAdmin(admin.ModelAdmin):
 
 
 @admin.register(ShoeProduct)
-class ShoeProductAdmin(admin.ModelAdmin):
+class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров обуви."""
+    actions = ["run_ai"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_featured', 'category', 'brand', 'heel_height', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material')
@@ -1385,8 +1408,9 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
 
 
 @admin.register(ElectronicsProduct)
-class ElectronicsProductAdmin(admin.ModelAdmin):
+class ElectronicsProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров электроники."""
+    actions = ["run_ai"]
     list_display = ('name', 'slug', 'category', 'brand', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_available', 'is_featured', 'category', 'brand', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'model')
@@ -1430,8 +1454,9 @@ class FurnitureVariantAdmin(admin.ModelAdmin):
 
 
 @admin.register(FurnitureProduct)
-class FurnitureProductAdmin(admin.ModelAdmin):
+class FurnitureProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров мебели."""
+    actions = ["run_ai"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_featured', 'category', 'brand', 'furniture_type', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'furniture_type')

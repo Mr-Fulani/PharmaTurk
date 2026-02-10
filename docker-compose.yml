@@ -48,6 +48,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: pharmaturk-backend
     ports:
       - "8000:8000"
     volumes:
@@ -144,6 +145,40 @@ services:
       R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
       R2_USE_SSL: ${R2_USE_SSL:-true}
     command: bash -c "poetry run celery -A config worker --loglevel=info"
+
+  celery_ai:
+    image: pharmaturk-backend
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+      - /app/*/__pycache__
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    environment:
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      DATABASE_URL: ${DATABASE_URL:-postgres://pharmaturk:pharmaturk@postgres:5432/pharmaturk}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+      R2_USE_SSL: ${R2_USE_SSL:-true}
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+    command: bash -c "poetry run celery -A config worker -Q ai -n ai_worker@%h --loglevel=info --concurrency=2"
 
   celerybeat:
     build:

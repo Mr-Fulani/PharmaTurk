@@ -1,19 +1,16 @@
 """URL-маршруты для публичного API (v1)."""
 from django.urls import path, include
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
+from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import HealthCheckView
+from .views import HealthCheckView, JWTObtainPairView
 
 
 urlpatterns = [
     # Проверка здоровья сервиса
     path("health/", HealthCheckView.as_view(), name="health-check"),
 
-    # Аутентификация (JWT)
-    path("auth/jwt/create/", TokenObtainPairView.as_view(), name="jwt-create"),
+    # Аутентификация (JWT): в теле username или email + password
+    path("auth/jwt/create/", JWTObtainPairView.as_view(), name="jwt-create"),
     path("auth/jwt/refresh/", TokenRefreshView.as_view(), name="jwt-refresh"),
 
     # Пользователи
@@ -33,5 +30,8 @@ urlpatterns = [
 
     # Корзина и заказы
     path("orders/", include("apps.orders.urls")),
+
+    # AI: логи, генерация контента, модерация
+    path("ai/", include("apps.ai.urls")),
 ]
 

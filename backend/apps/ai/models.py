@@ -208,16 +208,23 @@ class AITemplate(models.Model):
         ('category_example', 'Пример категории'),
         ('attribute_extraction', 'Извлечение атрибутов'),
         ('image_prompt', 'Анализ изображения'),
+        ('category_instruction', 'Инструкция для категории'),
     ]
 
     name = models.CharField(max_length=100, unique=True)
-    template_type = models.CharField(max_length=20, choices=TEMPLATE_TYPES)
+    template_type = models.CharField(
+        max_length=20,
+        choices=TEMPLATE_TYPES,
+        help_text='«Инструкция для категории» и «Анализ изображения» подставляются по категории товара; остальные — через RAG по похожести текста.',
+    )
     category = models.ForeignKey(
         Category,
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        related_name='ai_templates'
+        related_name='ai_templates',
+        verbose_name='Категория',
+        help_text='Если указана: шаблон используется только для товаров с этой категорией. Пусто = общий шаблон для всех.',
     )
 
     # Контент для RAG

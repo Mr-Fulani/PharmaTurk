@@ -1,7 +1,46 @@
 from django.contrib import admin, messages
 from django.utils import timezone
-from django.utils.html import format_html
-from .models import AIProcessingLog, AITemplate, AIModerationQueue
+from django.utils.html import format_html, escape
+from django.utils.safestring import mark_safe
+from django.urls import reverse, NoReverseMatch
+from apps.catalog.models import (
+    ProductMedicines,
+    ProductSupplements,
+    ProductMedicalEquipment,
+    ProductTableware,
+    ProductFurniture,
+    ProductAccessories,
+    ProductJewelry,
+    ProductUnderwear,
+    ProductHeadwear,
+    ProductBooks,
+)
+from .models import AIProcessingLog, AITemplate, AIModerationQueue, AIProcessingStatus
+
+
+def _get_product_admin_url(product):
+    product_type_map = {
+        "medicines": ProductMedicines,
+        "supplements": ProductSupplements,
+        "medical_equipment": ProductMedicalEquipment,
+        "tableware": ProductTableware,
+        "furniture": ProductFurniture,
+        "accessories": ProductAccessories,
+        "jewelry": ProductJewelry,
+        "underwear": ProductUnderwear,
+        "headwear": ProductHeadwear,
+        "books": ProductBooks,
+    }
+    model = product_type_map.get(product.product_type)
+    if model:
+        try:
+            return reverse(
+                f"admin:{model._meta.app_label}_{model._meta.model_name}_change",
+                args=[product.id],
+            )
+        except NoReverseMatch:
+            return None
+    return None
 
 
 @admin.register(AIProcessingLog)
@@ -32,6 +71,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         "updated_at",
         "completed_at",
         "input_data",
+        "image_urls_failed_warning",
         "raw_llm_response",
         "tokens_used",
         "cost_usd",
@@ -39,6 +79,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         "stack_trace",
     )
     actions = (
+        "apply_to_product",
         "rerun_ai_full",
         "rerun_ai_description_only",
         "mark_status_moderation",
@@ -83,7 +124,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         ),
         (
             "Анализ изображений",
-            {"fields": ("input_images_urls", "image_analysis")},
+            {"fields": ("input_images_urls", "image_urls_failed_warning", "image_analysis")},
         ),
         (
             "Технические метрики",
@@ -114,11 +155,14 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
 
     def product_link(self, obj):
         if obj.product:
-            return format_html(
-                '<a href="/admin/catalog/product/{}/change/">{}</a>',
-                obj.product.id,
-                obj.product.name,
-            )
+            url = _get_product_admin_url(obj.product)
+            if url:
+                return format_html(
+                    '<a href="{}">{}</a>',
+                    url,
+                    obj.product.name,
+                )
+            return obj.product.name
         return "-"
 
     product_link.short_description = "Товар"
@@ -129,6 +173,58 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
 
     tokens_total.short_description = "Токены"
 
+    def image_urls_failed_warning(self, obj):
+        """Предупреждение о недоступных ссылках на изображения."""
+        if not obj or not obj.input_data:
+            return ""
+        failed = obj.input_data.get("image_urls_failed") or []
+        if not failed:
+            return ""
+        lines = [f"Не удалось загрузить {len(failed)} изображений (ссылки не работают или не изображения):"]
+        for u in failed[:10]:
+            lines.append(f"• {u[:120]}{'…' if len(u) > 120 else ''}")
+        if len(failed) > 10:
+            lines.append(f"… и ещё {len(failed) - 10}.")
+        return format_html(
+            '<div style="background:#fef3c7;padding:8px;border-radius:4px;color:#92400e;">{}</div>',
+            mark_safe("<br>".join(escape(ln) for ln in lines)),
+        )
+
+    image_urls_failed_warning.short_description = "Предупреждение: недоступные изображения"
+
+    def apply_to_product(self, request, queryset):
+        """Применить результат AI к товару (описание, SEO, авторы и т.д.)."""
+        from .services.content_generator import ContentGenerator
+        gen = ContentGenerator()
+        applied = 0
+        for log in queryset:
+            if log.status not in (
+                AIProcessingStatus.COMPLETED,
+                AIProcessingStatus.MODERATION,
+            ):
+                continue
+            if not log.product_id:
+                continue
+            try:
+                gen._apply_changes_to_product(log.product, log)
+                log.status = AIProcessingStatus.APPROVED
+                log.processed_by = request.user
+                log.moderation_date = timezone.now()
+                log.save(update_fields=["status", "processed_by", "moderation_date"])
+                applied += 1
+            except Exception as e:
+                messages.error(
+                    request,
+                    f"Лог #{log.id}: не удалось применить — {e}",
+                )
+        if applied:
+            messages.success(
+                request,
+                f"Результаты применены к {applied} товарам.",
+            )
+
+    apply_to_product.short_description = "Применить результат к товару"
+
     def rerun_ai_full(self, request, queryset):
         from .tasks import process_product_ai_task
 
@@ -137,11 +233,12 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         )
         for product_id in product_ids:
             process_product_ai_task.delay(
-                product_id=product_id, processing_type="full", auto_apply=True
+                product_id=product_id, processing_type="full", auto_apply=False
             )
         messages.success(
             request,
-            f"Запущена AI обработка (full) для {len(product_ids)} товаров",
+            f"Запущена AI обработка (full) для {len(product_ids)} товаров. "
+            "Результаты появятся в логах; применить к товару — вручную после одобрения.",
         )
 
     rerun_ai_full.short_description = (
@@ -158,11 +255,11 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             process_product_ai_task.delay(
                 product_id=product_id,
                 processing_type="description_only",
-                auto_apply=True,
+                auto_apply=False,
             )
         message = (
             "Запущена AI обработка (description_only) для "
-            f"{len(product_ids)} товаров"
+            f"{len(product_ids)} товаров. Результаты в логах; применить — вручную после одобрения."
         )
         messages.success(request, message)
 
@@ -271,11 +368,14 @@ class AIModerationQueueAdmin(admin.ModelAdmin):
     def product_link(self, obj):
         product = getattr(obj.log_entry, "product", None)
         if product:
-            return format_html(
-                '<a href="/admin/catalog/product/{}/change/">{}</a>',
-                product.id,
-                product.name,
-            )
+            url = _get_product_admin_url(product)
+            if url:
+                return format_html(
+                    '<a href="{}">{}</a>',
+                    url,
+                    product.name,
+                )
+            return product.name
         return "-"
 
     product_link.short_description = "Товар"

@@ -562,12 +562,13 @@ class ScrapingSessionAdmin(admin.ModelAdmin):
             process_product_ai_task.delay(
                 product_id=product_id,
                 processing_type="full",
-                auto_apply=True,
+                auto_apply=False,
             )
 
         messages.success(
             request,
-            f"Запущена AI обработка для {len(product_ids)} товаров",
+            f"Запущена AI обработка для {len(product_ids)} товаров. "
+            "Результаты появятся в разделе «Логи AI»; применить к товару — вручную после одобрения.",
         )
         return HttpResponseRedirect(reverse("admin:scrapers_scrapingsession_changelist"))
 

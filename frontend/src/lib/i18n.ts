@@ -267,6 +267,29 @@ export function getLocalizedColor(color: string, t: TFunction): string {
 }
 
 /**
+ * Нормализует значение обложки/формата для ключа локализации (латиница, нижний регистр, пробелы -> подчёркивания).
+ */
+export function normalizeBookAttributeValue(value: string): string {
+  return (value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^\wа-яёa-z0-9]/gi, '')
+}
+
+/**
+ * Возвращает локализованное значение типа обложки (ru/en).
+ * Пробует ключ cover_type_<normalized>, иначе возвращает исходное значение.
+ */
+export function getLocalizedCoverType(coverType: string | null | undefined, t: TFunction): string {
+  if (!coverType) return ''
+  const key = `cover_type_${normalizeBookAttributeValue(coverType)}`
+  const translated = t(key, { defaultValue: null })
+  if (translated && translated !== key) return translated
+  return coverType
+}
+
+/**
  * Получает локализованное описание товара
  * Приоритет: 1) API переводы, 2) fallback (описание с бэкенда)
  * 

@@ -1,6 +1,6 @@
 """Админки для моделей книг."""
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.translation import gettext_lazy as _
 from django.utils.html import format_html
 from django.db import models as django_models
@@ -132,6 +132,7 @@ class BookVariantInline(admin.TabularInline):
 @admin.register(ProductBooks)
 class ProductBooksAdmin(admin.ModelAdmin):
     """Админка для товаров-книг."""
+    actions = ["run_ai"]
     list_display = [
         'name', 'authors_list', 'category', 'price', 
         'old_price', 'rating', 'is_available', 'is_bestseller',
@@ -225,7 +226,24 @@ class ProductBooksAdmin(admin.ModelAdmin):
             return format_html('<code>{}</code>', obj.slug)
         return "-"
     slug_preview.short_description = _("Slug (предпросмотр)")
-    
+
+    def run_ai(self, request, queryset):
+        """Поставить выбранные товары в очередь AI; результат — в логах, применить вручную после одобрения."""
+        from apps.ai.tasks import process_product_ai_task
+        for product in queryset:
+            process_product_ai_task.delay(
+                product_id=product.id,
+                processing_type="full",
+                auto_apply=False,
+            )
+        self.message_user(
+            request,
+            _("Запущена AI обработка для %(count)s товаров. Результаты появятся в разделе «Логи AI»; применить к товару — вручную после одобрения.")
+            % {"count": queryset.count()},
+            level=messages.SUCCESS,
+        )
+    run_ai.short_description = _("Запустить AI обработку")
+
     def save_model(self, request, obj, form, change):
         """Автоматически устанавливаем product_type='books'."""
         obj.product_type = 'books'

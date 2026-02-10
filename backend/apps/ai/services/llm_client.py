@@ -39,6 +39,26 @@ class LLMClient:
         
         return response.data[0].embedding
 
+    def _parse_json_response(self, raw: str):
+        """Парсинг JSON из ответа; поддерживает обёртку в ```json ... ```."""
+        if not raw or not raw.strip():
+            return {}
+        text = raw.strip()
+        if text.startswith("```"):
+            idx = text.find("\n")
+            first_line = text[: idx + 1] if idx >= 0 else text
+            if "json" in first_line.lower():
+                text = text[len(first_line) :].lstrip()
+            else:
+                text = text[3:].lstrip()
+            if text.endswith("```"):
+                text = text[:-3].rstrip()
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            logger.warning("LLM JSON parse error: %s, snippet: %s", e, raw[:400])
+            return {}
+
     def generate_content(
         self,
         system_prompt: str,
@@ -82,7 +102,8 @@ class LLMClient:
                         max_tokens=max_tokens,
                         response_format={"type": "json_object"}
                     )
-                    content = json.loads(response.choices[0].message.content)
+                    raw_text = response.choices[0].message.content or ""
+                    content = self._parse_json_response(raw_text)
                 else:
                     response = self.client.chat.completions.create(
                         model=self.model,

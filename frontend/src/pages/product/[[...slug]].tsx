@@ -10,7 +10,7 @@ import FavoriteButton from '../../components/FavoriteButton'
 import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
-import { getLocalizedColor, getLocalizedProductDescription, ProductTranslation } from '../../lib/i18n'
+import { getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, ProductTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl } from '../../lib/media'
 import { useTheme } from '../../context/ThemeContext'
 
@@ -106,6 +106,28 @@ interface Product {
   active_variant_stock_quantity?: number | null
   active_variant_main_image_url?: string | null
   translations?: ProductTranslation[]
+  product_type?: string
+  // SEO (с бэкенда — для книг и др.)
+  meta_title?: string | null
+  meta_description?: string | null
+  og_title?: string | null
+  og_description?: string | null
+  og_image_url?: string | null
+  // Книги
+  isbn?: string | null
+  publisher?: string | null
+  publication_date?: string | null
+  pages?: number | null
+  language?: string | null
+  cover_type?: string | null
+  rating?: number | string | null
+  reviews_count?: number | null
+  is_bestseller?: boolean
+  is_new?: boolean
+  book_authors?: { id: number; author: { full_name: string } }[]
+  weight_value?: number | string | null
+  weight_unit?: string | null
+  book_attributes?: { format?: string; thickness_mm?: string }
 }
 
 interface Variant {
@@ -402,9 +424,9 @@ export default function ProductPage({
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
   const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
   const canonicalUrl = `${siteUrl}${productPath}`
-  const metaTitle = `${product.name} — PharmaTurk`
-  const metaDescription = product.description?.slice(0, 200) || `${product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
-  const ogImage = activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
+  const metaTitle = (product.meta_title || product.og_title || '').trim() || `${product.name} — PharmaTurk`
+  const metaDescription = (product.meta_description || product.og_description || '').trim() || product.description?.slice(0, 200) || `${product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
+  const ogImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
   const availability =
     selectedVariant?.is_available === false || selectedVariant?.stock_quantity === 0
       ? 'https://schema.org/OutOfStock'
@@ -413,10 +435,16 @@ export default function ProductPage({
   const currencyForSchema = selectedVariant?.currency || product.active_variant_currency || product.currency
   const productSchema = {
     '@context': 'https://schema.org',
-    '@type': 'Product',
+    '@type': productType === 'books' ? 'Book' : 'Product',
     name: product.name,
     description: metaDescription,
     image: ogImage,
+    ...(productType === 'books' && product.isbn && { isbn: product.isbn }),
+    ...(productType === 'books' && product.book_authors?.length
+      ? { author: product.book_authors.map((a) => ({ '@type': 'Person', name: a.author?.full_name })) }
+      : {}),
+    ...(productType === 'books' && product.publisher && { publisher: { '@type': 'Organization', name: product.publisher } }),
+    ...(productType === 'books' && product.pages != null && { numberOfPages: product.pages }),
     sku: product.slug,
     offers: priceForSchema
       ? {
@@ -536,6 +564,86 @@ export default function ProductPage({
             >
               {product.name}
             </h1>
+            {/* Блок «Книга»: автор, издательство, страницы, ISBN, язык, обложка, рейтинг */}
+            {productType === 'books' && (
+              <div 
+                className="mt-3 space-y-1.5 text-sm"
+                style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+              >
+                {product.book_authors && product.book_authors.length > 0 && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('author', 'Автор')}: </span>
+                    {product.book_authors.map((a) => a.author?.full_name).filter(Boolean).join(', ')}
+                  </p>
+                )}
+                {(product.publisher || product.pages) && (
+                  <p>
+                    {product.publisher}
+                    {product.publisher && product.pages && ' · '}
+                    {product.pages != null && `${product.pages} ${t('pages', 'стр.')}`}
+                  </p>
+                )}
+                {product.isbn && (
+                  <p>ISBN: {product.isbn}</p>
+                )}
+                {(product.language || product.cover_type) && (
+                  <p>
+                    {[product.language, product.cover_type ? getLocalizedCoverType(product.cover_type, t) : null].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+                {(product.weight_value != null && product.weight_value !== '') && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('book_weight', 'Вес')}: </span>
+                    {String(product.weight_value)} {product.weight_unit || 'kg'}
+                  </p>
+                )}
+                {(product.book_attributes?.thickness_mm) && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('book_thickness_mm', 'Толщина, мм')}: </span>
+                    {product.book_attributes.thickness_mm}
+                  </p>
+                )}
+                {(product.book_attributes?.format) && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('book_format', 'Формат')}: </span>
+                    {product.book_attributes.format}
+                  </p>
+                )}
+                {product.publication_date && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('book_publication_year', 'Год издания')}: </span>
+                    {String(product.publication_date).slice(0, 4)}
+                  </p>
+                )}
+                {(product.rating != null && product.rating !== '' && Number(product.rating) > 0) && (
+                  <p className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-0.5 text-amber-600">
+                      <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" /></svg>
+                      {typeof product.rating === 'number' ? product.rating.toFixed(1) : String(product.rating)}
+                    </span>
+                    {product.reviews_count != null && product.reviews_count > 0 && (
+                      <span style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
+                        ({product.reviews_count} {t('reviews', 'отзывов')})
+                      </span>
+                    )}
+                  </p>
+                )}
+                {(product.is_bestseller || product.is_new) && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {product.is_bestseller && (
+                      <span className="rounded-md bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+                        {t('bestseller', 'Бестселлер')}
+                      </span>
+                    )}
+                    {product.is_new && (
+                      <span className="rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                        {t('new', 'Новинка')}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="mt-3 text-xl font-semibold text-red-600">
               {displayPrice || t('price_on_request')}
             </div>

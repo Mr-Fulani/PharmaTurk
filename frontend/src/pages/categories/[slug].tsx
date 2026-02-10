@@ -1438,6 +1438,15 @@ export default function CategoryPage({
                         href={productHref}
                         productType={effectiveProductType as CategoryTypeKey}
                         isBaseProduct={isBaseProductType}
+                        isbn={effectiveProductType === 'books' ? (product as any).isbn : undefined}
+                        publisher={effectiveProductType === 'books' ? (product as any).publisher : undefined}
+                        pages={effectiveProductType === 'books' ? (product as any).pages : undefined}
+                        language={effectiveProductType === 'books' ? (product as any).language : undefined}
+                        authors={effectiveProductType === 'books' ? (product as any).book_authors : undefined}
+                        reviewsCount={effectiveProductType === 'books' ? (product as any).reviews_count : undefined}
+                        isBestseller={effectiveProductType === 'books' ? (product as any).is_bestseller : undefined}
+                        isNew={effectiveProductType === 'books' ? (product as any).is_new : undefined}
+                        rating={effectiveProductType === 'books' ? (product as any).rating : undefined}
                       />
                     )
                   })}

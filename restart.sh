@@ -281,6 +281,10 @@ else
     warning "Backend контейнер не запущен, миграции не созданы и не применены"
 fi
 
+# AI RAG: подготовка Qdrant (опционально, при первом запуске или после добавления категорий/шаблонов)
+# Раскомментируйте следующую строку, чтобы один раз заполнить RAG после старта:
+# docker compose exec -T backend poetry run python manage.py setup_ai_rag
+
 # Показ логов (если указано)
 if [ "$SHOW_LOGS" = true ]; then
     info "Показываем логи (Ctrl+C для выхода)..."
@@ -299,6 +303,16 @@ info "  - Swagger Docs:   http://localhost:8000/api/docs/"
 info "  - PostgreSQL:     localhost:5433"
 info "  - Redis:          localhost:6379"
 info "  - OpenSearch:     localhost:9200"
+info "  - Qdrant (AI):    localhost:6333"
+info ""
+info "Команды Django в Docker (запускать после старта контейнеров):"
+info "  docker compose exec backend poetry run python manage.py <команда>"
+info "  Примеры:"
+info "    docker compose exec backend poetry run python manage.py setup_ai_rag   # подготовка RAG (Qdrant)"
+info "    docker compose exec backend poetry run python manage.py init_qdrant   # только коллекции Qdrant"
+info "    docker compose exec backend poetry run python manage.py sync_categories"
+info "    docker compose exec backend poetry run python manage.py import_templates"
+info "    docker compose exec backend poetry run python manage.py benchmark_ai 5 # тест AI на 5 товарах"
 info ""
 info "Hot-reload включен:"
 info "  - Изменения в backend и frontend подхватываются автоматически"

@@ -776,5 +776,18 @@
   "color_молочный": "Milk",
   "color_milk": "Milk",
   "color_слоновая_кость": "Ivory",
-  "color_ivory": "Ivory"
+  "color_ivory": "Ivory",
+  "author": "Author",
+  "pages": "pp.",
+  "reviews": "reviews",
+  "bestseller": "Bestseller",
+  "new": "New",
+  "book_weight": "Weight",
+  "book_thickness_mm": "Thickness, mm",
+  "book_format": "Format",
+  "book_cover_type": "Cover",
+  "book_publication_year": "Publication year",
+  "cover_type_твердый_переплет": "Hardcover",
+  "cover_type_мягкий_переплет": "Paperback",
+  "cover_type_интегральный_переплет": "Integral binding"
 }

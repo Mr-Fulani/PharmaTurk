@@ -1,5 +1,6 @@
 """Сервисы для работы с каталогом товаров."""
 
+import datetime
 import logging
 import re
 import uuid
@@ -94,6 +95,30 @@ class CatalogNormalizer:
             if language_val and language_val != (product.language or ""):
                 product.language = language_val
                 updated_fields.append("language")
+
+        weight = attrs.get("weight")
+        if weight is not None and str(weight).strip():
+            try:
+                weight_str = str(weight).strip().replace(",", ".")
+                weight_val = float(weight_str)
+                if weight_val >= 0 and (product.weight_value is None or float(product.weight_value) != weight_val):
+                    product.weight_value = weight_val
+                    product.weight_unit = getattr(product, "weight_unit", None) or "kg"
+                    updated_fields.extend(["weight_value", "weight_unit"])
+            except (ValueError, TypeError):
+                pass
+
+        publication_year = attrs.get("publication_year")
+        if publication_year is not None and str(publication_year).strip():
+            try:
+                year = int(str(publication_year).strip())
+                if 1900 <= year <= 2100:
+                    new_date = datetime.date(year, 1, 1)
+                    if product.publication_date != new_date:
+                        product.publication_date = new_date
+                        updated_fields.append("publication_date")
+            except (ValueError, TypeError):
+                pass
 
         if updated_fields:
             product.save(update_fields=updated_fields)

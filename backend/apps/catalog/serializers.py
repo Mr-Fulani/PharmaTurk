@@ -388,6 +388,7 @@ class ProductSerializer(serializers.ModelSerializer):
     price_breakdown = serializers.SerializerMethodField()
     translations = ProductTranslationSerializer(many=True, read_only=True)
     book_authors = ProductAuthorSerializer(many=True, read_only=True)
+    book_attributes = serializers.SerializerMethodField()
     isbn = serializers.SerializerMethodField()
     pages = serializers.SerializerMethodField()
     meta_title = serializers.SerializerMethodField()
@@ -414,7 +415,7 @@ class ProductSerializer(serializers.ModelSerializer):
             # Поля специфичные для книг
             'isbn', 'publisher', 'publication_date', 'pages', 'language',
             'cover_type', 'rating', 'reviews_count', 'is_bestseller', 'is_new',
-            'book_authors',
+            'book_authors', 'book_attributes',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
             'main_image_url', 'video_url',
@@ -528,6 +529,16 @@ class ProductSerializer(serializers.ModelSerializer):
         data = obj.external_data or {}
         attrs = data.get('attributes') or {}
         return attrs if isinstance(attrs, dict) else {}
+
+    def get_book_attributes(self, obj):
+        """Возвращает атрибуты книг из external_data (format, thickness_mm) для фронта."""
+        attrs = self._get_external_attributes(obj)
+        out = {}
+        if attrs.get('format'):
+            out['format'] = str(attrs['format']).strip()
+        if attrs.get('thickness_mm') is not None and str(attrs.get('thickness_mm')).strip():
+            out['thickness_mm'] = str(attrs['thickness_mm']).strip()
+        return out
 
     def _is_valid_isbn(self, value):
         if not value:

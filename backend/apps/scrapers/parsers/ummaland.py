@@ -312,6 +312,20 @@ class UmmalandParser(BaseScraper):
                             attributes['circulation'] = circulation_match.group()
                     elif 'age_limit' not in attributes and 'возраст' in attr_name:
                         attributes['age_limit'] = value
+                    elif 'cover_type' not in attributes and ('обложка' in attr_name or 'переплет' in attr_name):
+                        attributes['cover_type'] = value
+                    elif 'publication_year' not in attributes and 'год' in attr_name and value:
+                        year_match = re.search(r'\b(19|20)\d{2}\b', value)
+                        if year_match:
+                            attributes['publication_year'] = year_match.group(0)
+                    elif 'weight' not in attributes and 'вес' in attr_name and value:
+                        attributes['weight'] = value.replace(',', '.').strip()
+                    elif 'thickness_mm' not in attributes and 'толщина' in attr_name and value:
+                        thickness_match = re.search(r'\d+(?:[.,]\d+)?', value)
+                        if thickness_match:
+                            attributes['thickness_mm'] = thickness_match.group(0).replace(',', '.')
+                    elif 'format' not in attributes and 'формат' in attr_name and value:
+                        attributes['format'] = value.strip()
             
             # 3. Характеристики
             # SEO Meta tags
@@ -371,12 +385,22 @@ class UmmalandParser(BaseScraper):
                         attributes['isbn'] = value
                     elif 'переплет' in key or 'обложка' in key:
                         attributes['cover_type'] = value
-                    elif 'год' in key:
-                        attributes['publication_year'] = value
+                    elif 'год' in key and value:
+                        year_match = re.search(r'\b(19|20)\d{2}\b', value)
+                        if year_match:
+                            attributes['publication_year'] = year_match.group(0)
                     elif 'возраст' in key:
                         attributes['age_limit'] = value
                     elif 'тираж' in key:
                         attributes['circulation'] = value
+                    elif 'вес' in key and value:
+                        attributes['weight'] = value.replace(',', '.').strip()
+                    elif 'толщина' in key and value:
+                        thickness_match = re.search(r'\d+(?:[.,]\d+)?', value)
+                        if thickness_match:
+                            attributes['thickness_mm'] = thickness_match.group(0).replace(',', '.')
+                    elif 'формат' in key and value:
+                        attributes['format'] = value.strip()
 
             isbn_candidates = []
             current_isbn = attributes.get('isbn')

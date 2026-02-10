@@ -20,6 +20,15 @@ interface Product {
   currency: string;
   is_featured: boolean;
   is_available: boolean;
+  isbn?: string | null;
+  publisher?: string | null;
+  pages?: number | null;
+  language?: string | null;
+  rating?: number | string | null;
+  reviews_count?: number | null;
+  is_bestseller?: boolean;
+  is_new?: boolean;
+  book_authors?: { id: number; author: { full_name: string } }[];
 }
 
 interface Category {
@@ -213,7 +222,14 @@ const BookHavenPage: React.FC = () => {
               const displayOldCurrency = parsedOldCurrency || displayCurrency;
               const displayOldPriceValue = displayOldCurrency === displayCurrency ? (parsedOldPrice ?? oldPriceSource) : null;
               const displayOldPrice = displayOldPriceValue ? String(displayOldPriceValue) : null;
-              
+              const ratingNum =
+                book.rating != null
+                  ? typeof book.rating === 'number'
+                    ? book.rating
+                    : Number(book.rating)
+                  : undefined;
+              const rating = ratingNum !== undefined && !Number.isNaN(ratingNum) ? ratingNum : undefined;
+
               return (
                 <ProductCard
                   key={book.id}
@@ -230,6 +246,15 @@ const BookHavenPage: React.FC = () => {
                   href={`/product/books/${book.slug}`}
                   productType="books"
                   isBaseProduct={true}
+                  isbn={book.isbn}
+                  publisher={book.publisher}
+                  pages={book.pages}
+                  language={book.language}
+                  authors={book.book_authors}
+                  reviewsCount={book.reviews_count}
+                  isBestseller={book.is_bestseller}
+                  isNew={book.is_new}
+                  rating={rating}
                 />
               );
             })}

@@ -698,6 +698,18 @@ class ScraperIntegrationService:
             except (ValueError, TypeError):
                 pass
 
+        # Weight (e.g. "0,441" kg from ummaland)
+        if "weight" in attrs and attrs["weight"]:
+            try:
+                weight_str = str(attrs["weight"]).strip().replace(",", ".")
+                weight_val = float(weight_str)
+                if weight_val >= 0 and (product.weight_value is None or float(product.weight_value) != weight_val):
+                    product.weight_value = weight_val
+                    product.weight_unit = "kg"
+                    updated = True
+            except (ValueError, TypeError):
+                pass
+
         # SEO Fields
         # Внимание: Спарсенные SEO данные обычно на языке источника (Русский для Ummaland).
         # Поля meta_title, meta_description в модели предназначены для АНГЛИЙСКОГО (EN).
@@ -871,29 +883,10 @@ class ScraperIntegrationService:
                         f"Ошибка при добавлении авторов для нового товара {product.id}: {e}"
                     )
 
-        try:
-            from apps.ai.tasks import process_product_ai_task
-
-            if not self._is_ai_enabled_for_session(session, "created"):
-                self.logger.info(
-                    f"AI обработка пропущена для товара {product.id} (отключено в настройках парсера)"
-                )
-            elif self._is_ai_content_ready(product):
-                self.logger.info(
-                    f"AI обработка пропущена для товара {product.id} (описание и SEO уже заполнены)"
-                )
-            else:
-                process_product_ai_task.delay(
-                    product_id=product.id,
-                    processing_type="full",
-                    auto_apply=True,
-                )
-                self.logger.info(
-                    f"Запущена AI обработка для товара {product.name} (ID: {product.id})"
-                )
-        except Exception as e:
-            self.logger.error(f"Не удалось запустить AI обработку для товара {product.id}: {e}")
-
+        # Задачу AI на новый товар ставит только сигнал post_save (apps.ai.signals).
+        # Здесь не вызываем process_product_ai_task, чтобы не дублировать задачу и не тратить токены дважды.
+        # Учёт «AI включён» и «контент уже готов» — в сигнале не делается; при необходимости
+        # можно расширить сигнал (например, не ставить задачу, если описание/SEO уже заполнены).
         return "created", product
 
     def _update_scraper_stats(self, config: ScraperConfig, session: ScrapingSession, success: bool):
