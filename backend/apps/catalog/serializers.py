@@ -127,7 +127,7 @@ class ServiceTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ServiceTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'description']
 
 
 class ClothingProductTranslationSerializer(serializers.ModelSerializer):
@@ -2024,6 +2024,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
     active_variant_currency = serializers.SerializerMethodField()
     active_variant_stock_quantity = serializers.SerializerMethodField()
     active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = FurnitureProductTranslationSerializer(many=True, read_only=True)
     
     class Meta:
