@@ -27,6 +27,7 @@
   ,"price_on_request": "Price on request"
   ,"section_daily_deals": "Deals of the day"
   ,"section_best_sellers": "Bestsellers"
+  ,"trending_now": "Trending now"
   ,"header_profile": "Profile"
   ,"header_logout": "Logout"
   ,"add_to_cart": "Add to cart"
@@ -350,6 +351,7 @@
   "go_to_catalog": "Go to Catalog",
   "brands": "Brands",
   "popular_brands": "Popular Brands",
+  "all_brands": "All Brands",
   "brands_description": "Choose a brand to see products. Video and external media are supported.",
   "brands_page_title": "Brands — PharmaTurk",
   "brands_page_description": "Popular brands from Turkey: clothing, shoes, electronics, accessories and health products.",

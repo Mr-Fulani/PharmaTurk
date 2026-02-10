@@ -21,11 +21,16 @@ echo "Применяем миграции..."
 poetry run python manage.py migrate --noinput
 
 # Запускаем сервер в зависимости от режима
-if [ "$USE_RUNSERVER" != "1" ]; then
-    echo "Запускаем gunicorn..."
-    exec poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8000 --reload
-else
+if [ "$USE_RUNSERVER" = "1" ]; then
     echo "Запускаем Django runserver (hot-reload включен)..."
     exec poetry run python manage.py runserver 0.0.0.0:8000
+else
+    echo "Запускаем gunicorn..."
+    WORKERS="${GUNICORN_WORKERS:-4}"
+    if [ "$DJANGO_DEBUG" = "1" ] || [ "$DJANGO_DEBUG" = "True" ]; then
+        exec poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers "$WORKERS" --reload
+    else
+        exec poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers "$WORKERS"
+    fi
 fi
 

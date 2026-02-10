@@ -312,8 +312,13 @@ SPECTACULAR_SETTINGS = {
 }
 
 
-# CORS
+# CORS и CSRF для продакшена (задать в .env)
+CSRF_TRUSTED_ORIGINS = env.list(
+    "CSRF_TRUSTED_ORIGINS",
+    default=["https://localhost", "http://localhost"] if DEBUG else [],
+)
 CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',

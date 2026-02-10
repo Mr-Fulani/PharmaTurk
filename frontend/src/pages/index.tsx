@@ -313,7 +313,7 @@ export default function Home({ brands, categories }: HomePageProps) {
         {/* Brands Section */}
         <section className="mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
-            Популярные бренды
+            {t('popular_brands', 'Популярные бренды')}
           </h2>
           <Masonry
             breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
@@ -367,7 +367,7 @@ export default function Home({ brands, categories }: HomePageProps) {
               href="/brands"
               className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
             >
-              Все бренды
+              {t('all_brands', 'Все бренды')}
             </Link>
           </div>
         </section>

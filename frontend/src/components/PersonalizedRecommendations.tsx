@@ -52,17 +52,19 @@ export default function PersonalizedRecommendations() {
   if (loading) {
     return (
       <section className="py-8">
-        <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">
-          {t('recommended_for_you', 'Вам может понравиться')}
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="animate-pulse">
-              <div className="bg-gray-200 dark:bg-gray-700 aspect-[4/3] rounded-lg mb-3" />
-              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded mb-2" />
-              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3" />
-            </div>
-          ))}
+        <div className="mx-auto max-w-6xl px-4">
+          <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
+            {t('recommended_for_you', 'Вам может понравиться')}
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="animate-pulse">
+                <div className="bg-gray-200 dark:bg-gray-700 aspect-[4/3] rounded-lg mb-3" />
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded mb-2" />
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-2/3" />
+              </div>
+            ))}
+          </div>
         </div>
       </section>
     )
@@ -72,13 +74,14 @@ export default function PersonalizedRecommendations() {
 
   return (
     <section className="py-8">
-      <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">
-        {basedOn === 'your_history'
-          ? t('recommended_for_you', 'Вам может понравиться')
-          : t('trending_now', 'Популярное сейчас')}
-      </h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {products.map((product) => (
+      <div className="mx-auto max-w-6xl px-4">
+        <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
+          {basedOn === 'your_history'
+            ? t('recommended_for_you', 'Вам может понравиться')
+            : t('trending_now', 'Популярное сейчас')}
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {products.map((product) => (
           <ProductCard
             key={product.id}
             id={product.id}
@@ -92,6 +95,7 @@ export default function PersonalizedRecommendations() {
             isBaseProduct={true}
           />
         ))}
+        </div>
       </div>
     </section>
   )

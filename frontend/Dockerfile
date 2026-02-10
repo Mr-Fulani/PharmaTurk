@@ -1,9 +1,32 @@
 # syntax=docker/dockerfile:1
 
-FROM node:18-bullseye
+# ========== Production (сборка: docker build --target production) ==========
+FROM node:18-bullseye AS production
 WORKDIR /app
 
-# Устанавливаем зависимости
+COPY package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./
+RUN if [ -f yarn.lock ]; then \
+      yarn install --frozen-lockfile --production=false; \
+    elif [ -f pnpm-lock.yaml ]; then \
+      corepack enable && pnpm install --frozen-lockfile; \
+    elif [ -f package-lock.json ]; then \
+      npm ci; \
+    else \
+      npm install --legacy-peer-deps; \
+    fi
+
+COPY . .
+ENV NODE_ENV=production
+ENV NEXT_DISABLE_SWC_NATIVE=1
+RUN npm run build
+
+EXPOSE 3000
+CMD ["npm", "run", "start"]
+
+# ========== Development (по умолчанию) ==========
+FROM node:18-bullseye AS development
+WORKDIR /app
+
 COPY package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./
 RUN if [ -f yarn.lock ]; then \
       yarn install --frozen-lockfile; \
@@ -15,11 +38,8 @@ RUN if [ -f yarn.lock ]; then \
       npm install --legacy-peer-deps; \
     fi
 
-# Копируем исходники
 COPY . .
-
 ENV NODE_ENV=development
 ENV NEXT_DISABLE_SWC_NATIVE=1
-
 EXPOSE 3000
 CMD ["npm", "run", "dev"]

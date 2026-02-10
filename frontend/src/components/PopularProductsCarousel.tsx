@@ -249,7 +249,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
     <section className={`py-12 ${className}`}>
       <div className="mx-auto max-w-6xl px-4">
         <h2 className="text-3xl font-bold text-main mb-8 text-center">
-          {t('popular_products_title', 'Популярные товары')}
+          {t('section_best_sellers', 'Хиты продаж')}
         </h2>
         <div className="relative mb-8">
           <div

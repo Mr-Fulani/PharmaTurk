@@ -1,0 +1,62 @@
+# Переопределения для продакшена.
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Перед первым запуском: скопируйте .env.production.example в .env и заполните значения.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: pharmaturk-backend:prod
+    volumes: []
+    environment:
+      DJANGO_DEBUG: "0"
+      USE_RUNSERVER: "0"
+      GUNICORN_WORKERS: "4"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+    image: pharmaturk-frontend:prod
+    volumes: []
+    command: ["npm", "run", "start"]
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-}
+      INTERNAL_API_BASE: http://backend:8000
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  celeryworker:
+    volumes: []
+    restart: unless-stopped
+    environment:
+      DJANGO_DEBUG: "0"
+
+  celery_ai:
+    volumes: []
+    restart: unless-stopped
+    environment:
+      DJANGO_DEBUG: "0"
+
+  celerybeat:
+    volumes: []
+    restart: unless-stopped
+    environment:
+      DJANGO_DEBUG: "0"
+
+  postgres:
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+
+  opensearch:
+    restart: unless-stopped
+
+  qdrant:
+    restart: unless-stopped
