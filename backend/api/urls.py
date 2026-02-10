@@ -33,5 +33,8 @@ urlpatterns = [
 
     # AI: логи, генерация контента, модерация
     path("ai/", include("apps.ai.urls")),
+
+    # Рекомендации (векторная RecSys на Qdrant)
+    path("recommendations/", include("apps.recommendations.urls")),
 ]
 

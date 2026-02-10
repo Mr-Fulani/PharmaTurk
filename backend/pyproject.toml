@@ -35,6 +35,11 @@ instaloader = "^4.13"
 transliterate = "^1.10.2"
 openai = "^2.16.0"
 qdrant-client = "^1.16.2"
+numpy = ">=1.26.0,<3"
+torch = "^2.0.0"
+transformers = "^4.36.0"
+sentence-transformers = "^2.2.0"
+requests = "^2.31.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"

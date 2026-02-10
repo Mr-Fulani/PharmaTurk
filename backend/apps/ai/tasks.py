@@ -39,6 +39,8 @@ def process_product_ai_task(
             product_id,
             log_entry.id,
         )
+        from apps.recommendations.tasks import index_product_vectors
+        index_product_vectors.apply_async(args=[[product_id]], countdown=60)
         return {
             "status": "success",
             "log_id": log_entry.id,

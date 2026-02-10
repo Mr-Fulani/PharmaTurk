@@ -21,11 +21,20 @@ interface Product {
   is_featured?: boolean
 }
 
+interface SimilarProductResult {
+  product: Product
+  similarity_score?: number
+  business_score?: number
+  reason?: string
+}
+
 interface SimilarProductsProps {
   productType: string
   currentProductId?: number
   currentProductSlug?: string
   limit?: number
+  /** Use RecSys API (vector similar) when slug is available */
+  useRecsys?: boolean
 }
 
 const parsePriceWithCurrency = (value?: string | number | null) => {
@@ -50,19 +59,34 @@ export default function SimilarProducts({
   productType,
   currentProductId,
   currentProductSlug,
-  limit = 8
+  limit = 8,
+  useRecsys = false
 }: SimilarProductsProps) {
   const { t } = useTranslation('common')
   const [products, setProducts] = useState<Product[]>([])
+  const [reasons, setReasons] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchSimilarProducts = async () => {
       try {
         setLoading(true)
+        if (useRecsys && currentProductSlug) {
+          const response = await api.get(
+            `/catalog/products/${encodeURIComponent(currentProductSlug)}/similar`,
+            { params: { limit, strategy: 'balanced' } }
+          )
+          const results: SimilarProductResult[] = response.data.results || []
+          setProducts(results.map((r) => r.product))
+          const reasonMap: Record<number, string> = {}
+          results.forEach((r) => {
+            if (r.product?.id && r.reason) reasonMap[r.product.id] = r.reason
+          })
+          setReasons(reasonMap)
+          return
+        }
+
         let endpoint = ''
-        
-        // Определяем endpoint в зависимости от типа товара
         if (['medicines', 'supplements', 'medical-equipment', 'furniture', 'tableware', 'accessories', 'jewelry', 'underwear', 'headwear'].includes(productType)) {
           endpoint = '/catalog/products'
         } else if (productType === 'clothing') {
@@ -77,31 +101,30 @@ export default function SimilarProducts({
 
         const response = await api.get(endpoint, {
           params: {
-            limit: limit + 1, // Получаем на 1 больше, чтобы исключить текущий товар
+            limit: limit + 1,
             ordering: '-created_at'
           }
         })
 
-        // Фильтруем текущий товар из списка
         let filteredProducts = response.data.results || response.data || []
         if (currentProductId) {
           filteredProducts = filteredProducts.filter((p: Product) => p.id !== currentProductId)
         } else if (currentProductSlug) {
           filteredProducts = filteredProducts.filter((p: Product) => p.slug !== currentProductSlug)
         }
-        
-        // Берем только нужное количество
         setProducts(filteredProducts.slice(0, limit))
+        setReasons({})
       } catch (error) {
         console.error('Error fetching similar products:', error)
         setProducts([])
+        setReasons({})
       } finally {
         setLoading(false)
       }
     }
 
     fetchSimilarProducts()
-  }, [productType, currentProductId, currentProductSlug, limit])
+  }, [productType, currentProductId, currentProductSlug, limit, useRecsys])
 
   if (loading) {
     return (
@@ -149,19 +172,20 @@ export default function SimilarProducts({
           const displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? oldPriceSource : null
 
           return (
-            <ProductCard
-              key={product.id}
-              id={product.id}
-              name={product.name}
-              slug={product.slug}
-              price={displayPrice ? String(displayPrice) : null}
-              currency={displayCurrency}
-              oldPrice={displayOldPrice ? String(displayOldPrice) : null}
-              imageUrl={product.main_image_url || product.main_image}
-              badge={product.is_featured ? t('product_featured', 'Хит') : null}
-              productType={product.product_type || productType}
-              isBaseProduct={isBaseProduct}
-            />
+            <div key={product.id} className="relative">
+              <ProductCard
+                id={product.id}
+                name={product.name}
+                slug={product.slug}
+                price={displayPrice ? String(displayPrice) : null}
+                currency={displayCurrency}
+                oldPrice={displayOldPrice ? String(displayOldPrice) : null}
+                imageUrl={product.main_image_url || product.main_image}
+                badge={reasons[product.id] || (product.is_featured ? t('product_featured', 'Хит') : null)}
+                productType={product.product_type || productType}
+                isBaseProduct={isBaseProduct}
+              />
+            </div>
           )
         })}
       </div>

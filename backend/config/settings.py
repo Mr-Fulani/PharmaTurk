@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "apps.settings",
     "apps.pages",
     "apps.ai",
+    "apps.recommendations",
 ]
 
 # Кастомная модель пользователя
@@ -137,9 +138,10 @@ CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_TASK_ALWAYS_EAGER = False
 CELERY_TASK_TIME_LIMIT = 60 * 10
-# Очередь ai для задач AI (воркер celery_ai слушает только её)
+# Очередь ai для задач AI (воркер celery_ai слушает только её); recsys для рекомендаций
 CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},
+    "apps.recommendations.tasks.*": {"queue": "recsys"},
 }
 CELERY_BEAT_SCHEDULE = {
     # Обновление цен каждые 4-6 часов
@@ -213,6 +215,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.ai.tasks.cleanup_old_ai_logs",
         "schedule": 60 * 60 * 24 * 7,
         "kwargs": {"days": 90},
+    },
+    # RecSys: полная синхронизация векторов товаров в Qdrant (раз в сутки)
+    "recsys-sync-all": {
+        "task": "apps.recommendations.tasks.sync_all_products_to_qdrant",
+        "schedule": 60 * 60 * 24,
     },
 }
 

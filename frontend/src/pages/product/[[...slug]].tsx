@@ -867,12 +867,13 @@ export default function ProductPage({
           )}
         </div>
 
-        {/* Похожие товары */}
+        {/* Похожие товары (RecSys когда доступен) */}
         <SimilarProducts
           productType={productType}
           currentProductId={product.id}
           currentProductSlug={product.slug}
           limit={8}
+          useRecsys={true}
         />
       </main>
     </>

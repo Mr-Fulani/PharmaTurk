@@ -13,9 +13,12 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+import logging
 import requests
 import hashlib
 import os
+
+logger = logging.getLogger(__name__)
 
 from .models import (
     Category, Brand, Product, ProductAttribute, PriceHistory, Favorite,
@@ -544,6 +547,107 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    @extend_schema(
+        summary="Похожие товары",
+        description="Векторные рекомендации: похожие по контенту (текст + изображение) с реранкингом",
+        parameters=[
+            OpenApiParameter(name="limit", type=int, required=False, description="Лимит результатов", default=12),
+            OpenApiParameter(name="strategy", type=str, required=False, description="Стратегия реранкинга: balanced, relevance, trending", default="balanced"),
+            OpenApiParameter(name="exclude_same_brand", type=bool, required=False, description="Исключить товары того же бренда", default=False),
+            OpenApiParameter(name="category_id", type=int, required=False),
+            OpenApiParameter(name="price_min", type=float, required=False),
+            OpenApiParameter(name="price_max", type=float, required=False),
+            OpenApiParameter(name="color", type=str, required=False),
+        ],
+    )
+    def similar(self, request, slug=None):
+        """GET /api/catalog/products/{slug}/similar/ — похожие товары (RecSys)."""
+        product = self.get_object()
+        n_results = int(request.query_params.get("limit", 12))
+        strategy = request.query_params.get("strategy", "balanced")
+        exclude_brand = request.query_params.get("exclude_same_brand", "false").lower() == "true"
+        filters = {}
+        if request.query_params.get("category_id"):
+            try:
+                filters["category_id"] = int(request.query_params["category_id"])
+            except (ValueError, TypeError):
+                pass
+        if request.query_params.get("price_min"):
+            try:
+                filters["price_min"] = float(request.query_params["price_min"])
+            except (ValueError, TypeError):
+                pass
+        if request.query_params.get("price_max"):
+            try:
+                filters["price_max"] = float(request.query_params["price_max"])
+            except (ValueError, TypeError):
+                pass
+        if request.query_params.get("color"):
+            filters["color"] = request.query_params["color"]
+        try:
+            from apps.recommendations.services.vector_engine import QdrantRecommendationEngine
+            from apps.recommendations.services.reranker import BusinessReranker
+            engine = QdrantRecommendationEngine()
+            reranker = BusinessReranker()
+            similar_list = engine.find_similar(
+                product_id=product.id,
+                vector_type="combined",
+                n_results=n_results * 2,
+                filters=filters or None,
+                exclude_same_brand=exclude_brand,
+            )
+            reranked = reranker.rerank(similar_list, product, strategy=strategy, request=request)
+            rec_ids = [r["product"]["id"] for r in reranked]
+            session_key = getattr(request.session, "session_key", None) or ""
+            from apps.recommendations.tasks import log_recommendation_event
+            log_recommendation_event.delay(
+                event_type="impression",
+                source_product_id=product.id,
+                recommended_ids=rec_ids,
+                algorithm="vector_combined",
+                session_id=session_key,
+            )
+            return Response({"count": len(reranked), "strategy": strategy, "results": reranked})
+        except Exception as e:
+            logger.warning(
+                "Similar products unavailable for product_id=%s: %s",
+                product.id, e, exc_info=True,
+            )
+            return Response(
+                {"count": 0, "strategy": strategy, "results": [], "error": str(e)},
+                status=status.HTTP_200_OK,
+            )
+
+    @action(detail=True, methods=['get'])
+    @extend_schema(
+        summary="Визуально похожие товары",
+        description="Похожие товары только по изображению (vector image)",
+        parameters=[OpenApiParameter(name="limit", type=int, required=False, default=12)],
+    )
+    def visually_similar(self, request, slug=None):
+        """GET /api/catalog/products/{slug}/visually_similar/ — по визуалу."""
+        product = self.get_object()
+        n_results = int(request.query_params.get("limit", 12))
+        try:
+            from apps.recommendations.services.vector_engine import QdrantRecommendationEngine
+            engine = QdrantRecommendationEngine()
+            similar_list = engine.find_similar(
+                product_id=product.id,
+                vector_type="image",
+                n_results=n_results,
+            )
+            return Response({"count": len(similar_list), "results": similar_list})
+        except Exception as e:
+            logger.warning(
+                "Visually similar unavailable for product_id=%s: %s",
+                product.id, e, exc_info=True,
+            )
+            return Response(
+                {"count": 0, "results": [], "error": str(e)},
+                status=status.HTTP_200_OK,
+            )
 
 
 # ============================================================================

@@ -1,0 +1,1815 @@
+Отлично! Тогда сразу векторная RecSys на Qdrant. Это будет мощная фича для вашего маркетплейса.
+
+---
+
+## Векторная RecSys для PharmaTurk (Qdrant)
+
+### Архитектура
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     ПОЛЬЗОВАТЕЛЬ                                │
+│  Смотрит товар → Запрос на похожие                              │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Django API                                   │
+│  GET /api/products/{id}/similar/                                │
+│  GET /api/products/{id}/similar-by-image/                       │
+│  GET /api/products/recommended/                                 │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              RECOMMENDATION ENGINE                              │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │   КЭШ       │  │  ВЕКТОРНЫЙ  │  │   ПОСТ-ФИЛЬТРАЦИЯ       │  │
+│  │   Redis     │  │   ПОИСК     │  │   (бизнес-правила)      │  │
+│  │             │  │  (Qdrant)   │  │                         │  │
+│  │ product:123 │  │             │  │ • Фильтр по наличию     │  │
+│  │ :similar    │  │  Коллекция: │  │ • Ценовой диапазон      │  │
+│  │ TTL: 1 час  │  │  products   │  │ • Исключение дублей     │  │
+│  └─────────────┘  │             │  │ • Буст новинок          │  │
+│                   │  Vectors:   │  └─────────────────────────┘  │
+│                   │  • text     │                               │
+│                   │  • image    │                               │
+│                   │  • combined │                               │
+│                   └─────────────┘                               │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     RESPONSE                                    │
+│  {                                                              │
+│    "similar_by_content": [...],    # Похожие по тексту+изображ. │
+│    "visually_similar": [...],      # Похожие по визуалу         │
+│    "complete_the_look": [...],     # Комплементарные товары     │
+│    "trending": [...]               # Популярное сейчас          │
+│  }                                                              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Структура файлов
+
+```
+backend/
+├── apps/
+│   ├── recommendations/              # НОВОЕ приложение
+│   │   ├── __init__.py
+│   │   ├── apps.py
+│   │   ├── models.py                 # RecommendationLog, UserEmbedding
+│   │   ├── services/
+│   │   │   ├── __init__.py
+│   │   │   ├── vector_engine.py      # Основной движок (Qdrant)
+│   │   │   ├── image_encoder.py      # CLIP для изображений
+│   │   │   ├── text_encoder.py       # BERT для текста
+│   │   │   ├── reranker.py           # Пост-фильтрация и ранжирование
+│   │   │   └── session_recommender.py # Для "вам может понравиться"
+│   │   ├── tasks.py                  # Индексация товаров
+│   │   ├── views.py                  # API endpoints
+│   │   └── urls.py
+│   │
+│   └── products/
+│       └── models.py                 # Добавить поле vector_id
+│
+└── ml_models/                        # Локальные модели (CLIP, BERT)
+    ├── clip/
+    └── sentence_transformers/
+```
+
+---
+
+## 1. Модели
+
+```python
+# apps/recommendations/models.py
+
+from django.db import models
+from apps.products.models import Product
+from apps.users.models import User
+
+
+class ProductVector(models.Model):
+    """
+    Связь Django ORM с Qdrant.
+    Хранит ID вектора и метаданные для быстрой фильтрации.
+    """
+    
+    product = models.OneToOneField(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='vector_data'
+    )
+    
+    # ID в Qdrant (может совпадать с product.id, но лучше отдельно)
+    qdrant_id = models.CharField(max_length=50, unique=True, db_index=True)
+    
+    # Типы векторов (может быть несколько для одного товара)
+    VECTOR_TYPES = [
+        ('text', 'Текстовый'),
+        ('image', 'Изображение'),
+        ('combined', 'Комбинированный'),
+    ]
+    vector_type = models.CharField(max_length=20, choices=VECTOR_TYPES, default='combined')
+    
+    # Метаданные для быстрой фильтрации без обращения к Qdrant
+    category_id = models.IntegerField(null=True, db_index=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    brand_id = models.IntegerField(null=True, db_index=True)
+    color = models.CharField(max_length=50, blank=True, db_index=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    
+    # Качество вектора (для отладки)
+    vector_quality_score = models.FloatField(null=True, help_text="Уверенность энкодера")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_synced = models.DateTimeField(null=True, help_text="Последняя синхронизация с Qdrant")
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['category_id', 'is_active']),
+            models.Index(fields=['price', 'is_active']),
+            models.Index(fields=['color', 'is_active']),
+        ]
+    
+    def __str__(self):
+        return f"Vector for {self.product.title[:30]}"
+
+
+class RecommendationEvent(models.Model):
+    """Аналитика рекомендаций для улучшения алгоритма"""
+    
+    EVENT_TYPES = [
+        ('impression', 'Показ'),
+        ('click', 'Клик'),
+        ('cart_add', 'В корзину'),
+        ('purchase', 'Покупка'),
+    ]
+    
+    ALGORITHMS = [
+        ('vector_text', 'Векторный (текст)'),
+        ('vector_image', 'Векторный (изображение)'),
+        ('vector_combined', 'Векторный (комбинированный)'),
+        ('collaborative', 'Коллаборативный'),
+        ('trending', 'Тренды'),
+        ('hybrid', 'Гибрид'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    session_id = models.CharField(max_length=100, db_index=True)
+    
+    source_product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='recommendation_sources'
+    )
+    recommended_product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='recommendation_targets'
+    )
+    
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
+    algorithm = models.CharField(max_length=20, choices=ALGORITHMS)
+    position = models.PositiveSmallIntegerField(help_text="Позиция в списке (1-20)")
+    
+    # Контекст
+    filters_applied = models.JSONField(default=dict, help_text="Примененные фильтры")
+    similarity_score = models.FloatField(null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['session_id', 'created_at']),
+            models.Index(fields=['algorithm', 'event_type']),
+            models.Index(fields=['source_product', 'event_type']),
+        ]
+
+
+class UserEmbedding(models.Model):
+    """Векторное представление предпочтений пользователя"""
+    
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='embedding'
+    )
+    
+    # Вектор предпочтений (среднее просмотренных/купленных товаров)
+    preference_vector = models.JSONField(null=True)
+    
+    # Категории интересов с весами
+    category_weights = models.JSONField(default=dict, help_text='{"dresses": 0.8, "shoes": 0.3}')
+    
+    # Ценовой сегмент
+    avg_price_viewed = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    price_sensitivity = models.CharField(
+        max_length=20,
+        choices=[('low', 'Низкая'), ('medium', 'Средняя'), ('high', 'Высокая')],
+        default='medium'
+    )
+    
+    last_updated = models.DateTimeField(auto_now=True)
+    
+    def update_from_behavior(self):
+        """Обновить вектор на основе истории просмотров/покупок"""
+        # Реализация ниже
+        pass
+```
+
+---
+
+## 2. Vector Engine (основной сервис)
+
+```python
+# apps/recommendations/services/vector_engine.py
+
+from typing import List, Dict, Optional, Tuple
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    Distance, VectorParams, PointStruct, 
+    Filter, FieldCondition, Range, MatchValue,
+    SearchParams, HnswConfigDiff
+)
+from django.conf import settings
+from django.core.cache import cache
+import numpy as np
+import logging
+
+from apps.products.models import Product
+from apps.recommendations.models import ProductVector
+
+logger = logging.getLogger(__name__)
+
+
+class QdrantRecommendationEngine:
+    """
+    Движок векторных рекомендаций на Qdrant.
+    Поддерживает: текст, изображения, комбинированный поиск.
+    """
+    
+    COLLECTION_NAME = "product_recommendations"
+    
+    # Размерности векторов
+    TEXT_VECTOR_SIZE = 768      # sentence-transformers/all-MiniLM-L6-v2
+    IMAGE_VECTOR_SIZE = 512     # CLIP
+    COMBINED_VECTOR_SIZE = 768  # Проекция или конкатенация
+    
+    def __init__(self):
+        self.client = QdrantClient(
+            host=settings.QDRANT_HOST,
+            port=settings.QDRANT_PORT
+        )
+        self._ensure_collection_exists()
+    
+    def _ensure_collection_exists(self):
+        """Создать коллекцию если не существует"""
+        try:
+            collections = self.client.get_collections().collections
+            collection_names = [c.name for c in collections]
+            
+            if self.COLLECTION_NAME not in collection_names:
+                self._create_collection()
+                logger.info(f"✅ Created Qdrant collection: {self.COLLECTION_NAME}")
+        except Exception as e:
+            logger.error(f"Failed to check/create collection: {e}")
+            raise
+    
+    def _create_collection(self):
+        """Создать оптимизированную коллекцию для рекомендаций"""
+        
+        self.client.create_collection(
+            collection_name=self.COLLECTION_NAME,
+            vectors_config={
+                "text": VectorParams(
+                    size=self.TEXT_VECTOR_SIZE,
+                    distance=Distance.COSINE,
+                    hnsw_config=HnswConfigDiff(
+                        m=16,
+                        ef_construct=100,
+                    )
+                ),
+                "image": VectorParams(
+                    size=self.IMAGE_VECTOR_SIZE,
+                    distance=Distance.COSINE,
+                ),
+                "combined": VectorParams(
+                    size=self.COMBINED_VECTOR_SIZE,
+                    distance=Distance.COSINE,
+                ),
+            },
+            optimizers_config={
+                "default_segment_number": 2,
+                "indexing_threshold": 10000,
+            }
+        )
+        
+        # Создаем полезные индексы для фильтрации
+        self.client.create_payload_index(
+            collection_name=self.COLLECTION_NAME,
+            field_name="category_id",
+            field_schema="integer"
+        )
+        self.client.create_payload_index(
+            collection_name=self.COLLECTION_NAME,
+            field_name="price",
+            field_schema="float"
+        )
+        self.client.create_payload_index(
+            collection_name=self.COLLECTION_NAME,
+            field_name="is_active",
+            field_schema="bool"
+        )
+    
+    def upsert_product(
+        self,
+        product: Product,
+        text_vector: List[float],
+        image_vector: Optional[List[float]] = None,
+        combined_vector: Optional[List[float]] = None
+    ) -> bool:
+        """
+        Добавить или обновить товар в векторной БД.
+        
+        Args:
+            product: экземпляр Product
+            text_vector: эмбеддинг текста (обязательно)
+            image_vector: эмбеддинг изображения (опционально)
+            combined_vector: комбинированный (опционально, иначе вычисляется)
+        """
+        
+        # Вычисляем combined если не передан
+        if combined_vector is None and image_vector is not None:
+            combined_vector = self._compute_combined_vector(text_vector, image_vector)
+        
+        # Подготовка векторов
+        vectors = {"text": text_vector}
+        if image_vector:
+            vectors["image"] = image_vector
+        if combined_vector:
+            vectors["combined"] = combined_vector
+        
+        # Payload с метаданными для фильтрации
+        payload = {
+            "product_id": product.id,
+            "title": product.title,
+            "category_id": product.category_id,
+            "category_name": product.category.name if product.category else None,
+            "price": float(product.price) if product.price else 0.0,
+            "brand_id": product.brand_id,
+            "brand_name": product.brand.name if product.brand else None,
+            "color": self._extract_color(product),
+            "is_active": product.is_active,
+            "created_at": product.created_at.isoformat() if product.created_at else None,
+            "image_url": product.main_image_url if hasattr(product, 'main_image_url') else None,
+        }
+        
+        point = PointStruct(
+            id=product.id,  # Используем ID товара как ID точки
+            vector=vectors,
+            payload=payload
+        )
+        
+        # Upsert в Qdrant
+        self.client.upsert(
+            collection_name=self.COLLECTION_NAME,
+            points=[point]
+        )
+        
+        # Обновляем Django модель
+        ProductVector.objects.update_or_create(
+            product=product,
+            defaults={
+                'qdrant_id': str(product.id),
+                'category_id': product.category_id,
+                'price': product.price,
+                'brand_id': product.brand_id,
+                'color': payload['color'],
+                'is_active': product.is_active,
+                'last_synced': timezone.now()
+            }
+        )
+        
+        return True
+    
+    def find_similar(
+        self,
+        product_id: int,
+        vector_type: str = "combined",
+        n_results: int = 12,
+        filters: Optional[Dict] = None,
+        exclude_same_brand: bool = False
+    ) -> List[Dict]:
+        """
+        Найти похожие товары.
+        
+        Args:
+            product_id: ID целевого товара
+            vector_type: 'text', 'image', или 'combined'
+            n_results: количество результатов
+            filters: доп. фильтры (цена, категория и т.д.)
+            exclude_same_brand: исключить товары того же бренда
+        """
+        
+        cache_key = f"rec:similar:{product_id}:{vector_type}:{hash(str(filters))}"
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+        
+        # Получаем вектор целевого товара
+        target_vector = self._get_product_vector(product_id, vector_type)
+        if target_vector is None:
+            logger.warning(f"No vector found for product {product_id}")
+            return []
+        
+        # Строим фильтр для Qdrant
+        qdrant_filter = self._build_filter(filters, product_id, exclude_same_brand)
+        
+        # Поиск
+        results = self.client.search(
+            collection_name=self.COLLECTION_NAME,
+            query_vector=(vector_type, target_vector),
+            query_filter=qdrant_filter,
+            limit=n_results + 1,  # +1 чтобы исключить сам товар
+            search_params=SearchParams(hnsw_ef=128, exact=False)
+        )
+        
+        # Форматируем результаты
+        similar_products = []
+        for hit in results:
+            if hit.id == product_id:  # Пропускаем сам товар
+                continue
+            
+            similar_products.append({
+                'product_id': hit.id,
+                'score': round(hit.score, 4),
+                'payload': hit.payload,
+                'vector_type': vector_type
+            })
+        
+        # Кешируем на 30 минут
+        cache.set(cache_key, similar_products[:n_results], 1800)
+        
+        return similar_products[:n_results]
+    
+    def find_similar_by_image(
+        self,
+        image_url: str,
+        n_results: int = 12,
+        filters: Optional[Dict] = None
+    ) -> List[Dict]:
+        """
+        Поиск по изображению (visual search).
+        Использует CLIP для кодирования загруженного изображения.
+        """
+        from apps.recommendations.services.image_encoder import CLIPEncoder
+        
+        # Кодируем изображение
+        encoder = CLIPEncoder()
+        image_vector = encoder.encode_image_from_url(image_url)
+        
+        if image_vector is None:
+            return []
+        
+        # Фильтр
+        qdrant_filter = self._build_filter(filters)
+        
+        # Поиск по image вектору
+        results = self.client.search(
+            collection_name=self.COLLECTION_NAME,
+            query_vector=("image", image_vector.tolist()),
+            query_filter=qdrant_filter,
+            limit=n_results,
+            search_params=SearchParams(hnsw_ef=128)
+        )
+        
+        return [
+            {
+                'product_id': hit.id,
+                'score': round(hit.score, 4),
+                'payload': hit.payload,
+                'vector_type': 'image'
+            }
+            for hit in results
+        ]
+    
+    def find_by_text_query(
+        self,
+        query: str,
+        n_results: int = 20,
+        filters: Optional[Dict] = None
+    ) -> List[Dict]:
+        """
+        Поиск по текстовому запросу (семантический поиск).
+        """
+        from apps.recommendations.services.text_encoder import TextEncoder
+        
+        # Кодируем запрос
+        encoder = TextEncoder()
+        query_vector = encoder.encode(query)
+        
+        # Фильтр
+        qdrant_filter = self._build_filter(filters)
+        
+        # Поиск
+        results = self.client.search(
+            collection_name=self.COLLECTION_NAME,
+            query_vector=("text", query_vector.tolist()),
+            query_filter=qdrant_filter,
+            limit=n_results,
+            search_params=SearchParams(hnsw_ef=128)
+        )
+        
+        return [
+            {
+                'product_id': hit.id,
+                'score': round(hit.score, 4),
+                'payload': hit.payload,
+                'vector_type': 'text_query'
+            }
+            for hit in results
+        ]
+    
+    def get_personalized_recommendations(
+        self,
+        user_vector: List[float],
+        viewed_products: List[int],
+        n_results: int = 20,
+        diversity_factor: float = 0.3
+    ) -> List[Dict]:
+        """
+        Персональные рекомендации на основе вектора пользователя.
+        
+        diversity_factor: 0.0 = только похожее, 1.0 = максимальное разнообразие
+        """
+        
+        # Исключаем уже просмотренные
+        exclude_filter = Filter(
+            must_not=[
+                FieldCondition(
+                    key="product_id",
+                    match=MatchValue(value=pid)
+                ) for pid in viewed_products[:100]  # Лимит исключений
+            ]
+        )
+        
+        # Поиск ближайших к предпочтениям пользователя
+        results = self.client.search(
+            collection_name=self.COLLECTION_NAME,
+            query_vector=("combined", user_vector),
+            query_filter=exclude_filter,
+            limit=n_results * 2,  # Берем больше для диверсификации
+            search_params=SearchParams(hnsw_ef=128)
+        )
+        
+        # MMR (Maximal Marginal Relevance) для разнообразия
+        diversified = self._apply_mmr(results, n_results, diversity_factor)
+        
+        return diversified
+    
+    def _get_product_vector(
+        self,
+        product_id: int,
+        vector_type: str
+    ) -> Optional[List[float]]:
+        """Получить вектор товара из Qdrant"""
+        try:
+            result = self.client.retrieve(
+                collection_name=self.COLLECTION_NAME,
+                ids=[product_id],
+                with_vectors=True
+            )
+            
+            if not result:
+                return None
+            
+            return result[0].vector.get(vector_type)
+            
+        except Exception as e:
+            logger.error(f"Error retrieving vector for {product_id}: {e}")
+            return None
+    
+    def _build_filter(
+        self,
+        filters: Optional[Dict],
+        exclude_product_id: Optional[int] = None,
+        exclude_same_brand: bool = False
+    ) -> Optional[Filter]:
+        """Построить Qdrant Filter из dict"""
+        
+        must_conditions = []
+        
+        # Только активные товары
+        must_conditions.append(
+            FieldCondition(key="is_active", match=MatchValue(value=True))
+        )
+        
+        if filters:
+            # Фильтр по категории
+            if 'category_id' in filters:
+                must_conditions.append(
+                    FieldCondition(
+                        key="category_id",
+                        match=MatchValue(value=filters['category_id'])
+                    )
+                )
+            
+            # Фильтр по цене
+            if 'price_min' in filters or 'price_max' in filters:
+                price_range = Range()
+                if 'price_min' in filters:
+                    price_range.gte = filters['price_min']
+                if 'price_max' in filters:
+                    price_range.lte = filters['price_max']
+                must_conditions.append(
+                    FieldCondition(key="price", range=price_range)
+                )
+            
+            # Фильтр по цвету
+            if 'color' in filters:
+                must_conditions.append(
+                    FieldCondition(
+                        key="color",
+                        match=MatchValue(value=filters['color'].lower())
+                    )
+                )
+            
+            # Фильтр по бренду
+            if 'brand_id' in filters:
+                must_conditions.append(
+                    FieldCondition(
+                        key="brand_id",
+                        match=MatchValue(value=filters['brand_id'])
+                    )
+                )
+        
+        # Исключение конкретного товара
+        if exclude_product_id:
+            must_conditions.append(
+                FieldCondition(
+                    key="product_id",
+                    match=MatchValue(value=exclude_product_id)
+                )
+            )
+        
+        if must_conditions:
+            return Filter(must=must_conditions)
+        
+        return None
+    
+    def _compute_combined_vector(
+        self,
+        text_vector: List[float],
+        image_vector: List[float],
+        text_weight: float = 0.6
+    ) -> List[float]:
+        """
+        Объединить текстовый и визуальный векторы.
+        """
+        # Нормализация
+        text_norm = np.array(text_vector) / np.linalg.norm(text_vector)
+        image_norm = np.array(image_vector) / np.linalg.norm(image_vector)
+        
+        # Взвешенное среднее
+        combined = text_weight * text_norm + (1 - text_weight) * image_norm
+        
+        # Проекция в меньшую размерность (если нужно)
+        # Или просто нормализуем
+        combined = combined / np.linalg.norm(combined)
+        
+        return combined.tolist()
+    
+    def _apply_mmr(
+        self,
+        candidates: List,
+        n_results: int,
+        lambda_param: float = 0.3
+    ) -> List[Dict]:
+        """
+        Maximal Marginal Relevance для разнообразия рекомендаций.
+        
+        lambda_param: баланс релевантности vs разнообразия
+        """
+        selected = []
+        remaining = list(candidates)
+        
+        while len(selected) < n_results and remaining:
+            if not selected:
+                # Первый элемент - самый релевантный
+                best = remaining[0]
+            else:
+                # Выбираем с максимальной маргинальной релевантностью
+                best_mmr_score = -float('inf')
+                best = None
+                
+                for candidate in remaining:
+                    # Релевантность
+                    rel = candidate.score
+                    
+                    # Максимальное сходство с уже выбранными
+                    max_sim = max(
+                        self._vector_similarity(candidate.vector, s.vector)
+                        for s in selected
+                    ) if selected else 0
+                    
+                    # MMR score
+                    mmr_score = lambda_param * rel - (1 - lambda_param) * max_sim
+                    
+                    if mmr_score > best_mmr_score:
+                        best_mmr_score = mmr_score
+                        best = candidate
+            
+            selected.append(best)
+            remaining.remove(best)
+        
+        return [
+            {
+                'product_id': s.id,
+                'score': round(s.score, 4),
+                'payload': s.payload
+            }
+            for s in selected
+        ]
+    
+    def _vector_similarity(self, v1, v2) -> float:
+        """Косинусное сходство двух векторов"""
+        return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+    
+    def _extract_color(self, product: Product) -> str:
+        """Извлечь цвет из названия/атрибутов товара"""
+        # Используем AI-извлеченные атрибуты если есть
+        if hasattr(product, 'ai_logs'):
+            latest_log = product.ai_logs.filter(
+                extracted_attributes__has_key='color'
+            ).first()
+            if latest_log:
+                return latest_log.extracted_attributes.get('color', '')
+        
+        # Простая эвристика
+        text = f"{product.title} {product.description or ''}".lower()
+        colors = ['красный', 'синий', 'черный', 'белый', 'розовый', 
+                 'зеленый', 'желтый', 'серый', 'бежевый', 'коричневый',
+                 'фиолетовый', 'оранжевый', 'голубой', 'золотой', 'серебряный']
+        
+        for color in colors:
+            if color in text:
+                return color
+        
+        return 'unknown'
+    
+    def delete_product(self, product_id: int):
+        """Удалить товар из индекса"""
+        self.client.delete(
+            collection_name=self.COLLECTION_NAME,
+            points_selector=[product_id]
+        )
+        ProductVector.objects.filter(product_id=product_id).delete()
+    
+    def get_collection_stats(self) -> Dict:
+        """Статистика коллекции"""
+        info = self.client.get_collection(self.COLLECTION_NAME)
+        return {
+            'vectors_count': info.vectors_count,
+            'indexed_vectors_count': info.indexed_vectors_count,
+            'segments_count': info.segments_count,
+            'status': info.status
+        }
+```
+
+---
+
+## 3. Энкодеры (CLIP и BERT)
+
+```python
+# apps/recommendations/services/image_encoder.py
+
+import torch
+from PIL import Image
+from transformers import CLIPProcessor, CLIPModel
+import requests
+from io import BytesIO
+import numpy as np
+from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class CLIPEncoder:
+    """
+    Кодирование изображений в векторы с помощью CLIP.
+    """
+    
+    _instance = None
+    _model = None
+    _processor = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        if self._model is None:
+            self._load_model()
+    
+    def _load_model(self):
+        """Загрузка модели (ленивая инициализация)"""
+        logger.info("Loading CLIP model...")
+        
+        model_name = "openai/clip-vit-base-patch32"  # 512-dim
+        
+        self._model = CLIPModel.from_pretrained(model_name)
+        self._processor = CLIPProcessor.from_pretrained(model_name)
+        self._model.eval()
+        
+        # GPU если доступен
+        if torch.cuda.is_available():
+            self._model = self._model.cuda()
+            logger.info("CLIP loaded on GPU")
+        else:
+            logger.info("CLIP loaded on CPU")
+    
+    def encode_image(self, image_input) -> np.ndarray:
+        """
+        Кодировать изображение.
+        
+        Args:
+            image_input: PIL.Image, путь к файлу, или URL
+        """
+        if isinstance(image_input, str):
+            if image_input.startswith('http'):
+                image = self._load_image_from_url(image_input)
+            else:
+                image = Image.open(image_input)
+        else:
+            image = image_input
+        
+        # Подготовка
+        inputs = self._processor(
+            images=image,
+            return_tensors="pt",
+            padding=True
+        )
+        
+        if torch.cuda.is_available():
+            inputs = {k: v.cuda() for k, v in inputs.items()}
+        
+        # Инференс
+        with torch.no_grad():
+            image_features = self._model.get_image_features(**inputs)
+        
+        # Нормализация
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+        
+        return image_features.cpu().numpy().flatten()
+    
+    def encode_image_from_url(self, url: str) -> np.ndarray:
+        """Загрузить и закодировать изображение по URL"""
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            image = Image.open(BytesIO(response.content)).convert('RGB')
+            return self.encode_image(image)
+        except Exception as e:
+            logger.error(f"Failed to encode image from {url}: {e}")
+            return None
+    
+    def encode_text(self, text: str) -> np.ndarray:
+        """Кодировать текст (для проверки соответствия изображения тексту)"""
+        inputs = self._processor(
+            text=[text],
+            return_tensors="pt",
+            padding=True
+        )
+        
+        if torch.cuda.is_available():
+            inputs = {k: v.cuda() for k, v in inputs.items()}
+        
+        with torch.no_grad():
+            text_features = self._model.get_text_features(**inputs)
+        
+        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+        
+        return text_features.cpu().numpy().flatten()
+```
+
+```python
+# apps/recommendations/services/text_encoder.py
+
+from sentence_transformers import SentenceTransformer
+import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class TextEncoder:
+    """
+    Кодирование текста в векторы.
+    Использует sentence-transformers (многоязычная модель).
+    """
+    
+    _instance = None
+    _model = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def __init__(self):
+        if self._model is None:
+            self._load_model()
+    
+    def _load_model(self):
+        """Загрузка модели"""
+        logger.info("Loading text encoder model...")
+        
+        # Многоязычная модель, поддерживает русский и турецкий
+        model_name = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
+        
+        self._model = SentenceTransformer(model_name)
+        logger.info(f"Text encoder loaded: {model_name}")
+    
+    def encode(self, text: str) -> np.ndarray:
+        """
+        Закодировать текст в вектор (384-dim).
+        """
+        if not text or not text.strip():
+            # Возвращаем нулевой вектор для пустого текста
+            return np.zeros(384)
+        
+        # Транкейт длинных текстов
+        text = text[:2000]
+        
+        embedding = self._model.encode(
+            text,
+            convert_to_numpy=True,
+            normalize_embeddings=True
+        )
+        
+        return embedding
+    
+    def encode_batch(self, texts: list) -> np.ndarray:
+        """Закодировать батч текстов"""
+        texts = [t[:2000] if t else "" for t in texts]
+        
+        embeddings = self._model.encode(
+            texts,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            batch_size=32,
+            show_progress_bar=False
+        )
+        
+        return embeddings
+```
+
+---
+
+## 4. Reranker (пост-фильтрация)
+
+```python
+# apps/recommendations/services/reranker.py
+
+from typing import List, Dict
+from django.db.models import QuerySet
+from apps.products.models import Product
+import numpy as np
+
+
+class BusinessReranker:
+    """
+    Переранжирование результатов по бизнес-правилам.
+    """
+    
+    def rerank(
+        self,
+        candidates: List[Dict],
+        target_product: Product,
+        strategy: str = 'balanced'
+    ) -> List[Dict]:
+        """
+        Переранжировать кандидатов.
+        
+        Strategies:
+        - 'relevance': максимальное сходство
+        - 'diversity': максимальное разнообразие
+        - 'profit': приоритет высокомаржинальным
+        - 'balanced': баланс всех факторов
+        """
+        
+        if not candidates:
+            return []
+        
+        # Получаем полные объекты товаров
+        product_ids = [c['product_id'] for c in candidates]
+        products = Product.objects.filter(id__in=product_ids).select_related('category', 'brand')
+        product_map = {p.id: p for p in products}
+        
+        # Обогащаем кандидатов данными
+        enriched = []
+        for cand in candidates:
+            product = product_map.get(cand['product_id'])
+            if not product:
+                continue
+            
+            score = self._calculate_score(
+                candidate=cand,
+                candidate_product=product,
+                target=target_product,
+                strategy=strategy
+            )
+            
+            enriched.append({
+                **cand,
+                'business_score': score,
+                'product': product
+            })
+        
+        # Сортируем по business_score
+        enriched.sort(key=lambda x: x['business_score'], reverse=True)
+        
+        # Сериализуем для ответа
+        return self._serialize_results(enriched)
+    
+    def _calculate_score(
+        self,
+        candidate: Dict,
+        candidate_product: Product,
+        target: Product,
+        strategy: str
+    ) -> float:
+        """Вычислить бизнес-скор для кандидата"""
+        
+        base_score = candidate['score']  # Векторное сходство (0-1)
+        
+        factors = {
+            'relevance': 1.0,
+            'price_proximity': 0.0,
+            'availability': 0.0,
+            'freshness': 0.0,
+            'margin': 0.0,
+            'popularity': 0.0
+        }
+        
+        # 1. Близость цены (чем ближе к целевой, тем лучше)
+        if target.price and candidate_product.price:
+            price_ratio = min(
+                float(target.price), float(candidate_product.price)
+            ) / max(float(target.price), float(candidate_product.price))
+            factors['price_proximity'] = price_ratio
+        
+        # 2. Наличие на складе
+        if hasattr(candidate_product, 'stock_quantity'):
+            factors['availability'] = min(candidate_product.stock_quantity / 10, 1.0)
+        else:
+            factors['availability'] = 1.0
+        
+        # 3. Новизна (новые товары бустим)
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        if candidate_product.created_at:
+            days_old = (timezone.now() - candidate_product.created_at).days
+            if days_old < 7:
+                factors['freshness'] = 1.0
+            elif days_old < 30:
+                factors['freshness'] = 0.7
+            else:
+                factors['freshness'] = 0.3
+        
+        # 4. Популярность (если есть метрики)
+        if hasattr(candidate_product, 'view_count'):
+            factors['popularity'] = min(candidate_product.view_count / 1000, 1.0)
+        
+        # Веса по стратегии
+        weights = self._get_strategy_weights(strategy)
+        
+        final_score = sum(
+            factors[key] * weight 
+            for key, weight in weights.items()
+        )
+        
+        return final_score
+    
+    def _get_strategy_weights(self, strategy: str) -> Dict[str, float]:
+        """Веса факторов для разных стратегий"""
+        
+        strategies = {
+            'relevance': {
+                'relevance': 1.0,
+                'price_proximity': 0.0,
+                'availability': 0.0,
+                'freshness': 0.0,
+                'popularity': 0.0
+            },
+            'balanced': {
+                'relevance': 0.4,
+                'price_proximity': 0.2,
+                'availability': 0.2,
+                'freshness': 0.1,
+                'popularity': 0.1
+            },
+            'trending': {
+                'relevance': 0.2,
+                'price_proximity': 0.1,
+                'availability': 0.2,
+                'freshness': 0.3,
+                'popularity': 0.2
+            }
+        }
+        
+        return strategies.get(strategy, strategies['balanced'])
+    
+    def _serialize_results(self, ranked: List[Dict]) -> List[Dict]:
+        """Сериализовать для API ответа"""
+        from apps.products.serializers import ProductListSerializer
+        
+        result = []
+        for item in ranked:
+            product_data = ProductListSerializer(item['product']).data
+            result.append({
+                'product': product_data,
+                'similarity_score': item['score'],
+                'business_score': round(item['business_score'], 4),
+                'reason': self._get_recommendation_reason(item)
+            })
+        
+        return result
+    
+    def _get_recommendation_reason(self, item: Dict) -> str:
+        """Объяснить, почему рекомендуем этот товар"""
+        product = item['product']
+        
+        reasons = []
+        
+        if item['score'] > 0.9:
+            reasons.append("Очень похожий стиль")
+        elif item['score'] > 0.8:
+            reasons.append("Похожий дизайн")
+        
+        if hasattr(product, 'brand') and product.brand:
+            reasons.append(f"Бренд {product.brand.name}")
+        
+        if item.get('freshness', 0) > 0.8:
+            reasons.append("Новинка")
+        
+        return ", ".join(reasons) if reasons else "Рекомендуем"
+```
+
+---
+
+## 5. API Views
+
+```python
+# apps/recommendations/views.py
+
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAdminUser
+from django.shortcuts import get_object_or_404
+
+from apps.products.models import Product
+from apps.recommendations.services.vector_engine import QdrantRecommendationEngine
+from apps.recommendations.services.reranker import BusinessReranker
+from apps.recommendations.services.image_encoder import CLIPEncoder
+from apps.recommendations.models import RecommendationEvent
+
+
+class RecommendationViewSet(viewsets.ViewSet):
+    """
+    API для векторных рекомендаций.
+    """
+    
+    permission_classes = [AllowAny]
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.engine = QdrantRecommendationEngine()
+        self.reranker = BusinessReranker()
+    
+    @action(detail=True, methods=['get'])
+    def similar(self, request, pk=None):
+        """
+        GET /api/products/{id}/similar/
+        
+        Похожие товары (комбинированный поиск).
+        """
+        product = get_object_or_404(Product, pk=pk)
+        
+        # Параметры
+        n_results = int(request.query_params.get('limit', 12))
+        strategy = request.query_params.get('strategy', 'balanced')
+        exclude_brand = request.query_params.get('exclude_same_brand', 'false').lower() == 'true'
+        
+        # Фильтры
+        filters = {}
+        if 'category_id' in request.query_params:
+            filters['category_id'] = int(request.query_params['category_id'])
+        if 'price_min' in request.query_params:
+            filters['price_min'] = float(request.query_params['price_min'])
+        if 'price_max' in request.query_params:
+            filters['price_max'] = float(request.query_params['price_max'])
+        if 'color' in request.query_params:
+            filters['color'] = request.query_params['color']
+        
+        # Поиск в Qdrant
+        similar = self.engine.find_similar(
+            product_id=product.id,
+            vector_type='combined',
+            n_results=n_results * 2,  # Берем больше для реранжирования
+            filters=filters,
+            exclude_same_brand=exclude_brand
+        )
+        
+        # Бизнес-ранжирование
+        reranked = self.reranker.rerank(similar, product, strategy=strategy)
+        
+        # Логируем показ
+        self._log_event('impression', product, reranked, 'vector_combined')
+        
+        return Response({
+            'count': len(reranked),
+            'strategy': strategy,
+            'results': reranked
+        })
+    
+    @action(detail=True, methods=['get'])
+    def visually_similar(self, request, pk=None):
+        """
+        GET /api/products/{id}/visually_similar/
+        
+        Поиск по визуальному сходству (только изображение).
+        """
+        product = get_object_or_404(Product, pk=pk)
+        
+        similar = self.engine.find_similar(
+            product_id=product.id,
+            vector_type='image',
+            n_results=12
+        )
+        
+        return Response({
+            'results': similar
+        })
+    
+    @action(detail=False, methods=['post'])
+    def search_by_image(self, request):
+        """
+        POST /api/recommendations/search_by_image/
+        
+        Визуальный поиск: загружаем изображение, ищем похожие товары.
+        """
+        image_url = request.data.get('image_url')
+        if not image_url:
+            return Response(
+                {'error': 'image_url required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        results = self.engine.find_similar_by_image(
+            image_url=image_url,
+            n_results=20
+        )
+        
+        # Получаем полные данные товаров
+        product_ids = [r['product_id'] for r in results]
+        products = Product.objects.filter(id__in=product_ids)
+        product_map = {p.id: p for p in products}
+        
+        enriched = []
+        for r in results:
+            product = product_map.get(r['product_id'])
+            if product:
+                enriched.append({
+                    'product_id': r['product_id'],
+                    'similarity': r['score'],
+                    'product': ProductListSerializer(product).data
+                })
+        
+        return Response({'results': enriched})
+    
+    @action(detail=False, methods=['get'])
+    def personalized(self, request):
+        """
+        GET /api/recommendations/personalized/
+        
+        Персональные рекомендации для авторизованного пользователя.
+        """
+        if not request.user.is_authenticated:
+            # Для анонимов: тренды или случайные из популярных
+            return self._get_trending(request)
+        
+        # Получаем или создаем вектор пользователя
+        from apps.recommendations.models import UserEmbedding
+        
+        user_emb, created = UserEmbedding.objects.get_or_create(
+            user=request.user,
+            defaults={'preference_vector': None}
+        )
+        
+        if user_emb.preference_vector is None or self._needs_update(user_emb):
+            user_emb.update_from_behavior()
+        
+        # История просмотров для исключения
+        viewed = self._get_viewed_products(request.user)
+        
+        # Поиск
+        recommendations = self.engine.get_personalized_recommendations(
+            user_vector=user_emb.preference_vector,
+            viewed_products=viewed,
+            n_results=20,
+            diversity_factor=0.4
+        )
+        
+        return Response({
+            'based_on': 'your_history',
+            'count': len(recommendations),
+            'results': recommendations
+        })
+    
+    @action(detail=False, methods=['get'])
+    def complete_the_look(self, request):
+        """
+        GET /api/recommendations/complete_the_look/?product_id=123
+        
+        "С чем носить" — комплементарные товары.
+        """
+        product_id = request.query_params.get('product_id')
+        if not product_id:
+            return Response({'error': 'product_id required'}, status=400)
+        
+        product = get_object_or_404(Product, pk=product_id)
+        
+        # Определяем категории для комплекта
+        complementary_categories = self._get_complementary_categories(product)
+        
+        results = []
+        for cat_id, relation_type in complementary_categories:
+            # Ищем лучший товар из этой категории
+            cat_products = self.engine.find_similar(
+                product_id=product.id,
+                vector_type='combined',
+                n_results=3,
+                filters={'category_id': cat_id}
+            )
+            
+            if cat_products:
+                results.append({
+                    'relation_type': relation_type,
+                    'category_id': cat_id,
+                    'items': cat_products[:2]
+                })
+        
+        return Response({
+            'base_product_id': product_id,
+            'complementary_items': results
+        })
+    
+    def _log_event(self, event_type, source_product, recommendations, algorithm):
+        """Логирование для аналитики"""
+        # Асинхронно через Celery
+        from apps.recommendations.tasks import log_recommendation_event
+        
+        rec_ids = [r['product']['id'] for r in recommendations]
+        
+        log_recommendation_event.delay(
+            event_type=event_type,
+            source_product_id=source_product.id,
+            recommended_ids=rec_ids,
+            algorithm=algorithm,
+            session_id=self.request.session.session_key
+        )
+    
+    def _get_trending(self, request):
+        """Популярные товары (fallback для анонимов)"""
+        # TODO: Реализовать на основе RecommendationEvent
+        trending = Product.objects.filter(
+            is_active=True
+        ).order_by('-created_at')[:12]
+        
+        from apps.products.serializers import ProductListSerializer
+        
+        return Response({
+            'based_on': 'trending',
+            'results': ProductListSerializer(trending, many=True).data
+        })
+    
+    def _get_complementary_categories(self, product: Product):
+        """
+        Определить комплементарные категории для товара.
+        """
+        if not product.category:
+            return []
+        
+        # Маппинг: категория → [(компл_категория, тип_связи), ...]
+        mapping = {
+            'платья': [
+                (self._get_cat_id('обувь'), 'shoes'),
+                (self._get_cat_id('сумки'), 'bag'),
+                (self._get_cat_id('верхняя одежда'), 'outerwear'),
+                (self._get_cat_id('украшения'), 'accessories'),
+            ],
+            'блузки': [
+                (self._get_cat_id('брюки'), 'bottom'),
+                (self._get_cat_id('юбки'), 'bottom'),
+                (self._get_cat_id('жакеты'), 'layer'),
+            ],
+            # Добавить по вашему каталогу
+        }
+        
+        cat_name = product.category.name.lower()
+        for key, comps in mapping.items():
+            if key in cat_name:
+                return [(c, t) for c, t in comps if c is not None]
+        
+        return []
+    
+    def _get_cat_id(self, name: str):
+        """Найти ID категории по названию"""
+        from apps.products.models import Category
+        cat = Category.objects.filter(name__icontains=name).first()
+        return cat.id if cat else None
+    
+    def _needs_update(self, embedding) -> bool:
+        """Проверить, нужно ли обновлять вектор пользователя"""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        return (timezone.now() - embedding.last_updated) > timedelta(hours=1)
+    
+    def _get_viewed_products(self, user) -> List[int]:
+        """Получить историю просмотров пользователя"""
+        # TODO: Интеграция с вашей аналитикой
+        return []
+```
+
+---
+
+## 6. Celery Tasks (индексация)
+
+```python
+# apps/recommendations/tasks.py
+
+from celery import shared_task
+from django.db.models import Q
+from apps.products.models import Product
+from apps.recommendations.services.vector_engine import QdrantRecommendationEngine
+from apps.recommendations.services.text_encoder import TextEncoder
+from apps.recommendations.services.image_encoder import CLIPEncoder
+
+
+@shared_task
+def index_product_vectors(product_ids: list = None, batch_size: int = 100):
+    """
+    Индексация товаров в Qdrant.
+    
+    Args:
+        product_ids: конкретные ID или None для всех непроиндексированных
+    """
+    engine = QdrantRecommendationEngine()
+    text_encoder = TextEncoder()
+    image_encoder = CLIPEncoder()
+    
+    # Выбираем товары
+    if product_ids:
+        queryset = Product.objects.filter(id__in=product_ids)
+    else:
+        # Товары без векторов или с устаревшими векторами
+        queryset = Product.objects.filter(
+            Q(vector_data__isnull=True) | 
+            Q(vector_data__last_synced__lt=F('updated_at'))
+        ).select_related('category', 'brand').prefetch_related('images')
+    
+    total = 0
+    errors = []
+    
+    for product in queryset[:batch_size]:
+        try:
+            # Текстовый вектор
+            text = f"{product.title} {product.description or ''} {product.category.name if product.category else ''}"
+            text_vector = text_encoder.encode(text).tolist()
+            
+            # Вектор изображения (если есть)
+            image_vector = None
+            if hasattr(product, 'images') and product.images.exists():
+                main_image = product.images.first()
+                try:
+                    img_emb = image_encoder.encode_image_from_url(main_image.url)
+                    if img_emb is not None:
+                        image_vector = img_emb.tolist()
+                except Exception as e:
+                    logger.warning(f"Failed to encode image for {product.id}: {e}")
+            
+            # Сохраняем в Qdrant
+            engine.upsert_product(
+                product=product,
+                text_vector=text_vector,
+                image_vector=image_vector
+            )
+            
+            total += 1
+            
+        except Exception as e:
+            errors.append({'product_id': product.id, 'error': str(e)})
+    
+    return {
+        'indexed': total,
+        'errors': errors,
+        'remaining': queryset.count() - total if not product_ids else 0
+    }
+
+
+@shared_task
+def sync_all_products_to_qdrant():
+    """Полная переиндекция всех товаров (ночной таск)."""
+    from django.db.models import F
+    
+    # Помечаем все как не синхронизированные
+    ProductVector.objects.update(last_synced=None)
+    
+    # Запускаем индексацию пачками
+    batch_size = 500
+    total_products = Product.objects.filter(is_active=True).count()
+    
+    for offset in range(0, total_products, batch_size):
+        product_ids = list(Product.objects.filter(
+            is_active=True
+        ).values_list('id', flat=True)[offset:offset+batch_size])
+        
+        index_product_vectors.delay(product_ids)
+    
+    return {'batches': (total_products // batch_size) + 1}
+
+
+@shared_task
+def log_recommendation_event(
+    event_type: str,
+    source_product_id: int,
+    recommended_ids: list,
+    algorithm: str,
+    session_id: str
+):
+    """Асинхронное логирование событий рекомендаций."""
+    from apps.recommendations.models import RecommendationEvent
+    
+    for position, rec_id in enumerate(recommended_ids, 1):
+        RecommendationEvent.objects.create(
+            event_type=event_type,
+            source_product_id=source_product_id,
+            recommended_product_id=rec_id,
+            algorithm=algorithm,
+            position=position,
+            session_id=session_id
+        )
+```
+
+---
+
+## 7. Интеграция в парсеры (автоиндексация)
+
+```python
+# apps/parsers/signals.py (дополнение)
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from apps.products.models import Product
+from apps.ai.tasks import process_product_ai
+from apps.recommendations.tasks import index_product_vectors
+
+
+@receiver(post_save, sender=Product)
+def schedule_processing(sender, instance, created, **kwargs):
+    """Запуск AI и индексации для новых товаров."""
+    if not created:
+        # Для обновлений тоже переиндексируем если изменилось описание/изображения
+        if hasattr(instance, '_previous_state'):
+            old = instance._previous_state
+            if (old.get('title') != instance.title or 
+                old.get('description') != instance.description):
+                index_product_vectors.delay([instance.id])
+        return
+    
+    # Проверяем что от парсера
+    is_from_parser = (
+        getattr(instance, 'source', None) == 'parser' or
+        getattr(instance, 'supplier', None) is not None
+    )
+    
+    if not is_from_parser:
+        return
+    
+    # 1. AI обработка (описание, категория)
+    process_product_ai.apply_async(
+        args=[instance.id],
+        countdown=10
+    )
+    
+    # 2. Индексация в Qdrant (после AI, чтобы использовать сгенерированное описание)
+    index_product_vectors.apply_async(
+        args=[[instance.id]],
+        countdown=60  # Через минуту, когда AI успеет обработать
+    )
+```
+
+---
+
+## 8. Frontend интеграция (Next.js)
+
+```typescript
+// components/recommendations/SimilarProducts.tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { ProductCard } from '@/components/products/ProductCard';
+
+interface SimilarProductsProps {
+  productId: number;
+  strategy?: 'balanced' | 'relevance' | 'trending';
+}
+
+export const SimilarProducts: React.FC<SimilarProductsProps> = ({
+  productId,
+  strategy = 'balanced'
+}) => {
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/products/${productId}/similar/?strategy=${strategy}&limit=8`)
+      .then(r => r.json())
+      .then(data => {
+        setRecommendations(data.results);
+        setLoading(false);
+      });
+  }, [productId, strategy]);
+
+  if (loading) return <SkeletonGrid count={4} />;
+
+  return (
+    <section className="py-8">
+      <h2 className="text-2xl font-bold mb-6">Похожие товары</h2>
+      
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {recommendations.map((rec) => (
+          <div key={rec.product.id} className="relative">
+            <ProductCard product={rec.product} />
+            
+            {/* Бейдж причины рекомендации */}
+            {rec.reason && (
+              <span className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                {rec.reason}
+              </span>
+            )}
+            
+            {/* Скор сходства (для дебага, можно убрать в проде) */}
+            <span className="absolute bottom-2 right-2 text-xs text-gray-500">
+              {Math.round(rec.similarity_score * 100)}% match
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
+// components/recommendations/VisualSearch.tsx
+'use client';
+
+import { useState } from 'react';
+import { Upload, Camera } from 'lucide-react';
+
+export const VisualSearch: React.FC = () => {
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState<any[]>([]);
+
+  const handleImageUpload = async (file: File) => {
+    setSearching(true);
+    
+    // Загружаем в R2 временное хранилище
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const uploadRes = await fetch('/api/upload/temp/', {
+      method: 'POST',
+      body: formData
+    });
+    const { url } = await uploadRes.json();
+    
+    // Поиск по изображению
+    const searchRes = await fetch('/api/recommendations/search_by_image/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: url })
+    });
+    const data = await searchRes.json();
+    
+    setResults(data.results);
+    setSearching(false);
+  };
+
+  return (
+    <div className="border rounded-lg p-6">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <Camera size={20} />
+        Поиск по фото
+      </h3>
+      
+      <div className="border-2 border-dashed rounded-lg p-8 text-center">
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0])}
+          className="hidden"
+          id="visual-search"
+        />
+        <label htmlFor="visual-search" className="cursor-pointer">
+          <Upload className="mx-auto mb-2" />
+          <span>Загрузите фото или перетащите сюда</span>
+        </label>
+      </div>
+      
+      {searching && <p className="mt-4 text-center">Ищем похожие...</p>}
+      
+      {results.length > 0 && (
+        <div className="mt-6 grid grid-cols-4 gap-4">
+          {results.map(r => (
+            <ProductCard key={r.product_id} product={r.product} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+```
+
+---
+
+## 9. Мониторинг и метрики
+
+```python
+# apps/recommendations/management/commands/recsys_stats.py
+
+from django.core.management.base import BaseCommand
+from django.db.models import Count, Avg, F
+from apps.recommendations.models import RecommendationEvent, ProductVector
+
+
+class Command(BaseCommand):
+    help = 'Статистика рекомендательной системы'
+
+    def handle(self, *args, **options):
+        # Покрытие товаров векторами
+        total_products = Product.objects.filter(is_active=True).count()
+        with_vectors = ProductVector.objects.filter(is_active=True).count()
+        
+        self.stdout.write(f"Векторное покрытие: {with_vectors}/{total_products} ({with_vectors/total_products*100:.1f}%)")
+        
+        # CTR по алгоритмам
+        stats = RecommendationEvent.objects.values('algorithm').annotate(
+            impressions=Count('id', filter=Q(event_type='impression')),
+            clicks=Count('id', filter=Q(event_type='click')),
+            purchases=Count('id', filter=Q(event_type='purchase'))
+        ).order_by('-impressions')
+        
+        for stat in stats:
+            ctr = stat['clicks'] / stat['impressions'] * 100 if stat['impressions'] > 0 else 0
+            cvr = stat['purchases'] / stat['clicks'] * 100 if stat['clicks'] > 0 else 0
+            
+            self.stdout.write(f"\n{stat['algorithm']}:")
+            self.stdout.write(f"  Показы: {stat['impressions']}")
+            self.stdout.write(f"  CTR: {ctr:.2f}%")
+            self.stdout.write(f"  Конверсия: {cvr:.2f}%")
+```
+
+---
+
+## План внедрения (3 дня)
+
+### День 1: Инфраструктура
+- [ ] Добавить `apps/recommendations`
+- [ ] Модели `ProductVector`, `RecommendationEvent`
+- [ ] Настроить Qdrant коллекцию `product_recommendations`
+- [ ] Энкодеры: `TextEncoder`, `CLIPEncoder`
+
+### День 2: Core Engine
+- [ ] `QdrantRecommendationEngine`
+- [ ] API endpoints: `/similar/`, `/visually_similar/`
+- [ ] `BusinessReranker`
+- [ ] Интеграция в парсеры (автоиндексация)
+
+### День 3: Frontend + Polish
+- [ ] Компонент `SimilarProducts`
+- [ ] `VisualSearch` (поиск по фото)
+- [ ] "Составьте образ"
+- [ ] Мониторинг метрик
+
+---

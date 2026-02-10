@@ -8,6 +8,7 @@ import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import BannerCarousel from '../components/BannerCarouselMedia'
 import PopularProductsCarousel from '../components/PopularProductsCarousel'
+import PersonalizedRecommendations from '../components/PersonalizedRecommendations'
 import TestimonialsCarousel from '../components/TestimonialsCarousel'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription, getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../lib/i18n'
 
@@ -430,6 +431,9 @@ export default function Home({ brands, categories }: HomePageProps) {
 
           {/* Популярные товары */}
           <PopularProductsCarousel />
+
+          {/* Вам может понравиться (RecSys) */}
+          <PersonalizedRecommendations />
           
           {/* Баннер после популярных товаров */}
           <div className="mb-12">
