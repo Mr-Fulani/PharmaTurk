@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "pharmaturk-ml-service"
+version = "0.1.0"
+description = "Optional FastAPI stub for ML/embeddings (PharmaTurk AI)"
+readme = "README.md"
+packages = []
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.0"
+uvicorn = { extras = ["standard"], version = "^0.32.0" }
+
+[tool.poetry.group.dev.dependencies]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
