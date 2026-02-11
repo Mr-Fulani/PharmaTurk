@@ -240,7 +240,7 @@ const BookHavenPage: React.FC = () => {
                   currency={book.currency || 'RUB'}
                   oldPrice={displayOldPrice}
                   imageUrl={book.main_image_url || book.main_image}
-                  badge={book.is_featured ? 'Хит' : null}
+                  badge={book.is_featured ? t('product_featured', 'Хит') : null}
                   viewMode={viewMode}
                   description={book.description}
                   href={`/product/books/${book.slug}`}

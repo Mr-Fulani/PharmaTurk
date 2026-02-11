@@ -9,6 +9,7 @@ import api from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { StarIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/20/solid'
 import { PhotoIcon, VideoCameraIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/outline'
+import { getPlaceholderImageUrl } from '../../lib/media'
 
 interface TestimonialMedia {
   id: number
@@ -458,7 +459,21 @@ export default function TestimonialsPage() {
       )
     }
     
-    return null
+    // Если медиа нет или оно некорректно – показываем placeholder
+    const placeholder = getPlaceholderImageUrl({
+      type: 'testimonial',
+      id: selectedTestimonial?.id || media.id,
+    })
+    return (
+      <img
+        src={placeholder}
+        alt={selectedTestimonial?.author_name || 'Testimonial'}
+        className="w-full h-full object-cover"
+        onError={(e) => {
+          e.currentTarget.src = '/product-placeholder.svg'
+        }}
+      />
+    )
   }
 
   const extractYouTubeId = (url: string): string | null => {
@@ -662,6 +677,9 @@ export default function TestimonialsPage() {
                             src={testimonial.author_avatar_url}
                             alt={testimonial.author_name}
                             className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                            onError={(e) => {
+                              e.currentTarget.src = '/product-placeholder.svg'
+                            }}
                           />
                         )}
                         <div className="text-xs font-semibold text-gray-900 truncate">
@@ -675,6 +693,9 @@ export default function TestimonialsPage() {
                           src={testimonial.author_avatar_url}
                           alt={testimonial.author_name}
                           className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                          onError={(e) => {
+                            e.currentTarget.src = '/product-placeholder.svg'
+                          }}
                         />
                       )}
                       <div className="text-xs font-semibold text-gray-900 truncate">

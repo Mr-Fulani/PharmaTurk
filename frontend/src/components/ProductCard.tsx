@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { useTranslation } from 'next-i18next'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
-import { resolveMediaUrl, isVideoUrl } from '../lib/media'
+import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../lib/media'
 
 interface ProductCardProps {
   id: number
@@ -94,10 +94,24 @@ export default function ProductCard({
             />
           ) : resolvedImage ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={resolvedImage} alt={name} className="w-full h-full rounded-md object-cover" />
+            <img
+              src={resolvedImage}
+              alt={name}
+              className="w-full h-full rounded-md object-cover"
+              onError={(e) => {
+                e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
+              }}
+            />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src="/product-placeholder.svg" alt="No image" className="w-full h-full rounded-md object-cover" />
+            <img
+              src={getPlaceholderImageUrl({ type: 'product', id })}
+              alt="No image"
+              className="w-full h-full rounded-md object-cover"
+              onError={(e) => {
+                e.currentTarget.src = '/product-placeholder.svg'
+              }}
+            />
           )}
           {badge && (
             <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
@@ -175,10 +189,24 @@ export default function ProductCard({
           />
         ) : resolvedImage ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={resolvedImage} alt={name} className="aspect-[4/3] w-full rounded-lg object-cover" />
+          <img
+            src={resolvedImage}
+            alt={name}
+            className="aspect-[4/3] w-full rounded-lg object-cover"
+            onError={(e) => {
+              e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
+            }}
+          />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="/product-placeholder.svg" alt="No image" className="aspect-[4/3] w-full rounded-lg object-cover bg-gray-100" />
+          <img
+            src={getPlaceholderImageUrl({ type: 'product', id })}
+            alt="No image"
+            className="aspect-[4/3] w-full rounded-lg object-cover bg-gray-100"
+            onError={(e) => {
+              e.currentTarget.src = '/product-placeholder.svg'
+            }}
+          />
         )}
         {badge && (
           <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
@@ -190,12 +218,12 @@ export default function ProductCard({
           <>
             {isBestseller && (
               <span className="absolute left-2 top-2 rounded-md bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 ring-1 ring-orange-200">
-                Бестселлер
+                {t('bestseller', 'Бестселлер')}
               </span>
             )}
             {isNew && (
               <span className="absolute left-2 top-2 rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-200">
-                Новинка
+                {t('product_new', 'Новинка')}
               </span>
             )}
           </>

@@ -107,6 +107,38 @@ def delete_product_image_files(sender, instance, **kwargs):
 # --- Category, Brand ---
 
 
+@receiver(pre_save, sender=Category)
+def delete_old_category_card_media(sender, instance, **kwargs):
+    if instance.pk:
+        try:
+            old = Category.objects.get(pk=instance.pk)
+            if old.card_media:
+                old_path = old.card_media.name
+                new_path = getattr(instance.card_media, "name", None) if instance.card_media else None
+                if old_path != new_path:
+                    delete_file_from_storage(old.card_media)
+        except Category.DoesNotExist:
+            pass
+        except Exception as e:
+            logger.warning("Failed to delete old Category.card_media: %s", e)
+
+
+@receiver(pre_save, sender=Brand)
+def delete_old_brand_card_media(sender, instance, **kwargs):
+    if instance.pk:
+        try:
+            old = Brand.objects.get(pk=instance.pk)
+            if old.card_media:
+                old_path = old.card_media.name
+                new_path = getattr(instance.card_media, "name", None) if instance.card_media else None
+                if old_path != new_path:
+                    delete_file_from_storage(old.card_media)
+        except Brand.DoesNotExist:
+            pass
+        except Exception as e:
+            logger.warning("Failed to delete old Brand.card_media: %s", e)
+
+
 @receiver(post_delete, sender=Category)
 def delete_category_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.card_media)

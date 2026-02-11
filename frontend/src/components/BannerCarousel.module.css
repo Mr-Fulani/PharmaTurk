@@ -238,6 +238,18 @@
   border: none;
 }
 
+/* Только для картинок-плейсхолдеров picsum в баннерах: заполняют весь слайд */
+.itemPicsumPlaceholder {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: inherit;
+}
+
 /* Адаптивность для мобильных устройств */
 @media (max-width: 768px) {
   .container {

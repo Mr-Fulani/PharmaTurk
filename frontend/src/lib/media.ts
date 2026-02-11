@@ -103,3 +103,30 @@ export const pickMedia = (media?: MediaSource, fallback?: string) => {
   return fallback || ''
 }
 
+/**
+ * Универсальный генератор placeholder-изображений.
+ * Использует picsum.photos с детерминированным seed, чтобы для одного
+ * и того же объекта (brand/category/product и т.д.) картинка была стабильной.
+ */
+export function getPlaceholderImageUrl(options?: {
+  type?: 'brand' | 'category' | 'product' | 'banner' | 'testimonial'
+  id?: number | string
+  seed?: string
+  width?: number
+  height?: number
+}): string {
+  const {
+    type = 'product',
+    id,
+    seed,
+    width = 400,
+    height = 300,
+  } = options || {}
+
+  const baseSeed = seed || (id !== undefined && id !== null ? `${type}-${id}` : type)
+  const safeSeed = encodeURIComponent(String(baseSeed))
+
+  return `https://picsum.photos/seed/${safeSeed}/${width}/${height}`
+}
+
+

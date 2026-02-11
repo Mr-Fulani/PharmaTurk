@@ -11,7 +11,7 @@ import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, ProductTranslation } from '../../lib/i18n'
-import { resolveMediaUrl, isVideoUrl } from '../../lib/media'
+import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../../lib/media'
 import { useTheme } from '../../context/ThemeContext'
 
 type CategoryType = string
@@ -335,6 +335,8 @@ export default function ProductPage({
       gallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
   )
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
+  /** Для миниатюр с битой ссылкой: по id храним URL плейсхолдера, чтобы по клику показывать его в главной области */
+  const [thumbPlaceholderByKey, setThumbPlaceholderByKey] = useState<Record<string, string>>({})
   const initialVideoUrl =
     (product?.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
     gallerySource.find((item) => item.isVideo && item.video_url)?.video_url ||
@@ -485,16 +487,21 @@ export default function ProductPage({
               <div className="flex flex-col gap-3 overflow-y-auto flex-shrink-0">
                 {gallerySource.map((img) => {
                   const resolvedThumbnail = resolveMediaUrl(img.image_url)
+                  const thumbKey = String(img.id)
+                  const placeholderId = `${product.id}-thumb-${img.id}`
+                  const placeholderSmall = getPlaceholderImageUrl({ type: 'product', id: placeholderId, width: 200, height: 200 })
+                  const placeholderLarge = getPlaceholderImageUrl({ type: 'product', id: placeholderId, width: 800, height: 800 })
+                  const effectiveThumbUrl = thumbPlaceholderByKey[thumbKey] || resolvedThumbnail || placeholderLarge
                   const isVideoItem = (img as GalleryItem).isVideo === true
                   const isActive =
                     isVideoItem
                       ? activeMediaType === 'video' && Boolean(img.video_url && img.video_url === activeVideoUrl)
-                      : activeMediaType === 'image' && activeImage === resolvedThumbnail
+                      : activeMediaType === 'image' && (activeImage === resolvedThumbnail || activeImage === effectiveThumbUrl)
                   return (
                     <button
-                      key={String(img.id)}
+                      key={thumbKey}
                       type="button"
-                      className={`relative w-28 h-28 rounded-lg overflow-hidden border flex-shrink-0 ${isActive ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200 hover:border-gray-300'}`}
+                      className={`relative w-28 h-28 rounded-lg overflow-hidden border flex-shrink-0 cursor-pointer ${isActive ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200 hover:border-gray-300'}`}
                       onClick={() => {
                         if (isVideoItem) {
                           setActiveMediaType('video')
@@ -503,7 +510,7 @@ export default function ProductPage({
                           }
                         } else {
                           setActiveMediaType('image')
-                          setActiveImage(resolvedThumbnail || null)
+                          setActiveImage(effectiveThumbUrl || resolvedThumbnail || null)
                         }
                       }}
                     >
@@ -519,9 +526,13 @@ export default function ProductPage({
                       ) : (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img
-                          src={resolvedThumbnail}
+                          src={resolvedThumbnail || placeholderSmall}
                           alt={img.alt_text || product.name}
                           className="w-full h-full object-cover pointer-events-none"
+                          onError={(e) => {
+                            setThumbPlaceholderByKey((prev) => ({ ...prev, [thumbKey]: placeholderLarge }))
+                            e.currentTarget.src = placeholderSmall
+                          }}
                         />
                       )}
                       {isVideoItem && (
@@ -550,10 +561,36 @@ export default function ProductPage({
                 />
               ) : activeImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={activeImage} alt={product.name} className="max-w-full max-h-full rounded-xl object-contain" />
+                <img
+                  src={activeImage}
+                  alt={product.name}
+                  className="max-w-full max-h-full rounded-xl object-contain"
+                  onError={(e) => {
+                    // Фолбек на picsum, завязанный на id товара
+                    const { getPlaceholderImageUrl } = require('../../lib/media')
+                    e.currentTarget.src = getPlaceholderImageUrl({
+                      type: 'product',
+                      id: product.id,
+                      width: 800,
+                      height: 800,
+                    })
+                  }}
+                />
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src="/product-placeholder.svg" alt="No image" className="max-w-full max-h-full rounded-xl object-contain" />
+                <img
+                  src={require('../../lib/media').getPlaceholderImageUrl({
+                    type: 'product',
+                    id: product.id,
+                    width: 800,
+                    height: 800,
+                  })}
+                  alt="No image"
+                  className="max-w-full max-h-full rounded-xl object-contain"
+                  onError={(e) => {
+                    e.currentTarget.src = '/product-placeholder.svg'
+                  }}
+                />
               )}
             </div>
           </div>

@@ -1,10 +1,12 @@
 import Head from 'next/head'
 import axios from 'axios'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import Masonry from 'react-masonry-css'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import BannerCarousel from '../../components/BannerCarouselMedia'
+import { getPlaceholderImageUrl } from '../../lib/media'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
 
 interface CategoryTranslation {
@@ -25,8 +27,10 @@ interface Category {
 }
 
 // @ts-ignore: нет типов для @egjs/react-grid
-export default function CategoriesPage({ categories }: { categories: Category[] }) {
+export default function CategoriesPage({ categories, locale: propLocale }: { categories: Category[]; locale?: string }) {
   const { t } = useTranslation('common')
+  const router = useRouter()
+  const locale = router.locale || propLocale || 'ru'
 
   // Такая же функция, как на главной, чтобы не было расхождений при перезагрузке
   const resolveMediaUrl = (url?: string | null) => {
@@ -116,12 +120,12 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
     return youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : null
   }
 
-  const renderMedia = (mediaUrl?: string | null, alt?: string) => {
-    if (!mediaUrl) return null
+  const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
+    const effectiveUrl = mediaUrl || getPlaceholderImageUrl({ type: 'category', id })
 
-    const youtubeId = extractYouTubeId(mediaUrl)
+    const youtubeId = extractYouTubeId(effectiveUrl)
     if (youtubeId) {
-      const youtubeThumb = getYouTubeThumbnail(mediaUrl)
+      const youtubeThumb = getYouTubeThumbnail(effectiveUrl)
       const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
       const params = [
         'autoplay=1',
@@ -170,7 +174,7 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
     }
 
     // Обычная обработка файла/изображения
-    const src = resolveMediaUrl(mediaUrl)
+    const src = resolveMediaUrl(effectiveUrl)
     if (!src) return null
 
     const normalized = src.split('?')[0].toLowerCase()
@@ -240,13 +244,17 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
                   style={{ height: cardHeight }}
                   className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-[var(--surface)]"
                 >
-                  {renderMedia(c.card_media_url, getLocalizedCategoryName(c.slug, c.name, t, c.translations))}
+                  {renderMedia(
+                    c.card_media_url,
+                    getLocalizedCategoryName(c.slug, c.name, t, c.translations, locale),
+                    c.id
+                  )}
                   <div className="absolute inset-0 bg-[var(--text-strong)]/20" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
                     <div className="text-center text-white drop-shadow">
-                      <h3 className="text-xl font-bold mb-1">{getLocalizedCategoryName(c.slug, c.name, t, c.translations)}</h3>
-                      {getLocalizedCategoryDescription(c.slug, c.description, t, c.translations) ? (
-                        <p className="text-sm opacity-90 line-clamp-2">{getLocalizedCategoryDescription(c.slug, c.description, t, c.translations)}</p>
+                      <h3 className="text-xl font-bold mb-1">{getLocalizedCategoryName(c.slug, c.name, t, c.translations, locale)}</h3>
+                      {getLocalizedCategoryDescription(c.slug, c.description, t, c.translations, locale) ? (
+                        <p className="text-sm opacity-90 line-clamp-2">{getLocalizedCategoryDescription(c.slug, c.description, t, c.translations, locale)}</p>
                       ) : null}
                       {c.products_count ? (
                         <p className="text-xs opacity-80 mt-2">{c.products_count} {t('products_count', 'товаров')}</p>
@@ -302,8 +310,8 @@ export async function getServerSideProps(ctx: any) {
         return sa - sb
       })
 
-    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories } }
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories, locale: ctx.locale ?? 'ru' } }
   } catch (e) {
-    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories: [] } }
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories: [], locale: ctx.locale ?? 'ru' } }
   }
 }

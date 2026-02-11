@@ -4,6 +4,7 @@ import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
+import { getPlaceholderImageUrl } from '../lib/media'
 
 interface Product {
   id: number
@@ -289,9 +290,18 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                   className="relative block w-full h-80 overflow-hidden bg-gray-100"
                 >
                   <img
-                    src={product.main_image_url || '/product-placeholder.svg'}
+                    src={
+                      product.main_image_url ||
+                      getPlaceholderImageUrl({ type: 'product', id: product.id })
+                    }
                     alt={product.name}
                     className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                    onError={(e) => {
+                      e.currentTarget.src = getPlaceholderImageUrl({
+                        type: 'product',
+                        id: `${product.id}-fallback`,
+                      })
+                    }}
                   />
                   {product.is_new && (
                     <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">

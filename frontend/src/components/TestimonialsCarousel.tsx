@@ -5,6 +5,7 @@ import Link from 'next/link'
 import api from '../lib/api'
 import { StarIcon } from '@heroicons/react/20/solid'
 import { SpeakerWaveIcon, SpeakerXMarkIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline'
+import { getPlaceholderImageUrl } from '../lib/media'
 
 declare global {
   interface Window {
@@ -905,8 +906,23 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   if (testimonials.length === 0) return null
 
   const renderMedia = (testimonial: Testimonial) => {
-    // Используем массив media
-    if (!testimonial.media || testimonial.media.length === 0) return null
+    // Используем массив media; если его нет — показываем placeholder
+    if (!testimonial.media || testimonial.media.length === 0) {
+      const placeholder = getPlaceholderImageUrl({
+        type: 'testimonial',
+        id: testimonial.id,
+      })
+      return (
+        <img
+          src={placeholder}
+          alt={t('testimonial_image_alt', `Изображение к отзыву от ${testimonial.author_name}`)}
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            e.currentTarget.src = '/product-placeholder.svg'
+          }}
+        />
+      )
+    }
     
     // Показываем только первый медиа элемент в карусели
     const firstMedia = testimonial.media[0]
@@ -1237,6 +1253,9 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                           src={testimonial.author_avatar_url}
                           alt={testimonial.author_name}
                           className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0 pointer-events-none"
+                          onError={(e) => {
+                            e.currentTarget.src = '/product-placeholder.svg'
+                          }}
                         />
                       )}
                       <div className="text-xs font-semibold text-gray-900 truncate pointer-events-none">
@@ -1250,6 +1269,9 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                         src={testimonial.author_avatar_url}
                         alt={testimonial.author_name}
                         className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                        onError={(e) => {
+                          e.currentTarget.src = '/product-placeholder.svg'
+                        }}
                       />
                     )}
                     <div className="text-xs font-semibold text-gray-900 truncate">

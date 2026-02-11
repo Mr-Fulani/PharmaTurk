@@ -3213,10 +3213,10 @@ class Banner(models.Model):
     """Баннер для главной страницы."""
     
     POSITION_CHOICES = [
-        ('main', _('Главный баннер (вверху страницы)')),
-        ('after_brands', _('После блока "Популярные бренды"')),
-        ('before_footer', _('Перед футером')),
-        ('after_popular_products', _('После популярных товаров')),
+        ('main', _('1 — Главный')),
+        ('after_brands', _('2 — Второй')),
+        ('before_footer', _('3 — Третий')),
+        ('after_popular_products', _('4 — Четвертый')),
     ]
     
     title = models.CharField(

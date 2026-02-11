@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
-import { resolveMediaUrl } from '../lib/media'
+import { resolveMediaUrl, getPlaceholderImageUrl } from '../lib/media'
 
 interface BannerMedia {
   id: number
@@ -38,6 +38,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   const [displayMedia, setDisplayMedia] = useState<BannerMedia[]>([])
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [fallbackToPicsumIds, setFallbackToPicsumIds] = useState<Record<number, boolean>>({})
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
 
@@ -95,6 +96,12 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
               hasLink: !!(media.link_text && media.link_url)
             })
           })
+        } else {
+          // Нет активных баннеров (все деактивированы в админке) — очищаем состояние,
+          // иначе останутся старые данные и деактивированный баннер «залипнет» на экране
+          setBanner(null)
+          setDisplayMedia([])
+          setActiveMediaId(null)
         }
       } catch (error: any) {
         console.error('Failed to fetch banners:', error)
@@ -235,7 +242,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
         ? media.id === activeMediaId
         : index === 0
     
-    const fullUrl = resolveMediaUrl(media.content_url)
+    const fullUrl = media.content_url ? resolveMediaUrl(media.content_url) : ''
     const embedUrl = media.content_type === 'video' ? getVideoEmbedUrl(fullUrl) : null
 
     const handleThumbnailClick = () => {
@@ -330,14 +337,43 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
         data-banner-item
         className={styles.item}
         style={{
-          backgroundImage: (media.content_type === 'image' || media.content_type === 'gif') 
-            ? `url(${fullUrl})` 
-            : 'none',
+          backgroundImage:
+            (media.content_type === 'image' || media.content_type === 'gif') && fullUrl
+              ? `url(${fullUrl})`
+              : 'none',
         }}
         onClick={index >= 1 ? handleThumbnailClick : handleLargeImageClick}
       >
+        {/* Изображение / GIF как <img>, чтобы отлавливать ошибки и показывать плейсхолдер */}
+        {(media.content_type === 'image' || media.content_type === 'gif') && (() => {
+          const isPicsum = !fullUrl || fallbackToPicsumIds[media.id]
+          return (
+            <img
+              src={
+                fullUrl ||
+                getPlaceholderImageUrl({
+                  type: 'banner',
+                  seed: `${position}-${media.id}-${Math.random().toString(16).slice(2, 6)}`,
+                  width: 1200,
+                  height: 400,
+                })
+              }
+              alt={title || banner?.title || 'Banner'}
+              className={isPicsum ? styles.itemPicsumPlaceholder : styles.itemImage}
+              onError={(e) => {
+                setFallbackToPicsumIds((prev) => ({ ...prev, [media.id]: true }))
+                e.currentTarget.src = getPlaceholderImageUrl({
+                  type: 'banner',
+                  seed: `${position}-${media.id}-fallback-${Math.random().toString(16).slice(2, 6)}`,
+                  width: 1200,
+                  height: 400,
+                })
+              }}
+            />
+          )
+        })()}
         {/* Видео контент */}
-        {media.content_type === 'video' && embedUrl && (
+        {media.content_type === 'video' && embedUrl && fullUrl && (
           <iframe
             src={embedUrl}
             className={styles.itemIframe}
@@ -345,7 +381,8 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
             allowFullScreen
           />
         )}
-        {media.content_type === 'video' && !embedUrl && (
+        {media.content_type === 'video' && !embedUrl && fullUrl && (
+          // Обычное видео (MP4/WebM из R2 или локального хранилища)
           <video
             autoPlay
             loop
@@ -355,6 +392,27 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
           >
             <source src={fullUrl} type={media.content_mime_type || 'video/mp4'} />
           </video>
+        )}
+        {media.content_type === 'video' && !fullUrl && (
+          // Нет валидного URL — показываем placeholder (только picsum)
+          <img
+            src={getPlaceholderImageUrl({
+              type: 'banner',
+              seed: `${position}-video-${media.id}-${Math.random().toString(16).slice(2, 6)}`,
+              width: 1200,
+              height: 400,
+            })}
+            alt={title || banner?.title || 'Banner'}
+            className={styles.itemPicsumPlaceholder}
+            onError={(e) => {
+              e.currentTarget.src = getPlaceholderImageUrl({
+                type: 'banner',
+                seed: `${position}-video-${media.id}-fallback-${Math.random().toString(16).slice(2, 6)}`,
+                width: 1200,
+                height: 400,
+              })
+            }}
+          />
         )}
 
         {/* Контент с текстом - показываем только на большой картинке и только если у медиа есть свои данные */}
@@ -409,6 +467,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   }
 
   if (!banner) {
+    // Нет баннеров (удалены или деактивированы в админке) — не показываем блок
     return null
   }
 

@@ -94,54 +94,44 @@ def cleanup_old_currency_logs(days_to_keep=30):
         return {'status': 'error', 'message': str(e)}
 
 
+def _normalize_media_path(path: str) -> str:
+    """Нормализация пути для сравнения: убрать лишние слэши, привести к единому виду."""
+    if not path or not isinstance(path, str):
+        return ""
+    p = path.strip("/").replace("//", "/")
+    return p
+
+
 def _collect_db_media_paths():
-    """Собрать все пути к медиа-файлам из БД (все модели с FileField/ImageField)."""
+    """
+    Собрать все пути к медиа-файлам из БД.
+    Динамически обходит все модели всех приложений, находит FileField/ImageField
+    и собирает пути. Это защищает от пропуска новых моделей/полей.
+    """
+    from django.apps import apps
     from django.db.models import FileField, ImageField
 
     paths = set()
-    models_to_scan = [
-        ("apps.catalog", "Product", "main_image_file"),
-        ("apps.catalog", "ProductImage", "image_file"),
-        ("apps.catalog", "Category", "card_media"),
-        ("apps.catalog", "Brand", "card_media"),
-        ("apps.catalog", "ClothingProduct", "main_image_file"),
-        ("apps.catalog", "ClothingProductImage", "image_file"),
-        ("apps.catalog", "ClothingVariant", "main_image_file"),
-        ("apps.catalog", "ClothingVariantImage", "image_file"),
-        ("apps.catalog", "ShoeProduct", "main_image_file"),
-        ("apps.catalog", "ShoeProductImage", "image_file"),
-        ("apps.catalog", "ShoeVariant", "main_image_file"),
-        ("apps.catalog", "ShoeVariantImage", "image_file"),
-        ("apps.catalog", "JewelryProduct", "main_image_file"),
-        ("apps.catalog", "JewelryProductImage", "image_file"),
-        ("apps.catalog", "JewelryVariant", "main_image_file"),
-        ("apps.catalog", "JewelryVariantImage", "image_file"),
-        ("apps.catalog", "ElectronicsProduct", "main_image_file"),
-        ("apps.catalog", "ElectronicsProductImage", "image_file"),
-        ("apps.catalog", "FurnitureProduct", "main_image_file"),
-        ("apps.catalog", "FurnitureVariant", "main_image_file"),
-        ("apps.catalog", "FurnitureVariantImage", "image_file"),
-        ("apps.catalog", "BookVariantImage", "image_file"),
-        ("apps.catalog", "BannerMedia", "image"),
-        ("apps.catalog", "BannerMedia", "video_file"),
-        ("apps.catalog", "BannerMedia", "gif_file"),
-        ("apps.users", "User", "avatar"),
-        ("apps.feedback", "Testimonial", "author_avatar"),
-        ("apps.feedback", "TestimonialMedia", "image"),
-        ("apps.feedback", "TestimonialMedia", "video_file"),
-    ]
-    from django.apps import apps
-    for app_label, model_name, field_name in models_to_scan:
-        try:
-            model = apps.get_model(app_label, model_name)
-            field = model._meta.get_field(field_name)
-            if isinstance(field, (FileField, ImageField)):
-                for obj in model.objects.only(field_name).iterator():
-                    val = getattr(obj, field_name)
+    seen = set()  # (model_label, field_name) для логирования
+
+    for model in apps.get_models():
+        for field in model._meta.get_fields():
+            if not isinstance(field, (FileField, ImageField)):
+                continue
+            key = (model._meta.label, field.name)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                manager = getattr(model, "_base_manager", model.objects)
+                for obj in manager.only(field.name).iterator(chunk_size=500):
+                    val = getattr(obj, field.name, None)
                     if val and getattr(val, "name", None):
-                        paths.add(val.name)
-        except (LookupError, Exception):
-            continue
+                        normalized = _normalize_media_path(val.name)
+                        if normalized:
+                            paths.add(normalized)
+            except Exception as e:
+                logger.warning("cleanup_orphaned_media: skip %s.%s: %s", model._meta.label, field.name, e)
     return paths
 
 
@@ -152,7 +142,7 @@ def _list_storage_files(storage, path=""):
         dirs, files = storage.listdir(path)
         for f in files:
             full = f"{path}/{f}" if path else f
-            collected.add(full)
+            collected.add(_normalize_media_path(full))
         for d in dirs:
             prefix = f"{path}/{d}" if path else d
             collected.update(_list_storage_files(storage, prefix))
@@ -161,9 +151,33 @@ def _list_storage_files(storage, path=""):
     return collected
 
 
+# Префиксы путей, которые НИКОГДА не удалять (AI-обработка, кэш, временные файлы).
+# Файлы здесь не привязаны к моделям Django, но нужны для работы.
+_PROTECTED_STORAGE_PREFIXES = (
+    "products/original/",
+    "products/processed/",
+    "products/thumbs/",
+    "temp/",
+)
+
+
+def _is_protected_path(path: str) -> bool:
+    """Проверить, что путь защищён от удаления."""
+    if not path:
+        return True
+    normalized = _normalize_media_path(path)
+    for prefix in _PROTECTED_STORAGE_PREFIXES:
+        if normalized.startswith(prefix) or path.startswith(prefix):
+            return True
+    return False
+
+
 @shared_task(name="catalog.cleanup_orphaned_media")
 def cleanup_orphaned_media():
-    """Удаление файлов из R2/локального хранилища, которых нет в БД."""
+    """
+    Удаление файлов из R2/локального хранилища, которых нет в БД.
+    Не удаляет: защищённые префиксы (AI, temp), нормализует пути для сравнения.
+    """
     from django.core.files.storage import default_storage
 
     try:
@@ -173,9 +187,27 @@ def cleanup_orphaned_media():
         except Exception as e:
             logger.warning("Could not list storage files (e.g. not using R2): %s", e)
             return {"status": "skipped", "message": "Storage listing not supported", "deleted": 0}
+
+        # Только те файлы в storage, которых нет в БД
         orphaned = storage_paths - db_paths
+        # Исключаем защищённые пути
+        to_delete = [p for p in orphaned if not _is_protected_path(p)]
+
+        logger.info(
+            "cleanup_orphaned_media: db_paths=%s, storage_paths=%s, orphaned=%s, protected_excluded=%s, to_delete=%s",
+            len(db_paths),
+            len(storage_paths),
+            len(orphaned),
+            len(orphaned) - len(to_delete),
+            len(to_delete),
+        )
+        if to_delete and len(to_delete) <= 20:
+            logger.info("cleanup_orphaned_media: will delete paths: %s", to_delete)
+        elif to_delete:
+            logger.info("cleanup_orphaned_media: will delete first 10 paths: %s", to_delete[:10])
+
         deleted = 0
-        for path in orphaned:
+        for path in to_delete:
             try:
                 default_storage.delete(path)
                 deleted += 1

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import api from '../lib/api'
 import { useEffect, useState, useCallback } from 'react'
 import { useCartStore } from '../store/cart'
-import { resolveMediaUrl } from '../lib/media'
+import { resolveMediaUrl, getPlaceholderImageUrl } from '../lib/media'
 
 interface CartItem {
   id: number
@@ -316,7 +316,9 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                   const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
                     ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
                     : null
-                  const resolvedImage = resolveMediaUrl(item.product_image_url)
+                  const resolvedImage = item.product_image_url
+                    ? resolveMediaUrl(item.product_image_url)
+                    : null
                   return (
                     <div
                       key={item.id}
@@ -332,12 +334,24 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           src={resolvedImage}
                           alt={item.product_name || `Товар #${item.product}`}
                           className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          onError={(e) => {
+                            e.currentTarget.src = getPlaceholderImageUrl({
+                              type: 'product',
+                              id: item.product || item.id,
+                            })
+                          }}
                         />
                       ) : (
                         <img
-                          src="/product-placeholder.svg"
+                          src={getPlaceholderImageUrl({
+                            type: 'product',
+                            id: item.product || item.id,
+                          })}
                           alt="No image"
                           className="h-full w-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.src = '/product-placeholder.svg'
+                          }}
                         />
                       )}
                     </Link>

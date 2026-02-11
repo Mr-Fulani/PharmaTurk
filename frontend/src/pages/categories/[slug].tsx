@@ -1432,7 +1432,7 @@ export default function CategoryPage({
                         oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                         imageUrl={product.main_image_url || product.main_image}
                         videoUrl={product.video_url}
-                        badge={product.is_featured ? 'Хит' : null}
+                        badge={product.is_featured ? t('product_featured', 'Хит') : null}
                         viewMode={viewMode}
                         description={product.description}
                         href={productHref}

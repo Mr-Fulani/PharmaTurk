@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.core.exceptions import ValidationError
+from django.db.models import Case, When, Value, IntegerField
 from django.utils.html import format_html, format_html_join
 from django.utils.translation import gettext_lazy as _
 
@@ -1518,11 +1519,30 @@ class BannerMediaInline(admin.StackedInline):
 @admin.register(MarketingBanner)
 class BannerAdmin(admin.ModelAdmin):
     """Админка для баннеров."""
-    list_display = ('title', 'position', 'get_media_count', 'is_active', 'sort_order', 'created_at')
+    list_display = ('title', 'get_position_display', 'get_media_count', 'is_active', 'sort_order', 'created_at')
     list_filter = ('position', 'is_active', 'created_at')
     search_fields = ('title',)
-    ordering = ('position', 'sort_order', '-created_at')
+    ordering = ('sort_order', '-created_at')
     inlines = [BannerMediaInline]
+
+    def get_queryset(self, request):
+        """Сортировка по позиции: 1—Главный, 2—Второй, 3—Третий, 4—Четвертый. Не вызываем super(),
+        т.к. родитель применяет order_by до аннотации — строим queryset сами."""
+        qs = self.model._default_manager.get_queryset()
+        return qs.annotate(
+            position_order=Case(
+                When(position='main', then=Value(1)),
+                When(position='after_brands', then=Value(2)),
+                When(position='before_footer', then=Value(3)),
+                When(position='after_popular_products', then=Value(4)),
+                default=Value(99),
+                output_field=IntegerField()
+            )
+        )
+
+    def get_ordering(self, request):
+        """Сортировка по позиции: 1—Главный, 2—Второй, 3—Третий, 4—Четвертый."""
+        return ('position_order', 'sort_order', '-created_at')
     
     fieldsets = (
         (None, {
@@ -1535,6 +1555,12 @@ class BannerAdmin(admin.ModelAdmin):
         }),
     )
     
+    def get_position_display(self, obj):
+        """Отображение позиции. Сортировка по position_order (1,2,3,4)."""
+        return obj.get_position_display()
+    get_position_display.short_description = _("Позиция баннера")
+    get_position_display.admin_order_field = 'position_order'
+
     def get_media_count(self, obj):
         """Количество медиа-файлов в баннере."""
         if obj.pk:
@@ -1642,13 +1668,21 @@ class BannerMediaAdmin(admin.ModelAdmin):
 
 @admin.register(MarketingBrand)
 class MarketingBrandAdmin(admin.ModelAdmin):
-    """Админка для карточек популярных брендов (раздел «Маркетинг»)."""
-    list_display = ('name', 'primary_category_slug', 'card_media_preview', 'is_active', 'created_at')
+    """Админка для карточек популярных брендов (раздел «Маркетинг»).
+    Редактирует те же записи, что и «Бренды» (proxy-модель). Ориентирована на
+    медиа карточки. Используйте list_filter «С медиа» для фокуса на брендах с карточками.
+    """
+    list_display = ('name', 'primary_category_slug', 'card_media_preview', 'has_card_media', 'is_active', 'created_at')
     list_filter = ('is_active', 'primary_category_slug', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('name',)
     prepopulated_fields = {'slug': ('name',)}
     readonly_fields = ('card_media_preview',)
+
+    def has_card_media(self, obj):
+        return bool(obj.card_media or (obj.card_media_external_url or "").strip())
+    has_card_media.boolean = True
+    has_card_media.short_description = _("С медиа")
 
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),

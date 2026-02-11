@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { resolveMediaUrl } from '../lib/media'
+import { getPlaceholderImageUrl } from '../lib/media'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
@@ -322,6 +322,10 @@ export default function Home({ brands, categories }: HomePageProps) {
           >
             {brands.map((brand, idx) => {
               const cardHeight = tileHeights[idx % tileHeights.length]
+              const mediaUrl =
+                brand.card_media_url ||
+                brand.logo ||
+                getPlaceholderImageUrl({ type: 'brand', id: brand.id })
               return (
                 <div
                   key={brand.id}
@@ -329,7 +333,7 @@ export default function Home({ brands, categories }: HomePageProps) {
                   style={{ height: cardHeight }}
                   className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
                 >
-                  {renderMedia(brand.card_media_url || brand.logo, brand.name)}
+                  {renderMedia(mediaUrl, brand.name)}
                   <div className="absolute inset-0 bg-black/35" />
                   <div className="absolute inset-0 flex items-center justify-center p-6 z-10">
                     <div className="text-center text-white drop-shadow">
@@ -389,6 +393,9 @@ export default function Home({ brands, categories }: HomePageProps) {
           >
             {preparedCategories.map((category, idx) => {
               const cardHeight = tileHeights[idx % tileHeights.length]
+              const mediaUrl =
+                category.card_media_url ||
+                getPlaceholderImageUrl({ type: 'category', id: category.id })
               return (
               <div
                 key={category.id}
@@ -396,16 +403,19 @@ export default function Home({ brands, categories }: HomePageProps) {
                 style={{ height: cardHeight }}
                 className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
               >
-                  {renderMedia(category.card_media_url, getLocalizedCategoryName(category.slug, category.name, t, category.translations))}
+                  {renderMedia(
+                    mediaUrl,
+                    getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)
+                  )}
                   <div className="absolute inset-0 bg-black/35" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
                     <div className="text-center text-white drop-shadow">
                     <h3 className="text-xl font-bold mb-1">
-                      {getLocalizedCategoryName(category.slug, category.name, t, category.translations)}
+                      {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
                     </h3>
-                    {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations) && (
+                    {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale) && (
                       <p className="text-sm opacity-90">
-                        {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations)}
+                        {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale)}
                       </p>
                     )}
                   </div>

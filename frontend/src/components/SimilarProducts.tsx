@@ -151,6 +151,26 @@ export default function SimilarProducts({
 
   const isBaseProduct = ['medicines', 'supplements', 'medical-equipment', 'furniture', 'tableware', 'accessories', 'jewelry', 'underwear', 'headwear'].includes(productType)
 
+  const translateBadge = (reason: string): string => {
+    if (!reason?.trim()) return ''
+    const trimmed = reason.trim()
+    if (trimmed === 'Рекомендуем') return t('badge_recommend', 'Рекомендуем')
+    if (trimmed === 'Очень похожий стиль') return t('badge_similar_style', 'Очень похожий стиль')
+    if (trimmed === 'Похожий дизайн') return t('badge_similar_design', 'Похожий дизайн')
+    const brandMatch = trimmed.match(/^Бренд\s+(.+)$/)
+    if (brandMatch) return t('badge_brand', { brand: brandMatch[1], defaultValue: `Бренд ${brandMatch[1]}` })
+    const parts = trimmed.split(/\s*,\s*/).map((p) => {
+      const p2 = p.trim()
+      if (p2 === 'Рекомендуем') return t('badge_recommend', 'Рекомендуем')
+      if (p2 === 'Очень похожий стиль') return t('badge_similar_style', 'Очень похожий стиль')
+      if (p2 === 'Похожий дизайн') return t('badge_similar_design', 'Похожий дизайн')
+      const m = p2.match(/^Бренд\s+(.+)$/)
+      if (m) return t('badge_brand', { brand: m[1], defaultValue: `Бренд ${m[1]}` })
+      return p2
+    })
+    return parts.join(', ')
+  }
+
   return (
     <div className="mt-8">
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
@@ -181,7 +201,7 @@ export default function SimilarProducts({
                 currency={displayCurrency}
                 oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                 imageUrl={product.main_image_url || product.main_image}
-                badge={reasons[product.id] || (product.is_featured ? t('product_featured', 'Хит') : null)}
+                badge={reasons[product.id] ? translateBadge(reasons[product.id]) : (product.is_featured ? t('product_featured', 'Хит') : null)}
                 productType={product.product_type || productType}
                 isBaseProduct={isBaseProduct}
               />

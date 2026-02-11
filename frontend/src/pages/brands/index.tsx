@@ -6,7 +6,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Masonry from 'react-masonry-css'
 import BannerCarousel from '../../components/BannerCarouselMedia'
-import { resolveMediaUrl } from '../../lib/media'
+import { resolveMediaUrl, getPlaceholderImageUrl } from '../../lib/media'
 import { getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../../lib/i18n'
 
 interface Brand {
@@ -40,13 +40,13 @@ const mapCategoryToRouteSlug = (slug?: string | null) => {
   return normalized || 'medicines'
 }
 
-const renderMedia = (mediaUrl?: string | null, alt?: string) => {
-  if (!mediaUrl) return null
+const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
+  const effectiveUrl = mediaUrl || getPlaceholderImageUrl({ type: 'brand', id })
 
-  const youtubeId = extractYouTubeId(mediaUrl)
+  const youtubeId = extractYouTubeId(effectiveUrl)
   if (youtubeId) {
-    const youtubeThumb = getYouTubeThumbnail(mediaUrl)
-    const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
+    const youtubeThumb = getYouTubeThumbnail(effectiveUrl)
+      const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
     const params = [
       'autoplay=1',
       'mute=1',
@@ -93,7 +93,7 @@ const renderMedia = (mediaUrl?: string | null, alt?: string) => {
     )
   }
 
-  const src = resolveMediaUrl(mediaUrl)
+  const src = resolveMediaUrl(effectiveUrl)
   if (!src) return null
 
   const normalized = src.split('?')[0].toLowerCase()
@@ -183,7 +183,7 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
                   style={{ height: cardHeight }}
                   className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-gray-900/10"
                 >
-                  {renderMedia(brand.card_media_url || brand.logo, brand.name)}
+                  {renderMedia(brand.card_media_url || brand.logo, brand.name, brand.id)}
                   <div className="absolute inset-0 bg-black/35" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
                     <div className="text-center text-white drop-shadow">

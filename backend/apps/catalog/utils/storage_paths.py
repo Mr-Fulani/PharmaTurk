@@ -60,32 +60,26 @@ def get_product_image_upload_path(instance, filename):
 
 
 def get_category_card_upload_path(instance, filename):
-    """Динамический upload_to для Category.card_media."""
-    category_slug = _normalize_slug(getattr(instance, "slug", None), "category")
+    """
+    Динамический upload_to для Category.card_media.
+    Папка берётся из category_type.slug или category.slug — без хардкода,
+    чтобы новые типы категорий автоматически получали свою папку.
+    """
+    category_slug = _normalize_slug(getattr(instance, "slug", None), "")
     category_type = getattr(instance, "category_type", None)
-    type_slug = (getattr(category_type, "slug", "") or "").lower()
+    type_slug = _normalize_slug(getattr(category_type, "slug", None), "")
     media_folder = _media_folder_from_filename(filename)
 
-    if "medic" in type_slug or "medic" in category_slug or type_slug == "medicines":
-        base = "medicines"
-    elif "supplement" in type_slug or "supplement" in category_slug or "bad" in category_slug:
-        base = "supplements"
-    elif "equipment" in type_slug or "equipment" in category_slug or "medical-equipment" in type_slug:
-        base = "medical-equipment"
-    elif type_slug == "clothing" or "clothing" in category_slug:
-        base = "clothing"
-    elif type_slug == "shoes" or "shoes" in category_slug:
-        base = "shoes"
-    elif type_slug == "jewelry" or "jewelry" in category_slug:
-        base = "jewelry"
-    elif type_slug == "electronics" or "electronics" in category_slug:
-        base = "electronics"
-    elif type_slug == "furniture" or "furniture" in category_slug:
-        base = "furniture"
-    else:
-        base = "other"
+    # Приоритет: тип категории → slug категории → slug родителя → "other"
+    base = type_slug or category_slug
+    if not base and getattr(instance, "parent", None):
+        parent = instance.parent
+        base = _normalize_slug(getattr(parent, "slug", None), "") or _normalize_slug(
+            getattr(getattr(parent, "category_type", None), "slug", None), ""
+        )
+    base = (base or "other").lower()
 
-    readable_name = _build_readable_filename([category_slug, "card"], filename, "category-card")
+    readable_name = _build_readable_filename([category_slug or base, "card"], filename, "category-card")
     return f"marketing/cards/categories/{base}/{media_folder}/{readable_name}"
 
 
