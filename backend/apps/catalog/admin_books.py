@@ -132,7 +132,7 @@ class BookVariantInline(admin.TabularInline):
 @admin.register(ProductBooks)
 class ProductBooksAdmin(admin.ModelAdmin):
     """Админка для товаров-книг."""
-    actions = ["run_ai", "run_ai_auto_apply"]
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = [
         'name', 'authors_list', 'category', 'price', 
         'old_price', 'rating', 'is_available', 'is_bestseller',
@@ -260,6 +260,17 @@ class ProductBooksAdmin(admin.ModelAdmin):
             level=messages.SUCCESS,
         )
     run_ai_auto_apply.short_description = _("Полная AI обработка + авто-применение")
+
+    def run_find_merge_duplicates(self, request, queryset):
+        """Запуск поиска и объединения дубликатов по всему каталогу."""
+        from apps.scrapers.tasks import find_and_merge_duplicates
+        find_and_merge_duplicates.delay()
+        self.message_user(
+            request,
+            _("Запущен поиск и объединение дубликатов по всему каталогу. Результаты будут в логах Celery."),
+            level=messages.SUCCESS,
+        )
+    run_find_merge_duplicates.short_description = _("Поиск и объединение дубликатов")
 
     def save_model(self, request, obj, form, change):
         """Автоматически устанавливаем product_type='books'."""

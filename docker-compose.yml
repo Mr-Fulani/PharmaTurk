@@ -30,13 +30,14 @@ services:
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=yourStrongPassword123!
-      # Снижаем heap для Mac/мало RAM (по умолчанию 1g — OOM)
-      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      # Heap для Mac: 768m — если OOM, увеличьте Memory в Docker Desktop (Settings → Resources)
+      - OPENSEARCH_JAVA_OPTS=-Xms768m -Xmx768m
     ports:
       - "9200:9200"
       - "9600:9600"
     volumes:
       - opensearch_data:/usr/share/opensearch/data
+    mem_limit: 1.5g
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -91,6 +92,7 @@ services:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
     entrypoint: ["bash", "/app/docker-entrypoint.sh"]
+    mem_limit: 1.5g
 
   frontend:
     build:
@@ -152,7 +154,8 @@ services:
       R2_USE_SSL: ${R2_USE_SSL:-true}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
-    command: bash -c "poetry run celery -A config worker -Q celery,recsys --loglevel=info"
+    command: bash -c "poetry run celery -A config worker -Q celery,recsys --loglevel=info --concurrency=4"
+    mem_limit: 2g
 
   celery_ai:
     image: pharmaturk-backend
@@ -187,6 +190,7 @@ services:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
     command: bash -c "poetry run celery -A config worker -Q ai -n ai_worker@%h --loglevel=info --concurrency=2"
+    mem_limit: 2g
 
   celerybeat:
     build:

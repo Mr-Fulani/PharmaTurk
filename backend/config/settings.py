@@ -142,40 +142,29 @@ CELERY_TASK_TIME_LIMIT = 60 * 10
 CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},
     "apps.recommendations.tasks.*": {"queue": "recsys"},
+    "currency.*": {"queue": "celery"},
 }
+# Расписание Celery Beat. Подробности — см. CELERY_TASKS.md в корне проекта.
 CELERY_BEAT_SCHEDULE = {
-    # Обновление цен каждые 4-6 часов
-    "refresh-prices": {
-        "task": "apps.catalog.tasks.refresh_prices",
-        "schedule": 60 * 60 * 4,  # 4 часа
+    # Валюта: обновление курсов каждые 4 часа
+    "currency-update-rates": {
+        "task": "currency.update_rates",
+        "schedule": 60 * 60 * 4,
     },
-    # Обновление наличия каждые 2 часа
-    "refresh-stock": {
-        "task": "apps.catalog.tasks.refresh_stock",
-        "schedule": 60 * 60 * 2,  # 2 часа
+    # Валюта: пересчёт цен товаров по курсам — раз в день
+    "currency-update-prices": {
+        "task": "currency.update_product_prices",
+        "schedule": 60 * 60 * 24,
+        "kwargs": {"batch_size": 200},
     },
-    # Синхронизация товаров из API парсера каждые 6 часов
-    "vapi-sync-products": {
-        "task": "apps.vapi.tasks.pull_products",
-        "schedule": 60 * 60 * 6,  # 6 часов
-        "args": (1, 100),  # первая страница, 100 товаров
-    },
-    # Синхронизация справочников каждый день в 3:00
-    "vapi-sync-categories": {
-        "task": "apps.vapi.tasks.sync_categories_and_brands",
-        "schedule": 60 * 60 * 24,  # 24 часа
-    },
-    # Полная синхронизация каталога каждые 3 дня в 2:00
-    "vapi-full-sync": {
-        "task": "apps.vapi.tasks.full_catalog_sync",
-        "schedule": 60 * 60 * 24 * 3,  # 3 дня
-        "args": (100,),  # максимум 100 страниц
-    },
-    # Запуск всех активных парсеров каждые 12 часов
-    "run-all-scrapers": {
-        "task": "apps.scrapers.tasks.run_all_active_scrapers",
-        "schedule": 60 * 60 * 12,  # 12 часов
-    },
+    # refresh-stock: заглушка — отключено, доработаем после парсеров
+    # "refresh-stock": {"task": "apps.catalog.tasks.refresh_stock", "schedule": 60 * 60 * 2},
+    # VAPI: отключено — не используется. Включить при работе с VAPI API.
+    # "vapi-sync-products": {"task": "apps.vapi.tasks.pull_products", "schedule": 60*60*6, "args": (1, 100)},
+    # "vapi-sync-categories": {"task": "apps.vapi.tasks.sync_categories_and_brands", "schedule": 60*60*24},
+    # "vapi-full-sync": {"task": "apps.vapi.tasks.full_catalog_sync", "schedule": 60*60*24*3, "args": (100,)},
+    # run-all-scrapers: отключено, доработаем после парсеров
+    # "run-all-scrapers": {"task": "apps.scrapers.tasks.run_all_active_scrapers", "schedule": 60 * 60 * 12},
     # Очистка старых сессий парсинга каждую неделю
     "cleanup-scraper-sessions": {
         "task": "apps.scrapers.tasks.cleanup_old_sessions",

@@ -529,11 +529,22 @@ class RunAIActionMixin:
         )
     run_ai_auto_apply.short_description = _("Полная AI обработка + авто-применение")
 
+    def run_find_merge_duplicates(self, request, queryset):
+        """Запуск поиска и объединения дубликатов по всему каталогу."""
+        from apps.scrapers.tasks import find_and_merge_duplicates
+        find_and_merge_duplicates.delay()
+        self.message_user(
+            request,
+            _("Запущен поиск и объединение дубликатов по всему каталогу. Результаты будут в логах Celery."),
+            level=messages.SUCCESS,
+        )
+    run_find_merge_duplicates.short_description = _("Поиск и объединение дубликатов")
+
 
 class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Базовый админ для товаров (используется прокси)."""
     form = ProductForm
-    actions = ["run_ai", "run_ai_auto_apply"]
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = (
         'name', 'slug', 'product_type', 'category', 'brand', 'price', 'currency',
         'availability_status', 'country_of_origin', 'is_active', 'created_at'
@@ -921,7 +932,7 @@ class ClothingVariantAdmin(admin.ModelAdmin):
 @admin.register(ClothingProduct)
 class ClothingProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров одежды."""
-    actions = ["run_ai"]
+    actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_featured', 'category', 'brand', 'season', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material')
@@ -1243,7 +1254,7 @@ class ShoeVariantAdmin(admin.ModelAdmin):
 @admin.register(ShoeProduct)
 class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров обуви."""
-    actions = ["run_ai"]
+    actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_featured', 'category', 'brand', 'heel_height', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material')
@@ -1428,7 +1439,7 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
 @admin.register(ElectronicsProduct)
 class ElectronicsProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров электроники."""
-    actions = ["run_ai"]
+    actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_available', 'is_featured', 'category', 'brand', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'model')
@@ -1474,7 +1485,7 @@ class FurnitureVariantAdmin(admin.ModelAdmin):
 @admin.register(FurnitureProduct)
 class FurnitureProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров мебели."""
-    actions = ["run_ai"]
+    actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_featured', 'category', 'brand', 'furniture_type', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'furniture_type')
