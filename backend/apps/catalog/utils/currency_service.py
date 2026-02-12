@@ -9,6 +9,31 @@ from ..currency_models import CurrencyRate, CurrencyUpdateLog
 
 logger = logging.getLogger(__name__)
 
+# Символы → коды валют (для lookup курсов)
+_CURRENCY_SYMBOL_MAP = {
+    "₽": "RUB",
+    "руб": "RUB",
+    "руб.": "RUB",
+    "₺": "TRY",
+    "tl": "TRY",
+    "$": "USD",
+    "€": "EUR",
+    "₸": "KZT",
+    "тг": "KZT",
+    "тнг": "KZT",
+}
+
+
+def _normalize_currency_for_rate(currency: str) -> str:
+    """Нормализует валюту для поиска курса: ₽→RUB, руб→RUB и т.п."""
+    if not currency:
+        return currency
+    s = str(currency).strip()
+    for symbol, code in _CURRENCY_SYMBOL_MAP.items():
+        if symbol.lower() in s.lower() or s == symbol:
+            return code
+    return s.upper() if len(s) == 3 else s
+
 
 class CurrencyRateService:
     """Сервис для получения и обновления курсов валют"""
@@ -163,6 +188,8 @@ class CurrencyRateService:
         return False, f"All sources failed. Last error: {last_error}"
     
     def get_rate(self, from_currency: str, to_currency: str) -> Optional[Decimal]:
+        from_currency = _normalize_currency_for_rate(from_currency or "")
+        to_currency = _normalize_currency_for_rate(to_currency or "")
         cache_key = f'rate_{from_currency}_{to_currency}'
         try:
             cached_rate = cache.get(cache_key)

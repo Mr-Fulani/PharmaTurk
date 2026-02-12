@@ -1,9 +1,13 @@
 """Админ-интерфейс для управления парсерами."""
 
+from django import forms
 from django.contrib import admin
+from django.core.exceptions import ValidationError
+from django.db import models
 from django.utils.html import format_html
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from django.contrib import messages
 from django.http import HttpResponseRedirect
 
@@ -17,6 +21,24 @@ from .models import (
     SiteScraperTask,
 )
 from .tasks import run_scraper_task
+
+
+class InstagramScraperTaskForm(forms.ModelForm):
+    """Форма задачи Instagram с проверкой: указан post_url или username."""
+
+    class Meta:
+        model = InstagramScraperTask
+        fields = "__all__"
+
+    def clean(self):
+        cleaned = super().clean()
+        post_url = cleaned.get("post_url") or ""
+        username = (cleaned.get("instagram_username") or "").strip()
+        if not post_url and not username:
+            raise ValidationError(
+                _("Укажите либо ссылку на пост (Ссылка на пост), либо Instagram username.")
+            )
+        return cleaned
 
 
 @admin.register(ScraperConfig)
@@ -677,8 +699,10 @@ class ScrapedProductLogAdmin(admin.ModelAdmin):
 class InstagramScraperTaskAdmin(admin.ModelAdmin):
     """Админ для задач парсинга Instagram."""
 
+    form = InstagramScraperTaskForm
+
     list_display = [
-        "instagram_username",
+        "source_display",
         "category",
         "status_badge",
         "max_posts",
@@ -688,15 +712,15 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
         "actions_column",
     ]
     list_filter = ["status", "category", "created_at"]
-    search_fields = ["instagram_username", "error_message"]
+    search_fields = ["instagram_username", "post_url", "error_message"]
     ordering = ["-created_at"]
 
     fieldsets = [
         (
             "Параметры парсинга",
             {
-                "fields": ["instagram_username", "category", "max_posts"],
-                "description": "Введите username Instagram аккаунта (без @), выберите категорию и укажите количество постов",
+                "fields": ["post_url", "instagram_username", "category", "max_posts"],
+                "description": "Укажите либо ссылку на пост (парсинг одного поста), либо username профиля и количество постов.",
             },
         ),
         (
@@ -768,6 +792,47 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
 
     duration_display.short_description = "Длительность"
 
+    def source_display(self, obj):
+        """Отображает источник: ссылка на пост или @username."""
+        if obj.post_url:
+            short = obj.post_url[:50] + "…" if len(obj.post_url) > 50 else obj.post_url
+            return format_html('<span title="{}">Пост: {}</span>', obj.post_url, short)
+        return format_html("@{}", obj.instagram_username or "—")
+
+    source_display.short_description = "Источник"
+
+    def _build_instagram_cmd(self, task, scraper_config):
+        """Собирает аргументы для run_instagram_scraper: post_url или username + max_posts."""
+        cmd = [
+            "poetry",
+            "run",
+            "python",
+            "manage.py",
+            "run_instagram_scraper",
+            "--category",
+            task.category,
+        ]
+        if task.post_url:
+            cmd.extend(["--post-url", task.post_url])
+        else:
+            cmd.extend(["--username", task.instagram_username or ""])
+            cmd.extend(["--max-posts", str(task.max_posts)])
+        if (
+            scraper_config
+            and scraper_config.scraper_username
+            and scraper_config.scraper_password
+        ):
+            cmd.extend(["--login", scraper_config.scraper_username])
+            cmd.extend(["--password", scraper_config.scraper_password])
+        return cmd
+
+    def _task_label(self, task):
+        """Подпись задачи для сообщений."""
+        if task.post_url:
+            s = task.post_url[:40] + "…" if len(task.post_url) > 40 else task.post_url
+            return f"пост {s}"
+        return f"@{task.instagram_username}"
+
     def run_instagram_scraping(self, request, queryset):
         """Действие: запустить парсинг для выбранных задач."""
         import subprocess
@@ -780,33 +845,16 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
             parser_class="instagram", is_enabled=True
         ).first()
 
-        for task in queryset.filter(status="pending"):
+        valid_tasks = queryset.filter(status="pending").filter(
+            models.Q(post_url__isnull=False) | models.Q(instagram_username__iregex=r".+")
+        )
+        for task in valid_tasks:
             try:
                 task.status = "running"
                 task.started_at = timezone.now()
                 task.save()
 
-                cmd = [
-                    "poetry",
-                    "run",
-                    "python",
-                    "manage.py",
-                    "run_instagram_scraper",
-                    "--username",
-                    task.instagram_username,
-                    "--category",
-                    task.category,
-                    "--max-posts",
-                    str(task.max_posts),
-                ]
-
-                if (
-                    scraper_config
-                    and scraper_config.scraper_username
-                    and scraper_config.scraper_password
-                ):
-                    cmd.extend(["--login", scraper_config.scraper_username])
-                    cmd.extend(["--password", scraper_config.scraper_password])
+                cmd = self._build_instagram_cmd(task, scraper_config)
 
                 # Запускаем команду парсинга
                 result = subprocess.run(
@@ -834,17 +882,17 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
                 if result.returncode == 0:
                     task.status = "completed"
                     messages.success(
-                        request, f"Парсинг @{task.instagram_username} завершен успешно"
+                        request, f"Парсинг {self._task_label(task)} завершен успешно"
                     )
                 else:
                     task.status = "failed"
                     task.error_message = result.stderr
-                    messages.error(request, f"Ошибка парсинга @{task.instagram_username}")
+                    messages.error(request, f"Ошибка парсинга {self._task_label(task)}")
 
             except subprocess.TimeoutExpired:
                 task.status = "failed"
                 task.error_message = "Превышен таймаут выполнения (10 минут)"
-                messages.error(request, f"Таймаут парсинга @{task.instagram_username}")
+                messages.error(request, f"Таймаут парсинга {self._task_label(task)}")
             except Exception as e:
                 task.status = "failed"
                 task.error_message = str(e)
@@ -867,8 +915,11 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
             parser_class="instagram", is_enabled=True
         ).first()
 
-        # Работаем с любыми задачами, кроме running
-        for task in queryset.exclude(status="running"):
+        # Работаем с любыми задачами, кроме running; только с заданным post_url или username
+        valid_tasks = queryset.exclude(status="running").filter(
+            models.Q(post_url__isnull=False) | models.Q(instagram_username__iregex=r".+")
+        )
+        for task in valid_tasks:
             try:
                 # Сбрасываем статус и результаты
                 task.status = "running"
@@ -881,27 +932,7 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
                 task.error_message = ""
                 task.save()
 
-                cmd = [
-                    "poetry",
-                    "run",
-                    "python",
-                    "manage.py",
-                    "run_instagram_scraper",
-                    "--username",
-                    task.instagram_username,
-                    "--category",
-                    task.category,
-                    "--max-posts",
-                    str(task.max_posts),
-                ]
-
-                if (
-                    scraper_config
-                    and scraper_config.scraper_username
-                    and scraper_config.scraper_password
-                ):
-                    cmd.extend(["--login", scraper_config.scraper_username])
-                    cmd.extend(["--password", scraper_config.scraper_password])
+                cmd = self._build_instagram_cmd(task, scraper_config)
 
                 # Запускаем команду парсинга
                 result = subprocess.run(
@@ -929,19 +960,19 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
                 if result.returncode == 0:
                     task.status = "completed"
                     messages.success(
-                        request, f"Повторный парсинг @{task.instagram_username} завершен успешно"
+                        request, f"Повторный парсинг {self._task_label(task)} завершен успешно"
                     )
                 else:
                     task.status = "failed"
                     task.error_message = result.stderr
                     messages.error(
-                        request, f"Ошибка повторного парсинга @{task.instagram_username}"
+                        request, f"Ошибка повторного парсинга {self._task_label(task)}"
                     )
 
             except subprocess.TimeoutExpired:
                 task.status = "failed"
                 task.error_message = "Превышен таймаут выполнения (10 минут)"
-                messages.error(request, f"Таймаут парсинга @{task.instagram_username}")
+                messages.error(request, f"Таймаут парсинга {self._task_label(task)}")
             except Exception as e:
                 task.status = "failed"
                 task.error_message = str(e)

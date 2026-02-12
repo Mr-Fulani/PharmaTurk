@@ -45,6 +45,7 @@ def _get_product_admin_url(product):
 
 @admin.register(AIProcessingLog)
 class AIProcessingLogAdmin(admin.ModelAdmin):
+    change_list_template = "admin/ai/aiprocessinglog/change_list.html"
     list_display = (
         "id",
         "product_link",

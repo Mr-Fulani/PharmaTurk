@@ -9,10 +9,12 @@ from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from api import seo as seo_views
+from apps.ai.admin_views import ai_manual_tasks_view
 
 
 urlpatterns = [
-    # Админка
+    # Админка: ручной запуск AI-задач (до основного admin, чтобы не перехватывалось)
+    path("admin/ai/manual-tasks/", ai_manual_tasks_view, name="ai_manual_tasks"),
     path("admin/", admin.site.urls),
     # SEO
     path("robots.txt", seo_views.robots_txt, name="robots"),

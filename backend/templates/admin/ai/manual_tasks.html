@@ -1,0 +1,76 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {% trans "PharmaTurk Admin" %}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans "Home" %}</a>
+  &rsaquo; <a href="{% url 'admin:ai_aiprocessinglog_changelist' %}">AI</a>
+  &rsaquo; Задачи вручную
+  &rsaquo; {{ title }}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+<p style="color: #666; margin-bottom: 24px;">{{ subtitle }}</p>
+
+{% if messages %}
+<ul class="messagelist">
+  {% for message in messages %}
+  <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<div style="max-width: 600px;">
+  <div style="background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+    <h3 style="margin-top: 0;">Категоризация товаров без категории</h3>
+    <p style="color: #666; font-size: 13px;">Находит товары без категории и отправляет в AI для определения категории. Результаты — в логах AI (без авто-применения).</p>
+    <form method="post" style="margin-top: 12px;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="uncategorized">
+      <label>Лимит: <input type="number" name="limit" value="50" min="1" max="200" style="width: 60px;"></label>
+      <button type="submit" class="button">Запустить</button>
+    </form>
+  </div>
+
+  <div style="background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+    <h3 style="margin-top: 0;">Генерация описаний для товаров без описания</h3>
+    <p style="color: #666; font-size: 13px;">Товары с категорией, но без описания. AI сгенерирует описание. Результаты — в логах AI.</p>
+    <form method="post" style="margin-top: 12px;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="without_description">
+      <label>Лимит: <input type="number" name="limit" value="50" min="1" max="200" style="width: 60px;"></label>
+      <button type="submit" class="button">Запустить</button>
+    </form>
+  </div>
+
+  <div style="background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+    <h3 style="margin-top: 0;">Повтор неудачных AI-обработок</h3>
+    <p style="color: #666; font-size: 13px;">Повторяет обработку товаров, у которых AI вернул ошибку за последние 7 дней.</p>
+    <form method="post" style="margin-top: 12px;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="retry_failed">
+      <label>Лимит: <input type="number" name="limit" value="30" min="1" max="100" style="width: 60px;"></label>
+      <button type="submit" class="button">Запустить</button>
+    </form>
+  </div>
+
+  <div style="background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 20px;">
+    <h3 style="margin-top: 0;">Очистка старых логов AI</h3>
+    <p style="color: #666; font-size: 13px;">Удаляет завершённые/одобренные логи старше N дней. <strong>Не тратит токены.</strong> Помогает не засорять БД.</p>
+    <form method="post" style="margin-top: 12px;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="cleanup_logs">
+      <label>Удалить логи старше: <input type="number" name="days" value="90" min="7" max="365" style="width: 60px;"> дней</label>
+      <button type="submit" class="button">Очистить</button>
+    </form>
+  </div>
+</div>
+
+<p style="margin-top: 24px; font-size: 12px; color: #999;">
+  Задачи ставятся в очередь Celery. Прогресс — в логах воркера <code>celery_ai</code> и в разделе <a href="{% url 'admin:ai_aiprocessinglog_changelist' %}">Логи AI</a>.
+</p>
+{% endblock %}

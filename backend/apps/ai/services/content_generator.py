@@ -121,11 +121,16 @@ class ContentGenerator:
             # 2. Анализ изображений (Vision API)
             image_analysis_result = {}
             if use_images and processing_type in ["full", "image_analysis"] and images_data:
+                is_books = self._is_books_product(product)
+                default_prompt = (
+                    self._get_books_image_prompt()
+                    if is_books
+                    else "Опиши этот товар, укажи цвет, материал и тип. "
+                    "Если это одежда/обувь — укажи бренд. Ответ в формате JSON."
+                )
                 vision_prompt = self._get_prompt_template(
                     "image_prompt",
-                    "Опиши этот товар, укажи цвет, материал и тип. "
-                    "Если это книга — укажи автора и издательство. "
-                    "Если это одежда/обувь — укажи бренд. Ответ в формате JSON.",
+                    default_prompt,
                     category=getattr(product, "category", None),
                 )
                 image_analysis_result = self.llm.analyze_images(
@@ -246,12 +251,14 @@ class ContentGenerator:
 
         # Пытаемся достать сырое описание из external_data (от парсеров)
         if product.external_data:
-            attributes = product.external_data.get("attributes", {})
-            if attributes.get("raw_caption"):
-                data["raw_description"] = attributes["raw_caption"]
+            # Instagram и др.: raw_caption может быть в attributes или напрямую в external_data
+            attributes = product.external_data.get("attributes") or {}
+            raw_caption = attributes.get("raw_caption") or product.external_data.get("raw_caption")
+            if raw_caption:
+                data["raw_description"] = raw_caption
                 # Используем сырое описание как основное, если оно богаче
-                if len(data["raw_description"]) > len(data["description"]):
-                    data["description"] = data["raw_description"]
+                if len(str(raw_caption)) > len(data["description"]):
+                    data["description"] = str(raw_caption)
 
         # Атрибуты книг/товара — всегда добавляем в контекст (не только при external_data)
         if getattr(product, "isbn", None):
@@ -262,6 +269,27 @@ class ContentGenerator:
             data["pages"] = product.pages
 
         return data
+
+    def _is_books_product(self, product: Product) -> bool:
+        """Проверяет, что товар — книга (по product_type или категории)."""
+        pt = (getattr(product, "product_type", None) or "").strip().lower()
+        if pt == "books":
+            return True
+        cat = getattr(product, "category", None)
+        if cat:
+            name = (getattr(cat, "name", "") or "").lower()
+            slug = (getattr(cat, "slug", "") or "").lower()
+            if "книг" in name or "book" in slug or "books" in slug:
+                return True
+        return False
+
+    def _get_books_image_prompt(self) -> str:
+        """Промпт для анализа обложки книги: название и автор на обложке."""
+        return (
+            "Это книга. На обложке изображения указаны название и автор — извлеки их из фото. "
+            "Также укажи издательство, тип переплёта (cover_type: твердый/мягкий/суперобложка), если видно. "
+            "Ответ в формате JSON: name (название с обложки), author (автор), publisher, cover_type."
+        )
 
     def _get_prompt_template(
         self, template_type: str, default: str, category=None
@@ -287,7 +315,7 @@ class ContentGenerator:
 
         Правила:
         1. SEO (meta title, meta description, keywords) — ТОЛЬКО на английском, латиница. Кириллица в SEO недопустима.
-        2. Описание товара — всегда на двух языках (ru и en). ru.generated_description и en.generated_description — ОДИН И ТОТ ЖЕ смысл: английский это перевод русского (или наоборот). Не пиши разный контент и разную длину. Объём каждого описания: от 20 до 100 слов. Если текстового описания нет или оно скудное, но есть image_analysis — пиши описание и SEO на основе изображений. Не оставляй описание и SEO пустыми, когда есть либо текст, либо image_analysis.
+        2. Описание товара — всегда на двух языках (ru и en). ru.generated_description и en.generated_description — один смысл (переводы друг друга). Исходный текст может быть на русском, английском или турецком: очисти, улучши, затем создай оба перевода. Объём каждого: от 20 до 100 слов. Если текстового описания нет или оно скудное, но есть image_analysis — пиши описание и SEO на основе изображений.
         3. Технические поля (ISBN, издательство, страницы, автор и т.д.) заполняй только если данные есть в описании или known_attributes. Не придумывай.
         4. Определяй категорию по контексту товара.
 
@@ -331,7 +359,7 @@ class ContentGenerator:
 
         data = {
             "product_name": input_data["name"],
-            "current_description": input_data["description"],  # Может быть raw_description
+            "current_description": input_data["description"],  # основное описание (или raw_caption если богаче)
             "brand": input_data["brand"] or "Unknown",
             "known_attributes": {
                 "isbn": input_data.get("isbn"),
@@ -340,6 +368,9 @@ class ContentGenerator:
             },
             "image_analysis": image_analysis,
         }
+        # raw_description — оригинал от парсера (Instagram и др.); AI использует для извлечения цены, автора и т.д.
+        if input_data.get("raw_description") and input_data["raw_description"] != input_data.get("description"):
+            data["raw_description"] = input_data["raw_description"]
 
         # Инструкция для категории (AI шаблон с template_type=category_instruction и category=товара)
         category_instruction = ""
@@ -365,8 +396,15 @@ class ContentGenerator:
         - Описание (ru.generated_description, en.generated_description) и SEO (en.seo_title, en.seo_description, en.keywords) — ВСЕГДА заполняй, когда есть хотя бы описание ИЛИ image_analysis.
 
         Правила:
-        - Описание на русском (ru.generated_description) и на английском (en.generated_description) — ОДИН И ТОТ ЖЕ смысл: en это перевод ru (или наоборот). Длина каждого: от 20 до 100 слов. Не пиши разный контент или разную длину для ru и en.
-        - Технические поля (ISBN, автор, издательство, страницы и т.д.) заполняй только если данные есть в описании или known_attributes. Не придумывай.
+        - Описание на русском (ru.generated_description) и на английском (en.generated_description) — ОДИН И ТОТ ЖЕ смысл; длина каждого: от 20 до 100 слов.
+        - Если есть raw_description (сырое описание от парсера, может быть на RU/EN/TR):
+          • СНАЧАЛА очисти от цен, ссылок, хештегов, контактов и рекламы; улучши формулировки.
+          • Если исходный язык — русский: результат → ru.generated_description; en.generated_description = перевод на английский.
+          • Если исходный язык — английский: результат → en.generated_description; ru.generated_description = перевод на русский.
+          • Если исходный язык — турецкий (или другой): переведи на русский → ru.generated_description; переведи на английский → en.generated_description.
+        - В итоге ВСЕГДА заполняй оба: ru.generated_description и en.generated_description.
+        - Технические поля (ISBN, автор, издательство, страницы, price, cover_type и т.д.) заполняй если данные есть в current_description, raw_description, known_attributes ИЛИ image_analysis. Для книг cover_type (переплёт: твердый, мягкий, суперобложка) можно определить по фото, если не указано в тексте. Не придумывай.
+        - Название (generated_title): только основной заголовок, без подзаголовка. Например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура». Для книг: если в image_analysis есть name (название с обложки) — используй его; автор — из image_analysis.author.
         - SEO — только на английском (латиница). Кириллица в SEO недопустима.
         - В "ru" — название и описание на русском; в "en" — название, описание (перевод ru) и все SEO на английском.
         - stock_quantity: если не указано, можно 3.
@@ -391,6 +429,7 @@ class ContentGenerator:
                 "pages": null,
                 "isbn": null,
                 "publisher": null,
+                "cover_type": "твердый/мягкий/суперобложка (from image or text)",
                 "stock_quantity": 3,
                 "price": null,
                 "currency": null
@@ -420,6 +459,60 @@ class ContentGenerator:
             logger.warning("LLM response is not valid JSON, raw snippet: %s", text[:500])
             return {}
 
+    def _normalize_product_name(self, name: str, product_type: str = None) -> str:
+        """
+        Нормализует название: убирает подзаголовок и лишние слова в конце.
+        Напр. «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура» → «ИСЛАМСКИЕ ФИНАНСЫ»
+        """
+        if not name or not isinstance(name, str):
+            return name
+        s = name.strip()
+        if not s:
+            return s
+
+        # 1. Берём только первую строку (подзаголовок часто после переноса)
+        first_line = s.split("\n")[0].strip()
+        if first_line:
+            s = first_line
+
+        # 2. Для книг: обрезаем по первому слову с маленькой буквы (подзаголовок)
+        if (product_type or "").lower() == "books":
+            words = s.split()
+            result = []
+            for w in words:
+                if not w:
+                    continue
+                if w[0].islower():
+                    break
+                result.append(w)
+            if result:
+                s = " ".join(result)
+
+        # 3. Обрезаем по запятой (формат «Название, подзаголовок»)
+        if "," in s:
+            s = s.split(",")[0].strip()
+
+        return s[:255] if len(s) > 255 else s
+
+    def _normalize_currency(self, raw: str) -> str:
+        """Нормализация валюты из ответа AI в код (RUB, USD, TRY и т.д.)."""
+        if not raw or not str(raw).strip():
+            return "RUB"
+        s = str(raw).strip().upper()
+        mapping = {
+            "РУБ": "RUB", "RUB": "RUB", "₽": "RUB", "RUR": "RUB",
+            "USD": "USD", "USDT": "USD", "$": "USD",
+            "EUR": "EUR", "€": "EUR",
+            "TRY": "TRY", "TRL": "TRY", "TL": "TRY", "ТР": "TRY",
+            "KZT": "KZT", "ТГ": "KZT",
+        }
+        for key, code in mapping.items():
+            if key in s or s == key:
+                return code
+        if s in ("RUB", "USD", "EUR", "TRY", "KZT"):
+            return s
+        return "RUB"
+
     def _parse_and_save_results(self, log: AIProcessingLog, content):
         """Сохранение результатов из JSON ответа LLM в модель лога."""
         if not isinstance(content, dict):
@@ -432,7 +525,9 @@ class ContentGenerator:
         # ru — название и описание на русском
         data_source = content.get("ru", content)
         if "generated_title" in data_source and data_source["generated_title"]:
-            log.generated_title = (data_source["generated_title"] or "")[:255]
+            raw_title = (data_source["generated_title"] or "").strip()
+            product_type = getattr(log.product, "product_type", None) if log.product_id else None
+            log.generated_title = self._normalize_product_name(raw_title, product_type)
         if "generated_description" in data_source and data_source["generated_description"]:
             log.generated_description = data_source["generated_description"]
 
@@ -524,10 +619,14 @@ class ContentGenerator:
         """Применение сгенерированных данных к товару."""
         with transaction.atomic():
             # 1. Применяем основные данные (RU)
-            if log.generated_title and not product.name:
-                product.name = log.generated_title
-            if log.generated_description and not product.description:
-                product.description = log.generated_description
+            if log.generated_title:
+                normalized_name = self._normalize_product_name(
+                    log.generated_title, getattr(product, "product_type", None)
+                )
+                if normalized_name:
+                    product.name = normalized_name
+            if log.generated_description:
+                product.description = log.generated_description  # всегда применяем (очищенное AI)
 
             seo_title = (log.generated_seo_title or "").strip()
             if seo_title and not re.search("[а-яА-Я]", seo_title):
@@ -588,6 +687,14 @@ class ContentGenerator:
             if log.extracted_attributes:
                 attrs = log.extracted_attributes
 
+                # Название (если AI извлёк — нормализуем)
+                if "name" in attrs and attrs["name"]:
+                    norm_name = self._normalize_product_name(
+                        str(attrs["name"]).strip(), getattr(product, "product_type", None)
+                    )
+                    if norm_name:
+                        product.name = norm_name
+
                 # Цена, Старая цена и Валюта
                 price_updated = False
                 if "price" in attrs and attrs["price"]:
@@ -604,8 +711,10 @@ class ContentGenerator:
                         pass
 
                 if "currency" in attrs and attrs["currency"]:
-                    product.currency = str(attrs["currency"])
+                    product.currency = self._normalize_currency(str(attrs["currency"]))
                     price_updated = True
+                elif price_updated and not (product.currency or "").strip():
+                    product.currency = "RUB"  # по умолчанию для RU-контента
 
                 # Количество на складе (stock_quantity)
                 # Если AI нашел значение - используем его.
@@ -620,9 +729,13 @@ class ContentGenerator:
 
                 product.save()
 
-                # Обновление мультивалютных цен
+                # Обновление мультивалютных цен (маржа, конвертация)
                 if price_updated:
+                    # Нормализуем валюту: ₽, руб и т.п. → RUB (иначе курс не найдётся)
+                    product.currency = self._normalize_currency(product.currency or "RUB")
+                    product.save()
                     product.update_currency_prices()
+                    product.save()  # сохраняем converted_price_*, final_price_*
 
                 # Авторы
                 if "author" in attrs and not product.book_authors.exists():
@@ -658,6 +771,12 @@ class ContentGenerator:
                             ProductAuthor.objects.get_or_create(
                                 product=product, author=author, defaults={"sort_order": idx}
                             )
+
+                # Переплёт книги (из описания или image_analysis)
+                if getattr(product, "product_type", None) == "books" and "cover_type" in attrs and attrs["cover_type"]:
+                    ct = str(attrs["cover_type"]).strip()
+                    if ct and not (getattr(product, "cover_type", None) or "").strip():
+                        product.cover_type = ct[:50]
 
                 # Изображения из текста
                 if "images" in attrs and isinstance(attrs["images"], list):

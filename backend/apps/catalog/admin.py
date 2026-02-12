@@ -494,7 +494,7 @@ class ProductAttributeInline(admin.TabularInline):
 
 
 class RunAIActionMixin:
-    """Миксин: действие «Запустить AI обработку» для выбранных товаров."""
+    """Миксин: действия AI обработки для выбранных товаров."""
 
     def run_ai(self, request, queryset):
         from apps.ai.tasks import process_product_ai_task
@@ -506,17 +506,34 @@ class RunAIActionMixin:
             )
         self.message_user(
             request,
-            _("Запущена AI обработка для %(count)s товаров. Результаты появятся в разделе «Логи AI»; применить к товару — вручную после одобрения.")
+            _("Запущена полная AI обработка для %(count)s товаров. Результаты появятся в разделе «Логи AI»; применить к товару — вручную после одобрения.")
             % {"count": queryset.count()},
             level=messages.SUCCESS,
         )
-    run_ai.short_description = _("Запустить AI обработку")
+    run_ai.short_description = _("Полная AI обработка (без авто-применения)")
+
+    def run_ai_auto_apply(self, request, queryset):
+        """Один запуск: полная обработка + авто-применение. Не нужно идти в «Логи AI»."""
+        from apps.ai.tasks import process_product_ai_task
+        for product in queryset:
+            process_product_ai_task.delay(
+                product_id=product.id,
+                processing_type="full",
+                auto_apply=True,
+            )
+        self.message_user(
+            request,
+            _("Запущена полная AI обработка с авто-применением для %(count)s товаров. Результаты будут применены к товарам автоматически после завершения.")
+            % {"count": queryset.count()},
+            level=messages.SUCCESS,
+        )
+    run_ai_auto_apply.short_description = _("Полная AI обработка + авто-применение")
 
 
 class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Базовый админ для товаров (используется прокси)."""
     form = ProductForm
-    actions = ["run_ai"]
+    actions = ["run_ai", "run_ai_auto_apply"]
     list_display = (
         'name', 'slug', 'product_type', 'category', 'brand', 'price', 'currency',
         'availability_status', 'country_of_origin', 'is_active', 'created_at'

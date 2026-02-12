@@ -1,3 +1,4 @@
+name: pharmaturk
 
 services:
   postgres:
@@ -12,9 +13,10 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pharmaturk"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
 
   redis:
     image: redis:7-alpine
@@ -28,6 +30,8 @@ services:
     environment:
       - discovery.type=single-node
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=yourStrongPassword123!
+      # Снижаем heap для Mac/мало RAM (по умолчанию 1g — OOM)
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
       - "9200:9200"
       - "9600:9600"
@@ -125,6 +129,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      qdrant:
+        condition: service_started
     environment:
       DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
@@ -144,7 +150,9 @@ services:
       R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
       R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
       R2_USE_SSL: ${R2_USE_SSL:-true}
-    command: bash -c "poetry run celery -A config worker --loglevel=info"
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+    command: bash -c "poetry run celery -A config worker -Q celery,recsys --loglevel=info"
 
   celery_ai:
     image: pharmaturk-backend

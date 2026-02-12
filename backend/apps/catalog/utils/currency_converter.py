@@ -2,7 +2,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Dict, Optional, Tuple
 import logging
 from ..currency_models import CurrencyRate, MarginSettings
-from .currency_service import CurrencyRateService
+from .currency_service import CurrencyRateService, _normalize_currency_for_rate
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,9 @@ class CurrencyConverter:
         Returns:
             Tuple[original_price, converted_price, price_with_margin]
         """
-        
+        from_currency = _normalize_currency_for_rate(from_currency or "")
+        to_currency = _normalize_currency_for_rate(to_currency or "")
+
         if from_currency == to_currency:
             # Если валюты одинаковые, применяем только маржу если нужно
             if apply_margin:

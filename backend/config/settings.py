@@ -192,25 +192,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "catalog.cleanup_orphaned_media",
         "schedule": 60 * 60 * 24,  # день (можно заменить на crontab(0, 3) при наличии celery.schedules)
     },
-    # AI: товары без категории (раз в день)
-    "ai-process-uncategorized": {
-        "task": "apps.ai.tasks.process_uncategorized",
-        "schedule": 60 * 60 * 24,
-        "kwargs": {"limit": 100},
-    },
-    # AI: товары без описания (раз в день)
-    "ai-process-without-description": {
-        "task": "apps.ai.tasks.process_without_description",
-        "schedule": 60 * 60 * 24,
-        "kwargs": {"limit": 100},
-    },
-    # AI: повтор неудачных обработок (раз в неделю)
-    "ai-retry-failed": {
-        "task": "apps.ai.tasks.retry_failed_processing",
-        "schedule": 60 * 60 * 24 * 7,
-        "kwargs": {"limit": 50},
-    },
-    # AI: очистка старых логов (раз в неделю)
+    # AI: задачи, тратящие токены OpenAI, отключены — только ручной запуск через админку /admin/ai/manual-tasks/
+    # AI: очистка старых логов (раз в неделю, не тратит токены)
     "ai-cleanup-old-logs": {
         "task": "apps.ai.tasks.cleanup_old_ai_logs",
         "schedule": 60 * 60 * 24 * 7,

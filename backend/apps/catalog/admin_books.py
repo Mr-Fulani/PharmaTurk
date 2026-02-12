@@ -132,7 +132,7 @@ class BookVariantInline(admin.TabularInline):
 @admin.register(ProductBooks)
 class ProductBooksAdmin(admin.ModelAdmin):
     """Админка для товаров-книг."""
-    actions = ["run_ai"]
+    actions = ["run_ai", "run_ai_auto_apply"]
     list_display = [
         'name', 'authors_list', 'category', 'price', 
         'old_price', 'rating', 'is_available', 'is_bestseller',
@@ -238,11 +238,28 @@ class ProductBooksAdmin(admin.ModelAdmin):
             )
         self.message_user(
             request,
-            _("Запущена AI обработка для %(count)s товаров. Результаты появятся в разделе «Логи AI»; применить к товару — вручную после одобрения.")
+            _("Запущена полная AI обработка для %(count)s товаров. Результаты появятся в разделе «Логи AI»; применить к товару — вручную после одобрения.")
             % {"count": queryset.count()},
             level=messages.SUCCESS,
         )
-    run_ai.short_description = _("Запустить AI обработку")
+    run_ai.short_description = _("Полная AI обработка (без авто-применения)")
+
+    def run_ai_auto_apply(self, request, queryset):
+        """Один запуск: полная обработка + авто-применение. Не нужно идти в «Логи AI»."""
+        from apps.ai.tasks import process_product_ai_task
+        for product in queryset:
+            process_product_ai_task.delay(
+                product_id=product.id,
+                processing_type="full",
+                auto_apply=True,
+            )
+        self.message_user(
+            request,
+            _("Запущена полная AI обработка с авто-применением для %(count)s товаров. Результаты будут применены к товарам автоматически после завершения.")
+            % {"count": queryset.count()},
+            level=messages.SUCCESS,
+        )
+    run_ai_auto_apply.short_description = _("Полная AI обработка + авто-применение")
 
     def save_model(self, request, obj, form, change):
         """Автоматически устанавливаем product_type='books'."""

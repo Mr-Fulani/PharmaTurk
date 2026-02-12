@@ -7,7 +7,6 @@ export default function Custom404() {
     <>
       <Head>
         <title>404</title>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&display=swap" />
       </Head>
       <div className="errorPage">
         <div className="errorInner">

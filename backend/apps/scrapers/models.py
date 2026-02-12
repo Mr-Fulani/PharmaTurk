@@ -364,10 +364,18 @@ class InstagramScraperTask(models.Model):
     ]
 
     # Параметры парсинга
+    post_url = models.URLField(
+        _("Ссылка на пост"),
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text=_("Опционально: URL конкретного поста для парсинга одного поста (например: https://www.instagram.com/p/ABC123/). Если задан, парсится только этот пост; иначе — профиль по username."),
+    )
     instagram_username = models.CharField(
         _("Instagram username"),
         max_length=100,
-        help_text=_("Введите username без @ (например: book.warrior)"),
+        blank=True,
+        help_text=_("Введите username без @ (например: book.warrior). Не нужен, если указана ссылка на пост."),
     )
     category = models.CharField(
         _("Категория товаров"), max_length=50, choices=CATEGORY_CHOICES, default="books"
@@ -399,8 +407,21 @@ class InstagramScraperTask(models.Model):
         verbose_name_plural = _("Задачи парсинга Instagram")
         ordering = ["-created_at"]
 
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if not self.post_url and not (self.instagram_username or "").strip():
+            raise ValidationError(
+                {"instagram_username": _("Укажите либо ссылку на пост (post_url), либо Instagram username.")}
+            )
+        if self.post_url and (self.instagram_username or "").strip():
+            # Оба заданы — приоритет у post_url, но не ошибка
+            pass
+
     def __str__(self):
-        return f"@{self.instagram_username} ({self.get_category_display()}) - {self.get_status_display()}"
+        if self.post_url:
+            label = self.post_url[:50] + "..." if len(self.post_url) > 50 else self.post_url
+            return f"Пост: {label} ({self.get_category_display()}) - {self.get_status_display()}"
+        return f"@{self.instagram_username or '—'} ({self.get_category_display()}) - {self.get_status_display()}"
 
     @property
     def duration(self):

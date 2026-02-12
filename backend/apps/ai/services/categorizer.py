@@ -19,8 +19,9 @@ def get_category_context_for_prompt(product: Any, vector_store: Any) -> str:
     query_parts = [product.name or "", product.description or ""]
     if getattr(product, "external_data", None):
         attrs = product.external_data.get("attributes") or {}
-        if attrs.get("raw_caption"):
-            query_parts.append(attrs["raw_caption"])
+        raw_caption = attrs.get("raw_caption") or product.external_data.get("raw_caption")
+        if raw_caption:
+            query_parts.append(str(raw_caption))
     query_text = " ".join(query_parts).strip() or "товар"
 
     try:

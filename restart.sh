@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Переход в директорию скрипта (чтобы docker compose находил docker-compose.yml)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Явное имя проекта — чтобы restart.sh и docker compose up/logs в другом терминале работали с одними контейнерами
+export COMPOSE_PROJECT_NAME=pharmaturk
+COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+
 # Скрипт для перезапуска проекта PharmaTurk
 # Использование: ./restart.sh [опции]
 #
@@ -151,39 +159,33 @@ find backend -type f -name "*.pyc" -delete 2>/dev/null || true
 find backend -type f -name "*.pyo" -delete 2>/dev/null || true
 success "Кэш Python очищен"
 
-# Остановка контейнеров
+# Остановка контейнеров (всегда выполняем down — идемпотентно, если контейнеры не запущены)
 info "Останавливаем контейнеры..."
-if docker compose ps 2>/dev/null | grep -q "Up"; then
-    if [ "$CLEAN_VOLUMES" = true ]; then
-        warning "Удаляем volumes (база данных будет очищена!)"
-        read -p "Вы уверены? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            docker compose down -v --remove-orphans || true
-            success "Контейнеры остановлены и volumes удалены"
-        else
-            info "Отменено пользователем"
-            exit 0
-        fi
+if [ "$CLEAN_VOLUMES" = true ]; then
+    warning "Удаляем volumes (база данных будет очищена!)"
+    read -p "Вы уверены? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        docker compose -p pharmaturk -f "$COMPOSE_FILE" down -v --remove-orphans || true
+        success "Контейнеры остановлены и volumes удалены"
     else
-        docker compose down --remove-orphans || true
-        success "Контейнеры остановлены"
+        info "Отменено пользователем"
+        exit 0
     fi
 else
-    info "Контейнеры не запущены, пропускаем остановку"
-    if [ "$CLEAN_VOLUMES" = true ]; then
-        warning "Удаляем volumes (база данных будет очищена!)"
-        read -p "Вы уверены? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            docker compose down -v --remove-orphans || true
-            success "Volumes удалены"
-        else
-            info "Отменено пользователем"
-            exit 0
-        fi
-    fi
+    docker compose -p pharmaturk -f "$COMPOSE_FILE" down -t 1 --remove-orphans || true
+        success "Контейнеры остановлены"
 fi
+
+# Docker compose up и logs -f в других терминалах не завершаются при down — отправляем SIGTERM.
+# Часто запускают ./restart.sh --fast --logs: в первом терминале остаётся logs -f от прошлого запуска.
+pkill -TERM -f "docker compose.* up" 2>/dev/null || true
+pkill -TERM -f "docker compose.* logs" 2>/dev/null || true
+pkill -TERM -f "docker-compose.* up" 2>/dev/null || true
+pkill -TERM -f "docker-compose.* logs" 2>/dev/null || true
+
+# Пауза: даём процессам время завершиться
+sleep 3
 
 # Очистка неиспользуемых Docker ресурсов (по умолчанию включена)
 if [ "$NO_PRUNE" = false ] && [ "$FAST" = false ]; then
@@ -220,11 +222,11 @@ if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
     info "FAST режим: пропускаем пересборку образов"
 elif [ "$FAST_REBUILD" = true ]; then
     info "FAST-REBUILD: пересобираем только backend и frontend"
-    docker compose build backend frontend || warning "Ошибка при быстрой пересборке backend/frontend"
+    docker compose -p pharmaturk -f "$COMPOSE_FILE" build backend frontend || warning "Ошибка при быстрой пересборке backend/frontend"
 elif [ "$NO_CACHE" = true ]; then
-    docker compose build --no-cache || warning "Ошибка при сборке образов без кэша"
+    docker compose -p pharmaturk -f "$COMPOSE_FILE" build --no-cache || warning "Ошибка при сборке образов без кэша"
 else
-    docker compose build || warning "Ошибка при сборке образов"
+    docker compose -p pharmaturk -f "$COMPOSE_FILE" build || warning "Ошибка при сборке образов"
 fi
 
 if [ "$FAST" = false ]; then
@@ -239,47 +241,13 @@ UP_OPTS="-d"
 if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
     UP_OPTS="-d --no-build"
 fi
-docker compose up $UP_OPTS
+docker compose -p pharmaturk -f "$COMPOSE_FILE" up $UP_OPTS
 success "Контейнеры запущены"
 
-# Ожидание готовности сервисов
-info "Ожидаем готовности сервисов..."
-sleep 5
-
-# Проверка статуса
+# Краткая пауза: backend уже ждёт postgres (healthcheck), миграции выполняет entrypoint
 info "Проверяем статус контейнеров..."
-docker compose ps
-
-# Ожидание готовности базы данных
-info "Ожидаем готовности базы данных..."
-for i in {1..30}; do
-    if docker compose exec -T postgres pg_isready -U pharmaturk > /dev/null 2>&1; then
-        success "База данных готова"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        warning "База данных не готова после 30 попыток"
-    else
-        sleep 1
-    fi
-done
-
-# Создание и применение миграций Django
-info "Создаем и применяем миграции Django..."
-if docker compose ps backend | grep -q "Up"; then
-    if docker compose exec -T backend poetry run python manage.py makemigrations; then
-        success "Миграции созданы (если были изменения моделей)"
-    else
-        warning "Ошибка при создании миграций (возможно, контейнер еще не готов)"
-    fi
-    if docker compose exec -T backend poetry run python manage.py migrate --noinput; then
-        success "Миграции применены"
-    else
-        warning "Ошибка при применении миграций (возможно, контейнер еще не готов)"
-    fi
-else
-    warning "Backend контейнер не запущен, миграции не созданы и не применены"
-fi
+sleep 2
+docker compose -p pharmaturk -f "$COMPOSE_FILE" ps
 
 # AI RAG: подготовка Qdrant (опционально, при первом запуске или после добавления категорий/шаблонов)
 # Раскомментируйте следующую строку, чтобы один раз заполнить RAG после старта:
@@ -288,9 +256,13 @@ fi
 # Показ логов (если указано)
 if [ "$SHOW_LOGS" = true ]; then
     info "Показываем логи (Ctrl+C для выхода)..."
-    docker compose logs -f
+    docker compose -p pharmaturk -f "$COMPOSE_FILE" logs -f
 else
     info "Для просмотра логов используйте: docker compose logs -f"
+    info ""
+    info "Чтобы restart.sh останавливал логи в другом терминале, в терминале 1 запускайте из корня проекта:"
+    info "  cd $SCRIPT_DIR && docker compose up"
+    info "  или:  cd $SCRIPT_DIR && docker compose logs -f"
 fi
 
 success "Проект успешно перезапущен!"
