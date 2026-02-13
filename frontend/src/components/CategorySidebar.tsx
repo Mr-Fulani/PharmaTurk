@@ -603,7 +603,7 @@ export default function CategorySidebar({
             </div>
           )}
 
-          {showSubcategories && subcategories.length > 0 && (
+          {showSubcategories && subcategories.length > 0 && categoryGroups.length === 0 && (
             <div className="border-b pb-4">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, subcategories: !prev.subcategories }))}

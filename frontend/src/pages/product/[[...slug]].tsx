@@ -24,6 +24,7 @@ const CATEGORY_ALIASES: Record<string, CategoryType> = {
   tableware: 'tableware',
   accessories: 'accessories',
   jewelry: 'jewelry',
+  perfumery: 'perfumery',
   underwear: 'underwear',
   headwear: 'headwear',
   books: 'books',
@@ -964,7 +965,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   })
 
   if (slugParts.length === 1) {
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines', 'books']
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines', 'books', 'perfumery']
     for (const t of probeTypes) {
       try {
         const res = await fetchProduct(t, productSlug)
@@ -1016,7 +1017,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     }
     return buildProps(res, categoryType)
   } catch (error) {
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines', 'books']
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines', 'books', 'perfumery']
     const typesToTry = probeTypes.filter((t) => t !== categoryType)
 
     for (const t of typesToTry) {

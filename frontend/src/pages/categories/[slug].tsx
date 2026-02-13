@@ -115,6 +115,7 @@ const brandProductTypeMap: Record<string, string> = {
   tableware: 'tableware',
   accessories: 'accessories',
   jewelry: 'jewelry',
+  perfumery: 'perfumery',
   underwear: 'underwear',
   headwear: 'headwear',
   books: 'books',
@@ -136,7 +137,8 @@ const filterBrandsByProducts = (
   routeSlug?: string
 ) => {
   const allowedForMedicines = ['medicines', 'supplements', 'medical-equipment']
-  const categorySlug = normalizeSlug(routeSlug || categoryType)
+  // Для парфюмерии (корень и подкатегории) используем perfumery для сопоставления брендов
+  const categorySlug = (categoryType === 'perfumery' ? 'perfumery' : normalizeSlug(routeSlug || categoryType))
 
   const matchesCategory = (value?: string | null) => {
     const v = normalizeSlug(value)
@@ -517,6 +519,41 @@ const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] =>
     }
   })
 
+// Парфюмерия: две группы — по аудитории (жен/муж/унисекс) и по типу (нишевая, дом, EDP, EDT)
+const PERFUMERY_AUDIENCE_KEYWORDS = ['women', 'men', 'unisex', 'zhensk', 'muzhsk', 'uniseks', 'female', 'male']
+const PERFUMERY_TYPE_KEYWORDS = ['niche', 'nishchevaya', 'home', 'edp', 'edt', 'eau-de-parfum', 'eau-de-toilette', 'aromaty', 'parfumernaya', 'tualetnaya', 'doma', 'fragrances']
+
+const buildPerfumerySections = (categories: Category[]): SidebarTreeSection[] => {
+  // Исключаем корень perfumery — только дети
+  const children = categories.filter((c) => c.parent != null)
+  const byAudience = children.filter((c) =>
+    PERFUMERY_AUDIENCE_KEYWORDS.some((kw) =>
+      (c.slug || '').toLowerCase().includes(kw) || (c.name || '').toLowerCase().includes(kw)
+    )
+  )
+  const byType = children.filter((c) =>
+    PERFUMERY_TYPE_KEYWORDS.some((kw) =>
+      (c.slug || '').toLowerCase().includes(kw) || (c.name || '').toLowerCase().includes(kw)
+    )
+  )
+  const sections: SidebarTreeSection[] = []
+  if (byAudience.length > 0) {
+    sections.push({
+      title: 'По аудитории',
+      titleKey: 'sidebar_perfumery_by_audience',
+      items: byAudience.map((c) => createTreeItem(c))
+    } as SidebarTreeSection & { titleKey?: string })
+  }
+  if (byType.length > 0) {
+    sections.push({
+      title: 'По типу',
+      titleKey: 'sidebar_perfumery_by_type',
+      items: byType.map((c) => createTreeItem(c))
+    } as SidebarTreeSection & { titleKey?: string })
+  }
+  return sections
+}
+
 const getCategorySections = (type: CategoryPageProps['categoryType'], categories: Category[]): SidebarTreeSection[] => {
   if (type === 'clothing') {
     return buildClothingSections(categories)
@@ -526,6 +563,9 @@ const getCategorySections = (type: CategoryPageProps['categoryType'], categories
   }
   if (type === 'books') {
     return buildBookSections(categories)
+  }
+  if (type === 'perfumery') {
+    return buildPerfumerySections(categories)
   }
   return []
 }
@@ -878,7 +918,15 @@ export default function CategoryPage({
     jewelryMaterials: [],
     jewelryGender: [],
   })
-  const categoryGroups = useMemo(() => getCategorySections(categoryType, categories), [categoryType, categories])
+  const categoryGroups = useMemo(() => {
+    const sections = getCategorySections(categoryType, categories)
+    return sections.map((s) => ({
+      ...s,
+      title: (s as SidebarTreeSection & { titleKey?: string }).titleKey
+        ? t((s as SidebarTreeSection & { titleKey?: string }).titleKey)
+        : s.title
+    }))
+  }, [categoryType, categories, t])
   // Используем реальный тип из API если есть, иначе fallback на маппинг
   const resolvedBrandType = useMemo(() => categoryTypeSlug || resolveBrandProductType(categoryType), [categoryTypeSlug, categoryType])
   const filtersInitialized = useRef<string>('')
@@ -962,9 +1010,12 @@ export default function CategoryPage({
         const params: Record<string, any> = {
           product_type: resolvedBrandType
         }
-        const normalizedSlug = (routeSlug || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
-        if (normalizedSlug) {
-          params.primary_category_slug = normalizedSlug
+        // Для парфюмерии (корень и подкатегории) всегда запрашиваем по perfumery
+        const brandPrimarySlug = (resolvedBrandType === 'perfumery')
+          ? 'perfumery'
+          : (routeSlug || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
+        if (brandPrimarySlug) {
+          params.primary_category_slug = brandPrimarySlug
         }
         if (filters.categories.length > 0) {
           params.category_id = filters.categories
@@ -1338,7 +1389,7 @@ export default function CategoryPage({
               categories={categoryGroups.length > 0 ? [] : sidebarCategoriesData}
               brands={brandOptions}
               subcategories={subcategories}
-              categoryGroups={[]} // отключаем группировки, используем предфильтрованный список
+              categoryGroups={categoryGroups}
               onFilterChange={handleFilterChange}
               isOpen={sidebarOpen}
               onToggle={() => setSidebarOpen(!sidebarOpen)}
@@ -1506,7 +1557,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const routeSlug = Array.isArray(slug) ? slug[0] : (slug as string | undefined)
     
     // Используем относительный путь, который работает через Next.js rewrites
-    const base = process.env.INTERNAL_API_BASE || ''
+    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
     
     // Получаем категорию из API чтобы узнать её реальный тип
     let categoryTypeFromApi: string | null = null
@@ -1536,10 +1587,11 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     // --- Бренды ---
     let brands: any[] = []
     try {
-      const primarySlug = routeSlug ? routeSlug.replace(/_/g, '-') : undefined
+      // Для парфюмерии (корень и подкатегории) всегда запрашиваем бренды по perfumery
+      const brandPrimarySlug = (brandProductType === 'perfumery') ? 'perfumery' : (routeSlug ? routeSlug.replace(/_/g, '-') : undefined)
       const brandParams: any = { page_size: 500 }
-      if (primarySlug) {
-        brandParams.primary_category_slug = primarySlug
+      if (brandPrimarySlug) {
+        brandParams.primary_category_slug = brandPrimarySlug
       }
       // Всегда добавляем product_type для более точной фильтрации
       brandParams.product_type = brandProductType
@@ -1630,10 +1682,11 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     // Оставляем только текущую категорию и её дочерние, чтобы сайтбар не засорялся
     const routeNorm = routeSlug ? routeSlug.toLowerCase().replace(/_/g, '-') : ''
     const mainCat = categories.find((c: any) => (c.slug || '').toLowerCase().replace(/_/g, '-') === routeNorm)
+    const allCategoriesForBrands = [...categories]
     let sidebarCategories: any[] = categories
     if (mainCat) {
       const childCats = categories.filter((c: any) => c.parent === mainCat.id)
-      sidebarCategories = [mainCat]
+      sidebarCategories = [mainCat, ...childCats]
       subcategories = childCats
     } else if (routeNorm) {
       sidebarCategories = categories.filter((c: any) => (c.slug || '').toLowerCase().replace(/_/g, '-') === routeNorm)
@@ -1642,7 +1695,12 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     categories = sidebarCategories
 
     // --- Фильтр брендов ---
-    brands = filterBrandsByProducts(brands, products, categoryType, routeSlug)
+    // Для подкатегорий парфюмерии используем perfumery при сопоставлении брендов
+    const effectiveCategoryType = (mainCat && mainCat.parent) ? (() => {
+      const parentCat = allCategoriesForBrands.find((c: any) => c.id === mainCat.parent)
+      return (parentCat?.slug || '').toLowerCase() === 'perfumery' ? 'perfumery' : categoryType
+    })() : categoryType
+    brands = filterBrandsByProducts(brands, products, effectiveCategoryType, routeSlug)
 
     // Локализация названий категорий
     const getCategoryNames = (locale: string = 'ru'): Record<string, { name: string; description: string }> => {
@@ -1657,6 +1715,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
           furniture: { name: 'Furniture', description: 'Furniture for home and office' },
           accessories: { name: 'Accessories', description: 'Bags, belts, wallets and other accessories' },
           jewelry: { name: 'Jewelry', description: 'Jewelry and costume jewelry from Turkey' },
+          perfumery: { name: 'Perfumery', description: 'Perfumes and fragrances' },
           underwear: { name: 'Underwear', description: 'Basic and everyday underwear' },
           headwear: { name: 'Headwear', description: 'Caps, hats and other headwear' },
           'medical-equipment': { name: 'Medical Equipment', description: 'Medical tools and equipment' },
@@ -1673,6 +1732,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         furniture: { name: 'Мебель', description: 'Мебель для дома и офиса' },
         accessories: { name: 'Аксессуары', description: 'Сумки, ремни, кошельки и другие аксессуары' },
         jewelry: { name: 'Украшения', description: 'Украшения и бижутерия из Турции' },
+        perfumery: { name: 'Парфюмерия', description: 'Парфюмерия и ароматы' },
         underwear: { name: 'Нижнее бельё', description: 'Базовое и повседневное нижнее бельё' },
         headwear: { name: 'Головные уборы', description: 'Кепки, шапки и другие головные уборы' },
         'medical-equipment': { name: 'Медицинский инвентарь', description: 'Инструменты и оборудование для медицины' },

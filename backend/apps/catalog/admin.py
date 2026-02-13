@@ -11,12 +11,12 @@ from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFor
 from .models import (
     CategoryType, Category, CategoryTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
-    CategoryUnderwear, CategoryHeadwear, CategoryServices, MarketingCategory, MarketingRootCategory,
+    CategoryUnderwear, CategoryHeadwear, CategoryServices, CategoryPerfumery, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
     Brand, BrandTranslation, MarketingBrand, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ProductMedicines, ProductSupplements, ProductMedicalEquipment,
     ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
-    ProductUnderwear, ProductHeadwear,
+    ProductUnderwear, ProductHeadwear, ProductPerfumery,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
@@ -240,6 +240,16 @@ class BaseCategoryAdmin(admin.ModelAdmin):
             qs = qs.filter(category_type__slug=self.required_category_type_slug)
         return qs
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Ограничиваем parent только категориями того же типа — чтобы подкатегории не привязывались к чужому дереву."""
+        if db_field.name == 'parent' and self.required_category_type_slug:
+            from .models import Category
+            kwargs['queryset'] = Category.objects.filter(
+                category_type__slug=self.required_category_type_slug,
+                is_active=True,
+            ).order_by('sort_order', 'name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def save_model(self, request, obj, form, change):
         # НЕ перезаписываем тип категории, если он уже выбран в форме
         # Автоматическая установка типа только если он не был выбран пользователем
@@ -329,6 +339,14 @@ class CategoryServicesAdmin(BaseCategoryAdmin):
     required_category_type_slug = "uslugi"
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Категории услуг: ремонт, консультации, диагностика и т.д. Сами услуги добавляются в разделе \"Услуги\".")}),
+    )
+
+
+@admin.register(CategoryPerfumery)
+class CategoryPerfumeryAdmin(BaseCategoryAdmin):
+    required_category_type_slug = "perfumery"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Парфюмерия: женская, мужская, унисекс, нишевая; ароматы для дома; EDP, EDT.")}),
     )
 
 
@@ -688,6 +706,12 @@ class ProductUnderwearAdmin(BaseProductProxyAdmin):
 @admin.register(ProductHeadwear)
 class ProductHeadwearAdmin(BaseProductProxyAdmin):
     required_product_type = "headwear"
+    fieldsets = BaseProductAdmin.fieldsets
+
+
+@admin.register(ProductPerfumery)
+class ProductPerfumeryAdmin(BaseProductProxyAdmin):
+    required_product_type = "perfumery"
     fieldsets = BaseProductAdmin.fieldsets
 
 

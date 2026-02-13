@@ -20,6 +20,11 @@ poetry run python manage.py makemigrations || true
 echo "Применяем миграции..."
 poetry run python manage.py migrate --noinput
 
+# Если передана команда — выполняем её (например: python manage.py seed_perfumery_brands)
+if [ $# -gt 0 ]; then
+    exec poetry run "$@"
+fi
+
 # Запускаем сервер в зависимости от режима
 if [ "$USE_RUNSERVER" = "1" ]; then
     echo "Запускаем Django runserver (hot-reload включен)..."

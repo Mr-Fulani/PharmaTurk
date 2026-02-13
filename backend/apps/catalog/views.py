@@ -214,6 +214,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         'furniture': 'furniture',
         'tableware': 'tableware',
         'jewelry': 'jewelry',
+        'perfumery': 'perfumery',
         'underwear': 'underwear',
         'headwear': 'headwear',
     }
@@ -225,6 +226,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         'tableware': Product,
         'accessories': Product,
         'jewelry': Product,
+        'perfumery': Product,
         'underwear': Product,
         'headwear': Product,
         'clothing': ClothingProduct,
@@ -268,11 +270,17 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Прямой фильтр по primary_category_slug
         primary_slugs = self._parse_slug_list('primary_category_slug')
-        if primary_slugs:
-            normalized_slugs = [slug.replace('-', '_') for slug in primary_slugs]
-            return queryset.filter(primary_category_slug__in=normalized_slugs).distinct()
-
         product_type = self._normalize_product_type(self.request.query_params.get('product_type'))
+
+        if primary_slugs:
+            normalized_slugs = [s.replace('-', '_') for s in primary_slugs]
+            result = queryset.filter(primary_category_slug__in=normalized_slugs).distinct()
+            if result.exists():
+                return result.order_by('name')
+            # Fallback: если брендов с primary_category_slug нет — ищем по product_type
+            if not product_type:
+                return result.order_by('name')
+
         if not product_type:
             return queryset
 
@@ -281,6 +289,8 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
             return queryset
         
         product_qs = product_model.objects.filter(is_active=True, brand__isnull=False)
+        if product_model is Product:
+            product_qs = product_qs.filter(product_type=product_type)
 
         category_slugs_filter = self.PRODUCT_TYPE_CATEGORY_SLUGS.get(product_type)
         if category_slugs_filter and product_model is Product:
@@ -1695,6 +1705,7 @@ class FavoriteViewSet(viewsets.ViewSet):
             'tableware': Product,
             'accessories': Product,
             'jewelry': Product,
+            'perfumery': Product,
             'clothing': ClothingProduct,
             'shoes': ShoeProduct,
             'electronics': ElectronicsProduct,

@@ -260,6 +260,7 @@ class BrandSerializer(serializers.ModelSerializer):
             "tableware": "tableware",
             "accessories": "accessories",
             "jewelry": "jewelry",
+            "perfumery": "perfumery",
         }
 
         def normalize(slug: str | None) -> str | None:
@@ -971,6 +972,7 @@ class AddToFavoriteSerializer(serializers.Serializer):
             'tableware': Product,
             'accessories': Product,
             'jewelry': Product,
+            'perfumery': Product,
             'underwear': Product,
             'headwear': Product,
             'books': Product,

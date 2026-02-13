@@ -49,6 +49,7 @@ TOP_CATEGORY_SLUG_CHOICES = [
     ("underwear", "underwear"),
     ("headwear", "headwear"),
     ("books", "books"),
+    ("perfumery", "perfumery"),
 ]
 
 
@@ -131,6 +132,8 @@ def _resolve_category_card_base(category) -> str:
         return "shoes"
     if type_slug == "jewelry" or "jewelry" in category_slug:
         return "jewelry"
+    if type_slug == "perfumery" or "perfum" in category_slug or "perfumery" in category_slug:
+        return "perfumery"
     if type_slug == "electronics" or "electronics" in category_slug:
         return "electronics"
     if type_slug == "furniture" or "furniture" in category_slug:
@@ -438,6 +441,14 @@ class CategoryServices(Category):
         verbose_name_plural = _("Категории — Услуги")
 
 
+class CategoryPerfumery(Category):
+    """Прокси-модель для категорий парфюмерии."""
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Парфюмерия")
+        verbose_name_plural = _("Категории — Парфюмерия")
+
+
 class MarketingCategory(Category):
     class Meta:
         proxy = True
@@ -613,6 +624,7 @@ class Product(models.Model):
         ("accessories", _("Аксессуары")),
         ("jewelry", _("Украшения")),
         ("books", _("Книги")),
+        ("perfumery", _("Парфюмерия")),
         # Добавьте здесь новые типы товаров по необходимости (должны совпадать с CATEGORY_TYPE_CHOICES)
         # Пример: ("cosmetics", _("Косметика")),
         # Пример: ("toys", _("Игрушки")),
@@ -1298,6 +1310,13 @@ class ProductBooks(Product):
         proxy = True
         verbose_name = _("Товар — Книги")
         verbose_name_plural = _("Товары — Книги")
+
+
+class ProductPerfumery(Product):
+    class Meta:
+        proxy = True
+        verbose_name = _("Товар — Парфюмерия")
+        verbose_name_plural = _("Товары — Парфюмерия")
 
 
 class ProductImage(models.Model):
