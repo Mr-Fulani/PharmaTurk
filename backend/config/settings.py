@@ -171,11 +171,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60 * 60 * 24 * 7,  # неделя
         "args": (30,),  # хранить 30 дней
     },
-    # Поиск и объединение дубликатов каждый день в 3:00
-    "find-merge-duplicates": {
-        "task": "apps.scrapers.tasks.find_and_merge_duplicates",
-        "schedule": 60 * 60 * 24,  # день
-    },
+    # Поиск и объединение дубликатов — только ручной запуск (см. CELERY_TASKS.md)
+    # "find-merge-duplicates": {
+    #     "task": "apps.scrapers.tasks.find_and_merge_duplicates",
+    #     "schedule": 60 * 60 * 24,  # день
+    # },
     # Очистка неиспользуемых медиа из R2/локального хранилища ежедневно в 3:00
     "cleanup-orphaned-media": {
         "task": "catalog.cleanup_orphaned_media",
@@ -186,12 +186,12 @@ CELERY_BEAT_SCHEDULE = {
     "ai-cleanup-old-logs": {
         "task": "apps.ai.tasks.cleanup_old_ai_logs",
         "schedule": 60 * 60 * 24 * 7,
-        "kwargs": {"days": 90},
+        "kwargs": {"days": 30},
     },
     # RecSys: полная синхронизация векторов товаров в Qdrant (раз в сутки)
     "recsys-sync-all": {
         "task": "apps.recommendations.tasks.sync_all_products_to_qdrant",
-        "schedule": 60 * 60 * 24,
+        "schedule": 60 * 60 * 24 * 3,  # раз в 3 дня
     },
 }
 

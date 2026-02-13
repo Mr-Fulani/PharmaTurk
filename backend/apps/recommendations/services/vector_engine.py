@@ -172,7 +172,21 @@ class QdrantRecommendationEngine:
                 "last_synced": timezone.now(),
             },
         )
+        self._invalidate_similar_cache(product.id)
         return True
+
+    def _invalidate_similar_cache(self, product_id: int) -> None:
+        """Сбрасывает кэш похожих товаров после индексации (все комбинации filters)."""
+        import redis
+        from django.conf import settings
+        try:
+            redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
+            client = redis.from_url(redis_url)
+            pattern = f"*rec:similar:{product_id}:*"
+            for key in client.scan_iter(match=pattern, count=50):
+                client.delete(key)
+        except Exception as e:
+            logger.warning("Failed to invalidate similar cache for product %s: %s", product_id, e)
 
     def _build_filter(
         self,

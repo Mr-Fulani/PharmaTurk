@@ -51,6 +51,25 @@ from .serializers import (
 )
 
 
+def _get_category_ids_with_descendants(slugs: list[str]) -> set[int]:
+    """Возвращает set ID категорий по slug, включая все дочерние (подкатегории)."""
+    if not slugs:
+        return set()
+    slugs = [s.strip() for s in slugs if s.strip()]
+    if not slugs:
+        return set()
+    cats = Category.objects.filter(slug__in=slugs, is_active=True).values_list('id', flat=True)
+    current_ids = list(cats)
+    all_ids = set(current_ids)
+    while current_ids:
+        children = list(Category.objects.filter(
+            parent_id__in=current_ids, is_active=True
+        ).values_list('id', flat=True))
+        current_ids = [c for c in children if c not in all_ids]
+        all_ids.update(current_ids)
+    return all_ids
+
+
 class StandardPagination(PageNumberPagination):
     """Стандартная пагинация для API."""
     page_size = 20
@@ -273,7 +292,9 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
 
         category_slugs = self._parse_slug_list('category_slug')
         if category_slugs:
-            product_qs = product_qs.filter(category__slug__in=category_slugs)
+            cat_ids = _get_category_ids_with_descendants(category_slugs)
+            if cat_ids:
+                product_qs = product_qs.filter(category_id__in=cat_ids)
 
         in_stock = self.request.query_params.get('in_stock')
         if in_stock and in_stock.lower() in ('true', '1', 'yes'):
@@ -354,12 +375,34 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError):
                 pass
         
-        # Фильтр по slug категории (поддержка нескольких через запятую)
-        category_slug = self.request.query_params.get('category_slug')
+        # Фильтр по slug категории (поддержка нескольких через запятую).
+        # Включает товары из самой категории и всех её подкатегорий (descendants).
+        # Дополнительно: товары без категории (category=None), но с product_type,
+        # совпадающим с category_type корневой категории.
+        # subcategory_slug приоритетнее category_slug (более узкий фильтр).
+        category_slug = self.request.query_params.get('subcategory_slug') or self.request.query_params.get('category_slug')
         if category_slug:
             slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
             if slugs:
-                queryset = queryset.filter(category__slug__in=slugs)
+                all_ids = _get_category_ids_with_descendants(slugs)
+                cats = Category.objects.filter(slug__in=slugs, is_active=True).select_related('category_type')
+                type_values = set()
+                for c in cats:
+                    if c.category_type_id:
+                        ts = (c.category_type.slug or '').lower().replace('-', '_')
+                        if ts:
+                            type_values.add(ts)
+                for s in slugs:
+                    type_values.add(s.lower().replace('-', '_'))
+                if all_ids or type_values:
+                    from django.db.models import Q
+                    q = Q()
+                    if all_ids:
+                        q |= Q(category_id__in=all_ids)
+                    if type_values:
+                        q |= Q(category_id__isnull=True, product_type__in=type_values)
+                    if q:
+                        queryset = queryset.filter(q)
         
         # Фильтр по бренду (поддержка массивов)
         brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
@@ -434,6 +477,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         description="Возвращает список товаров с возможностью фильтрации",
         parameters=[
             OpenApiParameter(name="category_id", type=int, required=False, description="ID категории"),
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории (включая подкатегории)"),
             OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
             OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
             OpenApiParameter(name="min_price", type=float, required=False, description="Минимальная цена"),
@@ -739,6 +783,15 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError):
                 pass
         
+        # Фильтр по slug категории (включая подкатегории). subcategory_slug — алиас.
+        category_slug = self.request.query_params.get('category_slug') or self.request.query_params.get('subcategory_slug')
+        if category_slug:
+            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
+            if slugs:
+                cat_ids = _get_category_ids_with_descendants(slugs)
+                if cat_ids:
+                    queryset = queryset.filter(category_id__in=cat_ids)
+        
         # Фильтр по бренду (поддержка массивов)
         brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
         if brand_ids:
@@ -810,6 +863,7 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
         description="Возвращает список товаров одежды с возможностью фильтрации",
         parameters=[
             OpenApiParameter(name="category_id", type=int, required=False, description="ID категории"),
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории (включая подкатегории)"),
             OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
             OpenApiParameter(name="gender", type=str, required=False, description="Пол"),
             OpenApiParameter(name="size", type=str, required=False, description="Размер"),
@@ -943,6 +997,15 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError):
                 pass
         
+        # Фильтр по slug категории (включая подкатегории). subcategory_slug — алиас.
+        category_slug = self.request.query_params.get('category_slug') or self.request.query_params.get('subcategory_slug')
+        if category_slug:
+            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
+            if slugs:
+                cat_ids = _get_category_ids_with_descendants(slugs)
+                if cat_ids:
+                    queryset = queryset.filter(category_id__in=cat_ids)
+        
         # Фильтр по бренду (поддержка массивов)
         brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
         if brand_ids:
@@ -1014,6 +1077,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
         description="Возвращает список товаров обуви с возможностью фильтрации",
         parameters=[
             OpenApiParameter(name="category_id", type=int, required=False, description="ID категории"),
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории (включая подкатегории)"),
             OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
             OpenApiParameter(name="gender", type=str, required=False, description="Пол"),
             OpenApiParameter(name="size", type=str, required=False, description="Размер"),
@@ -1137,6 +1201,15 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError):
                 pass
         
+        # Фильтр по slug категории (включая подкатегории). subcategory_slug — алиас.
+        category_slug = self.request.query_params.get('category_slug') or self.request.query_params.get('subcategory_slug')
+        if category_slug:
+            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
+            if slugs:
+                cat_ids = _get_category_ids_with_descendants(slugs)
+                if cat_ids:
+                    queryset = queryset.filter(category_id__in=cat_ids)
+        
         # Фильтр по бренду (поддержка массивов)
         brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
         if brand_ids:
@@ -1186,6 +1259,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
         description="Возвращает список товаров электроники с возможностью фильтрации",
         parameters=[
             OpenApiParameter(name="category_id", type=int, required=False, description="ID категории"),
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории (включая подкатегории)"),
             OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
             OpenApiParameter(name="model", type=str, required=False, description="Модель"),
             OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
@@ -1246,6 +1320,15 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
             except (ValueError, TypeError):
                 pass
         
+        # Фильтр по slug категории (включая подкатегории). subcategory_slug — алиас.
+        category_slug = self.request.query_params.get('category_slug') or self.request.query_params.get('subcategory_slug')
+        if category_slug:
+            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
+            if slugs:
+                cat_ids = _get_category_ids_with_descendants(slugs)
+                if cat_ids:
+                    queryset = queryset.filter(category_id__in=cat_ids)
+        
         # Фильтр по бренду (поддержка массивов)
         brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
         if brand_ids:
@@ -1300,6 +1383,7 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
         description="Возвращает список товаров мебели с возможностью фильтрации",
         parameters=[
             OpenApiParameter(name="category_id", type=int, required=False, description="ID категории"),
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории (включая подкатегории)"),
             OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
             OpenApiParameter(name="furniture_type", type=str, required=False, description="Тип мебели"),
             OpenApiParameter(name="material", type=str, required=False, description="Материал"),
@@ -1339,13 +1423,22 @@ class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
         """Фильтрация услуг по параметрам."""
         queryset = Service.objects.filter(is_active=True)
         
-        # Фильтр по категории
+        # Фильтр по категории (ID)
         category_id = self.request.query_params.get('category_id')
         if category_id:
             try:
                 queryset = queryset.filter(category_id=int(category_id))
             except (ValueError, TypeError):
                 pass
+        
+        # Фильтр по slug категории (включая подкатегории)
+        category_slug = self.request.query_params.get('category_slug') or self.request.query_params.get('subcategory_slug')
+        if category_slug:
+            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
+            if slugs:
+                cat_ids = _get_category_ids_with_descendants(slugs)
+                if cat_ids:
+                    queryset = queryset.filter(category_id__in=cat_ids)
         
         # Фильтр по типу услуги
         service_type = self.request.query_params.get('service_type')

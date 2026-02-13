@@ -134,6 +134,8 @@
   ,"profile_error": "Ошибка"
   ,"profile_not_public": "Профиль не является публичным"
   ,"back_to_home": "Вернуться на главную"
+  ,"pagination_back": "Назад"
+  ,"pagination_forward": "Вперед"
   ,"order_status_new": "Новый"
   ,"order_status_pending_payment": "Ожидает оплаты"
   ,"order_status_paid": "Оплачен"

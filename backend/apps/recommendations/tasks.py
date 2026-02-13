@@ -34,6 +34,7 @@ def index_product_vectors(product_ids=None, batch_size=100):
             Product.objects.filter(is_available=True)
             .filter(
                 Q(vector_data__isnull=True)
+                | Q(vector_data__last_synced__isnull=True)
                 | Q(vector_data__last_synced__lt=F("updated_at"))
             )
             .select_related("category", "brand")

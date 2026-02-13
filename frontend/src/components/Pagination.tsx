@@ -1,4 +1,5 @@
 import { useRouter } from 'next/router'
+import { useTranslation } from 'next-i18next'
 
 interface PaginationProps {
   currentPage: number
@@ -8,6 +9,7 @@ interface PaginationProps {
 
 export default function Pagination({ currentPage, totalPages, onPageChange }: PaginationProps) {
   const router = useRouter()
+  const { t } = useTranslation('common')
   
   const handlePageChange = (page: number) => {
     if (onPageChange) {
@@ -43,7 +45,7 @@ export default function Pagination({ currentPage, totalPages, onPageChange }: Pa
             : 'border-gray-200 text-gray-300 cursor-not-allowed'
         }`}
       >
-        Назад
+        {t('pagination_back', 'Назад')}
       </button>
       
       {start > 1 && (
@@ -93,7 +95,7 @@ export default function Pagination({ currentPage, totalPages, onPageChange }: Pa
             : 'border-gray-200 text-gray-300 cursor-not-allowed'
         }`}
       >
-        Вперед
+        {t('pagination_forward', 'Вперед')}
       </button>
     </nav>
   )

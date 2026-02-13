@@ -134,6 +134,8 @@
   ,"profile_error": "Error"
   ,"profile_not_public": "Profile is not public"
   ,"back_to_home": "Back to home"
+  ,"pagination_back": "Back"
+  ,"pagination_forward": "Forward"
   ,"order_status_new": "New"
   ,"order_status_pending_payment": "Pending Payment"
   ,"order_status_paid": "Paid"
