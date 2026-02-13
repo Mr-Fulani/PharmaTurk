@@ -6,6 +6,7 @@ import { getLocalizedCategoryName, getLocalizedBrandName, CategoryTranslation, B
 export interface SidebarTreeItem {
   id: string
   name: string
+  nameKey?: string
   slug?: string
   dataId?: number
   count?: number
@@ -15,6 +16,7 @@ export interface SidebarTreeItem {
 
 export interface SidebarTreeSection {
   title: string
+  titleKey?: string
   items: SidebarTreeItem[]
 }
 
@@ -255,7 +257,9 @@ export default function CategorySidebar({
             disabled={!item.dataId && !hasChildren}
           >
             <span className="flex-1 truncate">
-              {item.slug && item.type === 'category' 
+              {item.nameKey
+                ? t(item.nameKey)
+                : item.slug && item.type === 'category' 
                 ? getLocalizedCategoryName(item.slug, item.name, t, undefined, router.locale)
                 : item.type === 'brand' && item.slug
                 ? getLocalizedBrandName(item.slug, item.name, t, undefined, router.locale)
@@ -378,10 +382,11 @@ export default function CategorySidebar({
                 // Если первый элемент уже содержит название группы, не показываем заголовок отдельно
                 const firstItem = group.items[0]
                 const shouldHideTitle = firstItem && firstItem.name === group.title
+                const sectionTitle = group.titleKey ? t(group.titleKey) : group.title
                 return (
                   <div key={group.title}>
                     {!shouldHideTitle && (
-                      <h3 className="text-base font-semibold text-main mb-3 dark:text-gray-900">{group.title}</h3>
+                      <h3 className="text-base font-semibold text-main mb-3 dark:text-gray-900">{sectionTitle}</h3>
                     )}
                     <div className="space-y-1">{renderTreeItems(group.items)}</div>
                   </div>
@@ -564,7 +569,7 @@ export default function CategorySidebar({
             </div>
           )}
 
-          {categories.length > 0 && categoryGroups.length === 0 && (
+          {categories.length > 0 && categoryGroups.length === 0 && subcategories.length === 0 && (
             <div className="border-b pb-4">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, categories: !prev.categories }))}

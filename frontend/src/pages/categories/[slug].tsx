@@ -308,12 +308,12 @@ const clothingGenderKeywords: Record<string, string[]> = {
 
 const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => {
   const sections = [
-    { key: 'male', title: 'Мужская одежда' },
-    { key: 'female', title: 'Женская одежда' },
-    { key: 'kids', title: 'Детская одежда' }
+    { key: 'male', title: 'Мужская одежда', titleKey: 'sidebar_clothing_male' },
+    { key: 'female', title: 'Женская одежда', titleKey: 'sidebar_clothing_female' },
+    { key: 'kids', title: 'Детская одежда', titleKey: 'sidebar_clothing_kids' }
   ]
 
-  return sections.map(({ key, title }) => {
+  return sections.map(({ key, title, titleKey }) => {
     const genderKeywords = clothingGenderKeywords[key] || []
     const subitemsStructure = GENDER_SUBITEMS[key] || []
     
@@ -368,88 +368,94 @@ const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => 
     // Создаем главный раздел с вложенными подкатегориями
     return {
       title,
+      titleKey,
       items: [{
         id: `section-${key}`,
         name: title,
         type: 'category',
         children: subcategories
       }]
-    }
+    } as SidebarTreeSection & { titleKey?: string }
   })
 }
 // Подкатегории для обезболивающих
 const PAINKILLERS_SUBITEMS = [
-  { name: 'Анальгетики', keywords: ['analgesic', 'анальгетик'] },
-  { name: 'Противовоспалительные', keywords: ['anti-inflammatory', 'противовоспалител'] },
-  { name: 'Спазмолитики', keywords: ['antispasmodic', 'спазмолитик'] },
-  { name: 'Обезболивающие мази', keywords: ['pain-relief-cream', 'обезболивающая мазь'] },
-  { name: 'Мигрень и головная боль', keywords: ['migraine', 'headache', 'мигрень', 'головная боль'] },
+  { name: 'Анальгетики', nameKey: 'sidebar_med_analgesics', keywords: ['analgesic', 'анальгетик'] },
+  { name: 'Противовоспалительные', nameKey: 'sidebar_med_antiinflammatory', keywords: ['anti-inflammatory', 'противовоспалител'] },
+  { name: 'Спазмолитики', nameKey: 'sidebar_med_antispasmodics', keywords: ['antispasmodic', 'спазмолитик'] },
+  { name: 'Обезболивающие мази', nameKey: 'sidebar_med_pain_creams', keywords: ['pain-relief-cream', 'обезболивающая мазь'] },
+  { name: 'Мигрень и головная боль', nameKey: 'sidebar_med_migraine', keywords: ['migraine', 'headache', 'мигрень', 'головная боль'] },
 ]
 
 // Подкатегории для антибиотиков
 const ANTIBIOTICS_SUBITEMS = [
-  { name: 'Пенициллины', keywords: ['penicillin', 'пенициллин'] },
-  { name: 'Цефалоспорины', keywords: ['cephalosporin', 'цефалоспорин'] },
-  { name: 'Макролиды', keywords: ['macrolide', 'макролид'] },
-  { name: 'Фторхинолоны', keywords: ['fluoroquinolone', 'фторхинолон'] },
-  { name: 'Тетрациклины', keywords: ['tetracycline', 'тетрациклин'] },
-  { name: 'Антибиотики широкого спектра', keywords: ['broad-spectrum', 'широкого спектра'] },
+  { name: 'Пенициллины', nameKey: 'sidebar_med_penicillins', keywords: ['penicillin', 'пенициллин'] },
+  { name: 'Цефалоспорины', nameKey: 'sidebar_med_cephalosporins', keywords: ['cephalosporin', 'цефалоспорин'] },
+  { name: 'Макролиды', nameKey: 'sidebar_med_macrolides', keywords: ['macrolide', 'макролид'] },
+  { name: 'Фторхинолоны', nameKey: 'sidebar_med_fluoroquinolones', keywords: ['fluoroquinolone', 'фторхинолон'] },
+  { name: 'Тетрациклины', nameKey: 'sidebar_med_tetracyclines', keywords: ['tetracycline', 'тетрациклин'] },
+  { name: 'Антибиотики широкого спектра', nameKey: 'sidebar_med_broad_spectrum', keywords: ['broad-spectrum', 'широкого спектра'] },
 ]
 
 // Подкатегории для витаминов
 const VITAMINS_SUBITEMS = [
-  { name: 'Витамин C', keywords: ['vitamin-c', 'витамин с', 'аскорбиновая'] },
-  { name: 'Витамин D', keywords: ['vitamin-d', 'витамин д'] },
-  { name: 'Витамин B комплекс', keywords: ['vitamin-b', 'витамин б', 'витамин в'] },
-  { name: 'Мультивитамины', keywords: ['multivitamin', 'мультивитамин'] },
-  { name: 'Кальций и магний', keywords: ['calcium', 'magnesium', 'кальций', 'магний'] },
-  { name: 'Железо', keywords: ['iron', 'железо'] },
-  { name: 'Омега-3', keywords: ['omega-3', 'омега-3'] },
-  { name: 'Иммуномодуляторы', keywords: ['immunomodulator', 'иммуномодулятор'] },
+  { name: 'Витамин C', nameKey: 'sidebar_med_vitamin_c', keywords: ['vitamin-c', 'витамин с', 'аскорбиновая'] },
+  { name: 'Витамин D', nameKey: 'sidebar_med_vitamin_d', keywords: ['vitamin-d', 'витамин д'] },
+  { name: 'Витамин B комплекс', nameKey: 'sidebar_med_vitamin_b', keywords: ['vitamin-b', 'витамин б', 'витамин в'] },
+  { name: 'Мультивитамины', nameKey: 'sidebar_med_multivitamins', keywords: ['multivitamin', 'мультивитамин'] },
+  { name: 'Кальций и магний', nameKey: 'sidebar_med_calcium_magnesium', keywords: ['calcium', 'magnesium', 'кальций', 'магний'] },
+  { name: 'Железо', nameKey: 'sidebar_med_iron', keywords: ['iron', 'железо'] },
+  { name: 'Омега-3', nameKey: 'sidebar_med_omega3', keywords: ['omega-3', 'омега-3'] },
+  { name: 'Иммуномодуляторы', nameKey: 'sidebar_med_immunomodulators', keywords: ['immunomodulator', 'иммуномодулятор'] },
 ]
 
 // Подкатегории для гинекологии
 const GYNECOLOGY_SUBITEMS = [
-  { name: 'Контрацептивы', keywords: ['contraceptive', 'контрацептив'] },
-  { name: 'Гормональные препараты', keywords: ['hormonal', 'гормональн'] },
-  { name: 'Противовоспалительные', keywords: ['anti-inflammatory', 'противовоспалител'] },
-  { name: 'Молочница', keywords: ['candidiasis', 'thrush', 'молочница', 'кандидоз'] },
-  { name: 'Климакс', keywords: ['menopause', 'климакс'] },
-  { name: 'Беременность', keywords: ['pregnancy', 'беременност'] },
+  { name: 'Контрацептивы', nameKey: 'sidebar_med_contraceptives', keywords: ['contraceptive', 'контрацептив'] },
+  { name: 'Гормональные препараты', nameKey: 'sidebar_med_hormonal', keywords: ['hormonal', 'гормональн'] },
+  { name: 'Противовоспалительные', nameKey: 'sidebar_med_antiinflammatory_gynec', keywords: ['anti-inflammatory', 'противовоспалител'] },
+  { name: 'Молочница', nameKey: 'sidebar_med_candidiasis', keywords: ['candidiasis', 'thrush', 'молочница', 'кандидоз'] },
+  { name: 'Климакс', nameKey: 'sidebar_med_menopause', keywords: ['menopause', 'климакс'] },
+  { name: 'Беременность', nameKey: 'sidebar_med_pregnancy', keywords: ['pregnancy', 'беременност'] },
 ]
 
 // Подкатегории для онкологии
 const ONCOLOGY_SUBITEMS = [
-  { name: 'Химиотерапия', keywords: ['chemotherapy', 'химиотерап'] },
-  { name: 'Иммунотерапия', keywords: ['immunotherapy', 'иммунотерап'] },
-  { name: 'Обезболивание', keywords: ['pain-management', 'обезболивани'] },
-  { name: 'Поддерживающая терапия', keywords: ['supportive-care', 'поддерживающ'] },
-  { name: 'Восстановление', keywords: ['recovery', 'восстановлени'] },
+  { name: 'Химиотерапия', nameKey: 'sidebar_med_chemotherapy', keywords: ['chemotherapy', 'химиотерап'] },
+  { name: 'Иммунотерапия', nameKey: 'sidebar_med_immunotherapy', keywords: ['immunotherapy', 'иммунотерап'] },
+  { name: 'Обезболивание', nameKey: 'sidebar_med_pain_management', keywords: ['pain-management', 'обезболивани'] },
+  { name: 'Поддерживающая терапия', nameKey: 'sidebar_med_supportive_care', keywords: ['supportive-care', 'поддерживающ'] },
+  { name: 'Восстановление', nameKey: 'sidebar_med_recovery', keywords: ['recovery', 'восстановлени'] },
 ]
 
 const MEDICINE_GROUPS = [
   {
     label: 'Обезболивающие',
+    titleKey: 'sidebar_medicine_painkillers',
     keywords: ['pain', 'обезбол'],
     subitems: PAINKILLERS_SUBITEMS
   },
   {
     label: 'Антибиотики',
+    titleKey: 'sidebar_medicine_antibiotics',
     keywords: ['antibiotic', 'антибиот'],
     subitems: ANTIBIOTICS_SUBITEMS
   },
   {
     label: 'Витамины и иммунитет',
+    titleKey: 'sidebar_medicine_vitamins',
     keywords: ['vitamin', 'витамин'],
     subitems: VITAMINS_SUBITEMS
   },
   {
     label: 'Гинекология',
+    titleKey: 'sidebar_medicine_gynecology',
     keywords: ['gynec', 'гинек'],
     subitems: GYNECOLOGY_SUBITEMS
   },
   {
     label: 'Онкология',
+    titleKey: 'sidebar_medicine_oncology',
     keywords: ['oncology', 'онколо', 'рак'],
     subitems: ONCOLOGY_SUBITEMS
   }
@@ -485,6 +491,7 @@ const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] =>
         subcategories.push({
           id: `placeholder-med-${group.label}-${index}`,
           name: itemStruct.name,
+          nameKey: itemStruct.nameKey,
           slug: undefined,
           dataId: undefined,
           count: undefined,
@@ -510,13 +517,14 @@ const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] =>
     // Создаем главный раздел с вложенными подкатегориями
     return {
       title: group.label,
+      titleKey: group.titleKey,
       items: [{
         id: `section-med-${group.label}`,
         name: group.label,
         type: 'category',
         children: subcategories
       }]
-    }
+    } as SidebarTreeSection & { titleKey?: string }
   })
 
 // Парфюмерия: две группы — по аудитории (жен/муж/унисекс) и по типу (нишевая, дом, EDP, EDT)
@@ -573,34 +581,38 @@ const getCategorySections = (type: CategoryPageProps['categoryType'], categories
 const BOOK_GROUPS = [
   {
     label: 'Исламская литература',
+    titleKey: 'sidebar_books_islamic',
     keywords: ['ислам', 'islamic', 'фикх', 'fiqh', 'тафсир', 'tafsir', 'адаб', 'adab', 'хадис', 'hadith'],
     subitems: [
-      { name: 'Исламский фикх', keywords: ['фикх', 'fiqh', 'islamic-fiqh'] },
-      { name: 'Тафсир', keywords: ['тафсир', 'tafsir'] },
-      { name: 'Адаб', keywords: ['адаб', 'adab'] },
-      { name: 'Хадис', keywords: ['хадис', 'hadith'] },
-      { name: 'История', keywords: ['история', 'history'] },
+      { name: 'Исламский фикх', nameKey: 'sidebar_book_fiqh', keywords: ['фикх', 'fiqh', 'islamic-fiqh'] },
+      { name: 'Тафсир', nameKey: 'sidebar_book_tafsir', keywords: ['тафсир', 'tafsir'] },
+      { name: 'Адаб', nameKey: 'sidebar_book_adab', keywords: ['адаб', 'adab'] },
+      { name: 'Хадис', nameKey: 'sidebar_book_hadith', keywords: ['хадис', 'hadith'] },
+      { name: 'История', nameKey: 'sidebar_book_history', keywords: ['история', 'history'] },
     ]
   },
   {
     label: 'Бизнес',
+    titleKey: 'sidebar_books_business',
     keywords: ['бизнес', 'business'],
     subitems: [
-      { name: 'Бизнес литература', keywords: ['бизнес', 'business'] },
+      { name: 'Бизнес литература', nameKey: 'sidebar_book_business', keywords: ['бизнес', 'business'] },
     ]
   },
   {
     label: 'Наука',
+    titleKey: 'sidebar_books_science',
     keywords: ['науч', 'science'],
     subitems: [
-      { name: 'Научная литература', keywords: ['науч', 'science'] },
+      { name: 'Научная литература', nameKey: 'sidebar_book_science', keywords: ['науч', 'science'] },
     ]
   },
   {
     label: 'Художественная',
+    titleKey: 'sidebar_books_fiction',
     keywords: ['худож', 'fiction'],
     subitems: [
-      { name: 'Художественная литература', keywords: ['худож', 'fiction'] },
+      { name: 'Художественная литература', nameKey: 'sidebar_book_fiction', keywords: ['худож', 'fiction'] },
     ]
   }
 ]
@@ -635,6 +647,7 @@ const buildBookSections = (categories: Category[]): SidebarTreeSection[] =>
         subcategories.push({
           id: `placeholder-book-${group.label}-${index}`,
           name: itemStruct.name,
+          nameKey: itemStruct.nameKey,
           slug: undefined,
           dataId: undefined,
           count: undefined,
@@ -660,13 +673,14 @@ const buildBookSections = (categories: Category[]): SidebarTreeSection[] =>
     // Создаем главный раздел с вложенными подкатегориями
     return {
       title: group.label,
+      titleKey: group.titleKey,
       items: [{
         id: `section-book-${group.label}`,
         name: group.label,
         type: 'category',
         children: subcategories
       }]
-    }
+    } as SidebarTreeSection & { titleKey?: string }
   })
 
 const normalizePageParam = (value: string | string[] | undefined): number => {
