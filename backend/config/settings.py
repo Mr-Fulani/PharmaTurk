@@ -138,6 +138,7 @@ CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_TASK_ALWAYS_EAGER = False
 CELERY_TASK_TIME_LIMIT = 60 * 10
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 # Очередь ai для задач AI (воркер celery_ai слушает только её); recsys для рекомендаций
 CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},

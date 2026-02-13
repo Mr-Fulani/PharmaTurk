@@ -154,8 +154,8 @@ services:
       R2_USE_SSL: ${R2_USE_SSL:-true}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
-    command: bash -c "poetry run celery -A config worker -Q celery,recsys --loglevel=info --concurrency=4"
-    mem_limit: 2g
+    command: bash -c "poetry run celery -A config worker -Q celery,recsys --loglevel=info --concurrency=2"
+    mem_limit: 4g
 
   celery_ai:
     image: pharmaturk-backend
