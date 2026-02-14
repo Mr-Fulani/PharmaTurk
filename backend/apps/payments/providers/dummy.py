@@ -1,11 +1,36 @@
-"""Интерфейсы и заглушки платёжных провайдеров.
-
-Реализация конкретных провайдеров (ЮKassa, CloudPayments, крипто) будет добавлена позже.
-"""
+"""Заглушка платёжного провайдера для разработки без реальных оплат."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from decimal import Decimal
+from typing import Any, Protocol
+
+from django.utils import timezone
+
+
+def create_invoice_dummy(
+    amount_fiat: float | Decimal,
+    fiat_currency: str,
+    order_number: str,
+    notify_url: str,
+    success_url: str = "",
+    fail_url: str = "",
+    expiry_minutes: int = 30,
+    description: str = "",
+) -> dict[str, Any]:
+    """Заглушка для создания крипто-инвойса в разработке (когда CoinRemitter не настроен)."""
+    amount = Decimal(str(amount_fiat))
+    expires_at = timezone.now() + timezone.timedelta(minutes=expiry_minutes)
+    return {
+        "invoice_id": f"dummy-{order_number[:8]}",
+        "address": "TDevWallet123456789012345678901",
+        "qr_code": "",
+        "amount": amount,
+        "amount_usd": amount,
+        "currency": (fiat_currency or "USD").upper()[:3],
+        "expires_at": expires_at,
+        "invoice_url": "",
+    }
 
 
 @dataclass
@@ -41,4 +66,3 @@ class DummyProvider:
 
     def refund_payment(self, payment_id: str, *, amount_minor: int | None = None) -> bool:
         return True
-

@@ -291,6 +291,11 @@ class Order(models.Model):
         verbose_name_plural = _("🛒 Заказы — Заказы")
         ordering = ["-created_at"]
 
+    def save(self, *args, **kwargs):
+        if self.status == self.OrderStatus.PAID and self.payment_status != "paid":
+            self.payment_status = "paid"
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:
         return f"Заказ #{self.number}"
 

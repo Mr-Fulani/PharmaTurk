@@ -69,6 +69,7 @@ urlpatterns = [
     
     # Публичный профиль пользователя
     path('public-profile/', PublicUserProfileView.as_view(), name='public-user-profile'),
+    path('public-profile', PublicUserProfileView.as_view(), name='public-user-profile-noslash'),  # без slash для fetch/ngrok
     
     # ViewSets
     path('', include(router.urls)),

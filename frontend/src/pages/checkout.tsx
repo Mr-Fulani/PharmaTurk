@@ -5,6 +5,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Link from 'next/link'
 import api from '../lib/api'
+import { resolveMediaUrl } from '../lib/media'
 import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cart'
 import { useTheme } from '../context/ThemeContext'
@@ -80,7 +81,6 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     cvv: '',
     holder: '',
   })
-  const [cryptoWallet, setCryptoWallet] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingAddresses, setLoadingAddresses] = useState(true)
   const [showAddressForm, setShowAddressForm] = useState(false)
@@ -221,13 +221,24 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       if (cart?.promo_code?.code) {
         body.set('promo_code', cart.promo_code.code)
       }
+      // Язык для редиректа после оплаты (crypto) — чтобы не сбрасывался при возврате
+      body.set('locale', (router.locale as string) || 'en')
       const res = await api.post('/orders/orders/create-from-cart', body, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       })
       const orderNumber = res.data?.number
       setItemsCount(0)
       await refreshCart()
-      router.push(orderNumber ? `/checkout-success?number=${encodeURIComponent(orderNumber)}` : '/checkout-success')
+      if (paymentMethod === 'crypto' && res.data?.payment_data && orderNumber) {
+        const invoiceUrl = res.data.payment_data.invoice_url
+        if (invoiceUrl) {
+          window.location.href = invoiceUrl
+        } else {
+          router.push(`/checkout-crypto?number=${encodeURIComponent(orderNumber)}`)
+        }
+      } else {
+        router.push(orderNumber ? `/checkout-success?number=${encodeURIComponent(orderNumber)}` : '/checkout-success')
+      }
       } catch (err: any) {
       const status = err?.response?.status
       if (status === 401) {
@@ -851,35 +862,10 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   </div>
                 )}
 
-                {/* Поле для криптокошелька */}
+                {/* Информация о крипто-оплате: адрес выдаётся на следующей странице */}
                 {paymentMethod === 'crypto' && (
-                  <div className="mt-6 p-4 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 space-y-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <svg className="h-5 w-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <h3 className="text-sm font-semibold text-gray-700">{t('payment_crypto_wallet', 'Адрес криптокошелька')}</h3>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('payment_crypto_wallet_address', 'Адрес кошелька для получения')} <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={cryptoWallet}
-                        onChange={(e) => setCryptoWallet(e.target.value)}
-                        placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
-                        className="w-full px-3 py-2 border border-amber-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono text-sm"
-                        required={paymentMethod === 'crypto'}
-                      />
-                      <p className="mt-2 text-xs text-gray-600">
-                        {t('payment_crypto_supported', 'Поддерживаемые криптовалюты: Bitcoin (BTC), Ethereum (ETH), USDT (TRC20/ERC20), Tether (USDT)')}
-                      </p>
-                    </div>
-
-                    {/* Информация о крипто-оплате */}
-                    <div className="flex items-start gap-2 p-3 bg-amber-100 rounded-lg border border-amber-300">
+                  <div className="mt-6 p-4 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200">
+                    <div className="flex items-start gap-2">
                       <svg className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -924,7 +910,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     >
                       {item.product_image_url ? (
                         <img
-                          src={item.product_image_url}
+                          src={resolveMediaUrl(item.product_image_url)}
                           alt={item.product_name}
                           className="w-20 h-20 object-cover rounded-lg flex-shrink-0 border border-gray-200"
                         />
@@ -1016,8 +1002,7 @@ export async function getServerSideProps(ctx: any) {
   let initialCart = null
   
   try {
-    // Используем относительный путь, который работает через Next.js rewrites
-    const base = process.env.INTERNAL_API_BASE || ''
+    const { getInternalApiUrl } = await import('../lib/urls')
     const cookieHeader: string = req.headers.cookie || ''
     const cartSessionMatch = cookieHeader.match(/(?:^|;\s*)cart_session=([^;]+)/)
     let cartSession = cartSessionMatch ? cartSessionMatch[1] : ''
@@ -1034,7 +1019,7 @@ export async function getServerSideProps(ctx: any) {
     const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
     const currency = currencyMatch ? currencyMatch[1] : 'RUB'
 
-    const apiRes = await fetch(`${base}/api/orders/cart`, {
+    const apiRes = await fetch(getInternalApiUrl('orders/cart'), {
       headers: {
         cookie: cookieHeader,
         'Accept-Language': locale || 'en',

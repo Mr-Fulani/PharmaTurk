@@ -143,6 +143,7 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},
     "apps.recommendations.tasks.*": {"queue": "recsys"},
+    "apps.payments.tasks.*": {"queue": "celery"},
     "currency.*": {"queue": "celery"},
 }
 # Расписание Celery Beat. Подробности — см. CELERY_TASKS.md в корне проекта.
@@ -183,6 +184,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60 * 60 * 24,  # день (можно заменить на crontab(0, 3) при наличии celery.schedules)
     },
     # AI: задачи, тратящие токены OpenAI, отключены — только ручной запуск через админку /admin/ai/manual-tasks/
+    # Крипто: пометить истёкшие инвойсы (каждые 10 мин)
+    "payments-expire-crypto-invoices": {
+        "task": "apps.payments.tasks.expire_pending_crypto_payments",
+        "schedule": 60 * 10,
+    },
     # AI: очистка старых логов (раз в неделю, не тратит токены)
     "ai-cleanup-old-logs": {
         "task": "apps.ai.tasks.cleanup_old_ai_logs",
@@ -266,9 +272,11 @@ else:
 
 
 # DRF + JWT
+# JWTSafeAuthentication: при невалидном/просроченном токене возвращает None (анонимный доступ),
+# чтобы AllowAny-эндпоинты работали через ngrok при старом токене в cookies
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "api.authentication.JWTSafeAuthentication",
         "rest_framework.authentication.SessionAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
@@ -416,3 +424,13 @@ AI_R2_SETTINGS = {
 }
 
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+
+# CoinRemitter (crypto payments)
+COINREMITTER_API_KEY = env("COINREMITTER_API_KEY", default="")
+COINREMITTER_API_PASSWORD = env("COINREMITTER_API_PASSWORD", default="")
+COINREMITTER_COIN = env("COINREMITTER_COIN", default="USDTTRC20")
+COINREMITTER_WEBHOOK_SECRET = env("COINREMITTER_WEBHOOK_SECRET", default="")
+COINREMITTER_WEBHOOK_IP_WHITELIST = env.list("COINREMITTER_WEBHOOK_IP_WHITELIST", default=[])
+SITE_URL = env("SITE_URL", default="http://localhost:3000").rstrip("/")
+# Для success_url/fail_url: URL фронтенда (checkout-success). По умолчанию = SITE_URL.
+FRONTEND_SITE_URL = env("FRONTEND_SITE_URL", default="").rstrip("/") or SITE_URL

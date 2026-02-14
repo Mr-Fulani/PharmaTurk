@@ -1,50 +1,11 @@
 import axios, { type AxiosRequestHeaders } from 'axios'
 import Cookies from 'js-cookie'
-
-// Динамически определяем базовый URL для работы на мобильных устройствах
-function getApiBaseUrl(): string {
-  // На клиенте ВСЕГДА используем прямой URL к backend
-  // Next.js rewrites работают только на сервере (SSR), на клиенте они не работают!
-  if (typeof window !== 'undefined') {
-    const origin = window.location.origin
-    // Определяем порт backend на основе порта frontend
-    // Если порт 3001 (frontend), заменяем на 8000 (backend)
-    // Это работает и для localhost, и для IP адресов (например, 192.168.1.36)
-    if (origin.includes(':3001')) {
-      const backendUrl = origin.replace(':3001', ':8000') + '/api'
-      console.log('[getApiBaseUrl] Client - using direct backend URL:', backendUrl, 'from origin:', origin)
-      return backendUrl
-    }
-    if (origin.includes(':3000')) {
-      const backendUrl = origin.replace(':3000', ':8000') + '/api'
-      console.log('[getApiBaseUrl] Client - using direct backend URL:', backendUrl, 'from origin:', origin)
-      return backendUrl
-    }
-    // Если другой порт, пытаемся определить backend порт
-    // По умолчанию используем порт 8000
-    const backendUrl = origin.split(':').slice(0, -1).join(':') + ':8000/api'
-    console.log('[getApiBaseUrl] Client - using direct backend URL (default port 8000):', backendUrl, 'from origin:', origin)
-    return backendUrl
-  }
-  
-  // На сервере (SSR) используем переменную окружения или относительный путь
-  // При SSR запросы идут через внутреннюю сеть Docker (rewrites работают)
-  if (process.env.NEXT_PUBLIC_API_BASE) {
-    // Если это полный URL (http://...), используем его
-    if (process.env.NEXT_PUBLIC_API_BASE.startsWith('http://') || process.env.NEXT_PUBLIC_API_BASE.startsWith('https://')) {
-      return process.env.NEXT_PUBLIC_API_BASE
-    }
-  }
-  
-  // На сервере используем относительный путь (rewrites обработают через Docker сеть)
-  console.log('[getApiBaseUrl] Server - using relative path /api (rewrites will handle)')
-  return '/api'
-}
+import { getClientApiBase } from './urls'
 
 // Создаем axios instance с базовым URL
-// На клиенте URL будет определен динамически через interceptor
+// На клиенте URL определяется динамически через interceptor (getClientApiBase)
 const api = axios.create({
-  baseURL: typeof window !== 'undefined' ? getApiBaseUrl() : '/api',
+  baseURL: typeof window !== 'undefined' ? getClientApiBase() : '/api',
   withCredentials: false,
 })
 
@@ -87,18 +48,17 @@ function cryptoRandom() {
 api.interceptors.request.use((config) => {
   // Обновляем baseURL на клиенте при каждом запросе (для работы на мобильных устройствах)
   if (typeof window !== 'undefined') {
-    const apiBase = getApiBaseUrl()
+    const apiBase = getClientApiBase()
     if (apiBase && config.baseURL !== apiBase) {
       config.baseURL = apiBase
     }
-    // ВСЕГДА логируем на клиенте для диагностики проблем на мобильных (даже в production)
-    console.log('[API Request]', {
-      url: config.url,
-      baseURL: config.baseURL,
-      fullUrl: `${config.baseURL}${config.url}`,
-      origin: window.location.origin,
-      userAgent: navigator.userAgent
-    })
+    // ngrok free tier: без этого заголовка возвращает HTML-страницу предупреждения вместо API-ответа
+    if (window.location.origin.includes('ngrok-free.dev') || window.location.origin.includes('ngrok.io')) {
+      if (!config.headers) config.headers = {} as AxiosRequestHeaders
+      ;(config.headers as AxiosRequestHeaders)['ngrok-skip-browser-warning'] = '1'
+    }
+    // Диагностика: раскомментировать при проблемах с API на мобильных/ngrok
+    // console.log('[API Request]', { url: config.url, baseURL: config.baseURL, origin: window.location.origin })
   }
   
   const access = Cookies.get('access')
@@ -175,7 +135,7 @@ api.interceptors.response.use(
         try {
           const refresh = Cookies.get('refresh')
           if (refresh) {
-            const resp = await axios.post(getApiBaseUrl() + '/auth/jwt/refresh/', { refresh })
+            const resp = await api.post('/auth/jwt/refresh/', { refresh })
             const newAccess = resp.data?.access
             if (newAccess) Cookies.set('access', newAccess, { sameSite: 'Lax', path: '/' })
             const newRefresh = resp.data?.refresh

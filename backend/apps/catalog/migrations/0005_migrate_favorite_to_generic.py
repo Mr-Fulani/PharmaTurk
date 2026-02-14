@@ -11,12 +11,9 @@ def migrate_favorite_data(apps, schema_editor):
     Favorite = apps.get_model('catalog', 'Favorite')
     Product = apps.get_model('catalog', 'Product')
     ContentType = apps.get_model('contenttypes', 'ContentType')
-    
-    # Получаем ContentType для Product
-    product_content_type = ContentType.objects.get(
-        app_label='catalog',
-        model='product'
-    )
+
+    # get_for_model создаёт ContentType при необходимости (пустая БД)
+    product_content_type = ContentType.objects.get_for_model(Product)
     
     # Переносим данные из старого поля product в новые поля
     # Используем raw SQL для доступа к старому полю product_id

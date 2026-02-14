@@ -7,6 +7,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Masonry from 'react-masonry-css'
 import BannerCarousel from '../../components/BannerCarouselMedia'
 import { resolveMediaUrl, getPlaceholderImageUrl } from '../../lib/media'
+import { getSiteOrigin } from '../../lib/urls'
 import { getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../../lib/i18n'
 
 interface Brand {
@@ -127,7 +128,7 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
   const { t } = useTranslation('common')
   const router = useRouter()
 
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+  const siteUrl = getSiteOrigin()
   const canonicalUrl = `${siteUrl}/brands`
   const pageTitle = t('brands_page_title', 'Бренды — PharmaTurk')
   const pageDescription = t('brands_page_description', 'Популярные бренды из Турции: одежда, обувь, электроника, аксессуары и товары для здоровья.')
@@ -224,11 +225,9 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
 
 export const getServerSideProps = async (ctx: any) => {
   try {
-    // Используем относительный путь, который работает через Next.js rewrites
-    const base = process.env.INTERNAL_API_BASE || ''
-
+    const { getInternalApiUrl } = await import('../../lib/urls')
     let allBrands: Brand[] = []
-    let nextUrl: string | null = `${base}/api/catalog/brands?page_size=200`
+    let nextUrl: string | null = getInternalApiUrl('catalog/brands?page_size=200')
 
     while (nextUrl) {
       const res = await axios.get(nextUrl)
@@ -251,7 +250,7 @@ export const getServerSideProps = async (ctx: any) => {
 
       for (const ep of endpoints) {
         try {
-          const res = await axios.get(`${base}${ep}`, {
+          const res = await axios.get(getInternalApiUrl(ep.replace(/^\/api\//, '')), {
             params: { brand_id: brand.id, page_size: 1 },
           })
           const data = res.data

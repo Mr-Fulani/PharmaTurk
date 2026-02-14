@@ -7,6 +7,7 @@ import Link from 'next/link'
 import Cookies from 'js-cookie'
 import api from '../lib/api'
 import { setPreferredCurrency } from '../lib/api'
+import { resolveMediaUrl } from '../lib/media'
 import { useAuth } from '../context/AuthContext'
 
 interface OrderItem {
@@ -192,7 +193,7 @@ export default function ProfilePage() {
         first_name: profileData.first_name || '',
         last_name: profileData.last_name || '',
         avatar: profileData.avatar,
-        avatar_url: profileData.avatar_url || (profileData.avatar ? `${process.env.NEXT_PUBLIC_API_BASE?.replace('/api', '') || ''}${profileData.avatar}` : null),
+        avatar_url: profileData.avatar_url || (profileData.avatar ? resolveMediaUrl(profileData.avatar) : null),
         whatsapp_phone: profileData.whatsapp_phone || '',
         telegram_username: profileData.telegram_username || '',
         total_orders: profileData.total_orders || 0,
@@ -479,7 +480,7 @@ export default function ProfilePage() {
     return null
   }
 
-  const displayAvatar = avatarPreview || profile.avatar_url || null
+  const displayAvatar = avatarPreview || (profile.avatar_url ? resolveMediaUrl(profile.avatar_url) : null) || null
   const displayName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.user_username
 
   return (
@@ -848,7 +849,7 @@ export default function ProfilePage() {
                                   >
                                     {item.product_image_url ? (
                                       <img
-                                        src={item.product_image_url}
+                                        src={resolveMediaUrl(item.product_image_url)}
                                         alt={item.product_name}
                                         className="h-full w-full object-cover transition-transform duration-200 group-hover/item:scale-105"
                                       />

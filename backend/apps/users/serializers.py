@@ -22,9 +22,7 @@ def _build_proxy_media_url(file_field, request):
             path = path[len(media_prefix):]
     if path.startswith('media/'):
         path = path[len('media/'):]
-    if request:
-        base = request.build_absolute_uri('/').rstrip('/')
-        return f"{base}/api/catalog/proxy-media/?path={quote(path)}"
+    # Относительный URL — браузер подставит свой origin (localhost/ngrok/production)
     return f"/api/catalog/proxy-media/?path={quote(path)}"
 
 

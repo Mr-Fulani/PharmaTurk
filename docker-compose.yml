@@ -91,6 +91,11 @@ services:
       R2_USE_SSL: ${R2_USE_SSL:-true}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+      COINREMITTER_API_KEY: ${COINREMITTER_API_KEY:-}
+      COINREMITTER_API_PASSWORD: ${COINREMITTER_API_PASSWORD:-}
+      COINREMITTER_COIN: ${COINREMITTER_COIN:-USDTTRC20}
+      SITE_URL: ${SITE_URL:-http://localhost:3001}
+      FRONTEND_SITE_URL: ${FRONTEND_SITE_URL:-}
     entrypoint: ["bash", "/app/docker-entrypoint.sh"]
     mem_limit: 1.5g
 
@@ -113,7 +118,9 @@ services:
       - NEXT_TELEMETRY_DISABLED=1
       - NEXT_DISABLE_SWC_NATIVE=1
       - INTERNAL_API_BASE=http://backend:8000
-      # NEXT_PUBLIC_API_BASE не устанавливаем - будет определяться динамически на клиенте
+      # Для ngrok: NEXT_PUBLIC_SITE_URL=https://xxx.ngrok-free.dev (URL туннеля на порт 3001)
+      - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-}
+      - SITE_URL=${SITE_URL:-}
       - WATCHPACK_POLLING=true
     depends_on:
       - backend

@@ -1,5 +1,7 @@
 // Утилиты для медиаконтента (webp/avif, fallback) — русские комментарии.
 
+import { getClientMediaBase, getInternalApiBase, getSiteOrigin } from './urls'
+
 export type MediaSource = {
   url: string | null | undefined
 }
@@ -11,7 +13,6 @@ export const isVideoUrl = (url?: string | null): boolean => {
   if (!url || typeof url !== 'string') return false
   const path = url.split('?')[0].toLowerCase()
   if (VIDEO_EXT_REGEX.test(path)) return true
-  // Прокси бэкенда: /api/catalog/proxy-media/?path=...file.MP4
   if (/\/proxy-media\//i.test(url) && url.includes('path=')) {
     try {
       const pathParam = new URL(url).searchParams.get('path') || ''
@@ -26,18 +27,18 @@ export const isVideoUrl = (url?: string | null): boolean => {
 
 const stripTrailingSlash = (value?: string | null) => (value || '').replace(/\/+$/, '')
 
+/**
+ * Преобразует URL медиа в рабочий для текущего окружения.
+ * localhost / ngrok / production — всё строится динамически.
+ */
 export const resolveMediaUrl = (url?: string | null) => {
   if (!url) return '/product-placeholder.svg'
-
-  const clientApi = process.env.NEXT_PUBLIC_API_BASE
-  const serverApi = process.env.INTERNAL_API_BASE
+  if (url.startsWith('blob:')) return url
 
   const stripApiSuffix = (value?: string | null) => {
     if (!value) return ''
     return value.endsWith('/api') ? value.slice(0, -4) : value
   }
-
-  const fallbackMediaBase = process.env.NEXT_PUBLIC_MEDIA_BASE || 'http://localhost:8000'
 
   const replaceBackendHost = (base: string) => {
     if (!base) return ''
@@ -46,10 +47,10 @@ export const resolveMediaUrl = (url?: string | null) => {
       if (u.hostname === 'backend') {
         if (typeof window !== 'undefined') {
           u.hostname = window.location.hostname
-        } else {
-          u.hostname = 'localhost'
-          u.port = u.port || '8000'
+          u.port = ''
+          return stripTrailingSlash(u.toString()) || getSiteOrigin()
         }
+        return (getInternalApiBase().endsWith('/api') ? getInternalApiBase().slice(0, -4) : getInternalApiBase()).replace(/\/+$/, '')
       }
       return stripTrailingSlash(u.toString())
     } catch {
@@ -57,26 +58,27 @@ export const resolveMediaUrl = (url?: string | null) => {
     }
   }
 
-  const serverMediaBase = replaceBackendHost(stripApiSuffix(serverApi) || 'http://backend:8000')
-  const clientMediaBase =
-    typeof window === 'undefined'
-      ? replaceBackendHost(stripApiSuffix(serverApi) || stripApiSuffix(clientApi) || fallbackMediaBase)
-      : replaceBackendHost(stripApiSuffix(clientApi) || '') ||
-        `${window.location.protocol}//${window.location.hostname}:8000`
+  const serverMediaBase = replaceBackendHost(stripApiSuffix(process.env.INTERNAL_API_BASE) || 'http://backend:8000')
+  const clientMediaBase = typeof window === 'undefined'
+    ? replaceBackendHost(process.env.INTERNAL_API_BASE || 'http://backend:8000')
+    : getClientMediaBase()
 
-  // Абсолютный URL: если указывает на backend/внутренний хост — заменяем на публичный
+  // Абсолютный URL: заменяем backend/localhost:8000 на публичный
   if (/^https?:\/\//i.test(url)) {
     try {
       const u = new URL(url)
       if (serverMediaBase && url.startsWith(serverMediaBase)) {
         return url.replace(serverMediaBase, clientMediaBase || u.origin)
       }
+      const needsReplace =
+        u.hostname === 'backend' ||
+        (u.hostname === 'localhost' && u.port === '8000') ||
+        (u.hostname === '127.0.0.1' && u.port === '8000')
+      if (needsReplace && typeof window !== 'undefined') {
+        return `${clientMediaBase}${u.pathname}${u.search}`
+      }
       if (u.hostname === 'backend') {
-        const origin8000 =
-          typeof window !== 'undefined'
-            ? `${window.location.protocol}//${window.location.hostname}:8000`
-            : fallbackMediaBase
-        return `${origin8000}${u.pathname}${u.search}`
+        return `${clientMediaBase}${u.pathname}${u.search}`
       }
       return url
     } catch {
@@ -97,7 +99,6 @@ export const resolveMediaUrl = (url?: string | null) => {
 }
 
 export const pickMedia = (media?: MediaSource, fallback?: string) => {
-  // Возвращает webp/avif если это исходный формат, иначе оригинал/фолбек.
   const src = resolveMediaUrl(media?.url)
   if (src) return src
   return fallback || ''
@@ -105,8 +106,6 @@ export const pickMedia = (media?: MediaSource, fallback?: string) => {
 
 /**
  * Универсальный генератор placeholder-изображений.
- * Использует picsum.photos с детерминированным seed, чтобы для одного
- * и того же объекта (brand/category/product и т.д.) картинка была стабильной.
  */
 export function getPlaceholderImageUrl(options?: {
   type?: 'brand' | 'category' | 'product' | 'banner' | 'testimonial'
@@ -128,5 +127,3 @@ export function getPlaceholderImageUrl(options?: {
 
   return `https://picsum.photos/seed/${safeSeed}/${width}/${height}`
 }
-
-

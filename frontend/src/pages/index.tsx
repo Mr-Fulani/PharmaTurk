@@ -1,7 +1,8 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { getPlaceholderImageUrl } from '../lib/media'
+import { getPlaceholderImageUrl, resolveMediaUrl } from '../lib/media'
+import { getSiteOrigin } from '../lib/urls'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
@@ -90,80 +91,6 @@ export default function Home({ brands, categories }: HomePageProps) {
   const mapCategoryToRouteSlug = (slug?: string | null) => {
     const normalized = (slug || '').trim().toLowerCase().replace(/_/g, '-')
     return normalized || 'medicines'
-  }
-
-  const resolveMediaUrl = (url?: string | null) => {
-    if (!url) return ''
-
-    // Абсолютный URL, но мог прийти с хостом backend:8000 — переписываем на публичный
-    const clientApi = process.env.NEXT_PUBLIC_API_BASE
-    const serverApi = process.env.INTERNAL_API_BASE
-
-    const stripApiSuffix = (value?: string) => {
-      if (!value) return ''
-      return value.endsWith('/api') ? value.slice(0, -4) : value
-    }
-
-    const fallbackMediaBase =
-      process.env.NEXT_PUBLIC_MEDIA_BASE ||
-      'http://localhost:8000'
-
-    const replaceBackendHost = (base: string) => {
-      if (!base) return ''
-      try {
-        const u = new URL(base)
-        if (u.hostname === 'backend') {
-          if (typeof window !== 'undefined') {
-            u.hostname = window.location.hostname
-          } else {
-            u.hostname = 'localhost'
-            u.port = u.port || '8000'
-          }
-        }
-        return u.toString().replace(/\/$/, '')
-      } catch {
-        return base
-      }
-    }
-
-    const serverMediaBase = replaceBackendHost(stripApiSuffix(serverApi) || 'http://backend:8000')
-    const clientMediaBase =
-      typeof window === 'undefined'
-        ? replaceBackendHost(stripApiSuffix(serverApi) || stripApiSuffix(clientApi) || fallbackMediaBase)
-        : replaceBackendHost(stripApiSuffix(clientApi) || '') ||
-          `${window.location.protocol}//${window.location.hostname}:8000`
-
-    // Если абсолютный и указывает на backend/внутренний хост — заменяем на публичный
-    if (/^https?:\/\//i.test(url)) {
-      try {
-        const u = new URL(url)
-        if (serverMediaBase && url.startsWith(serverMediaBase)) {
-          return url.replace(serverMediaBase, clientMediaBase || u.origin)
-        }
-        // если хост "backend" или "backend:8000", заменим на доступный
-        if (u.hostname === 'backend') {
-          const origin8000 =
-            typeof window !== 'undefined'
-              ? `${window.location.protocol}//${window.location.hostname}:8000`
-              : fallbackMediaBase
-          return `${origin8000}${u.pathname}${u.search}`
-        }
-        return url
-      } catch {
-        return url
-      }
-    }
-
-    // Относительный путь
-    if (clientMediaBase) {
-      return url.startsWith('/') ? `${clientMediaBase}${url}` : `${clientMediaBase}/${url}`
-    }
-
-    if (typeof window !== 'undefined') {
-      const origin = window.location.origin
-      return url.startsWith('/') ? `${origin}${url}` : `${origin}/${url}`
-    }
-    return url
   }
 
   const extractYouTubeId = (url?: string | null) => {
@@ -282,7 +209,7 @@ export default function Home({ brands, categories }: HomePageProps) {
     router.push(`/categories/${slugForRoute}`)
   }
 
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+  const siteUrl = getSiteOrigin()
   const canonicalUrl = `${siteUrl}/`
   const pageTitle = 'PharmaTurk — Главная'
   const pageDescription = 'PharmaTurk: турецкие товары — лекарства, одежда, обувь, электроника, аксессуары и мебель с доставкой.'
@@ -340,7 +267,7 @@ export default function Home({ brands, categories }: HomePageProps) {
                       {brand.logo && (
                         <div className="mb-3 flex justify-center">
                           <img 
-                            src={brand.logo} 
+                            src={resolveMediaUrl(brand.logo)} 
                             alt={brand.name}
                             className="h-12 w-auto object-contain filter brightness-0 invert"
                             onError={(e) => {
@@ -460,11 +387,11 @@ export default function Home({ brands, categories }: HomePageProps) {
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
   try {
-    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    const { getInternalApiUrl } = await import('../lib/urls')
     
     // Загружаем все бренды из API с пагинацией
     let allBrands: Brand[] = []
-    let nextUrl: string | null = `${base}/api/catalog/brands`
+    let nextUrl: string | null = getInternalApiUrl('catalog/brands')
     
     // Собираем все бренды (обходим пагинацию)
     while (nextUrl) {
@@ -501,7 +428,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     // Загружаем категории (top-level) с пагинацией
     let allCategories: CategoryCard[] = []
-    let nextCategoryUrl: string | null = `${base}/api/catalog/categories?top_level=true&page_size=200`
+    let nextCategoryUrl: string | null = getInternalApiUrl('catalog/categories?top_level=true&page_size=200')
 
     while (nextCategoryUrl) {
       try {

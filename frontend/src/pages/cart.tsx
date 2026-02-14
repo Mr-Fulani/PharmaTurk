@@ -230,7 +230,11 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       setPromoCode('')
       await refreshCart()
     } catch (error: any) {
-      const errorMessage = error?.response?.data?.detail || t('promo_code_error', 'Ошибка применения промокода')
+      const data = error?.response?.data
+      const errorMessage =
+        (typeof data?.detail === 'string' && data.detail) ||
+        (Array.isArray(data?.code) && data.code[0]) ||
+        t('promo_code_error', 'Ошибка применения промокода')
       setPromoError(errorMessage)
     } finally {
       setPromoLoading(false)
@@ -585,7 +589,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
 export async function getServerSideProps(ctx: any) {
   const { req, res: serverRes, locale } = ctx
   try {
-    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    const { getInternalApiUrl } = await import('../lib/urls')
     const cookieHeader: string = req.headers.cookie || ''
     const cartSessionMatch = cookieHeader.match(/(?:^|;\s*)cart_session=([^;]+)/)
     let cartSession = cartSessionMatch ? cartSessionMatch[1] : ''
@@ -602,7 +606,7 @@ export async function getServerSideProps(ctx: any) {
     const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
     const currency = currencyMatch ? currencyMatch[1] : 'RUB'
 
-    const apiRes = await fetch(`${base}/api/orders/cart`, {
+    const apiRes = await fetch(getInternalApiUrl('orders/cart'), {
       headers: {
         cookie: cookieHeader,
         'Accept-Language': locale || 'en',

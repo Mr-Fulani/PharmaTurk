@@ -12,6 +12,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, ProductTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../../lib/media'
+import { getSiteOrigin } from '../../lib/urls'
 import { useTheme } from '../../context/ThemeContext'
 
 type CategoryType = string
@@ -424,7 +425,7 @@ export default function ProductPage({
     : t('price_on_request')
   
   const sizeRequired = sizesForColor.length > 0
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+  const siteUrl = getSiteOrigin()
   const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
   const canonicalUrl = `${siteUrl}${productPath}`
   const metaTitle = (product.meta_title || product.og_title || '').trim() || `${product.name} — PharmaTurk`
@@ -934,7 +935,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     productSlug = slugParts[1]
   }
 
-  const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+  const { getInternalApiUrl } = await import('../../lib/urls')
   // Извлекаем валюту из cookie
   const cookieHeader: string = ctx.req.headers.cookie || ''
   const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
@@ -948,7 +949,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   ]
 
   const fetchProduct = (type: CategoryType, slug: string) =>
-    axios.get(`${base}${resolveDetailEndpoint(type, slug)}`, {
+    axios.get(getInternalApiUrl(resolveDetailEndpoint(type, slug).replace(/^\/api\//, '')), {
       headers: {
         'X-Currency': currency,
         'Accept-Language': ctx.locale || 'en'
@@ -1023,7 +1024,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     for (const t of typesToTry) {
       const probeEndpoint = resolveDetailEndpoint(t, productSlug)
       try {
-        const res = await axios.get(`${base}${probeEndpoint}`, {
+        const res = await axios.get(getInternalApiUrl(probeEndpoint.replace(/^\/api\//, '')), {
           headers: {
             'X-Currency': currency,
             'Accept-Language': ctx.locale || 'en'

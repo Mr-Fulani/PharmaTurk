@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import api from '../../lib/api'
+import { resolveMediaUrl } from '../../lib/media'
 import Link from 'next/link'
 
 interface PublicUserProfile {
@@ -121,7 +122,7 @@ export default function UserProfilePage() {
             <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
               {profile.avatar_url ? (
                 <img
-                  src={profile.avatar_url}
+                  src={resolveMediaUrl(profile.avatar_url)}
                   alt={fullName}
                   className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg"
                 />

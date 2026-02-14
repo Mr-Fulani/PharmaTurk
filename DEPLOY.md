@@ -42,7 +42,8 @@ nano .env   # или vim / другой редактор
 | `CSRF_TRUSTED_ORIGINS` | То же с протоколом: `https://pharmaturk.ru,https://www.pharmaturk.ru` |
 | `CORS_ALLOWED_ORIGINS` | Те же URL для CORS |
 | `DATABASE_URL` | Строка подключения к PostgreSQL (внутри Docker: `postgres://pharmaturk:ПАРОЛЬ@postgres:5432/pharmaturk`) |
-| `NEXT_PUBLIC_API_BASE` | Публичный URL API для фронта, например `https://api.pharmaturk.ru/api` или `https://pharmaturk.ru/api` |
+| `NEXT_PUBLIC_SITE_URL` | Публичный URL сайта (canonical, медиа). Для ngrok: `https://xxx.ngrok-free.dev` |
+| `INTERNAL_API_BASE` | Внутренний URL бэкенда для SSR. Docker: `http://backend:8000`, локально: `http://localhost:8000` |
 
 Пароль PostgreSQL задаётся в `docker-compose.yml` (переменные `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) или через `DATABASE_URL` в `.env`.
 
@@ -118,7 +119,26 @@ server {
 
 В `docker-compose.prod.yml` порты backend и frontend можно пробросить на localhost (например `8000:8000` и `3001:3000`), чтобы Nginx проксировал на них.
 
-## 6. Обновление деплоя
+## 6. Разработка с ngrok
+
+Для доступа к локальному стенду через ngrok (мобильные, тестирование):
+
+1. Запустите туннель на **frontend** (порт 3001):
+   ```bash
+   ngrok http 3001
+   ```
+
+2. В `.env` или при запуске Docker задайте:
+   ```bash
+   NEXT_PUBLIC_SITE_URL=https://xxx.ngrok-free.dev
+   SITE_URL=https://xxx.ngrok-free.dev
+   ```
+
+3. Перезапустите frontend, чтобы подхватить переменные.
+
+Все URL (API, медиа, canonical) строятся динамически и работают на localhost, ngrok и production.
+
+## 7. Обновление деплоя
 
 ```bash
 cd PharmaTurk
@@ -129,7 +149,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backend fr
 
 Миграции применяются при старте backend автоматически.
 
-## 7. Полезные команды
+## 8. Полезные команды
 
 | Действие | Команда |
 |----------|---------|
@@ -140,12 +160,13 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backend fr
 | Django shell | `docker compose ... exec backend poetry run python manage.py shell` |
 | Остановка | `docker compose -f docker-compose.yml -f docker-compose.prod.yml down` |
 
-## 8. Чек-лист перед продакшеном
+## 9. Чек-лист перед продакшеном
 
 - [ ] В `.env`: `DJANGO_DEBUG=0`, уникальный `DJANGO_SECRET_KEY`
+- [ ] Криптоплатежи: при необходимости настройте CoinRemitter (см. **CRYPTO_PAYMENTS.md**)
 - [ ] Заданы `DJANGO_ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS`
 - [ ] `DATABASE_URL` и `REDIS_URL` указывают на сервисы в Docker (или внешние)
-- [ ] `NEXT_PUBLIC_API_BASE` — публичный URL API (для запросов с браузера)
+- [ ] `NEXT_PUBLIC_SITE_URL` — публичный URL (для ngrok: `https://xxx.ngrok-free.dev`)
 - [ ] R2 (или другое хранилище медиа) настроено при необходимости
 - [ ] Nginx (или иной reverse proxy) настроен, SSL включён
 - [ ] После первого запуска выполнен `sync_product_vectors` при необходимости

@@ -6,7 +6,7 @@ import Masonry from 'react-masonry-css'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import BannerCarousel from '../../components/BannerCarouselMedia'
-import { getPlaceholderImageUrl } from '../../lib/media'
+import { getPlaceholderImageUrl, resolveMediaUrl } from '../../lib/media'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
 
 interface CategoryTranslation {
@@ -31,81 +31,6 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
   const { t } = useTranslation('common')
   const router = useRouter()
   const locale = router.locale || propLocale || 'ru'
-
-  // Такая же функция, как на главной, чтобы не было расхождений при перезагрузке
-  const resolveMediaUrl = (url?: string | null) => {
-    if (!url) return ''
-
-    // Абсолютный URL, но мог прийти с хостом backend:8000 — переписываем на публичный
-    const clientApi = process.env.NEXT_PUBLIC_API_BASE
-    const serverApi = process.env.INTERNAL_API_BASE
-
-    const stripApiSuffix = (value?: string) => {
-      if (!value) return ''
-      return value.endsWith('/api') ? value.slice(0, -4) : value
-    }
-
-    const fallbackMediaBase =
-      process.env.NEXT_PUBLIC_MEDIA_BASE ||
-      'http://localhost:8000'
-
-    const replaceBackendHost = (base: string) => {
-      if (!base) return ''
-      try {
-        const u = new URL(base)
-        if (u.hostname === 'backend') {
-          if (typeof window !== 'undefined') {
-            u.hostname = window.location.hostname
-          } else {
-            u.hostname = 'localhost'
-            u.port = u.port || '8000'
-          }
-        }
-        return u.toString().replace(/\/$/, '')
-      } catch {
-        return base
-      }
-    }
-
-    const serverMediaBase = replaceBackendHost(stripApiSuffix(serverApi) || 'http://backend:8000')
-    const clientMediaBase =
-      typeof window === 'undefined'
-        ? replaceBackendHost(stripApiSuffix(serverApi) || stripApiSuffix(clientApi) || fallbackMediaBase)
-        : replaceBackendHost(stripApiSuffix(clientApi) || '') ||
-          `${window.location.protocol}//${window.location.hostname}:8000`
-
-    // Если абсолютный и указывает на backend/внутренний хост — заменяем на публичный
-    if (/^https?:\/\//i.test(url)) {
-      try {
-        const u = new URL(url)
-        if (serverMediaBase && url.startsWith(serverMediaBase)) {
-          return url.replace(serverMediaBase, clientMediaBase || u.origin)
-        }
-        // если хост "backend" или "backend:8000", заменим на доступный
-        if (u.hostname === 'backend') {
-          const origin8000 =
-            typeof window !== 'undefined'
-              ? `${window.location.protocol}//${window.location.hostname}:8000`
-              : fallbackMediaBase
-          return `${origin8000}${u.pathname}${u.search}`
-        }
-        return url
-      } catch {
-        return url
-      }
-    }
-
-    // Относительный путь
-    if (clientMediaBase) {
-      return url.startsWith('/') ? `${clientMediaBase}${url}` : `${clientMediaBase}/${url}`
-    }
-
-    if (typeof window !== 'undefined') {
-      const origin = window.location.origin
-      return url.startsWith('/') ? `${origin}${url}` : `${origin}/${url}`
-    }
-    return url
-  }
 
   const extractYouTubeId = (url?: string | null) => {
     if (!url) return null
@@ -285,11 +210,8 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
 
 export async function getServerSideProps(ctx: any) {
   try {
-    // Используем относительный путь, который работает через Next.js rewrites
-    const base = process.env.INTERNAL_API_BASE || ''
-
-    // Берём только корневые с бэкенда (top_level), чтобы не тянуть весь список
-    const res = await axios.get(`${base}/api/catalog/categories`, {
+    const { getInternalApiUrl } = await import('../../lib/urls')
+    const res = await axios.get(getInternalApiUrl('catalog/categories'), {
       params: { top_level: true, page_size: 200 }
     })
     const all: Category[] = Array.isArray(res.data) ? res.data : (res.data.results || [])

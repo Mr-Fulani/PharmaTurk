@@ -39,7 +39,10 @@ RUN if [ -f yarn.lock ]; then \
     fi
 
 COPY . .
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 ENV NODE_ENV=development
 ENV NEXT_DISABLE_SWC_NATIVE=1
 EXPOSE 3000
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["npm", "run", "dev"]

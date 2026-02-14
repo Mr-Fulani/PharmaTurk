@@ -4,10 +4,11 @@ import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
+import { getSiteOrigin } from '../../lib/urls'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios from 'axios'
-import { getApiForCategory } from '../../lib/api'
+import api, { getApiForCategory } from '../../lib/api'
 import ProductCard from '../../components/ProductCard'
 import CategorySidebar, { FilterState, SidebarTreeItem, SidebarTreeSection } from '../../components/CategorySidebar'
 import Pagination from '../../components/Pagination'
@@ -1039,8 +1040,7 @@ export default function CategoryPage({
         if (filters.inStock) {
           params.in_stock = true
         }
-        const base = process.env.NEXT_PUBLIC_API_BASE || '/api'
-        const response = await axios.get(`${base}/catalog/brands`, { params })
+        const response = await api.get('/catalog/brands', { params })
         const list = Array.isArray(response.data) ? response.data : response.data.results || []
         if (initialBrandsRef.current.length === 0 && list.length > 0) {
           initialBrandsRef.current = list
@@ -1311,7 +1311,7 @@ export default function CategoryPage({
     return items
   }, [brandLabel, localizedCategoryName, routeSlug, router.asPath, t])
 
-  const siteUrl = useMemo(() => (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, ''), [])
+  const siteUrl = useMemo(() => getSiteOrigin(), [])
   const canonicalUrl = useMemo(() => `${siteUrl}/categories/${routeSlug || categoryType}`, [siteUrl, routeSlug, categoryType])
   const ogTitle = useMemo(() => `${localizedCategoryName} — PharmaTurk`, [localizedCategoryName])
   const ogDescription = useMemo(
@@ -1570,14 +1570,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   try {
     const routeSlug = Array.isArray(slug) ? slug[0] : (slug as string | undefined)
     
-    // Используем относительный путь, который работает через Next.js rewrites
-    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    const { getInternalApiUrl } = await import('../../lib/urls')
     
     // Получаем категорию из API чтобы узнать её реальный тип
     let categoryTypeFromApi: string | null = null
     if (routeSlug) {
       try {
-        const catApiRes = await axios.get(`${base}/api/catalog/categories`, {
+        const catApiRes = await axios.get(getInternalApiUrl('catalog/categories'), {
           params: { slug: routeSlug, page_size: 1 }
         })
         const catData = catApiRes.data.results?.[0]
@@ -1610,7 +1609,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       // Всегда добавляем product_type для более точной фильтрации
       brandParams.product_type = brandProductType
       
-      const brandRes = await axios.get(`${base}/api/catalog/brands`, { params: brandParams })
+      const brandRes = await axios.get(getInternalApiUrl('catalog/brands'), { params: brandParams })
       brands = brandRes.data.results || []
     } catch {
       brands = []
@@ -1642,7 +1641,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     let productsData: any = { results: [], count: 0 }
     try {
       const productsEndpoint = resolveProductsEndpoint(categoryType)
-      const prodRes = await axios.get(`${base}${productsEndpoint}`, {
+      const prodRes = await axios.get(getInternalApiUrl(productsEndpoint.replace(/^\/api\//, '')), {
         params: productParams,
         headers: {
           'X-Currency': currency,
@@ -1669,7 +1668,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         catParams.top_level = true
       }
       catParams.page_size = 200
-      const catRes = await axios.get(`${base}/api/catalog/categories`, { params: catParams })
+      const catRes = await axios.get(getInternalApiUrl('catalog/categories'), { params: catParams })
       categories = catRes.data.results || []
     } catch {
       categories = []
@@ -1680,7 +1679,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const hasChildren = categories.some((c: any) => c.parent !== null && typeof c.parent !== 'undefined')
       if (!hasChildren) {
         try {
-          const childRes = await axios.get(`${base}/api/catalog/categories`, {
+          const childRes = await axios.get(getInternalApiUrl('catalog/categories'), {
             params: { parent_slug: routeSlug, page_size: 200 }
           })
           const childList = childRes.data.results || []

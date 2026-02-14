@@ -33,16 +33,8 @@ def _r2_proxy_url(absolute_url, request):
         if not path:
             return None
         path = normalize_duplicated_media_path(path)  # старые записи с дублированным путём — отдаём чистый URL
-        if request:
-            scheme = request.scheme
-            host = request.get_host()
-            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                base = 'http://localhost:8000'
-            else:
-                base = f"{scheme}://{host}"
-        else:
-            base = 'http://localhost:8000'
-        return f"{base}/api/catalog/proxy-media/?path={quote(path)}"
+        # Относительный URL — браузер подставит свой origin (localhost/ngrok/production)
+        return f"/api/catalog/proxy-media/?path={quote(path)}"
     except Exception:
         return None
 
@@ -51,25 +43,9 @@ def _resolve_media_url(value, request):
     if not value:
         return None
     if 'instagram.f' in value or 'cdninstagram.com' in value:
-        if request:
-            scheme = request.scheme
-            host = request.get_host()
-            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                base_url = f"{scheme}://localhost:8000"
-            else:
-                base_url = f"{scheme}://{host}"
-            return f"{base_url}/api/catalog/proxy-image/?url={quote(value)}"
-        return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(value)}"
+        return f"/api/catalog/proxy-image/?url={quote(value)}"
     if not value.startswith('http'):
-        if request:
-            scheme = request.scheme
-            host = request.get_host()
-            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                base_url = f"{scheme}://localhost:8000"
-            else:
-                base_url = f"{scheme}://{host}"
-            return f"{base_url}/media/{value}"
-        return f"http://localhost:8000/media/{value}"
+        return f"/media/{value}"
     proxy = _r2_proxy_url(value, request)
     if proxy:
         return proxy
@@ -180,10 +156,12 @@ class CategorySerializer(serializers.ModelSerializer):
         return obj.children.filter(is_active=True).count()
 
     def get_card_media_url(self, obj):
-        """Полный URL медиа-файла карточки категории."""
+        """URL медиа-файла карточки категории. Относительный — браузер подставит origin."""
         url = obj.get_card_media_url()
         if not url:
             return None
+        if url.startswith('/'):
+            return url
         request = self.context.get('request')
         if request:
             return request.build_absolute_uri(url)
@@ -232,10 +210,12 @@ class BrandSerializer(serializers.ModelSerializer):
         return obj.products.filter(is_active=True).count()
 
     def get_card_media_url(self, obj):
-        """Полный URL медиа-файла карточки бренда."""
+        """URL медиа-файла карточки бренда. Относительный — браузер подставит origin."""
         url = obj.get_card_media_url()
         if not url:
             return None
+        if url.startswith('/'):
+            return url
         request = self.context.get('request')
         if request:
             return request.build_absolute_uri(url)

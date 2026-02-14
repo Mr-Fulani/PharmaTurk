@@ -815,12 +815,12 @@ class ApplyPromoCodeSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=50)
 
     def validate_code(self, value):
-        """Валидация кода промокода."""
+        """Валидация кода промокода (поиск без учёта регистра)."""
         try:
-            promo_code = PromoCode.objects.get(code=value.upper())
+            PromoCode.objects.get(code__iexact=value.strip())
         except PromoCode.DoesNotExist:
             raise serializers.ValidationError(_("Промокод не найден"))
-        return value.upper()
+        return value.strip().upper()
 
 
 class CartSerializer(serializers.ModelSerializer):
@@ -1273,6 +1273,7 @@ class CreateOrderSerializer(serializers.Serializer):
     payment_method = serializers.CharField(required=False, allow_blank=True)
     comment = serializers.CharField(required=False, allow_blank=True)
     promo_code = serializers.CharField(required=False, allow_blank=True, max_length=50)
+    locale = serializers.CharField(required=False, allow_blank=True, max_length=10)
 
     def validate_shipping_address(self, value):
         # Валидация адреса доставки будет реализована при наличии пользователя

@@ -72,9 +72,25 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null)
   const [loading, setLoading] = useState(Boolean(number))
   const [error, setError] = useState<string | null>(null)
+  const [isAuthError, setIsAuthError] = useState(false)
   const [sendEmail, setSendEmail] = useState('')
   const [sendState, setSendState] = useState<SendState>('idle')
   const [sendMessage, setSendMessage] = useState('')
+
+  // Восстановление языка при возврате с внешней оплаты (crypto): ?locale=ru → /ru/checkout-success
+  useEffect(() => {
+    const qLocale = (router.query?.locale as string)?.toLowerCase()
+    if (qLocale === 'ru' && router.locale !== 'ru') {
+      const num = (router.query?.number as string) || ''
+      router.replace(`/ru/checkout-success?number=${encodeURIComponent(num)}`)
+      return
+    }
+    if (qLocale === 'en' && router.locale !== 'en') {
+      const num = (router.query?.number as string) || ''
+      router.replace(`/checkout-success?number=${encodeURIComponent(num)}`)
+      return
+    }
+  }, [router.query?.locale, router.locale, router])
 
   useEffect(() => {
     if (!number) {
@@ -86,19 +102,25 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
     const fetchData = async () => {
       setLoading(true)
       setError(null)
+      setIsAuthError(false)
       try {
-        const [orderRes, receiptRes] = await Promise.all([
-          api.get(`/orders/orders/by-number/${number}`),
-          api.get(`/orders/orders/receipt/${number}`)
-        ])
+        const orderRes = await api.get(`/orders/orders/by-number/${number}`)
         if (!active) return
         setOrder(orderRes.data)
-        setReceipt(receiptRes.data)
         setSendEmail(orderRes.data?.contact_email || orderRes.data?.user?.email || '')
       } catch (err: any) {
         if (!active) return
+        const status = err?.response?.status
         const detail = err?.response?.data?.detail || t('order_success_send_error')
-        setError(detail)
+        setIsAuthError(status === 401)
+        setError(status === 401 ? t('order_success_login_required', 'Войдите в аккаунт, чтобы увидеть заказ') : detail)
+      }
+      try {
+        const receiptRes = await api.get(`/orders/orders/receipt/${number}`)
+        if (!active) return
+        setReceipt(receiptRes.data)
+      } catch {
+        // Чек опционален — заказ уже загружен
       } finally {
         if (active) setLoading(false)
       }
@@ -181,6 +203,28 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
           {error && !loading && (
             <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50/80 p-6 text-rose-700">
               <p>{error}</p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                {isAuthError && (
+                  <Link
+                    href={`/auth?next=${encodeURIComponent(`/checkout-success?number=${number}`)}`}
+                    className="rounded-full bg-violet-600 px-5 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+                  >
+                    {t('order_success_actions_login', 'Войти')}
+                  </Link>
+                )}
+                <Link
+                  href="/profile"
+                  className="rounded-full border border-violet-200 px-5 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-50"
+                >
+                  {t('order_success_actions_view_orders', 'Мои заказы')}
+                </Link>
+                <Link
+                  href="/"
+                  className="rounded-full border border-gray-200 px-5 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                >
+                  {t('order_success_actions_continue', 'Продолжить покупки')}
+                </Link>
+              </div>
             </div>
           )}
 
@@ -309,7 +353,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                   </div>
 
                   <div className="mt-6 space-y-4">
-                    {receipt?.items.map((item) => (
+                    {(receipt?.items ?? []).map((item) => (
                       <div key={item.id} className="flex items-center justify-between rounded-2xl border border-gray-100 px-4 py-3">
                         <div>
                           <p className="font-semibold text-gray-900">{item.product_name}</p>

@@ -1,9 +1,10 @@
 """URL-маршруты для публичного API (v1)."""
-from django.urls import path, include
+from django.urls import path, include, re_path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import HealthCheckView, JWTObtainPairView
 
+TokenRefresh = TokenRefreshView.as_view()
 
 urlpatterns = [
     # Проверка здоровья сервиса
@@ -11,7 +12,8 @@ urlpatterns = [
 
     # Аутентификация (JWT): в теле username или email + password
     path("auth/jwt/create/", JWTObtainPairView.as_view(), name="jwt-create"),
-    path("auth/jwt/refresh/", TokenRefreshView.as_view(), name="jwt-refresh"),
+    path("auth/jwt/refresh/", TokenRefresh, name="jwt-refresh"),
+    re_path(r"^auth/jwt/refresh/?$", TokenRefresh),  # для совместимости с/без trailing slash
 
     # Пользователи
     path("users/", include("apps.users.urls")),

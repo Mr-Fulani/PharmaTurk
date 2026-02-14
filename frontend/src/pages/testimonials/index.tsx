@@ -9,7 +9,7 @@ import api from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { StarIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/20/solid'
 import { PhotoIcon, VideoCameraIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/outline'
-import { getPlaceholderImageUrl } from '../../lib/media'
+import { getPlaceholderImageUrl, resolveMediaUrl } from '../../lib/media'
 
 interface TestimonialMedia {
   id: number
@@ -275,7 +275,7 @@ export default function TestimonialsPage() {
     if (media.media_type === 'image' && media.image_url) {
       return (
         <img
-          src={media.image_url}
+          src={resolveMediaUrl(media.image_url)}
           alt={selectedTestimonial?.author_name || 'Testimonial'}
           className="w-full h-full object-cover"
         />
@@ -453,7 +453,7 @@ export default function TestimonialsPage() {
           playsInline
           className="w-full h-full object-cover"
         >
-          <source src={media.video_file_url} type="video/mp4" />
+          <source src={resolveMediaUrl(media.video_file_url)} type="video/mp4" />
           {t('video_tag_unsupported', 'Ваш браузер не поддерживает видео.')}
         </video>
       )
@@ -618,7 +618,7 @@ export default function TestimonialsPage() {
                       <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100">
                         {cardMedia.media_type === 'image' && cardMedia.image_url && (
                           <img
-                            src={cardMedia.image_url}
+                            src={resolveMediaUrl(cardMedia.image_url)}
                             alt={testimonial.author_name}
                             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                           />
@@ -644,7 +644,7 @@ export default function TestimonialsPage() {
                         )}
                         {cardMedia.media_type === 'video_file' && cardMedia.video_file_url && (
                           <video
-                            src={`${cardMedia.video_file_url}#t=0.5`}
+                            src={`${resolveMediaUrl(cardMedia.video_file_url)}#t=0.5`}
                             muted
                             playsInline
                             preload="metadata"
@@ -674,7 +674,7 @@ export default function TestimonialsPage() {
                       >
                         {testimonial.author_avatar_url && (
                           <img
-                            src={testimonial.author_avatar_url}
+                            src={resolveMediaUrl(testimonial.author_avatar_url)}
                             alt={testimonial.author_name}
                             className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
                             onError={(e) => {
@@ -690,7 +690,7 @@ export default function TestimonialsPage() {
                     <div className="flex items-center flex-1 min-w-0">
                       {testimonial.author_avatar_url && (
                         <img
-                          src={testimonial.author_avatar_url}
+                          src={resolveMediaUrl(testimonial.author_avatar_url)}
                           alt={testimonial.author_name}
                           className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
                           onError={(e) => {
@@ -987,7 +987,7 @@ export default function TestimonialsPage() {
                   <div className="flex items-center min-w-0">
                     {selectedTestimonial.author_avatar_url && (
                       <img
-                        src={selectedTestimonial.author_avatar_url}
+                        src={resolveMediaUrl(selectedTestimonial.author_avatar_url)}
                         alt={selectedTestimonial.author_name}
                         className="w-12 h-12 rounded-full mr-4 object-cover"
                       />

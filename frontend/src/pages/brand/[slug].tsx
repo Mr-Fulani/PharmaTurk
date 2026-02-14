@@ -309,8 +309,6 @@ export default function BrandPage({
 export async function getServerSideProps(ctx: any) {
   try {
     const { slug } = ctx.params
-    // Используем относительный путь, который работает через Next.js rewrites
-    const base = process.env.INTERNAL_API_BASE || ''
     const page = Number(ctx.query?.page || 1)
     const pageSize = 24
 

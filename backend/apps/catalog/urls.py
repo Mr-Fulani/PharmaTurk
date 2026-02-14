@@ -69,4 +69,5 @@ urlpatterns = [
     path('proxy-image/', proxy_image, name='proxy_image'),
     # Прокси для R2-медиа (видео/картинки) — устраняет ERR_SSL_PROTOCOL_ERROR
     path('proxy-media/', proxy_media, name='proxy_media'),
+    path('proxy-media', proxy_media, name='proxy_media_no_slash'),  # без slash для fetch/ngrok
 ]

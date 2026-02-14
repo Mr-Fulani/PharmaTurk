@@ -4,7 +4,7 @@ import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
-import { getPlaceholderImageUrl } from '../lib/media'
+import { getPlaceholderImageUrl, resolveMediaUrl } from '../lib/media'
 
 interface Product {
   id: number
@@ -291,7 +291,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                 >
                   <img
                     src={
-                      product.main_image_url ||
+                      (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
                       getPlaceholderImageUrl({ type: 'product', id: product.id })
                     }
                     alt={product.name}

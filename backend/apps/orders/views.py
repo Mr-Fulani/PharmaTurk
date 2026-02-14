@@ -3,8 +3,10 @@ import uuid
 from decimal import Decimal
 from typing import Optional, Tuple
 
+from django.conf import settings
 from django.http import Http404, HttpResponse
 from django.db import transaction
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import serializers, status, viewsets
@@ -26,6 +28,94 @@ from apps.catalog.models import (
 from apps.users.models import UserAddress
 
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
+
+# Crypto payment (lazy to avoid circular import / optional dependency)
+def _create_crypto_invoice(number: str, total, cart_currency: str, locale: str = "") -> tuple[dict | None, dict | None]:
+    """Создаёт инвойс. Возвращает (invoice_data, payment_data) или (None, None) при ошибке.
+    Инвойс создаётся ДО создания заказа, чтобы не терять корзину при ошибке провайдера.
+    locale: язык пользователя (ru/en) — для сохранения при редиректе после оплаты.
+    """
+    from apps.payments.providers.coinremitter import create_invoice
+    from apps.payments.providers.dummy import create_invoice_dummy
+
+    site = (getattr(settings, "SITE_URL", None) or "").rstrip("/")
+    frontend = (getattr(settings, "FRONTEND_SITE_URL", None) or "").rstrip("/") or site
+    notify_url = f"{site}/api/payments/crypto/webhook/" if site else ""
+    # Next.js i18n: defaultLocale=en без префикса, ru — с /ru/
+    loc = (locale or "").strip().lower()
+    if loc not in ("ru", "en"):
+        loc = "en"
+    path_prefix = f"/{loc}" if loc == "ru" else ""
+    success_path = f"{path_prefix}/checkout-success" if path_prefix else "/checkout-success"
+    fail_path = f"{path_prefix}/checkout-crypto" if path_prefix else "/checkout-crypto"
+    q = f"number={number}&locale={loc}"
+    success_url = f"{frontend}{success_path}?{q}" if frontend else ""
+    fail_url = f"{frontend}{fail_path}?{q}" if frontend else ""
+    fiat_currency = (cart_currency or "USD").upper()[:3]
+
+    invoice_data = create_invoice(
+        amount_fiat=float(total),
+        fiat_currency=fiat_currency,
+        order_number=number,
+        notify_url=notify_url,
+        success_url=success_url,
+        fail_url=fail_url,
+        expiry_minutes=30,
+        description=f"Order {number}",
+    )
+    if not invoice_data and getattr(settings, "DEBUG", False):
+        logger.warning(
+            "CoinRemitter create_invoice failed, using dummy (API key set: %s). "
+            "Check COINREMITTER_API_KEY, COINREMITTER_API_PASSWORD and backend logs.",
+            bool(getattr(settings, "COINREMITTER_API_KEY", "")),
+        )
+        invoice_data = create_invoice_dummy(
+            amount_fiat=float(total),
+            fiat_currency=fiat_currency,
+            order_number=number,
+            notify_url=notify_url,
+            success_url=success_url,
+            fail_url=fail_url,
+            expiry_minutes=30,
+            description=f"Order {number}",
+        )
+    if not invoice_data:
+        return None, None
+
+    expires_at = invoice_data.get("expires_at") or (timezone.now() + timezone.timedelta(minutes=30))
+    payment_data = {
+        "address": invoice_data["address"],
+        "qr_code": invoice_data.get("qr_code") or "",
+        "amount": str(invoice_data["amount"]),
+        "amount_usd": str(invoice_data["amount_usd"]),
+        "currency": fiat_currency,
+        "expires_at": expires_at.isoformat() if hasattr(expires_at, "isoformat") else str(expires_at),
+        "invoice_url": invoice_data.get("invoice_url") or "",
+    }
+    return invoice_data, payment_data
+
+
+def _save_crypto_payment(order, invoice_data: dict, cart_currency: str):
+    """Сохраняет CryptoPayment после создания заказа."""
+    from apps.payments.models import CryptoPayment
+
+    fiat_currency = (cart_currency or "USD").upper()[:3]
+    expires_at = invoice_data.get("expires_at") or (timezone.now() + timezone.timedelta(minutes=30))
+    provider = "dummy" if invoice_data.get("invoice_id", "").startswith("dummy-") else "coinremitter"
+
+    CryptoPayment.objects.create(
+        order=order,
+        provider=provider,
+        invoice_id=invoice_data["invoice_id"],
+        address=invoice_data["address"],
+        amount_crypto=invoice_data["amount"],
+        amount_fiat=invoice_data["amount_usd"],
+        currency=invoice_data.get("currency") or fiat_currency,
+        status="pending",
+        qr_code_url=invoice_data.get("qr_code") or "",
+        invoice_url=invoice_data.get("invoice_url") or "",
+        expires_at=expires_at,
+    )
 from .serializers import (
     AddToCartSerializer,
     ApplyPromoCodeSerializer,
@@ -631,12 +721,18 @@ class CartViewSet(viewsets.ViewSet):
     def apply_promo(self, request):
         """Применить промокод к корзине."""
         cart = _get_or_create_cart(request)
+        logger.info("apply_promo: request.data=%s", request.data)
         serializer = ApplyPromoCodeSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            err_msg = serializer.errors.get("code", [serializer.errors])[0]
+            if isinstance(err_msg, list):
+                err_msg = err_msg[0] if err_msg else _("Неверные данные")
+            logger.warning("apply_promo: validation failed: %s", serializer.errors)
+            return Response({"detail": str(err_msg)}, status=400)
         
         code = serializer.validated_data['code']
         try:
-            promo_code = PromoCode.objects.get(code=code)
+            promo_code = PromoCode.objects.get(code__iexact=code)
         except PromoCode.DoesNotExist:
             return Response({"detail": _("Промокод не найден")}, status=404)
         
@@ -652,6 +748,7 @@ class CartViewSet(viewsets.ViewSet):
             cart_currency=cart_currency,
         )
         if not is_valid:
+            logger.info("apply_promo: promo %s invalid: %s (cart_total=%s, currency=%s)", code, error, cart_total, cart_currency)
             return Response({"detail": error}, status=400)
         
         # Применяем промокод
@@ -764,7 +861,24 @@ class OrderViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'], url_path=r'by-number/(?P<number>[^/]+)')
     def by_number(self, request, number: str):
         order = self._get_order_for_user(request.user, number)
-        return Response(OrderSerializer(order, context={'request': request}).data)
+        data = OrderSerializer(order, context={'request': request}).data
+        if order.payment_method == 'crypto' and order.status == Order.OrderStatus.PENDING_PAYMENT:
+            try:
+                from apps.payments.models import CryptoPayment
+                cp = CryptoPayment.objects.get(order=order)
+                if cp.status == 'pending':
+                    data['payment_data'] = {
+                        'address': cp.address,
+                        'qr_code': cp.qr_code_url,
+                        'amount': str(cp.amount_crypto),
+                        'amount_usd': str(cp.amount_fiat),
+                        'currency': cp.currency,
+                        'expires_at': cp.expires_at.isoformat() if cp.expires_at else '',
+                        'invoice_url': cp.invoice_url or '',
+                    }
+            except Exception:
+                pass
+        return Response(data)
 
     # TODO: Функционал чеков временно отключен. Будет доработан позже.
     # Включает: формирование чека, отправку по email, интеграцию с админкой.
@@ -913,7 +1027,7 @@ class OrderViewSet(viewsets.ViewSet):
         promo_code_value = serializer.validated_data.get('promo_code') or (cart.promo_code.code if cart.promo_code else None)
         if promo_code_value:
             try:
-                promo_code = PromoCode.objects.get(code=promo_code_value.upper())
+                promo_code = PromoCode.objects.get(code__iexact=promo_code_value)
                 # Проверка валидности промокода
                 is_valid, error = promo_code.is_valid(user=request.user, cart_total=float(subtotal), cart_currency=cart.currency)
                 if is_valid:
@@ -926,10 +1040,24 @@ class OrderViewSet(viewsets.ViewSet):
             except PromoCode.DoesNotExist:
                 pass
 
-        total = subtotal + shipping - discount
+        total = subtotal + Decimal(str(shipping)) - Decimal(str(discount))
 
         # Генерация номера заказа
         number = uuid.uuid4().hex[:12].upper()
+        payment_method = (serializer.validated_data.get('payment_method') or '').strip().lower()
+        is_crypto = payment_method == 'crypto'
+
+        # Крипто: создаём инвойс ДО заказа, чтобы не терять корзину при ошибке провайдера
+        if is_crypto:
+            locale = (serializer.validated_data.get("locale") or "").strip() or request.META.get("HTTP_ACCEPT_LANGUAGE", "").split(",")[0].split("-")[0] or "en"
+            if locale not in ("ru", "en"):
+                locale = "en"
+            invoice_data, payment_data = _create_crypto_invoice(number, total, cart.currency, locale=locale)
+            if not invoice_data:
+                return Response(
+                    {"detail": _("Не удалось создать платёжную ссылку. Попробуйте позже или выберите другой способ оплаты.")},
+                    status=503,
+                )
 
         order = Order.objects.create(
             user=request.user,
@@ -946,6 +1074,7 @@ class OrderViewSet(viewsets.ViewSet):
             shipping_method=serializer.validated_data.get('shipping_method', ''),
             payment_method=serializer.validated_data.get('payment_method', ''),
             comment=serializer.validated_data.get('comment', ''),
+            status=Order.OrderStatus.PENDING_PAYMENT if is_crypto else Order.OrderStatus.NEW,
         )
 
         # Адрес доставки
@@ -959,21 +1088,35 @@ class OrderViewSet(viewsets.ViewSet):
             except UserAddress.DoesNotExist:
                 pass
 
-
-        # Позиции заказа + атомарное списание остатка
-        for item in cart.items.select_related('product').all():
-            _decrement_stock_for_cart_item(item.product, item.chosen_size, item.quantity)
-            OrderItem.objects.create(
-                order=order,
-                product=item.product,
-                product_name=item.product.name,
-                chosen_size=item.chosen_size,
-                price=item.price,
-                quantity=item.quantity,
-                total=item.price * item.quantity,
-            )
-
-        # Очищаем корзину
-        cart.items.all().delete()
-
-        return Response(OrderSerializer(order).data, status=201)
+        if is_crypto:
+            # Крипто: сохраняем CryptoPayment, позиции заказа без списания остатка
+            _save_crypto_payment(order, invoice_data, cart.currency)
+            for item in cart.items.select_related('product').all():
+                OrderItem.objects.create(
+                    order=order,
+                    product=item.product,
+                    product_name=item.product.name,
+                    chosen_size=item.chosen_size,
+                    price=item.price,
+                    quantity=item.quantity,
+                    total=item.price * item.quantity,
+                )
+            cart.items.all().delete()
+            response_data = OrderSerializer(order).data
+            response_data["payment_data"] = payment_data
+            return Response(response_data, status=201)
+        else:
+            # Позиции заказа + атомарное списание остатка
+            for item in cart.items.select_related('product').all():
+                _decrement_stock_for_cart_item(item.product, item.chosen_size, item.quantity)
+                OrderItem.objects.create(
+                    order=order,
+                    product=item.product,
+                    product_name=item.product.name,
+                    chosen_size=item.chosen_size,
+                    price=item.price,
+                    quantity=item.quantity,
+                    total=item.price * item.quantity,
+                )
+            cart.items.all().delete()
+            return Response(OrderSerializer(order).data, status=201)

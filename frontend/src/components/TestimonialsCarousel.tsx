@@ -5,7 +5,7 @@ import Link from 'next/link'
 import api from '../lib/api'
 import { StarIcon } from '@heroicons/react/20/solid'
 import { SpeakerWaveIcon, SpeakerXMarkIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline'
-import { getPlaceholderImageUrl } from '../lib/media'
+import { getPlaceholderImageUrl, resolveMediaUrl } from '../lib/media'
 
 declare global {
   interface Window {
@@ -930,7 +930,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     if (firstMedia.media_type === 'image' && firstMedia.image_url) {
       return (
         <img
-          src={firstMedia.image_url}
+          src={resolveMediaUrl(firstMedia.image_url)}
           alt={t('testimonial_image_alt', `Изображение к отзыву от ${testimonial.author_name}`)}
           className="w-full h-full object-cover"
         />
@@ -1092,7 +1092,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           loop
           className="w-full h-full object-cover"
         >
-          <source src={firstMedia.video_file_url} type="video/mp4" />
+          <source src={resolveMediaUrl(firstMedia.video_file_url)} type="video/mp4" />
           {t('video_tag_unsupported', 'Ваш браузер не поддерживает видео.')}
         </video>
       )
@@ -1250,7 +1250,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                     >
                       {testimonial.author_avatar_url && (
                         <img
-                          src={testimonial.author_avatar_url}
+                          src={resolveMediaUrl(testimonial.author_avatar_url)}
                           alt={testimonial.author_name}
                           className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0 pointer-events-none"
                           onError={(e) => {
@@ -1266,7 +1266,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                   <div className="flex items-center flex-1 min-w-0">
                     {testimonial.author_avatar_url && (
                       <img
-                        src={testimonial.author_avatar_url}
+                        src={resolveMediaUrl(testimonial.author_avatar_url)}
                         alt={testimonial.author_name}
                         className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
                         onError={(e) => {

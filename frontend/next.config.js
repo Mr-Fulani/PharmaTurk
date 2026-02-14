@@ -13,6 +13,9 @@ const nextConfig = {
     removeConsole: process.env.NODE_ENV === 'production',
   },
   async rewrites() {
+    // Docker: INTERNAL_API_BASE=http://backend:8000. Локально с ngrok: INTERNAL_API_BASE=http://localhost:8000
+    const apiDest = process.env.INTERNAL_API_BASE || 'http://backend:8000';
+    const apiBase = apiDest.replace(/\/$/, '');
     return [
       {
         source: '/favicon.ico',
@@ -20,11 +23,16 @@ const nextConfig = {
       },
       {
         source: '/api/:path*',
-        destination: 'http://backend:8000/api/:path*',
+        destination: `${apiBase}/api/:path*`,
       },
       {
         source: '/backend/:path*',
-        destination: 'http://backend:8000/api/:path*',
+        destination: `${apiBase}/api/:path*`,
+      },
+      // Медиа (изображения товаров): ngrok туннелирует только 3001, порт 8000 недоступен
+      {
+        source: '/media/:path*',
+        destination: `${apiBase}/media/:path*`,
       },
     ];
   },
