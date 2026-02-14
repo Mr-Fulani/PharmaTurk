@@ -1,18 +1,18 @@
 {# TODO: Функционал чеков временно отключен. Будет доработан позже. #}
-{# Включает: формирование чека, отправку по email, интеграцию с админкой. #}
+{# labels — словарь подписей на языке ru/en #}
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="{{ lang|default:'ru' }}">
   <head>
     <meta charset="UTF-8" />
-    <title>Чек заказа {{ receipt.number }}</title>
+    <title>{{ labels.title }} {{ receipt.number }}</title>
   </head>
   <body style="font-family: 'Inter', 'Segoe UI', Arial, sans-serif; background-color: #f6f5ff; padding: 32px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 20px; padding: 32px; box-shadow: 0 20px 60px rgba(54, 54, 105, 0.08);">
       <tr>
         <td>
-          <h1 style="margin: 0 0 8px; font-size: 26px; color: #14142b;">Чек заказа № {{ receipt.number }}</h1>
+          <h1 style="margin: 0 0 8px; font-size: 26px; color: #14142b;">{{ labels.title }} {{ receipt.number }}</h1>
           <p style="margin: 0; color: #6e7191; font-size: 14px;">
-            Выдан: {{ receipt.meta.issued_at|date:"d.m.Y H:i" }} · Заказ создан: {{ receipt.meta.created_at|date:"d.m.Y H:i" }}
+            {{ labels.issued }}: {{ receipt.meta.issued_at|date:"d.m.Y H:i" }} · {{ labels.created }}: {{ receipt.meta.created_at|date:"d.m.Y H:i" }}
           </p>
         </td>
       </tr>
@@ -23,14 +23,14 @@
             <tr>
               <td style="width: 50%; vertical-align: top; padding-right: 12px;">
                 <div style="background: #f4f3ff; border-radius: 16px; padding: 16px;">
-                  <p style="margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #6e7191;">Покупатель</p>
+                  <p style="margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #6e7191;">{{ labels.customer }}</p>
                   <p style="margin: 0; font-weight: 600; color: #2f2e57;">{{ receipt.customer.name }}</p>
                   <p style="margin: 4px 0 0; color: #6e7191; font-size: 14px;">{{ receipt.customer.phone }}{% if receipt.customer.email %} · {{ receipt.customer.email }}{% endif %}</p>
                 </div>
               </td>
               <td style="width: 50%; vertical-align: top; padding-left: 12px;">
                 <div style="background: #f4f3ff; border-radius: 16px; padding: 16px;">
-                  <p style="margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #6e7191;">Продавец</p>
+                  <p style="margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #6e7191;">{{ labels.seller }}</p>
                   <p style="margin: 0; font-weight: 600; color: #2f2e57;">{{ receipt.seller.name }}</p>
                   <p style="margin: 4px 0 0; color: #6e7191; font-size: 14px;">{{ receipt.seller.email }}{% if receipt.seller.phone %} · {{ receipt.seller.phone }}{% endif %}</p>
                 </div>
@@ -45,10 +45,10 @@
           <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
             <thead>
               <tr style="text-align: left; color: #6e7191; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;">
-                <th style="padding-bottom: 12px;">Товар</th>
-                <th style="padding-bottom: 12px;">Кол-во</th>
-                <th style="padding-bottom: 12px;">Цена</th>
-                <th style="padding-bottom: 12px; text-align: right;">Сумма</th>
+                <th style="padding-bottom: 12px;">{{ labels.product }}</th>
+                <th style="padding-bottom: 12px;">{{ labels.qty }}</th>
+                <th style="padding-bottom: 12px;">{{ labels.price }}</th>
+                <th style="padding-bottom: 12px; text-align: right;">{{ labels.total_col }}</th>
               </tr>
             </thead>
             <tbody>
@@ -71,16 +71,16 @@
             <tr>
               <td style="width: 50%; vertical-align: top; padding-right: 12px;">
                 <div style="background: #f4f3ff; border-radius: 16px; padding: 16px;">
-                  <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #6e7191;">Доставка</p>
+                  <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #6e7191;">{{ labels.shipping }}</p>
                   <p style="margin: 6px 0 0; color: #2f2e57;">{{ receipt.shipping.method }}</p>
                   <p style="margin: 4px 0 0; color: #6e7191; font-size: 14px;">{{ receipt.shipping.address }}</p>
                 </div>
               </td>
               <td style="width: 50%; vertical-align: top; padding-left: 12px;">
                 <div style="background: #f4f3ff; border-radius: 16px; padding: 16px;">
-                  <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #6e7191;">Оплата</p>
+                  <p style="margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #6e7191;">{{ labels.payment }}</p>
                   <p style="margin: 6px 0 0; color: #2f2e57;">{{ receipt.payment.method }}</p>
-                  <p style="margin: 4px 0 0; color: #6e7191; font-size: 14px;">Статус: {{ receipt.payment.status }}</p>
+                  <p style="margin: 4px 0 0; color: #6e7191; font-size: 14px;">{{ labels.status }}: {{ receipt.payment.status }}</p>
                 </div>
               </td>
             </tr>
@@ -92,19 +92,19 @@
         <td style="padding-top: 32px;">
           <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; color: #2f2e57;">
             <tr>
-              <td style="padding: 4px 0; color: #6e7191;">Сумма товаров</td>
+              <td style="padding: 4px 0; color: #6e7191;">{{ labels.items_total }}</td>
               <td style="padding: 4px 0; text-align: right;">{{ receipt.totals.items }} {{ receipt.totals.currency }}</td>
             </tr>
             <tr>
-              <td style="padding: 4px 0; color: #6e7191;">Доставка</td>
+              <td style="padding: 4px 0; color: #6e7191;">{{ labels.shipping }}</td>
               <td style="padding: 4px 0; text-align: right;">{{ receipt.totals.shipping }} {{ receipt.totals.currency }}</td>
             </tr>
             <tr>
-              <td style="padding: 4px 0; color: #6e7191;">Скидка</td>
+              <td style="padding: 4px 0; color: #6e7191;">{{ labels.discount }}</td>
               <td style="padding: 4px 0; text-align: right;">-{{ receipt.totals.discount }} {{ receipt.totals.currency }}</td>
             </tr>
             <tr>
-              <td style="padding-top: 12px; font-size: 16px; font-weight: 700;">Итого</td>
+              <td style="padding-top: 12px; font-size: 16px; font-weight: 700;">{{ labels.total }}</td>
               <td style="padding-top: 12px; font-size: 20px; font-weight: 700; text-align: right;">{{ receipt.totals.total }} {{ receipt.totals.currency }}</td>
             </tr>
           </table>
@@ -114,8 +114,8 @@
       <tr>
         <td style="padding-top: 32px;">
           <p style="margin: 0; font-size: 12px; color: #a0a3bd; line-height: 1.6;">
-            Если у вас остались вопросы, просто ответьте на это письмо или напишите нам на {{ receipt.seller.email }}.
-            Благодарим за заказ!
+            {{ labels.footer }} {{ receipt.seller.email }}.
+            {{ labels.thanks }}
           </p>
         </td>
       </tr>

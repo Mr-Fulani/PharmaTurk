@@ -143,7 +143,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
   // TODO: Функционал чеков временно отключен. Будет доработан позже.
   const handlePrintReceipt = () => {
     if (!receipt) return
-    const html = buildReceiptDocument(receipt)
+    const html = buildReceiptDocument(receipt, router.locale || 'ru', t)
     const printWindow = window.open('', '_blank', 'width=800,height=1000')
     if (!printWindow) return
     printWindow.document.write(html)
@@ -158,7 +158,10 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
     setSendState('sending')
     setSendMessage('')
     try {
-      const res = await api.post(`/orders/orders/send-receipt/${number}`, { email: sendEmail })
+      const res = await api.post(`/orders/orders/send-receipt/${number}`, {
+        email: sendEmail,
+        locale: router.locale || 'ru',
+      })
       setSendState('success')
       setSendMessage(res.data?.detail || t('order_success_send_success', { email: sendEmail }))
     } catch (err: any) {
@@ -417,7 +420,11 @@ function StatisticCard({ label, value, accent }: { label: string; value: string;
 }
 
 // TODO: Функционал чеков временно отключен. Будет доработан позже.
-function buildReceiptDocument(receipt: OrderReceipt) {
+function buildReceiptDocument(
+  receipt: OrderReceipt,
+  locale: string,
+  t: (key: string, fallback?: string) => string
+) {
   const formatter = (value: string) => `${value} ${receipt.totals.currency}`
   const rows = receipt.items
     .map(
@@ -428,12 +435,23 @@ function buildReceiptDocument(receipt: OrderReceipt) {
     )
     .join('')
 
+  const title = t('receipt_print_title', 'Чек заказа №')
+  const issued = t('receipt_print_issued', 'Выдан')
+  const product = t('receipt_print_product', 'Товар')
+  const qty = t('receipt_print_qty', 'Кол-во')
+  const price = t('receipt_print_price', 'Цена')
+  const totalCol = t('receipt_print_total_col', 'Сумма')
+  const totalLabel = t('receipt_print_total_label', 'Итого')
+
+  const lang = locale === 'en' ? 'en' : 'ru'
+  const issuedStr = new Date(receipt.issued_at).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU')
+
   return `
     <!DOCTYPE html>
-    <html lang="ru">
+    <html lang="${lang}">
       <head>
         <meta charSet="utf-8" />
-        <title>Receipt #${receipt.number}</title>
+        <title>${title}${receipt.number}</title>
         <style>
           body { font-family: -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif; background:#f4f3ff; padding:40px; color:#1f1f35; }
           .card { max-width:800px; margin:0 auto; background:#fff; border-radius:32px; padding:40px; box-shadow:0 20px 60px rgba(31,31,53,.1); }
@@ -446,13 +464,13 @@ function buildReceiptDocument(receipt: OrderReceipt) {
       </head>
       <body>
         <div class="card">
-          <h1>Чек заказа №${receipt.number}</h1>
-          <p>Выдан: ${new Date(receipt.issued_at).toLocaleString()}</p>
+          <h1>${title}${receipt.number}</h1>
+          <p>${issued}: ${issuedStr}</p>
           <table>
-            <thead><tr><th>Товар</th><th>Кол-во</th><th>Цена</th><th>Сумма</th></tr></thead>
+            <thead><tr><th>${product}</th><th>${qty}</th><th>${price}</th><th>${totalCol}</th></tr></thead>
             <tbody>${rows}</tbody>
             <tfoot>
-              <tr><td colspan="3">Итого</td><td>${formatter(receipt.totals.total)}</td></tr>
+              <tr><td colspan="3">${totalLabel}</td><td>${formatter(receipt.totals.total)}</td></tr>
             </tfoot>
           </table>
         </div>

@@ -123,13 +123,61 @@ def build_order_receipt_payload(order: Order) -> Dict[str, Any]:
     }
 
 
+RECEIPT_LABELS = {
+    "ru": {
+        "title": "Чек заказа №",
+        "issued": "Выдан",
+        "created": "Заказ создан",
+        "customer": "Покупатель",
+        "seller": "Продавец",
+        "product": "Товар",
+        "qty": "Кол-во",
+        "price": "Цена",
+        "total_col": "Сумма",
+        "shipping": "Доставка",
+        "payment": "Оплата",
+        "status": "Статус",
+        "items_total": "Сумма товаров",
+        "discount": "Скидка",
+        "total": "Итого",
+        "footer": "Если у вас остались вопросы, просто ответьте на это письмо или напишите нам на",
+        "thanks": "Благодарим за заказ!",
+    },
+    "en": {
+        "title": "Order receipt #",
+        "issued": "Issued",
+        "created": "Order created",
+        "customer": "Customer",
+        "seller": "Seller",
+        "product": "Product",
+        "qty": "Qty",
+        "price": "Price",
+        "total_col": "Total",
+        "shipping": "Shipping",
+        "payment": "Payment",
+        "status": "Status",
+        "items_total": "Items total",
+        "discount": "Discount",
+        "total": "Total",
+        "footer": "If you have any questions, simply reply to this email or contact us at",
+        "thanks": "Thank you for your order!",
+    },
+}
+
+
 # TODO: Функционал чеков временно отключен. Будет доработан позже.
-def render_receipt_html(order: Order, receipt: Dict[str, Any] | None = None) -> str:
-    """Рендерит HTML-версию чека."""
+def render_receipt_html(
+    order: Order, receipt: Dict[str, Any] | None = None, locale: str = "ru"
+) -> str:
+    """Рендерит HTML-версию чека на указанном языке."""
     payload = receipt or build_order_receipt_payload(order)
+    loc = "en" if (locale or "").strip().lower() == "en" else "ru"
+    labels = RECEIPT_LABELS.get(loc, RECEIPT_LABELS["ru"])
     context = {
         "order": order,
         "receipt": payload,
+        "labels": labels,
+        "lang": loc,
     }
     return render_to_string("emails/order_receipt.html", context)
 

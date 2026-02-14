@@ -888,7 +888,10 @@ class OrderViewSet(viewsets.ViewSet):
         order = self._get_order_for_user(request.user, number)
         receipt = build_order_receipt_payload(order)
         if request.query_params.get('format') == 'html':
-            html = render_receipt_html(order, receipt)
+            locale = request.META.get('HTTP_ACCEPT_LANGUAGE', 'ru').split(',')[0].split('-')[0]
+            if locale not in ('ru', 'en'):
+                locale = 'ru'
+            html = render_receipt_html(order, receipt, locale=locale)
             return HttpResponse(html)
         serializer = OrderReceiptSerializer(receipt)
         return Response(serializer.data)
@@ -906,7 +909,10 @@ class OrderViewSet(viewsets.ViewSet):
             email = serializers.EmailField().to_internal_value(email)
         except serializers.ValidationError:
             return Response({"detail": _("Укажите корректный email")}, status=400)
-        send_order_receipt_task.delay(order.id, email)
+        locale = (request.data.get('locale') or request.META.get('HTTP_ACCEPT_LANGUAGE', 'ru').split(',')[0].split('-')[0] or 'ru').strip()
+        if locale not in ('ru', 'en'):
+            locale = 'ru'
+        send_order_receipt_task.delay(order.id, email, locale=locale)
         return Response({"detail": _("Чек будет отправлен на %(email)s") % {"email": email}})
 
     @extend_schema(

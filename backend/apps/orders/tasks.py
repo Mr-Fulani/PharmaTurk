@@ -19,16 +19,19 @@ from .services import build_order_receipt_payload, render_receipt_html
 
 # TODO: Функционал чеков временно отключен. Будет доработан позже.
 @app.task(bind=True, autoretry_for=(Exception,), retry_backoff=60, max_retries=3)
-def send_order_receipt_task(self, order_id: int, email: str | None = None) -> bool:
-    """Отправляет чек по заказу на указанный email."""
+def send_order_receipt_task(
+    self, order_id: int, email: str | None = None, locale: str = "ru"
+) -> bool:
+    """Отправляет чек по заказу на указанный email на языке locale (ru/en)."""
     order = Order.objects.select_related("user").prefetch_related("items").get(id=order_id)
 
     recipient = email or order.contact_email or (order.user.email if order.user else None)
     if not recipient:
         return False
 
+    loc = "en" if (locale or "").strip().lower() == "en" else "ru"
     receipt = build_order_receipt_payload(order)
-    html_body = render_receipt_html(order, receipt)
+    html_body = render_receipt_html(order, receipt, locale=loc)
     text_body = strip_tags(html_body)
 
     subject = _("Чек по заказу %(number)s") % {"number": order.number}
