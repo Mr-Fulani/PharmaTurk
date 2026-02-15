@@ -9,6 +9,7 @@ from .models import (
     BookVariantImage,
     Brand,
     Category,
+    MarketingBrand,
     ClothingProduct,
     ClothingProductImage,
     ClothingVariant,
@@ -33,15 +34,24 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
-def delete_file_from_storage(file_field):
-    """Удалить файл из default_storage (R2 или локальный диск), если поле заполнено."""
-    if file_field and hasattr(file_field, "name") and file_field.name:
-        try:
-            from django.core.files.storage import default_storage
+def delete_file_from_storage(file_field, storage=None):
+    """Удалить файл из хранилища (R2 или локальный диск), если поле заполнено."""
+    if not file_field or not hasattr(file_field, "name") or not file_field.name:
+        return
+    path = file_field.name
+    if not path or not path.strip():
+        return
+    try:
+        from django.core.files.storage import default_storage
 
-            default_storage.delete(file_field.name)
-        except Exception as e:
-            logger.warning("Failed to delete file %s: %s", getattr(file_field, "name", ""), e)
+        backend = storage if storage is not None else default_storage
+        if backend.exists(path):
+            backend.delete(path)
+            logger.info("Deleted old file from storage: %s", path)
+        else:
+            logger.warning("File not found in storage (already deleted?): %s", path)
+    except Exception as e:
+        logger.warning("Failed to delete file %s: %s", path, e)
 
 
 def delete_url_from_storage(url):
@@ -109,34 +119,69 @@ def delete_product_image_files(sender, instance, **kwargs):
 
 @receiver(pre_save, sender=Category)
 def delete_old_category_card_media(sender, instance, **kwargs):
-    if instance.pk:
-        try:
-            old = Category.objects.get(pk=instance.pk)
-            if old.card_media:
-                old_path = old.card_media.name
-                new_path = getattr(instance.card_media, "name", None) if instance.card_media else None
-                if old_path != new_path:
-                    delete_file_from_storage(old.card_media)
-        except Category.DoesNotExist:
-            pass
-        except Exception as e:
-            logger.warning("Failed to delete old Category.card_media: %s", e)
+    """Удаляет старый файл card_media из облака при замене на новый или при переключении на external_url."""
+    if not instance.pk:
+        return
+    try:
+        old = Category.objects.get(pk=instance.pk)
+        if not old.card_media or not old.card_media.name:
+            return
+        old_path = old.card_media.name
+
+        new_file = instance.card_media
+        new_path = None
+        if new_file and hasattr(new_file, "name") and new_file.name:
+            new_path = new_file.name
+
+        if old_path == new_path:
+            return
+
+        field = Category._meta.get_field("card_media")
+        storage = field.storage
+        delete_file_from_storage(old.card_media, storage=storage)
+    except Category.DoesNotExist:
+        pass
+    except Exception as e:
+        logger.warning("Failed to delete old Category.card_media: %s", e)
+
+
+def _delete_old_brand_card_media_impl(instance):
+    """Удаляет старый файл card_media из облака при замене на новый или при переключении на external_url."""
+    if not instance.pk:
+        return
+    try:
+        old = Brand.objects.get(pk=instance.pk)
+        if not old.card_media or not old.card_media.name:
+            return
+        old_path = old.card_media.name
+
+        # Новое значение: файл или пусто (при очистке / переключении на external_url)
+        new_file = instance.card_media
+        new_path = None
+        if new_file and hasattr(new_file, "name") and new_file.name:
+            new_path = new_file.name
+
+        if old_path == new_path:
+            return
+
+        field = Brand._meta.get_field("card_media")
+        storage = field.storage
+        delete_file_from_storage(old.card_media, storage=storage)
+    except Brand.DoesNotExist:
+        pass
+    except Exception as e:
+        logger.warning("Failed to delete old Brand.card_media: %s", e)
 
 
 @receiver(pre_save, sender=Brand)
 def delete_old_brand_card_media(sender, instance, **kwargs):
-    if instance.pk:
-        try:
-            old = Brand.objects.get(pk=instance.pk)
-            if old.card_media:
-                old_path = old.card_media.name
-                new_path = getattr(instance.card_media, "name", None) if instance.card_media else None
-                if old_path != new_path:
-                    delete_file_from_storage(old.card_media)
-        except Brand.DoesNotExist:
-            pass
-        except Exception as e:
-            logger.warning("Failed to delete old Brand.card_media: %s", e)
+    _delete_old_brand_card_media_impl(instance)
+
+
+@receiver(pre_save, sender=MarketingBrand)
+def delete_old_marketing_brand_card_media(sender, instance, **kwargs):
+    """MarketingBrand — proxy модели Brand; при сохранении через админку «Маркетинг» pre_save Brand не срабатывает."""
+    _delete_old_brand_card_media_impl(instance)
 
 
 @receiver(post_delete, sender=Category)
@@ -146,6 +191,11 @@ def delete_category_files(sender, instance, **kwargs):
 
 @receiver(post_delete, sender=Brand)
 def delete_brand_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.card_media)
+
+
+@receiver(post_delete, sender=MarketingBrand)
+def delete_marketing_brand_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.card_media)
 
 
@@ -299,32 +349,21 @@ def _download_url_to_file(url):
 
 def _save_downloaded_file_to_storage(instance, file_attr, file_obj):
     """
-    Сохранить файл в то же хранилище, что и у поля (field.storage → R2 или локальный диск),
-    и присвоить полю сохранённое имя. Использование field.storage гарантирует, что файл
-    попадёт в R2, если у модели настроен R2, а не в локальный media.
-    В поле передаём только basename, иначе Django делает os.path.join(upload_to, filename)
-    и путь дублируется (products/clothing/gallery/products/clothing/gallery/xxx.jpg).
+    Присвоить полю скачанный файл. Django сам сохранит его в storage при model.save().
+    НЕ вызываем storage.save() здесь — иначе при file_overwrite=False создаётся дубликат
+    (сигнал сохраняет, потом Django сохраняет ещё раз с суффиксом).
     """
     import os
     import uuid
     from django.core.files.base import ContentFile
 
     field = instance._meta.get_field(file_attr)
-    storage = field.storage  # тот же бэкенд, что и при сохранении формы (R2 или local)
     upload_to = getattr(field, "upload_to", None)
-    if callable(upload_to):
-        try:
-            path = upload_to(instance, getattr(file_obj, "name", "image.jpg") or "image.jpg")
-        except Exception:
-            path = f"products/gallery/{uuid.uuid4().hex[:12]}.jpg"
-    else:
-        base = (upload_to or "products/gallery/").rstrip("/")
-        path = f"{base}/{uuid.uuid4().hex[:12]}.jpg"
-    saved_name = storage.save(path, file_obj)
-    with storage.open(saved_name, "rb") as f:
-        content = f.read()
-    # Только basename, иначе FileField при save() дублирует upload_to в пути
-    setattr(instance, file_attr, ContentFile(content, name=os.path.basename(saved_name)))
+    ext = os.path.splitext(getattr(file_obj, "name", "image.jpg") or "image.jpg")[1] or ".jpg"
+    # Уникальное имя — один save через Django, без дубликатов
+    basename = f"{uuid.uuid4().hex[:12]}{ext}"
+    content = file_obj.read() if hasattr(file_obj, "read") else file_obj
+    setattr(instance, file_attr, ContentFile(content, name=basename))
 
 
 @receiver(pre_save, sender=Product)
@@ -383,6 +422,21 @@ def auto_download_product_media_from_url(sender, instance, **kwargs):
     if source and source != "api":
         return
 
+    # Удалить старые файлы из R2 при замене на URL или очистке
+    if instance.pk:
+        try:
+            old = Product.objects.only("main_image_file", "main_video_file").get(pk=instance.pk)
+            if old.main_image_file and old.main_image_file.name:
+                if not (instance.main_image_file and instance.main_image_file.name):
+                    delete_file_from_storage(old.main_image_file)
+                    logger.info("Deleted old main_image_file from R2 for Product %s", instance.pk)
+            if old.main_video_file and old.main_video_file.name:
+                if not (instance.main_video_file and instance.main_video_file.name):
+                    delete_file_from_storage(old.main_video_file)
+                    logger.info("Deleted old main_video_file from R2 for Product %s", instance.pk)
+        except Product.DoesNotExist:
+            pass
+
     if instance.main_image and not instance.main_image_file:
         if not is_internal_storage_url(instance.main_image):
             file_obj = _download_url_to_file(instance.main_image)
@@ -400,9 +454,58 @@ def auto_download_product_media_from_url(sender, instance, **kwargs):
             logger.info("Auto-downloaded video_url to main_video_file for Product %s", instance.id or "new")
 
 
+@receiver(pre_save, sender=JewelryProduct)
+def auto_download_jewelry_product_media_from_url(sender, instance, **kwargs):
+    """Автоматически скачивать медиа из URL в файлы JewelryProduct (Reels из Instagram и т.д.)."""
+    # Удалить старые файлы из R2 при замене на URL или при очистке полей
+    if instance.pk:
+        try:
+            old = JewelryProduct.objects.only("main_image_file", "main_video_file").get(pk=instance.pk)
+            if old.main_image_file and old.main_image_file.name:
+                new_empty = not (instance.main_image_file and instance.main_image_file.name)
+                if new_empty:
+                    delete_file_from_storage(old.main_image_file)
+                    logger.info("Deleted old main_image_file from R2 for JewelryProduct %s: %s", instance.pk, old.main_image_file.name)
+            if old.main_video_file and old.main_video_file.name:
+                new_empty = not (instance.main_video_file and instance.main_video_file.name)
+                if new_empty:
+                    delete_file_from_storage(old.main_video_file)
+                    logger.info("Deleted old main_video_file from R2 for JewelryProduct %s", instance.pk)
+        except JewelryProduct.DoesNotExist:
+            pass
+
+    if instance.main_image and not instance.main_image_file:
+        if not is_internal_storage_url(instance.main_image):
+            file_obj = _download_url_to_file(instance.main_image)
+            if file_obj:
+                _save_downloaded_file_to_storage(instance, "main_image_file", file_obj)
+                logger.info("Auto-downloaded main_image URL to main_image_file for JewelryProduct %s", instance.id or "new")
+
+    if instance.video_url and not instance.main_video_file:
+        if not is_internal_storage_url(instance.video_url):
+            file_obj = _download_url_to_file(instance.video_url)
+            if file_obj:
+                _save_downloaded_file_to_storage(instance, "main_video_file", file_obj)
+                logger.info("Auto-downloaded video_url to main_video_file for JewelryProduct %s", instance.id or "new")
+
+
 @receiver(pre_save, sender=ClothingProduct)
 def auto_download_clothing_product_media_from_url(sender, instance, **kwargs):
     """Автоматически скачивать медиа из URL полей в файловые поля ClothingProduct (через default_storage → R2)."""
+    if instance.pk:
+        try:
+            old = ClothingProduct.objects.only("main_image_file", "main_video_file").get(pk=instance.pk)
+            if old.main_image_file and old.main_image_file.name:
+                if not (instance.main_image_file and instance.main_image_file.name):
+                    delete_file_from_storage(old.main_image_file)
+                    logger.info("Deleted old main_image_file from R2 for ClothingProduct %s", instance.pk)
+            if old.main_video_file and old.main_video_file.name:
+                if not (instance.main_video_file and instance.main_video_file.name):
+                    delete_file_from_storage(old.main_video_file)
+                    logger.info("Deleted old main_video_file from R2 for ClothingProduct %s", instance.pk)
+        except ClothingProduct.DoesNotExist:
+            pass
+
     if instance.main_image and not instance.main_image_file:
         if not is_internal_storage_url(instance.main_image):
             file_obj = _download_url_to_file(instance.main_image)

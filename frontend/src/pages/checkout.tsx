@@ -5,7 +5,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Link from 'next/link'
 import api from '../lib/api'
-import { resolveMediaUrl } from '../lib/media'
+import { resolveMediaUrl, isVideoUrl } from '../lib/media'
 import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cart'
 import { useTheme } from '../context/ThemeContext'
@@ -16,6 +16,7 @@ interface CartItem {
   product_name?: string
   product_slug?: string
   product_image_url?: string
+  product_video_url?: string | null
   quantity: number
   price: string
   currency: string
@@ -903,12 +904,27 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   {t('checkout_items', 'Товары')} ({cart.items_count})
                 </h3>
                 <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-                  {cart.items.map((item) => (
+                  {cart.items.map((item) => {
+                    const resolvedImage = item.product_image_url ? resolveMediaUrl(item.product_image_url) : null
+                    const resolvedVideoUrl = item.product_video_url && isVideoUrl(item.product_video_url) ? resolveMediaUrl(item.product_video_url) : null
+                    const showVideo = Boolean(resolvedVideoUrl)
+                    return (
                     <div
                       key={item.id}
                       className="flex gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors border border-gray-200"
                     >
-                      {item.product_image_url ? (
+                      {showVideo ? (
+                        <video
+                          src={resolvedVideoUrl!}
+                          poster={resolvedImage || undefined}
+                          muted
+                          loop
+                          playsInline
+                          autoPlay
+                          preload="metadata"
+                          className="w-20 h-20 object-cover rounded-lg flex-shrink-0 border border-gray-200"
+                        />
+                      ) : item.product_image_url ? (
                         <img
                           src={resolveMediaUrl(item.product_image_url)}
                           alt={item.product_name}
@@ -940,7 +956,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                         </p>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

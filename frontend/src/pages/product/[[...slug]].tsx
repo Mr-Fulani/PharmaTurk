@@ -46,6 +46,8 @@ const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
       return `/api/catalog/shoes/products/${slug}`
     case 'electronics':
       return `/api/catalog/electronics/products/${slug}`
+    case 'jewelry':
+      return `/api/catalog/jewelry/products/${slug}`
     default:
       // Для всех остальных категорий (включая новые динамические) используем общий эндпоинт
       return `/api/catalog/products/${slug}`
@@ -260,11 +262,10 @@ export default function ProductPage({
     if (!product) return []
     const variantImages = selectedVariant?.images || []
     const productImages = product.images || []
-    const mainImageUrl = resolveMediaUrl(
-      normalizeMediaValue(selectedVariant?.main_image) ||
-        normalizeMediaValue(product.main_image_url) ||
-        normalizeMediaValue(product.main_image)
-    )
+    const mainImageRaw = normalizeMediaValue(selectedVariant?.main_image) ||
+      normalizeMediaValue(product.main_image_url) ||
+      normalizeMediaValue(product.main_image)
+    const mainImageUrl = resolveMediaUrl(mainImageRaw)
     const normalizedProductVideoUrl = normalizeMediaValue(product.video_url)
     const hasVideo = Boolean(normalizedProductVideoUrl && isVideoUrl(normalizedProductVideoUrl))
     const seenVideoUrls = new Set<string>()
@@ -301,8 +302,8 @@ export default function ProductPage({
     let list: GalleryItem[] = []
     const hasMainInBase = baseImages.some((img) => img.is_main || resolveMediaUrl(img.image_url) === mainImageUrl)
 
-    if (mainImageUrl && !hasMainInBase) {
-      list = [{ id: 0, image_url: mainImageUrl, alt_text: product.name, is_main: true, sort_order: -1 }, ...baseImages]
+    if (mainImageRaw && !hasMainInBase) {
+      list = [{ id: 0, image_url: mainImageRaw, alt_text: product.name, is_main: true, sort_order: -1 }, ...baseImages]
     } else {
       list = baseImages
     }
@@ -337,6 +338,7 @@ export default function ProductPage({
       gallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
   )
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
+  const [mainImageLoading, setMainImageLoading] = useState(false)
   /** Для миниатюр с битой ссылкой: по id храним URL плейсхолдера, чтобы по клику показывать его в главной области */
   const [thumbPlaceholderByKey, setThumbPlaceholderByKey] = useState<Record<string, string>>({})
   const initialVideoUrl =
@@ -368,6 +370,7 @@ export default function ProductPage({
           null
       ) || null
     setActiveImage(newImage)
+    setMainImageLoading(false)
     const freshVideoUrl =
       (product.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
       (currentGallerySource as { video_url?: string | null }[]).find((item) => item.video_url && isVideoUrl(item.video_url))?.video_url ||
@@ -512,7 +515,11 @@ export default function ProductPage({
                           }
                         } else {
                           setActiveMediaType('image')
-                          setActiveImage(effectiveThumbUrl || resolvedThumbnail || null)
+                          const nextUrl = effectiveThumbUrl || resolvedThumbnail || null
+                          if (nextUrl !== activeImage) {
+                            setMainImageLoading(true)
+                            setActiveImage(nextUrl)
+                          }
                         }
                       }}
                     >
@@ -562,14 +569,24 @@ export default function ProductPage({
                   className="max-w-full max-h-full rounded-xl object-contain"
                 />
               ) : activeImage ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={activeImage}
-                  alt={product.name}
-                  className="max-w-full max-h-full rounded-xl object-contain"
-                  onError={(e) => {
+                <div className="relative w-full h-full min-h-[200px]">
+                  {mainImageLoading && (
+                    <div
+                      className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse"
+                      aria-hidden
+                    />
+                  )}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={activeImage}
+                    alt={product.name}
+                    className={`max-w-full max-h-full rounded-xl object-contain transition-opacity duration-150 ${mainImageLoading ? 'opacity-0' : 'opacity-100'}`}
+                    decoding="async"
+                    onLoad={() => setMainImageLoading(false)}
+                    onError={(e) => {
                     // Фолбек на picsum, завязанный на id товара
                     const { getPlaceholderImageUrl } = require('../../lib/media')
+                    setMainImageLoading(false)
                     e.currentTarget.src = getPlaceholderImageUrl({
                       type: 'product',
                       id: product.id,
@@ -578,6 +595,7 @@ export default function ProductPage({
                     })
                   }}
                 />
+                </div>
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -944,7 +962,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const localePrefix = ctx.locale ? `/${ctx.locale}` : ''
   const baseProductTypes: CategoryType[] = [
     'medicines', 'supplements', 'medical-equipment',
-    'furniture', 'tableware', 'accessories', 'jewelry',
+    'furniture', 'tableware', 'accessories',
     'underwear', 'headwear'
   ]
 
@@ -966,7 +984,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   })
 
   if (slugParts.length === 1) {
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines', 'books', 'perfumery']
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery']
     for (const t of probeTypes) {
       try {
         const res = await fetchProduct(t, productSlug)
@@ -994,10 +1012,9 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     const product = res.data
     const actualType = product.product_type
 
-    // Если тип в URL не совпадает с реальным типом товара, делаем редирект
-    // Исключаем случай, когда мы на /product/slug (categoryType='medicines' по дефолту для baseProductTypes)
-    // Но если мы явно на /product/furniture/... а товар books, надо редиректить.
-    if (actualType && actualType !== categoryType && categoryType !== 'medicines') {
+    // Редирект на канонический URL, если тип в URL не совпадает с реальным product_type
+    // (напр. /product/medicines/kolco-s-kamnem → /product/jewelry/kolco-s-kamnem)
+    if (actualType && actualType !== categoryType) {
          return {
             redirect: {
               destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
@@ -1018,7 +1035,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     }
     return buildProps(res, categoryType)
   } catch (error) {
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines', 'books', 'perfumery']
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery']
     const typesToTry = probeTypes.filter((t) => t !== categoryType)
 
     for (const t of typesToTry) {

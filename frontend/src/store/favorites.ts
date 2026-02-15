@@ -15,6 +15,7 @@ interface Favorite {
     old_price_formatted?: string | null
     active_variant_old_price_formatted?: string | null
     main_image_url?: string
+    video_url?: string | null
     _product_type?: string
   }
   created_at: string

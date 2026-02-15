@@ -193,12 +193,18 @@ export const electronicsApi = {
   getFeatured: () => api.get('/catalog/electronics/products/featured'),
 }
 
+// Ювелирные изделия
+export const jewelryApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/jewelry/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/jewelry/products/${slug}`),
+  getFeatured: () => api.get('/catalog/jewelry/products/featured'),
+}
+
 // Универсальная функция для получения API в зависимости от типа товаров
 export function getApiForCategory(
   categoryType: string
 ) {
-  // Специализированные эндпоинты есть только для одежды/обуви/электроники.
-  // Всё остальное идёт через базовый каталог (medicinesApi) без попытки принудительного маппинга.
   switch (categoryType) {
     case 'clothing':
       return clothingApi
@@ -206,6 +212,8 @@ export function getApiForCategory(
       return shoesApi
     case 'electronics':
       return electronicsApi
+    case 'jewelry':
+      return jewelryApi
     default:
       return medicinesApi
   }

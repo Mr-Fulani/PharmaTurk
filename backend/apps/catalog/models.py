@@ -22,6 +22,10 @@ from .utils.storage_paths import (
     get_banner_image_upload_path,
     get_banner_video_upload_path,
     get_banner_gif_upload_path,
+    get_jewelry_main_upload_path,
+    get_jewelry_gallery_upload_path,
+    get_jewelry_variant_upload_path,
+    get_jewelry_variant_gallery_upload_path,
 )
 
 CURRENCY_CHOICES = [
@@ -50,6 +54,11 @@ TOP_CATEGORY_SLUG_CHOICES = [
     ("headwear", "headwear"),
     ("books", "books"),
     ("perfumery", "perfumery"),
+    ("uslugi", "uslugi"),
+    ("sports", "sports"),
+    ("auto-parts", "auto-parts"),
+    ("islamic-clothing", "islamic-clothing"),
+    ("incense", "incense"),
 ]
 
 
@@ -625,9 +634,11 @@ class Product(models.Model):
         ("jewelry", _("Украшения")),
         ("books", _("Книги")),
         ("perfumery", _("Парфюмерия")),
-        # Добавьте здесь новые типы товаров по необходимости (должны совпадать с CATEGORY_TYPE_CHOICES)
-        # Пример: ("cosmetics", _("Косметика")),
-        # Пример: ("toys", _("Игрушки")),
+        ("uslugi", _("Услуги")),
+        ("sports", _("Спорттовары")),
+        ("auto_parts", _("Автозапчасти")),
+        ("islamic_clothing", _("Исламская одежда")),
+        ("incense", _("Благовония")),
     ]
 
     AVAILABILITY_STATUS_CHOICES = [
@@ -2346,13 +2357,28 @@ class JewelryProduct(models.Model):
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
 
-    # Изображения
+    # Изображения и видео
     main_image = models.URLField(_("Главное изображение"), blank=True)
     main_image_file = models.ImageField(
         _("Главное изображение (файл)"),
-        upload_to="products/jewelry/main/",
+        upload_to=get_jewelry_main_upload_path,
         blank=True,
         null=True,
+    )
+    video_url = models.URLField(
+        _("URL видео"),
+        max_length=2000,
+        blank=True,
+        help_text=_("URL видео (например, Reels из Instagram). При сохранении скачивается в хранилище."),
+    )
+    main_video_file = models.FileField(
+        _("Главное видео (файл)"),
+        upload_to=get_jewelry_main_upload_path,
+        blank=True,
+        null=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=["mp4", "mov", "webm", "avi", "mkv"]),
+        ],
     )
 
     # Внешние данные
@@ -2449,7 +2475,7 @@ class JewelryProductImage(models.Model):
     )
     image_file = models.ImageField(
         _("Изображение (файл)"),
-        upload_to="products/jewelry/gallery/",
+        upload_to=get_jewelry_gallery_upload_path,
         blank=True,
         null=True,
     )
@@ -2502,7 +2528,7 @@ class JewelryVariant(models.Model):
     main_image = models.URLField(_("Главное изображение варианта"), blank=True)
     main_image_file = models.ImageField(
         _("Главное изображение варианта (файл)"),
-        upload_to="products/jewelry/variants/",
+        upload_to=get_jewelry_variant_upload_path,
         blank=True,
         null=True,
     )
@@ -2643,7 +2669,7 @@ class JewelryVariantImage(models.Model):
     )
     image_file = models.ImageField(
         _("Изображение (файл)"),
-        upload_to="products/jewelry/variants/gallery/",
+        upload_to=get_jewelry_variant_gallery_upload_path,
         blank=True,
         null=True,
     )

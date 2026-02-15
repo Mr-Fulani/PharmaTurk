@@ -166,6 +166,7 @@ const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): st
   if (norm.startsWith('shoes')) return 'shoes'
   if (norm.startsWith('clothing')) return 'clothing'
   if (norm.startsWith('electronics')) return 'electronics'
+  if (norm.startsWith('jewelry')) return 'jewelry'
   
   // Для всех остальных возвращаем нормализованный слаг как тип
   return norm || 'medicines'
@@ -179,6 +180,8 @@ const resolveProductsEndpoint = (categoryType: string) => {
       return '/api/catalog/shoes/products'
     case 'electronics':
       return '/api/catalog/electronics/products'
+    case 'jewelry':
+      return '/api/catalog/jewelry/products'
     default:
       return '/api/catalog/products'
   }
@@ -197,6 +200,27 @@ const parsePriceWithCurrency = (value?: string | number | null) => {
     return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
   }
   return { price: trimmed, currency: null as string | null }
+}
+
+const parseNumber = (value: string | number | null | undefined) => {
+  if (value === null || typeof value === 'undefined') return null
+  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+  if (!normalized) return null
+  const num = Number(normalized)
+  return Number.isFinite(num) ? num : null
+}
+
+const formatPrice = (value: string | number | null | undefined): string | null => {
+  if (value === null || typeof value === 'undefined') return null
+  const num = parseNumber(value)
+  if (num === null) return String(value)
+  
+  // Убираем лишние нули после запятой
+  const str = num.toString()
+  if (str.includes('.')) {
+    return str.replace(/\.?0+$/, '')
+  }
+  return str
 }
 
 const areFilterArraysEqual = (left: Array<string | number>, right: Array<string | number>) =>
@@ -1481,7 +1505,17 @@ export default function CategoryPage({
                     const displayPrice = parsedVariantPrice ?? product.price
                     const displayCurrency = product.active_variant_currency || parsedVariantCurrency || product.currency
                     const displayOldCurrency = parsedOldCurrency || displayCurrency
-                    const displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? product.old_price : null
+                    
+                    // Форматируем старую цену, убирая лишние нули
+                    let displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? product.old_price : null
+                    if (displayOldPrice && typeof displayOldPrice === 'string') {
+                      // Убираем лишние нули после запятой
+                      displayOldPrice = displayOldPrice.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '')
+                    }
+                    
+                    // Форматируем цены для отображения
+                    const displayPriceFormatted = displayPrice ? formatPrice(displayPrice) : null
+                    const displayOldPriceFormatted = displayOldPrice ? formatPrice(displayOldPrice) : null
                     const effectiveProductType = (product.product_type || categoryType).replace(/_/g, '-')
                     const productHref = `/product/${effectiveProductType}/${product.slug}`
                     const isBaseProductType = ['medicines', 'supplements', 'medical-equipment'].includes(effectiveProductType)
@@ -1492,9 +1526,9 @@ export default function CategoryPage({
                         id={product.id}
                         name={product.name}
                         slug={product.slug}
-                        price={displayPrice ? String(displayPrice) : null}
+                        price={displayPriceFormatted ? String(displayPriceFormatted) : null}
                         currency={displayCurrency}
-                        oldPrice={displayOldPrice ? String(displayOldPrice) : null}
+                        oldPrice={displayOldPriceFormatted ? String(displayOldPriceFormatted) : null}
                         imageUrl={product.main_image_url || product.main_image}
                         videoUrl={product.video_url}
                         badge={product.is_featured ? t('product_featured', 'Хит') : null}

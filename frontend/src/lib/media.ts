@@ -13,10 +13,12 @@ export const isVideoUrl = (url?: string | null): boolean => {
   if (!url || typeof url !== 'string') return false
   const path = url.split('?')[0].toLowerCase()
   if (VIDEO_EXT_REGEX.test(path)) return true
-  if (/\/proxy-media\//i.test(url) && url.includes('path=')) {
+  // proxy-media: /api/catalog/proxy-media/?path=... или proxy-media?path=...
+  if (/proxy-media/i.test(url) && url.includes('path=')) {
     try {
-      const pathParam = new URL(url).searchParams.get('path') || ''
-      if (VIDEO_EXT_REGEX.test(pathParam)) return true
+      const pathMatch = url.match(/[?&]path=([^&]+)/)
+      const pathParam = pathMatch ? decodeURIComponent(pathMatch[1]) : ''
+      if (pathParam && VIDEO_EXT_REGEX.test(pathParam)) return true
     } catch {
       // ignore
     }
@@ -63,22 +65,20 @@ export const resolveMediaUrl = (url?: string | null) => {
     ? replaceBackendHost(process.env.INTERNAL_API_BASE || 'http://backend:8000')
     : getClientMediaBase()
 
-  // Абсолютный URL: заменяем backend/localhost:8000 на публичный
+  // Абсолютный URL: backend/localhost:8000 → относительный путь (браузер запросит с текущего origin).
+  // Устраняет Mixed Content и hydration mismatch при ngrok/production.
   if (/^https?:\/\//i.test(url)) {
     try {
       const u = new URL(url)
-      if (serverMediaBase && url.startsWith(serverMediaBase)) {
-        return url.replace(serverMediaBase, clientMediaBase || u.origin)
-      }
-      const needsReplace =
+      const isInternalBackend =
         u.hostname === 'backend' ||
         (u.hostname === 'localhost' && u.port === '8000') ||
         (u.hostname === '127.0.0.1' && u.port === '8000')
-      if (needsReplace && typeof window !== 'undefined') {
-        return `${clientMediaBase}${u.pathname}${u.search}`
+      if (isInternalBackend) {
+        return `${u.pathname}${u.search || ''}`
       }
-      if (u.hostname === 'backend') {
-        return `${clientMediaBase}${u.pathname}${u.search}`
+      if (serverMediaBase && url.startsWith(serverMediaBase)) {
+        return url.replace(serverMediaBase, clientMediaBase || u.origin)
       }
       return url
     } catch {
@@ -86,16 +86,21 @@ export const resolveMediaUrl = (url?: string | null) => {
     }
   }
 
-  // Относительный путь
+  // Относительный путь: используем как есть — браузер запросит с текущего origin.
+  // Это устраняет Mixed Content и hydration mismatch (сервер не должен подставлять backend:8000).
+  if (url.startsWith('/')) {
+    return url
+  }
+
   if (clientMediaBase) {
-    return url.startsWith('/') ? `${clientMediaBase}${url}` : `${clientMediaBase}/${url}`
+    return `${clientMediaBase}/${url}`
   }
 
   if (typeof window !== 'undefined') {
     const origin = stripTrailingSlash(window.location.origin)
-    return url.startsWith('/') ? `${origin}${url}` : `${origin}/${url}`
+    return `${origin}/${url}`
   }
-  return url
+  return `/${url}`
 }
 
 export const pickMedia = (media?: MediaSource, fallback?: string) => {

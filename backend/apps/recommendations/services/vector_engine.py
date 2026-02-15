@@ -176,15 +176,15 @@ class QdrantRecommendationEngine:
         return True
 
     def _invalidate_similar_cache(self, product_id: int) -> None:
-        """Сбрасывает кэш похожих товаров после индексации (все комбинации filters)."""
+        """Сбрасывает кэш похожих товаров и no_vector после индексации."""
         import redis
         from django.conf import settings
         try:
             redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
             client = redis.from_url(redis_url)
-            pattern = f"*rec:similar:{product_id}:*"
-            for key in client.scan_iter(match=pattern, count=50):
-                client.delete(key)
+            for pattern in (f"*rec:similar:{product_id}:*", f"*rec:no_vector:{product_id}:*"):
+                for key in client.scan_iter(match=pattern, count=50):
+                    client.delete(key)
         except Exception as e:
             logger.warning("Failed to invalidate similar cache for product %s: %s", product_id, e)
 
@@ -279,9 +279,13 @@ class QdrantRecommendationEngine:
         cached = cache.get(cache_key)
         if cached is not None:
             return cached
+        no_vector_key = f"rec:no_vector:{product_id}:{vector_type}"
+        if cache.get(no_vector_key) is not None:
+            return []
         target_vector = self._get_product_vector(product_id, vector_type)
         if target_vector is None:
             logger.warning("No vector found for product %s", product_id)
+            cache.set(no_vector_key, 1, 3600)
             return []
         exclude_brand_id = None
         if exclude_same_brand:

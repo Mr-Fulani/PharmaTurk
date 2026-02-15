@@ -10,6 +10,7 @@ from .models import (
     Category, CategoryTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
+    JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     Service, ServiceTranslation,
@@ -130,10 +131,30 @@ class ElectronicsProductTranslationSerializer(serializers.ModelSerializer):
         fields = ['locale', 'description']
 
 
+def _get_category_ids_with_descendants(slugs: list) -> set:
+    """Возвращает set ID категорий по slug, включая все дочерние (подкатегории)."""
+    if not slugs:
+        return set()
+    slugs = [s.strip() for s in slugs if s.strip()]
+    if not slugs:
+        return set()
+    cats = Category.objects.filter(slug__in=slugs, is_active=True).values_list('id', flat=True)
+    current_ids = list(cats)
+    all_ids = set(current_ids)
+    while current_ids:
+        children = list(Category.objects.filter(
+            parent_id__in=current_ids, is_active=True
+        ).values_list('id', flat=True))
+        current_ids = [c for c in children if c not in all_ids]
+        all_ids.update(current_ids)
+    return all_ids
+
+
 class CategorySerializer(serializers.ModelSerializer):
     """Сериализатор для категорий."""
     
     children_count = serializers.SerializerMethodField()
+    products_count = serializers.SerializerMethodField()
     card_media_url = serializers.SerializerMethodField()
     category_type = serializers.SerializerMethodField()
     category_type_slug = serializers.SerializerMethodField()
@@ -145,7 +166,7 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'slug', 'description', 'card_media_url', 'parent',
             'external_id', 'is_active', 'sort_order',
-            'children_count', 'created_at', 'updated_at',
+            'children_count', 'products_count', 'created_at', 'updated_at',
             'category_type', 'category_type_slug', 'translations',
             'gender', 'gender_display', 'clothing_type', 'shoe_type', 'device_type',
         ]
@@ -154,6 +175,21 @@ class CategorySerializer(serializers.ModelSerializer):
     def get_children_count(self, obj):
         """Количество подкатегорий."""
         return obj.children.filter(is_active=True).count()
+
+    def get_products_count(self, obj):
+        """Количество товаров в категории и всех её подкатегориях."""
+        cat_ids = _get_category_ids_with_descendants([obj.slug])
+        if not cat_ids:
+            return 0
+        total = (
+            Product.objects.filter(category_id__in=cat_ids, is_active=True).count()
+            + ClothingProduct.objects.filter(category_id__in=cat_ids, is_active=True).count()
+            + ShoeProduct.objects.filter(category_id__in=cat_ids, is_active=True).count()
+            + JewelryProduct.objects.filter(category_id__in=cat_ids, is_active=True).count()
+            + ElectronicsProduct.objects.filter(category_id__in=cat_ids, is_active=True).count()
+            + FurnitureProduct.objects.filter(category_id__in=cat_ids, is_active=True).count()
+        )
+        return total
 
     def get_card_media_url(self, obj):
         """URL медиа-файла карточки категории. Относительный — браузер подставит origin."""
@@ -222,10 +258,7 @@ class BrandSerializer(serializers.ModelSerializer):
         return url
 
     def get_primary_category_slug(self, obj):
-        """Slug основной категории бренда, с fallback на товары бренда."""
-        if obj.primary_category_slug:
-            return obj.primary_category_slug
-
+        """Slug основной категории бренда. Используем категорию, где у бренда есть товары."""
         allowed_map = {
             "medicines": "medicines",
             "supplements": "supplements",
@@ -249,8 +282,17 @@ class BrandSerializer(serializers.ModelSerializer):
             slug = slug.replace("_", "-").lower()
             return allowed_map.get(slug, slug)
 
-        # 1) Считаем самые частые категории (берём корневой/родительский slug если есть)
         products_qs = obj.products.filter(is_active=True).select_related("category__parent")
+
+        # Если primary_category_slug задан и у бренда есть товары в этой категории — используем его
+        if obj.primary_category_slug:
+            norm = normalize(obj.primary_category_slug)
+            if norm and norm in allowed_map.values():
+                cat_ids = _get_category_ids_with_descendants([obj.primary_category_slug.strip()])
+                if cat_ids and products_qs.filter(category_id__in=cat_ids).exists():
+                    return norm
+
+        # 1) Считаем самые частые категории (берём корневой/родительский slug если есть)
         category_counts = (
             products_qs
             .values("category__slug", "category__parent__slug")
@@ -275,7 +317,9 @@ class BrandSerializer(serializers.ModelSerializer):
             if norm in allowed_map.values():
                 return norm
 
-        return None
+        # 3) Если primary_category_slug задан вручную, но товаров там нет — всё равно вернём
+        #    вычисленную категорию (уже не попали сюда, т.к. category_counts пустой)
+        return normalize(obj.primary_category_slug) if obj.primary_category_slug else None
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
@@ -590,7 +634,11 @@ class ProductSerializer(serializers.ModelSerializer):
                     return f"{price_with_margin} {preferred_currency}"
                 except Exception:
                     pass
-            return f"{obj.old_price} {from_currency}"
+            # Форматируем число, убирая лишние нули после запятой
+            formatted_price = f"{obj.old_price}"
+            if '.' in formatted_price:
+                formatted_price = formatted_price.rstrip('0').rstrip('.')
+            return f"{formatted_price} {from_currency}"
         return None
 
     def _get_preferred_currency(self, request):
@@ -906,6 +954,9 @@ class FavoriteSerializer(serializers.ModelSerializer):
         elif isinstance(product, FurnitureProduct):
             product_type = 'furniture'
             product_data = FurnitureProductSerializer(product, context={'request': request}).data
+        elif isinstance(product, JewelryProduct):
+            product_type = 'jewelry'
+            product_data = JewelryProductSerializer(product, context={'request': request}).data
         elif isinstance(product, Product):
             product_type = getattr(product, 'product_type', None) or 'medicines'
             product_data = ProductSerializer(product, context={'request': request}).data
@@ -917,7 +968,8 @@ class FavoriteSerializer(serializers.ModelSerializer):
                 'slug': getattr(product, 'slug', ''),
                 'price': str(getattr(product, 'price', '')) if hasattr(product, 'price') else None,
                 'currency': getattr(product, 'currency', ''),
-                'main_image_url': getattr(product, 'main_image', None) or getattr(product, 'main_image_url', None)
+                'main_image_url': getattr(product, 'main_image', None) or getattr(product, 'main_image_url', None),
+                'video_url': getattr(product, 'video_url', None) or getattr(product, 'main_video_url', None) or getattr(product, 'main_video', None)
             }
         
         # Добавляем тип товара в данные
@@ -943,7 +995,7 @@ class AddToFavoriteSerializer(serializers.Serializer):
         }.get(product_type, product_type)
         
         # Маппинг типов товаров на модели
-        from .models import Product, ClothingProduct, ShoeProduct, ElectronicsProduct, FurnitureProduct
+        from .models import Product, ClothingProduct, ShoeProduct, ElectronicsProduct, FurnitureProduct, JewelryProduct
         
         PRODUCT_MODEL_MAP = {
             'medicines': Product,
@@ -951,7 +1003,7 @@ class AddToFavoriteSerializer(serializers.Serializer):
             'medical_equipment': Product,
             'tableware': Product,
             'accessories': Product,
-            'jewelry': Product,
+            'jewelry': JewelryProduct,
             'perfumery': Product,
             'underwear': Product,
             'headwear': Product,
@@ -970,6 +1022,7 @@ class AddToFavoriteSerializer(serializers.Serializer):
             if hasattr(product, 'is_active') and not product.is_active:
                 raise serializers.ValidationError({"product_id": "Товар неактивен"})
         except model_class.DoesNotExist:
+            # Для jewelry, clothing, shoes, electronics, furniture — не fallback на Product
             if model_class is not Product:
                 try:
                     product = Product.objects.get(id=product_id, product_type=product_type)
@@ -1271,7 +1324,11 @@ class ClothingProductSerializer(serializers.ModelSerializer):
                     return f"{price_with_margin} {preferred_currency}"
                 except Exception:
                     pass
-            return f"{obj.old_price} {from_currency}"
+            # Форматируем число, убирая лишние нули после запятой
+            formatted_price = f"{obj.old_price}"
+            if '.' in formatted_price:
+                formatted_price = formatted_price.rstrip('0').rstrip('.')
+            return f"{formatted_price} {from_currency}"
         return None
 
     def get_images(self, obj):
@@ -1373,8 +1430,16 @@ class ClothingProductSerializer(serializers.ModelSerializer):
                     )
                     return f"{price_with_margin} {preferred_currency}"
                 except Exception:
-                    return f"{variant.old_price} {from_currency}"
-            return f"{variant.old_price} {from_currency}"
+                    # Форматируем число, убирая лишние нули после запятой
+                    formatted_price = f"{variant.old_price}"
+                    if '.' in formatted_price:
+                        formatted_price = formatted_price.rstrip('0').rstrip('.')
+                    return f"{formatted_price} {from_currency}"
+            # Форматируем число, убирая лишние нули после запятой
+            formatted_price = f"{variant.old_price}"
+            if '.' in formatted_price:
+                formatted_price = formatted_price.rstrip('0').rstrip('.')
+            return f"{formatted_price} {from_currency}"
         return None
 
     def get_active_variant_currency(self, obj):
@@ -1578,7 +1643,11 @@ class ShoeProductSerializer(serializers.ModelSerializer):
                     return f"{price_with_margin} {preferred_currency}"
                 except Exception:
                     pass
-            return f"{obj.old_price} {from_currency}"
+            # Форматируем число, убирая лишние нули после запятой
+            formatted_price = f"{obj.old_price}"
+            if '.' in formatted_price:
+                formatted_price = formatted_price.rstrip('0').rstrip('.')
+            return f"{formatted_price} {from_currency}"
         return None
 
     def get_active_variant_old_price_formatted(self, obj):
@@ -1597,8 +1666,16 @@ class ShoeProductSerializer(serializers.ModelSerializer):
                     )
                     return f"{price_with_margin} {preferred_currency}"
                 except Exception:
-                    return f"{variant.old_price} {from_currency}"
-            return f"{variant.old_price} {from_currency}"
+                    # Форматируем число, убирая лишние нули после запятой
+                    formatted_price = f"{variant.old_price}"
+                    if '.' in formatted_price:
+                        formatted_price = formatted_price.rstrip('0').rstrip('.')
+                    return f"{formatted_price} {from_currency}"
+            # Форматируем число, убирая лишние нули после запятой
+            formatted_price = f"{variant.old_price}"
+            if '.' in formatted_price:
+                formatted_price = formatted_price.rstrip('0').rstrip('.')
+            return f"{formatted_price} {from_currency}"
         return None
 
     def get_images(self, obj):
@@ -2080,8 +2157,16 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
                     )
                     return f"{price_with_margin} {preferred_currency}"
                 except Exception:
-                    pass
-            return f"{variant.old_price} {from_currency}"
+                    # Форматируем число, убирая лишние нули после запятой
+                    formatted_price = f"{variant.old_price}"
+                    if '.' in formatted_price:
+                        formatted_price = formatted_price.rstrip('0').rstrip('.')
+                    return f"{formatted_price} {from_currency}"
+            # Форматируем число, убирая лишние нули после запятой
+            formatted_price = f"{variant.old_price}"
+            if '.' in formatted_price:
+                formatted_price = formatted_price.rstrip('0').rstrip('.')
+            return f"{formatted_price} {from_currency}"
         if obj.old_price is not None:
             from_currency = (obj.currency or 'RUB').upper()
             if preferred_currency != from_currency:
@@ -2095,8 +2180,16 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
                     )
                     return f"{price_with_margin} {preferred_currency}"
                 except Exception:
-                    pass
-            return f"{obj.old_price} {from_currency}"
+                    # Форматируем число, убирая лишние нули после запятой
+                    formatted_price = f"{obj.old_price}"
+                    if '.' in formatted_price:
+                        formatted_price = formatted_price.rstrip('0').rstrip('.')
+                    return f"{formatted_price} {from_currency}"
+            # Форматируем число, убирая лишние нули после запятой
+            formatted_price = f"{obj.old_price}"
+            if '.' in formatted_price:
+                formatted_price = formatted_price.rstrip('0').rstrip('.')
+            return f"{formatted_price} {from_currency}"
         return None
 
     def get_active_variant_old_price_formatted(self, obj):
@@ -2115,8 +2208,16 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
                     )
                     return f"{price_with_margin} {preferred_currency}"
                 except Exception:
-                    return f"{variant.old_price} {from_currency}"
-            return f"{variant.old_price} {from_currency}"
+                    # Форматируем число, убирая лишние нули после запятой
+                    formatted_price = f"{variant.old_price}"
+                    if '.' in formatted_price:
+                        formatted_price = formatted_price.rstrip('0').rstrip('.')
+                    return f"{formatted_price} {from_currency}"
+            # Форматируем число, убирая лишние нули после запятой
+            formatted_price = f"{variant.old_price}"
+            if '.' in formatted_price:
+                formatted_price = formatted_price.rstrip('0').rstrip('.')
+            return f"{formatted_price} {from_currency}"
         return None
 
     def _get_preferred_currency(self, obj) -> str:
@@ -2199,6 +2300,366 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
             if file_url:
                 return file_url
             return _resolve_media_url(first_img.image_url, request)
+        return None
+
+
+# ============================================================================
+# СЕРИАЛИЗАТОРЫ ДЛЯ УКРАШЕНИЙ
+# ============================================================================
+
+class JewelryProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JewelryProductTranslation
+        fields = ['locale', 'description']
+
+
+class JewelryProductImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JewelryProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class JewelryVariantSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JewelryVariantSize
+        fields = ['id', 'size_value', 'size_unit', 'size_type', 'size_display', 'is_available', 'stock_quantity', 'sort_order']
+
+
+class JewelryVariantImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JewelryVariantImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class JewelryVariantSerializer(serializers.ModelSerializer):
+    images = serializers.SerializerMethodField()
+    sizes = JewelryVariantSizeSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = JewelryVariant
+        fields = [
+            'id', 'name', 'slug', 'color', 'material',
+            'price', 'old_price', 'currency',
+            'is_available', 'stock_quantity',
+            'main_image', 'images', 'sizes',
+            'sku', 'barcode', 'gtin', 'mpn',
+            'is_active', 'sort_order',
+        ]
+        read_only_fields = ['id', 'slug', 'sort_order']
+
+    def get_images(self, obj):
+        gallery = getattr(obj, "images", None)
+        if not gallery:
+            return []
+        return JewelryVariantImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+
+
+class JewelryProductSerializer(serializers.ModelSerializer):
+    """Сериализатор для товаров украшений (с вариантами и размерами)."""
+    product_type = serializers.SerializerMethodField()
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
+    translations = JewelryProductTranslationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = JewelryProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'product_type', 'category', 'brand',
+            'price', 'price_formatted', 'old_price', 'old_price_formatted',
+            'currency', 'jewelry_type', 'material', 'metal_purity', 'stone_type', 'carat_weight',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
+            'images',
+            'variants', 'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url', 'active_variant_old_price_formatted',
+            'is_featured', 'created_at', 'updated_at', 'translations'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_product_type(self, obj):
+        return 'jewelry'
+
+    def get_main_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if obj.main_image:
+            return _resolve_media_url(obj.main_image, request)
+        variant = self._get_active_variant(obj)
+        if variant:
+            file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+            if file_url:
+                return file_url
+            if variant.main_image:
+                return _resolve_media_url(variant.main_image, request)
+            v_main = variant.images.filter(is_main=True).first()
+            if v_main:
+                file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                if file_url:
+                    return file_url
+                return _resolve_media_url(v_main.image_url, request)
+            v_first = variant.images.first()
+            if v_first:
+                file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                if file_url:
+                    return file_url
+                return _resolve_media_url(v_first.image_url, request)
+        gallery = getattr(obj, "images", None)
+        if gallery:
+            main_img = gallery.filter(is_main=True).first()
+            if main_img:
+                file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
+                if file_url:
+                    return file_url
+                return _resolve_media_url(main_img.image_url, request)
+            first_img = gallery.first()
+            if first_img:
+                file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
+                if file_url:
+                    return file_url
+                return _resolve_media_url(first_img.image_url, request)
+        return None
+
+    def get_video_url(self, obj):
+        """URL видео (Reels и т.д.): только реальное видео, не изображения."""
+        request = self.context.get('request')
+        raw_url = getattr(obj, "video_url", None) or ""
+        if raw_url and raw_url.strip():
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+        file_field = getattr(obj, "main_video_file", None)
+        if file_field and getattr(file_field, "name", None):
+            return _resolve_file_url(file_field, request)
+        return None
+
+    def _get_preferred_currency(self, obj) -> str:
+        """Определяет валюту: X-Currency -> query param -> user.currency -> язык -> default."""
+        request = self.context.get('request')
+        default = (obj.currency or 'RUB').upper()
+        if not request:
+            return default
+        preferred = request.headers.get('X-Currency') or request.query_params.get('currency')
+        if preferred:
+            return preferred.upper()
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            uc = getattr(request.user, 'currency', None)
+            if uc:
+                return uc.upper()
+        lang = getattr(request, 'LANGUAGE_CODE', None)
+        return {'en': 'USD', 'ru': 'RUB'}.get(lang, default)
+
+    def _convert_price(self, amount, from_currency: str, to_currency: str):
+        """Конвертация цены с маржой. Возвращает (price_with_margin, to_currency) или (amount, from_currency) при ошибке."""
+        if amount is None:
+            return None, from_currency
+        from_currency = (from_currency or 'RUB').upper()
+        to_currency = (to_currency or 'RUB').upper()
+        if from_currency == to_currency:
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(str(amount)), from_currency, to_currency, apply_margin=True,
+                )
+                return price_with_margin, to_currency
+            except Exception:
+                return amount, from_currency
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(str(amount)), from_currency, to_currency, apply_margin=True,
+            )
+            return price_with_margin, to_currency
+        except Exception:
+            return amount, from_currency
+
+    def get_price(self, obj):
+        """Цена с конвертацией и маржой (для отображения на фронте)."""
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            price_val, curr = self._convert_price(
+                variant.price, variant.currency or obj.currency, preferred
+            )
+            return float(price_val) if price_val is not None else None
+        if obj.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            price_val, _ = self._convert_price(obj.price, obj.currency, preferred)
+            return float(price_val) if price_val is not None else None
+        return None
+
+    def get_currency(self, obj):
+        """Валюта с учётом конвертации (предпочтительная валюта пользователя)."""
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            _, curr = self._convert_price(
+                variant.price, variant.currency or obj.currency, preferred
+            )
+            return curr
+        return self._get_preferred_currency(obj)
+
+    def get_price_formatted(self, obj):
+        """Цена с конвертацией и маржой (строка для отображения)."""
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            price_val, curr = self._convert_price(
+                variant.price, variant.currency or obj.currency, preferred
+            )
+            return f"{price_val} {curr}" if price_val is not None else None
+        if obj.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            price_val, curr = self._convert_price(obj.price, obj.currency, preferred)
+            return f"{price_val} {curr}" if price_val is not None else None
+        return None
+
+    def get_old_price_formatted(self, obj):
+        """Старая цена с конвертацией и маржой."""
+        variant = self._get_active_variant(obj)
+        preferred = self._get_preferred_currency(obj)
+        if variant and variant.old_price is not None:
+            price_val, curr = self._convert_price(
+                variant.old_price, variant.currency or obj.currency, preferred
+            )
+            return f"{price_val} {curr}" if price_val is not None else None
+        if obj.old_price is not None:
+            price_val, curr = self._convert_price(obj.old_price, obj.currency, preferred)
+            return f"{price_val} {curr}" if price_val is not None else None
+        return None
+
+    def get_images(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant:
+            return JewelryVariantImageSerializer(variant.images.all().order_by("sort_order"), many=True).data
+        gallery = getattr(obj, "images", None)
+        if not gallery:
+            return []
+        return JewelryProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+
+    def _get_default_variant(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return None
+        return variants.filter(is_active=True).order_by("sort_order", "id").first()
+
+    def _get_active_variant(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return None
+        active_slug = self.context.get("active_variant_slug")
+        if active_slug:
+            return variants.filter(slug=active_slug, is_active=True).first()
+        return self._get_default_variant(obj)
+
+    def get_variants(self, obj):
+        variants = getattr(obj, "variants", None)
+        if not variants:
+            return []
+        qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
+        return JewelryVariantSerializer(qs, many=True).data
+
+    def get_default_variant_slug(self, obj):
+        variant = self._get_default_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_slug(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_price(self, obj):
+        """Цена активного варианта с конвертацией и маржой."""
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            price_val, curr = self._convert_price(
+                variant.price, variant.currency or obj.currency, preferred
+            )
+            return f"{price_val} {curr}" if price_val is not None else None
+        return None
+
+    def get_active_variant_currency(self, obj):
+        """Валюта активного варианта (после конвертации)."""
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            _, curr = self._convert_price(
+                variant.price, variant.currency or obj.currency, preferred
+            )
+            return curr
+        return None
+
+    def get_active_variant_stock_quantity(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.stock_quantity if variant else None
+
+    def get_active_variant_main_image_url(self, obj):
+        variant = self._get_active_variant(obj)
+        if not variant:
+            return None
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if variant.main_image:
+            return _resolve_media_url(variant.main_image, request)
+        main_img = variant.images.filter(is_main=True).first()
+        if main_img:
+            file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(main_img.image_url, request)
+        first_img = variant.images.first()
+        if first_img:
+            file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(first_img.image_url, request)
+        return None
+
+    def get_active_variant_old_price_formatted(self, obj):
+        """Старая цена активного варианта с конвертацией и маржой."""
+        variant = self._get_active_variant(obj)
+        if variant and variant.old_price is not None:
+            preferred = self._get_preferred_currency(obj)
+            price_val, curr = self._convert_price(
+                variant.old_price, variant.currency or obj.currency, preferred
+            )
+            return f"{price_val} {curr}" if price_val is not None else None
         return None
 
 

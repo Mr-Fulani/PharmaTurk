@@ -4,7 +4,7 @@ import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
-import { getPlaceholderImageUrl, resolveMediaUrl } from '../lib/media'
+import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../lib/media'
 
 interface Product {
   id: number
@@ -17,9 +17,11 @@ interface Product {
   old_price_formatted?: string | null
   active_variant_price?: string | number | null
   active_variant_currency?: string | null
+  active_variant_old_price_formatted?: string | null
   badge?: string | null
   rating?: number | null
   main_image_url?: string | null
+  video_url?: string | null
   brand?: {
     id: number
     name: string
@@ -56,6 +58,19 @@ const parseNumber = (value: string | number | null | undefined) => {
   return Number.isFinite(num) ? num : null
 }
 
+const formatPrice = (value: string | number | null | undefined): string | null => {
+  if (value === null || typeof value === 'undefined') return null
+  const num = parseNumber(value)
+  if (num === null) return String(value)
+  
+  // Убираем лишние нули после запятой
+  const str = num.toString()
+  if (str.includes('.')) {
+    return str.replace(/\.?0+$/, '')
+  }
+  return str
+}
+
 export default function PopularProductsCarousel({ className = '' }: PopularProductsCarouselProps) {
   const { t } = useTranslation('common')
   const [products, setProducts] = useState<Product[]>([])
@@ -69,20 +84,21 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
     const fetchProducts = async () => {
       try {
         console.log('[PopularProducts] Fetching products...')
-        const [medicinesRes, clothingRes, shoesRes, electronicsRes] = await Promise.allSettled([
+        const [medicinesRes, clothingRes, shoesRes, electronicsRes, jewelryRes] = await Promise.allSettled([
           api.get('/catalog/products/featured'),
           api.get('/catalog/clothing/products/featured'),
           api.get('/catalog/shoes/products/featured'),
           api.get('/catalog/electronics/products/featured'),
+          api.get('/catalog/jewelry/products/featured'),
         ])
         console.log('[PopularProducts] Fetched, processing responses...')
 
         const allProducts: Product[] = []
-        const processResponse = (res: PromiseSettledResult<any>, product_type: string) => {
+        const processResponse = (res: PromiseSettledResult<any>, fallbackType: string) => {
           if (res.status === 'fulfilled' && res.value.data) {
             const data = res.value.data
             const items = Array.isArray(data) ? data : data.results || []
-            return items.map((p: any) => ({ ...p, product_type }))
+            return items.map((p: any) => ({ ...p, product_type: p.product_type || fallbackType }))
           }
           return []
         }
@@ -90,6 +106,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
         allProducts.push(...processResponse(clothingRes, 'clothing'))
         allProducts.push(...processResponse(shoesRes, 'shoes'))
         allProducts.push(...processResponse(electronicsRes, 'electronics'))
+        allProducts.push(...processResponse(jewelryRes, 'jewelry'))
 
         if (allProducts.length === 0) {
           try {
@@ -98,7 +115,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
             })
             const data = response.data
             const productsList = Array.isArray(data) ? data : data.results || []
-            allProducts.push(...productsList.map((p: any) => ({ ...p, product_type: 'medicines' })))
+            allProducts.push(...productsList.map((p: any) => ({ ...p, product_type: p.product_type || 'medicines' })))
           } catch (error) {
             console.error('Failed to fetch latest products:', error)
           }
@@ -266,12 +283,23 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
               const { price: parsedBasePrice, currency: parsedBaseCurrency } = parsePriceWithCurrency(product.price)
               const displayPrice = parsedVariantPrice ?? parsedBasePrice ?? product.price
               const displayCurrency = product.active_variant_currency || parsedVariantCurrency || parsedBaseCurrency || product.currency
-              const oldPriceSource = product.old_price_formatted ?? product.old_price ?? product.oldPrice
+              const oldPriceSource =
+                product.active_variant_old_price_formatted ||
+                product.old_price_formatted ||
+                product.old_price ||
+                product.oldPrice
               const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(oldPriceSource)
               const displayOldCurrency = parsedOldCurrency || displayCurrency || product.currency
-              const displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? oldPriceSource : null
-              const displayPriceLabel = displayPrice ? String(displayPrice) : null
-              const displayOldPriceLabel = displayOldPrice ? String(displayOldPrice) : null
+              
+              // Форматируем старую цену, убирая лишние нули
+              let displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? oldPriceSource : null
+              if (displayOldPrice && typeof displayOldPrice === 'string') {
+                // Убираем лишние нули после запятой
+                displayOldPrice = displayOldPrice.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '')
+              }
+              
+              const displayPriceLabel = displayPrice ? formatPrice(displayPrice) : null
+              const displayOldPriceLabel = displayOldPrice ? formatPrice(displayOldPrice) : null
               const displayCurrencyLabel = displayCurrency ? String(displayCurrency) : null
               const displayOldCurrencyLabel = displayOldCurrency ? String(displayOldCurrency) : null
               const priceValue = parseNumber(displayPrice)
@@ -289,20 +317,36 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                   href={`/product/${product.product_type || 'medicines'}/${product.slug}`}
                   className="relative block w-full h-80 overflow-hidden bg-gray-100"
                 >
-                  <img
-                    src={
-                      (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
-                      getPlaceholderImageUrl({ type: 'product', id: product.id })
-                    }
-                    alt={product.name}
-                    className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-                    onError={(e) => {
-                      e.currentTarget.src = getPlaceholderImageUrl({
-                        type: 'product',
-                        id: `${product.id}-fallback`,
-                      })
-                    }}
-                  />
+                  {product.video_url && isVideoUrl(product.video_url) ? (
+                    <video
+                      src={resolveMediaUrl(product.video_url)}
+                      poster={
+                        (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
+                        getPlaceholderImageUrl({ type: 'product', id: product.id })
+                      }
+                      muted
+                      playsInline
+                      loop
+                      autoPlay
+                      preload="metadata"
+                      className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                    />
+                  ) : (
+                    <img
+                      src={
+                        (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
+                        getPlaceholderImageUrl({ type: 'product', id: product.id })
+                      }
+                      alt={product.name}
+                      className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                      onError={(e) => {
+                        e.currentTarget.src = getPlaceholderImageUrl({
+                          type: 'product',
+                          id: `${product.id}-fallback`,
+                        })
+                      }}
+                    />
+                  )}
                   {product.is_new && (
                     <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
                       {t('product_new', 'Новинка')}

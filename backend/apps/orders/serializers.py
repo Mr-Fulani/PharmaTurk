@@ -79,13 +79,6 @@ PRODUCT_TYPE_ALIASES = {
     'headwear': 'headwear',
 }
 
-CATEGORY_PRESETS = {
-    'clothing': ('clothing', 'Одежда'),
-    'shoes': ('shoes', 'Обувь'),
-    'electronics': ('electronics', 'Электроника'),
-    'medical_equipment': ('medical-equipment', 'Медицинская техника'),
-}
-
 BASE_PRODUCT_TYPES = {
     'medicines',
     'supplements',
@@ -93,7 +86,6 @@ BASE_PRODUCT_TYPES = {
     'tableware',
     'furniture',
     'accessories',
-    'jewelry',
     'underwear',
     'headwear',
 }
@@ -119,9 +111,8 @@ def ensure_product_from_base(base_obj, product_type: str) -> Product:
         'currency': getattr(base_obj, 'currency', None) or 'TRY',
         'old_price': desired_old_price,
         'brand': getattr(base_obj, 'brand', None),
-        # У базовой модели обуви/одежды категория относится к ShoeCategory/ClothingCategory,
-        # поэтому для общего Product оставляем category пустым.
-        'category': None,
+        # У обуви/одежды категория в своей модели; у украшений — Category. Передаём если есть.
+        'category': getattr(base_obj, 'category', None),
         'product_type': product_type,
         'is_available': getattr(base_obj, 'is_available', True),
         'main_image': getattr(base_obj, 'main_image', '') or '',
@@ -167,15 +158,11 @@ def ensure_product_from_base(base_obj, product_type: str) -> Product:
 
 
 def get_or_create_category_for_variant(product_type: str) -> Category | None:
-    preset = CATEGORY_PRESETS.get(product_type)
-    if not preset:
+    from apps.catalog.constants import get_or_create_root_category
+    if not product_type:
         return None
-    slug, name = preset
-    category, _ = Category.objects.get_or_create(
-        slug=slug,
-        defaults={'name': name, 'description': name, 'is_active': True}
-    )
-    return category
+    slug = str(product_type).replace("_", "-").lower()
+    return get_or_create_root_category(slug)
 
 
 def ensure_product_from_variant(variant, source_type: str, effective_type: str) -> Product:
@@ -331,10 +318,11 @@ def resolve_variant_product(product_type: str, product_slug: str) -> Product:
     if effective_type in BASE_PRODUCT_TYPES:
         return Product.objects.get(slug=product_slug, is_active=True)
 
-    # Базовая карточка без вариантов (обувь/одежда), если slug есть в соответствующей модели
+    # Базовая карточка без вариантов (обувь/одежда/украшения), если slug есть в соответствующей модели
     base_model_map = {
         'shoes': ShoeProduct,
         'clothing': ClothingProduct,
+        'jewelry': JewelryProduct,
     }
     base_model = base_model_map.get(effective_type)
     if base_model:
@@ -361,6 +349,7 @@ class CartItemSerializer(serializers.ModelSerializer):
     product_slug = serializers.SerializerMethodField()
     product_type = serializers.CharField(source='product.product_type', read_only=True)
     product_image_url = serializers.SerializerMethodField()
+    product_video_url = serializers.SerializerMethodField()
     chosen_size = serializers.CharField(read_only=True)
     
     # Добавляем поля из новой системы ценообразования
@@ -378,7 +367,7 @@ class CartItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = CartItem
         fields = [
-            'id', 'product', 'product_name', 'product_slug', 'product_type', 'product_image_url',
+            'id', 'product', 'product_name', 'product_slug', 'product_type', 'product_image_url', 'product_video_url',
             'quantity', 'price', 'currency', 'old_price', 'old_price_formatted', 'chosen_size', 'created_at', 'updated_at',
             # Новые поля из системы ценообразования
             'converted_price_rub', 'converted_price_usd', 'final_price_rub', 'final_price_usd',
@@ -563,6 +552,43 @@ class CartItemSerializer(serializers.ModelSerializer):
 
         return None
 
+    def get_product_video_url(self, obj):
+        """URL главного видео товара (для карточек в корзине/заказе)."""
+        product = obj.product
+        if not product:
+            return None
+        request = self.context.get('request')
+        # Product (медикаменты и т.д.)
+        file_url = _resolve_file_url(getattr(product, "main_video_file", None), request)
+        if file_url:
+            return file_url
+        raw_url = getattr(product, "video_url", None) or ""
+        if raw_url and raw_url.strip():
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+        # Базовая модель (jewelry, clothing, shoes)
+        base_models = {
+            "shoes": ShoeProduct,
+            "clothing": ClothingProduct,
+            "jewelry": JewelryProduct,
+            "electronics": ElectronicsProduct,
+            "furniture": FurnitureProduct,
+        }
+        base_model = base_models.get(product.product_type)
+        if base_model:
+            base_obj = base_model.objects.filter(slug=product.slug, is_active=True).first()
+            if base_obj:
+                file_url = _resolve_file_url(getattr(base_obj, "main_video_file", None), request)
+                if file_url:
+                    return file_url
+                raw_url = getattr(base_obj, "video_url", None) or ""
+                if raw_url and raw_url.strip():
+                    path_lower = raw_url.split("?")[0].lower()
+                    if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                        return _resolve_media_url(raw_url, request)
+        return None
+
     def get_product_slug(self, obj):
         """Для варианта возвращаем исходный slug варианта, если сохранён в external_data."""
         product = obj.product
@@ -709,18 +735,19 @@ class CartItemSerializer(serializers.ModelSerializer):
             return None
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
-        if preferred_currency != from_currency:
-            try:
-                _, _, price_with_margin = currency_converter.convert_price(
-                    Decimal(old_price),
-                    from_currency,
-                    preferred_currency,
-                    apply_margin=True,
-                )
-                return f"{price_with_margin} {preferred_currency}"
-            except Exception:
-                pass
-        return f"{old_price} {from_currency}"
+        
+        # Применяем маржу даже если валюта совпадает (особенно для рублей)
+        try:
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(old_price),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return f"{price_with_margin} {preferred_currency}"
+        except Exception:
+            # Fallback на исходное значение если конвертация не удалась
+            return f"{old_price} {from_currency}"
     
     def get_converted_price_rub(self, obj):
         """Получает конвертированную цену в RUB."""
@@ -1043,13 +1070,14 @@ class OrderItemSerializer(serializers.ModelSerializer):
     """
     product_slug = serializers.CharField(source='product.slug', read_only=True)
     product_image_url = serializers.SerializerMethodField()
+    product_video_url = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()
     total = serializers.SerializerMethodField()
     
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'product_name', 'product_slug', 'product_image_url', 'chosen_size', 'price', 'quantity', 'total']
-        read_only_fields = ['product_name', 'price', 'total', 'product_slug', 'product_image_url']
+        fields = ['id', 'product', 'product_name', 'product_slug', 'product_image_url', 'product_video_url', 'chosen_size', 'price', 'quantity', 'total']
+        read_only_fields = ['product_name', 'price', 'total', 'product_slug', 'product_image_url', 'product_video_url']
 
     def _get_preferred_currency(self, request, fallback: str = 'RUB') -> str:
         if not request:
@@ -1126,6 +1154,41 @@ class OrderItemSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         
+        return None
+
+    def get_product_video_url(self, obj):
+        """URL главного видео товара для позиции заказа."""
+        if not obj.product:
+            return None
+        product = obj.product
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(product, "main_video_file", None), request)
+        if file_url:
+            return file_url
+        raw_url = getattr(product, "video_url", None) or ""
+        if raw_url and raw_url.strip():
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+        base_models = {
+            "shoes": ShoeProduct,
+            "clothing": ClothingProduct,
+            "jewelry": JewelryProduct,
+            "electronics": ElectronicsProduct,
+            "furniture": FurnitureProduct,
+        }
+        base_model = base_models.get(product.product_type)
+        if base_model:
+            base_obj = base_model.objects.filter(slug=product.slug, is_active=True).first()
+            if base_obj:
+                file_url = _resolve_file_url(getattr(base_obj, "main_video_file", None), request)
+                if file_url:
+                    return file_url
+                raw_url = getattr(base_obj, "video_url", None) or ""
+                if raw_url and raw_url.strip():
+                    path_lower = raw_url.split("?")[0].lower()
+                    if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                        return _resolve_media_url(raw_url, request)
         return None
 
 

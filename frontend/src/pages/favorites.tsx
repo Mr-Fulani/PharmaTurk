@@ -8,6 +8,14 @@ import Cookies from 'js-cookie'
 import { useFavoritesStore } from '../store/favorites'
 import ProductCard from '../components/ProductCard'
 
+const parseNumber = (value: string | number | null | undefined) => {
+  if (value === null || typeof value === 'undefined') return null
+  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+  if (!normalized) return null
+  const num = Number(normalized)
+  return Number.isFinite(num) ? num : null
+}
+
 const parsePriceWithCurrency = (value?: string | number | null) => {
   if (value === null || typeof value === 'undefined') {
     return { price: null as string | number | null, currency: null as string | null }
@@ -104,13 +112,21 @@ export default function FavoritesPage() {
                 ? `/product/${product.slug}` 
                 : `/product/${productType}/${product.slug}`
               const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
-              const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(
-                product.active_variant_old_price_formatted || product.old_price_formatted || product.old_price
-              )
+              
+              // Используем ту же логику, что и в корзине для старой цены
+              const oldPriceSource = product.active_variant_old_price_formatted ?? product.old_price_formatted ?? product.old_price
+              const priceValue = parseNumber(product.price)
+              const oldPriceValue = parseNumber(oldPriceSource)
+              
               const displayPrice = parsedVariantPrice ?? product.price
               const displayCurrency = product.active_variant_currency || parsedVariantCurrency || product.currency
-              const displayOldCurrency = parsedOldCurrency || displayCurrency
-              const displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? product.old_price : null
+              
+              // Форматируем старую цену как в корзине
+              let displayOldPrice = null
+              if (oldPriceValue !== null && priceValue !== null && oldPriceValue > priceValue) {
+                // Используем только числовое значение без валюты, чтобы избежать дублирования в ProductCard
+                displayOldPrice = oldPriceValue
+              }
               
               return (
                 <ProductCard
@@ -122,6 +138,7 @@ export default function FavoritesPage() {
                   currency={displayCurrency || undefined}
                   oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                   imageUrl={product.main_image_url}
+                  videoUrl={product.video_url}
                   href={productHref}
                   productType={productType}
                   isBaseProduct={isBaseProduct}

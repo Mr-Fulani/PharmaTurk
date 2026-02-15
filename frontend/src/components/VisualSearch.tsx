@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
+import { isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 
 const UPLOAD_TEMP_ENABLED = false // set true when /api/upload/temp/ exists
@@ -16,6 +17,7 @@ interface Product {
   old_price?: string | null
   main_image_url?: string | null
   main_image?: string | null
+  video_url?: string | null
   product_type?: string
   is_featured?: boolean
 }
@@ -153,8 +155,9 @@ export default function VisualSearch() {
               currency={r.product.currency || 'RUB'}
               oldPrice={r.product.old_price != null ? String(r.product.old_price) : null}
               imageUrl={r.product.main_image_url || r.product.main_image}
+              videoUrl={r.product.video_url}
               productType={r.product.product_type || 'medicines'}
-              isBaseProduct={true}
+              isBaseProduct={isBaseProductType(r.product.product_type || 'medicines')}
             />
           ))}
         </div>

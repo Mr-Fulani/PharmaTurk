@@ -5,7 +5,8 @@ import Link from 'next/link'
 import api from '../lib/api'
 import { useEffect, useState, useCallback } from 'react'
 import { useCartStore } from '../store/cart'
-import { resolveMediaUrl, getPlaceholderImageUrl } from '../lib/media'
+import { resolveMediaUrl, getPlaceholderImageUrl, isVideoUrl } from '../lib/media'
+import { needsTypeInPath } from '../lib/product'
 
 interface CartItem {
   id: number
@@ -14,6 +15,7 @@ interface CartItem {
   product_slug?: string
   product_type?: string
   product_image_url?: string
+  product_video_url?: string | null
   chosen_size?: string
   quantity: number
   price: string
@@ -256,7 +258,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
 
   const getProductLink = (slug?: string, productId?: number, productType?: string) => {
     if (slug) {
-      if (productType === 'shoes' || productType === 'clothing') {
+      if (productType && needsTypeInPath(productType)) {
         return `/product/${productType}/${slug}`
       }
       return `/product/${slug}`
@@ -323,17 +325,32 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                   const resolvedImage = item.product_image_url
                     ? resolveMediaUrl(item.product_image_url)
                     : null
+                  const resolvedVideoUrl = item.product_video_url && isVideoUrl(item.product_video_url)
+                    ? resolveMediaUrl(item.product_video_url)
+                    : null
+                  const showVideo = Boolean(resolvedVideoUrl)
                   return (
                     <div
                       key={item.id}
                       className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all duration-200"
                     >
-                    {/* Изображение товара */}
+                    {/* Главное медиа товара (видео или изображение) */}
                     <Link
                       href={getProductLink(item.product_slug, item.product, item.product_type)}
                       className="relative w-full sm:w-32 h-32 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100"
                     >
-                      {resolvedImage ? (
+                      {showVideo ? (
+                        <video
+                          src={resolvedVideoUrl!}
+                          poster={resolvedImage || undefined}
+                          muted
+                          loop
+                          playsInline
+                          autoPlay
+                          preload="metadata"
+                          className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                        />
+                      ) : resolvedImage ? (
                         <img
                           src={resolvedImage}
                           alt={item.product_name || `Товар #${item.product}`}

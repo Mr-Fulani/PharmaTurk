@@ -140,6 +140,7 @@ class RecommendationViewSet(viewsets.ViewSet):
         from apps.catalog.serializers import ProductSerializer
         trending = (
             Product.objects.filter(is_available=True)
+            .exclude(product_type="jewelry")
             .order_by("-created_at")[:12]
         )
         return Response({

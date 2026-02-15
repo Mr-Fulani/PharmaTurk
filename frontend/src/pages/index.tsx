@@ -40,6 +40,7 @@ interface CategoryCard {
   card_media_url?: string | null
   parent?: number | null
   sort_order?: number | null
+  products_count?: number
   translations?: CategoryTranslation[]
 }
 
@@ -196,7 +197,13 @@ export default function Home({ brands, categories }: HomePageProps) {
       displaySlug: mapCategoryToRouteSlug(category.slug),
       __isTopLevel: true,
     }))
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .sort((a, b) => {
+      // Сначала категории с товарами (по убыванию количества), затем по sort_order
+      const countA = a.products_count ?? 0
+      const countB = b.products_count ?? 0
+      if (countB !== countA) return countB - countA
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    })
     .slice(0, 12)
 
   const handleBrandClick = (brand: Brand) => {
@@ -409,22 +416,21 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
     }
     
-    // Фильтруем бренды с товарами и сортируем по количеству товаров (популярность)
-    const brandsWithProducts = allBrands.filter((brand: Brand) => 
-      brand.products_count && brand.products_count > 0
-    )
-    
-    // Сортируем по количеству товаров (по убыванию) - самые популярные первыми
-    brandsWithProducts.sort((a: Brand, b: Brand) => {
+    // Сортировка: сначала бренды с товарами (по убыванию products_count), затем по медиа, по имени
+    const sortedBrands = [...allBrands].sort((a: Brand, b: Brand) => {
       const countA = a.products_count || 0
       const countB = b.products_count || 0
-      return countB - countA
+      if (countB !== countA) return countB - countA
+      const hasMediaA = !!(a.card_media_url && a.card_media_url.trim())
+      const hasMediaB = !!(b.card_media_url && b.card_media_url.trim())
+      if (hasMediaB !== hasMediaA) return hasMediaB ? 1 : -1
+      return (a.name || '').localeCompare(b.name || '')
     })
-    
-    // Берем топ-6 самых популярных брендов
-    const brands = brandsWithProducts.slice(0, 6)
-    
-    console.log('Loaded popular brands for homepage:', brands.map((b: Brand) => `${b.name} (${b.products_count} товаров)`))
+
+    // Показываем 9 брендов (все, но с приоритетом у тех, у кого есть товары)
+    const brands = sortedBrands.slice(0, 9)
+
+    console.log('Loaded popular brands for homepage:', brands.map((b: Brand) => `${b.name} (${b.products_count ?? 0} товаров, медиа: ${!!b.card_media_url})`))
 
     // Загружаем категории (top-level) с пагинацией
     let allCategories: CategoryCard[] = []

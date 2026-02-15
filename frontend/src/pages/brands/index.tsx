@@ -245,6 +245,7 @@ export const getServerSideProps = async (ctx: any) => {
       if (slug.startsWith('clothing')) endpoints.push('/api/catalog/clothing/products')
       else if (slug.startsWith('shoes')) endpoints.push('/api/catalog/shoes/products')
       else if (slug.startsWith('electronics')) endpoints.push('/api/catalog/electronics/products')
+      else if (slug.startsWith('jewelry')) endpoints.push('/api/catalog/jewelry/products')
       // Общий каталог — всегда в конце как fallback
       endpoints.push('/api/catalog/products')
 
@@ -275,10 +276,8 @@ export const getServerSideProps = async (ctx: any) => {
       )
     }
 
-    // Оставляем бренды с товарами (>0), затем сортируем по количеству и имени
-    allBrands = allBrands
-      .filter((b) => (b.products_count ?? 0) > 0)
-      .sort((a, b) => {
+    // Показываем все бренды, сортируем: сначала с товарами (по количеству), затем без товаров (по имени)
+    allBrands = [...allBrands].sort((a, b) => {
       const ca = a.products_count ?? 0
       const cb = b.products_count ?? 0
       if (cb !== ca) return cb - ca

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
+import { isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 
 interface Product {
@@ -12,10 +13,30 @@ interface Product {
   price: string | number | null
   currency?: string | null
   old_price?: string | null
+  old_price_formatted?: string | null
+  active_variant_price?: string | number | null
+  active_variant_currency?: string | null
+  active_variant_old_price_formatted?: string | null
   main_image_url?: string | null
   main_image?: string | null
+  video_url?: string | null
   product_type?: string
   is_featured?: boolean
+}
+
+const parsePriceWithCurrency = (value?: string | number | null) => {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null }
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null }
+  }
+  const trimmed = String(value).trim()
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
+  }
+  return { price: trimmed, currency: null as string | null }
 }
 
 /**
@@ -81,20 +102,36 @@ export default function PersonalizedRecommendations() {
             : t('trending_now', 'Популярное сейчас')}
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {products.map((product) => (
-          <ProductCard
-            key={product.id}
-            id={product.id}
-            name={product.name}
-            slug={product.slug}
-            price={product.price != null ? String(product.price) : null}
-            currency={product.currency || 'RUB'}
-            oldPrice={product.old_price != null ? String(product.old_price) : null}
-            imageUrl={product.main_image_url || product.main_image}
-            productType={product.product_type || 'medicines'}
-            isBaseProduct={true}
-          />
-        ))}
+          {products.map((product) => {
+            const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
+            const { price: parsedBasePrice, currency: parsedBaseCurrency } = parsePriceWithCurrency(product.price)
+            const displayPrice = parsedVariantPrice ?? parsedBasePrice ?? product.price
+            const displayCurrency = product.active_variant_currency || parsedVariantCurrency || parsedBaseCurrency || product.currency || 'RUB'
+            const oldPriceSource =
+              product.active_variant_old_price_formatted ||
+              product.old_price_formatted ||
+              product.old_price
+            const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(oldPriceSource)
+            const displayOldCurrency = parsedOldCurrency || displayCurrency
+            const displayOldPrice = displayOldCurrency === displayCurrency ? (parsedOldPrice ?? oldPriceSource) : null
+
+            const pt = product.product_type || 'medicines'
+            return (
+              <ProductCard
+                key={product.id}
+                id={product.id}
+                name={product.name}
+                slug={product.slug}
+                price={displayPrice != null ? String(displayPrice) : null}
+                currency={displayCurrency}
+                oldPrice={displayOldPrice != null ? String(displayOldPrice) : null}
+                imageUrl={product.main_image_url || product.main_image}
+                videoUrl={product.video_url}
+                productType={pt}
+                isBaseProduct={isBaseProductType(pt)}
+              />
+            )
+          })}
         </div>
       </div>
     </section>

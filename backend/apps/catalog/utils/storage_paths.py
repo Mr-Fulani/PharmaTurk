@@ -114,6 +114,84 @@ def get_banner_gif_upload_path(instance, filename):
     return f"marketing/banners/{position}/gifs/{readable_name}"
 
 
+JEWELRY_TYPE_TO_SLUG = {
+    "ring": "rings",
+    "bracelet": "bracelets",
+    "necklace": "necklaces",
+    "earrings": "earrings",
+    "pendant": "pendants",
+}
+
+
+def _jewelry_type_slug(instance) -> str:
+    """Slug типа украшения (rings, bracelets и т.д.) или slug категории."""
+    product = getattr(instance, "product", None)
+    if product:
+        return _jewelry_type_slug(product)
+    variant = getattr(instance, "variant", None)
+    if variant and getattr(variant, "product", None):
+        return _jewelry_type_slug(variant.product)
+    jewelry_type = getattr(instance, "jewelry_type", None) or ""
+    slug = JEWELRY_TYPE_TO_SLUG.get(jewelry_type) or _normalize_slug(jewelry_type, "")
+    if slug:
+        return slug
+    category = getattr(instance, "category", None)
+    cat_slug = _normalize_slug(getattr(category, "slug", None), "")
+    return cat_slug or "other"
+
+
+def get_jewelry_main_upload_path(instance, filename):
+    """products/jewelry/{rings|bracelets|...}/main/{images|videos|gifs}/filename"""
+    type_slug = _jewelry_type_slug(instance)
+    media_folder = _media_folder_from_filename(filename)
+    readable_name = _build_readable_filename(
+        [type_slug, getattr(instance, "slug", None), getattr(instance, "name", None)],
+        filename,
+        "jewelry-main",
+    )
+    return f"products/jewelry/{type_slug}/main/{media_folder}/{readable_name}"
+
+
+def get_jewelry_gallery_upload_path(instance, filename):
+    """products/jewelry/{rings|...}/gallery/{images|videos|gifs}/filename"""
+    product = getattr(instance, "product", None)
+    type_slug = _jewelry_type_slug(product) if product else "other"
+    media_folder = _media_folder_from_filename(filename)
+    readable_name = _build_readable_filename(
+        [type_slug, getattr(product, "slug", None) if product else "", "gallery"],
+        filename,
+        "jewelry-gallery",
+    )
+    return f"products/jewelry/{type_slug}/gallery/{media_folder}/{readable_name}"
+
+
+def get_jewelry_variant_upload_path(instance, filename):
+    """products/jewelry/{rings|...}/variants/{images|videos|gifs}/filename"""
+    product = getattr(instance, "product", None)
+    type_slug = _jewelry_type_slug(product) if product else "other"
+    media_folder = _media_folder_from_filename(filename)
+    readable_name = _build_readable_filename(
+        [type_slug, getattr(product, "slug", None) if product else "", "variant"],
+        filename,
+        "jewelry-variant",
+    )
+    return f"products/jewelry/{type_slug}/variants/{media_folder}/{readable_name}"
+
+
+def get_jewelry_variant_gallery_upload_path(instance, filename):
+    """products/jewelry/{rings|...}/variants/gallery/{images|videos|gifs}/filename"""
+    variant = getattr(instance, "variant", None)
+    product = getattr(variant, "product", None) if variant else None
+    type_slug = _jewelry_type_slug(product) if product else "other"
+    media_folder = _media_folder_from_filename(filename)
+    readable_name = _build_readable_filename(
+        [type_slug, "variant-gallery"],
+        filename,
+        "jewelry-variant-gallery",
+    )
+    return f"products/jewelry/{type_slug}/variants/gallery/{media_folder}/{readable_name}"
+
+
 def get_parsed_media_upload_path(parser_name, media_type, filename):
     """
     Динамический upload_to для медиа из парсеров.

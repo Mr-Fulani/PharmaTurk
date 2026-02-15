@@ -7,7 +7,7 @@ import Link from 'next/link'
 import Cookies from 'js-cookie'
 import api from '../lib/api'
 import { setPreferredCurrency } from '../lib/api'
-import { resolveMediaUrl } from '../lib/media'
+import { resolveMediaUrl, isVideoUrl } from '../lib/media'
 import { useAuth } from '../context/AuthContext'
 
 interface OrderItem {
@@ -16,6 +16,7 @@ interface OrderItem {
   product_name: string
   product_slug?: string
   product_image_url?: string
+  product_video_url?: string | null
   price: string
   quantity: number
   total: string
@@ -837,17 +838,31 @@ export default function ProfilePage() {
                           <div className="space-y-3">
                             {order.items.map((item) => {
                               const productLink = item.product_slug ? `/product/${item.product_slug}` : '#'
+                              const resolvedImage = item.product_image_url ? resolveMediaUrl(item.product_image_url) : null
+                              const resolvedVideoUrl = item.product_video_url && isVideoUrl(item.product_video_url) ? resolveMediaUrl(item.product_video_url) : null
+                              const showVideo = Boolean(resolvedVideoUrl)
                               return (
                                 <div
                                   key={item.id}
                                   className="group/item flex flex-col sm:flex-row gap-4 rounded-lg border border-gray-100 bg-gray-50 p-4 hover:bg-white hover:border-gray-200 transition-all duration-200"
                                 >
-                                  {/* Изображение товара */}
+                                  {/* Главное медиа товара (видео или изображение) */}
                                   <Link
                                     href={productLink}
                                     className="relative w-full sm:w-24 h-24 flex-shrink-0 overflow-hidden rounded-lg bg-gray-200"
                                   >
-                                    {item.product_image_url ? (
+                                    {showVideo ? (
+                                      <video
+                                        src={resolvedVideoUrl!}
+                                        poster={resolvedImage || undefined}
+                                        muted
+                                        loop
+                                        playsInline
+                                        autoPlay
+                                        preload="metadata"
+                                        className="h-full w-full object-cover transition-transform duration-200 group-hover/item:scale-105"
+                                      />
+                                    ) : item.product_image_url ? (
                                       <img
                                         src={resolveMediaUrl(item.product_image_url)}
                                         alt={item.product_name}

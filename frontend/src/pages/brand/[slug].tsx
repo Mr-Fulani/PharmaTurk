@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import ProductCard from '../../components/ProductCard'
 import Sidebar from '../../components/Sidebar'
+import { isBaseProductType } from '../../lib/product'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 
@@ -248,19 +249,23 @@ export default function BrandPage({
           
           <div className="mt-2 w-full">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-7">
-              {brandData.products.map((p) => (
-                <ProductCard
-                  key={p.id}
-                  id={p.id}
-                  name={p.name}
-                  slug={p.slug}
-                  price={p.price}
-                  currency={p.currency}
-                  imageUrl={p.main_image_url}
-                  productType="medicines"
-                  isBaseProduct
-                />
-              ))}
+              {brandData.products.map((p) => {
+                const pt = (p as { product_type?: string }).product_type || 'medicines'
+                return (
+                  <ProductCard
+                    key={p.id}
+                    id={p.id}
+                    name={p.name}
+                    slug={p.slug}
+                    price={p.price}
+                    currency={p.currency}
+                    imageUrl={p.main_image_url}
+                    videoUrl={(p as { video_url?: string }).video_url}
+                    productType={pt}
+                    isBaseProduct={isBaseProductType(pt)}
+                  />
+                )
+              })}
             </div>
 
             {brandData.products.length === 0 && (

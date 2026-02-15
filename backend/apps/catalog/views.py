@@ -26,6 +26,7 @@ from .models import (
     ShoeProduct, ShoeVariant,
     ElectronicsProduct,
     FurnitureProduct, FurnitureVariant,
+    JewelryProduct,
     Service,
     Banner, BannerMedia,
 )
@@ -46,6 +47,7 @@ from .serializers import (
     ElectronicsCategorySerializer,
     ElectronicsProductSerializer,
     FurnitureProductSerializer,
+    JewelryProductSerializer,
     ServiceSerializer,
     BannerSerializer
 )
@@ -225,7 +227,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         'medical_equipment': Product,
         'tableware': Product,
         'accessories': Product,
-        'jewelry': Product,
+        'jewelry': JewelryProduct,
         'perfumery': Product,
         'underwear': Product,
         'headwear': Product,
@@ -367,6 +369,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         """Фильтрация товаров по параметрам."""
         queryset = Product.objects.filter(is_active=True)
+        queryset = queryset.exclude(product_type='jewelry')
         queryset = queryset.exclude(
             models.Q(product_type__in=['clothing', 'shoes']) &
             (
@@ -654,15 +657,16 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             )
             reranked = reranker.rerank(similar_list, product, strategy=strategy, request=request)
             rec_ids = [r["product"]["id"] for r in reranked]
-            session_key = getattr(request.session, "session_key", None) or ""
-            from apps.recommendations.tasks import log_recommendation_event
-            log_recommendation_event.delay(
-                event_type="impression",
-                source_product_id=product.id,
-                recommended_ids=rec_ids,
-                algorithm="vector_combined",
-                session_id=session_key,
-            )
+            if rec_ids:
+                session_key = getattr(request.session, "session_key", None) or ""
+                from apps.recommendations.tasks import log_recommendation_event
+                log_recommendation_event.delay(
+                    event_type="impression",
+                    source_product_id=product.id,
+                    recommended_ids=rec_ids,
+                    algorithm="vector_combined",
+                    session_id=session_key,
+                )
             return Response({"count": len(reranked), "strategy": strategy, "results": reranked})
         except Exception as e:
             logger.warning(
@@ -1296,6 +1300,90 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
+class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
+    """API для товаров украшений (с вариантами и размерами)."""
+    queryset = JewelryProduct.objects.filter(is_active=True)
+    serializer_class = JewelryProductSerializer
+    pagination_class = StandardPagination
+    lookup_field = 'slug'
+
+    def _normalize_ordering(self, ordering: str) -> str:
+        ordering_map = {
+            'name_asc': 'name',
+            'name_desc': '-name',
+            'price_asc': 'price',
+            'price_desc': '-price',
+            'newest': '-created_at',
+            'popular': '-is_featured',
+        }
+        return ordering_map.get(ordering, ordering)
+
+    def get_queryset(self):
+        queryset = JewelryProduct.objects.filter(is_active=True)
+        category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
+        if category_ids:
+            try:
+                category_ids = [int(cid) for cid in category_ids if cid]
+                if category_ids:
+                    queryset = queryset.filter(category_id__in=category_ids)
+            except (ValueError, TypeError):
+                pass
+        category_slug = self.request.query_params.get('category_slug') or self.request.query_params.get('subcategory_slug')
+        if category_slug:
+            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
+            if slugs:
+                cat_ids = _get_category_ids_with_descendants(slugs)
+                if cat_ids:
+                    queryset = queryset.filter(category_id__in=cat_ids)
+        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
+        if brand_ids:
+            try:
+                brand_ids = [int(bid) for bid in brand_ids if bid]
+                if brand_ids:
+                    queryset = queryset.filter(brand_id__in=brand_ids)
+            except (ValueError, TypeError):
+                pass
+        jewelry_type = self.request.query_params.get('jewelry_type')
+        if jewelry_type:
+            queryset = queryset.filter(jewelry_type__icontains=jewelry_type)
+        material = self.request.query_params.get('material')
+        if material:
+            queryset = queryset.filter(material__icontains=material)
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+        min_price = self.request.query_params.get('min_price') or self.request.query_params.get('price_min')
+        if min_price:
+            try:
+                queryset = queryset.filter(price__gte=Decimal(min_price))
+            except (ValueError, TypeError):
+                pass
+        max_price = self.request.query_params.get('max_price') or self.request.query_params.get('price_max')
+        if max_price:
+            try:
+                queryset = queryset.filter(price__lte=Decimal(max_price))
+            except (ValueError, TypeError):
+                pass
+        ordering = self.request.query_params.get('ordering', '-created_at')
+        queryset = queryset.order_by(self._normalize_ordering(ordering))
+        return queryset
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        active_slug = self.request.query_params.get('active_variant_slug')
+        if active_slug:
+            context['active_variant_slug'] = active_slug
+        return context
+
+    @action(detail=False, methods=['get'])
+    def featured(self, request):
+        featured_products = JewelryProduct.objects.filter(
+            is_active=True, is_featured=True
+        ).order_by('-created_at')[:10]
+        serializer = self.get_serializer(featured_products, many=True)
+        return Response(serializer.data)
+
+
 class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами мебели."""
     
@@ -1704,7 +1792,7 @@ class FavoriteViewSet(viewsets.ViewSet):
             'medical_equipment': Product,
             'tableware': Product,
             'accessories': Product,
-            'jewelry': Product,
+            'jewelry': JewelryProduct,
             'perfumery': Product,
             'clothing': ClothingProduct,
             'shoes': ShoeProduct,

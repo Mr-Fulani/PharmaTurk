@@ -17,6 +17,7 @@ interface Product {
   active_variant_old_price_formatted?: string | null
   main_image_url?: string | null
   main_image?: string | null
+  video_url?: string | null
   product_type?: string
   is_featured?: boolean
 }
@@ -71,24 +72,29 @@ export default function SimilarProducts({
     const fetchSimilarProducts = async () => {
       try {
         setLoading(true)
-        if (useRecsys && currentProductSlug) {
+        // RecSys similar только для Product; jewelry — в JewelryProductViewSet, эндпоинта /similar нет
+        if (useRecsys && currentProductSlug && productType !== 'jewelry') {
           const response = await api.get(
             `/catalog/products/${encodeURIComponent(currentProductSlug)}/similar`,
             { params: { limit, strategy: 'balanced' } }
           )
           const results: SimilarProductResult[] = response.data.results || []
-          setProducts(results.map((r) => r.product))
-          const reasonMap: Record<number, string> = {}
-          results.forEach((r) => {
-            if (r.product?.id && r.reason) reasonMap[r.product.id] = r.reason
-          })
-          setReasons(reasonMap)
-          return
+          if (results.length > 0) {
+            setProducts(results.map((r) => r.product))
+            const reasonMap: Record<number, string> = {}
+            results.forEach((r) => {
+              if (r.product?.id && r.reason) reasonMap[r.product.id] = r.reason
+            })
+            setReasons(reasonMap)
+            return
+          }
         }
 
         let endpoint = ''
-        if (['medicines', 'supplements', 'medical-equipment', 'furniture', 'tableware', 'accessories', 'jewelry', 'underwear', 'headwear'].includes(productType)) {
+        if (['medicines', 'supplements', 'medical-equipment', 'furniture', 'tableware', 'accessories', 'underwear', 'headwear'].includes(productType)) {
           endpoint = '/catalog/products'
+        } else if (productType === 'jewelry') {
+          endpoint = '/catalog/jewelry/products'
         } else if (productType === 'clothing') {
           endpoint = '/catalog/clothing/products'
         } else if (productType === 'shoes') {
@@ -124,7 +130,9 @@ export default function SimilarProducts({
     }
 
     fetchSimilarProducts()
-  }, [productType, currentProductId, currentProductSlug, limit, useRecsys])
+  }, useRecsys
+    ? [currentProductSlug, limit, useRecsys]
+    : [productType, currentProductId, currentProductSlug, limit, useRecsys])
 
   if (loading) {
     return (
@@ -149,7 +157,7 @@ export default function SimilarProducts({
     return null
   }
 
-  const isBaseProduct = ['medicines', 'supplements', 'medical-equipment', 'furniture', 'tableware', 'accessories', 'jewelry', 'underwear', 'headwear'].includes(productType)
+  const isBaseProduct = ['medicines', 'supplements', 'medical-equipment', 'furniture', 'tableware', 'accessories', 'underwear', 'headwear'].includes(productType)
 
   const translateBadge = (reason: string): string => {
     if (!reason?.trim()) return ''
@@ -201,6 +209,7 @@ export default function SimilarProducts({
                 currency={displayCurrency}
                 oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                 imageUrl={product.main_image_url || product.main_image}
+                videoUrl={product.video_url}
                 badge={reasons[product.id] ? translateBadge(reasons[product.id]) : (product.is_featured ? t('product_featured', 'Хит') : null)}
                 productType={product.product_type || productType}
                 isBaseProduct={isBaseProduct}

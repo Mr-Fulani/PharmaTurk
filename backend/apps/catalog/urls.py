@@ -9,6 +9,7 @@ from .views import (
     ShoeCategoryViewSet, ShoeProductViewSet,
     ElectronicsCategoryViewSet, ElectronicsProductViewSet,
     FurnitureProductViewSet,
+    JewelryProductViewSet,
     ServiceViewSet,
     BannerViewSet,
     proxy_image,
@@ -42,6 +43,10 @@ electronics_router.register(r'products', ElectronicsProductViewSet, basename='el
 furniture_router = DefaultRouter(trailing_slash=False)
 furniture_router.register(r'products', FurnitureProductViewSet, basename='furniture-product')
 
+# Роутер для украшений
+jewelry_router = DefaultRouter(trailing_slash=False)
+jewelry_router.register(r'products', JewelryProductViewSet, basename='jewelry-product')
+
 # Роутер для услуг
 services_router = DefaultRouter(trailing_slash=False)
 services_router.register(r'services', ServiceViewSet, basename='service')
@@ -61,6 +66,9 @@ urlpatterns = [
     
     # Маршруты для мебели
     path('furniture/', include(furniture_router.urls)),
+    
+    # Маршруты для украшений
+    path('jewelry/', include(jewelry_router.urls)),
     
     # Маршруты для услуг
     path('', include(services_router.urls)),

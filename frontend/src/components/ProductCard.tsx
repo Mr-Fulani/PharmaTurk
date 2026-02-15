@@ -10,7 +10,7 @@ interface ProductCardProps {
   slug: string
   price: string | null
   currency: string
-  oldPrice?: string | null
+  oldPrice?: string | number | null
   badge?: string | null
   rating?: number | null
   imageUrl?: string | null
@@ -60,12 +60,12 @@ export default function ProductCard({
   
   const resolvedImage =
     imageUrl && !isVideoUrl(imageUrl) ? resolveMediaUrl(imageUrl) : null
-  const resolvedVideoUrl = videoUrl
+  const resolvedVideoUrl = videoUrl && isVideoUrl(videoUrl)
     ? resolveMediaUrl(videoUrl)
     : imageUrl && isVideoUrl(imageUrl)
       ? resolveMediaUrl(imageUrl)
       : null
-  const showVideo = Boolean(!resolvedImage && resolvedVideoUrl && isVideoUrl(resolvedVideoUrl))
+  const showVideo = Boolean(resolvedVideoUrl)
   const parseNumber = (value: string | number | null | undefined) => {
     if (value === null || typeof value === 'undefined') return null
     const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
@@ -84,11 +84,13 @@ export default function ProductCard({
       <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
         <div className="relative w-full sm:w-48 h-48 flex-shrink-0">
           {showVideo ? (
-            <video 
-              src={resolvedVideoUrl!} 
-              controls
+            <video
+              src={resolvedVideoUrl!}
+              poster={resolvedImage || undefined}
               playsInline
               muted
+              autoPlay
+              loop
               preload="metadata"
               className="w-full h-full rounded-md object-cover"
             />
@@ -131,7 +133,9 @@ export default function ProductCard({
                   {price ? `${price} ${currency}` : t('price_on_request', 'Цена по запросу')}
                 </div>
                 {oldPrice && (
-                  <div className="text-sm text-gray-400 line-through">{oldPrice} {currency}</div>
+                  <div className="text-sm text-gray-400 line-through">
+                    {String(oldPrice).includes(currency) ? oldPrice : `${oldPrice} ${currency}`}
+                  </div>
                 )}
                 {oldPrice && discountPercent !== null && (
                   <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
@@ -179,11 +183,13 @@ export default function ProductCard({
     <div className="group rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
       <div className="relative">
         {showVideo ? (
-          <video 
-            src={resolvedVideoUrl!} 
-            controls
+          <video
+            src={resolvedVideoUrl!}
+            poster={resolvedImage || undefined}
             playsInline
             muted
+            autoPlay
+            loop
             preload="metadata"
             className="aspect-[4/3] w-full rounded-lg object-cover"
           />
@@ -258,7 +264,9 @@ export default function ProductCard({
           {price ? `${price} ${currency}` : t('price_on_request', 'Цена по запросу')}
         </div>
         {oldPrice && (
-          <div className="text-sm text-gray-400 line-through">{oldPrice} {currency}</div>
+          <div className="text-sm text-gray-400 line-through">
+            {String(oldPrice).includes(currency) ? oldPrice : `${oldPrice} ${currency}`}
+          </div>
         )}
         {oldPrice && discountPercent !== null && (
           <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>

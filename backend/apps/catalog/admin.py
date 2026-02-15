@@ -15,12 +15,13 @@ from .models import (
     CategoryClothing, CategoryShoes, CategoryElectronics,
     Brand, BrandTranslation, MarketingBrand, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ProductMedicines, ProductSupplements, ProductMedicalEquipment,
-    ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
+    ProductTableware, ProductFurniture, ProductAccessories,
     ProductUnderwear, ProductHeadwear, ProductPerfumery,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
+    JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
     Service, ServiceTranslation,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
     Author, ProductAuthor,
@@ -225,7 +226,10 @@ class BaseCategoryAdmin(admin.ModelAdmin):
             'fields': ('category_type',),
             'description': _('Выберите тип категории. Если нужного типа нет, создайте его в разделе "Типы категорий".'),
         }),
-        (_('Hierarchy'), {'fields': ('parent',)}),
+        (_('Hierarchy'), {
+            'fields': ('parent',),
+            'description': _('Корневая категория: оставьте parent пустым. Подкатегория: выберите родителя того же типа.'),
+        }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url'),
             'description': _('Можно указать файл или внешнюю ссылку (CDN/S3). Внешняя ссылка приоритетнее.'),
@@ -260,6 +264,40 @@ class BaseCategoryAdmin(admin.ModelAdmin):
             except CategoryType.DoesNotExist:
                 pass
         super().save_model(request, obj, form, change)
+
+
+@admin.register(Category)
+class AllCategoriesAdmin(admin.ModelAdmin):
+    """Единый список всех категорий (корневые и подкатегории)."""
+    list_display = ('name', 'slug', 'category_type', 'parent_display', 'is_active', 'sort_order', 'created_at')
+    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'created_at')
+    search_fields = ('name', 'slug', 'description')
+    ordering = ('sort_order', 'name')
+    prepopulated_fields = {'slug': ('name',)}
+    autocomplete_fields = ('category_type', 'parent')
+    inlines = [CategoryTranslationInline]
+    list_select_related = ('category_type', 'parent')
+
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Тип категории'), {
+            'fields': ('category_type',),
+            'description': _('Выберите тип категории. Если нужного типа нет, создайте его в разделе "Типы категорий".'),
+        }),
+        (_('Hierarchy'), {
+            'fields': ('parent',),
+            'description': _('Корневая категория: оставьте parent пустым. Подкатегория: выберите родителя.'),
+        }),
+        (_('Медиа карточки'), {
+            'fields': ('card_media', 'card_media_external_url'),
+        }),
+        (_('Settings'), {'fields': ('is_active', 'sort_order')}),
+        (_('External'), {'fields': ('external_id', 'external_data')}),
+    )
+
+    def parent_display(self, obj):
+        return obj.parent.name if obj.parent else "—"
+    parent_display.short_description = _("Родитель")
 
 
 @admin.register(CategoryMedicines)
@@ -353,8 +391,8 @@ class CategoryPerfumeryAdmin(BaseCategoryAdmin):
 @admin.register(Brand)
 class BrandAdmin(admin.ModelAdmin):
     """Админка для брендов."""
-    list_display = ('name', 'slug', 'is_active', 'created_at')
-    list_filter = ('is_active', 'created_at')
+    list_display = ('name', 'slug', 'primary_category_slug', 'is_active', 'created_at')
+    list_filter = ('is_active', 'primary_category_slug', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('name',)
     prepopulated_fields = {'slug': ('name',)}
@@ -367,7 +405,10 @@ class BrandAdmin(admin.ModelAdmin):
             'description': _('Файл или внешняя ссылка (CDN/S3) для карточки бренда; ссылка приоритетнее файла.'),
         }),
         (_('Settings'), {'fields': ('is_active',)}),
-        (_('Категория'), {'fields': ('primary_category_slug',)}),
+        (_('Категория'), {
+            'fields': ('primary_category_slug',),
+            'description': _('Основная категория бренда для фильтров на сайте (medicines, clothing, shoes и т.д.).'),
+        }),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
 
@@ -688,12 +729,6 @@ class ProductFurnitureAdmin(BaseProductProxyAdmin):
 @admin.register(ProductAccessories)
 class ProductAccessoriesAdmin(BaseProductProxyAdmin):
     required_product_type = "accessories"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductJewelry)
-class ProductJewelryAdmin(BaseProductProxyAdmin):
-    required_product_type = "jewelry"
     fieldsets = BaseProductAdmin.fieldsets
 
 
@@ -1527,6 +1562,101 @@ class FurnitureProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     inlines = [FurnitureProductTranslationInline, FurnitureVariantInline]
+
+
+# ============================================================================
+# АДМИНКА ДЛЯ УКРАШЕНИЙ (JewelryProduct с вариантами и размерами)
+# ============================================================================
+
+class JewelryProductTranslationInline(admin.TabularInline):
+    model = JewelryProductTranslation
+    extra = 0
+    fields = ('locale', 'description')
+
+
+class JewelryProductImageInline(admin.TabularInline):
+    model = JewelryProductImage
+    extra = 1
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
+    formset = ProductImageInlineFormSet
+
+    def image_preview(self, obj):
+        if obj and (obj.image_file or obj.image_url):
+            url = obj.image_file.url if obj.image_file else obj.image_url
+            if url:
+                return format_html('<img src="{}" style="max-width: 120px; max-height: 60px;" />', url)
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
+class JewelryVariantSizeInline(admin.TabularInline):
+    """Инлайн размеров варианта украшения (кольца, браслеты и т.д.)."""
+    model = JewelryVariantSize
+    extra = 0
+    fields = ('size_value', 'size_unit', 'size_type', 'size_display', 'is_available', 'stock_quantity', 'sort_order')
+    ordering = ('sort_order', 'size_display')
+
+
+class JewelryVariantImageInline(admin.TabularInline):
+    model = JewelryVariantImage
+    extra = 0
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main')
+    formset = VariantImageInlineFormSet
+
+
+class JewelryVariantInline(admin.TabularInline):
+    """Инлайн вариантов украшения (цвет/материал). Размеры — в отдельной админке варианта."""
+    model = JewelryVariant
+    extra = 0
+    fields = ('name', 'slug', 'color', 'material', 'price', 'currency', 'main_image', 'main_image_file', 'is_active', 'sort_order')
+    readonly_fields = ('slug',)
+    show_change_link = True
+
+
+@admin.register(JewelryVariant)
+class JewelryVariantAdmin(admin.ModelAdmin):
+    """Админка варианта украшения — здесь добавляются размеры (кольца, браслеты)."""
+    list_display = ('name', 'product', 'color', 'material', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'color', 'currency', 'created_at')
+    search_fields = ('name', 'product__name', 'slug', 'color', 'material', 'sku')
+    ordering = ('product', 'sort_order', '-created_at')
+    readonly_fields = ('slug',)
+    actions = [activate_variants, deactivate_variants]
+    fieldsets = (
+        (None, {'fields': ('product', 'name', 'slug')}),
+        (_('Характеристики'), {
+            'fields': ('color', 'material'),
+            'description': _("Размеры (кольца, браслеты) задайте в таблице размеров ниже.")
+        }),
+        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
+        (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
+        (_('Статус'), {'fields': ('is_active', 'sort_order')}),
+    )
+    inlines = [JewelryVariantSizeInline, JewelryVariantImageInline]
+
+
+@admin.register(JewelryProduct)
+class JewelryProductAdmin(admin.ModelAdmin):
+    """Товары украшений с вариантами и размерами (кольца, браслеты и т.д.)."""
+    list_display = ('name', 'slug', 'category', 'brand', 'jewelry_type', 'material', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_featured', 'jewelry_type', 'category', 'brand', 'currency', 'created_at')
+    search_fields = ('name', 'slug', 'description', 'material', 'metal_purity', 'stone_type')
+    ordering = ('-created_at',)
+    prepopulated_fields = {'slug': ('name',)}
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Категоризация'), {'fields': ('category', 'brand')}),
+        (_('Украшение'), {'fields': ('jewelry_type', 'material', 'metal_purity', 'stone_type', 'carat_weight')}),
+        (_('Цены'), {'fields': ('price', 'currency', 'old_price')}),
+        (_('Наличие'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
+        (_('Настройки'), {'fields': ('is_active', 'is_featured')}),
+        (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
+    )
+    inlines = [JewelryProductTranslationInline, JewelryVariantInline, JewelryProductImageInline]
 
 
 @admin.register(Service)

@@ -44,13 +44,14 @@ export default function AddToCartButton({
       initCartSession()
       const body = new URLSearchParams()
       body.set('quantity', String(quantity))
-      const baseTypes = [
+      // product_id ищется только в таблице Product (медикаменты и т.д.).
+      // jewelry, clothing, shoes, electronics хранятся в своих таблицах — добавляем по slug + type.
+      const productIdTypes = [
         'medicines', 'supplements', 'medical-equipment', 'medical_equipment',
-        'furniture', 'tableware', 'accessories', 'jewelry',
-        'underwear', 'headwear'
+        'furniture', 'tableware', 'accessories', 'underwear', 'headwear'
       ]
-      const isBase = baseTypes.includes(productType)
-      if (isBase && productId !== undefined) {
+      const useProductId = productIdTypes.includes(productType) && productId !== undefined
+      if (useProductId) {
         body.set('product_id', String(productId))
       } else {
         if (productType) {

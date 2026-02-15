@@ -151,13 +151,15 @@ def _list_storage_files(storage, path=""):
     return collected
 
 
-# Префиксы путей, которые НИКОГДА не удалять (AI-обработка, кэш, временные файлы).
-# Файлы здесь не привязаны к моделям Django, но нужны для работы.
+# Префиксы путей, которые НИКОГДА не удалять (AI-обработка, кэш, временные файлы, аватарки).
+# Файлы здесь не привязаны к моделям Django или привязаны, но могут не попасть в _collect_db_media_paths.
 _PROTECTED_STORAGE_PREFIXES = (
     "products/original/",
     "products/processed/",
     "products/thumbs/",
     "temp/",
+    "avatars/",  # аватарки пользователей (users.User.avatar)
+    "testimonials/",  # аватарки авторов отзывов (feedback.Testimonial.author_avatar)
 )
 
 
