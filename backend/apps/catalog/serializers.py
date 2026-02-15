@@ -672,23 +672,29 @@ class ProductSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
         
-        # Получаем цену в предпочитаемой валюте
+        # 1. Пробуем получить из кэшированных цен
         try:
             prices = obj.get_all_prices()
             if prices and preferred_currency in prices:
                 return prices[preferred_currency].get('price_with_margin')
-            elif prices:
-                # Если предпочитаемой валюты нет, вернем базовую
-                for currency, data in prices.items():
-                    if data.get('is_base_price'):
-                        return data.get('price_with_margin')
-                # Или просто первую
-                first_currency = list(prices.keys())[0]
-                return prices[first_currency].get('price_with_margin')
         except Exception:
             pass
+            
+        # 2. Fallback: конвертация на лету
+        if obj.price is not None:
+            from_currency = (obj.currency or 'RUB').upper()
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(str(obj.price)),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return price_with_margin
+            except Exception:
+                pass
         
-        # Fallback к старому полю
         return obj.price
     
     def get_currency(self, obj):
@@ -696,23 +702,30 @@ class ProductSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
         
-        # Получаем валюту из новой системы
+        # 1. Пробуем получить из кэшированных цен
         try:
             prices = obj.get_all_prices()
             if prices and preferred_currency in prices:
                 return preferred_currency
-            elif prices:
-                # Если предпочитаемой валюты нет, вернем базовую
-                for currency, data in prices.items():
-                    if data.get('is_base_price'):
-                        return currency
-                # Или просто первую
-                return list(prices.keys())[0]
         except Exception:
             pass
+            
+        # 2. Fallback: если конвертация возможна, возвращаем preferred_currency
+        if obj.price is not None:
+            from_currency = (obj.currency or 'RUB').upper()
+            try:
+                from .utils.currency_converter import currency_converter
+                currency_converter.convert_price(
+                    Decimal(str(obj.price)),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return preferred_currency
+            except Exception:
+                pass
         
-        # Fallback к старому полю
-        return obj.currency if obj.currency else 'RUB'
+        return obj.currency or 'RUB'
     
     def get_converted_price_rub(self, obj):
         """Получает конвертированную цену в RUB."""

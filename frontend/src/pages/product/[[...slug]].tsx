@@ -77,6 +77,19 @@ const parseNumber = (value: string | number | null | undefined) => {
   return Number.isFinite(num) ? num : null
 }
 
+const formatPrice = (value: string | number | null | undefined): string | null => {
+  if (value === null || typeof value === 'undefined') return null
+  const num = parseNumber(value)
+  if (num === null) return String(value)
+  
+  // Убираем лишние нули после запятой
+  const str = num.toString()
+  if (str.includes('.')) {
+    return str.replace(/\.?0+$/, '')
+  }
+  return str
+}
+
 const normalizeMediaValue = (value?: string | null) => {
   if (!value) return null
   const trimmed = String(value).trim()
@@ -411,7 +424,7 @@ export default function ProductPage({
   )
   const displayOldPrice = parsedOldCurrency && parsedOldCurrency !== currency ? null : (parsedOldPrice ?? oldPriceSource)
   const displayOldCurrency = parsedOldCurrency || currency
-  const displayOldPriceLabel = displayOldPrice ? String(displayOldPrice) : null
+  const displayOldPriceLabel = displayOldPrice ? formatPrice(displayOldPrice) : null
   const displayOldCurrencyLabel = displayOldCurrency ? String(displayOldCurrency) : null
   const oldPriceValue = parseNumber(displayOldPrice)
   const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
