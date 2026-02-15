@@ -6,6 +6,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
+import type { TFunction } from 'i18next'
 import api from '../lib/api'
 
 interface OrderItem {
@@ -423,7 +424,7 @@ function StatisticCard({ label, value, accent }: { label: string; value: string;
 function buildReceiptDocument(
   receipt: OrderReceipt,
   locale: string,
-  t: (key: string, fallback?: string) => string
+  t: TFunction<'common'>
 ) {
   const formatter = (value: string) => `${value} ${receipt.totals.currency}`
   const rows = receipt.items

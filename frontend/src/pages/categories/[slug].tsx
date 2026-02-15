@@ -131,6 +131,18 @@ const normalizeSlug = (value: any) =>
     .toLowerCase()
     .replace(/_/g, '-')
 
+const extractResults = (data: any) => {
+  if (Array.isArray(data)) return data
+  return data?.results || data?.data?.results || []
+}
+
+const SHOE_GENDER_OPTIONS = [
+  { id: -1, slug: 'women', name: 'Женская' },
+  { id: -2, slug: 'men', name: 'Мужская' },
+  { id: -3, slug: 'kids', name: 'Детская' },
+  { id: -4, slug: 'unisex', name: 'Унисекс' }
+]
+
 const filterBrandsByProducts = (
   brands: any[],
   products: any[],
@@ -163,7 +175,7 @@ const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): st
   const norm = slug.toLowerCase().replace(/_/g, '-')
   
   // Известные специальные типы
-  if (norm.startsWith('shoes')) return 'shoes'
+  if (norm.startsWith('shoes') || norm.endsWith('shoes') || norm.includes('-shoes')) return 'shoes'
   if (norm.startsWith('clothing')) return 'clothing'
   if (norm.startsWith('electronics')) return 'electronics'
   if (norm.startsWith('jewelry')) return 'jewelry'
@@ -720,6 +732,46 @@ const normalizePageParam = (value: string | string[] | undefined): number => {
   return parsed
 }
 
+const JEWELRY_MATERIAL_MAP: Record<string, string[]> = {
+  gold: ['gold', 'золото', 'золот'],
+  silver: ['silver', 'серебро', 'серебр'],
+  bijouterie: ['bijouterie', 'бижут']
+}
+
+const expandJewelryMaterials = (values: string[]): string[] => {
+  const out = new Set<string>()
+  values.forEach((value) => {
+    const key = normalizeSlug(value)
+    const mapped = JEWELRY_MATERIAL_MAP[key]
+    if (mapped && mapped.length > 0) {
+      mapped.forEach((m) => out.add(m))
+    } else if (key) {
+      out.add(key)
+    }
+  })
+  return Array.from(out)
+}
+
+const mapJewelryTypeFromSlug = (slug: string): string | null => {
+  const s = normalizeSlug(slug)
+  if (!s) return null
+  if (s.includes('ring') || s.includes('кольц') || s.includes('obruch') || s.includes('wedding')) return 'ring'
+  if (s.includes('bracelet') || s.includes('браслет')) return 'bracelet'
+  if (s.includes('necklace') || s.includes('chain') || s.includes('цеп') || s.includes('цепоч')) return 'necklace'
+  if (s.includes('earring') || s.includes('серьг')) return 'earrings'
+  if (s.includes('pendant') || s.includes('подвес')) return 'pendant'
+  return null
+}
+
+const mapJewelryTypesFromSlugs = (slugs: string[]): string[] => {
+  const out = new Set<string>()
+  slugs.forEach((slug) => {
+    const mapped = mapJewelryTypeFromSlug(slug)
+    if (mapped) out.add(mapped)
+  })
+  return Array.from(out)
+}
+
 // Фронтовая фильтрация по дополнительным фильтрам (без нагрузки на бэкенд)
 const filterProductsByExtraFilters = (products: Product[], filters: FilterState, categoryType: CategoryTypeKey) => {
   console.log(`filterProductsByExtraFilters: ${products.length} products, categoryType: ${categoryType}`)
@@ -747,18 +799,29 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
 
   if (categoryType === 'jewelry') {
     if (filters.jewelryMaterials && filters.jewelryMaterials.length) {
-      const wanted = new Set(filters.jewelryMaterials.map(norm))
+      const wanted = new Set(expandJewelryMaterials(filters.jewelryMaterials).map(norm))
       result = result.filter((p) => {
+        const material = norm((p as any).material)
         const cat = getCatSlug(p)
-        return Array.from(wanted).some((w) => cat.includes(w) || norm(p.slug).includes(w))
+        return Array.from(wanted).some((w) => (material && material.includes(w)) || cat.includes(w))
       })
     }
     if (filters.jewelryGender && filters.jewelryGender.length) {
       const wantedG = new Set(filters.jewelryGender.map(norm))
       result = result.filter((p) => {
         const cat = getCatSlug(p)
-        return Array.from(wantedG).some((w) => cat.includes(w) || norm(p.slug).includes(w))
+        return Array.from(wantedG).some((w) => cat.includes(w))
       })
+    }
+    if (filters.subcategorySlugs && filters.subcategorySlugs.length > 0) {
+      const wantedTypes = new Set(mapJewelryTypesFromSlugs(filters.subcategorySlugs))
+      if (wantedTypes.size > 0) {
+        result = result.filter((p) => {
+          const productType = norm((p as any).jewelry_type)
+          const cat = getCatSlug(p)
+          return Array.from(wantedTypes).some((w) => (productType && productType.includes(w)) || cat.includes(w))
+        })
+      }
     }
   }
 
@@ -1150,6 +1213,7 @@ export default function CategoryPage({
           // Для книг используем product_type чтобы показать все книги из всех жанров
           if (categoryType === 'books') {
             params.product_type = 'books'
+          } else if (categoryType === 'shoes' && normalizeSlug(routeSlug) === 'shoes') {
           } else {
             params.category_slug = routeSlug
           }
@@ -1167,15 +1231,36 @@ export default function CategoryPage({
         if (filters.brandSlugs.length > 0) {
           params.brand_slug = filters.brandSlugs.join(',')
         }
-        if (filters.subcategories.length > 0) {
+        const normalizedRoute = normalizeSlug(routeSlug || '')
+        const normalizedSubSlugs = filters.subcategorySlugs.map((s) => normalizeSlug(s))
+        const jewelryTypeFilters = categoryType === 'jewelry'
+          ? mapJewelryTypesFromSlugs(filters.subcategorySlugs)
+          : []
+        const genderSlug = categoryType === 'shoes' && normalizedRoute === 'shoes'
+          ? normalizedSubSlugs.find((s) => ['women', 'men', 'kids', 'unisex'].includes(s))
+          : null
+        if (!genderSlug && filters.subcategories.length > 0) {
           params.subcategory_id = filters.subcategories
         }
-        if (filters.subcategorySlugs.length > 0) {
+        if (genderSlug) {
+          params.gender = genderSlug
+        } else if (filters.subcategorySlugs.length > 0) {
           // Для книг используем category_slug вместо subcategory_slug
-          if (categoryType === 'books') {
+          if (categoryType === 'jewelry' && jewelryTypeFilters.length > 0) {
+            params.jewelry_type = jewelryTypeFilters.join(',')
+          } else if (categoryType === 'books') {
             params.category_slug = filters.subcategorySlugs.join(',')
           } else {
             params.subcategory_slug = filters.subcategorySlugs.join(',')
+          }
+        }
+        if (categoryType === 'jewelry') {
+          const jewelryGenderSlugs = filters.jewelryGender.map((s) => normalizeSlug(s)).filter(Boolean)
+          if (jewelryGenderSlugs.length > 0) {
+            params.gender = jewelryGenderSlugs.join(',')
+          }
+          if (filters.jewelryMaterials.length > 0) {
+            params.material = expandJewelryMaterials(filters.jewelryMaterials).join(',')
           }
         }
         if (filters.priceMin !== undefined) {
@@ -1282,6 +1367,67 @@ export default function CategoryPage({
       setRouteSlug(routeSlugFromQuery)
     }
   }, [routeSlugFromQuery, routeSlug])
+  const isRootCategoryPage = useMemo(() => {
+    if (!routeSlug) return false
+    return normalizeSlug(routeSlug) === normalizeSlug(categoryType)
+  }, [routeSlug, categoryType])
+  const [resolvedSubcategories, setResolvedSubcategories] = useState<Category[]>(subcategories)
+  useEffect(() => {
+    if (subcategories.length > 0) {
+      setResolvedSubcategories(subcategories)
+    }
+  }, [subcategories])
+  useEffect(() => {
+    if (!isRootCategoryPage || resolvedSubcategories.length > 0) return
+    let active = true
+    const loadRootSubcategories = async () => {
+      try {
+        let candidates: any[] = []
+        if (routeSlug) {
+          const childRes = await api.get('/catalog/categories', { params: { parent_slug: routeSlug, page_size: 200 } })
+          candidates = extractResults(childRes.data)
+        }
+        if (candidates.length === 0) {
+          const res = await api.get('/catalog/categories', { params: { top_level: true, page_size: 200 } })
+          const allList = extractResults(res.data)
+          const normalizedType = normalizeSlug(categoryType)
+          const root = allList.find((c: any) => normalizeSlug(c.slug) === normalizeSlug(routeSlug))
+          candidates = root ? allList.filter((c: any) => c.parent === root.id) : []
+          if (candidates.length === 0) {
+            candidates = allList.filter((c: any) => {
+              const cType = normalizeSlug(c.category_type_slug || c.category_type)
+              return cType === normalizedType && (c.parent === null || typeof c.parent === 'undefined')
+            })
+          }
+          if (candidates.length === 0 && normalizedType === 'shoes') {
+            candidates = allList.filter((c: any) => {
+              const gender = normalizeSlug(c.gender)
+              const isTopLevel = c.parent === null || typeof c.parent === 'undefined'
+              return isTopLevel && ['women', 'men', 'kids', 'unisex'].includes(gender)
+            })
+          }
+          if (candidates.length === 0) {
+            candidates = allList.filter((c: any) => {
+              const slugVal = normalizeSlug(c.slug)
+              return (c.parent === null || typeof c.parent === 'undefined') && slugVal.endsWith(`-${normalizedType}`)
+            })
+          }
+        }
+        const next = candidates.filter((c: any) => normalizeSlug(c.slug) !== normalizeSlug(routeSlug))
+        if (active) setResolvedSubcategories(next)
+      } catch {
+      }
+    }
+    loadRootSubcategories()
+    return () => {
+      active = false
+    }
+  }, [isRootCategoryPage, resolvedSubcategories.length, categoryType, routeSlug])
+  const displaySubcategories = useMemo(() => {
+    if (resolvedSubcategories.length > 0) return resolvedSubcategories
+    if (isRootCategoryPage && categoryType === 'shoes') return SHOE_GENDER_OPTIONS as unknown as Category[]
+    return []
+  }, [resolvedSubcategories, isRootCategoryPage, categoryType])
 
   // Фиксируем список категорий для сайтбара на первом рендере, чтобы он не затирался гидрацией
   const initialSidebarCategoriesRef = useRef<Category[]>(Array.isArray(sidebarCategories) && sidebarCategories.length > 0 ? sidebarCategories : categories)
@@ -1426,13 +1572,14 @@ export default function CategoryPage({
               key={routeSlug || categoryType}
               categories={categoryGroups.length > 0 ? [] : sidebarCategoriesData}
               brands={brandOptions}
-              subcategories={subcategories}
+              subcategories={displaySubcategories}
               categoryGroups={categoryGroups}
               onFilterChange={handleFilterChange}
               isOpen={sidebarOpen}
               onToggle={() => setSidebarOpen(!sidebarOpen)}
               initialFilters={filters}
-              showSubcategories={true}
+              showSubcategories={displaySubcategories.length > 0}
+              showCategories={!isRootCategoryPage}
               categoryType={categoryType}
             />
           </div>
@@ -1655,6 +1802,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       // Для книг используем product_type чтобы показать все книги из всех жанров
       if (categoryType === 'books') {
         productParams.product_type = 'books'
+      } else if (categoryType === 'shoes' && normalizeSlug(routeSlug) === 'shoes') {
       } else {
         productParams.category_slug = routeSlug
       }
@@ -1703,7 +1851,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
       catParams.page_size = 200
       const catRes = await axios.get(getInternalApiUrl('catalog/categories'), { params: catParams })
-      categories = catRes.data.results || []
+      categories = extractResults(catRes.data)
     } catch {
       categories = []
     }
@@ -1716,7 +1864,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
           const childRes = await axios.get(getInternalApiUrl('catalog/categories'), {
             params: { parent_slug: routeSlug, page_size: 200 }
           })
-          const childList = childRes.data.results || []
+          const childList = extractResults(childRes.data)
           if (childList.length) {
             categories = [...categories, ...childList]
           }
@@ -1730,13 +1878,59 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const routeNorm = routeSlug ? routeSlug.toLowerCase().replace(/_/g, '-') : ''
     const mainCat = categories.find((c: any) => (c.slug || '').toLowerCase().replace(/_/g, '-') === routeNorm)
     const allCategoriesForBrands = [...categories]
+    const isGenderCategoryForJewelry = (c: any) => {
+      const slug = normalizeSlug(c?.slug || '')
+      const name = normalizeSlug(c?.name || '')
+      const gender = normalizeSlug(c?.gender || '')
+      const keywords = ['women', 'men', 'kids', 'unisex', 'female', 'male', 'zhensk', 'muzh', 'detsk', 'uniseks']
+      const hasKeyword = keywords.some((kw) => slug.includes(kw) || name.includes(kw))
+      const hasGender = ['women', 'men', 'kids', 'unisex'].includes(gender)
+      return hasKeyword || hasGender
+    }
     let sidebarCategories: any[] = categories
     if (mainCat) {
-      const childCats = categories.filter((c: any) => c.parent === mainCat.id)
+      let childCats = categories.filter((c: any) => c.parent === mainCat.id)
+      if (categoryType === 'jewelry') {
+        childCats = childCats.filter((c: any) => !isGenderCategoryForJewelry(c))
+      }
       sidebarCategories = [mainCat, ...childCats]
       subcategories = childCats
     } else if (routeNorm) {
       sidebarCategories = categories.filter((c: any) => (c.slug || '').toLowerCase().replace(/_/g, '-') === routeNorm)
+    }
+
+    const isRootCategoryPage = Boolean(routeSlug && normalizeSlug(routeSlug) === normalizeSlug(categoryType))
+    if (isRootCategoryPage && subcategories.length === 0) {
+      try {
+        const allRes = await axios.get(getInternalApiUrl('catalog/categories'), { params: { all: true, page_size: 1000 } })
+        const allList = extractResults(allRes.data)
+        const normalizedType = normalizeSlug(categoryType)
+        const rootFromAll = allList.find((c: any) => normalizeSlug(c.slug) === routeNorm)
+        let candidates = rootFromAll
+          ? allList.filter((c: any) => c.parent === rootFromAll.id)
+          : []
+        if (candidates.length === 0) {
+          candidates = allList.filter((c: any) => {
+          const cType = normalizeSlug(c.category_type_slug || c.category_type)
+          return cType === normalizedType && (c.parent === null || typeof c.parent === 'undefined')
+          })
+        }
+        if (candidates.length === 0 && normalizedType === 'shoes') {
+          candidates = allList.filter((c: any) => {
+            const gender = normalizeSlug(c.gender)
+            const isTopLevel = c.parent === null || typeof c.parent === 'undefined'
+            return isTopLevel && ['women', 'men', 'kids', 'unisex'].includes(gender)
+          })
+        }
+        if (candidates.length === 0) {
+          candidates = allList.filter((c: any) => {
+            const slugVal = normalizeSlug(c.slug)
+            return (c.parent === null || typeof c.parent === 'undefined') && slugVal.endsWith(`-${normalizedType}`)
+          })
+        }
+        subcategories = candidates.filter((c: any) => normalizeSlug(c.slug) !== routeNorm)
+      } catch {
+      }
     }
     // Перезаписываем categories отфильтрованным набором, чтобы на клиенте не было лишних категорий
     categories = sidebarCategories

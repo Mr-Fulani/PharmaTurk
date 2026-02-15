@@ -1135,8 +1135,6 @@ class ClothingProductAdmin(RunAIActionMixin, admin.ModelAdmin):
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
-                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
-                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '</tr>',
                 ((c, s, base, rub, usd, kzt, eur, tr, src) for (c, s, base, rub, usd, kzt, eur, tr, src) in rows),
             )
@@ -1461,7 +1459,6 @@ class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
-                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '</tr>',
                 ((c, s, base, rub, usd, kzt, eur, tr, src) for (c, s, base, rub, usd, kzt, eur, tr, src) in rows),
             )
@@ -1594,7 +1591,7 @@ class JewelryVariantSizeInline(admin.TabularInline):
     """Инлайн размеров варианта украшения (кольца, браслеты и т.д.)."""
     model = JewelryVariantSize
     extra = 0
-    fields = ('size_value', 'size_unit', 'size_type', 'size_display', 'is_available', 'stock_quantity', 'sort_order')
+    fields = ('size_display', 'is_available', 'stock_quantity', 'sort_order')
     ordering = ('sort_order', 'size_display')
 
 
@@ -1609,7 +1606,7 @@ class JewelryVariantInline(admin.TabularInline):
     """Инлайн вариантов украшения (цвет/материал). Размеры — в отдельной админке варианта."""
     model = JewelryVariant
     extra = 0
-    fields = ('name', 'slug', 'color', 'material', 'price', 'currency', 'main_image', 'main_image_file', 'is_active', 'sort_order')
+    fields = ('name', 'slug', 'price', 'currency', 'is_available', 'is_active', 'sort_order')
     readonly_fields = ('slug',)
     show_change_link = True
 
@@ -1617,25 +1614,18 @@ class JewelryVariantInline(admin.TabularInline):
 @admin.register(JewelryVariant)
 class JewelryVariantAdmin(admin.ModelAdmin):
     """Админка варианта украшения — здесь добавляются размеры (кольца, браслеты)."""
-    list_display = ('name', 'product', 'color', 'material', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'color', 'currency', 'created_at')
-    search_fields = ('name', 'product__name', 'slug', 'color', 'material', 'sku')
+    list_display = ('name', 'product', 'price', 'currency', 'is_available', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'is_available', 'currency', 'created_at')
+    search_fields = ('name', 'product__name', 'slug')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
     actions = [activate_variants, deactivate_variants]
     fieldsets = (
         (None, {'fields': ('product', 'name', 'slug')}),
-        (_('Характеристики'), {
-            'fields': ('color', 'material'),
-            'description': _("Размеры (кольца, браслеты) задайте в таблице размеров ниже.")
-        }),
-        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')}),
-        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
-        (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
-        (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
+        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
     )
-    inlines = [JewelryVariantSizeInline, JewelryVariantImageInline]
+    inlines = [JewelryVariantSizeInline]
 
 
 @admin.register(JewelryProduct)

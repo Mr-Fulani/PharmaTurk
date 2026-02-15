@@ -1,7 +1,8 @@
 import { GetServerSideProps } from 'next'
 import Head from 'next/head'
 import axios from 'axios'
-import { useState, useEffect } from 'react'
+import api from '../../lib/api'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
 import BuyNowButton from '../../components/BuyNowButton'
@@ -99,6 +100,15 @@ const normalizeMediaValue = (value?: string | null) => {
   return trimmed
 }
 
+interface SizeItem {
+  id: number
+  size?: string
+  size_display?: string
+  size_value?: string | number | null
+  is_available?: boolean
+  stock_quantity?: number | null
+}
+
 interface Product {
   id: number
   name: string
@@ -113,7 +123,7 @@ interface Product {
   main_image_url?: string
   video_url?: string
   images?: { id: number; image_url: string; video_url?: string | null; alt_text?: string; is_main?: boolean }[]
-  sizes?: { id: number; size?: string; is_available?: boolean; stock_quantity?: number | null }[]
+  sizes?: SizeItem[]
   variants?: Variant[]
   default_variant_slug?: string | null
   active_variant_slug?: string | null
@@ -159,7 +169,7 @@ interface Variant {
   stock_quantity?: number | null
   main_image?: string
   images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
-  sizes?: { id: number; size?: string; is_available?: boolean; stock_quantity?: number | null }[]
+  sizes?: SizeItem[]
   active_variant_currency?: string | null
 }
 
@@ -169,7 +179,10 @@ const resolveAvailableStock = (
   selectedSize: string | undefined
 ): number | null => {
   const sizeCandidate = selectedSize
-    ? (selectedVariant?.sizes || product.sizes || []).find((s) => (s.size || '') === selectedSize)
+    ? (selectedVariant?.sizes || product.sizes || []).find((s) => {
+      const sizeValue = `${s.size ?? s.size_display ?? (s.size_value !== undefined && s.size_value !== null ? String(s.size_value) : '')}`.trim()
+      return sizeValue === selectedSize
+    })
     : undefined
 
   const sizeStock = sizeCandidate?.stock_quantity
@@ -191,7 +204,7 @@ const resolveAvailableStock = (
 }
 
 export default function ProductPage({
-  product,
+  product: initialProduct,
   productType,
   isBaseProduct
 }: {
@@ -199,9 +212,13 @@ export default function ProductPage({
   productType: CategoryType
   isBaseProduct: boolean
 }) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const { theme } = useTheme()
+  const [product, setProduct] = useState<Product | null>(initialProduct)
+  useEffect(() => {
+    setProduct(initialProduct)
+  }, [initialProduct])
   const variants = product?.variants || []
 
   // Выбираем дефолтный вариант-цвет: активный, либо первый доступный
@@ -231,8 +248,22 @@ export default function ProductPage({
   const sizesForColor = (selectedVariant?.sizes && selectedVariant.sizes.length > 0)
     ? selectedVariant.sizes
     : (product?.sizes || [])
+  const normalizedSizes = sizesForColor
+    .map((s, index) => {
+      const sizeValue = `${s.size ?? s.size_display ?? (s.size_value !== undefined && s.size_value !== null ? String(s.size_value) : '')}`.trim()
+      const sizeLabel = `${s.size_display ?? s.size ?? (s.size_value !== undefined && s.size_value !== null ? String(s.size_value) : '')}`.trim()
+      return { ...s, sizeValue, sizeLabel, sizeKey: sizeValue || String(index) }
+    })
+    .filter((s) => Boolean(s.sizeLabel))
 
   const maxAvailable = product ? resolveAvailableStock(product, selectedVariant, selectedSize) : null
+  const sizeHintMessage = t(
+    'select_size_hint',
+    i18n.language?.startsWith('ru')
+      ? 'Выберите размер'
+      : 'Select a size'
+  )
+  const productSlug = product?.slug
 
   useEffect(() => {
     if (maxAvailable === 0) {
@@ -243,6 +274,26 @@ export default function ProductPage({
       setQuantity(Math.max(1, maxAvailable))
     }
   }, [maxAvailable, quantity])
+
+  useEffect(() => {
+    if (!productSlug || !selectedVariantSlug || isBaseProduct) return
+    let cancelled = false
+    const loadVariantDetails = async () => {
+      try {
+        const endpoint = resolveDetailEndpoint(productType, productSlug).replace(/^\/api\//, '')
+        const res = await api.get(endpoint, {
+          params: { active_variant_slug: selectedVariantSlug }
+        })
+        if (!cancelled && res?.data) {
+          setProduct(res.data)
+        }
+      } catch {}
+    }
+    loadVariantDetails()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedVariantSlug, productType, productSlug, isBaseProduct])
 
   // Подбор варианта при смене цвета
   const pickVariant = (color?: string) => {
@@ -271,10 +322,13 @@ export default function ProductPage({
 
   // Элемент галереи: обычное фото или плейсхолдер «Видео»
   type GalleryItem = { id: number | string; image_url: string; video_url?: string | null; alt_text?: string; is_main?: boolean; sort_order?: number; isVideo?: boolean }
-  const buildGallerySource = (): GalleryItem[] => {
+  const buildGallerySource = useCallback((): GalleryItem[] => {
     if (!product) return []
     const variantImages = selectedVariant?.images || []
     const productImages = product.images || []
+    const mergedImages = productType === 'jewelry'
+      ? [...variantImages, ...productImages]
+      : (variantImages.length > 0 ? variantImages : productImages)
     const mainImageRaw = normalizeMediaValue(selectedVariant?.main_image) ||
       normalizeMediaValue(product.main_image_url) ||
       normalizeMediaValue(product.main_image)
@@ -282,8 +336,9 @@ export default function ProductPage({
     const normalizedProductVideoUrl = normalizeMediaValue(product.video_url)
     const hasVideo = Boolean(normalizedProductVideoUrl && isVideoUrl(normalizedProductVideoUrl))
     const seenVideoUrls = new Set<string>()
+    const seenImageUrls = new Set<string>()
 
-    const baseImages: GalleryItem[] = (variantImages.length > 0 ? variantImages : productImages).flatMap((img) => {
+    const baseImages: GalleryItem[] = mergedImages.flatMap((img) => {
       const imageUrl = normalizeMediaValue(img.image_url)
       const videoUrl = normalizeMediaValue((img as { video_url?: string | null }).video_url)
       if (videoUrl && isVideoUrl(videoUrl)) {
@@ -304,6 +359,10 @@ export default function ProductPage({
       if (!imageUrl) {
         return []
       }
+      if (seenImageUrls.has(imageUrl)) {
+        return []
+      }
+      seenImageUrls.add(imageUrl)
       return [{
         id: img.id,
         image_url: imageUrl,
@@ -323,10 +382,27 @@ export default function ProductPage({
     if (hasVideo && normalizedProductVideoUrl && !seenVideoUrls.has(normalizedProductVideoUrl)) {
       list = [{ id: 'main-video', image_url: '', video_url: normalizedProductVideoUrl, alt_text: 'Видео', isVideo: true, sort_order: -2 }, ...list]
     }
-    return list
-  }
+    const sortPriority = (item: GalleryItem) => {
+      if (item.isVideo && normalizedProductVideoUrl && item.video_url === normalizedProductVideoUrl) {
+        return 0
+      }
+      if (item.is_main) {
+        return 1
+      }
+      return 2
+    }
+    return [...list].sort((a, b) => {
+      const prioA = sortPriority(a)
+      const prioB = sortPriority(b)
+      if (prioA !== prioB) return prioA - prioB
+      const orderA = a.sort_order ?? 999
+      const orderB = b.sort_order ?? 999
+      if (orderA !== orderB) return orderA - orderB
+      return String(a.id).localeCompare(String(b.id))
+    })
+  }, [product, productType, selectedVariant])
 
-  const gallerySource = buildGallerySource()
+  const gallerySource = useMemo(() => buildGallerySource(), [buildGallerySource])
   const galleryMainImageUrl = normalizeMediaValue(
     gallerySource.find((img) => !img.isVideo && img.is_main)?.image_url ||
       gallerySource.find((img) => !img.isVideo && img.image_url)?.image_url
@@ -360,16 +436,16 @@ export default function ProductPage({
     null
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(initialVideoUrl)
   const [activeMediaType, setActiveMediaType] = useState<'video' | 'image'>(() =>
-    !hasImageSource && initialVideoUrl ? 'video' : 'image'
+    initialVideoUrl ? 'video' : 'image'
   )
 
   // Обновляем главную картинку при изменении товара или варианта
   useEffect(() => {
     if (!product) return
-    const currentGallerySource = selectedVariant?.images?.length ? selectedVariant.images : (product.images || [])
+    const currentGallerySource = buildGallerySource()
     const imageFromGallery =
-      normalizeMediaValue(currentGallerySource.find((img) => img.is_main)?.image_url) ||
-      normalizeMediaValue(currentGallerySource.find((img) => img.image_url)?.image_url)
+      normalizeMediaValue(currentGallerySource.find((img) => !img.isVideo && img.is_main)?.image_url) ||
+      normalizeMediaValue(currentGallerySource.find((img) => !img.isVideo && img.image_url)?.image_url)
     const newImage =
       resolveMediaUrl(
         imageFromGallery ||
@@ -379,14 +455,14 @@ export default function ProductPage({
           normalizeMediaValue(product.active_variant_main_image_url || null) ||
           normalizeMediaValue(product.main_image_url || null) ||
           normalizeMediaValue(product.main_image || null) ||
-          normalizeMediaValue(currentGallerySource[0]?.image_url) ||
+          normalizeMediaValue(currentGallerySource.find((img) => !img.isVideo && img.image_url)?.image_url) ||
           null
       ) || null
     setActiveImage(newImage)
     setMainImageLoading(false)
     const freshVideoUrl =
       (product.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
-      (currentGallerySource as { video_url?: string | null }[]).find((item) => item.video_url && isVideoUrl(item.video_url))?.video_url ||
+      currentGallerySource.find((item) => item.isVideo && item.video_url)?.video_url ||
       null
     setActiveVideoUrl(freshVideoUrl)
     const hasImages = Boolean(
@@ -394,10 +470,10 @@ export default function ProductPage({
         selectedVariant?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
         normalizeMediaValue(product.main_image_url || null) ||
         normalizeMediaValue(product.main_image || null) ||
-        (currentGallerySource as { image_url?: string | null }[]).some((img) => normalizeMediaValue(img.image_url))
+        currentGallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
     )
-    setActiveMediaType(hasImages ? 'image' : (freshVideoUrl ? 'video' : 'image'))
-  }, [product, selectedVariant, router.asPath])
+    setActiveMediaType(freshVideoUrl ? 'video' : (hasImages ? 'image' : 'image'))
+  }, [buildGallerySource, product, selectedVariant, router.asPath])
 
   if (!product) {
     return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
@@ -440,7 +516,7 @@ export default function ProductPage({
     ? `${totalPrice} ${currency}`
     : t('price_on_request')
   
-  const sizeRequired = sizesForColor.length > 0
+  const sizeRequired = normalizedSizes.length > 0
   const siteUrl = getSiteOrigin()
   const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
   const canonicalUrl = `${siteUrl}${productPath}`
@@ -771,16 +847,15 @@ export default function ProductPage({
                       {t('size', 'Размер')}
                     </span>
                     <div className="flex flex-wrap gap-2">
-                      {sizesForColor.map((s) => {
-                        const sizeValue = s.size || ''
+                      {normalizedSizes.map((s) => {
                         const isAvailable = s.is_available !== false && (s.stock_quantity === null || s.stock_quantity === undefined || s.stock_quantity > 0)
-                        const isActive = sizeValue === selectedSize
+                        const isActive = s.sizeValue === selectedSize
                         return (
                           <button
-                            key={sizeValue}
+                            key={s.sizeKey}
                             onClick={() => {
                               if (!isAvailable) return
-                              setSelectedSize(sizeValue)
+                              setSelectedSize(s.sizeValue)
                             }}
                             className={`min-w-[56px] rounded-md px-3 py-2 text-sm border transition ${
                               isAvailable
@@ -791,7 +866,7 @@ export default function ProductPage({
                             }`}
                             disabled={!isAvailable}
                           >
-                            {sizeValue || t('size', 'Размер')}
+                            {s.sizeLabel || t('size', 'Размер')}
                           </button>
                         )
                       })}
@@ -826,22 +901,32 @@ export default function ProductPage({
                 >
                   {quantity}
                 </span>
-                <button
-                  onClick={() => {
-                    if (maxAvailable !== null) {
-                      setQuantity(Math.min(maxAvailable, quantity + 1))
-                      return
-                    }
-                    setQuantity(quantity + 1)
-                  }}
-                  disabled={maxAvailable !== null && quantity >= maxAvailable}
-                  className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
-                  aria-label={t('increase_quantity', 'Увеличить количество')}
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
+                <div className="relative group">
+                  <button
+                    onClick={() => {
+                      if (sizeRequired && !selectedSize) {
+                        return
+                      }
+                      if (maxAvailable !== null) {
+                        setQuantity(Math.min(maxAvailable, quantity + 1))
+                        return
+                      }
+                      setQuantity(quantity + 1)
+                    }}
+                    disabled={(sizeRequired && !selectedSize) || (maxAvailable !== null && quantity >= maxAvailable)}
+                    className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
+                    aria-label={t('increase_quantity', 'Увеличить количество')}
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                  {sizeRequired && !selectedSize && (
+                    <span className="pointer-events-none absolute -top-2 left-1/2 z-10 -translate-x-1/2 -translate-y-full rounded-md bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+                      {sizeHintMessage}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1062,6 +1147,10 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         })
         const product = res.data
         const actualType = product.product_type || t
+
+        if (actualType === categoryType) {
+          return buildProps(res, categoryType)
+        }
 
         return {
           redirect: {

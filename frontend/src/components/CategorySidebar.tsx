@@ -69,6 +69,7 @@ interface CategorySidebarProps {
   onToggle?: () => void
   initialFilters?: FilterState
   showSubcategories?: boolean
+  showCategories?: boolean
   categoryType?: string
 }
 
@@ -88,6 +89,7 @@ export default function CategorySidebar({
   onToggle,
   initialFilters,
   showSubcategories = false,
+  showCategories = true,
   categoryType
 }: CategorySidebarProps) {
   const { t } = useTranslation('common')
@@ -569,7 +571,7 @@ export default function CategorySidebar({
             </div>
           )}
 
-          {categories.length > 0 && categoryGroups.length === 0 && subcategories.length === 0 && (
+          {showCategories && categories.length > 0 && categoryGroups.length === 0 && subcategories.length === 0 && (
             <div className="border-b pb-4">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, categories: !prev.categories }))}

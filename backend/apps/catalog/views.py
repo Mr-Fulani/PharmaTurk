@@ -1320,6 +1320,14 @@ class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         queryset = JewelryProduct.objects.filter(is_active=True)
+        def parse_multi_param(param_name: str) -> list[str]:
+            raw_list = self.request.query_params.getlist(param_name) or []
+            if not raw_list:
+                raw = self.request.query_params.get(param_name)
+                if raw:
+                    raw_list = raw.split(',')
+            return [v.strip() for v in raw_list if v and str(v).strip()]
+
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
         if category_ids:
             try:
@@ -1335,6 +1343,11 @@ class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
                 cat_ids = _get_category_ids_with_descendants(slugs)
                 if cat_ids:
                     queryset = queryset.filter(category_id__in=cat_ids)
+        gender_slugs = parse_multi_param('gender') or parse_multi_param('jewelry_gender')
+        if gender_slugs:
+            cat_ids = _get_category_ids_with_descendants(gender_slugs)
+            if cat_ids:
+                queryset = queryset.filter(category_id__in=cat_ids)
         brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
         if brand_ids:
             try:
@@ -1343,12 +1356,18 @@ class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
                     queryset = queryset.filter(brand_id__in=brand_ids)
             except (ValueError, TypeError):
                 pass
-        jewelry_type = self.request.query_params.get('jewelry_type')
-        if jewelry_type:
-            queryset = queryset.filter(jewelry_type__icontains=jewelry_type)
-        material = self.request.query_params.get('material')
-        if material:
-            queryset = queryset.filter(material__icontains=material)
+        jewelry_types = parse_multi_param('jewelry_type')
+        if jewelry_types:
+            q = models.Q()
+            for jt in jewelry_types:
+                q |= models.Q(jewelry_type__icontains=jt)
+            queryset = queryset.filter(q)
+        materials = parse_multi_param('material')
+        if materials:
+            q = models.Q()
+            for mat in materials:
+                q |= models.Q(material__icontains=mat) | models.Q(variants__material__icontains=mat)
+            queryset = queryset.filter(q).distinct()
         search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(name__icontains=search)

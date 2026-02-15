@@ -2059,6 +2059,9 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
     """Сериализатор для вариантов мебели."""
 
     images = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    old_price = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
 
     class Meta:
         model = FurnitureVariant
@@ -2071,6 +2074,76 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
             'is_active', 'sort_order',
         ]
         read_only_fields = ['id', 'slug', 'sort_order']
+
+    def _get_preferred_currency(self, request):
+        default = 'RUB'
+        if not request:
+            return default
+        preferred = request.headers.get('X-Currency') or request.query_params.get('currency')
+        if preferred:
+            return preferred.upper()
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            uc = getattr(request.user, 'currency', None)
+            if uc:
+                return uc.upper()
+        lang = getattr(request, 'LANGUAGE_CODE', None)
+        return {'en': 'USD', 'ru': 'RUB'}.get(lang, default)
+
+    def get_price(self, obj):
+        if obj.price is None:
+            return None
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        from_currency = (obj.currency or 'RUB').upper()
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(str(obj.price)),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return price_with_margin
+        except Exception:
+            pass
+        return obj.price
+
+    def get_old_price(self, obj):
+        if obj.old_price is None:
+            return None
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        from_currency = (obj.currency or 'RUB').upper()
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(str(obj.old_price)),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return price_with_margin
+        except Exception:
+            pass
+        return obj.old_price
+
+    def get_currency(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        if obj.price is not None:
+            from_currency = (obj.currency or 'RUB').upper()
+            try:
+                from .utils.currency_converter import currency_converter
+                currency_converter.convert_price(
+                    Decimal(str(obj.price)),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return preferred_currency
+            except Exception:
+                pass
+        return obj.currency or 'RUB'
 
     def get_images(self, obj):
         """Галерея изображений варианта."""
@@ -2148,9 +2221,37 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         """Форматированная цена."""
         variant = self._get_active_variant(obj)
         if variant and variant.price is not None:
-            return f"{variant.price} {variant.currency}"
+            preferred_currency = self._get_preferred_currency(obj)
+            from_currency = (variant.currency or obj.currency or 'RUB').upper()
+            if preferred_currency != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_with_margin = currency_converter.convert_price(
+                        Decimal(variant.price),
+                        from_currency,
+                        preferred_currency,
+                        apply_margin=True,
+                    )
+                    return f"{price_with_margin} {preferred_currency}"
+                except Exception:
+                    pass
+            return f"{variant.price} {from_currency}"
         if obj.price is not None:
-            return f"{obj.price} {obj.currency}"
+            preferred_currency = self._get_preferred_currency(obj)
+            from_currency = (obj.currency or 'RUB').upper()
+            if preferred_currency != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_with_margin = currency_converter.convert_price(
+                        Decimal(obj.price),
+                        from_currency,
+                        preferred_currency,
+                        apply_margin=True,
+                    )
+                    return f"{price_with_margin} {preferred_currency}"
+                except Exception:
+                    pass
+            return f"{obj.price} {from_currency}"
         return None
     
     def get_old_price_formatted(self, obj):
@@ -2267,7 +2368,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         if not variants:
             return []
         qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images")
-        return FurnitureVariantSerializer(qs, many=True).data
+        return FurnitureVariantSerializer(qs, many=True, context=self.context).data
 
     def get_default_variant_slug(self, obj):
         variant = self._get_default_variant(obj)
@@ -2280,12 +2381,40 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
     def get_active_variant_price(self, obj):
         variant = self._get_active_variant(obj)
         if variant and variant.price is not None:
-            return f"{variant.price} {variant.currency}"
+            preferred_currency = self._get_preferred_currency(obj)
+            from_currency = (variant.currency or obj.currency or 'RUB').upper()
+            if preferred_currency != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_with_margin = currency_converter.convert_price(
+                        Decimal(variant.price),
+                        from_currency,
+                        preferred_currency,
+                        apply_margin=True,
+                    )
+                    return f"{price_with_margin} {preferred_currency}"
+                except Exception:
+                    pass
+            return f"{variant.price} {from_currency}"
         return None
 
     def get_active_variant_currency(self, obj):
         variant = self._get_active_variant(obj)
-        return variant.currency if variant else None
+        if not variant or variant.price is None:
+            return None
+        preferred_currency = self._get_preferred_currency(obj)
+        from_currency = (variant.currency or obj.currency or 'RUB').upper()
+        try:
+            from .utils.currency_converter import currency_converter
+            currency_converter.convert_price(
+                Decimal(variant.price),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return preferred_currency
+        except Exception:
+            return from_currency
 
     def get_active_variant_stock_quantity(self, obj):
         variant = self._get_active_variant(obj)
@@ -2365,6 +2494,9 @@ class JewelryVariantImageSerializer(serializers.ModelSerializer):
 class JewelryVariantSerializer(serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
     sizes = JewelryVariantSizeSerializer(many=True, read_only=True)
+    price = serializers.SerializerMethodField()
+    old_price = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
 
     class Meta:
         model = JewelryVariant
@@ -2377,6 +2509,77 @@ class JewelryVariantSerializer(serializers.ModelSerializer):
             'is_active', 'sort_order',
         ]
         read_only_fields = ['id', 'slug', 'sort_order']
+
+    def _get_preferred_currency(self, request):
+        default = 'RUB'
+        if not request:
+            return default
+        preferred = request.headers.get('X-Currency') or request.query_params.get('currency')
+        if preferred:
+            return preferred.upper()
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+             uc = getattr(request.user, 'currency', None)
+             if uc: return uc.upper()
+        lang = getattr(request, 'LANGUAGE_CODE', None)
+        return {'en': 'USD', 'ru': 'RUB'}.get(lang, default)
+
+    def get_price(self, obj):
+        if obj.price is None:
+            return None
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        from_currency = (obj.currency or 'RUB').upper()
+        
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(str(obj.price)),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return price_with_margin
+        except Exception:
+            pass
+        return obj.price
+
+    def get_old_price(self, obj):
+        if obj.old_price is None:
+            return None
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        from_currency = (obj.currency or 'RUB').upper()
+        
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(str(obj.old_price)),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return price_with_margin
+        except Exception:
+            pass
+        return obj.old_price
+
+    def get_currency(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        if obj.price is not None:
+             from_currency = (obj.currency or 'RUB').upper()
+             try:
+                from .utils.currency_converter import currency_converter
+                currency_converter.convert_price(
+                    Decimal(str(obj.price)),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return preferred_currency
+             except Exception:
+                 pass
+        return obj.currency or 'RUB'
 
     def get_images(self, obj):
         gallery = getattr(obj, "images", None)
@@ -2577,12 +2780,38 @@ class JewelryProductSerializer(serializers.ModelSerializer):
 
     def get_images(self, obj):
         variant = self._get_active_variant(obj)
-        if variant:
-            return JewelryVariantImageSerializer(variant.images.all().order_by("sort_order"), many=True).data
         gallery = getattr(obj, "images", None)
-        if not gallery:
-            return []
-        return JewelryProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+        product_images = []
+        if gallery:
+            product_images = JewelryProductImageSerializer(
+                gallery.all().order_by("sort_order"),
+                many=True,
+                context=self.context
+            ).data
+        variant_images = []
+        if variant:
+            variant_images = JewelryVariantImageSerializer(
+                variant.images.all().order_by("sort_order"),
+                many=True,
+                context=self.context
+            ).data
+        if not product_images:
+            return variant_images
+        if not variant_images:
+            return product_images
+        seen = set()
+        merged = []
+        for item in product_images:
+            url = item.get("image_url")
+            if url:
+                seen.add(url)
+            merged.append(item)
+        for item in variant_images:
+            url = item.get("image_url")
+            if url and url in seen:
+                continue
+            merged.append(item)
+        return merged
 
     def _get_default_variant(self, obj):
         variants = getattr(obj, "variants", None)
@@ -2604,7 +2833,7 @@ class JewelryProductSerializer(serializers.ModelSerializer):
         if not variants:
             return []
         qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
-        return JewelryVariantSerializer(qs, many=True).data
+        return JewelryVariantSerializer(qs, many=True, context=self.context).data
 
     def get_default_variant_slug(self, obj):
         variant = self._get_default_variant(obj)

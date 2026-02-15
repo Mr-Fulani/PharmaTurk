@@ -44,6 +44,14 @@ export function getSiteOrigin(): string {
   return url.replace(/\/+$/, '')
 }
 
+export function buildProductUrl(productType: string, slug: string): string {
+  const normalizedType = (productType || 'medicines').toString().trim().replace(/_/g, '-')
+  const normalizedSlug = (slug || '').toString().trim().replace(/_/g, '-')
+  const prefix = `${normalizedType}-`
+  const cleanedSlug = normalizedSlug.startsWith(prefix) ? normalizedSlug.slice(prefix.length) : normalizedSlug
+  return `/product/${normalizedType}/${cleanedSlug || normalizedSlug}`
+}
+
 /**
  * Базовый URL для медиа (изображения, видео).
  * ngrok/production: тот же origin (rewrites проксируют /media)

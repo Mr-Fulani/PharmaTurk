@@ -3,6 +3,7 @@ import { useTranslation } from 'next-i18next'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../lib/media'
+import { buildProductUrl } from '../lib/urls'
 
 interface ProductCardProps {
   id: number
@@ -153,7 +154,7 @@ export default function ProductCard({
           </div>
           <div className="flex items-center gap-3">
             <Link
-              href={href || `/product/${productType}/${slug}`}
+              href={href || buildProductUrl(productType, slug)}
               className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-violet-50 hover:border-violet-300 hover:text-violet-700 transition-colors"
             >
               {t('product_details', 'Подробнее')}
@@ -285,7 +286,7 @@ export default function ProductCard({
       )}
       <div className="mt-3 flex items-center gap-2">
         <Link
-          href={href || `/product/${productType}/${slug}`}
+          href={href || buildProductUrl(productType, slug)}
           className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-violet-50 hover:border-violet-300 hover:text-violet-700 transition-colors"
         >
           {t('product_details', 'Подробнее')}

@@ -2551,7 +2551,12 @@ class JewelryVariant(models.Model):
         ]
 
     def __str__(self):
-        base = self.name or self.product.name
+        base = self.name
+        if not base:
+            try:
+                base = self.product.name
+            except Exception:
+                base = self.slug or f"Variant {self.pk}"
         attrs = f"{self.color or ''} {self.material or ''}".strip()
         return f"{base} ({attrs})" if attrs else base
 
@@ -3796,7 +3801,7 @@ def create_book_variant_price(sender, instance, created, **kwargs):
 @receiver(post_delete, sender=BookVariant)
 def cleanup_variant_prices(sender, instance, **kwargs):
     """Удалить цену варианта при удалении самого варианта"""
-    from ..currency_models import ProductVariantPrice
+    from .currency_models import ProductVariantPrice
     from django.contrib.contenttypes.models import ContentType
     
     try:

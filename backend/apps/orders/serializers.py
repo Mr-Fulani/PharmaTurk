@@ -16,6 +16,8 @@ from apps.catalog.models import (
     ClothingVariant,
     ShoeVariant,
     FurnitureVariant,
+    JewelryVariant,
+    BookVariant,
 )
 from apps.catalog.utils.currency_converter import currency_converter
 from apps.catalog.currency_models import ProductVariantPrice
@@ -27,6 +29,8 @@ VARIANT_MODEL_MAP = {
     'shoes': ShoeVariant,
     'electronics': ElectronicsProduct,
     'furniture': FurnitureVariant,
+    'jewelry': JewelryVariant,
+    'books': BookVariant,
 }
 
 

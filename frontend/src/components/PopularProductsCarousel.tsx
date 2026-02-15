@@ -5,6 +5,7 @@ import api from '../lib/api'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../lib/media'
+import { buildProductUrl } from '../lib/urls'
 
 interface Product {
   id: number
@@ -314,7 +315,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                   className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden group"
                 >
                 <Link
-                  href={`/product/${product.product_type || 'medicines'}/${product.slug}`}
+                  href={buildProductUrl(product.product_type || 'medicines', product.slug)}
                   className="relative block w-full h-80 overflow-hidden bg-gray-100"
                 >
                   {product.video_url && isVideoUrl(product.video_url) ? (
@@ -372,7 +373,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                     <div className="text-xs text-gray-500 mb-1">{product.brand.name}</div>
                   )}
                   <Link
-                    href={`/product/${product.product_type || 'medicines'}/${product.slug}`}
+                    href={buildProductUrl(product.product_type || 'medicines', product.slug)}
                     className="block mb-2"
                   >
                   <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 hover-text-warm transition-colors">
