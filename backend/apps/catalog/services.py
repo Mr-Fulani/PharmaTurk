@@ -48,6 +48,35 @@ class CatalogNormalizer:
             return media_type
         return media_type
 
+    def _is_books_category(self, category: Category | None) -> bool:
+        if not category:
+            return False
+        if (category.slug or "").lower() == "books":
+            return True
+        parent = getattr(category, "parent", None)
+        if parent and (parent.slug or "").lower() == "books":
+            return True
+        return False
+
+    def _is_books_payload(self, category_value: str | None, attrs: Dict[str, Any]) -> bool:
+        raw = (category_value or "").strip().lower()
+        if raw in {"книги", "книга", "books", "book"}:
+            return True
+        if not isinstance(attrs, dict):
+            return False
+        return any(
+            bool(attrs.get(key))
+            for key in (
+                "isbn",
+                "author",
+                "publisher",
+                "pages",
+                "language",
+                "cover_type",
+                "format_type",
+            )
+        )
+
     def _sync_product_fields_from_metadata(self, product: Product, metadata: Dict[str, Any]) -> None:
         attrs = (metadata or {}).get("attributes") or {}
         if not isinstance(attrs, dict):
@@ -338,6 +367,25 @@ class CatalogNormalizer:
                 if category:
                     product.category = category
                     product.save()
+
+        attrs = {}
+        if hasattr(product_data, "metadata") and product_data.metadata:
+            attrs = (product_data.metadata or {}).get("attributes") or {}
+
+        if self._is_books_payload(product_data.category, attrs):
+            books_category = Category.objects.filter(slug="books").first()
+            if not books_category:
+                books_category = Category.objects.create(
+                    name="Книги",
+                    slug="books",
+                    description="Книги",
+                    is_active=True,
+                )
+            if not self._is_books_category(product.category):
+                product.category = books_category
+            if product.product_type != "books":
+                product.product_type = "books"
+            product.save()
         
         # Обрабатываем бренд
         if product_data.brand:

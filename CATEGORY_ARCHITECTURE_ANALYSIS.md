@@ -225,3 +225,329 @@ python manage.py seed_root_categories
 | Хардкод в разных местах | presets были разбросаны по orders, scrapers, catalog |
 
 **Решение**: модуль `constants.py` + команда `seed_catalog_data` + рефакторинг `orders/serializers.py`.
+
+---
+
+## Категория «Украшения» — структура и поля для парсинга
+
+### 1. Корневая категория и подкатегории
+
+- **Тип категории**: `jewelry`
+- **Корневая категория**: slug `jewelry`, URL `/categories/jewelry`
+- **Подкатегории (slug)**:
+  - `rings` (Кольца)
+  - `chains` (Цепочки)
+  - `bracelets` (Браслеты)
+  - `earrings` (Серьги)
+  - `pendants` (Подвески)
+  - `wedding` (Обручальные)
+  - `women` (Женские)
+  - `men` (Мужские)
+
+### 2. API эндпоинты
+
+- **Список товаров**: `/api/catalog/jewelry/products`
+- **Получение одного товара по slug**: `/api/catalog/jewelry/products/{slug}`
+- **Бренды для фильтров**: `/api/catalog/brands?product_type=jewelry&primary_category_slug=jewelry`
+- **Категории**: `/api/catalog/categories?slug=jewelry&include_children=true`
+
+### 3. Модель данных (backend)
+
+**JewelryProduct** — основной товар:
+- `name` — название
+- `slug` — уникальный slug
+- `description` — описание
+- `category` — ссылка на Category (подкатегория)
+- `brand` — ссылка на Brand (может быть пустой)
+- `gender` — `women | men | kids | unisex` (из `Category.GENDER_CHOICES`)
+- `price`, `old_price`, `currency`
+- `jewelry_type` — `ring | bracelet | necklace | earrings | pendant`
+- `material` — материал изделия
+- `metal_purity` — проба металла
+- `stone_type` — тип камня
+- `carat_weight` — вес камней
+- `is_available`, `stock_quantity`
+- `main_image`, `main_image_file`
+- `video_url`, `main_video_file`
+- `external_id`, `external_url`, `external_data`
+- `is_active`, `is_featured`
+- `created_at`, `updated_at`
+
+**JewelryProductTranslation** — переводы товара:
+- `locale` (`ru`, `en`)
+- `name`
+- `description`
+
+**JewelryProductImage** — галерея товара:
+- `image_url` или `image_file`
+- `alt_text`
+- `sort_order`
+- `is_main`
+
+**JewelryVariant** — варианты (цвет/материал/размеры):
+- `name`, `name_en`
+- `slug`
+- `color`, `material`, `gender`
+- `size` (устаревшее поле, лучше использовать `sizes`)
+- `sku`, `barcode`, `gtin`, `mpn`
+- `price`, `old_price`, `currency`
+- `is_available`, `stock_quantity`
+- `main_image`, `main_image_file`
+- `external_id`, `external_url`, `external_data`
+- `is_active`, `sort_order`
+
+**JewelryVariantSize** — размеры внутри варианта:
+- `size_value`
+- `size_unit` (`mm`, `cm`, `standard`)
+- `size_type` (`ring_size`, `bracelet_length`, `necklace_length`, `standard`)
+- `size_display`
+- `is_available`, `stock_quantity`, `sort_order`
+
+**JewelryVariantImage** — галерея варианта:
+- `image_url` или `image_file`
+- `alt_text`
+- `sort_order`
+- `is_main`
+
+### 4. Фильтры и параметры запроса
+
+`/api/catalog/jewelry/products` поддерживает:
+- `category_id` (массив ID)
+- `category_slug` или `subcategory_slug` (slug или список через запятую)
+- `brand_id` (поддержка массива, включая `other`)
+- `gender` или `jewelry_gender` (например `women,men`)
+- `jewelry_type` (например `ring,bracelet`)
+- `material` (например `gold,silver`)
+- `search` (по имени)
+- `price_min`/`price_max` или `min_price`/`max_price`
+- `ordering` (`name_asc`, `name_desc`, `price_asc`, `price_desc`, `newest`, `popular`)
+
+### 5. Маппинг полей для парсинга
+
+**Обязательный минимум:**
+- Название → `JewelryProduct.name`
+- Ссылка на товар → `JewelryProduct.external_url`
+- Внешний ID → `JewelryProduct.external_id`
+- Цена → `JewelryProduct.price` + `currency`
+- Главное изображение → `JewelryProduct.main_image`
+
+**Желательно парсить:**
+- Описание → `JewelryProduct.description`
+- Бренд → `Brand` (по имени/slug) или оставить пустым
+- Подкатегория → `Category.slug` (rings, chains, bracelets, earrings, pendants, wedding)
+- Тип украшения → `JewelryProduct.jewelry_type`
+- Материал → `JewelryProduct.material`
+- Проба металла → `JewelryProduct.metal_purity`
+- Тип камня → `JewelryProduct.stone_type`
+- Вес камней → `JewelryProduct.carat_weight`
+- Пол → `JewelryProduct.gender`
+- Наличие → `is_available`, `stock_quantity`
+- Галерея → `JewelryProductImage[]`
+- Видео → `video_url`
+
+**Варианты (если есть опции/размеры/цвета):**
+- Название варианта → `JewelryVariant.name` / `name_en`
+- Цвет → `JewelryVariant.color`
+- Материал → `JewelryVariant.material`
+- Цена/старая цена → `JewelryVariant.price` / `old_price`
+- Наличие → `JewelryVariant.is_available`, `stock_quantity`
+- Размеры → `JewelryVariantSize[]`
+- Изображения варианта → `JewelryVariantImage[]`
+
+**Сырые данные парсинга:**
+- Любые дополнительные поля сохранять в `external_data` (JSON) для повторной обработки.
+
+### 6. Правила категорий и брендов
+
+- Бренд **Other/Другое** трактуется как товары без бренда.
+- Если бренд неизвестен — оставлять `brand = null`, а не создавать дубли.
+- Для фильтров брендов использовать `product_type=jewelry`.
+
+---
+
+## Сравнение корневых категорий с логикой «Украшения»
+
+### 1. Карта корневых категорий и текущая модель/эндпоинты
+
+**Есть отдельные модели и отдельные эндпоинты (приближены к «Украшениям»):**
+- **Одежда** — `ClothingProduct`, `/api/catalog/clothing/products`
+- **Обувь** — `ShoeProduct`, `/api/catalog/shoes/products`
+- **Электроника** — `ElectronicsProduct`, `/api/catalog/electronics/products`
+- **Украшения** — `JewelryProduct`, `/api/catalog/jewelry/products`
+- **Мебель** — `FurnitureProduct`, `/api/catalog/furniture/products` (в бекенде есть, фронт не использует)
+
+**Используют общую модель Product и общий эндпоинт:**
+- Медицина, БАДы, Медтехника
+- Посуда, Аксессуары
+- Нижнее бельё, Головные уборы
+- Книги, Парфюмерия
+- Услуги, Спорттовары, Автозапчасти, Исламская одежда, Благовония
+
+### 2. Сопоставление «работоспособности» с «Украшения»
+
+**Полная или близкая совместимость:**
+- **Одежда/Обувь**: есть варианты, размеры, изображения, перевод, фильтры в API и фронте
+- **Электроника**: отдельная модель и API, но нет вариантов и размеров
+
+**Частичная совместимость:**
+- **Мебель**: отдельная модель и API на бекенде, но фронт по умолчанию ходит в общий `/api/catalog/products`, из‑за чего товары мебели могут не отображаться (если они хранятся в `FurnitureProduct`)
+
+**Низкая совместимость (как у «Украшения»):**
+- **Underwear/Headwear/Accessories/Tableware/Perfumery/Books/…** — нет отдельной модели, нет вариантов и размеров, фильтрация в основном общая
+
+### 3. Ключевые несовпадения логики
+
+- **Front‑end routing API**: `getApiForCategory()` не включает `furniture`, поэтому мебель не использует свой API.  
+  [api.ts](file:///Users/user/PharmaTurk/frontend/src/lib/api.ts#L176-L221), [categories/[slug].tsx](file:///Users/user/PharmaTurk/frontend/src/pages/categories/[slug].tsx#L214-L229)
+- **Подкатегории в сайдбаре**: отдельные секции есть только для `medicines`, `clothing`, `books`, `perfumery`.  
+  [categories/[slug].tsx](file:///Users/user/PharmaTurk/frontend/src/pages/categories/[slug].tsx#L638-L759)
+- **Счётчики брендов**: `BrandSerializer` считает `products_count` только по `Product`, а для отдельных моделей (clothing/shoes/jewelry/…) счётчик не отражает реальное количество.  
+  [serializers.py](file:///Users/user/PharmaTurk/backend/apps/catalog/serializers.py#L225-L247)
+
+---
+
+## План рекомендаций по выравниванию категорий до уровня «Украшения»
+
+### Шаг 1. Выравнять фронт‑энд маршрутизацию по API
+
+- Добавить `furnitureApi` и включить `furniture` в `getApiForCategory()`.
+- Уточнить `resolveProductsEndpoint()` для мебели, чтобы SSR ходил в `/api/catalog/furniture/products`.
+- При необходимости — добавить API для `perfumery`, `books`, `underwear`, `headwear`, если решим выводить их из общей модели в отдельные.
+
+### Шаг 2. Выравнять работу брендов и их счётчиков
+
+- Сделать `BrandSerializer.products_count` агрегированным по тем же моделям, что и `CategorySerializer`.
+- Либо вернуть в API `product_count` (aliased), чтобы фронт не зависел от конкретного поля.
+- Проверить фильтрацию брендов по `product_type` для всех корневых категорий.
+
+### Шаг 3. Определить категории, которым нужны варианты/размеры/цвета
+
+**Рекомендации для выноса в отдельные модели (как у одежды/обуви/украшений):**
+- **Underwear** — размеры и варианты цветов практически обязательны
+- **Headwear** — размеры/обхват, варианты материалов и цветов
+- **Accessories** — часто требует вариантов (цвет/материал/размер), особенно ремни/сумки
+- **Tableware** — варианты по материалу/цвету/объёму, наборы
+- **Perfumery** — варианты по объёму, концентрации (EDT/EDP/Parfum)
+- **Books** — варианты по формату (hardcover/paperback/ebook), языку
+
+### Шаг 4. Нормализовать фильтры и подкатегории
+
+- Ввести единый формат: `material`, `size`, `color`, `gender`, `type` для категорий с вариантами.
+- Для категорий с кастомными фильтрами (headwear/clothing/shoes) перенести часть логики из фронта в API.
+- Обновить структуру подкатегорий в сайдбаре для новых корневых категорий.
+
+### Шаг 5. Проработка миграций данных
+
+- Если категория переводится в отдельную модель — добавить миграцию переносов (`Product → NewModel`).
+- Для парсинга добавить сохранение «сырого» JSON в `external_data`.
+
+---
+
+## Детализация по корневым категориям (готовность и разрывы)
+
+### 1. Категории с отдельными моделями и вариативностью
+
+**Одежда**  
+Готовность: высокая.  
+Есть модели вариантов/размеров/изображений и фильтры.  
+См. [models.py](file:///Users/user/PharmaTurk/backend/apps/catalog/models.py#L1661-L1535), [views.py](file:///Users/user/PharmaTurk/backend/apps/catalog/views.py#L923-L1065)
+
+**Обувь**  
+Готовность: высокая.  
+Есть варианты/размеры/изображения, фильтры по размеру/цвету/материалу.  
+См. [models.py](file:///Users/user/PharmaTurk/backend/apps/catalog/models.py#L1898-L2260), [views.py](file:///Users/user/PharmaTurk/backend/apps/catalog/views.py#L1076-L1260)
+
+**Украшения**  
+Готовность: высокая.  
+Есть варианты/размеры/изображения, расширенные поля.  
+См. [models.py](file:///Users/user/PharmaTurk/backend/apps/catalog/models.py#L2296-L2736), [views.py](file:///Users/user/PharmaTurk/backend/apps/catalog/views.py#L1401-L1488)
+
+### 2. Категории с отдельными моделями, но без вариативности
+
+**Электроника**  
+Готовность: средняя.  
+Отдельная модель и API, но нет вариантов/цветов/размеров.  
+См. [models.py](file:///Users/user/PharmaTurk/backend/apps/catalog/models.py#L2741-L3061), [views.py](file:///Users/user/PharmaTurk/backend/apps/catalog/views.py#L1260-L1388)
+
+**Мебель**  
+Готовность: средняя.  
+Есть отдельная модель и API, но фронт запрашивает общий `/api/catalog/products`, из‑за чего товары мебели могут не появляться.  
+См. [api.ts](file:///Users/user/PharmaTurk/frontend/src/lib/api.ts#L176-L221), [categories/[slug].tsx](file:///Users/user/PharmaTurk/frontend/src/pages/categories/[slug].tsx#L214-L229)
+
+### 3. Категории на общей модели Product
+
+**Медицина/БАДы/Медтехника**  
+Готовность: средняя.  
+Общий продукт, есть фильтры по цене/наличию/атрибутам, но нет вариантов и размеров.  
+См. [views.py](file:///Users/user/PharmaTurk/backend/apps/catalog/views.py#L551-L641)
+
+**Books/Perfumery/Underwear/Headwear/Accessories/Tableware/Services/Sports/Auto‑parts/Islamic‑clothing/Incense**  
+Готовность: низкая.  
+Общий продукт без вариантов, логика фильтров в основном фронтовая/ограниченная.
+
+---
+
+## Риски и несоответствия, влияющие на работоспособность
+
+- **Мебель**: нет использования отдельного API на фронте (список/деталь).  
+  [api.ts](file:///Users/user/PharmaTurk/frontend/src/lib/api.ts#L176-L221), [product/[[...slug]].tsx](file:///Users/user/PharmaTurk/frontend/src/pages/product/[[...slug]].tsx#L35-L57)
+- **Бренды для “нестандартных” типов**: `brandProductTypeMap` не содержит `sports`, `auto-parts`, `islamic-clothing`, `incense`, поэтому запросы брендов идут как `product_type=medicines`.  
+  [categories/[slug].tsx](file:///Users/user/PharmaTurk/frontend/src/pages/categories/[slug].tsx#L107-L123)
+- **Несовпадение slug ↔ product_type**: в бекенде `auto_parts`, `islamic_clothing`, в URL используются `auto-parts`, `islamic-clothing`. Нужна нормализация на API либо mapping на фронте.
+- **Счётчики брендов**: `BrandSerializer.products_count` учитывает только `Product`, не считает отдельные модели (clothing/shoes/jewelry/etc).
+
+---
+
+## Категории, которым нужны отдельные модели с вариантами
+
+### 1. Underwear (нижнее бельё)
+
+**Причина**: размеры, чашки, цвета, тип ткани.  
+**Рекомендуемые поля варианта**:
+- `size`, `cup`, `band_size`, `color`, `material`, `price`, `stock_quantity`
+
+### 2. Headwear (головные уборы)
+
+**Причина**: размеры, обхват головы, сезонность, материалы.  
+**Рекомендуемые поля варианта**:
+- `size`, `head_circumference`, `season`, `material`, `color`
+
+### 3. Accessories (аксессуары)
+
+**Причина**: часто разные материалы/цвета/размеры (ремни, сумки).  
+**Рекомендуемые поля варианта**:
+- `size`, `material`, `color`, `hardware_color`, `strap_length`
+
+### 4. Tableware (посуда)
+
+**Причина**: объём, материал, наборы, количество предметов.  
+**Рекомендуемые поля варианта**:
+- `volume_ml`, `material`, `color`, `set_size`, `diameter`, `height`
+
+### 5. Perfumery (парфюмерия)
+
+**Причина**: объём, концентрация, пол/тип аромата.  
+**Рекомендуемые поля варианта**:
+- `volume_ml`, `concentration` (EDT/EDP/Parfum), `gender`, `note_profile`
+
+### 6. Books (книги)
+
+**Причина**: формат, язык, переплёт, ISBN.  
+**Рекомендуемые поля варианта**:
+- `format`, `language`, `binding`, `pages`, `isbn`
+
+### 7. Sports / Auto‑parts / Islamic‑clothing / Incense
+
+**Sports**: размеры/уровни/наборы.  
+**Auto‑parts**: совместимость (марка/модель/год/двигатель).  
+**Islamic‑clothing**: как clothing (размер/цвет/материал).  
+**Incense**: форма (палочки/конусы/саше), объём/вес, аромат.
+
+---
+
+## Рекомендуемые следующие изменения (кратко)
+
+1. Добавить `furniture` в фронтовые API роутеры и детали товаров.
+2. Нормализовать `product_type` slug↔underscore для auto‑parts/islamic‑clothing.
+3. Расширить `brandProductTypeMap` и `BrandViewSet` для всех корневых категорий.
+4. Определить список категорий, которые переводятся на отдельные модели, и подготовить миграции.

@@ -94,6 +94,9 @@ interface CategoryPageProps {
   categories: Category[]
   sidebarCategories: Category[]
   brands: Brand[]
+  bookAuthors?: Array<{ id: number; name: string }>
+  bookPublishers?: string[]
+  bookLanguages?: string[]
   subcategories?: Category[]
   categoryName: string
   categoryDescription?: string
@@ -173,7 +176,6 @@ const SHOE_GENDER_OPTIONS = [
 
 const filterBrandsByProducts = (
   brands: any[],
-  products: any[],
   categoryType: CategoryTypeKey,
   routeSlug?: string
 ) => {
@@ -282,6 +284,9 @@ const areFiltersEqual = (left: FilterState, right: FilterState) =>
   areFilterArraysEqual(left.brandSlugs, right.brandSlugs) &&
   areFilterArraysEqual(left.subcategories, right.subcategories) &&
   areFilterArraysEqual(left.subcategorySlugs, right.subcategorySlugs) &&
+  areFilterArraysEqual(left.authorIds || [], right.authorIds || []) &&
+  areFilterArraysEqual(left.publishers || [], right.publishers || []) &&
+  areFilterArraysEqual(left.languages || [], right.languages || []) &&
   areFilterArraysEqual(left.shoeTypes || [], right.shoeTypes || []) &&
   areFilterArraysEqual(left.clothingItems || [], right.clothingItems || []) &&
   areFilterArraysEqual(left.jewelryMaterials || [], right.jewelryMaterials || []) &&
@@ -925,6 +930,9 @@ export default function CategoryPage({
   categories,
   sidebarCategories,
   brands,
+  bookAuthors = [],
+  bookPublishers = [],
+  bookLanguages = [],
   subcategories = [],
   categoryName,
   categoryDescription,
@@ -1081,7 +1089,7 @@ export default function CategoryPage({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [brandOptions, setBrandOptions] = useState<Brand[]>(brands || [])
   useEffect(() => {
-    if (brands.length > 0) {
+    if (brands.length > 0 && categoryType !== 'books') {
       setBrandOptions(brands)
     }
   }, [brands])
@@ -1092,6 +1100,9 @@ export default function CategoryPage({
     brandSlugs: [],
     subcategories: [],
     subcategorySlugs: [],
+    authorIds: [],
+    publishers: [],
+    languages: [],
     priceMin: undefined,
     priceMax: undefined,
     inStock: false,
@@ -1380,6 +1391,17 @@ export default function CategoryPage({
         if (filters.sortBy) {
           params.ordering = filters.sortBy
         }
+        if (categoryType === 'books') {
+          if (filters.authorIds && filters.authorIds.length > 0) {
+            params.author_id = filters.authorIds
+          }
+          if (filters.publishers && filters.publishers.length > 0) {
+            params.publisher = filters.publishers.join(',')
+          }
+          if (filters.languages && filters.languages.length > 0) {
+            params.language = filters.languages.join(',')
+          }
+        }
 
         const api = getApiForCategory(categoryType)
         
@@ -1440,6 +1462,9 @@ export default function CategoryPage({
     filters.brandSlugs,
     filters.subcategories,
     filters.subcategorySlugs,
+    filters.authorIds,
+    filters.publishers,
+    filters.languages,
     filters.priceMin,
     filters.priceMax,
     filters.inStock,
@@ -1692,13 +1717,16 @@ export default function CategoryPage({
             <CategorySidebar
               key={routeSlug || categoryType}
               categories={categoryGroups.length > 0 ? [] : sidebarCategoriesData}
-              brands={brandOptions}
+              brands={categoryType === 'books' ? [] : brandOptions}
               subcategories={displaySubcategories}
               categoryGroups={categoryGroups}
               onFilterChange={handleFilterChange}
               isOpen={sidebarOpen}
               onToggle={() => setSidebarOpen(!sidebarOpen)}
               initialFilters={filters}
+              bookAuthors={bookAuthors}
+              bookPublishers={bookPublishers}
+              bookLanguages={bookLanguages}
               showSubcategories={displaySubcategories.length > 0}
               showCategories={!isRootCategoryPage}
               categoryType={categoryType}
@@ -1891,24 +1919,26 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     // --- Бренды ---
     let brands: any[] = []
-    try {
-      const normalizedCategoryType = (categoryTypeFromApi || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
-      const normalizedRouteSlug = (routeSlug || '').toString().toLowerCase().replace(/_/g, '-')
-      const isTypedCategory = ['shoes', 'clothing', 'electronics', 'jewelry'].includes(brandProductType || '')
-      const brandPrimarySlug = (brandProductType === 'perfumery')
-        ? 'perfumery'
-        : (isTypedCategory ? brandProductType : (normalizedCategoryType || normalizedRouteSlug || undefined))
-      const brandParams: any = { page_size: 500 }
-      if (brandPrimarySlug) {
-        brandParams.primary_category_slug = brandPrimarySlug
+    if (categoryType !== 'books') {
+      try {
+        const normalizedCategoryType = (categoryTypeFromApi || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
+        const normalizedRouteSlug = (routeSlug || '').toString().toLowerCase().replace(/_/g, '-')
+        const isTypedCategory = ['shoes', 'clothing', 'electronics', 'jewelry'].includes(brandProductType || '')
+        const brandPrimarySlug = (brandProductType === 'perfumery')
+          ? 'perfumery'
+          : (isTypedCategory ? brandProductType : (normalizedCategoryType || normalizedRouteSlug || undefined))
+        const brandParams: any = { page_size: 500 }
+        if (brandPrimarySlug) {
+          brandParams.primary_category_slug = brandPrimarySlug
+        }
+        // Всегда добавляем product_type для более точной фильтрации
+        brandParams.product_type = brandProductType
+        
+        const brandRes = await axios.get(getInternalApiUrl('catalog/brands'), { params: brandParams })
+        brands = ensureOtherBrand(brandRes.data.results || [])
+      } catch {
+        brands = []
       }
-      // Всегда добавляем product_type для более точной фильтрации
-      brandParams.product_type = brandProductType
-      
-      const brandRes = await axios.get(getInternalApiUrl('catalog/brands'), { params: brandParams })
-      brands = ensureOtherBrand(brandRes.data.results || [])
-    } catch {
-      brands = []
     }
 
     // --- Товары: всегда общий эндпоинт, чтобы не получать 404 для кастомных категорий ---
@@ -1952,6 +1982,27 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     const products = Array.isArray(productsData) ? productsData : (productsData.results || [])
     const totalCount = productsData.count || products.length
+
+    // --- Фильтры книг ---
+    let bookAuthors: Array<{ id: number; name: string }> = []
+    let bookPublishers: string[] = []
+    let bookLanguages: string[] = []
+    if (categoryType === 'books') {
+      try {
+        const bookParams: any = {}
+        if (routeSlug) {
+          bookParams.category_slug = routeSlug
+        }
+        const bookRes = await axios.get(getInternalApiUrl('catalog/products/book-filters'), { params: bookParams })
+        bookAuthors = bookRes.data?.authors || []
+        bookPublishers = bookRes.data?.publishers || []
+        bookLanguages = bookRes.data?.languages || []
+      } catch {
+        bookAuthors = []
+        bookPublishers = []
+        bookLanguages = []
+      }
+    }
 
     // --- Категории: фильтрованные на бэке ---
     let categories: any[] = []
@@ -2056,7 +2107,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const parentCat = allCategoriesForBrands.find((c: any) => c.id === mainCat.parent)
       return (parentCat?.slug || '').toLowerCase() === 'perfumery' ? 'perfumery' : categoryType
     })() : categoryType
-    brands = filterBrandsByProducts(brands, products, effectiveCategoryType, routeSlug)
+    brands = filterBrandsByProducts(brands, effectiveCategoryType, routeSlug)
 
     // Локализация названий категорий
     const getCategoryNames = (locale: string = 'ru'): Record<string, { name: string; description: string }> => {
@@ -2113,6 +2164,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         categories,
         sidebarCategories,
         brands,
+        bookAuthors,
+        bookPublishers,
+        bookLanguages,
         subcategories,
         categoryName: categoryInfo.name,
         categoryDescription: categoryInfo.description,

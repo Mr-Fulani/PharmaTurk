@@ -239,6 +239,7 @@ class ScraperIntegrationService:
             .order_by("priority", "id")
         )
         if not mappings.exists():
+            self._infer_books_category(scraped_product)
             return
 
         category_value = (scraped_product.category or "").strip()
@@ -260,11 +261,38 @@ class ScraperIntegrationService:
             mapping = mappings.first()
 
         if not mapping:
+            self._infer_books_category(scraped_product)
             return
 
         internal_category = mapping.internal_category
         if internal_category:
             scraped_product.category = internal_category.slug or internal_category.name
+        self._infer_books_category(scraped_product)
+
+    def _infer_books_category(self, scraped_product: ScrapedProduct) -> None:
+        attrs = scraped_product.attributes or {}
+        if not isinstance(attrs, dict):
+            attrs = {}
+
+        category_raw = (scraped_product.category or "").strip().lower()
+        is_books_keyword = category_raw in {"книги", "книга", "books", "book"}
+        is_medicines_keyword = category_raw in {"медицина", "medicines", "medicine", "supplements", "supplement", "medical-equipment", "medical_equipment"}
+
+        has_book_attrs = any(
+            bool(attrs.get(key))
+            for key in (
+                "isbn",
+                "author",
+                "publisher",
+                "pages",
+                "language",
+                "cover_type",
+                "format_type",
+            )
+        )
+
+        if (not scraped_product.category and has_book_attrs) or is_books_keyword or (is_medicines_keyword and has_book_attrs):
+            scraped_product.category = "books"
 
     def _get_first_image_url(self, media_urls: List[str]) -> Optional[str]:
         for media_url in media_urls or []:

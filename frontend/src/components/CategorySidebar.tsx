@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { getLocalizedCategoryName, getLocalizedBrandName, CategoryTranslation, BrandTranslation } from '../lib/i18n'
@@ -27,6 +27,9 @@ export interface FilterState {
   brandSlugs: string[]
   subcategories: number[]
   subcategorySlugs: string[]
+  authorIds?: number[]
+  publishers?: string[]
+  languages?: string[]
   priceMin?: number
   priceMax?: number
   inStock: boolean
@@ -58,10 +61,18 @@ interface Brand {
   translations?: BrandTranslation[]
 }
 
+interface BookAuthorOption {
+  id: number
+  name: string
+}
+
 interface CategorySidebarProps {
   categories?: Category[]
   brands?: Brand[]
   subcategories?: Category[]
+  bookAuthors?: BookAuthorOption[]
+  bookPublishers?: string[]
+  bookLanguages?: string[]
   categoryGroups?: SidebarTreeSection[]
   brandGroups?: SidebarTreeSection[]
   onFilterChange?: (filters: FilterState) => void
@@ -108,6 +119,9 @@ export default function CategorySidebar({
   categories = [],
   brands = [],
   subcategories = [],
+  bookAuthors = [],
+  bookPublishers = [],
+  bookLanguages = [],
   categoryGroups = [],
   brandGroups = [],
   onFilterChange,
@@ -127,6 +141,9 @@ export default function CategorySidebar({
     brandSlugs: [],
     subcategories: [],
     subcategorySlugs: [],
+    authorIds: [],
+    publishers: [],
+    languages: [],
     priceMin: undefined,
     priceMax: undefined,
     inStock: false,
@@ -154,6 +171,9 @@ export default function CategorySidebar({
     initialFilters?.brands?.join(','),
     initialFilters?.categories?.join(','),
     initialFilters?.subcategories?.join(','),
+    initialFilters?.authorIds?.join(','),
+    initialFilters?.publishers?.join(','),
+    initialFilters?.languages?.join(','),
     initialFilters?.inStock,
     initialFilters?.sortBy,
     initialFilters?.priceMin,
@@ -169,7 +189,8 @@ export default function CategorySidebar({
     brands: true,
     subcategories: true,
     price: true,
-    filters: true
+    filters: true,
+    bookFilters: true
   })
   const [expandedTreeItems, setExpandedTreeItems] = useState<Record<string, boolean>>({})
 
@@ -185,6 +206,9 @@ export default function CategorySidebar({
     filters.brandSlugs.join(','),
     filters.categorySlugs.join(','),
     filters.subcategorySlugs.join(','),
+    filters.authorIds?.join(','),
+    filters.publishers?.join(','),
+    filters.languages?.join(','),
     filters.priceMin,
     filters.priceMax,
     filters.inStock,
@@ -221,6 +245,27 @@ export default function CategorySidebar({
       ...prev,
       subcategories: toggleArrayValue(prev.subcategories, subcategoryId),
       subcategorySlugs: slug ? toggleArrayValue(prev.subcategorySlugs, slug) : prev.subcategorySlugs
+    }))
+  }
+
+  const toggleAuthorFilter = (authorId: number) => {
+    updateFilters((prev) => ({
+      ...prev,
+      authorIds: toggleArrayValue(prev.authorIds || [], authorId)
+    }))
+  }
+
+  const togglePublisherFilter = (publisher: string) => {
+    updateFilters((prev) => ({
+      ...prev,
+      publishers: toggleArrayValue(prev.publishers || [], publisher)
+    }))
+  }
+
+  const toggleLanguageFilter = (language: string) => {
+    updateFilters((prev) => ({
+      ...prev,
+      languages: toggleArrayValue(prev.languages || [], language)
     }))
   }
 
@@ -366,7 +411,10 @@ export default function CategorySidebar({
     (filters.clothingItems && filters.clothingItems.length > 0) ||
     (filters.jewelryMaterials && filters.jewelryMaterials.length > 0) ||
     (filters.jewelryGender && filters.jewelryGender.length > 0) ||
-    (filters.headwearTypes && filters.headwearTypes.length > 0)
+    (filters.headwearTypes && filters.headwearTypes.length > 0) ||
+    (filters.authorIds && filters.authorIds.length > 0) ||
+    (filters.publishers && filters.publishers.length > 0) ||
+    (filters.languages && filters.languages.length > 0)
 
   const toggleCustomFilter = (field: 'shoeTypes' | 'clothingItems' | 'jewelryMaterials' | 'jewelryGender' | 'headwearTypes', value: string) => {
     setFilters((prev) => {
@@ -724,7 +772,113 @@ export default function CategorySidebar({
             </div>
           )}
 
-          {brandGroups.length > 0 && (
+          {categoryType === 'books' && (bookAuthors.length > 0 || bookPublishers.length > 0 || bookLanguages.length > 0) && (
+            <div className="border-b pb-4 space-y-4">
+              {bookAuthors.length > 0 && (
+                <div>
+                  <button
+                    onClick={() => setExpandedSections((prev) => ({ ...prev, bookFilters: !prev.bookFilters }))}
+                    className="flex items-center justify-between w-full mb-3"
+                  >
+                    <h3 className="text-base font-semibold text-gray-900">{t('sidebar_book_authors', 'Авторы')}</h3>
+                    <svg
+                      className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {expandedSections.bookFilters && (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {bookAuthors.map((author) => (
+                        <label key={author.id} className="flex items-center space-x-2 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={filters.authorIds?.includes(author.id) || false}
+                            onChange={() => toggleAuthorFilter(author.id)}
+                            className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                          />
+                          <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{author.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {bookPublishers.length > 0 && (
+                <div>
+                  <button
+                    onClick={() => setExpandedSections((prev) => ({ ...prev, bookFilters: !prev.bookFilters }))}
+                    className="flex items-center justify-between w-full mb-3"
+                  >
+                    <h3 className="text-base font-semibold text-gray-900">{t('sidebar_book_publishers', 'Издательства')}</h3>
+                    <svg
+                      className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {expandedSections.bookFilters && (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {bookPublishers.map((publisher) => (
+                        <label key={publisher} className="flex items-center space-x-2 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={filters.publishers?.includes(publisher) || false}
+                            onChange={() => togglePublisherFilter(publisher)}
+                            className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                          />
+                          <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{publisher}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {bookLanguages.length > 0 && (
+                <div>
+                  <button
+                    onClick={() => setExpandedSections((prev) => ({ ...prev, bookFilters: !prev.bookFilters }))}
+                    className="flex items-center justify-between w-full mb-3"
+                  >
+                    <h3 className="text-base font-semibold text-gray-900">{t('sidebar_book_languages', 'Язык')}</h3>
+                    <svg
+                      className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {expandedSections.bookFilters && (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {bookLanguages.map((language) => (
+                        <label key={language} className="flex items-center space-x-2 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={filters.languages?.includes(language) || false}
+                            onChange={() => toggleLanguageFilter(language)}
+                            className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                          />
+                          <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{language}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {brandGroups.length > 0 && categoryType !== 'books' && (
             <div className="border-b pb-4">
               {brandGroups.map((group) => (
                 <div key={group.title}>
@@ -735,7 +889,7 @@ export default function CategorySidebar({
             </div>
           )}
 
-          {brands.length > 0 && brandGroups.length === 0 && (
+          {brands.length > 0 && brandGroups.length === 0 && categoryType !== 'books' && (
             <div className="border-b pb-4">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, brands: !prev.brands }))}

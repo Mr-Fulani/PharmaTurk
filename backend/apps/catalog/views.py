@@ -23,7 +23,7 @@ import os
 logger = logging.getLogger(__name__)
 
 from .models import (
-    Category, Brand, Product, ProductAttribute, PriceHistory, Favorite,
+    Category, Brand, Product, ProductAttribute, PriceHistory, Favorite, Author,
     ClothingProduct, ClothingVariant,
     ShoeProduct, ShoeVariant,
     ElectronicsProduct,
@@ -303,7 +303,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
-    
+
     @action(detail=True, methods=['get'])
     @extend_schema(
         summary="Получить подкатегории",
@@ -337,6 +337,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         'perfumery': 'perfumery',
         'underwear': 'underwear',
         'headwear': 'headwear',
+        'books': 'books',
     }
     
     PRODUCT_MODEL_MAP = {
@@ -353,6 +354,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         'shoes': ShoeProduct,
         'electronics': ElectronicsProduct,
         'furniture': FurnitureProduct,
+        'books': Product,
     }
 
     PRODUCT_TYPE_CATEGORY_SLUGS = {
@@ -391,10 +393,12 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         # Прямой фильтр по primary_category_slug
         primary_slugs = self._parse_slug_list('primary_category_slug')
         product_type = self._normalize_product_type(self.request.query_params.get('product_type'))
+        normalized_primary_slugs = [s.replace('-', '_') for s in primary_slugs]
+        if product_type == 'books' or 'books' in normalized_primary_slugs:
+            return queryset.none()
 
         if primary_slugs:
-            normalized_slugs = [s.replace('-', '_') for s in primary_slugs]
-            result = queryset.filter(primary_category_slug__in=normalized_slugs).distinct()
+            result = queryset.filter(primary_category_slug__in=normalized_primary_slugs).distinct()
             if result.exists():
                 return result.order_by('name')
             # Fallback: если брендов с primary_category_slug нет — ищем по product_type
@@ -615,6 +619,102 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         if product_type:
             queryset = queryset.filter(product_type=product_type)
 
+        book_filters_applied = False
+        author_ids_raw = self.request.query_params.getlist('author_id') or self.request.query_params.getlist('author_id[]')
+        if author_ids_raw:
+            try:
+                author_ids = [int(aid) for aid in author_ids_raw if str(aid).strip() != '']
+            except (ValueError, TypeError):
+                author_ids = []
+            if author_ids:
+                queryset = queryset.filter(book_authors__author_id__in=author_ids)
+                book_filters_applied = True
+
+        author = self.request.query_params.get('author')
+        if author:
+            names = [n.strip() for n in author.split(',') if n.strip()]
+            for name in names:
+                parts = [p for p in re.split(r'\s+', name) if p]
+                if not parts:
+                    continue
+                q = models.Q()
+                for part in parts:
+                    q |= models.Q(book_authors__author__first_name__icontains=part)
+                    q |= models.Q(book_authors__author__last_name__icontains=part)
+                if q:
+                    queryset = queryset.filter(q)
+                    book_filters_applied = True
+
+        publisher = self.request.query_params.get('publisher')
+        if publisher:
+            values = [v.strip() for v in publisher.split(',') if v.strip()]
+            for value in values:
+                queryset = queryset.filter(publisher__icontains=value)
+                book_filters_applied = True
+
+        language = self.request.query_params.get('language')
+        if language:
+            values = [v.strip() for v in language.split(',') if v.strip()]
+            for value in values:
+                queryset = queryset.filter(language__icontains=value)
+                book_filters_applied = True
+
+        cover_type = self.request.query_params.get('cover_type')
+        if cover_type:
+            values = [v.strip() for v in cover_type.split(',') if v.strip()]
+            for value in values:
+                queryset = queryset.filter(cover_type__icontains=value)
+                book_filters_applied = True
+
+        format_type = self.request.query_params.get('format_type')
+        if format_type:
+            values = [v.strip() for v in format_type.split(',') if v.strip()]
+            for value in values:
+                queryset = queryset.filter(book_variants__format_type__icontains=value, book_variants__is_active=True)
+                book_filters_applied = True
+
+        isbn = self.request.query_params.get('isbn')
+        if isbn:
+            value = isbn.strip()
+            if value:
+                queryset = queryset.filter(
+                    models.Q(isbn__icontains=value)
+                    | models.Q(book_variants__isbn__icontains=value, book_variants__is_active=True)
+                )
+                book_filters_applied = True
+
+        pages_min = self.request.query_params.get('pages_min')
+        if pages_min:
+            try:
+                queryset = queryset.filter(pages__gte=int(pages_min))
+                book_filters_applied = True
+            except (TypeError, ValueError):
+                pass
+
+        pages_max = self.request.query_params.get('pages_max')
+        if pages_max:
+            try:
+                queryset = queryset.filter(pages__lte=int(pages_max))
+                book_filters_applied = True
+            except (TypeError, ValueError):
+                pass
+
+        rating_min = self.request.query_params.get('rating_min')
+        if rating_min:
+            try:
+                queryset = queryset.filter(rating__gte=float(rating_min))
+                book_filters_applied = True
+            except (TypeError, ValueError):
+                pass
+
+        rating_max = self.request.query_params.get('rating_max')
+        if rating_max:
+            try:
+                queryset = queryset.filter(rating__lte=float(rating_max))
+                book_filters_applied = True
+            except (TypeError, ValueError):
+                pass
+
         # Фильтр по статусу доступности
         availability_status = self.request.query_params.get('availability_status')
         if availability_status:
@@ -637,6 +737,8 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         ordering = self.request.query_params.get('ordering', '-created_at')
         ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
+        if book_filters_applied:
+            queryset = queryset.distinct()
         
         return queryset
     
@@ -661,6 +763,17 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
                 OpenApiParameter(name="product_type", type=str, required=False, description="Тип товара (например, medicines, clothing)"),
                 OpenApiParameter(name="availability_status", type=str, required=False, description="Статус доступности (in_stock, backorder, preorder, out_of_stock, discontinued)"),
                 OpenApiParameter(name="country_of_origin", type=str, required=False, description="Страна происхождения (можно через запятую)"),
+                OpenApiParameter(name="author", type=str, required=False, description="Автор (можно несколько через запятую)"),
+                OpenApiParameter(name="author_id", type=int, required=False, description="ID автора (можно несколько)"),
+                OpenApiParameter(name="publisher", type=str, required=False, description="Издатель (можно несколько через запятую)"),
+                OpenApiParameter(name="language", type=str, required=False, description="Язык (можно несколько через запятую)"),
+                OpenApiParameter(name="cover_type", type=str, required=False, description="Тип обложки (можно несколько через запятую)"),
+                OpenApiParameter(name="format_type", type=str, required=False, description="Формат варианта (можно несколько через запятую)"),
+                OpenApiParameter(name="isbn", type=str, required=False, description="ISBN книги или варианта"),
+                OpenApiParameter(name="pages_min", type=int, required=False, description="Минимум страниц"),
+                OpenApiParameter(name="pages_max", type=int, required=False, description="Максимум страниц"),
+                OpenApiParameter(name="rating_min", type=float, required=False, description="Минимальный рейтинг"),
+                OpenApiParameter(name="rating_max", type=float, required=False, description="Максимальный рейтинг"),
         ]
     )
     def list(self, request, *args, **kwargs):
@@ -697,6 +810,64 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
 
         serializer = self.get_serializer(product)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='book-filters')
+    @extend_schema(
+        summary="Фильтры для книг",
+        description="Возвращает авторов, издателей и языки для фильтрации книг",
+        parameters=[
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории (или несколько через запятую)"),
+            OpenApiParameter(name="category_id", type=int, required=False, description="ID категории (можно несколько)"),
+        ],
+    )
+    def book_filters(self, request, *args, **kwargs):
+        queryset = Product.objects.filter(is_active=True, product_type='books')
+
+        category_slug = request.query_params.get('category_slug') or request.query_params.get('subcategory_slug')
+        if category_slug:
+            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
+            if slugs:
+                category_ids = _get_category_ids_with_descendants(slugs)
+                if category_ids:
+                    queryset = queryset.filter(category_id__in=category_ids)
+
+        category_ids_raw = request.query_params.getlist('category_id') or request.query_params.getlist('category_id[]')
+        if category_ids_raw:
+            try:
+                category_ids = [int(cid) for cid in category_ids_raw if str(cid).strip() != '']
+            except (TypeError, ValueError):
+                category_ids = []
+            if category_ids:
+                queryset = queryset.filter(category_id__in=category_ids)
+
+        authors_qs = Author.objects.filter(books__product__in=queryset).distinct().order_by('last_name', 'first_name')
+
+        publishers_raw = list(
+            queryset.exclude(publisher__isnull=True).exclude(publisher__exact='').values_list('publisher', flat=True).distinct()
+        )
+        languages_raw = list(
+            queryset.exclude(language__isnull=True).exclude(language__exact='').values_list('language', flat=True).distinct()
+        )
+
+        def normalize_list(values: list[str]) -> list[str]:
+            cleaned: list[str] = []
+            seen: set[str] = set()
+            for value in values:
+                v = (value or '').strip()
+                if not v:
+                    continue
+                key = v.casefold()
+                if key in seen:
+                    continue
+                seen.add(key)
+                cleaned.append(v)
+            return sorted(cleaned, key=lambda item: item.casefold())
+
+        return Response({
+            "authors": [{"id": a.id, "name": a.full_name} for a in authors_qs],
+            "publishers": normalize_list(publishers_raw),
+            "languages": normalize_list(languages_raw),
+        })
     
     @action(detail=True, methods=['get'])
     @extend_schema(

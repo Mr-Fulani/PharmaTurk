@@ -14,7 +14,7 @@ from .models import (
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     Service, ServiceTranslation,
-    Banner, BannerMedia, Author, ProductAuthor,
+    Banner, BannerMedia, Author, ProductAuthor, BookVariant, BookVariantSize, BookVariantImage,
 )
 from .seo_defaults import resolve_book_seo_value
 from .utils.storage_paths import detect_media_type
@@ -390,6 +390,62 @@ class ProductAuthorSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductAuthor
         fields = ['id', 'author', 'created_at']
+
+
+class BookVariantSizeSerializer(serializers.ModelSerializer):
+    """Сериализатор форматов варианта книги."""
+
+    class Meta:
+        model = BookVariantSize
+        fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
+        read_only_fields = ['id']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        stock = data.get('stock_quantity')
+        if stock is not None and stock == 0:
+            data['is_available'] = False
+        return data
+
+
+class BookVariantImageSerializer(serializers.ModelSerializer):
+    """Сериализатор изображений варианта книги."""
+
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BookVariantImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class BookVariantSerializer(serializers.ModelSerializer):
+    """Сериализатор вариантов книги."""
+
+    images = BookVariantImageSerializer(many=True, read_only=True)
+    sizes = BookVariantSizeSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = BookVariant
+        fields = [
+            'id', 'slug', 'name', 'name_en',
+            'cover_type', 'format_type', 'isbn',
+            'price', 'old_price', 'currency',
+            'is_available', 'stock_quantity',
+            'main_image', 'images',
+            'sku', 'barcode',
+            'external_id', 'external_url', 'external_data',
+            'is_active', 'sort_order',
+            'created_at', 'updated_at',
+            'sizes',
+        ]
+        read_only_fields = ['id', 'slug', 'sort_order', 'created_at', 'updated_at']
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -848,11 +904,13 @@ class ProductDetailSerializer(ProductSerializer):
     attributes = ProductAttributeSerializer(many=True, read_only=True)
     price_history = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
+    book_variants = serializers.SerializerMethodField()
     
     class Meta(ProductSerializer.Meta):
         fields = ProductSerializer.Meta.fields + [
             'images', 'attributes', 'price_history', 'external_id',
-            'external_url', 'sku', 'barcode', 'last_synced_at'
+            'external_url', 'sku', 'barcode', 'last_synced_at',
+            'book_variants',
         ]
     
     def get_price_history(self, obj):
@@ -883,6 +941,12 @@ class ProductDetailSerializer(ProductSerializer):
             if data.get("image_url") or data.get("video_url"):
                 filtered.append(data)
         return filtered
+
+    def get_book_variants(self, obj):
+        if (obj.product_type or "").lower() != "books":
+            return []
+        variants = obj.book_variants.filter(is_active=True).order_by("sort_order", "id")
+        return BookVariantSerializer(variants, many=True, context={"request": self.context.get("request")}).data
     
     def get_og_image_url(self, obj):
         """OG изображение с прокси для Instagram."""
