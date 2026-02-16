@@ -5,6 +5,7 @@ import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import { isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
+import { ProductTranslation } from '../lib/i18n'
 
 interface Product {
   id: number
@@ -22,6 +23,7 @@ interface Product {
   video_url?: string | null
   product_type?: string
   is_featured?: boolean
+  translations?: ProductTranslation[]
 }
 
 const parsePriceWithCurrency = (value?: string | number | null) => {
@@ -43,7 +45,7 @@ const parsePriceWithCurrency = (value?: string | number | null) => {
  * Block "Вам может понравиться" — personalized or trending from RecSys.
  */
 export default function PersonalizedRecommendations() {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [basedOn, setBasedOn] = useState<string>('trending')
@@ -129,6 +131,8 @@ export default function PersonalizedRecommendations() {
                 videoUrl={product.video_url}
                 productType={pt}
                 isBaseProduct={isBaseProductType(pt)}
+                translations={product.translations}
+                locale={i18n.language}
               />
             )
           })}

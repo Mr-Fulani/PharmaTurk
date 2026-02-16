@@ -13,7 +13,7 @@ export default function SearchPage() {
   const q = (router.query.query as string) || ''
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
 
   useEffect(() => {
     const run = async () => {
@@ -55,6 +55,8 @@ export default function SearchPage() {
                   videoUrl={p.video_url}
                   productType={pt}
                   isBaseProduct={isBaseProductType(pt)}
+                  translations={p.translations}
+                  locale={i18n.language}
                 />
               )
             })}
@@ -68,4 +70,3 @@ export default function SearchPage() {
 export async function getServerSideProps(ctx: any) {
   return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])) } }
 }
-

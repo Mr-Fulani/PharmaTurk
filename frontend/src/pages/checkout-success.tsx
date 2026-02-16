@@ -8,10 +8,12 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import type { TFunction } from 'i18next'
 import api from '../lib/api'
+import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface OrderItem {
   id: number
   product_name: string
+  product_translations?: ProductTranslation[]
   quantity: number
   price: string
   total: string
@@ -63,7 +65,7 @@ type SendState = 'idle' | 'sending' | 'success' | 'error'
 
 export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: string | null }) {
   const router = useRouter()
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const number = useMemo(
     () => (orderNumber || (router.query?.number as string) || '').toString().trim(),
     [orderNumber, router.query]
@@ -360,7 +362,9 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                     {(receipt?.items ?? []).map((item) => (
                       <div key={item.id} className="flex items-center justify-between rounded-2xl border border-gray-100 px-4 py-3">
                         <div>
-                          <p className="font-semibold text-gray-900">{item.product_name}</p>
+                          <p className="font-semibold text-gray-900">
+                            {getLocalizedProductName(item.product_name, t, item.product_translations, i18n.language)}
+                          </p>
                           <p className="text-xs text-gray-500">
                             {t('order_success_qty', { defaultValue: '×{{count}}', count: item.quantity })}
                           </p>
@@ -428,12 +432,12 @@ function buildReceiptDocument(
 ) {
   const formatter = (value: string) => `${value} ${receipt.totals.currency}`
   const rows = receipt.items
-    .map(
-      (item) =>
-        `<tr><td>${item.product_name}</td><td>${item.quantity}</td><td>${formatter(item.price)}</td><td>${formatter(
-          item.total
-        )}</td></tr>`
-    )
+    .map((item) => {
+      const localizedName = getLocalizedProductName(item.product_name, t, item.product_translations, locale)
+      return `<tr><td>${localizedName}</td><td>${item.quantity}</td><td>${formatter(item.price)}</td><td>${formatter(
+        item.total
+      )}</td></tr>`
+    })
     .join('')
 
   const title = t('receipt_print_title', 'Чек заказа №')

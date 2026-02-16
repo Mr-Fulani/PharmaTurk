@@ -32,7 +32,7 @@ const parsePriceWithCurrency = (value?: string | number | null) => {
 }
 
 export default function FavoritesPage() {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const { favorites, loading, refresh } = useFavoritesStore()
   const refreshedRef = useRef(false)
 
@@ -142,6 +142,8 @@ export default function FavoritesPage() {
                   href={productHref}
                   productType={productType}
                   isBaseProduct={isBaseProduct}
+                  translations={product.translations}
+                  locale={i18n.language}
                 />
               )
             })}

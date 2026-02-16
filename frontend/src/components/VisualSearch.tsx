@@ -5,6 +5,7 @@ import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import { isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
+import { ProductTranslation } from '../lib/i18n'
 
 const UPLOAD_TEMP_ENABLED = false // set true when /api/upload/temp/ exists
 
@@ -20,6 +21,7 @@ interface Product {
   video_url?: string | null
   product_type?: string
   is_featured?: boolean
+  translations?: ProductTranslation[]
 }
 
 interface SearchResult {
@@ -32,7 +34,7 @@ interface SearchResult {
  * Visual search: upload image, get similar products from RecSys.
  */
 export default function VisualSearch() {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const [searching, setSearching] = useState(false)
   const [results, setResults] = useState<SearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -158,6 +160,8 @@ export default function VisualSearch() {
               videoUrl={r.product.video_url}
               productType={r.product.product_type || 'medicines'}
               isBaseProduct={isBaseProductType(r.product.product_type || 'medicines')}
+              translations={r.product.translations}
+              locale={i18n.language}
             />
           ))}
         </div>

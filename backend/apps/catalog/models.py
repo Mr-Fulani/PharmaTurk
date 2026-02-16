@@ -1232,6 +1232,12 @@ class ProductTranslation(models.Model):
         default='ru',
         db_index=True
     )
+    name = models.CharField(
+        _("Название"),
+        max_length=500,
+        blank=True,
+        help_text=_("Переведенное название товара")
+    )
     description = models.TextField(
         _("Описание"),
         blank=True,
@@ -1391,6 +1397,7 @@ class ClothingVariant(models.Model):
         verbose_name=_("Товар одежды (родитель)")
     )
     name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    name_en = models.CharField(_("Название (англ.)"), max_length=500, blank=True)
     slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/цвету/размеру, можно переопределить."))
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
     # size поле оставлено для обратной совместимости, но не используется как источник доступных размеров
@@ -1824,6 +1831,12 @@ class ClothingProductTranslation(models.Model):
         default='ru',
         db_index=True
     )
+    name = models.CharField(
+        _("Название"),
+        max_length=500,
+        blank=True,
+        help_text=_("Переведенное название товара одежды")
+    )
     description = models.TextField(
         _("Описание"),
         blank=True,
@@ -2070,6 +2083,12 @@ class ShoeProductTranslation(models.Model):
         default='ru',
         db_index=True
     )
+    name = models.CharField(
+        _("Название"),
+        max_length=500,
+        blank=True,
+        help_text=_("Переведенное название товара обуви")
+    )
     description = models.TextField(
         _("Описание"),
         blank=True,
@@ -2138,6 +2157,7 @@ class ShoeVariant(models.Model):
         verbose_name=_("Товар (родитель)")
     )
     name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    name_en = models.CharField(_("Название (англ.)"), max_length=500, blank=True)
     slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/цвету/размеру, можно переопределить."))
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
     # size поле оставлено для обратной совместимости, но не используется как источник доступных размеров
@@ -2308,6 +2328,14 @@ class JewelryProduct(models.Model):
         related_name="jewelry_products",
         verbose_name=_("Бренд")
     )
+    gender = models.CharField(
+        _("Пол"),
+        max_length=10,
+        choices=Category.GENDER_CHOICES,
+        blank=True,
+        null=True,
+        help_text=_("Для украшений: мужская, женская, унисекс, детская")
+    )
 
     # Цена
     price = models.DecimalField(
@@ -2438,6 +2466,12 @@ class JewelryProductTranslation(models.Model):
         default='ru',
         db_index=True
     )
+    name = models.CharField(
+        _("Название"),
+        max_length=500,
+        blank=True,
+        help_text=_("Переведенное название товара украшений")
+    )
     description = models.TextField(
         _("Описание"),
         blank=True,
@@ -2506,9 +2540,18 @@ class JewelryVariant(models.Model):
         verbose_name=_("Товар украшений (родитель)")
     )
     name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    name_en = models.CharField(_("Название (англ.)"), max_length=500, blank=True)
     slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/цвету/материалу, можно переопределить."))
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
     material = models.CharField(_("Материал варианта"), max_length=100, blank=True)
+    gender = models.CharField(
+        _("Пол"),
+        max_length=10,
+        choices=Category.GENDER_CHOICES,
+        blank=True,
+        null=True,
+        help_text=_("Для украшений: мужская, женская, унисекс, детская")
+    )
     # size поле оставлено для совместимости с фронтом, но реальные размеры в таблице sizes
     size = models.CharField(
         _("Размер (устарело)"),
@@ -2820,6 +2863,12 @@ class ElectronicsProductTranslation(models.Model):
         choices=LOCALE_CHOICES,
         default='ru',
         db_index=True
+    )
+    name = models.CharField(
+        _("Название"),
+        max_length=500,
+        blank=True,
+        help_text=_("Переведенное название товара электроники")
     )
     description = models.TextField(
         _("Описание"),
@@ -3136,6 +3185,12 @@ class FurnitureProductTranslation(models.Model):
         default='ru',
         db_index=True
     )
+    name = models.CharField(
+        _("Название"),
+        max_length=500,
+        blank=True,
+        help_text=_("Переведенное название товара мебели")
+    )
     description = models.TextField(
         _("Описание"),
         blank=True,
@@ -3167,6 +3222,7 @@ class FurnitureVariant(models.Model):
         verbose_name=_("Товар мебели (родитель)")
     )
     name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    name_en = models.CharField(_("Название (англ.)"), max_length=500, blank=True)
     slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/цвету, можно переопределить."))
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
     sku = models.CharField(_("SKU"), max_length=100, blank=True)
@@ -3517,6 +3573,7 @@ class BookVariant(models.Model):
         verbose_name=_("Книга (родитель)")
     )
     name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    name_en = models.CharField(_("Название (англ.)"), max_length=500, blank=True)
     slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True, help_text=_("Автогенерация по названию/формату"))
     cover_type = models.CharField(_("Тип обложки"), max_length=50, blank=True, help_text=_("Твердая, мягкая, суперобложка"))
     format_type = models.CharField(_("Формат"), max_length=50, blank=True, help_text=_("Твердый, мягкий, электронный"))

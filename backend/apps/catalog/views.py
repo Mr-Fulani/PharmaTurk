@@ -1345,9 +1345,14 @@ class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
                     queryset = queryset.filter(category_id__in=cat_ids)
         gender_slugs = parse_multi_param('gender') or parse_multi_param('jewelry_gender')
         if gender_slugs:
-            cat_ids = _get_category_ids_with_descendants(gender_slugs)
-            if cat_ids:
-                queryset = queryset.filter(category_id__in=cat_ids)
+            normalized_genders = [g.strip().lower().replace('_', '-') for g in gender_slugs if g]
+            if normalized_genders:
+                q = (
+                    models.Q(gender__in=normalized_genders) |
+                    models.Q(variants__gender__in=normalized_genders) |
+                    models.Q(category__gender__in=normalized_genders)
+                )
+                queryset = queryset.filter(q).distinct()
         brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
         if brand_ids:
             try:

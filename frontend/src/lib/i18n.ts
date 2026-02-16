@@ -23,6 +23,7 @@ export interface BrandTranslation {
  */
 export interface ProductTranslation {
   locale: string
+  name?: string
   description?: string
 }
 
@@ -287,6 +288,31 @@ export function getLocalizedCoverType(coverType: string | null | undefined, t: T
   const translated = t(key, { defaultValue: null })
   if (translated && translated !== key) return translated
   return coverType
+}
+
+export function getLocalizedProductName(
+  fallbackName: string,
+  t: TFunction,
+  translations?: ProductTranslation[],
+  currentLocale?: string
+): string {
+  if (!fallbackName) return ''
+  
+  let locale = currentLocale
+  if (!locale && typeof window !== 'undefined') {
+    const pathLocale = window.location.pathname.split('/')[1]
+    locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
+  }
+  locale = locale || 'ru'
+  
+  if (translations && translations.length > 0) {
+    const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
+    if (apiTranslation && apiTranslation.name) {
+      return apiTranslation.name
+    }
+  }
+  
+  return fallbackName
 }
 
 /**

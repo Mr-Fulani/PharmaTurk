@@ -8,6 +8,7 @@ import Sidebar from '../../components/Sidebar'
 import { isBaseProductType } from '../../lib/product'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
+import { ProductTranslation } from '../../lib/i18n'
 
 interface Product {
   id: number
@@ -16,6 +17,7 @@ interface Product {
   price: string | null
   currency: string
   main_image_url?: string | null
+  translations?: ProductTranslation[]
 }
 
 interface Category {
@@ -49,7 +51,7 @@ export default function BrandPage({
   categories: Category[]
   brands: Brand[]
 }) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const { slug } = router.query
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
@@ -263,6 +265,8 @@ export default function BrandPage({
                     videoUrl={(p as { video_url?: string }).video_url}
                     productType={pt}
                     isBaseProduct={isBaseProductType(pt)}
+                    translations={p.translations}
+                    locale={i18n.language}
                   />
                 )
               })}

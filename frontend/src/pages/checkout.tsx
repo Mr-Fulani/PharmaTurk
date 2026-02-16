@@ -9,11 +9,13 @@ import { resolveMediaUrl, isVideoUrl } from '../lib/media'
 import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cart'
 import { useTheme } from '../context/ThemeContext'
+import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface CartItem {
   id: number
   product: number
   product_name?: string
+  product_translations?: ProductTranslation[]
   product_slug?: string
   product_image_url?: string
   product_video_url?: string | null
@@ -64,7 +66,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const { refresh: refreshCart, setItemsCount } = useCartStore()
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [cart, setCart] = useState<Cart | null>(initialCart || null)
@@ -908,6 +910,12 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     const resolvedImage = item.product_image_url ? resolveMediaUrl(item.product_image_url) : null
                     const resolvedVideoUrl = item.product_video_url && isVideoUrl(item.product_video_url) ? resolveMediaUrl(item.product_video_url) : null
                     const showVideo = Boolean(resolvedVideoUrl)
+                    const localizedName = getLocalizedProductName(
+                      item.product_name || `Товар #${item.product}`,
+                      t,
+                      item.product_translations,
+                      i18n.language
+                    )
                     return (
                     <div
                       key={item.id}
@@ -927,7 +935,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       ) : item.product_image_url ? (
                         <img
                           src={resolveMediaUrl(item.product_image_url)}
-                          alt={item.product_name}
+                          alt={localizedName}
                           className="w-20 h-20 object-cover rounded-lg flex-shrink-0 border border-gray-200"
                         />
                       ) : (
@@ -939,7 +947,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 text-sm leading-tight mb-1 line-clamp-2">
-                          {item.product_name}
+                          {localizedName}
                         </p>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">

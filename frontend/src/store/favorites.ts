@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import api, { initCartSession } from '../lib/api'
+import { ProductTranslation } from '../lib/i18n'
 
 interface Favorite {
   id: number
@@ -17,6 +18,7 @@ interface Favorite {
     main_image_url?: string
     video_url?: string | null
     _product_type?: string
+    translations?: ProductTranslation[]
   }
   created_at: string
 }

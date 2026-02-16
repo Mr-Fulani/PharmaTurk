@@ -17,6 +17,7 @@ from apps.catalog.models import (
     ShoeVariant,
     FurnitureVariant,
     JewelryVariant,
+    JewelryVariantSize,
     BookVariant,
 )
 from apps.catalog.utils.currency_converter import currency_converter
@@ -69,6 +70,60 @@ def _resolve_file_url(file_field, request):
         return file_field.url
     return None
 
+def _serialize_translations_qs(translations):
+    if not translations:
+        return []
+    try:
+        items = translations.all()
+    except Exception:
+        return []
+    return [
+        {
+            "locale": translation.locale,
+            "name": translation.name,
+            "description": getattr(translation, "description", ""),
+        }
+        for translation in items
+    ]
+
+
+def _resolve_variant_translations(product):
+    if not product:
+        return []
+    ext = getattr(product, "external_data", {}) or {}
+    source_variant_id = ext.get("source_variant_id")
+    source_variant_slug = ext.get("source_variant_slug")
+    if not source_variant_id and not source_variant_slug:
+        return []
+    product_type = getattr(product, "product_type", None)
+    model_map = {
+        "clothing": ClothingVariant,
+        "shoes": ShoeVariant,
+        "furniture": FurnitureVariant,
+        "jewelry": JewelryVariant,
+        "books": BookVariant,
+    }
+    model = model_map.get(product_type)
+    if not model:
+        return []
+    qs = model.objects.all()
+    if source_variant_id:
+        qs = qs.filter(id=source_variant_id)
+    elif source_variant_slug:
+        qs = qs.filter(slug=source_variant_slug)
+    variant = qs.select_related("product").first()
+    if not variant:
+        return []
+    base_product = getattr(variant, "product", None)
+    translations = _serialize_translations_qs(getattr(base_product, "translations", None))
+    if translations:
+        return translations
+    name_en = getattr(variant, "name_en", "")
+    if name_en:
+        return [{"locale": "en", "name": name_en, "description": ""}]
+    return []
+
+
 PRODUCT_TYPE_ALIASES = {
     'supplements': 'supplements',
     'medical-equipment': 'medical_equipment',
@@ -82,6 +137,7 @@ PRODUCT_TYPE_ALIASES = {
     'underwear': 'underwear',
     'headwear': 'headwear',
 }
+
 
 BASE_PRODUCT_TYPES = {
     'medicines',
@@ -196,7 +252,11 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
                 return first_img.image_url
         return None
     base_slug = external.get('base_product_slug')
-    if source_type in ("clothing", "shoes") or not base_slug:
+    if not base_slug and parent_product is not None and effective_type == "jewelry":
+        base_slug = parent_product.slug
+    if source_type in ("clothing", "shoes") and not base_slug:
+        base_slug = slugify(f"{source_type}-{variant.slug}")
+    elif not base_slug:
         base_slug = slugify(f"{source_type}-{variant.slug}")
     category = get_or_create_category_for_variant(source_type) or get_or_create_category_for_variant(effective_type)
     brand = getattr(variant, "brand", None) if hasattr(variant, "brand") else None
@@ -209,6 +269,9 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
     # Проверяем, есть ли цена для варианта с учетом маржи
     variant_price_with_margin = None
     variant_currency = getattr(variant, 'currency', None) or 'TRY'
+    display_name = variant.name or (parent_product.name if parent_product else "")
+    if parent_product is not None and effective_type == "jewelry":
+        display_name = parent_product.name or display_name
     
     try:
         content_type = ContentType.objects.get_for_model(variant)
@@ -239,12 +302,16 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         # В случае ошибки используем обычную цену варианта
         variant_price_with_margin = getattr(variant, 'price', None)
     
+    base_price = variant_price_with_margin if variant_price_with_margin is not None else (getattr(parent_product, "price", None) or 0)
+    base_currency = variant_currency
+    if variant_price_with_margin is None and parent_product is not None:
+        base_currency = parent_product.currency or base_currency or 'RUB'
     defaults = {
-        'name': variant.name or (parent_product.name if parent_product else ""),
+        'name': display_name,
         'slug': base_slug,
         'description': getattr(variant, 'description', '') or (getattr(parent_product, "description", "") if parent_product else ''),
-        'price': variant_price_with_margin or (getattr(parent_product, "price", None) or 0),
-        'currency': variant_currency,
+        'price': base_price,
+        'currency': base_currency,
         'old_price': desired_old_price,
         'product_type': effective_type,
         'brand': brand,
@@ -256,6 +323,7 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
             'effective_type': effective_type,
             'source_variant_id': variant.id,
             'source_variant_slug': variant.slug,
+            'base_product_slug': base_slug,
         },
     }
     variant_external_payload = {
@@ -263,6 +331,7 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         'effective_type': effective_type,
         'source_variant_id': variant.id,
         'source_variant_slug': variant.slug,
+        'base_product_slug': base_slug,
     }
     if product is None:
         product, created = Product.objects.get_or_create(slug=base_slug, defaults=defaults)
@@ -270,14 +339,18 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         created = False
     if not created:
         changed = False
-        new_price = getattr(variant, 'price', None)
-        if new_price is not None and product.price != new_price:
-            product.old_price = product.price
-            product.price = new_price
+        if display_name and product.name != display_name:
+            product.name = display_name
             changed = True
-        new_currency = getattr(variant, 'currency', None)
-        if new_currency and product.currency != new_currency:
-            product.currency = new_currency
+        if base_slug and product.slug != base_slug:
+            product.slug = base_slug
+            changed = True
+        if base_price is not None and product.price != base_price:
+            product.old_price = product.price
+            product.price = base_price
+            changed = True
+        if base_currency and product.currency != base_currency:
+            product.currency = base_currency
             changed = True
         if product.old_price != desired_old_price:
             product.old_price = desired_old_price
@@ -334,6 +407,26 @@ def resolve_variant_product(product_type: str, product_slug: str) -> Product:
         if base_obj:
             return ensure_product_from_base(base_obj, effective_type)
 
+    if effective_type == "jewelry":
+        variant = JewelryVariant.objects.filter(slug=product_slug, is_active=True).select_related("product").first()
+        if variant and getattr(variant, "product", None):
+            product = ensure_product_from_base(variant.product, effective_type)
+            base_slug = variant.product.slug
+            variant_payload = {
+                "jewelry_variant_id": variant.id,
+                "source_variant_slug": variant.slug,
+                "base_product_slug": base_slug,
+                "effective_type": effective_type,
+            }
+            product.external_data = {**(product.external_data or {}), **variant_payload}
+            product.save(update_fields=["external_data"])
+            external = variant.external_data or {}
+            external["base_product_id"] = product.id
+            external["base_product_slug"] = base_slug
+            variant.external_data = external
+            variant.save(update_fields=["external_data"])
+            return product
+
     model = VARIANT_MODEL_MAP.get(effective_type)
     if not model:
         return Product.objects.get(slug=product_slug, is_active=True)
@@ -349,11 +442,12 @@ class CartItemSerializer(serializers.ModelSerializer):
     """
     Сериализатор позиции корзины
     """
-    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_name = serializers.SerializerMethodField()
     product_slug = serializers.SerializerMethodField()
     product_type = serializers.CharField(source='product.product_type', read_only=True)
     product_image_url = serializers.SerializerMethodField()
     product_video_url = serializers.SerializerMethodField()
+    product_translations = serializers.SerializerMethodField()
     chosen_size = serializers.CharField(read_only=True)
     
     # Добавляем поля из новой системы ценообразования
@@ -371,7 +465,7 @@ class CartItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = CartItem
         fields = [
-            'id', 'product', 'product_name', 'product_slug', 'product_type', 'product_image_url', 'product_video_url',
+            'id', 'product', 'product_name', 'product_slug', 'product_type', 'product_image_url', 'product_video_url', 'product_translations',
             'quantity', 'price', 'currency', 'old_price', 'old_price_formatted', 'chosen_size', 'created_at', 'updated_at',
             # Новые поля из системы ценообразования
             'converted_price_rub', 'converted_price_usd', 'final_price_rub', 'final_price_usd',
@@ -599,7 +693,44 @@ class CartItemSerializer(serializers.ModelSerializer):
         if not product:
             return None
         ext = getattr(product, "external_data", {}) or {}
+        base_slug = ext.get("base_product_slug")
+        if product.product_type == "jewelry" and base_slug:
+            return base_slug
+        if product.product_type == "jewelry":
+            variant_slug = ext.get("source_variant_slug")
+            if variant_slug:
+                variant = JewelryVariant.objects.filter(slug=variant_slug, is_active=True).select_related("product").first()
+                if variant and getattr(variant, "product", None):
+                    return variant.product.slug
+            return product.slug
         return ext.get("source_variant_slug") or product.slug
+
+    def get_product_name(self, obj):
+        product = obj.product
+        if not product:
+            return None
+        if product.product_type == "jewelry":
+            ext = getattr(product, "external_data", {}) or {}
+            base_slug = ext.get("base_product_slug")
+            if base_slug:
+                base_obj = JewelryProduct.objects.filter(slug=base_slug, is_active=True).first()
+                if base_obj:
+                    return base_obj.name
+            variant_slug = ext.get("source_variant_slug")
+            if variant_slug:
+                variant = JewelryVariant.objects.filter(slug=variant_slug, is_active=True).select_related("product").first()
+                if variant and getattr(variant, "product", None):
+                    return variant.product.name
+        return product.name
+
+    def get_product_translations(self, obj):
+        product = obj.product
+        if not product:
+            return []
+        translations = _serialize_translations_qs(getattr(product, "translations", None))
+        if translations:
+            return translations
+        return _resolve_variant_translations(product)
     
     def _get_preferred_currency(self, request):
         """Определяет валюту по приоритетам: explicit -> user -> язык -> default."""
@@ -626,11 +757,45 @@ class CartItemSerializer(serializers.ModelSerializer):
             'ru': 'RUB',
         }
         return language_currency_map.get(language_code, default_currency)
+
+    def _get_jewelry_price_data(self, product, target_currency: str):
+        if not product or product.price is None:
+            return None
+        from_currency = (product.currency or 'RUB').upper()
+        try:
+            _, converted, price_with_margin = currency_converter.convert_price(
+                Decimal(product.price),
+                from_currency,
+                target_currency,
+                apply_margin=True,
+            )
+            return {
+                "converted_price": converted,
+                "price_with_margin": price_with_margin,
+                "is_base_price": target_currency == from_currency,
+            }
+        except Exception:
+            return None
     
     def get_price(self, obj):
         """Получает цену в предпочитаемой валюте."""
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
+        product = obj.product
+        if product and product.product_type == "jewelry":
+            base_price = product.price
+            if base_price is not None:
+                from_currency = (product.currency or 'RUB').upper()
+                try:
+                    _, _, price_with_margin = currency_converter.convert_price(
+                        Decimal(base_price),
+                        from_currency,
+                        preferred_currency,
+                        apply_margin=True,
+                    )
+                    return price_with_margin
+                except Exception:
+                    return base_price
         
         # Получаем цену в предпочитаемой валюте
         try:
@@ -655,6 +820,9 @@ class CartItemSerializer(serializers.ModelSerializer):
         """Получает валюту товара из новой системы."""
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
+        product = obj.product
+        if product and product.product_type == "jewelry":
+            return preferred_currency
         
         # Получаем валюту из новой системы
         try:
@@ -755,6 +923,10 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_converted_price_rub(self, obj):
         """Получает конвертированную цену в RUB."""
+        if obj.product and obj.product.product_type == "jewelry":
+            data = self._get_jewelry_price_data(obj.product, "RUB")
+            if data:
+                return data.get("converted_price")
         try:
             prices = obj.product.get_all_prices()
             if 'RUB' in prices:
@@ -765,6 +937,10 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_converted_price_usd(self, obj):
         """Получает конвертированную цену в USD."""
+        if obj.product and obj.product.product_type == "jewelry":
+            data = self._get_jewelry_price_data(obj.product, "USD")
+            if data:
+                return data.get("converted_price")
         try:
             prices = obj.product.get_all_prices()
             if 'USD' in prices:
@@ -775,6 +951,10 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_final_price_rub(self, obj):
         """Получает финальную цену в RUB с маржой."""
+        if obj.product and obj.product.product_type == "jewelry":
+            data = self._get_jewelry_price_data(obj.product, "RUB")
+            if data:
+                return data.get("price_with_margin")
         try:
             prices = obj.product.get_all_prices()
             if 'RUB' in prices:
@@ -785,6 +965,10 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_final_price_usd(self, obj):
         """Получает финальную цену в USD с маржой."""
+        if obj.product and obj.product.product_type == "jewelry":
+            data = self._get_jewelry_price_data(obj.product, "USD")
+            if data:
+                return data.get("price_with_margin")
         try:
             prices = obj.product.get_all_prices()
             if 'USD' in prices:
@@ -795,6 +979,8 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_margin_percent_applied(self, obj):
         """Получает примененную маржу."""
+        if obj.product and obj.product.product_type == "jewelry":
+            return 0
         try:
             prices = obj.product.get_all_prices()
             if prices:
@@ -819,6 +1005,15 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_prices_in_currencies(self, obj):
         """Получает цены во всех валютах."""
+        if obj.product and obj.product.product_type == "jewelry":
+            base_currency = (obj.product.currency or "RUB").upper()
+            prices = {}
+            for currency in ("RUB", "USD"):
+                data = self._get_jewelry_price_data(obj.product, currency)
+                if data:
+                    data["is_base_price"] = currency == base_currency
+                    prices[currency] = data
+            return prices
         try:
             return obj.product.get_all_prices()
         except Exception:
@@ -915,6 +1110,23 @@ class CartSerializer(serializers.ModelSerializer):
         total = 0
         for item in obj.items.all():
             try:
+                if item.product and item.product.product_type == "jewelry":
+                    product = item.product
+                    base_price = product.price
+                    if base_price is not None:
+                        from_currency = (product.currency or 'RUB').upper()
+                        try:
+                            _, _, price_with_margin = currency_converter.convert_price(
+                                Decimal(base_price),
+                                from_currency,
+                                preferred_currency,
+                                apply_margin=True,
+                            )
+                            total += price_with_margin * item.quantity
+                            continue
+                        except Exception:
+                            total += float(base_price) * item.quantity
+                            continue
                 prices = item.product.get_all_prices()
                 if prices and preferred_currency in prices:
                     price = prices[preferred_currency].get('price_with_margin', 0)
@@ -1010,31 +1222,49 @@ class AddToCartSerializer(serializers.Serializer):
 
         normalized = normalize_product_type(effective_type)
 
-        # Проверяем вариант напрямую, чтобы валидировать размер (для одежды/обуви)
+        # Проверяем вариант напрямую, чтобы валидировать размер (для одежды/обуви/украшений)
         variant = None
         variant_model = VARIANT_MODEL_MAP.get(normalized)
-        if variant_model and variant_model in (ClothingVariant, ShoeVariant):
+        if variant_model and variant_model in (ClothingVariant, ShoeVariant, JewelryVariant):
             variant = variant_model.objects.filter(slug=product_slug, is_active=True).first()
             if variant:
-                has_size_grid = variant.sizes.exists()
-                if has_size_grid:
-                    if not chosen_size:
-                        raise serializers.ValidationError({"detail": _("Укажите размер для этого варианта")})
-                    size_obj = variant.sizes.filter(size=chosen_size).first()
-                    if not size_obj:
-                        raise serializers.ValidationError({"detail": _("Размер не найден для выбранного цвета")})
-                    if not size_obj.is_available:
-                        raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
+                if variant_model == JewelryVariant:
+                    has_size_grid = variant.sizes.exists()
+                    if has_size_grid:
+                        if not chosen_size:
+                            raise serializers.ValidationError({"detail": _("Укажите размер для этого товара")})
+                        size_obj = variant.sizes.filter(size_display=chosen_size).first()
+                        if not size_obj:
+                            size_obj = variant.sizes.filter(size_value=chosen_size).first()
+                        if not size_obj:
+                            raise serializers.ValidationError({"detail": _("Размер не найден")})
+                        if not size_obj.is_available:
+                            raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
+                else:
+                    has_size_grid = variant.sizes.exists()
+                    if has_size_grid:
+                        if not chosen_size:
+                            raise serializers.ValidationError({"detail": _("Укажите размер для этого варианта")})
+                        size_obj = variant.sizes.filter(size=chosen_size).first()
+                        if not size_obj:
+                            raise serializers.ValidationError({"detail": _("Размер не найден для выбранного цвета")})
+                        if not size_obj.is_available:
+                            raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
                 attrs['chosen_size'] = chosen_size
             else:
                 base_model_map = {
                     'clothing': ClothingProduct,
                     'shoes': ShoeProduct,
+                    'jewelry': JewelryProduct,
                 }
                 base_model = base_model_map.get(normalized)
                 if base_model:
                     base_obj = base_model.objects.filter(slug=product_slug, is_active=True).first()
-                    if base_obj and base_obj.sizes.exists():
+                    if base_obj and normalized == "jewelry":
+                        has_sizes = JewelryVariantSize.objects.filter(variant__product=base_obj).exists()
+                        if has_sizes:
+                            raise serializers.ValidationError({"detail": _("Выберите вариант и размер на странице товара")})
+                    if base_obj and normalized in ("clothing", "shoes") and base_obj.sizes.exists():
                         if not chosen_size:
                             raise serializers.ValidationError({"detail": _("Укажите размер для этого товара")})
                         size_obj = base_obj.sizes.filter(size=chosen_size).first()
@@ -1075,13 +1305,14 @@ class OrderItemSerializer(serializers.ModelSerializer):
     product_slug = serializers.CharField(source='product.slug', read_only=True)
     product_image_url = serializers.SerializerMethodField()
     product_video_url = serializers.SerializerMethodField()
+    product_translations = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()
     total = serializers.SerializerMethodField()
     
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'product_name', 'product_slug', 'product_image_url', 'product_video_url', 'chosen_size', 'price', 'quantity', 'total']
-        read_only_fields = ['product_name', 'price', 'total', 'product_slug', 'product_image_url', 'product_video_url']
+        fields = ['id', 'product', 'product_name', 'product_slug', 'product_image_url', 'product_video_url', 'product_translations', 'chosen_size', 'price', 'quantity', 'total']
+        read_only_fields = ['product_name', 'price', 'total', 'product_slug', 'product_image_url', 'product_video_url', 'product_translations']
 
     def _get_preferred_currency(self, request, fallback: str = 'RUB') -> str:
         if not request:
@@ -1133,6 +1364,15 @@ class OrderItemSerializer(serializers.ModelSerializer):
             return self._convert_money(amount, order_currency, preferred_currency)
         except Exception:
             return obj.total
+
+    def get_product_translations(self, obj):
+        product = obj.product
+        if not product:
+            return []
+        translations = _serialize_translations_qs(getattr(product, "translations", None))
+        if translations:
+            return translations
+        return _resolve_variant_translations(product)
     
     def get_product_image_url(self, obj):
         """Получение URL изображения товара"""
@@ -1202,6 +1442,7 @@ class OrderReceiptItemSerializer(serializers.Serializer):
     """Позиция в чеке заказа."""
     id = serializers.IntegerField()
     product_name = serializers.CharField()
+    product_translations = serializers.ListField(child=serializers.DictField(), required=False)
     quantity = serializers.IntegerField()
     price = serializers.DecimalField(max_digits=12, decimal_places=2)
     total = serializers.DecimalField(max_digits=12, decimal_places=2)

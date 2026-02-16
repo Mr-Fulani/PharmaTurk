@@ -24,7 +24,11 @@ from apps.catalog.models import (
     ShoeProductSize,
     ShoeVariant,
     ShoeVariantSize,
+    JewelryProduct,
+    JewelryVariant,
+    JewelryVariantSize,
 )
+from apps.catalog.utils.currency_converter import currency_converter
 from apps.users.models import UserAddress
 
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
@@ -151,6 +155,20 @@ def _get_preferred_currency(request, fallback: str = 'RUB') -> str:
 
 def _get_product_price_for_currency(product, currency: str):
     currency = (currency or 'RUB').upper()
+    if getattr(product, "product_type", None) == "jewelry":
+        base_price = getattr(product, "price", None)
+        if base_price is not None:
+            from_currency = (getattr(product, "currency", None) or "RUB").upper()
+            try:
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(base_price),
+                    from_currency,
+                    currency,
+                    apply_margin=True,
+                )
+                return Decimal(str(price_with_margin))
+            except Exception:
+                return Decimal(str(base_price))
     try:
         prices = product.get_all_prices() or {}
         if currency in prices:
@@ -177,6 +195,7 @@ def _get_stock_for_cart_product(product: Product, chosen_size: Optional[str]) ->
     """
     external = getattr(product, "external_data", None) or {}
     source_variant_id = external.get("source_variant_id")
+    jewelry_variant_id = external.get("jewelry_variant_id")
     source_type = (external.get("source_type") or "").lower()
     source_id = external.get("source_id")
 
@@ -205,6 +224,19 @@ def _get_stock_for_cart_product(product: Product, chosen_size: Optional[str]) ->
             if variant.stock_quantity is not None:
                 return variant.stock_quantity, "variant"
 
+    if jewelry_variant_id and normalized_type == "jewelry":
+        variant = JewelryVariant.objects.filter(id=jewelry_variant_id, is_active=True).first()
+        if not variant:
+            return product.stock_quantity, "product"
+        if size_value:
+            size_obj = JewelryVariantSize.objects.filter(variant=variant, size_display=size_value).first()
+            if not size_obj:
+                size_obj = JewelryVariantSize.objects.filter(variant=variant, size_value=size_value).first()
+            if size_obj and size_obj.stock_quantity is not None:
+                return size_obj.stock_quantity, "variant_size"
+        if variant.stock_quantity is not None:
+            return variant.stock_quantity, "variant"
+
     if source_type == "base_clothing":
         base_obj = ClothingProduct.objects.filter(id=source_id, is_active=True).first()
         if base_obj and size_value:
@@ -232,6 +264,7 @@ def _decrement_stock_for_cart_item(product: Product, chosen_size: Optional[str],
 
     external = getattr(product, "external_data", None) or {}
     source_variant_id = external.get("source_variant_id")
+    jewelry_variant_id = external.get("jewelry_variant_id")
     source_type = (external.get("source_type") or "").lower()
     source_id = external.get("source_id")
     normalized_type = (getattr(product, "product_type", None) or "").lower()
@@ -285,6 +318,34 @@ def _decrement_stock_for_cart_item(product: Product, chosen_size: Optional[str],
                         variant.is_available = False
                     variant.save(update_fields=["stock_quantity", "is_available", "updated_at"])
                     return
+
+    if jewelry_variant_id and normalized_type == "jewelry":
+        variant = JewelryVariant.objects.select_for_update().filter(id=jewelry_variant_id, is_active=True).first()
+        if variant:
+            if size_value:
+                size_obj = JewelryVariantSize.objects.select_for_update().filter(
+                    variant=variant, size_display=size_value
+                ).first()
+                if not size_obj:
+                    size_obj = JewelryVariantSize.objects.select_for_update().filter(
+                        variant=variant, size_value=size_value
+                    ).first()
+                if size_obj and size_obj.stock_quantity is not None:
+                    if size_obj.stock_quantity < quantity:
+                        raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                    size_obj.stock_quantity = size_obj.stock_quantity - quantity
+                    if size_obj.stock_quantity == 0:
+                        size_obj.is_available = False
+                    size_obj.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                    return
+            if variant.stock_quantity is not None:
+                if variant.stock_quantity < quantity:
+                    raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                variant.stock_quantity = variant.stock_quantity - quantity
+                if variant.stock_quantity == 0:
+                    variant.is_available = False
+                variant.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                return
 
     if source_type == "base_clothing":
         base_obj = ClothingProduct.objects.select_for_update().filter(id=source_id, is_active=True).first()
@@ -458,6 +519,7 @@ class CartViewSet(viewsets.ViewSet):
         from apps.catalog.models import ProductImage
         cart = Cart.objects.filter(pk=cart.pk).prefetch_related(
             'items',
+            'items__product__translations',
             Prefetch('items__product__images', queryset=ProductImage.objects.all().order_by('is_main', 'sort_order'))
         ).get()
         return Response(CartSerializer(cart, context={'request': request}).data)
@@ -571,7 +633,7 @@ class CartViewSet(viewsets.ViewSet):
             cart.currency = preferred_currency
             cart.save(update_fields=['currency', 'updated_at'])
         # Возвращаем свежую корзину с позициями
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
         return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
@@ -625,7 +687,7 @@ class CartViewSet(viewsets.ViewSet):
 
         item.quantity = desired_qty
         item.save()
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
         return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
@@ -655,7 +717,7 @@ class CartViewSet(viewsets.ViewSet):
         except CartItem.DoesNotExist:
             return Response({"detail": _("Позиция не найдена")}, status=404)
         item.delete()
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
         return Response(CartSerializer(cart).data)
 
     @extend_schema(
@@ -681,7 +743,7 @@ class CartViewSet(viewsets.ViewSet):
     def clear(self, request):
         cart = _get_or_create_cart(request)
         cart.items.all().delete()
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
         return Response(CartSerializer(cart).data)
 
     @extend_schema(
@@ -756,7 +818,7 @@ class CartViewSet(viewsets.ViewSet):
         cart.save()
         
         # Возвращаем обновленную корзину
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
         return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
@@ -789,7 +851,7 @@ class CartViewSet(viewsets.ViewSet):
         cart.save()
         
         # Возвращаем обновленную корзину
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
+        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
         return Response(CartSerializer(cart).data)
 
 
@@ -845,14 +907,15 @@ class OrderViewSet(viewsets.ViewSet):
                 Prefetch(
                     'items__product__images',
                     queryset=ProductImage.objects.all().order_by('is_main', 'sort_order')
-                )
+                ),
+                'items__product__translations'
             )
             .order_by('-created_at')
         )
         return Response(OrderSerializer(orders, many=True, context={'request': request}).data)
 
     def retrieve(self, request, pk=None):
-        order = Order.objects.filter(user=request.user, pk=pk).prefetch_related('items').first()
+        order = Order.objects.filter(user=request.user, pk=pk).prefetch_related('items', 'items__product__translations').first()
         if not order:
             raise Http404(_("Заказ не найден"))
         return Response(OrderSerializer(order, context={'request': request}).data)
@@ -963,6 +1026,32 @@ class OrderViewSet(viewsets.ViewSet):
         serializer = CreateOrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        for item in cart.items.select_related('product').all():
+            product = item.product
+            if not product:
+                continue
+            if product.product_type == 'jewelry':
+                ext = product.external_data or {}
+                variant_id = ext.get('jewelry_variant_id') or ext.get('source_variant_id')
+                if variant_id:
+                    variant = JewelryVariant.objects.filter(id=variant_id, is_active=True).prefetch_related('sizes').first()
+                    if variant and variant.sizes.exists():
+                        if not item.chosen_size:
+                            return Response({"detail": _("Укажите размер для товара в корзине")}, status=400)
+                        size_obj = variant.sizes.filter(size_display=item.chosen_size).first()
+                        if not size_obj:
+                            size_obj = variant.sizes.filter(size_value=item.chosen_size).first()
+                        if not size_obj:
+                            return Response({"detail": _("Размер не найден для товара в корзине")}, status=400)
+                        if not size_obj.is_available:
+                            return Response({"detail": _("Размер недоступен для покупки")}, status=400)
+                else:
+                    base_obj = JewelryProduct.objects.filter(slug=product.slug, is_active=True).first()
+                    if base_obj:
+                        has_sizes = JewelryVariantSize.objects.filter(variant__product=base_obj).exists()
+                        if has_sizes and not item.chosen_size:
+                            return Response({"detail": _("Укажите размер для товара в корзине")}, status=400)
+
         # Расчет сумм
         subtotal = sum((i.price * i.quantity for i in cart.items.all()))
         
@@ -973,7 +1062,9 @@ class OrderViewSet(viewsets.ViewSet):
         
         for item in cart.items.all():
             # Проверяем, есть ли у товара внешний источник (вариант)
-            if item.product.external_data and 'source_variant_id' in item.product.external_data:
+            if item.product.external_data and (
+                'source_variant_id' in item.product.external_data or 'jewelry_variant_id' in item.product.external_data
+            ):
                 try:
                     # Определяем тип варианта по типу продукта
                     variant_model = None
@@ -994,9 +1085,10 @@ class OrderViewSet(viewsets.ViewSet):
                         variant_model = BookVariant
                     
                     if variant_model:
+                        variant_id = item.product.external_data.get('source_variant_id') or item.product.external_data.get('jewelry_variant_id')
                         # Получаем вариант
                         variant = variant_model.objects.filter(
-                            id=item.product.external_data['source_variant_id']
+                            id=variant_id
                         ).first()
                         
                         if variant:

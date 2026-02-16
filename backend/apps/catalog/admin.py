@@ -124,7 +124,7 @@ class ProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров."""
     model = ProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -133,7 +133,7 @@ class ClothingProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров одежды."""
     model = ClothingProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -142,7 +142,7 @@ class ShoeProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров обуви."""
     model = ShoeProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -151,7 +151,7 @@ class ElectronicsProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров электроники."""
     model = ElectronicsProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -160,7 +160,7 @@ class FurnitureProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров мебели."""
     model = FurnitureProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -170,7 +170,7 @@ class FurnitureVariantInline(admin.TabularInline):
     model = FurnitureVariant
     extra = 0
     fields = (
-        'name', 'slug',
+        'name', 'name_en', 'slug',
         'color',
         'price', 'currency',
         'main_image',
@@ -867,7 +867,7 @@ class ClothingVariantInline(admin.TabularInline):
     """Инлайн для вариантов одежды (основные поля)."""
     model = ClothingVariant
     extra = 0
-    fields = ('name', 'slug', 'color', 'price', 'currency', 'main_image', 'main_image_file', 'is_active', 'sort_order')
+    fields = ('name', 'name_en', 'slug', 'color', 'price', 'currency', 'main_image', 'main_image_file', 'is_active', 'sort_order')
     readonly_fields = ('slug',)
     show_change_link = True
 
@@ -913,7 +913,7 @@ class ClothingVariantAdmin(admin.ModelAdmin):
     readonly_fields = ('slug',)
     actions = [activate_variants, deactivate_variants]
     fieldsets = (
-        (None, {'fields': ('product', 'name', 'slug')}),
+        (None, {'fields': ('product', 'name', 'name_en', 'slug')}),
         (_('Характеристики'), {
             'fields': ('color',),
             'description': _("Размеры задайте в таблице размеров ниже.")
@@ -1181,7 +1181,7 @@ class ShoeVariantInline(admin.TabularInline):
     model = ShoeVariant
     extra = 0
     fields = (
-        'name', 'slug',
+        'name', 'name_en', 'slug',
         'color',
         'price', 'currency',
         'main_image',
@@ -1233,7 +1233,7 @@ class ShoeVariantAdmin(admin.ModelAdmin):
     readonly_fields = ('slug',)
     actions = [activate_variants, deactivate_variants]
     fieldsets = (
-        (None, {'fields': ('product', 'name', 'slug')}),
+        (None, {'fields': ('product', 'name', 'name_en', 'slug')}),
         (_('Характеристики'), {
             'fields': ('color',),
             'description': _("Размеры задайте в таблице размеров ниже.")
@@ -1525,7 +1525,7 @@ class FurnitureVariantAdmin(admin.ModelAdmin):
     readonly_fields = ('slug',)
     actions = [activate_variants, deactivate_variants]
     fieldsets = (
-        (None, {'fields': ('product', 'name', 'slug')}),
+        (None, {'fields': ('product', 'name', 'name_en', 'slug')}),
         (_('Характеристики'), {
             'fields': ('color',),
         }),
@@ -1568,7 +1568,7 @@ class FurnitureProductAdmin(RunAIActionMixin, admin.ModelAdmin):
 class JewelryProductTranslationInline(admin.TabularInline):
     model = JewelryProductTranslation
     extra = 0
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
 
 
 class JewelryProductImageInline(admin.TabularInline):
@@ -1606,7 +1606,7 @@ class JewelryVariantInline(admin.TabularInline):
     """Инлайн вариантов украшения (цвет/материал). Размеры — в отдельной админке варианта."""
     model = JewelryVariant
     extra = 0
-    fields = ('name', 'slug', 'price', 'currency', 'is_available', 'is_active', 'sort_order')
+    fields = ('name', 'name_en', 'slug', 'gender', 'price', 'currency', 'is_available', 'is_active', 'sort_order')
     readonly_fields = ('slug',)
     show_change_link = True
 
@@ -1614,14 +1614,15 @@ class JewelryVariantInline(admin.TabularInline):
 @admin.register(JewelryVariant)
 class JewelryVariantAdmin(admin.ModelAdmin):
     """Админка варианта украшения — здесь добавляются размеры (кольца, браслеты)."""
-    list_display = ('name', 'product', 'price', 'currency', 'is_available', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'is_available', 'currency', 'created_at')
+    list_display = ('name', 'product', 'gender', 'price', 'currency', 'is_available', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'is_available', 'gender', 'currency', 'created_at')
     search_fields = ('name', 'product__name', 'slug')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
     actions = [activate_variants, deactivate_variants]
     fieldsets = (
         (None, {'fields': ('product', 'name', 'slug')}),
+        (_('Украшение'), {'fields': ('gender',)}),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
     )
@@ -1631,22 +1632,160 @@ class JewelryVariantAdmin(admin.ModelAdmin):
 @admin.register(JewelryProduct)
 class JewelryProductAdmin(admin.ModelAdmin):
     """Товары украшений с вариантами и размерами (кольца, браслеты и т.д.)."""
-    list_display = ('name', 'slug', 'category', 'brand', 'jewelry_type', 'material', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_featured', 'jewelry_type', 'category', 'brand', 'currency', 'created_at')
+    list_display = ('name', 'slug', 'category', 'brand', 'jewelry_type', 'gender', 'material', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_featured', 'jewelry_type', 'gender', 'category', 'brand', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'metal_purity', 'stone_type')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Категоризация'), {'fields': ('category', 'brand')}),
-        (_('Украшение'), {'fields': ('jewelry_type', 'material', 'metal_purity', 'stone_type', 'carat_weight')}),
-        (_('Цены'), {'fields': ('price', 'currency', 'old_price')}),
+        (_('Украшение'), {'fields': ('jewelry_type', 'gender', 'material', 'metal_purity', 'stone_type', 'carat_weight')}),
+        (_('Цены'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Наличие'), {'fields': ('is_available', 'stock_quantity')}),
         (_('Медиа'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
         (_('Настройки'), {'fields': ('is_active', 'is_featured')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     inlines = [JewelryProductTranslationInline, JewelryVariantInline, JewelryProductImageInline]
+
+    def variant_prices_overview(self, obj):
+        if not obj or not obj.pk:
+            return "-"
+        variants = obj.variants.filter(is_active=True).order_by('sort_order', 'id')
+        if not variants.exists():
+            return "-"
+        base_price = obj.price
+        base_currency = obj.currency
+        rows = []
+        for v in variants:
+            effective_price = v.price if v.price is not None else base_price
+            effective_currency = (v.currency or base_currency) if v.price is not None else base_currency
+            price_str = '-' if effective_price is None else f"{effective_price} {effective_currency}"
+            label = v.material or v.color or v.name or '-'
+            rows.append((label, v.slug, price_str, 'variant' if v.price is not None else 'base'))
+        header = format_html(
+            '<table style="width:100%; border-collapse:collapse;">'
+            '<thead>'
+            '<tr>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Материал</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Slug</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Цена</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Источник</th>'
+            '</tr>'
+            '</thead><tbody>'
+        )
+        body = format_html(
+            '{}',
+            format_html_join(
+                '',
+                '<tr>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;"><code>{}</code></td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '</tr>',
+                ((c, s, p, src) for (c, s, p, src) in rows),
+            )
+        )
+        footer = format_html('</tbody></table>')
+        return format_html('{}{}{}', header, body, footer)
+
+    variant_prices_overview.short_description = _('Цены вариантов')
+
+    def variant_prices_converted_overview(self, obj):
+        if not obj or not obj.pk:
+            return "-"
+        variants = obj.variants.filter(is_active=True).order_by('sort_order', 'id')
+        if not variants.exists():
+            return "-"
+
+        from .utils.currency_converter import currency_converter
+
+        base_price = obj.price
+        base_currency = (obj.currency or 'RUB').upper()
+        targets = ['RUB', 'USD', 'KZT', 'EUR', 'TRY']
+
+        rows = []
+        for v in variants[:25]:
+            effective_price = v.price if v.price is not None else base_price
+            effective_currency = (v.currency or base_currency).upper() if v.price is not None else base_currency
+            if effective_price is None:
+                continue
+
+            try:
+                results = currency_converter.convert_to_multiple_currencies(
+                    Decimal(effective_price),
+                    effective_currency,
+                    targets,
+                    apply_margin=True,
+                )
+            except Exception:
+                results = {}
+
+            def fmt(cur: str) -> str:
+                data = results.get(cur)
+                if not data:
+                    return '-'
+                return str(data.get('price_with_margin') or '-')
+
+            label = v.material or v.color or v.name or '-'
+            rows.append(
+                (
+                    label,
+                    v.slug,
+                    f"{effective_price} {effective_currency}",
+                    fmt('RUB'),
+                    fmt('USD'),
+                    fmt('KZT'),
+                    fmt('EUR'),
+                    fmt('TRY'),
+                    'variant' if v.price is not None else 'base',
+                )
+            )
+
+        if not rows:
+            return "-"
+
+        header = format_html(
+            '<table style="width:100%; border-collapse:collapse;">'
+            '<thead>'
+            '<tr>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Материал</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Slug</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">База</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">RUB*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">USD*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">KZT*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">EUR*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">TRY*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Источник</th>'
+            '</tr>'
+            '</thead><tbody>'
+        )
+        body = format_html(
+            '{}',
+            format_html_join(
+                '',
+                '<tr>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;"><code>{}</code></td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '</tr>',
+                ((c, s, base, rub, usd, kzt, eur, tr, src) for (c, s, base, rub, usd, kzt, eur, tr, src) in rows),
+            )
+        )
+        footer = format_html('</tbody></table>')
+        return format_html('{}{}{}', header, body, footer)
+
+    variant_prices_converted_overview.short_description = _('Цены вариантов (конвертация)')
 
 
 @admin.register(Service)

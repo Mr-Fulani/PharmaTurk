@@ -6,6 +6,7 @@ import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
+import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface Product {
   id: number
@@ -30,6 +31,7 @@ interface Product {
   }
   is_new?: boolean
   product_type?: string
+  translations?: ProductTranslation[]
 }
 
 interface PopularProductsCarouselProps {
@@ -73,7 +75,7 @@ const formatPrice = (value: string | number | null | undefined): string | null =
 }
 
 export default function PopularProductsCarousel({ className = '' }: PopularProductsCarouselProps) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(0)
@@ -309,6 +311,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                 ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
                 : null
 
+              const localizedName = getLocalizedProductName(product.name, t, product.translations, i18n.language)
               return (
                 <div
                   key={product.id}
@@ -338,7 +341,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                         (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
                         getPlaceholderImageUrl({ type: 'product', id: product.id })
                       }
-                      alt={product.name}
+                      alt={localizedName}
                       className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
                       onError={(e) => {
                         e.currentTarget.src = getPlaceholderImageUrl({
@@ -377,7 +380,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                     className="block mb-2"
                   >
                   <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 hover-text-warm transition-colors">
-                      {product.name}
+                      {localizedName}
                     </h3>
                   </Link>
                   <div className="mb-3">

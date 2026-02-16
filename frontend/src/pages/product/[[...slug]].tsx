@@ -11,7 +11,7 @@ import FavoriteButton from '../../components/FavoriteButton'
 import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
-import { getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, ProductTranslation } from '../../lib/i18n'
+import { getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../../lib/media'
 import { getSiteOrigin } from '../../lib/urls'
 import { useTheme } from '../../context/ThemeContext'
@@ -206,11 +206,13 @@ const resolveAvailableStock = (
 export default function ProductPage({
   product: initialProduct,
   productType,
-  isBaseProduct
+  isBaseProduct,
+  preferredCurrency
 }: {
   product: Product | null
   productType: CategoryType
   isBaseProduct: boolean
+  preferredCurrency: string
 }) {
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
@@ -220,6 +222,9 @@ export default function ProductPage({
     setProduct(initialProduct)
   }, [initialProduct])
   const variants = product?.variants || []
+  const localizedProductName = product
+    ? getLocalizedProductName(product.name, t, product.translations, router.locale)
+    : ''
 
   // Выбираем дефолтный вариант-цвет: активный, либо первый доступный
   const initialVariant =
@@ -485,9 +490,10 @@ export default function ProductPage({
     ? parseFloat(String(selectedVariant.price))
     : (product.active_variant_price ? parseFloat(String(product.active_variant_price)) : (product.price ? parseFloat(String(product.price)) : null))
   const currency =
-    selectedVariant?.currency ||
+    (selectedVariant?.price != null ? selectedVariant?.currency : null) ||
     product.active_variant_currency ||
     parsedActiveVariantPrice.currency ||
+    preferredCurrency ||
     product.currency ||
     'USD'
   const oldPriceSource =
@@ -520,8 +526,8 @@ export default function ProductPage({
   const siteUrl = getSiteOrigin()
   const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
   const canonicalUrl = `${siteUrl}${productPath}`
-  const metaTitle = (product.meta_title || product.og_title || '').trim() || `${product.name} — PharmaTurk`
-  const metaDescription = (product.meta_description || product.og_description || '').trim() || product.description?.slice(0, 200) || `${product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
+  const metaTitle = (product.meta_title || product.og_title || '').trim() || `${localizedProductName || product.name} — PharmaTurk`
+  const metaDescription = (product.meta_description || product.og_description || '').trim() || product.description?.slice(0, 200) || `${localizedProductName || product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
   const ogImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
   const availability =
     selectedVariant?.is_available === false || selectedVariant?.stock_quantity === 0
@@ -532,7 +538,7 @@ export default function ProductPage({
   const productSchema = {
     '@context': 'https://schema.org',
     '@type': productType === 'books' ? 'Book' : 'Product',
-    name: product.name,
+    name: localizedProductName || product.name,
     description: metaDescription,
     image: ogImage,
     ...(productType === 'books' && product.isbn && { isbn: product.isbn }),
@@ -619,13 +625,13 @@ export default function ProductPage({
                           playsInline
                           preload="metadata"
                           className="w-full h-full object-cover pointer-events-none"
-                          aria-label={img.alt_text || product.name}
+                          aria-label={img.alt_text || localizedProductName || product.name}
                         />
                       ) : (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img
                           src={resolvedThumbnail || placeholderSmall}
-                          alt={img.alt_text || product.name}
+                          alt={img.alt_text || localizedProductName || product.name}
                           className="w-full h-full object-cover pointer-events-none"
                           onError={(e) => {
                             setThumbPlaceholderByKey((prev) => ({ ...prev, [thumbKey]: placeholderLarge }))
@@ -668,7 +674,7 @@ export default function ProductPage({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={activeImage}
-                    alt={product.name}
+                    alt={localizedProductName || product.name}
                     className={`max-w-full max-h-full rounded-xl object-contain transition-opacity duration-150 ${mainImageLoading ? 'opacity-0' : 'opacity-100'}`}
                     decoding="async"
                     onLoad={() => setMainImageLoading(false)}
@@ -708,7 +714,7 @@ export default function ProductPage({
               className="text-2xl font-bold"
               style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
             >
-              {product.name}
+              {localizedProductName || product.name}
             </h1>
             {/* Блок «Книга»: автор, издательство, страницы, ISBN, язык, обложка, рейтинг */}
             {productType === 'books' && (
@@ -1078,6 +1084,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
       product: res.data,
       productType: type,
       isBaseProduct: baseProductTypes.includes(type),
+      preferredCurrency: currency,
     },
   })
 

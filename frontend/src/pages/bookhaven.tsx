@@ -6,6 +6,7 @@ import { Search, Filter, Grid, List } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ProductCard from '../components/ProductCard';
 import api from '../lib/api';
+import { ProductTranslation } from '../lib/i18n';
 
 interface Product {
   id: number;
@@ -29,6 +30,7 @@ interface Product {
   is_bestseller?: boolean;
   is_new?: boolean;
   book_authors?: { id: number; author: { full_name: string } }[];
+  translations?: ProductTranslation[];
 }
 
 interface Category {
@@ -55,7 +57,7 @@ const parsePriceWithCurrency = (value?: string | number | null) => {
 };
 
 const BookHavenPage: React.FC = () => {
-  const { t } = useTranslation('common');
+  const { t, i18n } = useTranslation('common');
   const [books, setBooks] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -246,6 +248,8 @@ const BookHavenPage: React.FC = () => {
                   href={`/product/books/${book.slug}`}
                   productType="books"
                   isBaseProduct={true}
+                  translations={book.translations}
+                  locale={i18n.language}
                   isbn={book.isbn}
                   publisher={book.publisher}
                   pages={book.pages}

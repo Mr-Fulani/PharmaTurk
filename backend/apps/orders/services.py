@@ -13,6 +13,13 @@ from django.conf import settings
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from apps.catalog.models import (
+    ClothingVariant,
+    ShoeVariant,
+    FurnitureVariant,
+    JewelryVariant,
+    BookVariant,
+)
 from apps.users.models import UserAddress
 
 from .models import Order
@@ -43,6 +50,69 @@ def _format_address(address: UserAddress | None, fallback: str = "") -> str:
     return ", ".join(part for part in parts if part)
 
 
+def _serialize_translations_qs(translations) -> List[Dict[str, Any]]:
+    if not translations:
+        return []
+    try:
+        items = translations.all()
+    except Exception:
+        return []
+    return [
+        {
+            "locale": translation.locale,
+            "name": translation.name,
+            "description": getattr(translation, "description", ""),
+        }
+        for translation in items
+    ]
+
+
+def _resolve_variant_translations(product) -> List[Dict[str, Any]]:
+    if not product:
+        return []
+    ext = getattr(product, "external_data", {}) or {}
+    source_variant_id = ext.get("source_variant_id")
+    source_variant_slug = ext.get("source_variant_slug")
+    if not source_variant_id and not source_variant_slug:
+        return []
+    product_type = getattr(product, "product_type", None)
+    model_map = {
+        "clothing": ClothingVariant,
+        "shoes": ShoeVariant,
+        "furniture": FurnitureVariant,
+        "jewelry": JewelryVariant,
+        "books": BookVariant,
+    }
+    model = model_map.get(product_type)
+    if not model:
+        return []
+    qs = model.objects.all()
+    if source_variant_id:
+        qs = qs.filter(id=source_variant_id)
+    elif source_variant_slug:
+        qs = qs.filter(slug=source_variant_slug)
+    variant = qs.select_related("product").first()
+    if not variant:
+        return []
+    base_product = getattr(variant, "product", None)
+    translations = _serialize_translations_qs(getattr(base_product, "translations", None))
+    if translations:
+        return translations
+    name_en = getattr(variant, "name_en", "")
+    if name_en:
+        return [{"locale": "en", "name": name_en, "description": ""}]
+    return []
+
+
+def _serialize_product_translations(product) -> List[Dict[str, Any]]:
+    if not product:
+        return []
+    translations = _serialize_translations_qs(getattr(product, "translations", None))
+    if translations:
+        return translations
+    return _resolve_variant_translations(product)
+
+
 # TODO: Функционал чеков временно отключен. Будет доработан позже.
 def build_order_receipt_payload(order: Order) -> Dict[str, Any]:
     """Формирует структуру данных для отображения/отправки чека."""
@@ -53,6 +123,7 @@ def build_order_receipt_payload(order: Order) -> Dict[str, Any]:
         {
             "id": item.id,
             "product_name": item.product_name,
+            "product_translations": _serialize_product_translations(item.product),
             "quantity": item.quantity,
             "price": _decimal(item.price),
             "total": _decimal(item.total),
@@ -180,5 +251,3 @@ def render_receipt_html(
         "lang": loc,
     }
     return render_to_string("emails/order_receipt.html", context)
-
-

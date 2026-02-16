@@ -9,11 +9,13 @@ import api from '../lib/api'
 import { setPreferredCurrency } from '../lib/api'
 import { resolveMediaUrl, isVideoUrl } from '../lib/media'
 import { useAuth } from '../context/AuthContext'
+import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface OrderItem {
   id: number
   product?: number
   product_name: string
+  product_translations?: ProductTranslation[]
   product_slug?: string
   product_image_url?: string
   product_video_url?: string | null
@@ -85,7 +87,7 @@ const ORDER_STATUS_MAP: Record<string, string> = {
 export default function ProfilePage() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [addresses, setAddresses] = useState<Address[]>([])
@@ -841,6 +843,12 @@ export default function ProfilePage() {
                               const resolvedImage = item.product_image_url ? resolveMediaUrl(item.product_image_url) : null
                               const resolvedVideoUrl = item.product_video_url && isVideoUrl(item.product_video_url) ? resolveMediaUrl(item.product_video_url) : null
                               const showVideo = Boolean(resolvedVideoUrl)
+                              const localizedName = getLocalizedProductName(
+                                item.product_name || `Товар #${item.product || item.id}`,
+                                t,
+                                item.product_translations,
+                                i18n.language
+                              )
                               return (
                                 <div
                                   key={item.id}
@@ -865,7 +873,7 @@ export default function ProfilePage() {
                                     ) : item.product_image_url ? (
                                       <img
                                         src={resolveMediaUrl(item.product_image_url)}
-                                        alt={item.product_name}
+                                        alt={localizedName}
                                         className="h-full w-full object-cover transition-transform duration-200 group-hover/item:scale-105"
                                       />
                                     ) : (
@@ -885,7 +893,7 @@ export default function ProfilePage() {
                                         className="block"
                                       >
                                         <h5 className="text-base font-semibold text-gray-900 hover-text-warm transition-colors line-clamp-2">
-                                          {item.product_name}
+                                          {localizedName}
                                         </h5>
                                       </Link>
                                       <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">

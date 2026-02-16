@@ -88,7 +88,7 @@ class ProductTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ProductTranslation
-        fields = ['locale', 'description']
+        fields = ['locale', 'name', 'description']
 
 
 class FurnitureProductTranslationSerializer(serializers.ModelSerializer):
@@ -96,7 +96,7 @@ class FurnitureProductTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = FurnitureProductTranslation
-        fields = ['locale', 'description']
+        fields = ['locale', 'name', 'description']
 
 
 class ServiceTranslationSerializer(serializers.ModelSerializer):
@@ -112,7 +112,7 @@ class ClothingProductTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ClothingProductTranslation
-        fields = ['locale', 'description']
+        fields = ['locale', 'name', 'description']
 
 
 class ShoeProductTranslationSerializer(serializers.ModelSerializer):
@@ -120,7 +120,7 @@ class ShoeProductTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ShoeProductTranslation
-        fields = ['locale', 'description']
+        fields = ['locale', 'name', 'description']
 
 
 class ElectronicsProductTranslationSerializer(serializers.ModelSerializer):
@@ -128,7 +128,7 @@ class ElectronicsProductTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ElectronicsProductTranslation
-        fields = ['locale', 'description']
+        fields = ['locale', 'name', 'description']
 
 
 def _get_category_ids_with_descendants(slugs: list) -> set:
@@ -1155,7 +1155,7 @@ class ClothingVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClothingVariant
         fields = [
-            'id', 'slug', 'name', 'color',
+            'id', 'slug', 'name', 'name_en', 'color',
             'size',  # устаревшее поле оставлено для совместимости
             'sizes',
             'price', 'old_price', 'currency',
@@ -1870,7 +1870,7 @@ class ShoeVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShoeVariant
         fields = [
-            'id', 'slug', 'name', 'color',
+            'id', 'slug', 'name', 'name_en', 'color',
             'size',  # устаревшее поле оставлено для совместимости
             'sizes',
             'price', 'old_price', 'currency',
@@ -2066,7 +2066,7 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = FurnitureVariant
         fields = [
-            'id', 'name', 'slug', 'color',
+            'id', 'name', 'name_en', 'slug', 'color',
             'price', 'old_price', 'currency',
             'is_available', 'stock_quantity',
             'main_image', 'images',
@@ -2452,7 +2452,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
 class JewelryProductTranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = JewelryProductTranslation
-        fields = ['locale', 'description']
+        fields = ['locale', 'name', 'description']
 
 
 class JewelryProductImageSerializer(serializers.ModelSerializer):
@@ -2501,7 +2501,7 @@ class JewelryVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = JewelryVariant
         fields = [
-            'id', 'name', 'slug', 'color', 'material',
+            'id', 'name', 'name_en', 'slug', 'color', 'material', 'gender',
             'price', 'old_price', 'currency',
             'is_available', 'stock_quantity',
             'main_image', 'images', 'sizes',
@@ -2615,7 +2615,7 @@ class JewelryProductSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'slug', 'description', 'product_type', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
-            'currency', 'jewelry_type', 'material', 'metal_purity', 'stone_type', 'carat_weight',
+            'currency', 'jewelry_type', 'material', 'metal_purity', 'stone_type', 'carat_weight', 'gender',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
             'images',
             'variants', 'default_variant_slug', 'active_variant_slug',
@@ -2852,6 +2852,10 @@ class JewelryProductSerializer(serializers.ModelSerializer):
                 variant.price, variant.currency or obj.currency, preferred
             )
             return f"{price_val} {curr}" if price_val is not None else None
+        if obj.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            price_val, curr = self._convert_price(obj.price, obj.currency, preferred)
+            return f"{price_val} {curr}" if price_val is not None else None
         return None
 
     def get_active_variant_currency(self, obj):
@@ -2862,6 +2866,10 @@ class JewelryProductSerializer(serializers.ModelSerializer):
             _, curr = self._convert_price(
                 variant.price, variant.currency or obj.currency, preferred
             )
+            return curr
+        if obj.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            _, curr = self._convert_price(obj.price, obj.currency, preferred)
             return curr
         return None
 

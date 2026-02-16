@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
-import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
+import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTranslation } from '../../lib/i18n'
 import { getSiteOrigin } from '../../lib/urls'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
@@ -54,6 +54,7 @@ interface Product {
   specifications?: any
   warranty?: string
   power_consumption?: string
+  translations?: ProductTranslation[]
 }
 
 interface CategoryTranslation {
@@ -802,15 +803,39 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
       const wanted = new Set(expandJewelryMaterials(filters.jewelryMaterials).map(norm))
       result = result.filter((p) => {
         const material = norm((p as any).material)
+        const variantMaterials = Array.isArray((p as any).variants)
+          ? (p as any).variants.map((v: any) => norm(v?.material))
+          : []
         const cat = getCatSlug(p)
-        return Array.from(wanted).some((w) => (material && material.includes(w)) || cat.includes(w))
+        return Array.from(wanted).some((w) => (material && material.includes(w)) || variantMaterials.some((m: string) => m.includes(w)) || cat.includes(w))
       })
     }
     if (filters.jewelryGender && filters.jewelryGender.length) {
       const wantedG = new Set(filters.jewelryGender.map(norm))
+      const keywordMap: Record<string, string[]> = {
+        women: ['women', 'female', 'жен', 'женск', 'lady', 'women-s'],
+        men: ['men', 'male', 'муж', 'мужск', 'gent', 'mens'],
+        kids: ['kids', 'kid', 'child', 'children', 'дет', 'детск'],
+        unisex: ['unisex', 'унисекс', 'uniseks']
+      }
       result = result.filter((p) => {
         const cat = getCatSlug(p)
-        return Array.from(wantedG).some((w) => cat.includes(w))
+        const catName = norm((p as any)?.category?.name || '')
+        const productName = norm((p as any)?.name || '')
+        const productGender = norm((p as any)?.gender || (p as any)?.category?.gender || '')
+        const variantGenders = Array.isArray((p as any).variants)
+          ? (p as any).variants.map((v: any) => norm(v?.gender))
+          : []
+        return Array.from(wantedG).some((w) => {
+          const keywords = keywordMap[w] || [w]
+          return keywords.some((kw) =>
+            cat.includes(kw) ||
+            catName.includes(kw) ||
+            productName.includes(kw) ||
+            productGender.includes(kw) ||
+            variantGenders.some((vg: string) => vg.includes(kw))
+          )
+        })
       })
     }
     if (filters.subcategorySlugs && filters.subcategorySlugs.length > 0) {
@@ -855,7 +880,7 @@ export default function CategoryPage({
   initialRouteSlug,
   categoryTypeSlug
 }: CategoryPageProps) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const { slug } = router.query
 
@@ -1282,9 +1307,25 @@ export default function CategoryPage({
         const response = await api.getProducts(params)
         const data = response.data
         const productsList = Array.isArray(data) ? data : (data.results || [])
-        const filteredList = filterProductsByExtraFilters(productsList, filters, categoryType)
+        let filteredList = filterProductsByExtraFilters(productsList, filters, categoryType)
         // Используем count из API для правильной пагинации
-        const count = data.count || filteredList.length
+        let count = data.count || filteredList.length
+
+        if (
+          categoryType === 'jewelry' &&
+          (filters.jewelryMaterials.length > 0 || filters.jewelryGender.length > 0) &&
+          filteredList.length === 0 &&
+          (params.material || params.gender)
+        ) {
+          const retryParams = { ...params }
+          delete retryParams.material
+          delete retryParams.gender
+          const retryResponse = await api.getProducts(retryParams)
+          const retryData = retryResponse.data
+          const retryProductsList = Array.isArray(retryData) ? retryData : (retryData.results || [])
+          filteredList = filterProductsByExtraFilters(retryProductsList, filters, categoryType)
+          count = filteredList.length
+        }
 
         console.log(`Loaded ${productsList.length} products (after filters: ${filteredList.length}), total count: ${count}`)
         console.log('Category type:', categoryType)
@@ -1684,6 +1725,8 @@ export default function CategoryPage({
                         href={productHref}
                         productType={effectiveProductType as CategoryTypeKey}
                         isBaseProduct={isBaseProductType}
+                        translations={product.translations}
+                        locale={i18n.language}
                         isbn={effectiveProductType === 'books' ? (product as any).isbn : undefined}
                         publisher={effectiveProductType === 'books' ? (product as any).publisher : undefined}
                         pages={effectiveProductType === 'books' ? (product as any).pages : undefined}

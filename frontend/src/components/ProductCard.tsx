@@ -4,6 +4,7 @@ import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
+import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface ProductCardProps {
   id: number
@@ -21,6 +22,8 @@ interface ProductCardProps {
   href?: string
   productType?: string
   isBaseProduct?: boolean
+  translations?: ProductTranslation[]
+  locale?: string
   // Поля специфичные для книг
   isbn?: string
   publisher?: string
@@ -48,6 +51,8 @@ export default function ProductCard({
   href,
   productType = 'medicines',
   isBaseProduct = true,
+  translations,
+  locale,
   isbn,
   publisher,
   pages,
@@ -57,7 +62,8 @@ export default function ProductCard({
   isBestseller,
   isNew
 }: ProductCardProps) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
+  const localizedName = getLocalizedProductName(name, t, translations, locale || i18n.language)
   
   const resolvedImage =
     imageUrl && !isVideoUrl(imageUrl) ? resolveMediaUrl(imageUrl) : null
@@ -99,7 +105,7 @@ export default function ProductCard({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={resolvedImage}
-              alt={name}
+              alt={localizedName}
               className="w-full h-full rounded-md object-cover"
               onError={(e) => {
                 e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
@@ -124,7 +130,7 @@ export default function ProductCard({
         </div>
         <div className="flex-1 flex flex-col justify-between">
           <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2 hover-text-warm transition-colors">{name}</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2 hover-text-warm transition-colors">{localizedName}</h3>
             {description && (
               <p className="text-sm text-gray-600 line-clamp-2 mb-3">{description}</p>
             )}
@@ -198,7 +204,7 @@ export default function ProductCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={resolvedImage}
-            alt={name}
+            alt={localizedName}
             className="aspect-[4/3] w-full rounded-lg object-cover"
             onError={(e) => {
               e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
@@ -237,7 +243,7 @@ export default function ProductCard({
         )}
       </div>
       <h3 className="mt-3 line-clamp-2 text-base font-semibold text-gray-900 hover-text-warm transition-colors">
-        {name}
+        {localizedName}
       </h3>
       
       {/* Информация специфичная для книг */}

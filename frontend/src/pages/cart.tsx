@@ -7,11 +7,13 @@ import { useEffect, useState, useCallback } from 'react'
 import { useCartStore } from '../store/cart'
 import { resolveMediaUrl, getPlaceholderImageUrl, isVideoUrl } from '../lib/media'
 import { needsTypeInPath } from '../lib/product'
+import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface CartItem {
   id: number
   product: number
   product_name?: string
+  product_translations?: ProductTranslation[]
   product_slug?: string
   product_type?: string
   product_image_url?: string
@@ -52,7 +54,7 @@ const parseNumber = (value: string | number | null | undefined) => {
 }
 
 export default function CartPage({ initialCart }: { initialCart: Cart }) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const [cart, setCart] = useState<Cart>({
     ...initialCart,
     items: initialCart.items || []
@@ -329,6 +331,12 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     ? resolveMediaUrl(item.product_video_url)
                     : null
                   const showVideo = Boolean(resolvedVideoUrl)
+                  const localizedName = getLocalizedProductName(
+                    item.product_name || `Товар #${item.product}`,
+                    t,
+                    item.product_translations,
+                    i18n.language
+                  )
                   return (
                     <div
                       key={item.id}
@@ -353,7 +361,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                       ) : resolvedImage ? (
                         <img
                           src={resolvedImage}
-                          alt={item.product_name || `Товар #${item.product}`}
+                          alt={localizedName}
                           className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
                           onError={(e) => {
                             e.currentTarget.src = getPlaceholderImageUrl({
@@ -385,7 +393,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           className="block"
                         >
                           <h3 className="text-lg font-semibold text-gray-900 hover-text-warm transition-colors line-clamp-2">
-                            {item.product_name || `Товар #${item.product}`}
+                            {localizedName}
                           </h3>
                         </Link>
                         {item.chosen_size ? (

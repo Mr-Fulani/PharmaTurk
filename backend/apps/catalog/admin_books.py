@@ -46,7 +46,7 @@ class BookVariantAdmin(admin.ModelAdmin):
     readonly_fields = ('slug',)
     actions = [activate_book_variants, deactivate_book_variants]
     fieldsets = (
-        (None, {'fields': ('product', 'name', 'slug')}),
+        (None, {'fields': ('product', 'name', 'name_en', 'slug')}),
         (_('Характеристики'), {
             'fields': ('cover_type', 'format_type', 'isbn'),
             'description': _("Форматы задайте в таблице форматов ниже.")
@@ -64,7 +64,7 @@ class ProductTranslationInline(admin.TabularInline):
     """Inline для переводов товара."""
     model = ProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _('Перевод')
     verbose_name_plural = _('Переводы')
 
@@ -126,7 +126,7 @@ class BookVariantInline(admin.TabularInline):
     """Inline для вариантов книг в ProductBooks."""
     model = BookVariant
     extra = 0
-    fields = ('name', 'cover_type', 'format_type', 'price', 'currency', 'main_image', 'is_active', 'sort_order')
+    fields = ('name', 'name_en', 'cover_type', 'format_type', 'price', 'currency', 'main_image', 'is_active', 'sort_order')
 
 
 @admin.register(ProductBooks)

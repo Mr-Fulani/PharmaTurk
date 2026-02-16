@@ -78,6 +78,24 @@ const toggleArrayValue = <T,>(arr: T[], value: T): T[] =>
 
 const ensureSlug = (value?: string) => (value ? value.trim().toLowerCase().replace(/\s+/g, '-') : '')
 
+const normalizeKeyword = (value?: string | null) =>
+  (value || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, '-')
+
+const detectJewelryTypeKey = (value?: string | null) => {
+  const s = normalizeKeyword(value)
+  if (!s) return null
+  if (s.includes('ring') || s.includes('кольц') || s.includes('obruch') || s.includes('wedding')) return 'ring'
+  if (s.includes('bracelet') || s.includes('браслет')) return 'bracelet'
+  if (s.includes('necklace') || s.includes('chain') || s.includes('цеп') || s.includes('цепоч')) return 'necklace'
+  if (s.includes('earring') || s.includes('серьг')) return 'earrings'
+  if (s.includes('pendant') || s.includes('подвес')) return 'pendant'
+  return null
+}
+
 export default function CategorySidebar({
   categories = [],
   brands = [],
@@ -194,6 +212,30 @@ export default function CategorySidebar({
       subcategories: toggleArrayValue(prev.subcategories, subcategoryId),
       subcategorySlugs: slug ? toggleArrayValue(prev.subcategorySlugs, slug) : prev.subcategorySlugs
     }))
+  }
+
+  const getJewelrySubcategoryKey = (subcategory: Category) => {
+    const slug = subcategory.slug || ''
+    const name = subcategory.name || ''
+    const slugType = detectJewelryTypeKey(slug)
+    const nameType = detectJewelryTypeKey(name)
+    if (nameType && (!slugType || nameType !== slugType)) {
+      return name
+    }
+    return slug || name
+  }
+
+  const getSubcategoryLabel = (subcategory: Category) => {
+    const localized = getLocalizedCategoryName(subcategory.slug, subcategory.name, t, subcategory.translations, router.locale)
+    if (categoryType !== 'jewelry') return localized
+    const locale = router.locale || 'ru'
+    const name = subcategory.name || ''
+    const slugType = detectJewelryTypeKey(subcategory.slug || '')
+    const nameType = detectJewelryTypeKey(name)
+    if (locale.startsWith('ru') && name && nameType && slugType && nameType !== slugType) {
+      return name
+    }
+    return localized
   }
 
   const handlePriceChange = () => {
@@ -633,11 +675,16 @@ export default function CategorySidebar({
                       <input
                         type="checkbox"
                         checked={filters.subcategories.includes(subcategory.id)}
-                        onChange={() => toggleSubcategoryFilter(subcategory.id, ensureSlug(subcategory.slug))}
+                          onChange={() =>
+                            toggleSubcategoryFilter(
+                              subcategory.id,
+                              categoryType === 'jewelry' ? getJewelrySubcategoryKey(subcategory) : subcategory.slug
+                            )
+                          }
                         className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
                       />
                       <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">
-                        {getLocalizedCategoryName(subcategory.slug, subcategory.name, t, subcategory.translations, router.locale)}
+                          {getSubcategoryLabel(subcategory)}
                       </span>
                       {subcategory.product_count !== undefined && (
                         <span className="text-xs text-gray-500">({subcategory.product_count})</span>

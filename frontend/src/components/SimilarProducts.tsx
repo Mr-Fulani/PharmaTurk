@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import ProductCard from './ProductCard'
+import { ProductTranslation } from '../lib/i18n'
 
 interface Product {
   id: number
@@ -20,6 +21,7 @@ interface Product {
   video_url?: string | null
   product_type?: string
   is_featured?: boolean
+  translations?: ProductTranslation[]
 }
 
 interface SimilarProductResult {
@@ -63,7 +65,7 @@ export default function SimilarProducts({
   limit = 8,
   useRecsys = false
 }: SimilarProductsProps) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const [products, setProducts] = useState<Product[]>([])
   const [reasons, setReasons] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
@@ -213,6 +215,8 @@ export default function SimilarProducts({
                 badge={reasons[product.id] ? translateBadge(reasons[product.id]) : (product.is_featured ? t('product_featured', 'Хит') : null)}
                 productType={product.product_type || productType}
                 isBaseProduct={isBaseProduct}
+                translations={product.translations}
+                locale={i18n.language}
               />
             </div>
           )
