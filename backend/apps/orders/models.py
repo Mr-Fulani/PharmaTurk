@@ -150,7 +150,7 @@ class Cart(models.Model):
     def total_amount(self):
         """Рассчитать общую сумму корзины в предпочитаемой валюте."""
         # Получаем предпочитаемую валюту (по умолчанию RUB)
-        preferred_currency = 'RUB'
+        preferred_currency = (self.currency or 'RUB').upper()
         
         # Суммируем цены в предпочитаемой валюте
         total = 0
@@ -185,10 +185,11 @@ class Cart(models.Model):
         """Рассчитать скидку по промокоду."""
         if not self.promo_code:
             return 0
-        is_valid, error = self.promo_code.is_valid(cart_total=self.total_amount)
+        cart_currency = (self.currency or 'RUB').upper()
+        is_valid, error = self.promo_code.is_valid(cart_total=self.total_amount, cart_currency=cart_currency)
         if not is_valid:
             return 0
-        return self.promo_code.calculate_discount(self.total_amount)
+        return self.promo_code.calculate_discount(self.total_amount, currency=cart_currency)
     
     @property
     def final_amount(self):
@@ -219,7 +220,7 @@ class CartItem(models.Model):
     def total(self):
         """Рассчитать сумму позиции в предпочитаемой валюте."""
         # Получаем предпочитаемую валюту (по умолчанию RUB)
-        preferred_currency = 'RUB'
+        preferred_currency = (self.currency or getattr(self.cart, 'currency', None) or 'RUB').upper()
         
         try:
             prices = self.product.get_all_prices()
