@@ -14,7 +14,7 @@ from .models import (
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     Service, ServiceTranslation,
-    Banner, BannerMedia, Author, ProductAuthor, BookVariant, BookVariantSize, BookVariantImage,
+    Banner, BannerMedia, Author, ProductAuthor, ProductGenre, BookVariant, BookVariantSize, BookVariantImage,
 )
 from .seo_defaults import resolve_book_seo_value
 from .utils.storage_paths import detect_media_type
@@ -377,10 +377,11 @@ class PriceHistorySerializer(serializers.ModelSerializer):
 class AuthorSerializer(serializers.ModelSerializer):
     """Сериализатор для авторов."""
     full_name = serializers.ReadOnlyField()
+    full_name_en = serializers.ReadOnlyField()
     
     class Meta:
         model = Author
-        fields = ['id', 'first_name', 'last_name', 'full_name', 'bio', 'photo', 'birth_date', 'created_at']
+        fields = ['id', 'first_name', 'last_name', 'first_name_en', 'last_name_en', 'full_name', 'full_name_en', 'bio', 'photo', 'birth_date', 'created_at']
 
 
 class ProductAuthorSerializer(serializers.ModelSerializer):
@@ -390,6 +391,22 @@ class ProductAuthorSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductAuthor
         fields = ['id', 'author', 'created_at']
+
+
+class BookGenreSerializer(serializers.ModelSerializer):
+    translations = CategoryTranslationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'slug', 'translations']
+
+
+class ProductGenreSerializer(serializers.ModelSerializer):
+    genre = BookGenreSerializer(read_only=True)
+
+    class Meta:
+        model = ProductGenre
+        fields = ['id', 'genre', 'sort_order']
 
 
 class BookVariantSizeSerializer(serializers.ModelSerializer):
@@ -469,6 +486,7 @@ class ProductSerializer(serializers.ModelSerializer):
     price_breakdown = serializers.SerializerMethodField()
     translations = ProductTranslationSerializer(many=True, read_only=True)
     book_authors = ProductAuthorSerializer(many=True, read_only=True)
+    book_genres = ProductGenreSerializer(many=True, read_only=True)
     book_attributes = serializers.SerializerMethodField()
     isbn = serializers.SerializerMethodField()
     pages = serializers.SerializerMethodField()
@@ -496,7 +514,7 @@ class ProductSerializer(serializers.ModelSerializer):
             # Поля специфичные для книг
             'isbn', 'publisher', 'publication_date', 'pages', 'language',
             'cover_type', 'rating', 'reviews_count', 'is_bestseller', 'is_new',
-            'book_authors', 'book_attributes',
+            'book_authors', 'book_genres', 'book_attributes',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
             'main_image_url', 'video_url',

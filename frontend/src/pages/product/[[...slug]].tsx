@@ -151,7 +151,7 @@ interface Product {
   reviews_count?: number | null
   is_bestseller?: boolean
   is_new?: boolean
-  book_authors?: { id: number; author: { full_name: string } }[]
+  book_authors?: { id: number; author: { full_name: string; full_name_en?: string } }[]
   weight_value?: number | string | null
   weight_unit?: string | null
   book_attributes?: { format?: string; thickness_mm?: string }
@@ -225,6 +225,9 @@ export default function ProductPage({
   const localizedProductName = product
     ? getLocalizedProductName(product.name, t, product.translations, router.locale)
     : ''
+  const displayProductName = localizedProductName || product?.name || ''
+  const localeKey = (router.locale || '').toLowerCase()
+  const isEnglishLocale = localeKey.startsWith('en')
 
   // Выбираем дефолтный вариант-цвет: активный, либо первый доступный
   const initialVariant =
@@ -526,8 +529,8 @@ export default function ProductPage({
   const siteUrl = getSiteOrigin()
   const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
   const canonicalUrl = `${siteUrl}${productPath}`
-  const metaTitle = (product.meta_title || product.og_title || '').trim() || `${localizedProductName || product.name} — PharmaTurk`
-  const metaDescription = (product.meta_description || product.og_description || '').trim() || product.description?.slice(0, 200) || `${localizedProductName || product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
+  const metaTitle = (product.meta_title || product.og_title || '').trim() || `${displayProductName || product.name} — PharmaTurk`
+  const metaDescription = (product.meta_description || product.og_description || '').trim() || product.description?.slice(0, 200) || `${displayProductName || product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
   const ogImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
   const availability =
     selectedVariant?.is_available === false || selectedVariant?.stock_quantity === 0
@@ -538,7 +541,7 @@ export default function ProductPage({
   const productSchema = {
     '@context': 'https://schema.org',
     '@type': productType === 'books' ? 'Book' : 'Product',
-    name: localizedProductName || product.name,
+    name: displayProductName || product.name,
     description: metaDescription,
     image: ogImage,
     ...(productType === 'books' && product.isbn && { isbn: product.isbn }),
@@ -625,13 +628,13 @@ export default function ProductPage({
                           playsInline
                           preload="metadata"
                           className="w-full h-full object-cover pointer-events-none"
-                          aria-label={img.alt_text || localizedProductName || product.name}
+                          aria-label={img.alt_text || displayProductName || product.name}
                         />
                       ) : (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img
                           src={resolvedThumbnail || placeholderSmall}
-                          alt={img.alt_text || localizedProductName || product.name}
+                          alt={img.alt_text || displayProductName || product.name}
                           className="w-full h-full object-cover pointer-events-none"
                           onError={(e) => {
                             setThumbPlaceholderByKey((prev) => ({ ...prev, [thumbKey]: placeholderLarge }))
@@ -674,7 +677,7 @@ export default function ProductPage({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={activeImage}
-                    alt={localizedProductName || product.name}
+                    alt={displayProductName || product.name}
                     className={`max-w-full max-h-full rounded-xl object-contain transition-opacity duration-150 ${mainImageLoading ? 'opacity-0' : 'opacity-100'}`}
                     decoding="async"
                     onLoad={() => setMainImageLoading(false)}
@@ -714,7 +717,7 @@ export default function ProductPage({
               className="text-2xl font-bold"
               style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
             >
-              {localizedProductName || product.name}
+              {displayProductName || product.name}
             </h1>
             {/* Блок «Книга»: автор, издательство, страницы, ISBN, язык, обложка, рейтинг */}
             {productType === 'books' && (
@@ -725,7 +728,10 @@ export default function ProductPage({
                 {product.book_authors && product.book_authors.length > 0 && (
                   <p>
                     <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('author', 'Автор')}: </span>
-                    {product.book_authors.map((a) => a.author?.full_name).filter(Boolean).join(', ')}
+                    {product.book_authors.map((a) => {
+                      if (!a.author) return null
+                      return isEnglishLocale ? (a.author.full_name_en || a.author.full_name) : a.author.full_name
+                    }).filter(Boolean).join(', ')}
                   </p>
                 )}
                 {(product.publisher || product.pages) && (

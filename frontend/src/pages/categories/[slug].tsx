@@ -95,6 +95,7 @@ interface CategoryPageProps {
   sidebarCategories: Category[]
   brands: Brand[]
   bookAuthors?: Array<{ id: number; name: string }>
+  bookGenres?: Category[]
   bookPublishers?: string[]
   bookLanguages?: string[]
   subcategories?: Category[]
@@ -285,6 +286,7 @@ const areFiltersEqual = (left: FilterState, right: FilterState) =>
   areFilterArraysEqual(left.subcategories, right.subcategories) &&
   areFilterArraysEqual(left.subcategorySlugs, right.subcategorySlugs) &&
   areFilterArraysEqual(left.authorIds || [], right.authorIds || []) &&
+  areFilterArraysEqual(left.genreIds || [], right.genreIds || []) &&
   areFilterArraysEqual(left.publishers || [], right.publishers || []) &&
   areFilterArraysEqual(left.languages || [], right.languages || []) &&
   areFilterArraysEqual(left.shoeTypes || [], right.shoeTypes || []) &&
@@ -648,119 +650,11 @@ const getCategorySections = (type: CategoryPageProps['categoryType'], categories
   if (type === 'medicines') {
     return buildMedicineSections(categories)
   }
-  if (type === 'books') {
-    return buildBookSections(categories)
-  }
   if (type === 'perfumery') {
     return buildPerfumerySections(categories)
   }
   return []
 }
-
-const BOOK_GROUPS = [
-  {
-    label: 'Исламская литература',
-    titleKey: 'sidebar_books_islamic',
-    keywords: ['ислам', 'islamic', 'фикх', 'fiqh', 'тафсир', 'tafsir', 'адаб', 'adab', 'хадис', 'hadith'],
-    subitems: [
-      { name: 'Исламский фикх', nameKey: 'sidebar_book_fiqh', keywords: ['фикх', 'fiqh', 'islamic-fiqh'] },
-      { name: 'Тафсир', nameKey: 'sidebar_book_tafsir', keywords: ['тафсир', 'tafsir'] },
-      { name: 'Адаб', nameKey: 'sidebar_book_adab', keywords: ['адаб', 'adab'] },
-      { name: 'Хадис', nameKey: 'sidebar_book_hadith', keywords: ['хадис', 'hadith'] },
-      { name: 'История', nameKey: 'sidebar_book_history', keywords: ['история', 'history'] },
-    ]
-  },
-  {
-    label: 'Бизнес',
-    titleKey: 'sidebar_books_business',
-    keywords: ['бизнес', 'business'],
-    subitems: [
-      { name: 'Бизнес литература', nameKey: 'sidebar_book_business', keywords: ['бизнес', 'business'] },
-    ]
-  },
-  {
-    label: 'Наука',
-    titleKey: 'sidebar_books_science',
-    keywords: ['науч', 'science'],
-    subitems: [
-      { name: 'Научная литература', nameKey: 'sidebar_book_science', keywords: ['науч', 'science'] },
-    ]
-  },
-  {
-    label: 'Художественная',
-    titleKey: 'sidebar_books_fiction',
-    keywords: ['худож', 'fiction'],
-    subitems: [
-      { name: 'Художественная литература', nameKey: 'sidebar_book_fiction', keywords: ['худож', 'fiction'] },
-    ]
-  }
-]
-
-const buildBookSections = (categories: Category[]): SidebarTreeSection[] =>
-  BOOK_GROUPS.map((group) => {
-    const groupCategories = categories.filter((category) =>
-      group.keywords.some((keyword) => category.slug.includes(keyword) || category.name.toLowerCase().includes(keyword))
-    )
-
-    const subcategories: SidebarTreeItem[] = []
-    const usedCategoryIds = new Set<number>()
-    
-    // Добавляем подкатегории для данной группы
-    group.subitems.forEach((itemStruct, index) => {
-      const match = groupCategories.find(cat => 
-        itemStruct.keywords.some(kw => cat.slug.toLowerCase().includes(kw) || cat.name.toLowerCase().includes(kw))
-      )
-      
-      if (match && !usedCategoryIds.has(match.id)) {
-        usedCategoryIds.add(match.id)
-        subcategories.push({
-          id: `book-${match.id}`,
-          name: match.name,
-          slug: match.slug,
-          dataId: match.id,
-          count: match.product_count,
-          type: 'category'
-        })
-      } else {
-        // Показываем подкатегорию даже если данных нет
-        subcategories.push({
-          id: `placeholder-book-${group.label}-${index}`,
-          name: itemStruct.name,
-          nameKey: itemStruct.nameKey,
-          slug: undefined,
-          dataId: undefined,
-          count: undefined,
-          type: 'category'
-        })
-      }
-    })
-
-    // Добавляем оставшиеся категории группы, которых нет в структуре
-    groupCategories.forEach(cat => {
-        if (!usedCategoryIds.has(cat.id)) {
-            subcategories.push({
-              id: `book-${cat.id}`,
-              name: cat.name,
-              slug: cat.slug,
-              dataId: cat.id,
-              count: cat.product_count,
-              type: 'category'
-            })
-        }
-    })
-
-    // Создаем главный раздел с вложенными подкатегориями
-    return {
-      title: group.label,
-      titleKey: group.titleKey,
-      items: [{
-        id: `section-book-${group.label}`,
-        name: group.label,
-        type: 'category',
-        children: subcategories
-      }]
-    } as SidebarTreeSection & { titleKey?: string }
-  })
 
 const normalizePageParam = (value: string | string[] | undefined): number => {
   if (!value) {
@@ -931,6 +825,7 @@ export default function CategoryPage({
   sidebarCategories,
   brands,
   bookAuthors = [],
+  bookGenres = [],
   bookPublishers = [],
   bookLanguages = [],
   subcategories = [],
@@ -1101,6 +996,7 @@ export default function CategoryPage({
     subcategories: [],
     subcategorySlugs: [],
     authorIds: [],
+    genreIds: [],
     publishers: [],
     languages: [],
     priceMin: undefined,
@@ -1395,6 +1291,9 @@ export default function CategoryPage({
           if (filters.authorIds && filters.authorIds.length > 0) {
             params.author_id = filters.authorIds
           }
+          if (filters.genreIds && filters.genreIds.length > 0) {
+            params.genre_id = filters.genreIds
+          }
           if (filters.publishers && filters.publishers.length > 0) {
             params.publisher = filters.publishers.join(',')
           }
@@ -1463,6 +1362,7 @@ export default function CategoryPage({
     filters.subcategories,
     filters.subcategorySlugs,
     filters.authorIds,
+    filters.genreIds,
     filters.publishers,
     filters.languages,
     filters.priceMin,
@@ -1725,6 +1625,7 @@ export default function CategoryPage({
               onToggle={() => setSidebarOpen(!sidebarOpen)}
               initialFilters={filters}
               bookAuthors={bookAuthors}
+              bookGenres={bookGenres}
               bookPublishers={bookPublishers}
               bookLanguages={bookLanguages}
               showSubcategories={displaySubcategories.length > 0}
@@ -1985,6 +1886,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     // --- Фильтры книг ---
     let bookAuthors: Array<{ id: number; name: string }> = []
+    let bookGenres: Category[] = []
     let bookPublishers: string[] = []
     let bookLanguages: string[] = []
     if (categoryType === 'books') {
@@ -1995,10 +1897,12 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         }
         const bookRes = await axios.get(getInternalApiUrl('catalog/products/book-filters'), { params: bookParams })
         bookAuthors = bookRes.data?.authors || []
+        bookGenres = bookRes.data?.genres || []
         bookPublishers = bookRes.data?.publishers || []
         bookLanguages = bookRes.data?.languages || []
       } catch {
         bookAuthors = []
+        bookGenres = []
         bookPublishers = []
         bookLanguages = []
       }
@@ -2165,6 +2069,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         sidebarCategories,
         brands,
         bookAuthors,
+        bookGenres,
         bookPublishers,
         bookLanguages,
         subcategories,

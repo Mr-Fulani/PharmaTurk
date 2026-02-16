@@ -38,6 +38,7 @@ from .serializers import (
     BrandSerializer,
     ProductSerializer,
     ProductDetailSerializer,
+    BookGenreSerializer,
     ProductAttributeSerializer,
     PriceHistorySerializer,
     FavoriteSerializer,
@@ -630,6 +631,25 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
                 queryset = queryset.filter(book_authors__author_id__in=author_ids)
                 book_filters_applied = True
 
+        genre_ids_raw = self.request.query_params.getlist('genre_id') or self.request.query_params.getlist('genre_id[]')
+        if genre_ids_raw:
+            try:
+                genre_ids = [int(gid) for gid in genre_ids_raw if str(gid).strip() != '']
+            except (ValueError, TypeError):
+                genre_ids = []
+            if genre_ids:
+                queryset = queryset.filter(book_genres__genre_id__in=genre_ids)
+                book_filters_applied = True
+
+        genre_slug = self.request.query_params.get('genre_slug')
+        if genre_slug:
+            slugs = [s.strip() for s in genre_slug.split(',') if s.strip()]
+            if slugs:
+                genre_ids = _get_category_ids_with_descendants(slugs)
+                if genre_ids:
+                    queryset = queryset.filter(book_genres__genre_id__in=genre_ids)
+                    book_filters_applied = True
+
         author = self.request.query_params.get('author')
         if author:
             names = [n.strip() for n in author.split(',') if n.strip()]
@@ -765,6 +785,8 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
                 OpenApiParameter(name="country_of_origin", type=str, required=False, description="Страна происхождения (можно через запятую)"),
                 OpenApiParameter(name="author", type=str, required=False, description="Автор (можно несколько через запятую)"),
                 OpenApiParameter(name="author_id", type=int, required=False, description="ID автора (можно несколько)"),
+                OpenApiParameter(name="genre_id", type=int, required=False, description="ID жанра (можно несколько)"),
+                OpenApiParameter(name="genre_slug", type=str, required=False, description="Slug жанра (можно несколько через запятую)"),
                 OpenApiParameter(name="publisher", type=str, required=False, description="Издатель (можно несколько через запятую)"),
                 OpenApiParameter(name="language", type=str, required=False, description="Язык (можно несколько через запятую)"),
                 OpenApiParameter(name="cover_type", type=str, required=False, description="Тип обложки (можно несколько через запятую)"),
@@ -841,6 +863,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
                 queryset = queryset.filter(category_id__in=category_ids)
 
         authors_qs = Author.objects.filter(books__product__in=queryset).distinct().order_by('last_name', 'first_name')
+        genres_qs = Category.objects.filter(book_genre_products__product__in=queryset, is_active=True).distinct().order_by('name')
 
         publishers_raw = list(
             queryset.exclude(publisher__isnull=True).exclude(publisher__exact='').values_list('publisher', flat=True).distinct()
@@ -863,8 +886,17 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
                 cleaned.append(v)
             return sorted(cleaned, key=lambda item: item.casefold())
 
+        locale = getattr(request, "LANGUAGE_CODE", "") or ""
+        is_english = locale.lower().startswith("en")
         return Response({
-            "authors": [{"id": a.id, "name": a.full_name} for a in authors_qs],
+            "authors": [
+                {
+                    "id": a.id,
+                    "name": a.full_name_en if is_english and a.full_name_en else a.full_name
+                }
+                for a in authors_qs
+            ],
+            "genres": BookGenreSerializer(genres_qs, many=True).data,
             "publishers": normalize_list(publishers_raw),
             "languages": normalize_list(languages_raw),
         })

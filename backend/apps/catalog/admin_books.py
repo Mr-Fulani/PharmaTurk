@@ -8,7 +8,7 @@ from .models import (
     Author, ProductAuthor, Product, ProductBooks, 
     Category, CategoryBooks,
     BookVariant, BookVariantSize, BookVariantImage,
-    ProductTranslation, ProductImage, ProductAttribute
+    ProductTranslation, ProductImage, ProductAttribute, ProductGenre
 )
 
 
@@ -122,6 +122,23 @@ class ProductAuthorInline(admin.TabularInline):
     verbose_name_plural = _('Авторы')
 
 
+class ProductGenreInline(admin.TabularInline):
+    """Inline для жанров книги."""
+    model = ProductGenre
+    extra = 1
+    fields = ('genre', 'sort_order')
+    verbose_name = _('Жанр')
+    verbose_name_plural = _('Жанры')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'genre':
+            kwargs['queryset'] = Category.objects.filter(
+                django_models.Q(slug='books') |
+                django_models.Q(parent__slug='books')
+            ).order_by('name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
 class BookVariantInline(admin.TabularInline):
     """Inline для вариантов книг в ProductBooks."""
     model = BookVariant
@@ -199,7 +216,7 @@ class ProductBooksAdmin(admin.ModelAdmin):
         }),
     )
     
-    inlines = [ProductAuthorInline, ProductTranslationInline, ProductImageInline, ProductAttributeInline, BookVariantInline]
+    inlines = [ProductAuthorInline, ProductGenreInline, ProductTranslationInline, ProductImageInline, ProductAttributeInline, BookVariantInline]
     
     def authors_list(self, obj):
         """Список авторов через запятую."""

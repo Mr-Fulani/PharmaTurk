@@ -29,7 +29,7 @@ interface ProductCardProps {
   publisher?: string
   pages?: number
   language?: string
-  authors?: Array<{id: number, author: {full_name: string}}>
+  authors?: Array<{id: number, author: {full_name: string, full_name_en?: string}}>
   reviewsCount?: number
   isBestseller?: boolean
   isNew?: boolean
@@ -257,7 +257,11 @@ export default function ProductCard({
         <div className="mt-2 space-y-1">
           {authors && authors.length > 0 && (
             <p className="text-sm text-gray-600">
-              {authors.map(a => a.author.full_name).join(', ')}
+              {authors.map(a => {
+                const localeKey = (locale || '').toLowerCase()
+                const isEnglish = localeKey.startsWith('en')
+                return isEnglish ? (a.author.full_name_en || a.author.full_name) : a.author.full_name
+              }).join(', ')}
             </p>
           )}
           {(publisher || pages) && (

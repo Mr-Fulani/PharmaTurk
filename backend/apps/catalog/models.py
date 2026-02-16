@@ -3541,6 +3541,8 @@ class Author(models.Model):
     
     first_name = models.CharField(_("Имя"), max_length=100)
     last_name = models.CharField(_("Фамилия"), max_length=100)
+    first_name_en = models.CharField(_("Имя (англ.)"), max_length=100, blank=True)
+    last_name_en = models.CharField(_("Фамилия (англ.)"), max_length=100, blank=True)
     bio = models.TextField(_("Биография"), blank=True)
     photo = models.URLField(_("Фото"), blank=True, help_text=_("URL фотографии автора"))
     birth_date = models.DateField(_("Дата рождения"), null=True, blank=True)
@@ -3561,6 +3563,13 @@ class Author(models.Model):
     @property
     def full_name(self):
         return f"{self.first_name} {self.last_name}"
+
+    @property
+    def full_name_en(self):
+        value = f"{self.first_name_en} {self.last_name_en}".strip()
+        if value:
+            return value
+        return self.full_name
 
 
 class BookVariant(models.Model):
@@ -3724,6 +3733,38 @@ class ProductAuthor(models.Model):
 
     def __str__(self):
         return f"{self.product.name} - {self.author.full_name}"
+
+
+class ProductGenre(models.Model):
+    """Связь книги с жанрами."""
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name="book_genres",
+        verbose_name=_("Товар")
+    )
+    genre = models.ForeignKey(
+        Category,
+        on_delete=models.CASCADE,
+        related_name="book_genre_products",
+        verbose_name=_("Жанр")
+    )
+    sort_order = models.IntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Жанр книги")
+        verbose_name_plural = _("Жанры книг")
+        unique_together = [['product', 'genre']]
+        ordering = ['sort_order', 'created_at']
+        indexes = [
+            models.Index(fields=['product', 'genre']),
+            models.Index(fields=['sort_order']),
+        ]
+
+    def __str__(self):
+        return f"{self.product.name} - {self.genre.name}"
 
 
 class MarketingBannerMedia(BannerMedia):

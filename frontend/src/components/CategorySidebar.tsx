@@ -28,6 +28,7 @@ export interface FilterState {
   subcategories: number[]
   subcategorySlugs: string[]
   authorIds?: number[]
+  genreIds?: number[]
   publishers?: string[]
   languages?: string[]
   priceMin?: number
@@ -71,6 +72,7 @@ interface CategorySidebarProps {
   brands?: Brand[]
   subcategories?: Category[]
   bookAuthors?: BookAuthorOption[]
+  bookGenres?: Category[]
   bookPublishers?: string[]
   bookLanguages?: string[]
   categoryGroups?: SidebarTreeSection[]
@@ -120,6 +122,7 @@ export default function CategorySidebar({
   brands = [],
   subcategories = [],
   bookAuthors = [],
+  bookGenres = [],
   bookPublishers = [],
   bookLanguages = [],
   categoryGroups = [],
@@ -142,6 +145,7 @@ export default function CategorySidebar({
     subcategories: [],
     subcategorySlugs: [],
     authorIds: [],
+    genreIds: [],
     publishers: [],
     languages: [],
     priceMin: undefined,
@@ -172,6 +176,7 @@ export default function CategorySidebar({
     initialFilters?.categories?.join(','),
     initialFilters?.subcategories?.join(','),
     initialFilters?.authorIds?.join(','),
+    initialFilters?.genreIds?.join(','),
     initialFilters?.publishers?.join(','),
     initialFilters?.languages?.join(','),
     initialFilters?.inStock,
@@ -207,6 +212,7 @@ export default function CategorySidebar({
     filters.categorySlugs.join(','),
     filters.subcategorySlugs.join(','),
     filters.authorIds?.join(','),
+    filters.genreIds?.join(','),
     filters.publishers?.join(','),
     filters.languages?.join(','),
     filters.priceMin,
@@ -252,6 +258,13 @@ export default function CategorySidebar({
     updateFilters((prev) => ({
       ...prev,
       authorIds: toggleArrayValue(prev.authorIds || [], authorId)
+    }))
+  }
+
+  const toggleGenreFilter = (genreId: number) => {
+    updateFilters((prev) => ({
+      ...prev,
+      genreIds: toggleArrayValue(prev.genreIds || [], genreId)
     }))
   }
 
@@ -325,6 +338,10 @@ export default function CategorySidebar({
       brandSlugs: [],
       subcategories: [],
       subcategorySlugs: [],
+      authorIds: [],
+      genreIds: [],
+      publishers: [],
+      languages: [],
       priceMin: undefined,
       priceMax: undefined,
       inStock: false,
@@ -413,6 +430,7 @@ export default function CategorySidebar({
     (filters.jewelryGender && filters.jewelryGender.length > 0) ||
     (filters.headwearTypes && filters.headwearTypes.length > 0) ||
     (filters.authorIds && filters.authorIds.length > 0) ||
+    (filters.genreIds && filters.genreIds.length > 0) ||
     (filters.publishers && filters.publishers.length > 0) ||
     (filters.languages && filters.languages.length > 0)
 
@@ -772,7 +790,7 @@ export default function CategorySidebar({
             </div>
           )}
 
-          {categoryType === 'books' && (bookAuthors.length > 0 || bookPublishers.length > 0 || bookLanguages.length > 0) && (
+          {categoryType === 'books' && (bookAuthors.length > 0 || bookGenres.length > 0 || bookPublishers.length > 0 || bookLanguages.length > 0) && (
             <div className="border-b pb-4 space-y-4">
               {bookAuthors.length > 0 && (
                 <div>
@@ -801,6 +819,42 @@ export default function CategorySidebar({
                             className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
                           />
                           <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{author.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {bookGenres.length > 0 && (
+                <div>
+                  <button
+                    onClick={() => setExpandedSections((prev) => ({ ...prev, bookFilters: !prev.bookFilters }))}
+                    className="flex items-center justify-between w-full mb-3"
+                  >
+                    <h3 className="text-base font-semibold text-gray-900">{t('sidebar_book_genres', 'Жанры')}</h3>
+                    <svg
+                      className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {expandedSections.bookFilters && (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {bookGenres.map((genre) => (
+                        <label key={genre.id} className="flex items-center space-x-2 cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={filters.genreIds?.includes(genre.id) || false}
+                            onChange={() => toggleGenreFilter(genre.id)}
+                            className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                          />
+                          <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">
+                            {getLocalizedCategoryName(genre.slug, genre.name, t, genre.translations, router.locale)}
+                          </span>
                         </label>
                       ))}
                     </div>
