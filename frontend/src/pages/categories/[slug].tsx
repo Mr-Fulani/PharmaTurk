@@ -223,6 +223,15 @@ const parseNumber = (value: string | number | null | undefined) => {
   return Number.isFinite(num) ? num : null
 }
 
+const parseFirstNumber = (value: string | number | null | undefined) => {
+  if (value === null || typeof value === 'undefined') return null
+  const compact = String(value).replace(/\s+/g, '')
+  const match = compact.match(/(\d+(?:[.,]\d+)?)/)
+  if (!match) return null
+  const num = Number(match[1].replace(',', '.'))
+  return Number.isFinite(num) ? num : null
+}
+
 const formatPrice = (value: string | number | null | undefined): string | null => {
   if (value === null || typeof value === 'undefined') return null
   const num = parseNumber(value)
@@ -779,8 +788,27 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
   
   const norm = (v: any) => normalizeSlug(v)
   const getCatSlug = (p: any) => norm(p?.category?.slug || (p as any).category_slug || '')
+  const getDisplayPriceNumber = (product: Product) => {
+    const candidate = product.active_variant_price ?? product.price_formatted ?? product.price
+    const parsed = parsePriceWithCurrency(candidate)
+    const primary = parseNumber(parsed.price ?? product.price)
+    if (primary !== null) return primary
+    return parseFirstNumber(candidate ?? product.price)
+  }
 
   let result = products
+
+  if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
+    const min = filters.priceMin
+    const max = filters.priceMax
+    result = result.filter((p) => {
+      const price = getDisplayPriceNumber(p)
+      if (price === null) return false
+      if (min !== undefined && price < min) return false
+      if (max !== undefined && price > max) return false
+      return true
+    })
+  }
 
   if (categoryType === 'shoes' && filters.shoeTypes && filters.shoeTypes.length) {
     const wanted = new Set(filters.shoeTypes.map(norm))
@@ -1031,20 +1059,24 @@ export default function CategoryPage({
     }
   }, [brands])
   const brandOptions = initialBrandsRef.current
-  const [filters, setFilters] = useState<FilterState>({
+  const defaultFilters = useMemo<FilterState>(() => ({
     categories: [],
     categorySlugs: [],
     brands: [],
     brandSlugs: [],
     subcategories: [],
     subcategorySlugs: [],
+    priceMin: undefined,
+    priceMax: undefined,
     inStock: false,
     sortBy: 'name_asc',
     shoeTypes: [],
     clothingItems: [],
     jewelryMaterials: [],
     jewelryGender: [],
-  })
+    headwearTypes: []
+  }), [])
+  const [filters, setFilters] = useState<FilterState>(defaultFilters)
   const categoryGroups = useMemo(() => {
     const sections = getCategorySections(categoryType, categories)
     return sections.map((s) => ({
@@ -1078,6 +1110,25 @@ export default function CategoryPage({
       console.error('Не удалось обновить параметр страницы в URL:', error)
     })
   }, [router])
+
+  const resetFilters = useCallback(() => {
+    setFilters(defaultFilters)
+    setCurrentPage(1)
+    if (!router.isReady) return
+    const nextQuery: Record<string, string | string[] | undefined> = { ...router.query }
+    delete nextQuery.page
+    delete nextQuery.brand_id
+    router.replace(
+      {
+        pathname: router.pathname,
+        query: nextQuery
+      },
+      undefined,
+      { shallow: true, scroll: false }
+    ).catch((error) => {
+      console.error('Не удалось сбросить фильтры в URL:', error)
+    })
+  }, [defaultFilters, router])
   
   useEffect(() => {
     if (!router.isReady) return
@@ -1290,9 +1341,11 @@ export default function CategoryPage({
         }
         if (filters.priceMin !== undefined) {
           params.price_min = filters.priceMin
+          params.min_price = filters.priceMin
         }
         if (filters.priceMax !== undefined) {
           params.price_max = filters.priceMax
+          params.max_price = filters.priceMax
         }
         if (filters.inStock) {
           params.in_stock = true
@@ -1760,19 +1813,7 @@ export default function CategoryPage({
                   {t('products_not_found_description', 'Попробуйте изменить параметры фильтров или выберите другую категорию')}
                 </p>
                 <button
-                  onClick={() => {
-                    setFilters({
-                      categories: [],
-                      categorySlugs: [],
-                      brands: [],
-                      brandSlugs: [],
-                      subcategories: [],
-                      subcategorySlugs: [],
-                      inStock: false,
-                      sortBy: 'name_asc'
-                    })
-                    setCurrentPage(1)
-                  }}
+                  onClick={resetFilters}
                   className="px-6 py-3 bg-accent text-white rounded-lg hover:bg-[var(--accent-strong)] transition-colors"
                 >
                   {t('reset_filters', 'Сбросить фильтры')}

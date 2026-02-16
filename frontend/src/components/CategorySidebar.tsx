@@ -85,6 +85,14 @@ const normalizeKeyword = (value?: string | null) =>
     .toLowerCase()
     .replace(/_/g, '-')
 
+const parseNumber = (value: string | number | null | undefined) => {
+  if (value === null || typeof value === 'undefined') return null
+  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+  if (!normalized) return null
+  const num = Number(normalized)
+  return Number.isFinite(num) ? num : null
+}
+
 const detectJewelryTypeKey = (value?: string | null) => {
   const s = normalizeKeyword(value)
   if (!s) return null
@@ -119,6 +127,8 @@ export default function CategorySidebar({
     brandSlugs: [],
     subcategories: [],
     subcategorySlugs: [],
+    priceMin: undefined,
+    priceMax: undefined,
     inStock: false,
     sortBy: 'name_asc',
     shoeTypes: [],
@@ -239,11 +249,27 @@ export default function CategorySidebar({
   }
 
   const handlePriceChange = () => {
+    const minValue = parseNumber(priceRange.min)
+    const maxValue = parseNumber(priceRange.max)
     updateFilters((prev) => ({
       ...prev,
-      priceMin: priceRange.min ? Number(priceRange.min) : undefined,
-      priceMax: priceRange.max ? Number(priceRange.max) : undefined
+      priceMin: minValue ?? undefined,
+      priceMax: maxValue ?? undefined
     }))
+  }
+
+  const handlePriceInputChange = (field: 'min' | 'max', value: string) => {
+    setPriceRange((prev) => {
+      const next = { ...prev, [field]: value }
+      const minValue = parseNumber(next.min)
+      const maxValue = parseNumber(next.max)
+      updateFilters((prevFilters) => ({
+        ...prevFilters,
+        priceMin: minValue ?? undefined,
+        priceMax: maxValue ?? undefined
+      }))
+      return next
+    })
   }
 
   const clearFilters = () => {
@@ -254,6 +280,8 @@ export default function CategorySidebar({
       brandSlugs: [],
       subcategories: [],
       subcategorySlugs: [],
+      priceMin: undefined,
+      priceMax: undefined,
       inStock: false,
       sortBy: 'name_asc',
       shoeTypes: [],
@@ -771,7 +799,7 @@ export default function CategorySidebar({
                     type="number"
                     placeholder={t('sidebar_price_from', 'От')}
                     value={priceRange.min}
-                    onChange={(e) => setPriceRange((prev) => ({ ...prev, min: e.target.value }))}
+                    onChange={(e) => handlePriceInputChange('min', e.target.value)}
                     onBlur={handlePriceChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-violet-500 focus:border-violet-500"
                   />
@@ -780,7 +808,7 @@ export default function CategorySidebar({
                     type="number"
                     placeholder={t('sidebar_price_to', 'До')}
                     value={priceRange.max}
-                    onChange={(e) => setPriceRange((prev) => ({ ...prev, max: e.target.value }))}
+                    onChange={(e) => handlePriceInputChange('max', e.target.value)}
                     onBlur={handlePriceChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-violet-500 focus:border-violet-500"
                   />

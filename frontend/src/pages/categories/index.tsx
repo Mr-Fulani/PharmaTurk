@@ -22,6 +22,10 @@ interface Category {
   description?: string
   products_count?: number
   parent?: number | null
+  gender?: string | null
+  shoe_type?: string | null
+  clothing_type?: string | null
+  device_type?: string | null
   card_media_url?: string | null
   translations?: CategoryTranslation[]
 }
@@ -226,6 +230,15 @@ export async function getServerSideProps(ctx: any) {
     })
 
     const categories = Array.from(uniqueMap.values())
+      .filter((c) => {
+        const isRoot = c.parent === null || typeof c.parent === 'undefined'
+        if (!isRoot) return false
+        if (c.gender) return false
+        if (c.shoe_type) return false
+        if (c.clothing_type) return false
+        if (c.device_type) return false
+        return true
+      })
       .sort((a, b) => {
         const sa = (a as any).sort_order ?? 0
         const sb = (b as any).sort_order ?? 0
