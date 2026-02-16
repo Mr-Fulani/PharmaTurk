@@ -4,7 +4,7 @@ import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
-import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
+import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface ProductCardProps {
   id: number
@@ -64,6 +64,12 @@ export default function ProductCard({
 }: ProductCardProps) {
   const { t, i18n } = useTranslation('common')
   const localizedName = getLocalizedProductName(name, t, translations, locale || i18n.language)
+  const localizedDescription = getLocalizedProductDescription(
+    description,
+    t,
+    translations,
+    locale || i18n.language
+  )
   
   const resolvedImage =
     imageUrl && !isVideoUrl(imageUrl) ? resolveMediaUrl(imageUrl) : null
@@ -131,8 +137,8 @@ export default function ProductCard({
         <div className="flex-1 flex flex-col justify-between">
           <div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2 hover-text-warm transition-colors">{localizedName}</h3>
-            {description && (
-              <p className="text-sm text-gray-600 line-clamp-2 mb-3">{description}</p>
+            {localizedDescription && (
+              <p className="text-sm text-gray-600 line-clamp-2 mb-3">{localizedDescription}</p>
             )}
             <div className="flex items-center gap-4 mb-3">
               <div className="flex items-baseline gap-2">

@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
-import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTranslation } from '../../lib/i18n'
+import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTranslation, BrandTranslation } from '../../lib/i18n'
 import { getSiteOrigin } from '../../lib/urls'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
@@ -86,6 +86,7 @@ interface Brand {
   description: string
   logo?: string
   product_count?: number
+  translations?: BrandTranslation[]
 }
 
 interface CategoryPageProps {
@@ -135,6 +136,32 @@ const normalizeSlug = (value: any) =>
 const extractResults = (data: any) => {
   if (Array.isArray(data)) return data
   return data?.results || data?.data?.results || []
+}
+
+const ensureOtherBrand = (items: Brand[]) => {
+  const otherTranslations: BrandTranslation[] = [
+    { locale: 'ru', name: 'Другое', description: '' },
+    { locale: 'en', name: 'Other', description: '' }
+  ]
+  const normalized = items.map((brand) => {
+    if (brand.id !== 0 && brand.slug !== 'other') return brand
+    if (brand.translations && brand.translations.length > 0) return brand
+    return { ...brand, translations: otherTranslations }
+  })
+  if (normalized.some((brand) => brand.id === 0 || brand.slug === 'other')) {
+    return normalized
+  }
+  return [
+    {
+      id: 0,
+      name: 'Другое',
+      slug: 'other',
+      description: '',
+      product_count: undefined,
+      translations: otherTranslations
+    },
+    ...normalized
+  ]
 }
 
 const SHOE_GENDER_OPTIONS = [
@@ -1052,13 +1079,12 @@ export default function CategoryPage({
   const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const initialBrandsRef = useRef<Brand[]>(brands || [])
+  const [brandOptions, setBrandOptions] = useState<Brand[]>(brands || [])
   useEffect(() => {
-    if (initialBrandsRef.current.length === 0 && brands.length > 0) {
-      initialBrandsRef.current = brands
+    if (brands.length > 0) {
+      setBrandOptions(brands)
     }
   }, [brands])
-  const brandOptions = initialBrandsRef.current
   const defaultFilters = useMemo<FilterState>(() => ({
     categories: [],
     categorySlugs: [],
@@ -1188,10 +1214,12 @@ export default function CategoryPage({
         const params: Record<string, any> = {
           product_type: resolvedBrandType
         }
-        // Для парфюмерии (корень и подкатегории) всегда запрашиваем по perfumery
+        const normalizedCategoryType = (categoryTypeSlug || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
+        const normalizedRouteSlug = (routeSlug || '').toString().toLowerCase().replace(/_/g, '-')
+        const isTypedCategory = ['shoes', 'clothing', 'electronics', 'jewelry'].includes(resolvedBrandType || '')
         const brandPrimarySlug = (resolvedBrandType === 'perfumery')
           ? 'perfumery'
-          : (routeSlug || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
+          : (isTypedCategory ? resolvedBrandType : (normalizedCategoryType || normalizedRouteSlug))
         if (brandPrimarySlug) {
           params.primary_category_slug = brandPrimarySlug
         }
@@ -1205,9 +1233,8 @@ export default function CategoryPage({
         }
         const response = await api.get('/catalog/brands', { params })
         const list = Array.isArray(response.data) ? response.data : response.data.results || []
-        if (initialBrandsRef.current.length === 0 && list.length > 0) {
-          initialBrandsRef.current = list
-        }
+        const normalizedList = ensureOtherBrand(list)
+        setBrandOptions(normalizedList)
         // НЕ обновляем filters.brands если brand_id есть в URL - он должен быть установлен через инициализацию
         const { brand_id } = router.query
         if (brand_id) {
@@ -1215,7 +1242,7 @@ export default function CategoryPage({
           const brandIdFromUrl = Array.isArray(brand_id) ? parseInt(brand_id[0]) : parseInt(brand_id as string)
           if (!isNaN(brandIdFromUrl)) {
             // Просто проверяем, что бренд доступен, но не меняем фильтры
-            const allowedIds = new Set(list.map((brand: any) => brand.id))
+            const allowedIds = new Set(normalizedList.map((brand: any) => brand.id))
             if (allowedIds.has(brandIdFromUrl)) {
               // Бренд доступен - фильтры должны быть установлены через инициализацию
               return
@@ -1225,8 +1252,8 @@ export default function CategoryPage({
         
         // Если нет brand_id в URL, очищаем только несуществующие бренды
         setFilters((prev) => {
-          const allowedIds = new Set(list.map((brand: any) => brand.id))
-          const allowedSlugs = new Set(list.map((brand: any) => brand.slug))
+          const allowedIds = new Set(normalizedList.map((brand: any) => brand.id))
+          const allowedSlugs = new Set(normalizedList.map((brand: any) => brand.slug))
           const nextBrandIds = prev.brands.filter((id) => allowedIds.has(id))
           const nextBrandSlugs = prev.brandSlugs.filter((slug) => !slug || allowedSlugs.has(slug))
           
@@ -1249,8 +1276,8 @@ export default function CategoryPage({
     }
 
     loadBrands()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedBrandType, filters.categories, filters.categorySlugs, filters.inStock, router.query.brand_id])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedBrandType, filters.categories, filters.categorySlugs, filters.inStock, router.query.brand_id, router.locale])
 
   // Загрузка товаров с фильтрами
   useEffect(() => {
@@ -1865,8 +1892,12 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     // --- Бренды ---
     let brands: any[] = []
     try {
-      // Для парфюмерии (корень и подкатегории) всегда запрашиваем бренды по perfumery
-      const brandPrimarySlug = (brandProductType === 'perfumery') ? 'perfumery' : (routeSlug ? routeSlug.replace(/_/g, '-') : undefined)
+      const normalizedCategoryType = (categoryTypeFromApi || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
+      const normalizedRouteSlug = (routeSlug || '').toString().toLowerCase().replace(/_/g, '-')
+      const isTypedCategory = ['shoes', 'clothing', 'electronics', 'jewelry'].includes(brandProductType || '')
+      const brandPrimarySlug = (brandProductType === 'perfumery')
+        ? 'perfumery'
+        : (isTypedCategory ? brandProductType : (normalizedCategoryType || normalizedRouteSlug || undefined))
       const brandParams: any = { page_size: 500 }
       if (brandPrimarySlug) {
         brandParams.primary_category_slug = brandPrimarySlug
@@ -1875,7 +1906,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       brandParams.product_type = brandProductType
       
       const brandRes = await axios.get(getInternalApiUrl('catalog/brands'), { params: brandParams })
-      brands = brandRes.data.results || []
+      brands = ensureOtherBrand(brandRes.data.results || [])
     } catch {
       brands = []
     }

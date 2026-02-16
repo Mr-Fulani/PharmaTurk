@@ -160,6 +160,15 @@ BRANDS_DATA = {
         ("Paşabahçe", "Стеклянная посуда и бокалы.", "Glass tableware and glasses.", "https://www.pasabahce.com"),
         ("Kütahya Porselen", "Фарфор и сервизы.", "Porcelain and dinnerware sets.", "https://www.kutahyaporselen.com.tr"),
     ],
+    "jewelry": [
+        ("Cartier", "Французский ювелирный дом класса люкс.", "French luxury jewelry house.", "https://www.cartier.com"),
+        ("Tiffany & Co.", "Американский бренд ювелирных изделий.", "American luxury jewelry brand.", "https://www.tiffany.com"),
+        ("Bvlgari", "Итальянский ювелирный дом и часы.", "Italian jewelry and watch house.", "https://www.bulgari.com"),
+        ("Pandora", "Датский бренд украшений и браслетов.", "Danish jewelry and charm brand.", "https://www.pandora.net"),
+        ("Swarovski", "Австрийский бренд кристаллов и украшений.", "Austrian crystal and jewelry brand.", "https://www.swarovski.com"),
+        ("Chopard", "Швейцарский ювелирный и часовой дом.", "Swiss jewelry and watch maison.", "https://www.chopard.com"),
+        ("Van Cleef & Arpels", "Французский дом высокой ювелирии.", "French high jewelry maison.", "https://www.vancleefarpels.com"),
+    ],
     "medical-equipment": [
         ("Alvimedica", "Стенты, катетеры и кардиология.", "Stents, catheters and cardiology.", "https://www.alvimedica.com"),
         ("Bıçakcılar", "Медицинские расходники и аппараты.", "Medical consumables and devices.", "https://www.bicakcilar.com"),

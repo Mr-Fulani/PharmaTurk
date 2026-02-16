@@ -215,6 +215,28 @@ class Command(BaseCommand):
                 if created:
                     self.stdout.write(f"  ✓ Бренд: {name} ({primary_slug})")
                 _ensure_brand_translations(brand, name, desc_ru, desc_en)
+        other_brand, other_created = Brand.objects.update_or_create(
+            slug="other",
+            defaults={
+                "name": "Другое",
+                "description": "",
+                "website": "",
+                "is_active": True,
+                "primary_category_slug": "",
+            },
+        )
+        BrandTranslation.objects.update_or_create(
+            brand=other_brand,
+            locale="ru",
+            defaults={"name": "Другое", "description": ""},
+        )
+        BrandTranslation.objects.update_or_create(
+            brand=other_brand,
+            locale="en",
+            defaults={"name": "Other", "description": ""},
+        )
+        if other_created:
+            self.stdout.write("  ✓ Бренд: Другое (other)")
 
 
 def _ensure_category_translations(category, name_ru: str, name_en: str, desc_ru: str, desc_en: str):

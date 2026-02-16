@@ -170,6 +170,26 @@ def _apply_price_filter(queryset, request):
     return queryset
 
 
+def _apply_brand_filter(queryset, request):
+    brand_ids_raw = request.query_params.getlist('brand_id') or request.query_params.getlist('brand_id[]')
+    if not brand_ids_raw:
+        return queryset
+    try:
+        brand_ids = [int(bid) for bid in brand_ids_raw if bid is not None and str(bid).strip() != '']
+    except (ValueError, TypeError):
+        return queryset
+    if not brand_ids:
+        return queryset
+    other_brand_id = Brand.objects.filter(slug='other').values_list('id', flat=True).first()
+    wants_other = 0 in brand_ids or (other_brand_id and other_brand_id in brand_ids)
+    brand_ids = [bid for bid in brand_ids if bid > 0 and bid != other_brand_id]
+    if wants_other and brand_ids:
+        return queryset.filter(models.Q(brand__isnull=True) | models.Q(brand_id__in=brand_ids))
+    if wants_other:
+        return queryset.filter(brand__isnull=True)
+    return queryset.filter(brand_id__in=brand_ids)
+
+
 class StandardPagination(PageNumberPagination):
     """Стандартная пагинация для API."""
     page_size = 20
@@ -425,7 +445,71 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         ],
     )
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        response = super().list(request, *args, **kwargs)
+        data = response.data
+        primary_slugs = self._parse_slug_list('primary_category_slug')
+        product_type = self._normalize_product_type(self.request.query_params.get('product_type'))
+        if not product_type and primary_slugs:
+            product_type = self._normalize_product_type(primary_slugs[0].replace('-', '_'))
+        product_model = self.PRODUCT_MODEL_MAP.get(product_type) if product_type else None
+        if not product_model:
+            return response
+        product_qs = product_model.objects.filter(is_active=True, brand__isnull=True)
+        if product_model is Product and product_type:
+            product_qs = product_qs.filter(product_type=product_type)
+        category_slugs_filter = self.PRODUCT_TYPE_CATEGORY_SLUGS.get(product_type)
+        if category_slugs_filter and product_model is Product:
+            product_qs = product_qs.filter(category__slug__in=category_slugs_filter)
+        category_ids = self._parse_id_list('category_id')
+        if category_ids:
+            product_qs = product_qs.filter(category_id__in=category_ids)
+        category_slugs = self._parse_slug_list('category_slug')
+        if category_slugs:
+            cat_ids = _get_category_ids_with_descendants(category_slugs)
+            if cat_ids:
+                product_qs = product_qs.filter(category_id__in=cat_ids)
+        in_stock = self.request.query_params.get('in_stock')
+        if in_stock and in_stock.lower() in ('true', '1', 'yes'):
+            product_qs = product_qs.filter(is_available=True)
+        other_count = product_qs.count()
+        if other_count <= 0:
+            return response
+        primary_slug_value = primary_slugs[0] if primary_slugs else (product_type or '')
+        if primary_slug_value:
+            primary_slug_value = primary_slug_value.replace('_', '-')
+        other_brand_obj = Brand.objects.filter(slug='other', is_active=True).prefetch_related('translations').first()
+        if other_brand_obj:
+            other_brand = BrandSerializer(other_brand_obj, context=self.get_serializer_context()).data
+            other_brand['products_count'] = other_count
+            other_brand['primary_category_slug'] = primary_slug_value
+        else:
+            other_brand = {
+                "id": 0,
+                "name": "Другое",
+                "slug": "other",
+                "description": "",
+                "logo": "",
+                "website": "",
+                "card_media_url": None,
+                "primary_category_slug": primary_slug_value,
+                "external_id": "",
+                "is_active": True,
+                "products_count": other_count,
+                "translations": [
+                    {"locale": "ru", "name": "Другое", "description": ""},
+                    {"locale": "en", "name": "Other", "description": ""},
+                ],
+                "created_at": None,
+                "updated_at": None,
+            }
+        if isinstance(data, list):
+            if not any(isinstance(item, dict) and item.get('slug') == 'other' for item in data):
+                data.append(other_brand)
+        else:
+            results = data.get('results')
+            if isinstance(results, list) and not any(isinstance(item, dict) and item.get('slug') == 'other' for item in results):
+                results.append(other_brand)
+        return response
     
     @extend_schema(
         summary="Получить бренд по ID",
@@ -516,14 +600,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
                         queryset = queryset.filter(q)
         
         # Фильтр по бренду (поддержка массивов)
-        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
-        if brand_ids:
-            try:
-                brand_ids = [int(bid) for bid in brand_ids if bid]
-                if brand_ids:
-                    queryset = queryset.filter(brand_id__in=brand_ids)
-            except (ValueError, TypeError):
-                pass
+        queryset = _apply_brand_filter(queryset, self.request)
         
         # Фильтр по поиску
         search = self.request.query_params.get('search')
@@ -891,14 +968,7 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
                     queryset = queryset.filter(category_id__in=cat_ids)
         
         # Фильтр по бренду (поддержка массивов)
-        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
-        if brand_ids:
-            try:
-                brand_ids = [int(bid) for bid in brand_ids if bid]
-                if brand_ids:
-                    queryset = queryset.filter(brand_id__in=brand_ids)
-            except (ValueError, TypeError):
-                pass
+        queryset = _apply_brand_filter(queryset, self.request)
         
         # Фильтр по полу
         gender = self.request.query_params.get('gender')
@@ -1091,14 +1161,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
                     queryset = queryset.filter(category_id__in=cat_ids)
         
         # Фильтр по бренду (поддержка массивов)
-        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
-        if brand_ids:
-            try:
-                brand_ids = [int(bid) for bid in brand_ids if bid]
-                if brand_ids:
-                    queryset = queryset.filter(brand_id__in=brand_ids)
-            except (ValueError, TypeError):
-                pass
+        queryset = _apply_brand_filter(queryset, self.request)
         
         # Фильтр по полу
         gender = self.request.query_params.get('gender')
@@ -1281,14 +1344,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
                     queryset = queryset.filter(category_id__in=cat_ids)
         
         # Фильтр по бренду (поддержка массивов)
-        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
-        if brand_ids:
-            try:
-                brand_ids = [int(bid) for bid in brand_ids if bid]
-                if brand_ids:
-                    queryset = queryset.filter(brand_id__in=brand_ids)
-            except (ValueError, TypeError):
-                pass
+        queryset = _apply_brand_filter(queryset, self.request)
         
         # Фильтр по модели
         model = self.request.query_params.get('model')
@@ -1395,14 +1451,7 @@ class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
                     models.Q(category__gender__in=normalized_genders)
                 )
                 queryset = queryset.filter(q).distinct()
-        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
-        if brand_ids:
-            try:
-                brand_ids = [int(bid) for bid in brand_ids if bid]
-                if brand_ids:
-                    queryset = queryset.filter(brand_id__in=brand_ids)
-            except (ValueError, TypeError):
-                pass
+        queryset = _apply_brand_filter(queryset, self.request)
         jewelry_types = parse_multi_param('jewelry_type')
         if jewelry_types:
             q = models.Q()
@@ -1483,14 +1532,7 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
                     queryset = queryset.filter(category_id__in=cat_ids)
         
         # Фильтр по бренду (поддержка массивов)
-        brand_ids = self.request.query_params.getlist('brand_id') or self.request.query_params.getlist('brand_id[]')
-        if brand_ids:
-            try:
-                brand_ids = [int(bid) for bid in brand_ids if bid]
-                if brand_ids:
-                    queryset = queryset.filter(brand_id__in=brand_ids)
-            except (ValueError, TypeError):
-                pass
+        queryset = _apply_brand_filter(queryset, self.request)
         
         # Фильтр по типу мебели
         furniture_type = self.request.query_params.get('furniture_type')
