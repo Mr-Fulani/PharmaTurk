@@ -2,6 +2,7 @@
 
 from typing import List
 from decimal import Decimal
+from datetime import timedelta
 
 from django.shortcuts import get_object_or_404
 from django.db import models
@@ -10,6 +11,7 @@ from django.db.models.functions import Coalesce
 from django.http import HttpResponse, JsonResponse, Http404
 from django.views.decorators.http import require_GET
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -168,6 +170,21 @@ def _apply_price_filter(queryset, request):
         q |= null_currency
     if q:
         return queryset.filter(q)
+    return queryset
+
+
+def _apply_is_new_filter(queryset, request, use_flag: bool = False):
+    raw = request.query_params.get('is_new')
+    if raw is None:
+        return queryset
+    is_new = raw.lower() in ('true', '1', 'yes')
+    if not is_new:
+        return queryset
+    if use_flag and hasattr(queryset.model, 'is_new'):
+        return queryset.filter(is_new=True)
+    if hasattr(queryset.model, 'created_at'):
+        threshold = timezone.now() - timedelta(days=30)
+        return queryset.filter(created_at__gte=threshold)
     return queryset
 
 
@@ -753,6 +770,8 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             is_available = is_available.lower() in ('true', '1', 'yes')
             queryset = queryset.filter(is_available=is_available)
         
+        queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
+        
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
         ordering = self._normalize_ordering(ordering)
@@ -779,6 +798,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             OpenApiParameter(name="min_price", type=float, required=False, description="Минимальная цена"),
             OpenApiParameter(name="max_price", type=float, required=False, description="Максимальная цена"),
             OpenApiParameter(name="is_available", type=bool, required=False, description="В наличии"),
+            OpenApiParameter(name="is_new", type=bool, required=False, description="Новинки"),
             OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
                 OpenApiParameter(name="product_type", type=str, required=False, description="Тип товара (например, medicines, clothing)"),
                 OpenApiParameter(name="availability_status", type=str, required=False, description="Статус доступности (in_stock, backorder, preorder, out_of_stock, discontinued)"),
@@ -1207,6 +1227,7 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request)
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
@@ -1230,6 +1251,7 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
             OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
             OpenApiParameter(name="min_price", type=float, required=False, description="Минимальная цена"),
             OpenApiParameter(name="max_price", type=float, required=False, description="Максимальная цена"),
+            OpenApiParameter(name="is_new", type=bool, required=False, description="Новинки"),
             OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
         ]
     )
@@ -1343,6 +1365,14 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
             'variants',
             'variants__images',
         )
+
+        def parse_multi_param(param_name: str) -> list[str]:
+            raw_list = self.request.query_params.getlist(param_name) or []
+            if not raw_list:
+                raw = self.request.query_params.get(param_name)
+                if raw:
+                    raw_list = raw.split(',')
+            return [v.strip() for v in raw_list if v and str(v).strip()]
         
         # Фильтр по категории (поддержка массивов)
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
@@ -1362,6 +1392,10 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
                 cat_ids = _get_category_ids_with_descendants(slugs)
                 if cat_ids:
                     queryset = queryset.filter(category_id__in=cat_ids)
+
+        shoe_types = parse_multi_param('shoe_type')
+        if shoe_types:
+            queryset = queryset.filter(category__shoe_type__in=shoe_types)
         
         # Фильтр по бренду (поддержка массивов)
         queryset = _apply_brand_filter(queryset, self.request)
@@ -1400,6 +1434,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request)
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
@@ -1416,6 +1451,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
             OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории (включая подкатегории)"),
             OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
             OpenApiParameter(name="gender", type=str, required=False, description="Пол"),
+            OpenApiParameter(name="shoe_type", type=str, required=False, description="Тип обуви"),
             OpenApiParameter(name="size", type=str, required=False, description="Размер"),
             OpenApiParameter(name="color", type=str, required=False, description="Цвет"),
             OpenApiParameter(name="material", type=str, required=False, description="Материал"),
@@ -1423,6 +1459,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
             OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
             OpenApiParameter(name="min_price", type=float, required=False, description="Минимальная цена"),
             OpenApiParameter(name="max_price", type=float, required=False, description="Максимальная цена"),
+            OpenApiParameter(name="is_new", type=bool, required=False, description="Новинки"),
             OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
         ]
     )
@@ -1561,6 +1598,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request)
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
@@ -1580,6 +1618,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
             OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
             OpenApiParameter(name="min_price", type=float, required=False, description="Минимальная цена"),
             OpenApiParameter(name="max_price", type=float, required=False, description="Максимальная цена"),
+            OpenApiParameter(name="is_new", type=bool, required=False, description="Новинки"),
             OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
         ]
     )
@@ -1671,6 +1710,7 @@ class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
         if search:
             queryset = queryset.filter(name__icontains=search)
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request)
         ordering = self.request.query_params.get('ordering', '-created_at')
         queryset = queryset.order_by(self._normalize_ordering(ordering))
         return queryset
@@ -1754,6 +1794,7 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request)
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
@@ -1774,6 +1815,7 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
             OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
             OpenApiParameter(name="min_price", type=float, required=False, description="Минимальная цена"),
             OpenApiParameter(name="max_price", type=float, required=False, description="Максимальная цена"),
+            OpenApiParameter(name="is_new", type=bool, required=False, description="Новинки"),
             OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
         ]
     )

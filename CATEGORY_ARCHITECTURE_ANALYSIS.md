@@ -214,6 +214,11 @@ python manage.py seed_root_categories
 - **Рефакторинг**: `orders/serializers.py` использует `get_or_create_root_category` из constants (парсеры не трогаем)
 - **Админка**: единый раздел «Категории» для всех категорий, улучшен BrandAdmin с primary_category_slug в list_display/list_filter
 
+### Обновления: «Украшения» и «Книги» доведены до эталона
+
+- **Украшения**: отдельная модель `JewelryProduct` + эндпоинты `/api/catalog/jewelry/products`, включая фильтры по `gender`, `jewelry_type`, `material`; фронт использует отдельный API и карточки с вариантами.
+- **Книги**: общий `Product` с book‑полями и отдельные фильтры (авторы, жанры, издательства, язык), фронт получает фильтры через `/api/catalog/products/book-filters` и грузит товары по `product_type=books`.
+
 ---
 
 ## Краткое резюме
@@ -365,6 +370,58 @@ python manage.py seed_root_categories
 
 ---
 
+## Категория «Книги» — структура и поля для парсинга
+
+### 1. Корневая категория и подкатегории
+
+- **Тип категории**: `books`
+- **Корневая категория**: slug `books`, URL `/categories/books`
+- **Подкатегории**: жанры, `parent` = корневая `books`
+
+### 2. API эндпоинты
+
+- **Список товаров**: `/api/catalog/products?product_type=books`
+- **Получение одного товара по slug**: `/api/catalog/products/{slug}`
+- **Фильтры книг**: `/api/catalog/products/book-filters`
+- **Категории**: `/api/catalog/categories?slug=books&include_children=true`
+
+### 3. Модель данных (backend)
+
+**Product** — базовая модель с полями книг:
+- `isbn`, `publisher`, `publication_date`, `pages`, `language`
+- `cover_type`, `rating`, `reviews_count`, `is_bestseller`, `is_new`
+- `book_authors`, `book_genres`, `book_variants`
+
+**BookVariant** — варианты (обложка/формат/цена):
+- `cover_type`, `format_type`, `isbn`, `price`, `currency`, `main_image`, `is_active`
+
+### 4. Фильтры и параметры запроса
+
+`/api/catalog/products` для книг поддерживает:
+- `author_id`, `genre_id`, `genre_slug`
+- `publisher`, `language`
+- `cover_type`, `format_type`, `isbn`
+- `pages_min`, `pages_max`, `rating_min`, `rating_max`
+- `is_available`, `availability_status`, `is_new`
+- `min_price`, `max_price`, `ordering`
+
+### 5. Маппинг полей для парсинга
+
+**Обязательный минимум:**
+- Название → `Product.name`
+- Ссылка на товар → `Product.external_url`
+- Внешний ID → `Product.external_id`
+- Цена → `Product.price` + `currency`
+- Главное изображение → `Product.main_image`
+
+**Желательно парсить:**
+- ISBN, издательство, страницы, язык
+- Авторы → `ProductAuthor`
+- Жанры → `ProductGenre`
+- Обложка/формат → `BookVariant.cover_type`, `BookVariant.format_type`
+
+---
+
 ## Сравнение корневых категорий с логикой «Украшения»
 
 ### 1. Карта корневых категорий и текущая модель/эндпоинты
@@ -417,6 +474,35 @@ python manage.py seed_root_categories
 ### Шаг 2. Выравнять работу брендов и их счётчиков
 
 - Сделать `BrandSerializer.products_count` агрегированным по тем же моделям, что и `CategorySerializer`.
+
+---
+
+## План приведения категории «Обувь» к эталону
+
+### 1. Данные и иерархия
+- Убедиться, что корневая категория `shoes` создана и связана с `CategoryType`.
+- Проверить подкатегории и их `parent`, корректные `shoe_type` и `gender`.
+
+### 2. Бэкенд API
+- Подтвердить покрытие фильтров `size`, `color`, `material`, `heel_height`, `gender` и `is_new` в `ShoeProductViewSet`.
+- Синхронизировать описания параметров в `extend_schema` с фактическими фильтрами.
+
+### 3. Фронтенд: маршрутизация и фильтры
+- Проверить `getApiForCategory()` и `resolveProductsEndpoint()` для `shoes` (должен быть отдельный API).
+- Сопоставить фильтры сайдбара с параметрами API: пол, размеры, цвет, материал, «Новинки».
+
+### 4. Карточка и товарная страница
+- Убедиться, что `ShoeProduct` и варианты корректно отрисованы (варианты, размеры, изображения).
+- Проверить `resolveDetailEndpoint()` для `shoes` и редиректы по типу товара.
+
+### 5. Импорт и парсинг
+- В маппинге парсеров использовать `product_type=shoes`, `category` по `shoe_type`/slug.
+- Заполнять `ShoeVariant` и размеры в `ShoeVariantSize`, если доступны.
+
+### 6. Проверки
+- SSR список и фильтры на `/categories/shoes`.
+- Корректность пагинации и счётчиков.
+- Сравнение выдачи с эталоном (Украшения/Книги).
 - Либо вернуть в API `product_count` (aliased), чтобы фронт не зависел от конкретного поля.
 - Проверить фильтрацию брендов по `product_type` для всех корневых категорий.
 

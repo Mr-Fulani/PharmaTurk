@@ -34,6 +34,7 @@ interface Product {
   video_url?: string
   is_available: boolean
   is_featured: boolean
+  is_new?: boolean
   category?: {
     id: number
     name: string
@@ -168,11 +169,11 @@ const ensureOtherBrand = (items: Brand[]) => {
   ]
 }
 
-const SHOE_GENDER_OPTIONS = [
-  { id: -1, slug: 'women', name: 'Женская' },
-  { id: -2, slug: 'men', name: 'Мужская' },
-  { id: -3, slug: 'kids', name: 'Детская' },
-  { id: -4, slug: 'unisex', name: 'Унисекс' }
+const SHOE_GENDER_FALLBACKS = [
+  { id: -1, slug: 'women', key: 'filter_women', fallback: 'Женская' },
+  { id: -2, slug: 'men', key: 'filter_men', fallback: 'Мужская' },
+  { id: -3, slug: 'kids', key: 'filter_kids', fallback: 'Детская' },
+  { id: -4, slug: 'unisex', key: 'filter_unisex', fallback: 'Унисекс' }
 ]
 
 const filterBrandsByProducts = (
@@ -295,6 +296,7 @@ const areFiltersEqual = (left: FilterState, right: FilterState) =>
   areFilterArraysEqual(left.jewelryGender || [], right.jewelryGender || []) &&
   areFilterArraysEqual(left.headwearTypes || [], right.headwearTypes || []) &&
   left.inStock === right.inStock &&
+  left.isNew === right.isNew &&
   left.sortBy === right.sortBy &&
   left.priceMin === right.priceMin &&
   left.priceMax === right.priceMax
@@ -714,6 +716,13 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
   
   const norm = (v: any) => normalizeSlug(v)
   const getCatSlug = (p: any) => norm(p?.category?.slug || (p as any).category_slug || '')
+  const tokenize = (value: any) =>
+    (value || '')
+      .toString()
+      .toLowerCase()
+      .replace(/[^a-zа-яё0-9]+/gi, ' ')
+      .split(' ')
+      .filter(Boolean)
   const getDisplayPriceNumber = (product: Product) => {
     const candidate = product.active_variant_price ?? product.price_formatted ?? product.price
     const parsed = parsePriceWithCurrency(candidate)
@@ -723,6 +732,12 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
   }
 
   let result = products
+  if (filters.isNew) {
+    const hasIsNew = result.some((p) => typeof (p as any).is_new === 'boolean' || typeof (p as any).isNew === 'boolean')
+    if (hasIsNew) {
+      result = result.filter((p) => Boolean((p as any).is_new ?? (p as any).isNew))
+    }
+  }
 
   if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
     const min = filters.priceMin
@@ -742,6 +757,40 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
       const cat = getCatSlug(p)
       return Array.from(wanted).some((w) => cat.includes(w) || norm(p.slug).includes(w))
     })
+  }
+
+  if (categoryType === 'shoes' && filters.subcategorySlugs && filters.subcategorySlugs.length) {
+    const genderSlugs = filters.subcategorySlugs.map(norm).filter((s) => ['women', 'men', 'kids', 'unisex'].includes(s))
+    if (genderSlugs.length > 0) {
+      const wantedG = new Set(genderSlugs)
+      const keywordMap: Record<string, string[]> = {
+        women: ['women', 'woman', 'female', 'lady', 'ladies', 'womens', 'жен', 'женск', 'женская', 'женские'],
+        men: ['men', 'man', 'male', 'mens', 'gent', 'муж', 'мужск', 'мужская', 'мужские'],
+        kids: ['kids', 'kid', 'child', 'children', 'дет', 'детск', 'детская', 'детские'],
+        unisex: ['unisex', 'uniseks', 'унисекс']
+      }
+      result = result.filter((p) => {
+        const variantGenders = Array.isArray((p as any).variants)
+          ? (p as any).variants.map((v: any) => v?.gender)
+          : []
+        const tokens = [
+          ...tokenize((p as any)?.gender),
+          ...tokenize((p as any)?.category?.gender),
+          ...tokenize((p as any)?.category?.slug),
+          ...tokenize((p as any)?.category?.name),
+          ...tokenize((p as any)?.name),
+          ...tokenize((p as any)?.slug),
+          ...variantGenders.flatMap(tokenize),
+        ]
+        const detected = new Set<string>()
+        tokens.forEach((token) => {
+          Object.entries(keywordMap).forEach(([genderKey, keys]) => {
+            if (keys.includes(token)) detected.add(genderKey)
+          })
+        })
+        return Array.from(wantedG).some((w) => detected.has(w))
+      })
+    }
   }
 
   if (categoryType === 'clothing' && filters.clothingItems && filters.clothingItems.length) {
@@ -841,6 +890,15 @@ export default function CategoryPage({
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const { slug } = router.query
+  const shoeGenderOptions = useMemo<Category[]>(() => (
+    SHOE_GENDER_FALLBACKS.map((opt) => ({
+      id: opt.id,
+      slug: opt.slug,
+      name: t(opt.key, opt.fallback),
+      description: '',
+      children_count: 0
+    }))
+  ), [t])
 
   // Сохранение и восстановление позиции скролла при возврате на страницу
   useEffect(() => {
@@ -1002,6 +1060,7 @@ export default function CategoryPage({
     priceMin: undefined,
     priceMax: undefined,
     inStock: false,
+    isNew: false,
     sortBy: 'name_asc',
     shoeTypes: [],
     clothingItems: [],
@@ -1010,6 +1069,7 @@ export default function CategoryPage({
     headwearTypes: []
   }), [])
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
+  const extraFiltersInitialized = useRef<string>('')
   const categoryGroups = useMemo(() => {
     const sections = getCategorySections(categoryType, categories)
     return sections.map((s) => ({
@@ -1114,6 +1174,42 @@ export default function CategoryPage({
       })
     }
   }, [router.isReady, router.asPath, router.query.brand_id])
+
+  useEffect(() => {
+    if (!router.isReady) return
+    const initKey = `extra-${router.asPath}`
+    if (extraFiltersInitialized.current === initKey) return
+    const genderParam = router.query.gender
+    const subcategoryParam = router.query.subcategory_slug
+    const shoeTypeParam = router.query.shoe_type
+    const gender = Array.isArray(genderParam) ? genderParam[0] : genderParam
+    const subcategorySlug = Array.isArray(subcategoryParam) ? subcategoryParam[0] : subcategoryParam
+    const shoeType = Array.isArray(shoeTypeParam) ? shoeTypeParam[0] : shoeTypeParam
+    if (!gender && !subcategorySlug && !shoeType) {
+      extraFiltersInitialized.current = initKey
+      return
+    }
+    setFilters((prev) => {
+      const nextSubcategorySlugs = [
+        ...(gender ? [String(gender)] : []),
+        ...(subcategorySlug ? [String(subcategorySlug)] : [])
+      ]
+      const nextShoeTypes = shoeType ? String(shoeType).split(',').map((v) => v.trim()).filter(Boolean) : []
+      if (
+        prev.subcategorySlugs.join(',') === nextSubcategorySlugs.join(',') &&
+        prev.shoeTypes?.join(',') === nextShoeTypes.join(',')
+      ) {
+        extraFiltersInitialized.current = initKey
+        return prev
+      }
+      extraFiltersInitialized.current = initKey
+      return {
+        ...prev,
+        subcategorySlugs: nextSubcategorySlugs,
+        shoeTypes: nextShoeTypes
+      }
+    })
+  }, [router.isReady, router.asPath, router.query.gender, router.query.subcategory_slug, router.query.shoe_type])
 
   useEffect(() => {
     const loadBrands = async () => {
@@ -1246,23 +1342,30 @@ export default function CategoryPage({
         const jewelryTypeFilters = categoryType === 'jewelry'
           ? mapJewelryTypesFromSlugs(filters.subcategorySlugs)
           : []
-        const genderSlug = categoryType === 'shoes' && normalizedRoute === 'shoes'
-          ? normalizedSubSlugs.find((s) => ['women', 'men', 'kids', 'unisex'].includes(s))
-          : null
-        if (!genderSlug && filters.subcategories.length > 0) {
+        const shoeGenderSet = new Set(['women', 'men', 'kids', 'unisex'])
+        const shoeGenderSlugs = categoryType === 'shoes' && normalizedRoute === 'shoes'
+          ? normalizedSubSlugs.filter((s) => shoeGenderSet.has(s))
+          : []
+        const nonGenderSubSlugs = categoryType === 'shoes' && normalizedRoute === 'shoes'
+          ? normalizedSubSlugs.filter((s) => !shoeGenderSet.has(s))
+          : normalizedSubSlugs
+        if (shoeGenderSlugs.length === 0 && filters.subcategories.length > 0) {
           params.subcategory_id = filters.subcategories
         }
-        if (genderSlug) {
-          params.gender = genderSlug
-        } else if (filters.subcategorySlugs.length > 0) {
+        if (shoeGenderSlugs.length === 1) {
+          params.gender = shoeGenderSlugs[0]
+        } else if (nonGenderSubSlugs.length > 0) {
           // Для книг используем category_slug вместо subcategory_slug
           if (categoryType === 'jewelry' && jewelryTypeFilters.length > 0) {
             params.jewelry_type = jewelryTypeFilters.join(',')
           } else if (categoryType === 'books') {
-            params.category_slug = filters.subcategorySlugs.join(',')
+            params.category_slug = nonGenderSubSlugs.join(',')
           } else {
-            params.subcategory_slug = filters.subcategorySlugs.join(',')
+            params.subcategory_slug = nonGenderSubSlugs.join(',')
           }
+        }
+        if (categoryType === 'shoes' && filters.shoeTypes && filters.shoeTypes.length === 1) {
+          params.shoe_type = filters.shoeTypes[0]
         }
         if (categoryType === 'jewelry') {
           const jewelryGenderSlugs = filters.jewelryGender.map((s) => normalizeSlug(s)).filter(Boolean)
@@ -1283,6 +1386,9 @@ export default function CategoryPage({
         }
         if (filters.inStock) {
           params.in_stock = true
+        }
+        if (filters.isNew) {
+          params.is_new = true
         }
         if (filters.sortBy) {
           params.ordering = filters.sortBy
@@ -1368,6 +1474,7 @@ export default function CategoryPage({
     filters.priceMin,
     filters.priceMax,
     filters.inStock,
+    filters.isNew,
     filters.sortBy,
     filters.shoeTypes,
     filters.clothingItems,
@@ -1471,9 +1578,9 @@ export default function CategoryPage({
   }, [isRootCategoryPage, resolvedSubcategories.length, categoryType, routeSlug])
   const displaySubcategories = useMemo(() => {
     if (resolvedSubcategories.length > 0) return resolvedSubcategories
-    if (isRootCategoryPage && categoryType === 'shoes') return SHOE_GENDER_OPTIONS as unknown as Category[]
+    if (isRootCategoryPage && categoryType === 'shoes') return shoeGenderOptions
     return []
-  }, [resolvedSubcategories, isRootCategoryPage, categoryType])
+  }, [resolvedSubcategories, isRootCategoryPage, categoryType, shoeGenderOptions])
 
   // Фиксируем список категорий для сайтбара на первом рендере, чтобы он не затирался гидрацией
   const initialSidebarCategoriesRef = useRef<Category[]>(Array.isArray(sidebarCategories) && sidebarCategories.length > 0 ? sidebarCategories : categories)
@@ -1795,12 +1902,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     
     // Получаем категорию из API чтобы узнать её реальный тип
     let categoryTypeFromApi: string | null = null
+    let catData: any = null
     if (routeSlug) {
       try {
         const catApiRes = await axios.get(getInternalApiUrl('catalog/categories'), {
           params: { slug: routeSlug, page_size: 1 }
         })
-        const catData = catApiRes.data.results?.[0]
+        catData = catApiRes.data.results?.[0]
         if (catData?.category_type_slug) {
           categoryTypeFromApi = catData.category_type_slug.replace(/_/g, '-')
         }
@@ -1811,6 +1919,34 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     
     // Используем тип из API, если есть, иначе угадываем из слага
     let categoryType: CategoryTypeKey = categoryTypeFromApi as CategoryTypeKey || resolveCategoryTypeFromSlug(routeSlug)
+
+    const normalizedRoute = normalizeSlug(routeSlug || '')
+    const isShoeCategory =
+      normalizeSlug(categoryTypeFromApi || '') === 'shoes' ||
+      categoryType === 'shoes' ||
+      Boolean(catData?.gender || catData?.shoe_type)
+    if (routeSlug && normalizedRoute !== 'shoes' && isShoeCategory) {
+      const query = new URLSearchParams()
+      if (catData?.gender) {
+        query.set('gender', normalizeSlug(catData.gender))
+      }
+      if (catData?.shoe_type) {
+        query.set('shoe_type', normalizeSlug(catData.shoe_type))
+      }
+      if (!query.toString()) {
+        query.set('subcategory_slug', normalizedRoute)
+      }
+      const brandIdValue = Array.isArray(brand_id) ? brand_id[0] : brand_id
+      if (brandIdValue) {
+        query.set('brand_id', String(brandIdValue))
+      }
+      return {
+        redirect: {
+          destination: `/categories/shoes${query.toString() ? `?${query.toString()}` : ''}`,
+          permanent: false
+        }
+      }
+    }
 
     const brandSlug = Array.isArray(brand) ? brand[0] : brand
     const brandId = Array.isArray(brand_id) ? brand_id[0] : brand_id

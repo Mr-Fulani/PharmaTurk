@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.core.exceptions import ValidationError
-from django.db.models import Case, When, Value, IntegerField
+from django.db.models import Case, When, Value, IntegerField, Q
 from django.utils.html import format_html, format_html_join
 from django.utils.translation import gettext_lazy as _
 
@@ -1172,8 +1172,25 @@ class ShoeCategoryAdmin(admin.ModelAdmin):
     )
     
     def get_queryset(self, request):
-        """Фильтруем только корневые категории обуви (где shoe_type не пустое)."""
-        return super().get_queryset(request).filter(shoe_type__isnull=False).exclude(shoe_type='').filter(parent__isnull=True)
+        return super().get_queryset(request).filter(
+            Q(shoe_type__isnull=False) & ~Q(shoe_type='')
+            | (
+                Q(parent__isnull=True)
+                & Q(gender__isnull=False)
+                & Q(clothing_type__isnull=True)
+                & Q(device_type__isnull=True)
+            )
+        )
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'parent':
+            kwargs['queryset'] = Category.objects.filter(
+                Q(parent__isnull=True)
+                & Q(gender__isnull=False)
+                & Q(clothing_type__isnull=True)
+                & Q(device_type__isnull=True)
+            )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 class ShoeVariantInline(admin.TabularInline):

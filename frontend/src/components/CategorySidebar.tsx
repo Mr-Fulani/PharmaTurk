@@ -34,6 +34,7 @@ export interface FilterState {
   priceMin?: number
   priceMax?: number
   inStock: boolean
+  isNew: boolean
   sortBy: string
   colors?: string[]
   sizes?: string[]
@@ -151,6 +152,7 @@ export default function CategorySidebar({
     priceMin: undefined,
     priceMax: undefined,
     inStock: false,
+    isNew: false,
     sortBy: 'name_asc',
     shoeTypes: [],
     clothingItems: [],
@@ -180,6 +182,7 @@ export default function CategorySidebar({
     initialFilters?.publishers?.join(','),
     initialFilters?.languages?.join(','),
     initialFilters?.inStock,
+    initialFilters?.isNew,
     initialFilters?.sortBy,
     initialFilters?.priceMin,
     initialFilters?.priceMax
@@ -218,6 +221,7 @@ export default function CategorySidebar({
     filters.priceMin,
     filters.priceMax,
     filters.inStock,
+    filters.isNew,
     filters.sortBy,
     filters.shoeTypes?.join(','),
     filters.clothingItems?.join(','),
@@ -295,6 +299,9 @@ export default function CategorySidebar({
 
   const getSubcategoryLabel = (subcategory: Category) => {
     const localized = getLocalizedCategoryName(subcategory.slug, subcategory.name, t, subcategory.translations, router.locale)
+    if (categoryType === 'shoes') {
+      return localized.replace(/\s*\([^)]*\)\s*$/, '')
+    }
     if (categoryType !== 'jewelry') return localized
     const locale = router.locale || 'ru'
     const name = subcategory.name || ''
@@ -345,6 +352,7 @@ export default function CategorySidebar({
       priceMin: undefined,
       priceMax: undefined,
       inStock: false,
+      isNew: false,
       sortBy: 'name_asc',
       shoeTypes: [],
       clothingItems: [],
@@ -424,6 +432,7 @@ export default function CategorySidebar({
     filters.priceMin !== undefined ||
     filters.priceMax !== undefined ||
     filters.inStock ||
+    filters.isNew ||
     (filters.shoeTypes && filters.shoeTypes.length > 0) ||
     (filters.clothingItems && filters.clothingItems.length > 0) ||
     (filters.jewelryMaterials && filters.jewelryMaterials.length > 0) ||
@@ -447,6 +456,9 @@ export default function CategorySidebar({
     { value: 'sneakers', label: t('filter_sneakers', 'Кроссовки') },
     { value: 'boots', label: t('filter_boots', 'Ботинки/Ботильоны') },
     { value: 'sandals', label: t('filter_sandals', 'Сандалии/Шлёпанцы') },
+    { value: 'shoes', label: t('filter_shoes', 'Туфли') },
+    { value: 'home-shoes', label: t('filter_home_shoes', 'Домашняя обувь/Тапки') },
+    { value: 'loafers', label: t('filter_loafers', 'Лоферы/Мокасины') },
   ]
 
   const clothingItemOptions = [
@@ -1071,6 +1083,20 @@ export default function CategorySidebar({
                     className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
                   />
                   <span className="text-sm text-gray-700">{t('sidebar_in_stock')}</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filters.isNew}
+                    onChange={(e) =>
+                      updateFilters((prev) => ({
+                        ...prev,
+                        isNew: e.target.checked
+                      }))
+                    }
+                    className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                  />
+                  <span className="text-sm text-gray-700">{t('sidebar_new', 'Новинки')}</span>
                 </label>
               </div>
             )}

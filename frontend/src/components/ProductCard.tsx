@@ -227,25 +227,24 @@ export default function ProductCard({
             }}
           />
         )}
-        {badge && (
-          <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
-            {badge}
-          </span>
-        )}
-        {/* Бейджи для книг */}
-        {productType === 'books' && (
-          <>
-            {isBestseller && (
-              <span className="absolute left-2 top-2 rounded-md bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 ring-1 ring-orange-200">
+        {(badge || (productType === 'books' && (isBestseller || isNew))) && (
+          <div className="absolute left-2 top-2 flex flex-col gap-1">
+            {badge && (
+              <span className="rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
+                {badge}
+              </span>
+            )}
+            {productType === 'books' && isBestseller && (
+              <span className="rounded-md bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 ring-1 ring-orange-200">
                 {t('bestseller', 'Бестселлер')}
               </span>
             )}
-            {isNew && (
-              <span className="absolute left-2 top-2 rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-200">
+            {productType === 'books' && isNew && (
+              <span className="rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-200">
                 {t('product_new', 'Новинка')}
               </span>
             )}
-          </>
+          </div>
         )}
       </div>
       <h3 className="mt-3 line-clamp-2 text-base font-semibold text-gray-900 hover-text-warm transition-colors">

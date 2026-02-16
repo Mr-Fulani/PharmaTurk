@@ -830,6 +830,23 @@ export default function ProductPage({
                     <div className="flex flex-wrap gap-2">
                       {colors.map((c) => {
                         const isActive = c === selectedColor
+                        const label = getLocalizedColor(c, t)
+                        const variantForColor = variants.find((v) => v.color === c) || null
+                        const rawThumb =
+                          normalizeMediaValue(variantForColor?.main_image) ||
+                          normalizeMediaValue(variantForColor?.images?.find((img) => img.is_main)?.image_url) ||
+                          normalizeMediaValue(variantForColor?.images?.[0]?.image_url) ||
+                          normalizeMediaValue(product?.active_variant_main_image_url) ||
+                          normalizeMediaValue(product?.main_image_url) ||
+                          normalizeMediaValue(product?.main_image) ||
+                          null
+                        const placeholder = getPlaceholderImageUrl({
+                          type: 'product',
+                          seed: `${product?.slug || 'product'}-${c}`,
+                          width: 200,
+                          height: 200,
+                        })
+                        const thumbSrc = rawThumb ? resolveMediaUrl(rawThumb) : placeholder
                         return (
                           <button
                             key={c}
@@ -837,13 +854,27 @@ export default function ProductPage({
                               setSelectedColor(c)
                               pickVariant(c)
                             }}
-                            className={`rounded-md px-3 py-1 text-sm border transition ${
+                            title={label}
+                            aria-label={label}
+                            className={`h-16 w-16 overflow-hidden rounded-md border bg-white transition ${
                               isActive
-                                ? 'border-violet-600 bg-violet-50 text-violet-700'
-                                : 'border-gray-300 bg-white text-gray-800 hover:border-violet-400'
+                                ? 'border-violet-600 ring-2 ring-violet-200'
+                                : 'border-gray-300 hover:border-violet-400'
                             }`}
                           >
-                            {getLocalizedColor(c, t)}
+                            <img
+                              src={thumbSrc}
+                              alt={label}
+                              className="h-full w-full object-cover"
+                              data-fallback={placeholder}
+                              onError={(event) => {
+                                const target = event.currentTarget
+                                const fallback = target.dataset.fallback
+                                if (fallback && target.src !== fallback) {
+                                  target.src = fallback
+                                }
+                              }}
+                            />
                           </button>
                         )
                       })}

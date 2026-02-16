@@ -118,6 +118,7 @@
   ,"sidebar_sort_name_desc": "Name: Z to A"
   ,"sidebar_availability": "Availability"
   ,"sidebar_in_stock": "In stock"
+  ,"sidebar_new": "New arrivals"
   ,"sidebar_show_more": "Show more"
   ,"sidebar_show_less": "Show less"
   ,"sidebar_apply": "Apply"
@@ -368,6 +369,9 @@
   "filter_sneakers": "Sneakers",
   "filter_boots": "Boots/Booties",
   "filter_sandals": "Sandals/Flip-flops",
+  "filter_shoes": "Pumps",
+  "filter_home_shoes": "Home shoes/Slippers",
+  "filter_loafers": "Loafers/Moccasins",
   "filter_jeans": "Jeans",
   "filter_tshirts": "T-shirts",
   "filter_hoodies": "Hoodies",
@@ -387,6 +391,7 @@
   "filter_women": "Women's",
   "filter_men": "Men's",
   "filter_kids": "Kids",
+  "filter_unisex": "Unisex",
   "books_page_title": "Books"
   ,"books_page_subtitle": "Your book haven"
   ,"books_not_found": "No books found"
