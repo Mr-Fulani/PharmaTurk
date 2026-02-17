@@ -33,6 +33,7 @@ interface ProductCardProps {
   reviewsCount?: number
   isBestseller?: boolean
   isNew?: boolean
+  isFeatured?: boolean
 }
 
 export default function ProductCard({ 
@@ -60,7 +61,8 @@ export default function ProductCard({
   authors,
   reviewsCount,
   isBestseller,
-  isNew
+  isNew,
+  isFeatured
 }: ProductCardProps) {
   const { t, i18n } = useTranslation('common')
   const localizedName = getLocalizedProductName(name, t, translations, locale || i18n.language)
@@ -227,11 +229,16 @@ export default function ProductCard({
             }}
           />
         )}
-        {(badge || (productType === 'books' && (isBestseller || isNew))) && (
+        {(badge || isFeatured || isNew || (productType === 'books' && isBestseller)) && (
           <div className="absolute left-2 top-2 flex flex-col gap-1">
             {badge && (
               <span className="rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
                 {badge}
+              </span>
+            )}
+            {isFeatured && !badge && (
+              <span className="rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
+                {t('product_featured', 'Хит')}
               </span>
             )}
             {productType === 'books' && isBestseller && (
@@ -239,7 +246,7 @@ export default function ProductCard({
                 {t('bestseller', 'Бестселлер')}
               </span>
             )}
-            {productType === 'books' && isNew && (
+            {isNew && (
               <span className="rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-200">
                 {t('product_new', 'Новинка')}
               </span>

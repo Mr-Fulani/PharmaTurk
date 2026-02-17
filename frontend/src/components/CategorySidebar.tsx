@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { getLocalizedCategoryName, getLocalizedBrandName, CategoryTranslation, BrandTranslation } from '../lib/i18n'
@@ -43,6 +43,7 @@ export interface FilterState {
   jewelryMaterials?: string[]
   jewelryGender?: string[]
   headwearTypes?: string[]
+  furnitureTypes?: string[]
 }
 
 interface Category {
@@ -159,6 +160,7 @@ export default function CategorySidebar({
     jewelryMaterials: [],
     jewelryGender: [],
     headwearTypes: [],
+    furnitureTypes: [],
   }
   const [filters, setFilters] = useState<FilterState>(initialFilters || defaultFilters)
   
@@ -181,6 +183,7 @@ export default function CategorySidebar({
     initialFilters?.genreIds?.join(','),
     initialFilters?.publishers?.join(','),
     initialFilters?.languages?.join(','),
+    initialFilters?.furnitureTypes?.join(','),
     initialFilters?.inStock,
     initialFilters?.isNew,
     initialFilters?.sortBy,
@@ -227,7 +230,8 @@ export default function CategorySidebar({
     filters.clothingItems?.join(','),
     filters.jewelryMaterials?.join(','),
     filters.jewelryGender?.join(','),
-    filters.headwearTypes?.join(',')
+    filters.headwearTypes?.join(','),
+    filters.furnitureTypes?.join(',')
   ])
 
   const updateFilters = (updater: (prev: FilterState) => FilterState) => {
@@ -313,6 +317,34 @@ export default function CategorySidebar({
     return localized
   }
 
+  const uniqueSubcategories = useMemo(() => {
+    const normalizeLabel = (label: string) => {
+      let normalized = label.toLowerCase().replace(/\s+/g, ' ').trim()
+      if (categoryType === 'furniture') {
+        normalized = normalized
+          .replace(/^мебель для\s+/, '')
+          .replace(/^мебель\s+/, '')
+          .replace(/^furniture for\s+/, '')
+          .replace(/^furniture\s+/, '')
+          .trim()
+      }
+      return normalized
+    }
+    const seen = new Set<string>()
+    return subcategories.filter((subcategory) => {
+      const rawLabel = getSubcategoryLabel(subcategory)
+      const rawNormalized = rawLabel.toLowerCase().replace(/\s+/g, ' ').trim()
+      if (categoryType === 'furniture' && rawNormalized.startsWith('мебель для гостин')) {
+        return false
+      }
+      const key = normalizeLabel(rawLabel)
+      if (!key) return true
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [subcategories, categoryType, t, router.locale])
+
   const handlePriceChange = () => {
     const minValue = parseNumber(priceRange.min)
     const maxValue = parseNumber(priceRange.max)
@@ -358,7 +390,8 @@ export default function CategorySidebar({
       clothingItems: [],
       jewelryMaterials: [],
       jewelryGender: [],
-      headwearTypes: []
+      headwearTypes: [],
+      furnitureTypes: []
     })
     setPriceRange({ min: '', max: '' })
   }
@@ -438,12 +471,13 @@ export default function CategorySidebar({
     (filters.jewelryMaterials && filters.jewelryMaterials.length > 0) ||
     (filters.jewelryGender && filters.jewelryGender.length > 0) ||
     (filters.headwearTypes && filters.headwearTypes.length > 0) ||
+    (filters.furnitureTypes && filters.furnitureTypes.length > 0) ||
     (filters.authorIds && filters.authorIds.length > 0) ||
     (filters.genreIds && filters.genreIds.length > 0) ||
     (filters.publishers && filters.publishers.length > 0) ||
     (filters.languages && filters.languages.length > 0)
 
-  const toggleCustomFilter = (field: 'shoeTypes' | 'clothingItems' | 'jewelryMaterials' | 'jewelryGender' | 'headwearTypes', value: string) => {
+  const toggleCustomFilter = (field: 'shoeTypes' | 'clothingItems' | 'jewelryMaterials' | 'jewelryGender' | 'headwearTypes' | 'furnitureTypes', value: string) => {
     setFilters((prev) => {
       const current = prev[field] || []
       const exists = current.includes(value)
@@ -493,6 +527,13 @@ export default function CategorySidebar({
     { value: 'caps', label: t('filter_caps', 'Кепки') },
     { value: 'hats', label: t('filter_hats', 'Шапки') },
     { value: 'panama', label: t('filter_panama', 'Панамки') },
+  ]
+
+  const furnitureTypeOptions = [
+    { value: 'chairs', label: t('filter_chairs', 'Стулья') },
+    { value: 'tables', label: t('filter_tables', 'Столы') },
+    { value: 'wardrobes', label: t('filter_wardrobes', 'Шкафы') },
+    { value: 'sofas', label: t('filter_sofas', 'Диваны') },
   ]
 
   return (
@@ -719,6 +760,40 @@ export default function CategorySidebar({
             </div>
           )}
 
+          {categoryType === 'furniture' && (
+            <div className="border-b pb-4">
+              <button
+                onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
+                className="flex items-center justify-between w-full mb-3"
+              >
+                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_furniture_type', 'Тип мебели')}</h3>
+                <svg
+                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {expandedSections.filters && (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {furnitureTypeOptions.map((opt) => (
+                    <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={filters.furnitureTypes?.includes(opt.value) || false}
+                        onChange={() => toggleCustomFilter('furnitureTypes', opt.value)}
+                        className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                      />
+                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {showCategories && categories.length > 0 && categoryGroups.length === 0 && subcategories.length === 0 && (
             <div className="border-b pb-4">
               <button
@@ -758,7 +833,7 @@ export default function CategorySidebar({
             </div>
           )}
 
-          {showSubcategories && subcategories.length > 0 && categoryGroups.length === 0 && (
+          {showSubcategories && uniqueSubcategories.length > 0 && categoryGroups.length === 0 && (
             <div className="border-b pb-4">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, subcategories: !prev.subcategories }))}
@@ -776,7 +851,7 @@ export default function CategorySidebar({
               </button>
               {expandedSections.subcategories && (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {subcategories.map((subcategory) => (
+                  {uniqueSubcategories.map((subcategory) => (
                     <label key={subcategory.id} className="flex items-center space-x-2 cursor-pointer group">
                       <input
                         type="checkbox"

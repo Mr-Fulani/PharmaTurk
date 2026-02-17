@@ -47,6 +47,8 @@ const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
       return `/api/catalog/shoes/products/${slug}`
     case 'electronics':
       return `/api/catalog/electronics/products/${slug}`
+    case 'furniture':
+      return `/api/catalog/furniture/products/${slug}`
     case 'jewelry':
       return `/api/catalog/jewelry/products/${slug}`
     default:
@@ -151,6 +153,7 @@ interface Product {
   reviews_count?: number | null
   is_bestseller?: boolean
   is_new?: boolean
+  is_featured?: boolean
   book_authors?: { id: number; author: { full_name: string; full_name_en?: string } }[]
   weight_value?: number | string | null
   weight_unit?: string | null
@@ -786,19 +789,24 @@ export default function ProductPage({
                     )}
                   </p>
                 )}
-                {(product.is_bestseller || product.is_new) && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {product.is_bestseller && (
-                      <span className="rounded-md bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
-                        {t('bestseller', 'Бестселлер')}
-                      </span>
-                    )}
-                    {product.is_new && (
-                      <span className="rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">
-                        {t('new', 'Новинка')}
-                      </span>
-                    )}
-                  </div>
+              </div>
+            )}
+            {(product.is_bestseller || product.is_new || product.is_featured) && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {product.is_featured && (
+                  <span className="rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">
+                    {t('product_featured', 'Хит')}
+                  </span>
+                )}
+                {product.is_bestseller && (
+                  <span className="rounded-md bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+                    {t('bestseller', 'Бестселлер')}
+                  </span>
+                )}
+                {product.is_new && (
+                  <span className="rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                    {t('new', 'Новинка')}
+                  </span>
                 )}
               </div>
             )}

@@ -35,6 +35,8 @@ interface Product {
   is_available: boolean
   is_featured: boolean
   is_new?: boolean
+  created_at?: string
+  publication_date?: string | null
   category?: {
     id: number
     name: string
@@ -48,6 +50,7 @@ interface Product {
   size?: string
   color?: string
   material?: string
+  furniture_type?: string
   season?: string
   heel_height?: string
   sole_type?: string
@@ -183,6 +186,8 @@ const filterBrandsByProducts = (
 ) => {
   const allowedForMedicines = ['medicines', 'supplements', 'medical-equipment']
   // Для парфюмерии (корень и подкатегории) используем perfumery для сопоставления брендов
+  const normalizedCategoryType = normalizeSlug(categoryType)
+  const normalizedRouteSlug = normalizeSlug(routeSlug || '')
   const categorySlug = (categoryType === 'perfumery' ? 'perfumery' : normalizeSlug(routeSlug || categoryType))
 
   const matchesCategory = (value?: string | null) => {
@@ -190,6 +195,9 @@ const filterBrandsByProducts = (
     if (!v) return false
     if (categoryType === 'medicines') {
       return allowedForMedicines.includes(v)
+    }
+    if (normalizedRouteSlug && normalizedRouteSlug !== normalizedCategoryType) {
+      return v === categorySlug || v === normalizedCategoryType
     }
     return v === categorySlug
   }
@@ -210,6 +218,7 @@ const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): st
   if (norm.startsWith('shoes') || norm.endsWith('shoes') || norm.includes('-shoes')) return 'shoes'
   if (norm.startsWith('clothing')) return 'clothing'
   if (norm.startsWith('electronics')) return 'electronics'
+  if (norm.startsWith('furniture')) return 'furniture'
   if (norm.startsWith('jewelry')) return 'jewelry'
   
   // Для всех остальных возвращаем нормализованный слаг как тип
@@ -224,6 +233,8 @@ const resolveProductsEndpoint = (categoryType: string) => {
       return '/api/catalog/shoes/products'
     case 'electronics':
       return '/api/catalog/electronics/products'
+    case 'furniture':
+      return '/api/catalog/furniture/products'
     case 'jewelry':
       return '/api/catalog/jewelry/products'
     default:
@@ -733,10 +744,50 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
 
   let result = products
   if (filters.isNew) {
-    const hasIsNew = result.some((p) => typeof (p as any).is_new === 'boolean' || typeof (p as any).isNew === 'boolean')
-    if (hasIsNew) {
-      result = result.filter((p) => Boolean((p as any).is_new ?? (p as any).isNew))
+    const isNewValue = (value: unknown) => {
+      if (typeof value === 'boolean') return value
+      if (typeof value === 'number') return value === 1
+      if (typeof value === 'string') return ['true', '1', 'yes', 'on'].includes(value.toLowerCase())
+      return false
     }
+    const normalizeDateValue = (value: unknown) => {
+      if (value instanceof Date) return value.getTime()
+      if (typeof value === 'number') {
+        const normalized = value < 1_000_000_000_000 ? value * 1000 : value
+        return Number.isFinite(normalized) ? normalized : NaN
+      }
+      const time = new Date(value as any).getTime()
+      return time
+    }
+    const isRecentDate = (value: unknown) => {
+      if (!value) return false
+      const time = normalizeDateValue(value)
+      if (Number.isNaN(time)) return false
+      const threshold = Date.now() - 30 * 24 * 60 * 60 * 1000
+      return time >= threshold
+    }
+    const getIsNewRaw = (p: any) =>
+      p?.is_new ??
+      p?.isNew ??
+      p?.is_new_product ??
+      p?.new
+    const getDateRaw = (p: any) =>
+      p?.created_at ??
+      p?.createdAt ??
+      p?.created ??
+      p?.published_at ??
+      p?.publishedAt ??
+      p?.publication_date ??
+      p?.updated_at ??
+      p?.updatedAt ??
+      p?.release_date ??
+      p?.releaseDate
+    const hasIsNew = result.some((p) => typeof getIsNewRaw(p) !== 'undefined')
+    result = result.filter((p) => {
+      const byFlag = isNewValue(getIsNewRaw(p))
+      const byDate = isRecentDate(getDateRaw(p))
+      return hasIsNew ? byFlag : byDate
+    })
   }
 
   if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
@@ -798,6 +849,23 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
     result = result.filter((p) => {
       const cat = getCatSlug(p)
       return Array.from(wanted).some((w) => cat.includes(w) || norm(p.slug).includes(w))
+    })
+  }
+
+  if (categoryType === 'furniture' && filters.furnitureTypes && filters.furnitureTypes.length) {
+    const wanted = new Set(filters.furnitureTypes.map(norm))
+    result = result.filter((p) => {
+      const furnitureType = norm(p.furniture_type)
+      const cat = getCatSlug(p)
+      return Array.from(wanted).some((w) => (furnitureType && furnitureType.includes(w)) || cat.includes(w))
+    })
+  }
+  if (categoryType === 'furniture' && filters.subcategorySlugs && filters.subcategorySlugs.length) {
+    const wanted = new Set(filters.subcategorySlugs.map(norm))
+    result = result.filter((p) => {
+      const cat = getCatSlug(p)
+      const slug = norm(p.slug)
+      return Array.from(wanted).some((w) => (cat && cat.includes(w)) || (slug && slug.includes(w)))
     })
   }
 
@@ -1220,10 +1288,11 @@ export default function CategoryPage({
         const normalizedCategoryType = (categoryTypeSlug || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
         const normalizedRouteSlug = (routeSlug || '').toString().toLowerCase().replace(/_/g, '-')
         const isTypedCategory = ['shoes', 'clothing', 'electronics', 'jewelry'].includes(resolvedBrandType || '')
+        const isFurnitureCategory = normalizeSlug(resolvedBrandType || normalizedCategoryType) === 'furniture'
         const brandPrimarySlug = (resolvedBrandType === 'perfumery')
           ? 'perfumery'
           : (isTypedCategory ? resolvedBrandType : (normalizedCategoryType || normalizedRouteSlug))
-        if (brandPrimarySlug) {
+        if (brandPrimarySlug && !isFurnitureCategory) {
           params.primary_category_slug = brandPrimarySlug
         }
         if (filters.categories.length > 0) {
@@ -1355,10 +1424,10 @@ export default function CategoryPage({
         if (shoeGenderSlugs.length === 1) {
           params.gender = shoeGenderSlugs[0]
         } else if (nonGenderSubSlugs.length > 0) {
-          // Для книг используем category_slug вместо subcategory_slug
+          // Для книг и мебели используем category_slug вместо subcategory_slug
           if (categoryType === 'jewelry' && jewelryTypeFilters.length > 0) {
             params.jewelry_type = jewelryTypeFilters.join(',')
-          } else if (categoryType === 'books') {
+          } else if (categoryType === 'books' || categoryType === 'furniture') {
             params.category_slug = nonGenderSubSlugs.join(',')
           } else {
             params.subcategory_slug = nonGenderSubSlugs.join(',')
@@ -1389,9 +1458,20 @@ export default function CategoryPage({
         }
         if (filters.isNew) {
           params.is_new = true
+          params.isNew = true
+          params.is_new_product = true
+          params.is_new_arrival = true
+          params.new = true
+          params.new_arrival = true
         }
         if (filters.sortBy) {
           params.ordering = filters.sortBy
+        }
+        if (filters.isNew && (!filters.sortBy || filters.sortBy === 'name_asc')) {
+          params.ordering = '-created_at'
+        }
+        if (categoryType === 'furniture' && filters.furnitureTypes && filters.furnitureTypes.length > 0) {
+          params.furniture_type = filters.furnitureTypes
         }
         if (categoryType === 'books') {
           if (filters.authorIds && filters.authorIds.length > 0) {
@@ -1478,6 +1558,7 @@ export default function CategoryPage({
     filters.sortBy,
     filters.shoeTypes,
     filters.clothingItems,
+    filters.furnitureTypes,
     filters.jewelryMaterials,
     filters.jewelryGender,
     filters.headwearTypes,
@@ -1577,6 +1658,7 @@ export default function CategoryPage({
     }
   }, [isRootCategoryPage, resolvedSubcategories.length, categoryType, routeSlug])
   const displaySubcategories = useMemo(() => {
+    if (categoryType === 'books') return []
     if (resolvedSubcategories.length > 0) return resolvedSubcategories
     if (isRootCategoryPage && categoryType === 'shoes') return shoeGenderOptions
     return []
@@ -1725,7 +1807,7 @@ export default function CategoryPage({
               key={routeSlug || categoryType}
               categories={categoryGroups.length > 0 ? [] : sidebarCategoriesData}
               brands={categoryType === 'books' ? [] : brandOptions}
-              subcategories={displaySubcategories}
+              subcategories={categoryType === 'books' ? [] : displaySubcategories}
               categoryGroups={categoryGroups}
               onFilterChange={handleFilterChange}
               isOpen={sidebarOpen}
@@ -1735,7 +1817,7 @@ export default function CategoryPage({
               bookGenres={bookGenres}
               bookPublishers={bookPublishers}
               bookLanguages={bookLanguages}
-              showSubcategories={displaySubcategories.length > 0}
+              showSubcategories={categoryType !== 'books' && displaySubcategories.length > 0}
               showCategories={!isRootCategoryPage}
               categoryType={categoryType}
             />
@@ -1850,7 +1932,8 @@ export default function CategoryPage({
                         authors={effectiveProductType === 'books' ? (product as any).book_authors : undefined}
                         reviewsCount={effectiveProductType === 'books' ? (product as any).reviews_count : undefined}
                         isBestseller={effectiveProductType === 'books' ? (product as any).is_bestseller : undefined}
-                        isNew={effectiveProductType === 'books' ? (product as any).is_new : undefined}
+                        isNew={(product as any).is_new}
+                        isFeatured={(product as any).is_featured}
                         rating={effectiveProductType === 'books' ? (product as any).rating : undefined}
                       />
                     )
@@ -1943,6 +2026,28 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       return {
         redirect: {
           destination: `/categories/shoes${query.toString() ? `?${query.toString()}` : ''}`,
+          permanent: false
+        }
+      }
+    }
+
+    const isFurnitureCategory =
+      normalizeSlug(categoryTypeFromApi || '') === 'furniture' ||
+      categoryType === 'furniture'
+    if (routeSlug && normalizedRoute !== 'furniture' && isFurnitureCategory) {
+      const query = new URLSearchParams()
+      query.set('subcategory_slug', normalizedRoute)
+      const brandIdValue = Array.isArray(brand_id) ? brand_id[0] : brand_id
+      if (brandIdValue) {
+        query.set('brand_id', String(brandIdValue))
+      }
+      const brandValue = Array.isArray(brand) ? brand[0] : brand
+      if (brandValue) {
+        query.set('brand', String(brandValue))
+      }
+      return {
+        redirect: {
+          destination: `/categories/furniture${query.toString() ? `?${query.toString()}` : ''}`,
           permanent: false
         }
       }

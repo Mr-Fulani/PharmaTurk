@@ -23,6 +23,7 @@ interface Product {
   video_url?: string | null
   product_type?: string
   is_featured?: boolean
+  is_new?: boolean
   translations?: ProductTranslation[]
 }
 
@@ -131,6 +132,8 @@ export default function PersonalizedRecommendations() {
                 videoUrl={product.video_url}
                 productType={pt}
                 isBaseProduct={isBaseProductType(pt)}
+                isNew={product.is_new}
+                isFeatured={product.is_featured}
                 translations={product.translations}
                 locale={i18n.language}
               />

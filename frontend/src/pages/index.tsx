@@ -463,11 +463,32 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       return true
     })
     categories.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    const normalizeSlug = (value: any) =>
+      (value || '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, '-')
+    const uniqueMap = new Map<string, CategoryCard>()
+    categories.forEach((category) => {
+      const key = normalizeSlug(category.slug)
+      const existing = uniqueMap.get(key)
+      if (!existing) {
+        uniqueMap.set(key, category)
+        return
+      }
+      const existingCount = existing.products_count ?? 0
+      const nextCount = category.products_count ?? 0
+      if (nextCount > existingCount) {
+        uniqueMap.set(key, category)
+      }
+    })
+    const uniqueCategories = Array.from(uniqueMap.values()).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
     
     return {
       props: {
         brands,
-        categories,
+        categories: uniqueCategories,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }

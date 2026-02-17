@@ -245,6 +245,7 @@ export const getServerSideProps = async (ctx: any) => {
       if (slug.startsWith('clothing')) endpoints.push('/api/catalog/clothing/products')
       else if (slug.startsWith('shoes')) endpoints.push('/api/catalog/shoes/products')
       else if (slug.startsWith('electronics')) endpoints.push('/api/catalog/electronics/products')
+      else if (slug.startsWith('furniture')) endpoints.push('/api/catalog/furniture/products')
       else if (slug.startsWith('jewelry')) endpoints.push('/api/catalog/jewelry/products')
       // Общий каталог — всегда в конце как fallback
       endpoints.push('/api/catalog/products')

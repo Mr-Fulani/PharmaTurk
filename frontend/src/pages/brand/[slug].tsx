@@ -265,6 +265,8 @@ export default function BrandPage({
                     videoUrl={(p as { video_url?: string }).video_url}
                     productType={pt}
                     isBaseProduct={isBaseProductType(pt)}
+                    isNew={(p as { is_new?: boolean }).is_new}
+                    isFeatured={(p as { is_featured?: boolean }).is_featured}
                     translations={p.translations}
                     locale={i18n.language}
                   />

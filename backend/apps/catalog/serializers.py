@@ -518,7 +518,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
             'main_image_url', 'video_url',
-            'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -1310,7 +1310,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -1645,7 +1645,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -2046,7 +2046,7 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
             'currency', 'model', 'specifications', 'warranty', 'power_consumption',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
             'images',
-            'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -2265,7 +2265,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -2703,7 +2703,7 @@ class JewelryProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 

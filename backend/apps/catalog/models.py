@@ -854,6 +854,7 @@ class Product(models.Model):
     
     # Статус
     is_active = models.BooleanField(_("Активен"), default=True)
+    is_new = models.BooleanField(_("Новинка"), default=False)
     is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
     
     # Временные метки
@@ -1750,6 +1751,7 @@ class ClothingProduct(models.Model):
     
     # Статус
     is_active = models.BooleanField(_("Активен"), default=True)
+    is_new = models.BooleanField(_("Новинка"), default=False)
     is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
     
     # Временные метки
@@ -2002,6 +2004,7 @@ class ShoeProduct(models.Model):
     
     # Статус
     is_active = models.BooleanField(_("Активен"), default=True)
+    is_new = models.BooleanField(_("Новинка"), default=False)
     is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
     
     # Временные метки
@@ -2416,6 +2419,7 @@ class JewelryProduct(models.Model):
 
     # Статус
     is_active = models.BooleanField(_("Активен"), default=True)
+    is_new = models.BooleanField(_("Новинка"), default=False)
     is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
 
     # Временные метки
@@ -2815,6 +2819,7 @@ class ElectronicsProduct(models.Model):
     
     # Статус
     is_active = models.BooleanField(_("Активен"), default=True)
+    is_new = models.BooleanField(_("Новинка"), default=False)
     is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
     
     # Временные метки
@@ -3113,7 +3118,17 @@ class FurnitureProduct(models.Model):
     
     # Специфичные для мебели поля
     material = models.CharField(_("Материал"), max_length=100, blank=True)
-    furniture_type = models.CharField(_("Тип мебели"), max_length=100, blank=True, help_text=_("Например: диван, стол, стул"))
+    furniture_type = models.CharField(
+        _("Тип мебели"),
+        max_length=100,
+        blank=True,
+        choices=[
+            ("chairs", _("Стулья")),
+            ("tables", _("Столы")),
+            ("wardrobes", _("Шкафы")),
+            ("sofas", _("Диваны")),
+        ],
+    )
     dimensions = models.CharField(_("Размеры"), max_length=200, blank=True, help_text=_("Например: 200x100x80 см"))
     
     # Наличие и статус
@@ -3136,6 +3151,7 @@ class FurnitureProduct(models.Model):
     
     # Статус
     is_active = models.BooleanField(_("Активен"), default=True)
+    is_new = models.BooleanField(_("Новинка"), default=False)
     is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
     
     # Временные метки

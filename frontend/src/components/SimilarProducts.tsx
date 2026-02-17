@@ -21,6 +21,7 @@ interface Product {
   video_url?: string | null
   product_type?: string
   is_featured?: boolean
+  is_new?: boolean
   translations?: ProductTranslation[]
 }
 
@@ -215,6 +216,8 @@ export default function SimilarProducts({
                 badge={reasons[product.id] ? translateBadge(reasons[product.id]) : (product.is_featured ? t('product_featured', 'Хит') : null)}
                 productType={product.product_type || productType}
                 isBaseProduct={isBaseProduct}
+                isNew={product.is_new}
+                isFeatured={product.is_featured}
                 translations={product.translations}
                 locale={i18n.language}
               />

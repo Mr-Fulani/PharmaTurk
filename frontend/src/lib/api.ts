@@ -193,6 +193,14 @@ export const electronicsApi = {
   getFeatured: () => api.get('/catalog/electronics/products/featured'),
 }
 
+// Мебель
+export const furnitureApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/furniture/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/furniture/products/${slug}`),
+  getFeatured: () => api.get('/catalog/furniture/products/featured'),
+}
+
 // Ювелирные изделия
 export const jewelryApi = {
   getCategories: (params?: any) => api.get('/catalog/categories', { params }),
@@ -212,6 +220,8 @@ export function getApiForCategory(
       return shoesApi
     case 'electronics':
       return electronicsApi
+    case 'furniture':
+      return furnitureApi
     case 'jewelry':
       return jewelryApi
     default:

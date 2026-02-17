@@ -28,6 +28,7 @@ interface Category {
   device_type?: string | null
   card_media_url?: string | null
   translations?: CategoryTranslation[]
+  displaySlug?: string
 }
 
 // @ts-ignore: нет типов для @egjs/react-grid
@@ -166,10 +167,11 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
             {categories.map((c, idx) => {
               const heights = [224, 256, 288]
               const cardHeight = heights[idx % heights.length]
+              const hrefSlug = c.displaySlug || c.slug
               return (
                 <Link
                   key={c.id}
-                  href={`/categories/${c.slug}`}
+                  href={`/categories/${hrefSlug}`}
                   style={{ height: cardHeight }}
                   className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-[var(--surface)]"
                 >
@@ -220,12 +222,56 @@ export async function getServerSideProps(ctx: any) {
     })
     const all: Category[] = Array.isArray(res.data) ? res.data : (res.data.results || [])
 
-    // Нормализуем слуги (underscores -> dash) и устраняем дубли
+    // Нормализуем слуги и устраняем дубли
+    const normalizeSlug = (value: any) =>
+      (value || '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, '-')
+    const canonicalTypes = [
+      'medicines',
+      'supplements',
+      'clothing',
+      'shoes',
+      'electronics',
+      'furniture',
+      'jewelry',
+      'tableware',
+      'accessories',
+      'underwear',
+      'headwear',
+      'books',
+      'perfumery',
+      'medical-equipment',
+      'medical_equipment',
+      'uslugi'
+    ]
+    const resolveCanonicalSlug = (slug: string) => {
+      const norm = normalizeSlug(slug)
+      for (const type of canonicalTypes) {
+        const typeNorm = normalizeSlug(type)
+        if (norm === typeNorm) return typeNorm
+        if (norm.startsWith(`${typeNorm}-`)) return typeNorm
+        if (norm.endsWith(`-${typeNorm}`)) return typeNorm
+        if (norm.includes(`-${typeNorm}-`)) return typeNorm
+      }
+      return norm
+    }
     const uniqueMap = new Map<string, Category>()
     all.forEach((c) => {
-      const normSlug = (c.slug || '').replace(/_/g, '-')
-      if (!uniqueMap.has(normSlug)) {
-        uniqueMap.set(normSlug, { ...c, slug: normSlug })
+      const normSlug = normalizeSlug(c.slug)
+      const canonicalSlug = resolveCanonicalSlug(normSlug)
+      const next = { ...c, slug: normSlug, displaySlug: canonicalSlug }
+      const existing = uniqueMap.get(canonicalSlug)
+      if (!existing) {
+        uniqueMap.set(canonicalSlug, next)
+        return
+      }
+      const existingCount = (existing as any).products_count ?? 0
+      const nextCount = (next as any).products_count ?? 0
+      if (nextCount > existingCount) {
+        uniqueMap.set(canonicalSlug, next)
       }
     })
 

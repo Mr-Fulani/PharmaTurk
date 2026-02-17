@@ -176,15 +176,28 @@ def _apply_price_filter(queryset, request):
 def _apply_is_new_filter(queryset, request, use_flag: bool = False):
     raw = request.query_params.get('is_new')
     if raw is None:
+        raw = request.query_params.get('is_new[]') or request.query_params.get('isNew')
+    if raw is None:
         return queryset
-    is_new = raw.lower() in ('true', '1', 'yes')
+    is_new = str(raw).lower() in ('true', '1', 'yes', 'on')
     if not is_new:
         return queryset
     if use_flag and hasattr(queryset.model, 'is_new'):
-        return queryset.filter(is_new=True)
+        q = models.Q(is_new=True)
+        if hasattr(queryset.model, 'created_at'):
+            threshold = timezone.now() - timedelta(days=30)
+            q |= models.Q(created_at__gte=threshold)
+        if hasattr(queryset.model, 'publication_date'):
+            threshold_date = timezone.now().date() - timedelta(days=30)
+            q |= models.Q(publication_date__gte=threshold_date)
+        return queryset.filter(q)
     if hasattr(queryset.model, 'created_at'):
         threshold = timezone.now() - timedelta(days=30)
-        return queryset.filter(created_at__gte=threshold)
+        q = models.Q(created_at__gte=threshold)
+        if hasattr(queryset.model, 'publication_date'):
+            threshold_date = timezone.now().date() - timedelta(days=30)
+            q |= models.Q(publication_date__gte=threshold_date)
+        return queryset.filter(q)
     return queryset
 
 
@@ -1227,7 +1240,7 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
-        queryset = _apply_is_new_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
@@ -1434,7 +1447,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
-        queryset = _apply_is_new_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
@@ -1598,7 +1611,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
-        queryset = _apply_is_new_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')
@@ -1710,7 +1723,7 @@ class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
         if search:
             queryset = queryset.filter(name__icontains=search)
         queryset = _apply_price_filter(queryset, self.request)
-        queryset = _apply_is_new_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         ordering = self.request.query_params.get('ordering', '-created_at')
         queryset = queryset.order_by(self._normalize_ordering(ordering))
         return queryset
@@ -1754,6 +1767,18 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         """Фильтрация товаров мебели по параметрам."""
         queryset = FurnitureProduct.objects.filter(is_active=True)
+
+        def parse_multi_param(param_name: str) -> list[str]:
+            raw_list = (
+                self.request.query_params.getlist(param_name)
+                or self.request.query_params.getlist(f"{param_name}[]")
+                or []
+            )
+            if not raw_list:
+                raw = self.request.query_params.get(param_name)
+                if raw:
+                    raw_list = raw.split(',')
+            return [v.strip() for v in raw_list if v and str(v).strip()]
         
         # Фильтр по категории (поддержка массивов)
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
@@ -1778,9 +1803,9 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = _apply_brand_filter(queryset, self.request)
         
         # Фильтр по типу мебели
-        furniture_type = self.request.query_params.get('furniture_type')
-        if furniture_type:
-            queryset = queryset.filter(furniture_type__icontains=furniture_type)
+        furniture_types = parse_multi_param('furniture_type')
+        if furniture_types:
+            queryset = queryset.filter(furniture_type__in=furniture_types)
         
         # Фильтр по материалу
         material = self.request.query_params.get('material')
@@ -1794,7 +1819,7 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
-        queryset = _apply_is_new_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
         ordering = self.request.query_params.get('ordering', '-created_at')

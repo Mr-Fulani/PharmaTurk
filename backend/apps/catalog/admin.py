@@ -610,7 +610,7 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     )
     list_filter = (
         'product_type', 'availability_status', 'country_of_origin',
-        'is_active', 'is_featured', 'is_available', 'category', 'brand', 'currency', 'created_at'
+        'is_active', 'is_new', 'is_featured', 'is_available', 'category', 'brand', 'currency', 'created_at'
     )
     search_fields = (
         'name', 'slug', 'description',
@@ -717,12 +717,6 @@ class ProductMedicalEquipmentAdmin(BaseProductProxyAdmin):
 @admin.register(ProductTableware)
 class ProductTablewareAdmin(BaseProductProxyAdmin):
     required_product_type = "tableware"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductFurniture)
-class ProductFurnitureAdmin(BaseProductProxyAdmin):
-    required_product_type = "furniture"
     fieldsets = BaseProductAdmin.fieldsets
 
 
@@ -993,7 +987,7 @@ class ClothingProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров одежды."""
     actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_featured', 'category', 'brand', 'season', 'currency', 'created_at')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'season', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
@@ -1007,7 +1001,7 @@ class ClothingProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
-        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
+        (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     inlines = [ClothingProductTranslationInline, ClothingProductSizeInline, ClothingVariantInline, ClothingProductImageInline]
@@ -1330,7 +1324,7 @@ class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров обуви."""
     actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_featured', 'category', 'brand', 'heel_height', 'currency', 'created_at')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'heel_height', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
@@ -1344,7 +1338,7 @@ class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
-        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
+        (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     # Галерея для обуви теперь задается на уровне варианта (цвета), поэтому инлайн изображений товара убран
@@ -1514,7 +1508,7 @@ class ElectronicsProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров электроники."""
     actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_available', 'is_featured', 'category', 'brand', 'currency', 'created_at')
+    list_filter = ('is_active', 'is_available', 'is_new', 'is_featured', 'category', 'brand', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'model')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
@@ -1526,7 +1520,7 @@ class ElectronicsProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
-        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
+        (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     inlines = [ElectronicsProductTranslationInline, ElectronicsProductImageInline]
@@ -1560,7 +1554,7 @@ class FurnitureProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров мебели."""
     actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_featured', 'category', 'brand', 'furniture_type', 'currency', 'created_at')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'furniture_type', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'furniture_type')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
@@ -1572,7 +1566,7 @@ class FurnitureProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
-        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
+        (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     inlines = [FurnitureProductTranslationInline, FurnitureVariantInline]
@@ -1650,7 +1644,7 @@ class JewelryVariantAdmin(admin.ModelAdmin):
 class JewelryProductAdmin(admin.ModelAdmin):
     """Товары украшений с вариантами и размерами (кольца, браслеты и т.д.)."""
     list_display = ('name', 'slug', 'category', 'brand', 'jewelry_type', 'gender', 'material', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_featured', 'jewelry_type', 'gender', 'category', 'brand', 'currency', 'created_at')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'jewelry_type', 'gender', 'category', 'brand', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'metal_purity', 'stone_type')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
@@ -1662,7 +1656,7 @@ class JewelryProductAdmin(admin.ModelAdmin):
         (_('Цены'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Наличие'), {'fields': ('is_available', 'stock_quantity')}),
         (_('Медиа'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
-        (_('Настройки'), {'fields': ('is_active', 'is_featured')}),
+        (_('Настройки'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     inlines = [JewelryProductTranslationInline, JewelryVariantInline, JewelryProductImageInline]

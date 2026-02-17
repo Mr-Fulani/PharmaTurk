@@ -20,6 +20,8 @@ interface Product {
   main_image?: string | null
   video_url?: string | null
   product_type?: string
+  is_new?: boolean
+  is_bestseller?: boolean
   is_featured?: boolean
   translations?: ProductTranslation[]
 }
@@ -160,6 +162,9 @@ export default function VisualSearch() {
               videoUrl={r.product.video_url}
               productType={r.product.product_type || 'medicines'}
               isBaseProduct={isBaseProductType(r.product.product_type || 'medicines')}
+              isBestseller={r.product.is_bestseller}
+              isNew={r.product.is_new}
+              isFeatured={r.product.is_featured}
               translations={r.product.translations}
               locale={i18n.language}
             />

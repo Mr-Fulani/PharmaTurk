@@ -258,6 +258,7 @@ const BookHavenPage: React.FC = () => {
                   reviewsCount={book.reviews_count}
                   isBestseller={book.is_bestseller}
                   isNew={book.is_new}
+                  isFeatured={book.is_featured}
                   rating={rating}
                 />
               );

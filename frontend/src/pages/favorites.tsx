@@ -142,6 +142,8 @@ export default function FavoritesPage() {
                   href={productHref}
                   productType={productType}
                   isBaseProduct={isBaseProduct}
+                  isNew={(product as { is_new?: boolean }).is_new}
+                  isFeatured={(product as { is_featured?: boolean }).is_featured}
                   translations={product.translations}
                   locale={i18n.language}
                 />

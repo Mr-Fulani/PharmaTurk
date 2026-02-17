@@ -107,6 +107,7 @@
   ,"sidebar_categories": "Categories"
   ,"sidebar_brands": "Brands"
   ,"sidebar_filters": "Filters"
+  ,"sidebar_furniture_type": "Furniture Type"
   ,"sidebar_book_genres": "Genres"
   ,"sidebar_price_range": "Price range"
   ,"sidebar_price_min": "Min"
@@ -419,6 +420,10 @@
   ,"filter_caps": "Caps",
   "filter_hats": "Hats",
   "filter_panama": "Panama Hats",
+  "filter_chairs": "Chairs",
+  "filter_tables": "Tables",
+  "filter_wardrobes": "Wardrobes",
+  "filter_sofas": "Sofas",
   "category_medicines": "Medicines",
   "category_supplements": "Supplements",
   "category_clothing": "Clothing",

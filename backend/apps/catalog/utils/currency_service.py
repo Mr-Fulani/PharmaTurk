@@ -190,6 +190,10 @@ class CurrencyRateService:
     def get_rate(self, from_currency: str, to_currency: str) -> Optional[Decimal]:
         from_currency = _normalize_currency_for_rate(from_currency or "")
         to_currency = _normalize_currency_for_rate(to_currency or "")
+        if not from_currency or not to_currency:
+            return None
+        if from_currency == to_currency:
+            return Decimal('1')
         cache_key = f'rate_{from_currency}_{to_currency}'
         try:
             cached_rate = cache.get(cache_key)
@@ -210,8 +214,48 @@ class CurrencyRateService:
                 logger.warning(f"Cache set failed for {cache_key}: {e}")
             return rate_obj.rate
         except CurrencyRate.DoesNotExist:
-            logger.warning(f"Rate not found: {from_currency} → {to_currency}")
-            return None
+            pass
+
+        def _get_direct_rate(src: str, dst: str) -> Optional[Decimal]:
+            try:
+                direct = CurrencyRate.objects.get(
+                    from_currency=src,
+                    to_currency=dst,
+                    is_active=True
+                )
+                return direct.rate
+            except CurrencyRate.DoesNotExist:
+                try:
+                    reverse = CurrencyRate.objects.get(
+                        from_currency=dst,
+                        to_currency=src,
+                        is_active=True
+                    )
+                    if reverse.rate == 0:
+                        return None
+                    return Decimal('1') / reverse.rate
+                except CurrencyRate.DoesNotExist:
+                    return None
+
+        pivots = ['RUB', 'USD', 'EUR', 'TRY', 'KZT']
+        for pivot in pivots:
+            if pivot == from_currency or pivot == to_currency:
+                continue
+            first = _get_direct_rate(from_currency, pivot)
+            if first is None:
+                continue
+            second = _get_direct_rate(pivot, to_currency)
+            if second is None:
+                continue
+            derived = (first * second).quantize(Decimal('0.0000001'))
+            try:
+                cache.set(cache_key, derived, 300)
+            except Exception as e:
+                logger.warning(f"Cache set failed for {cache_key}: {e}")
+            return derived
+
+        logger.warning(f"Rate not found: {from_currency} → {to_currency}")
+        return None
     
     def get_all_rates(self) -> Dict[str, Dict[str, Decimal]]:
         rates = {}
