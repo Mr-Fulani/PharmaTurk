@@ -2597,7 +2597,11 @@ class _SimpleDomainViewSet(viewsets.ReadOnlyModelViewSet):
             if slugs:
                 cat_ids = _get_category_ids_with_descendants(slugs)
                 if cat_ids:
-                    queryset = queryset.filter(category_id__in=cat_ids)
+                    # Включаем товары с category_id в потомках И товары без категории
+                    # (они принадлежат домену, но ещё не привязаны к подкатегории)
+                    queryset = queryset.filter(
+                        models.Q(category_id__in=cat_ids) | models.Q(category_id__isnull=True)
+                    )
 
         # Фильтр по бренду
         queryset = _apply_brand_filter(queryset, self.request)
@@ -2939,9 +2943,9 @@ class FurnitureProductViewSet(_SimpleDomainViewSet):
     serializer_class = FurnitureProductSerializer
 
     def _apply_domain_filters(self, queryset):
-        furniture_type = self.request.query_params.get('furniture_type')
-        if furniture_type:
-            queryset = queryset.filter(furniture_type=furniture_type)
+        furniture_types = self.request.query_params.getlist('furniture_type') or self.request.query_params.getlist('furniture_type[]')
+        if furniture_types:
+            queryset = queryset.filter(furniture_type__in=furniture_types)
         material = self.request.query_params.get('material')
         if material:
             queryset = queryset.filter(material__icontains=material)
@@ -2972,9 +2976,14 @@ class ClothingProductViewSet(_SimpleDomainViewSet):
         material = self.request.query_params.get('material')
         if material:
             queryset = queryset.filter(material__icontains=material)
-        color = self.request.query_params.get('color')
-        if color:
-            queryset = queryset.filter(color__icontains=color)
+        colors = self.request.query_params.getlist('color') or self.request.query_params.getlist('color[]')
+        if colors:
+            # Ищем, входит ли цвет товара в список выбранных, или наоборот (icontains сложнее для списка)
+            # Для простоты пока ищем точное совпадение или __in
+            queryset = queryset.filter(color__in=colors)
+        clothing_items = self.request.query_params.getlist('clothing_item') or self.request.query_params.getlist('clothing_item[]')
+        if clothing_items:
+             queryset = queryset.filter(clothing_item__in=clothing_items)
         return queryset
 
     @extend_schema(summary="Получить список одежды")

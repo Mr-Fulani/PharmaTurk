@@ -61,22 +61,22 @@ export function getLocalizedCategoryName(
     locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
   }
   locale = locale || 'ru'
-  
-  // 1. Сначала проверяем JSON файлы (быстро, кешируется)
-  const jsonKey = `category_${normalizedSlug}_name`
-  const jsonTranslated = t(jsonKey, { defaultValue: null })
-  if (jsonTranslated && jsonTranslated !== jsonKey) {
-    return jsonTranslated
-  }
-  
-  // 2. Если нет в JSON - проверяем переводы из API
+
+  // 1. Сначала проверяем переводы из API (данные из админки)
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
     if (apiTranslation && apiTranslation.name) {
       return apiTranslation.name
     }
   }
-  
+
+  // 2. Затем проверяем JSON файлы (статические переводы)
+  const jsonKey = `category_${normalizedSlug}_name`
+  const jsonTranslated = t(jsonKey, { defaultValue: null })
+  if (jsonTranslated && jsonTranslated !== jsonKey) {
+    return jsonTranslated
+  }
+
   // 3. Fallback на название с бэкенда
   return fallbackName
 }
@@ -100,7 +100,7 @@ export function getLocalizedCategoryDescription(
   currentLocale?: string
 ): string | null {
   if (!fallbackDescription) return null
-  
+
   const normalizedSlug = normalizeCategorySlug(slug)
   // Получаем текущий язык из роутера или из пути
   let locale = currentLocale
@@ -109,22 +109,22 @@ export function getLocalizedCategoryDescription(
     locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
   }
   locale = locale || 'ru'
-  
-  // 1. Сначала проверяем JSON файлы (быстро, кешируется)
-  const jsonKey = `category_${normalizedSlug}_description`
-  const jsonTranslated = t(jsonKey, { defaultValue: null })
-  if (jsonTranslated && jsonTranslated !== jsonKey) {
-    return jsonTranslated
-  }
-  
-  // 2. Если нет в JSON - проверяем переводы из API
+
+  // 1. Сначала проверяем переводы из API (данные из админки)
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
     if (apiTranslation && apiTranslation.description) {
       return apiTranslation.description
     }
   }
-  
+
+  // 2. Затем проверяем JSON файлы (статические переводы)
+  const jsonKey = `category_${normalizedSlug}_description`
+  const jsonTranslated = t(jsonKey, { defaultValue: null })
+  if (jsonTranslated && jsonTranslated !== jsonKey) {
+    return jsonTranslated
+  }
+
   // 3. Fallback на описание с бэкенда
   return fallbackDescription
 }
@@ -163,22 +163,22 @@ export function getLocalizedBrandName(
     locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
   }
   locale = locale || 'ru'
-  
-  // 1. Сначала проверяем JSON файлы (быстро, кешируется)
-  const jsonKey = `brand_${normalizedSlug}_name`
-  const jsonTranslated = t(jsonKey, { defaultValue: null })
-  if (jsonTranslated && jsonTranslated !== jsonKey) {
-    return jsonTranslated
-  }
-  
-  // 2. Если нет в JSON - проверяем переводы из API
+
+  // 1. Сначала проверяем переводы из API (данные из админки)
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
     if (apiTranslation && apiTranslation.name) {
       return apiTranslation.name
     }
   }
-  
+
+  // 2. Затем проверяем JSON файлы (статические переводы)
+  const jsonKey = `brand_${normalizedSlug}_name`
+  const jsonTranslated = t(jsonKey, { defaultValue: null })
+  if (jsonTranslated && jsonTranslated !== jsonKey) {
+    return jsonTranslated
+  }
+
   // 3. Fallback на название с бэкенда
   return fallbackName
 }
@@ -202,7 +202,7 @@ export function getLocalizedBrandDescription(
   currentLocale?: string
 ): string | null {
   if (!fallbackDescription) return null
-  
+
   const normalizedSlug = normalizeBrandSlug(slug)
   // Получаем текущий язык из роутера или из пути
   let locale = currentLocale
@@ -211,22 +211,22 @@ export function getLocalizedBrandDescription(
     locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
   }
   locale = locale || 'ru'
-  
-  // 1. Сначала проверяем JSON файлы (быстро, кешируется)
-  const jsonKey = `brand_${normalizedSlug}_description`
-  const jsonTranslated = t(jsonKey, { defaultValue: null })
-  if (jsonTranslated && jsonTranslated !== jsonKey) {
-    return jsonTranslated
-  }
-  
-  // 2. Если нет в JSON - проверяем переводы из API
+
+  // 1. Сначала проверяем переводы из API (данные из админки)
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
     if (apiTranslation && apiTranslation.description) {
       return apiTranslation.description
     }
   }
-  
+
+  // 2. Затем проверяем JSON файлы (статические переводы)
+  const jsonKey = `brand_${normalizedSlug}_description`
+  const jsonTranslated = t(jsonKey, { defaultValue: null })
+  if (jsonTranslated && jsonTranslated !== jsonKey) {
+    return jsonTranslated
+  }
+
   // 3. Fallback на описание с бэкенда
   return fallbackDescription
 }
@@ -253,16 +253,16 @@ export function normalizeColorName(color: string): string {
  */
 export function getLocalizedColor(color: string, t: TFunction): string {
   if (!color) return color
-  
+
   const normalizedColor = normalizeColorName(color)
   const jsonKey = `color_${normalizedColor}`
   const translated = t(jsonKey, { defaultValue: null })
-  
+
   // Если перевод найден и отличается от ключа, возвращаем его
   if (translated && translated !== jsonKey) {
     return translated
   }
-  
+
   // Иначе возвращаем оригинальное название
   return color
 }
@@ -297,21 +297,21 @@ export function getLocalizedProductName(
   currentLocale?: string
 ): string {
   if (!fallbackName) return ''
-  
+
   let locale = currentLocale
   if (!locale && typeof window !== 'undefined') {
     const pathLocale = window.location.pathname.split('/')[1]
     locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
   }
   locale = locale || 'ru'
-  
+
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
     if (apiTranslation && apiTranslation.name) {
       return apiTranslation.name
     }
   }
-  
+
   return fallbackName
 }
 
@@ -332,7 +332,7 @@ export function getLocalizedProductDescription(
   currentLocale?: string
 ): string {
   if (!fallbackDescription) return ''
-  
+
   // Получаем текущий язык из роутера или из пути
   let locale = currentLocale
   if (!locale && typeof window !== 'undefined') {
@@ -340,7 +340,7 @@ export function getLocalizedProductDescription(
     locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
   }
   locale = locale || 'ru'
-  
+
   // Проверяем переводы из API
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
@@ -348,7 +348,7 @@ export function getLocalizedProductDescription(
       return apiTranslation.description
     }
   }
-  
+
   // Fallback на описание с бэкенда
   return fallbackDescription
 }

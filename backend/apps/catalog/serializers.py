@@ -191,15 +191,7 @@ class CategorySerializer(serializers.ModelSerializer):
         cat_ids = _get_category_ids_with_descendants([obj.slug])
         if not cat_ids:
             return 0
-        total = (
-            Product.objects.filter(category_id__in=cat_ids, is_active=True).count()
-            + ClothingProduct.objects.filter(category_id__in=cat_ids, is_active=True).count()
-            + ShoeProduct.objects.filter(category_id__in=cat_ids, is_active=True).count()
-            + JewelryProduct.objects.filter(category_id__in=cat_ids, is_active=True).count()
-            + ElectronicsProduct.objects.filter(category_id__in=cat_ids, is_active=True).count()
-            + FurnitureProduct.objects.filter(category_id__in=cat_ids, is_active=True).count()
-        )
-        return total
+        return Product.objects.filter(category_id__in=cat_ids, is_active=True).count()
 
     def get_card_media_url(self, obj):
         """URL медиа-файла карточки категории. Относительный — браузер подставит origin."""
@@ -252,8 +244,42 @@ class BrandSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_products_count(self, obj):
-        """Количество товаров бренда."""
-        return obj.products.filter(is_active=True).count()
+        """Количество товаров бренда (точное с учетом доменов)."""
+        model_map = {
+            'jewelry': JewelryProduct,
+            'clothing': ClothingProduct,
+            'shoes': ShoeProduct,
+            'electronics': ElectronicsProduct,
+            'furniture': FurnitureProduct,
+            'underwear': ClothingProduct,
+            'headwear': ClothingProduct,
+        }
+        
+        primary_slug = obj.primary_category_slug
+        if primary_slug:
+            # 1. Если задана специализация бренда, считаем только её
+            normalized_type = primary_slug.replace('-', '_')
+            if primary_slug in model_map:
+                return model_map[primary_slug].objects.filter(brand=obj, is_active=True).count()
+            if normalized_type in model_map:
+                return model_map[normalized_type].objects.filter(brand=obj, is_active=True).count()
+            
+            # Если для типа нет доменной модели (например, medicines), считаем в базе
+            return obj.products.filter(is_active=True, product_type=normalized_type).count()
+
+        # 2. Если специализация не задана, суммируем все легитимные товары
+        # Считаем уникальные доменные записи
+        count = JewelryProduct.objects.filter(brand=obj, is_active=True).count()
+        count += ClothingProduct.objects.filter(brand=obj, is_active=True).count()
+        count += ShoeProduct.objects.filter(brand=obj, is_active=True).count()
+        count += ElectronicsProduct.objects.filter(brand=obj, is_active=True).count()
+        count += FurnitureProduct.objects.filter(brand=obj, is_active=True).count()
+        
+        # Добавляем легаси-типы, исключая те, что уже должны быть в доменах
+        refactored_types = ['jewelry', 'clothing', 'shoes', 'electronics', 'furniture', 'underwear', 'headwear']
+        count += obj.products.filter(is_active=True).exclude(product_type__in=refactored_types).count()
+        
+        return count
 
     def get_card_media_url(self, obj):
         """URL медиа-файла карточки бренда. Относительный — браузер подставит origin."""
@@ -286,21 +312,28 @@ class BrandSerializer(serializers.ModelSerializer):
             "perfumery": "perfumery",
         }
 
+        # Маппинг доменных моделей на slug категории
+        domain_model_map = [
+            ('furniture', FurnitureProduct),
+            ('shoes', ShoeProduct),
+            ('clothing', ClothingProduct),
+            ('jewelry', JewelryProduct),
+            ('electronics', ElectronicsProduct),
+        ]
+
         def normalize(slug: str | None) -> str | None:
             if not slug:
                 return None
             slug = slug.replace("_", "-").lower()
             return allowed_map.get(slug, slug)
 
-        products_qs = obj.products.filter(is_active=True).select_related("category__parent")
-
-        # Если primary_category_slug задан и у бренда есть товары в этой категории — используем его
+        # Если primary_category_slug задан — доверяем ему
         if obj.primary_category_slug:
             norm = normalize(obj.primary_category_slug)
             if norm and norm in allowed_map.values():
-                cat_ids = _get_category_ids_with_descendants([obj.primary_category_slug.strip()])
-                if cat_ids and products_qs.filter(category_id__in=cat_ids).exists():
-                    return norm
+                return norm
+
+        products_qs = obj.products.filter(is_active=True).select_related("category__parent")
 
         # 1) Считаем самые частые категории (берём корневой/родительский slug если есть)
         category_counts = (
@@ -327,9 +360,20 @@ class BrandSerializer(serializers.ModelSerializer):
             if norm in allowed_map.values():
                 return norm
 
-        # 3) Если primary_category_slug задан вручную, но товаров там нет — всё равно вернём
-        #    вычисленную категорию (уже не попали сюда, т.к. category_counts пустой)
-        return normalize(obj.primary_category_slug) if obj.primary_category_slug else None
+        # 3) Проверяем доменные модели (FurnitureProduct, ShoeProduct и т.д.)
+        #    Это нужно для брендов, у которых товары только в доменных таблицах,
+        #    но нет записей в базовой таблице Product
+        best_slug = None
+        best_count = 0
+        for slug, model in domain_model_map:
+            count = model.objects.filter(brand=obj, is_active=True).count()
+            if count > best_count:
+                best_count = count
+                best_slug = slug
+        if best_slug:
+            return best_slug
+
+        return None
 
 
 class ProductImageSerializer(serializers.ModelSerializer):
@@ -506,6 +550,13 @@ class ProductSerializer(serializers.ModelSerializer):
     og_title = serializers.SerializerMethodField()
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
+    publisher = serializers.SerializerMethodField()
+    publication_date = serializers.SerializerMethodField()
+    language = serializers.SerializerMethodField()
+    cover_type = serializers.SerializerMethodField()
+    rating = serializers.SerializerMethodField()
+    reviews_count = serializers.SerializerMethodField()
+    is_bestseller = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
@@ -659,8 +710,9 @@ class ProductSerializer(serializers.ModelSerializer):
         return len(digits) in (10, 13)
 
     def get_isbn(self, obj):
-        if self._is_valid_isbn(obj.isbn):
-            return obj.isbn
+        isbn_val = getattr(obj, 'isbn', None)
+        if self._is_valid_isbn(isbn_val):
+            return isbn_val
         attrs = self._get_external_attributes(obj)
         ext_isbn = attrs.get('isbn')
         if self._is_valid_isbn(ext_isbn):
@@ -668,8 +720,9 @@ class ProductSerializer(serializers.ModelSerializer):
         return None
 
     def get_pages(self, obj):
-        if obj.pages and obj.pages > 0:
-            return obj.pages
+        pages_val = getattr(obj, 'pages', None)
+        if pages_val and pages_val > 0:
+            return pages_val
         attrs = self._get_external_attributes(obj)
         pages = attrs.get('pages')
         if pages is None:
@@ -679,6 +732,27 @@ class ProductSerializer(serializers.ModelSerializer):
         except (TypeError, ValueError):
             return None
         return pages_val if pages_val > 0 else None
+    
+    def get_publisher(self, obj):
+        return getattr(obj, 'publisher', None)
+
+    def get_publication_date(self, obj):
+        return getattr(obj, 'publication_date', None)
+
+    def get_language(self, obj):
+        return getattr(obj, 'language', None)
+
+    def get_cover_type(self, obj):
+        return getattr(obj, 'cover_type', None)
+
+    def get_rating(self, obj):
+        return getattr(obj, 'rating', None)
+
+    def get_reviews_count(self, obj):
+        return getattr(obj, 'reviews_count', None)
+
+    def get_is_bestseller(self, obj):
+        return getattr(obj, 'is_bestseller', False)
     
     def get_price_formatted(self, obj):
         request = self.context.get('request')
