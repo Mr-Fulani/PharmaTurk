@@ -14,6 +14,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../../lib/media'
 import { getSiteOrigin } from '../../lib/urls'
+import { isBaseProductType } from '../../lib/product'
 import { useTheme } from '../../context/ThemeContext'
 
 type CategoryType = string
@@ -113,6 +114,7 @@ interface SizeItem {
 
 interface Product {
   id: number
+  base_product_id?: number | null
   name: string
   slug: string
   description: string
@@ -984,7 +986,7 @@ export default function ProductPage({
             {/* Кнопки действий */}
             <div className="mt-4 flex flex-col gap-3">
             <AddToCartButton
-              productId={isBaseProduct ? product.id : undefined}
+              productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
               productType={productType}
               productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
               size={selectedSize}
@@ -996,7 +998,7 @@ export default function ProductPage({
                 label={t('add_to_cart', 'В корзину')}
               />
               <BuyNowButton
-                productId={isBaseProduct ? product.id : undefined}
+                productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
                 productType={productType}
                 productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
                 size={selectedSize}
@@ -1109,12 +1111,6 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const currency = currencyMatch ? currencyMatch[1] : 'RUB'
   
   const localePrefix = ctx.locale ? `/${ctx.locale}` : ''
-  const baseProductTypes: CategoryType[] = [
-    'medicines', 'supplements', 'medical-equipment',
-    'furniture', 'tableware', 'accessories',
-    'underwear', 'headwear'
-  ]
-
   const fetchProduct = (type: CategoryType, slug: string) =>
     axios.get(getInternalApiUrl(resolveDetailEndpoint(type, slug).replace(/^\/api\//, '')), {
       headers: {
@@ -1128,7 +1124,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
       ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
       product: res.data,
       productType: type,
-      isBaseProduct: baseProductTypes.includes(type),
+      isBaseProduct: isBaseProductType(type),
       preferredCurrency: currency,
     },
   })

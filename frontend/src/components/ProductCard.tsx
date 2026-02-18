@@ -8,6 +8,7 @@ import { getLocalizedProductDescription, getLocalizedProductName, ProductTransla
 
 interface ProductCardProps {
   id: number
+  baseProductId?: number
   name: string
   slug: string
   price: string | null
@@ -38,6 +39,7 @@ interface ProductCardProps {
 
 export default function ProductCard({ 
   id, 
+  baseProductId,
   name, 
   slug, 
   price, 
@@ -181,7 +183,7 @@ export default function ProductCard({
                 className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
               />
             <AddToCartButton 
-              productId={isBaseProduct ? id : undefined} 
+              productId={isBaseProduct ? (baseProductId ?? id) : undefined} 
               productType={productType}
               productSlug={slug}
                 className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
@@ -321,7 +323,7 @@ export default function ProductCard({
             className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
           />
           <AddToCartButton 
-            productId={isBaseProduct ? id : undefined} 
+            productId={isBaseProduct ? (baseProductId ?? id) : undefined} 
             productType={productType}
             productSlug={slug}
             className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"

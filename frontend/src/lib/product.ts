@@ -44,11 +44,16 @@ export type BaseProductType = (typeof BASE_PRODUCT_TYPES)[number]
 /** Типы с отдельными моделями — всегда требуют type в URL. */
 export const TYPES_NEEDING_PATH = ['clothing', 'shoes', 'electronics', 'jewelry'] as const
 
+const normalizeProductType = (productType?: string | null) =>
+  (productType || '').toString().trim().replace(/_/g, '-')
+
 export function isBaseProductType(productType?: string | null): boolean {
-  return Boolean(productType && BASE_PRODUCT_TYPES.includes(productType as BaseProductType))
+  const normalized = normalizeProductType(productType)
+  return Boolean(normalized && BASE_PRODUCT_TYPES.includes(normalized as BaseProductType))
 }
 
 /** Нужен ли type в URL (clothing, shoes, electronics). */
 export function needsTypeInPath(productType?: string | null): boolean {
-  return Boolean(productType && TYPES_NEEDING_PATH.includes(productType as (typeof TYPES_NEEDING_PATH)[number]))
+  const normalized = normalizeProductType(productType)
+  return Boolean(normalized && TYPES_NEEDING_PATH.includes(normalized as (typeof TYPES_NEEDING_PATH)[number]))
 }

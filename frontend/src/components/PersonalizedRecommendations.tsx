@@ -123,6 +123,7 @@ export default function PersonalizedRecommendations() {
               <ProductCard
                 key={product.id}
                 id={product.id}
+                baseProductId={(product as { base_product_id?: number }).base_product_id}
                 name={product.name}
                 slug={product.slug}
                 price={displayPrice != null ? String(displayPrice) : null}

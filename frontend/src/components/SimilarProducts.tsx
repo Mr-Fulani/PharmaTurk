@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
+import { isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
 
@@ -160,7 +161,7 @@ export default function SimilarProducts({
     return null
   }
 
-  const isBaseProduct = ['medicines', 'supplements', 'medical-equipment', 'furniture', 'tableware', 'accessories', 'underwear', 'headwear'].includes(productType)
+  const isBaseProduct = isBaseProductType(productType)
 
   const translateBadge = (reason: string): string => {
     if (!reason?.trim()) return ''
@@ -206,6 +207,7 @@ export default function SimilarProducts({
             <div key={product.id} className="relative">
               <ProductCard
                 id={product.id}
+                baseProductId={(product as { base_product_id?: number }).base_product_id}
                 name={product.name}
                 slug={product.slug}
                 price={displayPrice ? String(displayPrice) : null}

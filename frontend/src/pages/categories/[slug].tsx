@@ -5,6 +5,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTranslation, BrandTranslation } from '../../lib/i18n'
 import { getSiteOrigin } from '../../lib/urls'
+import { isBaseProductType } from '../../lib/product'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios from 'axios'
@@ -1885,11 +1886,14 @@ export default function CategoryPage({
                 >
                   {products.map((product) => {
                     const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
+                    const { price: parsedBasePrice, currency: parsedBaseCurrency } = parsePriceWithCurrency(
+                      product.price_formatted ?? product.price
+                    )
                     const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(
                       product.active_variant_old_price_formatted || product.old_price_formatted || product.old_price
                     )
-                    const displayPrice = parsedVariantPrice ?? product.price
-                    const displayCurrency = product.active_variant_currency || parsedVariantCurrency || product.currency
+                    const displayPrice = parsedVariantPrice ?? parsedBasePrice ?? product.price
+                    const displayCurrency = product.active_variant_currency || parsedVariantCurrency || parsedBaseCurrency || product.currency
                     const displayOldCurrency = parsedOldCurrency || displayCurrency
                     
                     // Форматируем старую цену, убирая лишние нули
@@ -1904,12 +1908,13 @@ export default function CategoryPage({
                     const displayOldPriceFormatted = displayOldPrice ? formatPrice(displayOldPrice) : null
                     const effectiveProductType = (product.product_type || categoryType).replace(/_/g, '-')
                     const productHref = `/product/${effectiveProductType}/${product.slug}`
-                    const isBaseProductType = ['medicines', 'supplements', 'medical-equipment'].includes(effectiveProductType)
+                    const isBaseProduct = isBaseProductType(effectiveProductType)
                     
                     return (
                       <ProductCard
                         key={product.id}
                         id={product.id}
+                        baseProductId={(product as { base_product_id?: number }).base_product_id}
                         name={product.name}
                         slug={product.slug}
                         price={displayPriceFormatted ? String(displayPriceFormatted) : null}
@@ -1922,7 +1927,7 @@ export default function CategoryPage({
                         description={product.description}
                         href={productHref}
                         productType={effectiveProductType as CategoryTypeKey}
-                        isBaseProduct={isBaseProductType}
+                        isBaseProduct={isBaseProduct}
                         translations={product.translations}
                         locale={i18n.language}
                         isbn={effectiveProductType === 'books' ? (product as any).isbn : undefined}

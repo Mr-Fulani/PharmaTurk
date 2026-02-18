@@ -10,6 +10,7 @@ import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface Product {
   id: number
+  base_product_id?: number | null
   name: string
   slug: string
   price: string | number | null
@@ -405,7 +406,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                     </div>
                   </div>
                   <AddToCartButton
-                    productId={product.id}
+                    productId={product.product_type === 'furniture' ? (product.base_product_id ?? product.id) : product.id}
                     productType={product.product_type || 'medicines'}
                     productSlug={product.slug}
                     className="w-full"

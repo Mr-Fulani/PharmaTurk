@@ -153,6 +153,7 @@ export default function VisualSearch() {
             <ProductCard
               key={r.product_id}
               id={r.product.id}
+              baseProductId={(r.product as { base_product_id?: number }).base_product_id}
               name={r.product.name}
               slug={r.product.slug}
               price={r.product.price != null ? String(r.product.price) : null}

@@ -47,6 +47,7 @@ export default function SearchPage() {
                 <ProductCard
                   key={p.id}
                   id={p.id}
+                  baseProductId={(p as { base_product_id?: number }).base_product_id}
                   name={p.name}
                   slug={p.slug}
                   price={p.price}

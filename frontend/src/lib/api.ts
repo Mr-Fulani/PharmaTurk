@@ -55,27 +55,27 @@ api.interceptors.request.use((config) => {
     // ngrok free tier: без этого заголовка возвращает HTML-страницу предупреждения вместо API-ответа
     if (window.location.origin.includes('ngrok-free.dev') || window.location.origin.includes('ngrok.io')) {
       if (!config.headers) config.headers = {} as AxiosRequestHeaders
-      ;(config.headers as AxiosRequestHeaders)['ngrok-skip-browser-warning'] = '1'
+        ; (config.headers as AxiosRequestHeaders)['ngrok-skip-browser-warning'] = '1'
     }
     // Диагностика: раскомментировать при проблемах с API на мобильных/ngrok
     // console.log('[API Request]', { url: config.url, baseURL: config.baseURL, origin: window.location.origin })
   }
-  
+
   const access = Cookies.get('access')
   if (!config.headers) config.headers = {} as AxiosRequestHeaders
-  
+
   if (access) {
-    ;(config.headers as AxiosRequestHeaders)['Authorization'] = `Bearer ${access}`
+    ; (config.headers as AxiosRequestHeaders)['Authorization'] = `Bearer ${access}`
     if (process.env.NODE_ENV === 'development') {
       console.log('API: adding auth header for', config.url)
     }
-    
+
     // Для авторизованных пользователей отправляем cart_session для возможного переноса корзины/избранного
     // но только если это запрос к корзине или избранному
     if (config.url?.includes('/orders/cart') || config.url?.includes('/catalog/favorites')) {
       const cartSid = Cookies.get('cart_session')
       if (cartSid) {
-        ;(config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
+        ; (config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
         if (process.env.NODE_ENV === 'development') {
           console.log('API: sending cart session for transfer:', cartSid)
         }
@@ -87,12 +87,12 @@ api.interceptors.request.use((config) => {
     }
     // Прокидываем X-Cart-Session для анонимных пользователей
     const cartSid = ensureCartSession()
-    ;(config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
+      ; (config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
   }
-  
+
   // Прокидываем язык для локализации ответов DRF/Django
   const locale = Cookies.get('NEXT_LOCALE') || (typeof navigator !== 'undefined' ? (navigator.language?.split('-')[0] || 'en') : 'en')
-  ;(config.headers as AxiosRequestHeaders)['Accept-Language'] = locale
+    ; (config.headers as AxiosRequestHeaders)['Accept-Language'] = locale
 
   const storedCurrency = Cookies.get('currency')
   const resolvedCurrency = storedCurrency || preferredCurrency || (!access ? 'RUB' : null)
@@ -100,7 +100,7 @@ api.interceptors.request.use((config) => {
     console.log('[API Currency]', { storedCurrency, preferredCurrency, resolvedCurrency, url: config.url })
   }
   if (resolvedCurrency) {
-    ;(config.headers as AxiosRequestHeaders)['X-Currency'] = resolvedCurrency
+    ; (config.headers as AxiosRequestHeaders)['X-Currency'] = resolvedCurrency
   }
   return config
 })
@@ -124,7 +124,7 @@ api.interceptors.response.use(
       origin: typeof window !== 'undefined' ? window.location.origin : 'server',
       userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'server'
     })
-    
+
     const original = error.config
     if (error?.response?.status === 401 && !original._retry) {
       original._retry = true
@@ -209,6 +209,70 @@ export const jewelryApi = {
   getFeatured: () => api.get('/catalog/jewelry/products/featured'),
 }
 
+// Книги
+export const booksApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/books/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/books/products/${slug}`),
+  getFeatured: () => api.get('/catalog/books/products/featured'),
+}
+
+// Парфюмерия
+export const perfumeryApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/perfumery/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/perfumery/products/${slug}`),
+  getFeatured: () => api.get('/catalog/perfumery/products/featured'),
+}
+
+// Медикаменты (домен)
+export const medicinesDomainApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/medicines/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/medicines/products/${slug}`),
+  getFeatured: () => api.get('/catalog/medicines/products/featured'),
+}
+
+// БАДы
+export const supplementsApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/supplements/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/supplements/products/${slug}`),
+  getFeatured: () => api.get('/catalog/supplements/products/featured'),
+}
+
+// Медтехника
+export const medicalEquipmentApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/medical-equipment/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/medical-equipment/products/${slug}`),
+  getFeatured: () => api.get('/catalog/medical-equipment/products/featured'),
+}
+
+// Посуда
+export const tablewareApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/tableware/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/tableware/products/${slug}`),
+  getFeatured: () => api.get('/catalog/tableware/products/featured'),
+}
+
+// Аксессуары
+export const accessoriesApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/accessories/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/accessories/products/${slug}`),
+  getFeatured: () => api.get('/catalog/accessories/products/featured'),
+}
+
+// Благовония
+export const incenseApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/incense/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/incense/products/${slug}`),
+  getFeatured: () => api.get('/catalog/incense/products/featured'),
+}
+
 // Универсальная функция для получения API в зависимости от типа товаров
 export function getApiForCategory(
   categoryType: string
@@ -224,6 +288,22 @@ export function getApiForCategory(
       return furnitureApi
     case 'jewelry':
       return jewelryApi
+    case 'books':
+      return booksApi
+    case 'perfumery':
+      return perfumeryApi
+    case 'medicines_domain':
+      return medicinesDomainApi
+    case 'supplements':
+      return supplementsApi
+    case 'medical_equipment':
+      return medicalEquipmentApi
+    case 'tableware':
+      return tablewareApi
+    case 'accessories':
+      return accessoriesApi
+    case 'incense':
+      return incenseApi
     default:
       return medicinesApi
   }

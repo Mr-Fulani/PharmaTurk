@@ -7,6 +7,7 @@ import Link from 'next/link'
 import Cookies from 'js-cookie'
 import { useFavoritesStore } from '../store/favorites'
 import ProductCard from '../components/ProductCard'
+import { isBaseProductType, needsTypeInPath } from '../lib/product'
 
 const parseNumber = (value: string | number | null | undefined) => {
   if (value === null || typeof value === 'undefined') return null
@@ -95,22 +96,10 @@ export default function FavoritesPage() {
             {favorites.map((favorite) => {
               const product = favorite.product
               const productType = product._product_type || 'medicines'
-              const baseProductTypes = [
-                'medicines',
-                'supplements',
-                'medical-equipment',
-                'medical_equipment',
-                'furniture',
-                'tableware',
-                'accessories',
-                'jewelry',
-                'underwear',
-                'headwear',
-              ]
-              const isBaseProduct = baseProductTypes.includes(productType)
-              const productHref = isBaseProduct 
-                ? `/product/${product.slug}` 
-                : `/product/${productType}/${product.slug}`
+              const isBaseProduct = isBaseProductType(productType)
+              const productHref = needsTypeInPath(productType)
+                ? `/product/${productType}/${product.slug}`
+                : `/product/${product.slug}`
               const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
               
               // Используем ту же логику, что и в корзине для старой цены
@@ -132,6 +121,7 @@ export default function FavoritesPage() {
                 <ProductCard
                   key={favorite.id}
                   id={product.id}
+                  baseProductId={(product as { base_product_id?: number }).base_product_id}
                   name={product.name}
                   slug={product.slug}
                   price={displayPrice ? String(displayPrice) : null}
