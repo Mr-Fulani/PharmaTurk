@@ -31,6 +31,16 @@ from .models import (
     ElectronicsProduct,
     FurnitureProduct, FurnitureVariant,
     JewelryProduct,
+    BookProduct,
+    PerfumeryProduct,
+    MedicineProduct,
+    SupplementProduct,
+    MedicalEquipmentProduct,
+    TablewareProduct,
+    AccessoryProduct,
+    IncenseProduct,
+    SportsProduct,
+    AutoPartProduct,
     Service,
     Banner, BannerMedia,
 )
@@ -53,6 +63,18 @@ from .serializers import (
     ElectronicsProductSerializer,
     FurnitureProductSerializer,
     JewelryProductSerializer,
+    BookProductSerializer,
+    PerfumeryProductSerializer,
+    MedicineProductSerializer,
+    SupplementProductSerializer,
+    MedicalEquipmentProductSerializer,
+    TablewareProductSerializer,
+    AccessoryProductSerializer,
+    IncenseProductSerializer,
+    SportsProductSerializer,
+    SportsProductDetailSerializer,
+    AutoPartProductSerializer,
+    AutoPartProductDetailSerializer,
     ServiceSerializer,
     BannerSerializer
 )
@@ -650,120 +672,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         if product_type:
             queryset = queryset.filter(product_type=product_type)
 
-        book_filters_applied = False
-        author_ids_raw = self.request.query_params.getlist('author_id') or self.request.query_params.getlist('author_id[]')
-        if author_ids_raw:
-            try:
-                author_ids = [int(aid) for aid in author_ids_raw if str(aid).strip() != '']
-            except (ValueError, TypeError):
-                author_ids = []
-            if author_ids:
-                queryset = queryset.filter(book_authors__author_id__in=author_ids)
-                book_filters_applied = True
 
-        genre_ids_raw = self.request.query_params.getlist('genre_id') or self.request.query_params.getlist('genre_id[]')
-        if genre_ids_raw:
-            try:
-                genre_ids = [int(gid) for gid in genre_ids_raw if str(gid).strip() != '']
-            except (ValueError, TypeError):
-                genre_ids = []
-            if genre_ids:
-                queryset = queryset.filter(book_genres__genre_id__in=genre_ids)
-                book_filters_applied = True
-
-        genre_slug = self.request.query_params.get('genre_slug')
-        if genre_slug:
-            slugs = [s.strip() for s in genre_slug.split(',') if s.strip()]
-            if slugs:
-                genre_ids = _get_category_ids_with_descendants(slugs)
-                if genre_ids:
-                    queryset = queryset.filter(book_genres__genre_id__in=genre_ids)
-                    book_filters_applied = True
-
-        author = self.request.query_params.get('author')
-        if author:
-            names = [n.strip() for n in author.split(',') if n.strip()]
-            for name in names:
-                parts = [p for p in re.split(r'\s+', name) if p]
-                if not parts:
-                    continue
-                q = models.Q()
-                for part in parts:
-                    q |= models.Q(book_authors__author__first_name__icontains=part)
-                    q |= models.Q(book_authors__author__last_name__icontains=part)
-                if q:
-                    queryset = queryset.filter(q)
-                    book_filters_applied = True
-
-        publisher = self.request.query_params.get('publisher')
-        if publisher:
-            values = [v.strip() for v in publisher.split(',') if v.strip()]
-            for value in values:
-                queryset = queryset.filter(publisher__icontains=value)
-                book_filters_applied = True
-
-        language = self.request.query_params.get('language')
-        if language:
-            values = [v.strip() for v in language.split(',') if v.strip()]
-            for value in values:
-                queryset = queryset.filter(language__icontains=value)
-                book_filters_applied = True
-
-        cover_type = self.request.query_params.get('cover_type')
-        if cover_type:
-            values = [v.strip() for v in cover_type.split(',') if v.strip()]
-            for value in values:
-                queryset = queryset.filter(cover_type__icontains=value)
-                book_filters_applied = True
-
-        format_type = self.request.query_params.get('format_type')
-        if format_type:
-            values = [v.strip() for v in format_type.split(',') if v.strip()]
-            for value in values:
-                queryset = queryset.filter(book_variants__format_type__icontains=value, book_variants__is_active=True)
-                book_filters_applied = True
-
-        isbn = self.request.query_params.get('isbn')
-        if isbn:
-            value = isbn.strip()
-            if value:
-                queryset = queryset.filter(
-                    models.Q(isbn__icontains=value)
-                    | models.Q(book_variants__isbn__icontains=value, book_variants__is_active=True)
-                )
-                book_filters_applied = True
-
-        pages_min = self.request.query_params.get('pages_min')
-        if pages_min:
-            try:
-                queryset = queryset.filter(pages__gte=int(pages_min))
-                book_filters_applied = True
-            except (TypeError, ValueError):
-                pass
-
-        pages_max = self.request.query_params.get('pages_max')
-        if pages_max:
-            try:
-                queryset = queryset.filter(pages__lte=int(pages_max))
-                book_filters_applied = True
-            except (TypeError, ValueError):
-                pass
-
-        rating_min = self.request.query_params.get('rating_min')
-        if rating_min:
-            try:
-                queryset = queryset.filter(rating__gte=float(rating_min))
-                book_filters_applied = True
-            except (TypeError, ValueError):
-                pass
-
-        rating_max = self.request.query_params.get('rating_max')
-        if rating_max:
-            try:
-                queryset = queryset.filter(rating__lte=float(rating_max))
-                book_filters_applied = True
-            except (TypeError, ValueError):
-                pass
 
         # Фильтр по статусу доступности
         availability_status = self.request.query_params.get('availability_status')
@@ -789,8 +698,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         ordering = self.request.query_params.get('ordering', '-created_at')
         ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
-        if book_filters_applied:
-            queryset = queryset.distinct()
+
         
         return queryset
     
@@ -816,19 +724,6 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
                 OpenApiParameter(name="product_type", type=str, required=False, description="Тип товара (например, medicines, clothing)"),
                 OpenApiParameter(name="availability_status", type=str, required=False, description="Статус доступности (in_stock, backorder, preorder, out_of_stock, discontinued)"),
                 OpenApiParameter(name="country_of_origin", type=str, required=False, description="Страна происхождения (можно через запятую)"),
-                OpenApiParameter(name="author", type=str, required=False, description="Автор (можно несколько через запятую)"),
-                OpenApiParameter(name="author_id", type=int, required=False, description="ID автора (можно несколько)"),
-                OpenApiParameter(name="genre_id", type=int, required=False, description="ID жанра (можно несколько)"),
-                OpenApiParameter(name="genre_slug", type=str, required=False, description="Slug жанра (можно несколько через запятую)"),
-                OpenApiParameter(name="publisher", type=str, required=False, description="Издатель (можно несколько через запятую)"),
-                OpenApiParameter(name="language", type=str, required=False, description="Язык (можно несколько через запятую)"),
-                OpenApiParameter(name="cover_type", type=str, required=False, description="Тип обложки (можно несколько через запятую)"),
-                OpenApiParameter(name="format_type", type=str, required=False, description="Формат варианта (можно несколько через запятую)"),
-                OpenApiParameter(name="isbn", type=str, required=False, description="ISBN книги или варианта"),
-                OpenApiParameter(name="pages_min", type=int, required=False, description="Минимум страниц"),
-                OpenApiParameter(name="pages_max", type=int, required=False, description="Максимум страниц"),
-                OpenApiParameter(name="rating_min", type=float, required=False, description="Минимальный рейтинг"),
-                OpenApiParameter(name="rating_max", type=float, required=False, description="Максимальный рейтинг"),
         ]
     )
     def list(self, request, *args, **kwargs):
@@ -2421,3 +2316,671 @@ def proxy_media(request):
         import logging
         logging.getLogger(__name__).exception('proxy_media error')
         return JsonResponse({'error': str(e)}, status=500)
+
+
+# ─────────────────────────────────────────────────────────────
+#                     BOOK PRODUCT
+# ─────────────────────────────────────────────────────────────
+
+class BookProductViewSet(viewsets.ReadOnlyModelViewSet):
+    """API для работы с товарами-книгами."""
+
+    queryset = BookProduct.objects.filter(is_active=True)
+    serializer_class = BookProductSerializer
+    pagination_class = StandardPagination
+    lookup_field = 'slug'
+
+    def _normalize_ordering(self, ordering: str) -> str:
+        ordering_map = {
+            'name_asc': 'name',
+            'name_desc': '-name',
+            'price_asc': 'price',
+            'price_desc': '-price',
+            'newest': '-created_at',
+            'popular': '-is_featured',
+            'rating': '-rating',
+        }
+        return ordering_map.get(ordering, ordering)
+
+    def get_queryset(self):
+        queryset = BookProduct.objects.filter(is_active=True)
+
+        # Фильтр по категории
+        category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
+        if category_ids:
+            try:
+                category_ids = [int(cid) for cid in category_ids if cid]
+                if category_ids:
+                    queryset = queryset.filter(category_id__in=category_ids)
+            except (ValueError, TypeError):
+                pass
+
+        # Фильтр по slug категории
+        category_slug = self.request.query_params.get('category_slug') or self.request.query_params.get('subcategory_slug')
+        if category_slug:
+            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
+            if slugs:
+                cat_ids = _get_category_ids_with_descendants(slugs)
+                if cat_ids:
+                    queryset = queryset.filter(category_id__in=cat_ids)
+
+        # Фильтр по бренду
+        queryset = _apply_brand_filter(queryset, self.request)
+
+        # Фильтр по издательству
+        publisher = self.request.query_params.get('publisher')
+        if publisher:
+            queryset = queryset.filter(publisher__icontains=publisher)
+
+        # Фильтр по языку
+        language = self.request.query_params.get('language')
+        if language:
+            queryset = queryset.filter(language__icontains=language)
+
+        # Фильтр по обложке
+        cover_type = self.request.query_params.get('cover_type')
+        if cover_type:
+            queryset = queryset.filter(cover_type__iexact=cover_type)
+
+        # Бестселлеры
+        is_bestseller = self.request.query_params.get('is_bestseller')
+        if is_bestseller and is_bestseller.lower() in ('true', '1', 'yes'):
+            queryset = queryset.filter(is_bestseller=True)
+
+        # Поиск
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+
+        # Фильтр по цене
+        queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
+
+        # Сортировка
+        ordering = self.request.query_params.get('ordering', '-created_at')
+        ordering = self._normalize_ordering(ordering)
+        queryset = queryset.order_by(ordering)
+
+        return queryset
+
+    @extend_schema(
+        summary="Получить список книг",
+        description="Возвращает список книг с возможностью фильтрации",
+        parameters=[
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории"),
+            OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
+            OpenApiParameter(name="publisher", type=str, required=False, description="Издательство"),
+            OpenApiParameter(name="language", type=str, required=False, description="Язык"),
+            OpenApiParameter(name="cover_type", type=str, required=False, description="Тип обложки"),
+            OpenApiParameter(name="is_bestseller", type=bool, required=False, description="Бестселлер"),
+            OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
+            OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
+            OpenApiParameter(name="author", type=str, required=False, description="Автор (имя или часть)"),
+            OpenApiParameter(name="genre_slug", type=str, required=False, description="Slug жанра"),
+            OpenApiParameter(name="isbn", type=str, required=False, description="ISBN"),
+            OpenApiParameter(name="pages_min", type=int, required=False, description="Мин. страниц"),
+            OpenApiParameter(name="pages_max", type=int, required=False, description="Макс. страниц"),
+            OpenApiParameter(name="rating_min", type=float, required=False, description="Мин. рейтинг"),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить книгу по slug")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+# ─────────────────────────────────────────────────────────────
+#                    PERFUMERY PRODUCT
+# ─────────────────────────────────────────────────────────────
+
+class PerfumeryProductViewSet(viewsets.ReadOnlyModelViewSet):
+    """API для работы с товарами парфюмерии."""
+
+    queryset = PerfumeryProduct.objects.filter(is_active=True)
+    serializer_class = PerfumeryProductSerializer
+    pagination_class = StandardPagination
+    lookup_field = 'slug'
+
+    def _normalize_ordering(self, ordering: str) -> str:
+        ordering_map = {
+            'name_asc': 'name',
+            'name_desc': '-name',
+            'price_asc': 'price',
+            'price_desc': '-price',
+            'newest': '-created_at',
+            'popular': '-is_featured',
+        }
+        return ordering_map.get(ordering, ordering)
+
+    def get_queryset(self):
+        queryset = PerfumeryProduct.objects.filter(is_active=True)
+
+        def parse_multi_param(param_name: str) -> list[str]:
+            raw_list = (
+                self.request.query_params.getlist(param_name)
+                or self.request.query_params.getlist(f"{param_name}[]")
+                or []
+            )
+            if not raw_list:
+                raw = self.request.query_params.get(param_name)
+                if raw:
+                    raw_list = raw.split(',')
+            return [v.strip() for v in raw_list if v and str(v).strip()]
+
+        # Фильтр по категории
+        category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
+        if category_ids:
+            try:
+                category_ids = [int(cid) for cid in category_ids if cid]
+                if category_ids:
+                    queryset = queryset.filter(category_id__in=category_ids)
+            except (ValueError, TypeError):
+                pass
+
+        # Фильтр по slug категории
+        category_slug = self.request.query_params.get('category_slug') or self.request.query_params.get('subcategory_slug')
+        if category_slug:
+            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
+            if slugs:
+                cat_ids = _get_category_ids_with_descendants(slugs)
+                if cat_ids:
+                    queryset = queryset.filter(category_id__in=cat_ids)
+
+        # Фильтр по бренду
+        queryset = _apply_brand_filter(queryset, self.request)
+
+        # Фильтр по типу аромата
+        fragrance_types = parse_multi_param('fragrance_type')
+        if fragrance_types:
+            queryset = queryset.filter(fragrance_type__in=fragrance_types)
+
+        # Фильтр по семейству аромата
+        fragrance_families = parse_multi_param('fragrance_family')
+        if fragrance_families:
+            queryset = queryset.filter(fragrance_family__in=fragrance_families)
+
+        # Фильтр по полу
+        gender = self.request.query_params.get('gender')
+        if gender:
+            queryset = queryset.filter(gender=gender)
+
+        # Фильтр по объёму
+        volume = self.request.query_params.get('volume')
+        if volume:
+            queryset = queryset.filter(volume__icontains=volume)
+
+        # Поиск
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+
+        # Фильтр по цене
+        queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
+
+        # Сортировка
+        ordering = self.request.query_params.get('ordering', '-created_at')
+        ordering = self._normalize_ordering(ordering)
+        queryset = queryset.order_by(ordering)
+
+        return queryset
+
+    @extend_schema(
+        summary="Получить список товаров парфюмерии",
+        description="Возвращает список товаров парфюмерии с возможностью фильтрации",
+        parameters=[
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории"),
+            OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
+            OpenApiParameter(name="fragrance_type", type=str, required=False, description="Тип аромата"),
+            OpenApiParameter(name="fragrance_family", type=str, required=False, description="Семейство аромата"),
+            OpenApiParameter(name="gender", type=str, required=False, description="Пол"),
+            OpenApiParameter(name="volume", type=str, required=False, description="Объём"),
+            OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
+            OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить товар парфюмерии по slug")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+# ─────────────────────────────────────────────────────────────
+#        ПРОСТЫЕ ДОМЕНЫ (Волна 2) — ViewSets
+# ─────────────────────────────────────────────────────────────
+
+class _SimpleDomainViewSet(viewsets.ReadOnlyModelViewSet):
+    """Базовый ViewSet для простых доменов без вариантов."""
+    pagination_class = StandardPagination
+    lookup_field = 'slug'
+
+    _ORDERING_MAP = {
+        'name_asc': 'name',
+        'name_desc': '-name',
+        'price_asc': 'price',
+        'price_desc': '-price',
+        'newest': '-created_at',
+        'popular': '-is_featured',
+    }
+
+    def _normalize_ordering(self, ordering: str) -> str:
+        return self._ORDERING_MAP.get(ordering, ordering)
+
+    def _base_queryset(self):
+        return self.queryset.all()
+
+    def _apply_domain_filters(self, queryset):
+        """Переопределить в подклассе для доменных фильтров."""
+        return queryset
+
+    def get_queryset(self):
+        queryset = self._base_queryset()
+
+        # Фильтр по категории
+        category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
+        if category_ids:
+            try:
+                category_ids = [int(cid) for cid in category_ids if cid]
+                if category_ids:
+                    queryset = queryset.filter(category_id__in=category_ids)
+            except (ValueError, TypeError):
+                pass
+
+        # Фильтр по slug категории
+        category_slug = self.request.query_params.get('category_slug') or self.request.query_params.get('subcategory_slug')
+        if category_slug:
+            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
+            if slugs:
+                cat_ids = _get_category_ids_with_descendants(slugs)
+                if cat_ids:
+                    queryset = queryset.filter(category_id__in=cat_ids)
+
+        # Фильтр по бренду
+        queryset = _apply_brand_filter(queryset, self.request)
+
+        # Поиск
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+
+        # Фильтр по цене
+        queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
+
+        # Доменные фильтры
+        queryset = self._apply_domain_filters(queryset)
+
+        # Сортировка
+        ordering = self.request.query_params.get('ordering', '-created_at')
+        ordering = self._normalize_ordering(ordering)
+        queryset = queryset.order_by(ordering)
+
+        return queryset
+
+
+# ─── МЕДИКАМЕНТЫ ───
+
+class MedicineProductViewSet(_SimpleDomainViewSet):
+    """API для работы с медикаментами."""
+    queryset = MedicineProduct.objects.filter(is_active=True)
+    serializer_class = MedicineProductSerializer
+
+    def _apply_domain_filters(self, queryset):
+        dosage_form = self.request.query_params.get('dosage_form')
+        if dosage_form:
+            queryset = queryset.filter(dosage_form=dosage_form)
+        active_ingredient = self.request.query_params.get('active_ingredient')
+        if active_ingredient:
+            queryset = queryset.filter(active_ingredient__icontains=active_ingredient)
+        prescription = self.request.query_params.get('prescription_required')
+        if prescription and prescription.lower() in ('true', '1', 'yes'):
+            queryset = queryset.filter(prescription_required=True)
+        return queryset
+
+    @extend_schema(
+        summary="Получить список медикаментов",
+        description="Возвращает список медикаментов с возможностью фильтрации",
+        parameters=[
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории"),
+            OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
+            OpenApiParameter(name="dosage_form", type=str, required=False, description="Лекарственная форма"),
+            OpenApiParameter(name="active_ingredient", type=str, required=False, description="Действующее вещество"),
+            OpenApiParameter(name="prescription_required", type=bool, required=False, description="Требуется рецепт"),
+            OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
+            OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить медикамент по slug")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+# ─── БАДы ───
+
+class SupplementProductViewSet(_SimpleDomainViewSet):
+    """API для работы с БАДами."""
+    queryset = SupplementProduct.objects.filter(is_active=True)
+    serializer_class = SupplementProductSerializer
+
+    def _apply_domain_filters(self, queryset):
+        dosage_form = self.request.query_params.get('dosage_form')
+        if dosage_form:
+            queryset = queryset.filter(dosage_form=dosage_form)
+        active_ingredient = self.request.query_params.get('active_ingredient')
+        if active_ingredient:
+            queryset = queryset.filter(active_ingredient__icontains=active_ingredient)
+        return queryset
+
+    @extend_schema(
+        summary="Получить список БАДов",
+        description="Возвращает список БАДов с возможностью фильтрации",
+        parameters=[
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории"),
+            OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
+            OpenApiParameter(name="dosage_form", type=str, required=False, description="Форма выпуска"),
+            OpenApiParameter(name="active_ingredient", type=str, required=False, description="Активный ингредиент"),
+            OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
+            OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить БАД по slug")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+# ─── МЕДТЕХНИКА ───
+
+class MedicalEquipmentProductViewSet(_SimpleDomainViewSet):
+    """API для работы с медтехникой."""
+    queryset = MedicalEquipmentProduct.objects.filter(is_active=True)
+    serializer_class = MedicalEquipmentProductSerializer
+
+    def _apply_domain_filters(self, queryset):
+        equipment_type = self.request.query_params.get('equipment_type')
+        if equipment_type:
+            queryset = queryset.filter(equipment_type__icontains=equipment_type)
+        return queryset
+
+    @extend_schema(
+        summary="Получить список медтехники",
+        description="Возвращает список медтехники с возможностью фильтрации",
+        parameters=[
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории"),
+            OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
+            OpenApiParameter(name="equipment_type", type=str, required=False, description="Тип оборудования"),
+            OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
+            OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить медтехнику по slug")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+# ─── ПОСУДА ───
+
+class TablewareProductViewSet(_SimpleDomainViewSet):
+    """API для работы с посудой."""
+    queryset = TablewareProduct.objects.filter(is_active=True)
+    serializer_class = TablewareProductSerializer
+
+    def _apply_domain_filters(self, queryset):
+        material = self.request.query_params.get('material')
+        if material:
+            queryset = queryset.filter(material__icontains=material)
+        return queryset
+
+    @extend_schema(
+        summary="Получить список посуды",
+        description="Возвращает список посуды с возможностью фильтрации",
+        parameters=[
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории"),
+            OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
+            OpenApiParameter(name="material", type=str, required=False, description="Материал"),
+            OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
+            OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить посуду по slug")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+# ─── АКСЕССУАРЫ ───
+
+class AccessoryProductViewSet(_SimpleDomainViewSet):
+    """API для работы с аксессуарами."""
+    queryset = AccessoryProduct.objects.filter(is_active=True)
+    serializer_class = AccessoryProductSerializer
+
+    def _apply_domain_filters(self, queryset):
+        accessory_type = self.request.query_params.get('accessory_type')
+        if accessory_type:
+            queryset = queryset.filter(accessory_type__icontains=accessory_type)
+        material = self.request.query_params.get('material')
+        if material:
+            queryset = queryset.filter(material__icontains=material)
+        return queryset
+
+    @extend_schema(
+        summary="Получить список аксессуаров",
+        description="Возвращает список аксессуаров с возможностью фильтрации",
+        parameters=[
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории"),
+            OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
+            OpenApiParameter(name="accessory_type", type=str, required=False, description="Тип аксессуара"),
+            OpenApiParameter(name="material", type=str, required=False, description="Материал"),
+            OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
+            OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить аксессуар по slug")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+# ─── БЛАГОВОНИЯ ───
+
+class IncenseProductViewSet(_SimpleDomainViewSet):
+    """API для работы с благовониями."""
+    queryset = IncenseProduct.objects.filter(is_active=True)
+    serializer_class = IncenseProductSerializer
+
+    def _apply_domain_filters(self, queryset):
+        scent_type = self.request.query_params.get('scent_type')
+        if scent_type:
+            queryset = queryset.filter(scent_type__icontains=scent_type)
+        return queryset
+
+    @extend_schema(
+        summary="Получить список благовоний",
+        description="Возвращает список благовоний с возможностью фильтрации",
+        parameters=[
+            OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории"),
+            OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
+            OpenApiParameter(name="scent_type", type=str, required=False, description="Тип аромата"),
+            OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
+            OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить благовоние по slug")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+# ============================================================================
+# SPORTS
+# ============================================================================
+
+class SportsProductViewSet(_SimpleDomainViewSet):
+    """API для работы со спорттоварами."""
+    queryset = SportsProduct.objects.filter(is_active=True).order_by('-created_at')
+    serializer_class = SportsProductSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return SportsProductDetailSerializer
+        return SportsProductSerializer
+
+    def _apply_domain_filters(self, queryset):
+        sport_type = self.request.query_params.get('sport_type')
+        if sport_type:
+            queryset = queryset.filter(sport_type__icontains=sport_type)
+        equipment_type = self.request.query_params.get('equipment_type')
+        if equipment_type:
+            queryset = queryset.filter(equipment_type__icontains=equipment_type)
+        return queryset
+
+    @extend_schema(
+        summary="Получить список спорттоваров",
+        description="Возвращает списов спортоваров с фильтрацией по виду спорта и типу инвентаря"
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить детали спорттовара")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+# ============================================================================
+# AUTO PARTS
+# ============================================================================
+
+class AutoPartProductViewSet(_SimpleDomainViewSet):
+    """API для работы с автозапчастями."""
+    queryset = AutoPartProduct.objects.filter(is_active=True).order_by('-created_at')
+    serializer_class = AutoPartProductSerializer
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return AutoPartProductDetailSerializer
+        return AutoPartProductSerializer
+
+    def _apply_domain_filters(self, queryset):
+        car_brand = self.request.query_params.get('car_brand')
+        if car_brand:
+            queryset = queryset.filter(car_brand__icontains=car_brand)
+        car_model = self.request.query_params.get('car_model')
+        if car_model:
+            queryset = queryset.filter(car_model__icontains=car_model)
+        part_number = self.request.query_params.get('part_number')
+        if part_number:
+            queryset = queryset.filter(part_number__icontains=part_number)
+        return queryset
+
+    @extend_schema(summary="Получить список автозапчастей")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить детали автозапчасти")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+# ============================================================================
+# JEWELRY
+# ============================================================================
+
+class JewelryProductViewSet(_SimpleDomainViewSet):
+    """API для работы с украшениями."""
+    queryset = JewelryProduct.objects.filter(is_active=True).order_by('-created_at')
+    serializer_class = JewelryProductSerializer
+
+    def _apply_domain_filters(self, queryset):
+        jewelry_type = self.request.query_params.get('jewelry_type')
+        if jewelry_type:
+            queryset = queryset.filter(jewelry_type=jewelry_type)
+        material = self.request.query_params.get('material')
+        if material:
+            queryset = queryset.filter(material__icontains=material)
+        gender = self.request.query_params.get('gender')
+        if gender:
+            queryset = queryset.filter(gender=gender)
+        return queryset
+
+    @extend_schema(summary="Получить список украшений")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить детали украшения")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+# ============================================================================
+# FURNITURE
+# ============================================================================
+
+class FurnitureProductViewSet(_SimpleDomainViewSet):
+    """API для работы с мебелью."""
+    queryset = FurnitureProduct.objects.filter(is_active=True).order_by('-created_at')
+    serializer_class = FurnitureProductSerializer
+
+    def _apply_domain_filters(self, queryset):
+        furniture_type = self.request.query_params.get('furniture_type')
+        if furniture_type:
+            queryset = queryset.filter(furniture_type=furniture_type)
+        material = self.request.query_params.get('material')
+        if material:
+            queryset = queryset.filter(material__icontains=material)
+        return queryset
+
+    @extend_schema(summary="Получить список мебели")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить детали мебели")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
+# ============================================================================
+# CLOTHING (Underwear, Headwear included)
+# ============================================================================
+
+class ClothingProductViewSet(_SimpleDomainViewSet):
+    """API для работы с одеждой."""
+    queryset = ClothingProduct.objects.filter(is_active=True).order_by('-created_at')
+    serializer_class = ClothingProductSerializer
+
+    def _apply_domain_filters(self, queryset):
+        season = self.request.query_params.get('season')
+        if season:
+            queryset = queryset.filter(season__icontains=season)
+        material = self.request.query_params.get('material')
+        if material:
+            queryset = queryset.filter(material__icontains=material)
+        color = self.request.query_params.get('color')
+        if color:
+            queryset = queryset.filter(color__icontains=color)
+        return queryset
+
+    @extend_schema(summary="Получить список одежды")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить детали одежды")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)

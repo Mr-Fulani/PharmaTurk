@@ -32,9 +32,19 @@ def _media_folder_from_filename(filename: str) -> str:
 
 def get_product_upload_path(instance, filename):
     """Динамический upload_to для Product.main_image_file на основе product_type."""
-    product_type = (getattr(instance, "product_type", None) or "").replace("_", "-")
+    # 1. Пробуем поле product_type (есть у shadow Product)
+    product_type = getattr(instance, "product_type", None)
+    # 2. Если нет, пробуем атрибут класса _domain_product_type (есть у доменных моделей)
+    if not product_type:
+        product_type = getattr(instance, "_domain_product_type", None)
+    
+    product_type = (product_type or "").replace("_", "-")
     category_slug = _normalize_slug(getattr(getattr(instance, "category", None), "slug", None), "")
+    
+    # Приоритет: category_slug -> product_type -> "other"
+    # Для доменных моделей product_type будет например "medicines", если категория не задана
     base = (category_slug or product_type or "other").lower()
+    
     media_folder = _media_folder_from_filename(filename)
     readable_name = _build_readable_filename(
         [category_slug or product_type, getattr(instance, "slug", None), getattr(instance, "name", None)],

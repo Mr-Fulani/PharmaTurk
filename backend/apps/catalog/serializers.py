@@ -12,9 +12,19 @@ from .models import (
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
-    FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
+    FurnitureProduct, FurnitureProductTranslation, FurnitureProductImage, FurnitureVariant, FurnitureVariantImage,
+    BookProduct, BookProductTranslation, BookProductImage,
+    PerfumeryProduct, PerfumeryProductTranslation, PerfumeryProductImage, PerfumeryVariant, PerfumeryVariantImage,
+    MedicineProduct, MedicineProductTranslation, MedicineProductImage,
+    SupplementProduct, SupplementProductTranslation, SupplementProductImage,
+    MedicalEquipmentProduct, MedicalEquipmentProductTranslation, MedicalEquipmentProductImage,
+    TablewareProduct, TablewareProductTranslation, TablewareProductImage,
+    AccessoryProduct, AccessoryProductTranslation, AccessoryProductImage,
+    IncenseProduct, IncenseProductTranslation, IncenseProductImage,
     Service, ServiceTranslation,
     Banner, BannerMedia, Author, ProductAuthor, ProductGenre, BookVariant, BookVariantSize, BookVariantImage,
+    SportsProduct, SportsProductTranslation, SportsProductImage, SportsVariant, SportsVariantImage,
+    AutoPartProduct, AutoPartProductTranslation, AutoPartProductImage, AutoPartVariant, AutoPartVariantImage,
 )
 from .seo_defaults import resolve_book_seo_value
 from .utils.storage_paths import detect_media_type
@@ -2253,6 +2263,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
     active_variant_main_image_url = serializers.SerializerMethodField()
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = FurnitureProductTranslationSerializer(many=True, read_only=True)
+    base_product_id = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = FurnitureProduct
@@ -2265,7 +2276,8 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'base_product_id'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -2478,18 +2490,49 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
                 except Exception:
                     pass
             return f"{variant.price} {from_currency}"
-        return None
+        if obj.price is None:
+            return None
+        preferred_currency = self._get_preferred_currency(obj)
+        from_currency = (obj.currency or 'RUB').upper()
+        if preferred_currency != from_currency:
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(obj.price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                pass
+        return f"{obj.price} {from_currency}"
 
     def get_active_variant_currency(self, obj):
         variant = self._get_active_variant(obj)
-        if not variant or variant.price is None:
-            return None
         preferred_currency = self._get_preferred_currency(obj)
-        from_currency = (variant.currency or obj.currency or 'RUB').upper()
+        if variant and variant.price is not None:
+            from_currency = (variant.currency or obj.currency or 'RUB').upper()
+            try:
+                from .utils.currency_converter import currency_converter
+                currency_converter.convert_price(
+                    Decimal(variant.price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return preferred_currency
+            except Exception:
+                return from_currency
+        if obj.price is None:
+            return None
+        from_currency = (obj.currency or 'RUB').upper()
+        if preferred_currency == from_currency:
+            return from_currency
         try:
             from .utils.currency_converter import currency_converter
             currency_converter.convert_price(
-                Decimal(variant.price),
+                Decimal(obj.price),
                 from_currency,
                 preferred_currency,
                 apply_margin=True,
@@ -3095,3 +3138,1088 @@ class BannerSerializer(serializers.ModelSerializer):
         """
         media = obj.media_files.all()
         return BannerMediaSerializer(media, many=True, context=self.context).data
+
+
+# ─────────────────────────────────────────────────────────────
+#                       BOOK PRODUCT
+# ─────────────────────────────────────────────────────────────
+
+class BookProductTranslationSerializer(serializers.ModelSerializer):
+    """Сериализатор для переводов товаров-книг."""
+
+    class Meta:
+        model = BookProductTranslation
+        fields = ['locale', 'name', 'description']
+
+
+class BookProductImageSerializer(serializers.ModelSerializer):
+    """Сериализатор для изображений товаров-книг."""
+
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BookProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class BookProductSerializer(serializers.ModelSerializer):
+    """Сериализатор для товаров-книг (краткая информация)."""
+
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
+    translations = BookProductTranslationSerializer(many=True, read_only=True)
+    book_authors = ProductAuthorSerializer(many=True, read_only=True)
+    book_genres = ProductGenreSerializer(many=True, read_only=True)
+    base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BookProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'price', 'price_formatted', 'old_price', 'old_price_formatted',
+            'currency',
+            'isbn', 'publisher', 'publication_date', 'pages', 'language',
+            'cover_type', 'rating', 'reviews_count', 'is_bestseller',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url',
+            'images',
+            'variants', 'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url', 'active_variant_old_price_formatted',
+            'book_authors', 'book_genres',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'base_product_id',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def _get_active_variant(self, obj):
+        """Получает активный вариант."""
+        active_slug = self.context.get('active_variant_slug')
+        if active_slug:
+            variant = obj.book_variants.filter(slug=active_slug, is_active=True).first()
+            if variant:
+                return variant
+        return obj.book_variants.filter(is_active=True).order_by('sort_order').first()
+
+    def _get_preferred_currency(self, obj):
+        request = self.context.get('request')
+        if not request:
+            return 'RUB'
+        preferred = request.headers.get('X-Currency') or request.query_params.get('currency')
+        if preferred:
+            return preferred.upper()
+        language_code = getattr(request, 'LANGUAGE_CODE', None)
+        return {'en': 'USD', 'ru': 'RUB'}.get(language_code, 'RUB')
+
+    def get_main_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if obj.main_image:
+            return _resolve_media_url(obj.main_image, request)
+        variant = self._get_active_variant(obj)
+        if variant:
+            file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+            if file_url:
+                return file_url
+            if variant.main_image:
+                return _resolve_media_url(variant.main_image, request)
+            v_main = variant.images.filter(is_main=True).first()
+            if v_main:
+                file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                if file_url:
+                    return file_url
+                return _resolve_media_url(v_main.image_url, request)
+        return None
+
+    def get_price_formatted(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            from_currency = (variant.currency or obj.currency or 'RUB').upper()
+            if preferred != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_m = currency_converter.convert_price(Decimal(variant.price), from_currency, preferred, apply_margin=True)
+                    return f"{price_m} {preferred}"
+                except Exception:
+                    pass
+            return f"{variant.price} {from_currency}"
+        if obj.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            from_currency = (obj.currency or 'RUB').upper()
+            if preferred != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_m = currency_converter.convert_price(Decimal(obj.price), from_currency, preferred, apply_margin=True)
+                    return f"{price_m} {preferred}"
+                except Exception:
+                    pass
+            return f"{obj.price} {from_currency}"
+        return None
+
+    def get_old_price_formatted(self, obj):
+        variant = self._get_active_variant(obj)
+        price_val = (variant.old_price if variant and variant.old_price is not None else obj.old_price)
+        cur = (variant.currency if variant else None) or obj.currency or 'RUB'
+        if price_val is not None:
+            preferred = self._get_preferred_currency(obj)
+            from_currency = cur.upper()
+            if preferred != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_m = currency_converter.convert_price(Decimal(price_val), from_currency, preferred, apply_margin=True)
+                    return f"{price_m} {preferred}"
+                except Exception:
+                    pass
+            formatted = f"{price_val}"
+            if '.' in formatted:
+                formatted = formatted.rstrip('0').rstrip('.')
+            return f"{formatted} {from_currency}"
+        return None
+
+    def get_images(self, obj):
+        product_images = BookProductImageSerializer(obj.images.all(), many=True, context=self.context).data
+        variant = self._get_active_variant(obj)
+        if variant:
+            variant_images = BookVariantImageSerializer(variant.images.all(), many=True, context=self.context).data
+            return product_images + variant_images
+        return product_images
+
+    def get_variants(self, obj):
+        return BookVariantSerializer(obj.book_variants.filter(is_active=True).order_by('sort_order'), many=True, context=self.context).data
+
+    def get_default_variant_slug(self, obj):
+        v = obj.book_variants.filter(is_active=True).order_by('sort_order').first()
+        return v.slug if v else None
+
+    def get_active_variant_slug(self, obj):
+        v = self._get_active_variant(obj)
+        return v.slug if v else None
+
+    def get_active_variant_price(self, obj):
+        v = self._get_active_variant(obj)
+        if v and v.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            from_currency = (v.currency or obj.currency or 'RUB').upper()
+            if preferred != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_m = currency_converter.convert_price(Decimal(v.price), from_currency, preferred, apply_margin=True)
+                    return str(price_m)
+                except Exception:
+                    pass
+            return str(v.price)
+        return None
+
+    def get_active_variant_currency(self, obj):
+        v = self._get_active_variant(obj)
+        if v:
+            preferred = self._get_preferred_currency(obj)
+            return preferred
+        return None
+
+    def get_active_variant_stock_quantity(self, obj):
+        v = self._get_active_variant(obj)
+        return v.stock_quantity if v else None
+
+    def get_active_variant_main_image_url(self, obj):
+        v = self._get_active_variant(obj)
+        if not v:
+            return None
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(v, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if v.main_image:
+            return _resolve_media_url(v.main_image, request)
+        v_main = v.images.filter(is_main=True).first()
+        if v_main:
+            file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(v_main.image_url, request)
+        return None
+
+    def get_active_variant_old_price_formatted(self, obj):
+        v = self._get_active_variant(obj)
+        if v and v.old_price is not None:
+            preferred = self._get_preferred_currency(obj)
+            from_currency = (v.currency or obj.currency or 'RUB').upper()
+            if preferred != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_m = currency_converter.convert_price(Decimal(v.old_price), from_currency, preferred, apply_margin=True)
+                    return f"{price_m} {preferred}"
+                except Exception:
+                    pass
+            formatted = f"{v.old_price}"
+            if '.' in formatted:
+                formatted = formatted.rstrip('0').rstrip('.')
+            return f"{formatted} {from_currency}"
+        return None
+
+    def get_meta_title(self, obj):
+        return resolve_book_seo_value(obj, "meta_title")
+
+    def get_meta_description(self, obj):
+        return resolve_book_seo_value(obj, "meta_description")
+
+    def get_meta_keywords(self, obj):
+        return resolve_book_seo_value(obj, "meta_keywords")
+
+    def get_og_title(self, obj):
+        return resolve_book_seo_value(obj, "og_title")
+
+    def get_og_description(self, obj):
+        return resolve_book_seo_value(obj, "og_description")
+
+    def get_og_image_url(self, obj):
+        return resolve_book_seo_value(obj, "og_image_url")
+
+
+# ─────────────────────────────────────────────────────────────
+#                     PERFUMERY PRODUCT
+# ─────────────────────────────────────────────────────────────
+
+class PerfumeryProductTranslationSerializer(serializers.ModelSerializer):
+    """Сериализатор для переводов парфюмерии."""
+
+    class Meta:
+        model = PerfumeryProductTranslation
+        fields = ['locale', 'name', 'description']
+
+
+class PerfumeryProductImageSerializer(serializers.ModelSerializer):
+    """Сериализатор для изображений парфюмерии."""
+
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PerfumeryProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class PerfumeryVariantImageSerializer(serializers.ModelSerializer):
+    """Сериализатор для изображений варианта парфюмерии."""
+
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PerfumeryVariantImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class PerfumeryVariantSerializer(serializers.ModelSerializer):
+    """Сериализатор для вариантов парфюмерии."""
+
+    images = PerfumeryVariantImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PerfumeryVariant
+        fields = [
+            'id', 'slug', 'name', 'name_en', 'volume',
+            'price', 'old_price', 'currency',
+            'is_available', 'stock_quantity',
+            'main_image', 'images',
+            'sku', 'barcode',
+            'external_id', 'external_url', 'external_data',
+            'is_active', 'sort_order',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'slug', 'sort_order', 'created_at', 'updated_at']
+
+
+class PerfumeryProductSerializer(serializers.ModelSerializer):
+    """Сериализатор для товаров парфюмерии (краткая информация)."""
+
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
+    translations = PerfumeryProductTranslationSerializer(many=True, read_only=True)
+    base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+
+    class Meta:
+        model = PerfumeryProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'price', 'price_formatted', 'old_price', 'old_price_formatted',
+            'currency',
+            'volume', 'fragrance_type', 'fragrance_family', 'gender',
+            'top_notes', 'heart_notes', 'base_notes',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url',
+            'images',
+            'variants', 'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url', 'active_variant_old_price_formatted',
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'base_product_id',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def _get_active_variant(self, obj):
+        active_slug = self.context.get('active_variant_slug')
+        if active_slug:
+            variant = obj.variants.filter(slug=active_slug, is_active=True).first()
+            if variant:
+                return variant
+        return obj.variants.filter(is_active=True).order_by('sort_order').first()
+
+    def _get_preferred_currency(self, obj):
+        request = self.context.get('request')
+        if not request:
+            return 'RUB'
+        preferred = request.headers.get('X-Currency') or request.query_params.get('currency')
+        if preferred:
+            return preferred.upper()
+        language_code = getattr(request, 'LANGUAGE_CODE', None)
+        return {'en': 'USD', 'ru': 'RUB'}.get(language_code, 'RUB')
+
+    def get_main_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if obj.main_image:
+            return _resolve_media_url(obj.main_image, request)
+        variant = self._get_active_variant(obj)
+        if variant:
+            file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+            if file_url:
+                return file_url
+            if variant.main_image:
+                return _resolve_media_url(variant.main_image, request)
+            v_main = variant.images.filter(is_main=True).first()
+            if v_main:
+                file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                if file_url:
+                    return file_url
+                return _resolve_media_url(v_main.image_url, request)
+        return None
+
+    def get_price_formatted(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            from_currency = (variant.currency or obj.currency or 'RUB').upper()
+            if preferred != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_m = currency_converter.convert_price(Decimal(variant.price), from_currency, preferred, apply_margin=True)
+                    return f"{price_m} {preferred}"
+                except Exception:
+                    pass
+            return f"{variant.price} {from_currency}"
+        if obj.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            from_currency = (obj.currency or 'RUB').upper()
+            if preferred != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_m = currency_converter.convert_price(Decimal(obj.price), from_currency, preferred, apply_margin=True)
+                    return f"{price_m} {preferred}"
+                except Exception:
+                    pass
+            return f"{obj.price} {from_currency}"
+        return None
+
+    def get_old_price_formatted(self, obj):
+        variant = self._get_active_variant(obj)
+        price_val = (variant.old_price if variant and variant.old_price is not None else obj.old_price)
+        cur = (variant.currency if variant else None) or obj.currency or 'RUB'
+        if price_val is not None:
+            preferred = self._get_preferred_currency(obj)
+            from_currency = cur.upper()
+            if preferred != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_m = currency_converter.convert_price(Decimal(price_val), from_currency, preferred, apply_margin=True)
+                    return f"{price_m} {preferred}"
+                except Exception:
+                    pass
+            formatted = f"{price_val}"
+            if '.' in formatted:
+                formatted = formatted.rstrip('0').rstrip('.')
+            return f"{formatted} {from_currency}"
+        return None
+
+    def get_images(self, obj):
+        product_images = PerfumeryProductImageSerializer(obj.images.all(), many=True, context=self.context).data
+        variant = self._get_active_variant(obj)
+        if variant:
+            variant_images = PerfumeryVariantImageSerializer(variant.images.all(), many=True, context=self.context).data
+            return product_images + variant_images
+        return product_images
+
+    def get_variants(self, obj):
+        return PerfumeryVariantSerializer(obj.variants.filter(is_active=True).order_by('sort_order'), many=True, context=self.context).data
+
+    def get_default_variant_slug(self, obj):
+        v = obj.variants.filter(is_active=True).order_by('sort_order').first()
+        return v.slug if v else None
+
+    def get_active_variant_slug(self, obj):
+        v = self._get_active_variant(obj)
+        return v.slug if v else None
+
+    def get_active_variant_price(self, obj):
+        v = self._get_active_variant(obj)
+        if v and v.price is not None:
+            preferred = self._get_preferred_currency(obj)
+            from_currency = (v.currency or obj.currency or 'RUB').upper()
+            if preferred != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_m = currency_converter.convert_price(Decimal(v.price), from_currency, preferred, apply_margin=True)
+                    return str(price_m)
+                except Exception:
+                    pass
+            return str(v.price)
+        return None
+
+    def get_active_variant_currency(self, obj):
+        v = self._get_active_variant(obj)
+        if v:
+            preferred = self._get_preferred_currency(obj)
+            return preferred
+        return None
+
+    def get_active_variant_stock_quantity(self, obj):
+        v = self._get_active_variant(obj)
+        return v.stock_quantity if v else None
+
+    def get_active_variant_main_image_url(self, obj):
+        v = self._get_active_variant(obj)
+        if not v:
+            return None
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(v, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if v.main_image:
+            return _resolve_media_url(v.main_image, request)
+        v_main = v.images.filter(is_main=True).first()
+        if v_main:
+            file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(v_main.image_url, request)
+        return None
+
+    def get_active_variant_old_price_formatted(self, obj):
+        v = self._get_active_variant(obj)
+        if v and v.old_price is not None:
+            preferred = self._get_preferred_currency(obj)
+            from_currency = (v.currency or obj.currency or 'RUB').upper()
+            if preferred != from_currency:
+                try:
+                    from .utils.currency_converter import currency_converter
+                    _, _, price_m = currency_converter.convert_price(Decimal(v.old_price), from_currency, preferred, apply_margin=True)
+                    return f"{price_m} {preferred}"
+                except Exception:
+                    pass
+            formatted = f"{v.old_price}"
+            if '.' in formatted:
+                formatted = formatted.rstrip('0').rstrip('.')
+            return f"{formatted} {from_currency}"
+        return None
+
+
+# ─────────────────────────────────────────────────────────────
+#                 ПРОСТЫЕ ДОМЕНЫ (Волна 2)
+# ─────────────────────────────────────────────────────────────
+
+# ─── Базовый миксин для простых доменов (без вариантов) ───
+
+class _SimpleDomainMixin:
+    """Общие helper-методы для доменных сериализаторов без вариантов."""
+
+    def _get_preferred_currency(self, obj):
+        request = self.context.get('request')
+        if not request:
+            return 'RUB'
+        preferred = request.headers.get('X-Currency') or request.query_params.get('currency')
+        if preferred:
+            return preferred.upper()
+        language_code = getattr(request, 'LANGUAGE_CODE', None)
+        return {'en': 'USD', 'ru': 'RUB'}.get(language_code, 'RUB')
+
+    def get_main_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if obj.main_image:
+            return _resolve_media_url(obj.main_image, request)
+        img = obj.gallery_images.filter(is_main=True).first() or obj.gallery_images.first()
+        if img:
+            file_url = _resolve_file_url(getattr(img, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(img.image_url, request)
+        return None
+
+    def get_price_formatted(self, obj):
+        if obj.price is None:
+            return None
+        preferred = self._get_preferred_currency(obj)
+        from_currency = (obj.currency or 'RUB').upper()
+        if preferred != from_currency:
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(obj.price), from_currency, preferred, apply_margin=True)
+                return f"{price_m} {preferred}"
+            except Exception:
+                pass
+        return f"{obj.price} {from_currency}"
+
+    def get_old_price_formatted(self, obj):
+        if obj.old_price is None:
+            return None
+        preferred = self._get_preferred_currency(obj)
+        from_currency = (obj.currency or 'RUB').upper()
+        if preferred != from_currency:
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(obj.old_price), from_currency, preferred, apply_margin=True)
+                return f"{price_m} {preferred}"
+            except Exception:
+                pass
+        formatted = f"{obj.old_price}"
+        if '.' in formatted:
+            formatted = formatted.rstrip('0').rstrip('.')
+        return f"{formatted} {from_currency}"
+
+    def get_images(self, obj):
+        from_context = self.context
+        imgs = obj.gallery_images.all()
+        image_serializer = self._image_serializer_class
+        return image_serializer(imgs, many=True, context=from_context).data
+
+
+# ─── МЕДИКАМЕНТЫ ───
+
+class MedicineProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MedicineProductTranslation
+        fields = ['locale', 'name', 'description']
+
+
+class MedicineProductImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MedicineProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    _image_serializer_class = MedicineProductImageSerializer
+
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    translations = MedicineProductTranslationSerializer(many=True, read_only=True)
+    base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+
+    class Meta:
+        model = MedicineProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
+            'dosage_form', 'active_ingredient', 'prescription_required',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'base_product_id',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+# ─── БАДы ───
+
+class SupplementProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupplementProductTranslation
+        fields = ['locale', 'name', 'description']
+
+
+class SupplementProductImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SupplementProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class SupplementProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    _image_serializer_class = SupplementProductImageSerializer
+
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    translations = SupplementProductTranslationSerializer(many=True, read_only=True)
+    base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+
+    class Meta:
+        model = SupplementProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
+            'dosage_form', 'active_ingredient', 'serving_size',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'base_product_id',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+# ─── МЕДТЕХНИКА ───
+
+class MedicalEquipmentProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MedicalEquipmentProductTranslation
+        fields = ['locale', 'name', 'description']
+
+
+class MedicalEquipmentProductImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MedicalEquipmentProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class MedicalEquipmentProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    _image_serializer_class = MedicalEquipmentProductImageSerializer
+
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    translations = MedicalEquipmentProductTranslationSerializer(many=True, read_only=True)
+    base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+
+    class Meta:
+        model = MedicalEquipmentProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
+            'equipment_type', 'warranty_months',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'base_product_id',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+# ─── ПОСУДА ───
+
+class TablewareProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TablewareProductTranslation
+        fields = ['locale', 'name', 'description']
+
+
+class TablewareProductImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TablewareProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class TablewareProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    _image_serializer_class = TablewareProductImageSerializer
+
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    translations = TablewareProductTranslationSerializer(many=True, read_only=True)
+    base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+
+    class Meta:
+        model = TablewareProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
+            'material', 'set_pieces_count',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'base_product_id',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+# ─── АКСЕССУАРЫ ───
+
+class AccessoryProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AccessoryProductTranslation
+        fields = ['locale', 'name', 'description']
+
+
+class AccessoryProductImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AccessoryProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class AccessoryProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    _image_serializer_class = AccessoryProductImageSerializer
+
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    translations = AccessoryProductTranslationSerializer(many=True, read_only=True)
+    base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+
+    class Meta:
+        model = AccessoryProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
+            'accessory_type', 'material',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'base_product_id',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+# ─── БЛАГОВОНИЯ ───
+
+class IncenseProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IncenseProductTranslation
+        fields = ['locale', 'name', 'description']
+
+
+class IncenseProductImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IncenseProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
+class IncenseProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    _image_serializer_class = IncenseProductImageSerializer
+
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    translations = IncenseProductTranslationSerializer(many=True, read_only=True)
+    base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+
+    class Meta:
+        model = IncenseProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
+            'scent_type', 'burn_time', 'weight_grams',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'base_product_id',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+# ============================================================================
+# SPORTS
+# ============================================================================
+
+class SportsProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SportsProductTranslation
+        fields = ['locale', 'description']
+
+
+class SportsProductImageSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SportsProductImage
+        fields = ['id', 'image', 'is_main', 'created_at']
+
+    def get_image(self, obj):
+        request = self.context.get('request')
+        return _resolve_file_url(obj.image_file, request)
+
+
+class SportsVariantImageSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SportsVariantImage
+        fields = ['id', 'image', 'is_main', 'created_at']
+
+    def get_image(self, obj):
+        request = self.context.get('request')
+        return _resolve_file_url(obj.image_file, request)
+
+
+class SportsVariantSerializer(serializers.ModelSerializer):
+    images = SportsVariantImageSerializer(many=True, read_only=True)
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SportsVariant
+        fields = [
+            'id', 'color', 'size', 'sku', 'price', 'old_price', 
+            'stock_quantity', 'is_available', 'images',
+            'price_formatted', 'old_price_formatted'
+        ]
+
+    def get_price_formatted(self, obj):
+        if obj.price is None: return None
+        return f"{obj.price} RUB"
+
+    def get_old_price_formatted(self, obj):
+        if obj.old_price is None: return None
+        return f"{obj.old_price} RUB"
+
+
+class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    """Списковый сериализатор для спорттоваров."""
+    variants = SportsVariantSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SportsProduct
+        fields = [
+            'id', 'slug', 'name', 'price', 'old_price', 'currency', 
+            'is_available', 'is_new', 'is_featured', 'main_image', 
+            'sport_type', 'equipment_type',
+            'price_formatted', 'old_price_formatted',
+            'variants'
+        ]
+
+
+class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    """Детальный сериализатор для спорттоваров."""
+    translations = SportsProductTranslationSerializer(many=True, read_only=True)
+    images = SportsProductImageSerializer(many=True, read_only=True)
+    variants = SportsVariantSerializer(many=True, read_only=True)
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    
+    similar_products = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SportsProduct
+        fields = [
+            'id', 'slug', 'name', 'description', 
+            'price', 'old_price', 'currency',
+            'is_available', 'stock_quantity', 
+            'is_new', 'is_featured', 
+            'created_at', 'updated_at',
+            'category', 'brand', 'main_image', 
+            'translations', 'images', 'variants',
+            'sport_type', 'equipment_type', 'material', 
+            'price_formatted', 'old_price_formatted', 
+            'similar_products'
+        ]
+
+    def get_similar_products(self, obj):
+        return []
+
+
+# ============================================================================
+# AUTO PARTS
+# ============================================================================
+
+class AutoPartProductTranslationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AutoPartProductTranslation
+        fields = ['locale', 'description']
+
+
+class AutoPartProductImageSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AutoPartProductImage
+        fields = ['id', 'image', 'is_main', 'created_at']
+
+    def get_image(self, obj):
+        request = self.context.get('request')
+        return _resolve_file_url(obj.image_file, request)
+
+
+class AutoPartVariantImageSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AutoPartVariantImage
+        fields = ['id', 'image', 'is_main', 'created_at']
+
+    def get_image(self, obj):
+        request = self.context.get('request')
+        return _resolve_file_url(obj.image_file, request)
+
+
+class AutoPartVariantSerializer(serializers.ModelSerializer):
+    images = AutoPartVariantImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = AutoPartVariant
+        fields = [
+            'id', 'condition', 'sku', 'manufacturer', 'price', 'old_price', 
+            'stock_quantity', 'is_available', 'images'
+        ]
+
+
+class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    """Списковый сериализатор для автозапчастей."""
+    variants = AutoPartVariantSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = AutoPartProduct
+        fields = [
+            'id', 'slug', 'name', 'price', 'old_price', 'currency', 
+            'is_available', 'is_new', 'is_featured', 'main_image', 
+            'part_number', 'car_brand', 'car_model',
+            'price_formatted', 'old_price_formatted',
+            'variants'
+        ]
+
+
+class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    """Детальный сериализатор для автозапчастей."""
+    translations = AutoPartProductTranslationSerializer(many=True, read_only=True)
+    images = AutoPartProductImageSerializer(many=True, read_only=True)
+    variants = AutoPartVariantSerializer(many=True, read_only=True)
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
+    
+    similar_products = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AutoPartProduct
+        fields = [
+            'id', 'slug', 'name', 'description', 
+            'price', 'old_price', 'currency',
+            'is_available', 'stock_quantity', 
+            'is_new', 'is_featured', 
+            'created_at', 'updated_at',
+            'category', 'brand', 'main_image', 
+            'translations', 'images', 'variants',
+            'part_number', 'car_brand', 'car_model', 'compatibility_years',
+            'price_formatted', 'old_price_formatted', 
+            'similar_products'
+        ]
+
+    def get_similar_products(self, obj):
+        return []

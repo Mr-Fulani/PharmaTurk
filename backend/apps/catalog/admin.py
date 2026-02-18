@@ -14,9 +14,6 @@ from .models import (
     CategoryUnderwear, CategoryHeadwear, CategoryServices, CategoryPerfumery, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
     Brand, BrandTranslation, MarketingBrand, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
-    ProductMedicines, ProductSupplements, ProductMedicalEquipment,
-    ProductTableware, ProductFurniture, ProductAccessories,
-    ProductUnderwear, ProductHeadwear, ProductPerfumery,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
@@ -245,11 +242,11 @@ class BaseCategoryAdmin(admin.ModelAdmin):
         return qs
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        """Ограничиваем parent только категориями того же типа — чтобы подкатегории не привязывались к чужому дереву."""
         if db_field.name == 'parent' and self.required_category_type_slug:
             from .models import Category
             kwargs['queryset'] = Category.objects.filter(
                 category_type__slug=self.required_category_type_slug,
+                parent__isnull=True,
                 is_active=True,
             ).order_by('sort_order', 'name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
@@ -298,6 +295,15 @@ class AllCategoriesAdmin(admin.ModelAdmin):
     def parent_display(self, obj):
         return obj.parent.name if obj.parent else "—"
     parent_display.short_description = _("Родитель")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'parent':
+            from .models import Category
+            kwargs['queryset'] = Category.objects.filter(
+                parent__isnull=True,
+                is_active=True,
+            ).order_by('sort_order', 'name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 @admin.register(CategoryMedicines)
@@ -667,12 +673,66 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     slug_preview.short_description = _("Slug (предпросмотр)")
 
 
-class BaseProductProxyAdmin(BaseProductAdmin):
+class CategoryTypeFilterMixin:
+    category_type_slug: str | None = None
+
+    def get_category_queryset(self):
+        if not self.category_type_slug:
+            return None
+        from .models import Category
+        normalized = self.category_type_slug.replace('_', '-')
+        return Category.objects.filter(
+            category_type__slug=normalized,
+            is_active=True,
+        ).order_by('sort_order', 'name')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'category':
+            qs = self.get_category_queryset()
+            if qs is not None:
+                kwargs['queryset'] = qs
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class CategoryFieldFilterMixin:
+    category_field_name: str | None = None
+
+    def get_category_queryset(self):
+        if not self.category_field_name:
+            return None
+        from .models import Category
+        field = self.category_field_name
+        field_not_empty = Q(**{f"{field}__isnull": False}) & ~Q(**{field: ""})
+        parent_field_not_empty = Q(parent__isnull=False) & Q(**{f"parent__{field}__isnull": False}) & ~Q(**{f"parent__{field}": ""})
+        return Category.objects.filter(
+            field_not_empty | parent_field_not_empty,
+            is_active=True,
+        ).order_by('sort_order', 'name')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'category':
+            qs = self.get_category_queryset()
+            if qs is not None:
+                kwargs['queryset'] = qs
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class BaseProductProxyAdmin(CategoryTypeFilterMixin, BaseProductAdmin):
     """Фильтрует по фиксированному product_type и скрывает поле типа."""
     required_product_type: str | None = None
     exclude = ('product_type',)
     autocomplete_fields = ('brand',)  # убираем category из autocomplete, чтобы избежать admin.E039
     inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeInline]
+
+    def get_category_queryset(self):
+        if not self.required_product_type:
+            return None
+        from .models import Category
+        normalized = self.required_product_type.replace('_', '-')
+        return Category.objects.filter(
+            category_type__slug=normalized,
+            is_active=True,
+        ).order_by('sort_order', 'name')
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -696,52 +756,10 @@ class BaseProductProxyAdmin(BaseProductAdmin):
         return new_fieldsets
 
 
-@admin.register(ProductMedicines)
-class ProductMedicinesAdmin(BaseProductProxyAdmin):
-    required_product_type = "medicines"
-    fieldsets = BaseProductAdmin.fieldsets
 
 
-@admin.register(ProductSupplements)
-class ProductSupplementsAdmin(BaseProductProxyAdmin):
-    required_product_type = "supplements"
-    fieldsets = BaseProductAdmin.fieldsets
 
 
-@admin.register(ProductMedicalEquipment)
-class ProductMedicalEquipmentAdmin(BaseProductProxyAdmin):
-    required_product_type = "medical_equipment"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductTableware)
-class ProductTablewareAdmin(BaseProductProxyAdmin):
-    required_product_type = "tableware"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductAccessories)
-class ProductAccessoriesAdmin(BaseProductProxyAdmin):
-    required_product_type = "accessories"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductUnderwear)
-class ProductUnderwearAdmin(BaseProductProxyAdmin):
-    required_product_type = "underwear"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductHeadwear)
-class ProductHeadwearAdmin(BaseProductProxyAdmin):
-    required_product_type = "headwear"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductPerfumery)
-class ProductPerfumeryAdmin(BaseProductProxyAdmin):
-    required_product_type = "perfumery"
-    fieldsets = BaseProductAdmin.fieldsets
 
 
 @admin.register(ProductImage)
@@ -983,8 +1001,9 @@ class ClothingVariantAdmin(admin.ModelAdmin):
 
 
 @admin.register(ClothingProduct)
-class ClothingProductAdmin(RunAIActionMixin, admin.ModelAdmin):
+class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров одежды."""
+    category_field_name = "clothing_type"
     actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'season', 'currency', 'created_at')
@@ -1320,8 +1339,9 @@ class ShoeVariantAdmin(admin.ModelAdmin):
 
 
 @admin.register(ShoeProduct)
-class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
+class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров обуви."""
+    category_field_name = "shoe_type"
     actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'heel_height', 'currency', 'created_at')
@@ -1504,8 +1524,9 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
 
 
 @admin.register(ElectronicsProduct)
-class ElectronicsProductAdmin(RunAIActionMixin, admin.ModelAdmin):
+class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров электроники."""
+    category_field_name = "device_type"
     actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_available', 'is_new', 'is_featured', 'category', 'brand', 'currency', 'created_at')
@@ -1550,8 +1571,9 @@ class FurnitureVariantAdmin(admin.ModelAdmin):
 
 
 @admin.register(FurnitureProduct)
-class FurnitureProductAdmin(RunAIActionMixin, admin.ModelAdmin):
+class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров мебели."""
+    category_type_slug = "furniture"
     actions = ["run_ai", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'furniture_type', 'currency', 'created_at')
@@ -1641,8 +1663,9 @@ class JewelryVariantAdmin(admin.ModelAdmin):
 
 
 @admin.register(JewelryProduct)
-class JewelryProductAdmin(admin.ModelAdmin):
+class JewelryProductAdmin(CategoryTypeFilterMixin, admin.ModelAdmin):
     """Товары украшений с вариантами и размерами (кольца, браслеты и т.д.)."""
+    category_type_slug = "jewelry"
     list_display = ('name', 'slug', 'category', 'brand', 'jewelry_type', 'gender', 'material', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_new', 'is_featured', 'jewelry_type', 'gender', 'category', 'brand', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'metal_purity', 'stone_type')
@@ -2239,6 +2262,10 @@ class MarketingRootCategoryAdmin(admin.ModelAdmin):
 
 # Импортируем админки для книг
 from .admin_books import *
+
+# Импортируем админки для доменов Волны 2
+from .admin_wave2 import *
+from .admin_wave3 import *
 
 # Импортируем и регистрируем админки для валютных моделей
 from .admin_currency import *

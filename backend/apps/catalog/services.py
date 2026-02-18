@@ -328,9 +328,12 @@ class CatalogNormalizer:
             if isinstance(product_data.category, str) and not product_data.category.isdigit():
                 # Это название категории (например "Книги")
                 # Ищем категорию по имени или slug
+                from apps.catalog.constants import ROOT_CATEGORIES, get_or_create_root_category
+
                 cat_name = product_data.category
                 cat_slug = trans_slugify(cat_name, language_code='ru') or slugify(cat_name)
                 normalized_name = (cat_name or "").strip().lower()
+                allowed_root_slugs = {slug for slug, *_ in ROOT_CATEGORIES}
                 if cat_slug == "knigi" or normalized_name in {"книги", "книга", "books"}:
                     books_category = Category.objects.filter(slug="books").first()
                     if books_category:
@@ -344,14 +347,18 @@ class CatalogNormalizer:
                     ).first()
                 
                 if not category:
-                    # Если не нашли, создаем
-                    self.logger.info(f"Создание новой категории из парсера: {cat_name}")
-                    category = Category.objects.create(
-                        name=cat_name,
-                        slug=cat_slug,
-                        is_active=True
-                    )
-                
+                    if cat_slug in allowed_root_slugs:
+                        category = get_or_create_root_category(cat_slug)
+                    else:
+                        self.logger.warning(f"Категория '{cat_name}' (slug={cat_slug}) не соответствует корневым категориям. Товар будет удален.")
+                        product.delete()
+                        return product
+
+                if category and category.parent_id is None and category.slug not in allowed_root_slugs:
+                    self.logger.warning(f"Категория '{category.name}' (slug={category.slug}) некорректна для корня. Товар будет удален.")
+                    product.delete()
+                    return product
+
                 product.category = category
                 
                 # Обновляем product_type если категория "Книги"

@@ -616,6 +616,190 @@ class MarketingBrand(Brand):
         verbose_name_plural = _("Маркетинг — Популярные бренды")
 
 
+# ============================================================================
+# АБСТРАКТНАЯ БАЗА ДЛЯ ВСЕХ ДОМЕННЫХ ТОВАРОВ
+# ============================================================================
+
+class AbstractDomainProduct(models.Model):
+    """Абстрактная базовая модель для всех доменных товаров.
+
+    Содержит общие поля, которые есть у каждого доменного товара:
+    основная информация, цена, статус, медиа, внешние данные.
+    Конкретные домены наследуют эту модель и добавляют свои специфичные поля.
+
+    Для работы shadow-sync с generic Product, дочерний класс должен определить:
+        _domain_product_type = "books"  # значение product_type для Product
+    """
+
+    # Подклассы переопределяют
+    _domain_product_type: str = ""
+
+    # Основная информация
+    name = models.CharField(_("Название"), max_length=500)
+    slug = models.SlugField(_("Slug"), max_length=500, unique=True)
+    description = models.TextField(_("Описание"), blank=True)
+
+    # Категоризация
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="%(class)s_products",
+        verbose_name=_("Категория"),
+    )
+    brand = models.ForeignKey(
+        Brand,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="%(class)s_products",
+        verbose_name=_("Бренд"),
+    )
+
+    # Цена и валюта
+    price = models.DecimalField(
+        _("Цена"),
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+    currency = models.CharField(
+        _("Валюта"),
+        max_length=5,
+        choices=CURRENCY_CHOICES,
+        default="RUB",
+    )
+    old_price = models.DecimalField(
+        _("Старая цена"),
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+    )
+
+    # Наличие и статус
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(
+        _("Количество на складе"), null=True, blank=True
+    )
+
+    # Изображения
+    main_image = models.URLField(
+        _("Главное изображение"),
+        max_length=2000,
+        blank=True,
+    )
+    main_image_file = models.ImageField(
+        _("Главное изображение (файл)"),
+        upload_to=get_product_upload_path,
+        blank=True,
+        null=True,
+    )
+
+    # Внешние данные
+    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+
+    # Статус
+    is_active = models.BooleanField(_("Активен"), default=True)
+    is_new = models.BooleanField(_("Новинка"), default=False)
+    is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
+
+    # Временные метки
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def get_translated_description(self, locale: str = "ru") -> str:
+        """Получает переведенное описание товара."""
+        translation = self.translations.filter(locale=locale).first()
+        if translation and translation.description:
+            return translation.description
+        return self.description or ""
+
+    def _sync_to_base_product(self):
+        """Синхронизирует данные с shadow-копией в Product.
+
+        Создаёт или обновляет запись Product, чтобы CartItem, рекомендации
+        и поиск продолжали работать через единую модель Product.
+        """
+        if not self._domain_product_type:
+            return
+
+        product = getattr(self, 'base_product', None)
+        if not product:
+            # Создаём новую shadow-копию
+            base_slug = self.slug
+            slug = base_slug
+            i = 2
+            while Product.objects.filter(slug=slug).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            product = Product(
+                name=self.name,
+                slug=slug,
+                description=self.description,
+                category=self.category,
+                brand=self.brand,
+                price=self.price,
+                currency=self.currency,
+                old_price=self.old_price,
+                product_type=self._domain_product_type,
+                external_id=self.external_id,
+                external_url=self.external_url,
+                external_data=self.external_data,
+                is_active=self.is_active,
+                is_new=self.is_new,
+                is_featured=self.is_featured,
+            )
+            product.save()
+            self.__class__.objects.filter(pk=self.pk).update(base_product=product)
+            return
+
+        # Обновляем существующую shadow-копию
+        base_slug = self.slug
+        slug = base_slug
+        i = 2
+        while Product.objects.filter(slug=slug).exclude(pk=product.pk).exists():
+            suffix = f"-{i}"
+            slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+            i += 1
+        product.name = self.name
+        product.slug = slug
+        product.description = self.description
+        product.category = self.category
+        product.brand = self.brand
+        product.price = self.price
+        product.currency = self.currency
+        product.old_price = self.old_price
+        product.product_type = self._domain_product_type
+        product.external_id = self.external_id
+        product.external_url = self.external_url
+        product.external_data = self.external_data
+        product.is_active = self.is_active
+        product.is_new = self.is_new
+        product.is_featured = self.is_featured
+        product.save()
+
+
 class Product(models.Model):
     """Товар в каталоге."""
 
@@ -836,17 +1020,7 @@ class Product(models.Model):
         help_text=_("Ссылка на изображение для OpenGraph, если оно отличается от основного.")
     )
     
-    # Специфичные поля для книг
-    isbn = models.CharField(_("ISBN"), max_length=20, blank=True, help_text=_("ISBN книги"))
-    publisher = models.CharField(_("Издательство"), max_length=200, blank=True)
-    publication_date = models.DateField(_("Дата публикации"), null=True, blank=True)
-    pages = models.PositiveIntegerField(_("Количество страниц"), null=True, blank=True)
-    language = models.CharField(_("Язык"), max_length=50, blank=True, default="Русский")
-    cover_type = models.CharField(_("Тип обложки"), max_length=50, blank=True, help_text=_("Твердая, мягкая и т.д."))
-    rating = models.DecimalField(_("Рейтинг"), max_digits=3, decimal_places=2, default=0.00, help_text=_("Рейтинг книги от 0 до 5"))
-    reviews_count = models.PositiveIntegerField(_("Количество отзывов"), default=0)
-    is_bestseller = models.BooleanField(_("Бестселлер"), default=False)
-    is_new = models.BooleanField(_("Новинка"), default=False)
+
     
     # Метаданные
     sku = models.CharField(_("SKU"), max_length=100, blank=True)
@@ -899,7 +1073,7 @@ class Product(models.Model):
             # Если конвертер недоступен, пропускаем обновление
             return
         
-        if not self.price or not self.currency:
+        if self.price is None or not self.currency:
             return
         
         try:
@@ -1034,7 +1208,7 @@ class Product(models.Model):
             # Если цены нет в базе, пробуем конвертировать на лету
             from .utils.currency_converter import currency_converter
             
-            if self.price and self.currency:
+            if self.price is not None and self.currency:
                 _, _, price_with_margin = currency_converter.convert_price(
                     self.price, self.currency, target_currency, apply_margin=True
                 )
@@ -1155,7 +1329,7 @@ class Product(models.Model):
                 
         except ProductPrice.DoesNotExist:
             # Если цен нет, возвращаем базовую цену
-            if self.price and self.currency:
+            if self.price is not None and self.currency:
                 prices[self.currency] = {
                     'original_price': self.price,
                     'converted_price': self.price,
@@ -1203,7 +1377,7 @@ class Product(models.Model):
         super().save(*args, **kwargs)
         
         # Если у товара есть цена и валюта, обновляем цены в разных валютах
-        if self.price and self.currency:
+        if self.price is not None and self.currency:
             try:
                 self.update_currency_prices()
             except Exception as e:
@@ -1260,81 +1434,10 @@ class ProductTranslation(models.Model):
         return f"{self.product.name} ({self.get_locale_display()})"
 
 
-class ProductMedicines(Product):
-    class Meta:
-        proxy = True
-        verbose_name = _("Товар — Медицина")
-        verbose_name_plural = _("Товары — Медицина")
 
 
-class ProductSupplements(Product):
-    class Meta:
-        proxy = True
-        verbose_name = _("Товар — БАДы")
-        verbose_name_plural = _("Товары — БАДы")
 
 
-class ProductMedicalEquipment(Product):
-    class Meta:
-        proxy = True
-        verbose_name = _("Товар — Медтехника")
-        verbose_name_plural = _("Товары — Медтехника")
-
-
-class ProductTableware(Product):
-    class Meta:
-        proxy = True
-        verbose_name = _("Товар — Посуда")
-        verbose_name_plural = _("Товары — Посуда")
-
-
-class ProductFurniture(Product):
-    class Meta:
-        proxy = True
-        verbose_name = _("Товар — Мебель")
-        verbose_name_plural = _("Товары — Мебель")
-
-
-class ProductAccessories(Product):
-    class Meta:
-        proxy = True
-        verbose_name = _("Товар — Аксессуары")
-        verbose_name_plural = _("Товары — Аксессуары")
-
-
-class ProductJewelry(Product):
-    class Meta:
-        proxy = True
-        verbose_name = _("Товар — Украшения")
-        verbose_name_plural = _("Товары — Украшения")
-
-
-class ProductUnderwear(Product):
-    class Meta:
-        proxy = True
-        verbose_name = _("Товар — Нижнее бельё")
-        verbose_name_plural = _("Товары — Нижнее бельё")
-
-
-class ProductHeadwear(Product):
-    class Meta:
-        proxy = True
-        verbose_name = _("Товар — Головные уборы")
-        verbose_name_plural = _("Товары — Головные уборы")
-
-
-class ProductBooks(Product):
-    class Meta:
-        proxy = True
-        verbose_name = _("Товар — Книги")
-        verbose_name_plural = _("Товары — Книги")
-
-
-class ProductPerfumery(Product):
-    class Meta:
-        proxy = True
-        verbose_name = _("Товар — Парфюмерия")
-        verbose_name_plural = _("Товары — Парфюмерия")
 
 
 class ProductImage(models.Model):
@@ -1659,55 +1762,19 @@ class Favorite(models.Model):
 # МОДЕЛИ ДЛЯ ОДЕЖДЫ, ОБУВИ И ЭЛЕКТРОНИКИ
 # ============================================================================
 
-class ClothingProduct(models.Model):
+class ClothingProduct(AbstractDomainProduct):
     """Товар одежды."""
-    
-    # Основная информация
-    name = models.CharField(_("Название"), max_length=500)
-    slug = models.SlugField(_("Slug"), max_length=500, unique=True)
-    description = models.TextField(_("Описание"), blank=True)
-    
-    # Категоризация
-    category = models.ForeignKey(
-        Category, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+
+    _domain_product_type = "clothing"
+
+    # Связь с generic Product (shadow-копия)
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
-        related_name="clothing_products",
-        verbose_name=_("Категория")
-    )
-    brand = models.ForeignKey(
-        Brand, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name="clothing_products",
-        verbose_name=_("Бренд")
-    )
-    
-    # Цена
-    price = models.DecimalField(
-        _("Цена"), 
-        max_digits=10, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        validators=[MinValueValidator(0)]
-    )
-    currency = models.CharField(
-        _("Валюта"),
-        max_length=5,
-        choices=CURRENCY_CHOICES,
-        default="RUB",
-        help_text=_("Выбирается из списка расчётных валют, используемых в прайсах.")
-    )
-    old_price = models.DecimalField(
-        _("Старая цена"), 
-        max_digits=10, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        validators=[MinValueValidator(0)]
+        related_name="clothing_item",
+        verbose_name=_("Базовый товар (shadow)"),
     )
     
     # Специфичные для одежды поля
@@ -1716,18 +1783,7 @@ class ClothingProduct(models.Model):
     material = models.CharField(_("Материал"), max_length=100, blank=True)
     season = models.CharField(_("Сезон"), max_length=50, blank=True)  # лето, зима, демисезон
     
-    # Наличие и статус
-    is_available = models.BooleanField(_("В наличии"), default=True)
-    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    
-    # Изображения и видео
-    main_image = models.URLField(_("Главное изображение"), blank=True)
-    main_image_file = models.ImageField(
-        _("Главное изображение (файл)"),
-        upload_to="products/clothing/main/",
-        blank=True,
-        null=True,
-    )
+    # Изображения и видео (специфичные для одежды, которых нет в базовой)
     video_url = models.URLField(
         _("URL видео"),
         max_length=2000,
@@ -1743,20 +1799,6 @@ class ClothingProduct(models.Model):
             FileExtensionValidator(allowed_extensions=["mp4", "mov", "webm", "avi", "mkv"]),
         ],
     )
-    
-    # Внешние данные
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
-    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
-    
-    # Статус
-    is_active = models.BooleanField(_("Активен"), default=True)
-    is_new = models.BooleanField(_("Новинка"), default=False)
-    is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
-    
-    # Временные метки
-    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
-    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
     class Meta:
         verbose_name = _("Товар одежды")
@@ -1769,15 +1811,9 @@ class ClothingProduct(models.Model):
             models.Index(fields=["price"]),
         ]
 
-    def __str__(self):
-        return self.name
-
-    def get_translated_description(self, locale: str = 'ru') -> str:
-        """Получает переведенное описание товара одежды."""
-        translation = self.translations.filter(locale=locale).first()
-        if translation and translation.description:
-            return translation.description
-        return self.description or ''
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
 
 
 class ClothingProductSize(models.Model):
@@ -1897,8 +1933,10 @@ class ClothingProductImage(models.Model):
         return f"Изображение {self.product.name}"
 
 
-class ShoeProduct(models.Model):
+class ShoeProduct(AbstractDomainProduct):
     """Товар обуви."""
+
+    _domain_product_type = "shoes"
 
     SHOE_SIZE_CHOICES = [
         ("35", "35"),
@@ -1916,57 +1954,17 @@ class ShoeProduct(models.Model):
         ("47", "47"),
         ("48", "48"),
     ]
-    
-    # Основная информация
-    name = models.CharField(_("Название"), max_length=500)
-    slug = models.SlugField(_("Slug"), max_length=500, unique=True)
-    description = models.TextField(_("Описание"), blank=True)
-    
-    # Категоризация
-    category = models.ForeignKey(
-        Category, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+
+    # Связь с generic Product (shadow-копия)
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
-        related_name="shoe_products",
-        verbose_name=_("Категория"),
-        help_text=_("Выберите категорию обуви.")
+        related_name="shoe_item",
+        verbose_name=_("Базовый товар (shadow)"),
     )
-    brand = models.ForeignKey(
-        Brand, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name="shoe_products",
-        verbose_name=_("Бренд"),
-        help_text=_("Если нет бренда в списке — создайте его в разделе брендов.")
-    )
-    
-    # Цена
-    price = models.DecimalField(
-        _("Цена"), 
-        max_digits=10, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        validators=[MinValueValidator(0)]
-    )
-    currency = models.CharField(
-        _("Валюта"),
-        max_length=5,
-        choices=CURRENCY_CHOICES,
-        default="RUB",
-        help_text=_("Выбирается из списка расчётных валют, используемых в прайсах.")
-    )
-    old_price = models.DecimalField(
-        _("Старая цена"), 
-        max_digits=10, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        validators=[MinValueValidator(0)]
-    )
-    
+
     # Специфичные для обуви поля
     size = models.CharField(
         _("Размер"),
@@ -1979,37 +1977,6 @@ class ShoeProduct(models.Model):
     material = models.CharField(_("Материал"), max_length=100, blank=True)
     heel_height = models.CharField(_("Высота каблука"), max_length=50, blank=True)
     sole_type = models.CharField(_("Тип подошвы"), max_length=100, blank=True)
-    
-    # Наличие и статус
-    is_available = models.BooleanField(_("В наличии"), default=True)
-    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    
-    # Изображения
-    main_image = models.URLField(
-        _("Главное изображение"),
-        blank=True,
-        help_text=_("URL главного фото; дополнительные фото задаются в галерее ниже.")
-    )
-    main_image_file = models.ImageField(
-        _("Главное изображение (файл)"),
-        upload_to="products/shoes/main/",
-        blank=True,
-        null=True,
-    )
-    
-    # Внешние данные
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
-    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
-    
-    # Статус
-    is_active = models.BooleanField(_("Активен"), default=True)
-    is_new = models.BooleanField(_("Новинка"), default=False)
-    is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
-    
-    # Временные метки
-    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
-    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
     class Meta:
         verbose_name = _("Товар обуви")
@@ -2022,15 +1989,9 @@ class ShoeProduct(models.Model):
             models.Index(fields=["price"]),
         ]
 
-    def __str__(self):
-        return self.name
-
-    def get_translated_description(self, locale: str = 'ru') -> str:
-        """Получает переведенное описание товара обуви."""
-        translation = self.translations.filter(locale=locale).first()
-        if translation and translation.description:
-            return translation.description
-        return self.description or ''
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
 
 
 class ShoeProductSize(models.Model):
@@ -2298,8 +2259,10 @@ class ShoeVariantImage(models.Model):
         return f"Изображение варианта {self.variant}"
 
 
-class JewelryProduct(models.Model):
+class JewelryProduct(AbstractDomainProduct):
     """Товар украшений."""
+
+    _domain_product_type = "jewelry"
 
     JEWELRY_TYPE_CHOICES = [
         ("ring", _("Кольцо")),
@@ -2309,28 +2272,17 @@ class JewelryProduct(models.Model):
         ("pendant", _("Подвеска")),
     ]
 
-    # Основная информация
-    name = models.CharField(_("Название"), max_length=500)
-    slug = models.SlugField(_("Slug"), max_length=500, unique=True)
-    description = models.TextField(_("Описание"), blank=True)
+    # Связь с generic Product (shadow-копия)
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="jewelry_item",
+        verbose_name=_("Базовый товар (shadow)"),
+    )
 
-    # Категоризация
-    category = models.ForeignKey(
-        Category,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="jewelry_products",
-        verbose_name=_("Категория")
-    )
-    brand = models.ForeignKey(
-        Brand,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="jewelry_products",
-        verbose_name=_("Бренд")
-    )
+    # Специфичные поля для украшений
     gender = models.CharField(
         _("Пол"),
         max_length=10,
@@ -2339,33 +2291,6 @@ class JewelryProduct(models.Model):
         null=True,
         help_text=_("Для украшений: мужская, женская, унисекс, детская")
     )
-
-    # Цена
-    price = models.DecimalField(
-        _("Цена"),
-        max_digits=10,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        validators=[MinValueValidator(0)]
-    )
-    currency = models.CharField(
-        _("Валюта"),
-        max_length=5,
-        choices=CURRENCY_CHOICES,
-        default="RUB",
-        help_text=_("Выбирается из списка расчётных валют, используемых в прайсах.")
-    )
-    old_price = models.DecimalField(
-        _("Старая цена"),
-        max_digits=10,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        validators=[MinValueValidator(0)]
-    )
-
-    # Специфичные поля для украшений
     jewelry_type = models.CharField(
         _("Тип украшения"),
         max_length=32,
@@ -2384,12 +2309,7 @@ class JewelryProduct(models.Model):
         blank=True
     )
 
-    # Наличие и статус
-    is_available = models.BooleanField(_("В наличии"), default=True)
-    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-
-    # Изображения и видео
-    main_image = models.URLField(_("Главное изображение"), blank=True)
+    # Изображения и видео (переопределяем main_image_file, чтобы сохранить custom upload_to)
     main_image_file = models.ImageField(
         _("Главное изображение (файл)"),
         upload_to=get_jewelry_main_upload_path,
@@ -2412,20 +2332,6 @@ class JewelryProduct(models.Model):
         ],
     )
 
-    # Внешние данные
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
-    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
-
-    # Статус
-    is_active = models.BooleanField(_("Активен"), default=True)
-    is_new = models.BooleanField(_("Новинка"), default=False)
-    is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
-
-    # Временные метки
-    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
-    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
-
     class Meta:
         verbose_name = _("Товар — Украшения")
         verbose_name_plural = _("Товары — Украшения")
@@ -2438,15 +2344,9 @@ class JewelryProduct(models.Model):
             models.Index(fields=["jewelry_type"]),
         ]
 
-    def __str__(self):
-        return self.name
-
-    def get_translated_description(self, locale: str = 'ru') -> str:
-        """Получает переведенное описание товара украшений."""
-        translation = self.translations.filter(locale=locale).first()
-        if translation and translation.description:
-            return translation.description
-        return self.description or ''
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
 
 
 class JewelryProductTranslation(models.Model):
@@ -2742,89 +2642,26 @@ class JewelryVariantImage(models.Model):
         return f"Изображение варианта {self.variant}"
 
 
-class ElectronicsProduct(models.Model):
+class ElectronicsProduct(AbstractDomainProduct):
     """Товар электроники."""
-    
-    # Основная информация
-    name = models.CharField(_("Название"), max_length=500)
-    slug = models.SlugField(_("Slug"), max_length=500, unique=True)
-    description = models.TextField(_("Описание"), blank=True)
-    
-    # Категоризация
-    category = models.ForeignKey(
-        Category, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+
+    _domain_product_type = "electronics"
+
+    # Связь с generic Product (shadow-копия)
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
-        related_name="electronics_products",
-        verbose_name=_("Категория")
+        related_name="electronics_item",
+        verbose_name=_("Базовый товар (shadow)"),
     )
-    brand = models.ForeignKey(
-        Brand, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name="electronics_products",
-        verbose_name=_("Бренд")
-    )
-    
-    # Цена
-    price = models.DecimalField(
-        _("Цена"), 
-        max_digits=10, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        validators=[MinValueValidator(0)]
-    )
-    currency = models.CharField(
-        _("Валюта"),
-        max_length=5,
-        choices=CURRENCY_CHOICES,
-        default="RUB",
-        help_text=_("Выбирается из списка расчётных валют, используемых в прайсах.")
-    )
-    old_price = models.DecimalField(
-        _("Старая цена"), 
-        max_digits=10, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        validators=[MinValueValidator(0)]
-    )
-    
+
     # Специфичные для электроники поля
     model = models.CharField(_("Модель"), max_length=100, blank=True)
     specifications = models.JSONField(_("Характеристики"), default=dict, blank=True)
     warranty = models.CharField(_("Гарантия"), max_length=100, blank=True)
     power_consumption = models.CharField(_("Потребление энергии"), max_length=50, blank=True)
-    
-    # Наличие и статус
-    is_available = models.BooleanField(_("В наличии"), default=True)
-    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    
-    # Изображения
-    main_image = models.URLField(_("Главное изображение"), blank=True)
-    main_image_file = models.ImageField(
-        _("Главное изображение (файл)"),
-        upload_to="products/electronics/main/",
-        blank=True,
-        null=True,
-    )
-    
-    # Внешние данные
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
-    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
-    
-    # Статус
-    is_active = models.BooleanField(_("Активен"), default=True)
-    is_new = models.BooleanField(_("Новинка"), default=False)
-    is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
-    
-    # Временные метки
-    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
-    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
     class Meta:
         verbose_name = _("Товар электроники")
@@ -2837,15 +2674,9 @@ class ElectronicsProduct(models.Model):
             models.Index(fields=["price"]),
         ]
 
-    def __str__(self):
-        return self.name
-
-    def get_translated_description(self, locale: str = 'ru') -> str:
-        """Получает переведенное описание товара электроники."""
-        translation = self.translations.filter(locale=locale).first()
-        if translation and translation.description:
-            return translation.description
-        return self.description or ''
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
 
 
 class ElectronicsProductTranslation(models.Model):
@@ -3066,56 +2897,21 @@ class ElectronicsProductImage(models.Model):
         return f"Изображение {self.product.name}"
 
 
-class FurnitureProduct(models.Model):
+class FurnitureProduct(AbstractDomainProduct):
     """Товар мебели."""
-    
-    # Основная информация
-    name = models.CharField(_("Название"), max_length=500)
-    slug = models.SlugField(_("Slug"), max_length=500, unique=True)
-    description = models.TextField(_("Описание"), blank=True)
-    
-    # Категоризация
-    category = models.ForeignKey(
-        Category, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+
+    _domain_product_type = "furniture"
+
+    # Связь с generic Product (shadow-копия)
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.CASCADE,
+        null=True,
         blank=True,
-        related_name="furniture_products",
-        verbose_name=_("Категория")
+        related_name="furniture_item",
+        verbose_name=_("Базовый товар"),
     )
-    brand = models.ForeignKey(
-        Brand, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name="furniture_products",
-        verbose_name=_("Бренд")
-    )
-    
-    # Цена
-    price = models.DecimalField(
-        _("Цена"), 
-        max_digits=10, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        validators=[MinValueValidator(0)]
-    )
-    currency = models.CharField(
-        _("Валюта"),
-        max_length=5,
-        choices=CURRENCY_CHOICES,
-        default="RUB",
-    )
-    old_price = models.DecimalField(
-        _("Старая цена"), 
-        max_digits=10, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        validators=[MinValueValidator(0)]
-    )
-    
+
     # Специфичные для мебели поля
     material = models.CharField(_("Материал"), max_length=100, blank=True)
     furniture_type = models.CharField(
@@ -3130,33 +2926,6 @@ class FurnitureProduct(models.Model):
         ],
     )
     dimensions = models.CharField(_("Размеры"), max_length=200, blank=True, help_text=_("Например: 200x100x80 см"))
-    
-    # Наличие и статус
-    is_available = models.BooleanField(_("В наличии"), default=True)
-    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
-    
-    # Изображения
-    main_image = models.URLField(_("Главное изображение"), blank=True)
-    main_image_file = models.ImageField(
-        _("Главное изображение (файл)"),
-        upload_to="products/furniture/main/",
-        blank=True,
-        null=True,
-    )
-    
-    # Внешние данные
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
-    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
-    
-    # Статус
-    is_active = models.BooleanField(_("Активен"), default=True)
-    is_new = models.BooleanField(_("Новинка"), default=False)
-    is_featured = models.BooleanField(_("Рекомендуемый"), default=False)
-    
-    # Временные метки
-    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
-    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
     class Meta:
         verbose_name = _("Товар мебели")
@@ -3169,8 +2938,9 @@ class FurnitureProduct(models.Model):
             models.Index(fields=["price"]),
         ]
 
-    def __str__(self):
-        return self.name
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
 
     def get_translated_description(self, locale: str = 'ru') -> str:
         """Получает переведенное описание товара мебели."""
@@ -3226,6 +2996,43 @@ class FurnitureProductTranslation(models.Model):
     
     def __str__(self):
         return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class FurnitureProductImage(models.Model):
+    """Изображение товара мебели."""
+
+    product = models.ForeignKey(
+        FurnitureProduct,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Товар мебели")
+    )
+    image_url = models.URLField(
+        _("URL изображения"),
+        max_length=2000,
+        help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
+    )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/furniture/gallery/",
+        blank=True,
+        null=True,
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение товара мебели")
+        verbose_name_plural = _("Изображения товаров мебели")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
 
 
 class FurnitureVariant(models.Model):
@@ -3329,6 +3136,909 @@ class FurnitureVariantImage(models.Model):
 
     def __str__(self):
         return f"Изображение варианта {self.variant}"
+
+
+# ============================================================================
+# КНИГИ (BookProduct)
+# ============================================================================
+
+class BookProduct(AbstractDomainProduct):
+    """Товар — Книга."""
+
+    _domain_product_type = "books"
+
+    # Связь с generic Product (shadow-копия)
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="book_item",
+        verbose_name=_("Базовый товар (shadow)"),
+    )
+
+    # Книжные поля
+    isbn = models.CharField(_("ISBN"), max_length=20, null=True, blank=True)
+    publisher = models.CharField(_("Издательство"), max_length=200, null=True, blank=True)
+    publication_date = models.DateField(_("Дата публикации"), null=True, blank=True)
+    pages = models.PositiveIntegerField(_("Количество страниц"), null=True, blank=True)
+    language = models.CharField(_("Язык"), max_length=50, null=True, blank=True)
+    cover_type = models.CharField(_("Тип обложки"), max_length=50, null=True, blank=True)
+    rating = models.DecimalField(
+        _("Рейтинг"), max_digits=3, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    reviews_count = models.PositiveIntegerField(_("Количество отзывов"), default=0)
+    is_bestseller = models.BooleanField(_("Бестселлер"), default=False)
+
+    class Meta:
+        verbose_name = _("Товар — Книга")
+        verbose_name_plural = _("Товары — Книги")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+            models.Index(fields=["isbn"]),
+            models.Index(fields=["publisher"]),
+            models.Index(fields=["rating"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+
+class BookProductTranslation(models.Model):
+    """Переводы товара-книги."""
+
+    LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
+
+    product = models.ForeignKey(
+        BookProduct,
+        on_delete=models.CASCADE,
+        related_name="translations",
+        verbose_name=_("Книга"),
+    )
+    locale = models.CharField(_("Язык"), max_length=10, choices=LOCALE_CHOICES)
+    name = models.CharField(_("Название"), max_length=500, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+
+    class Meta:
+        verbose_name = _("Перевод книги")
+        verbose_name_plural = _("Переводы книг")
+        unique_together = [["product", "locale"]]
+        ordering = ["product", "locale"]
+
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class BookProductImage(models.Model):
+    """Изображение товара-книги."""
+
+    product = models.ForeignKey(
+        BookProduct,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Книга"),
+    )
+    image_url = models.URLField(
+        _("URL изображения"), max_length=2000, blank=True,
+    )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/books/gallery/",
+        blank=True,
+        null=True,
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение книги")
+        verbose_name_plural = _("Изображения книг")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
+
+
+# ============================================================================
+# ПАРФЮМЕРИЯ (PerfumeryProduct)
+# ============================================================================
+
+FRAGRANCE_TYPE_CHOICES = [
+    ("edp", _("Eau de Parfum")),
+    ("edt", _("Eau de Toilette")),
+    ("edc", _("Eau de Cologne")),
+    ("parfum", _("Parfum")),
+    ("body_mist", _("Body Mist")),
+]
+
+FRAGRANCE_FAMILY_CHOICES = [
+    ("floral", _("Цветочные")),
+    ("woody", _("Древесные")),
+    ("oriental", _("Восточные")),
+    ("fresh", _("Свежие")),
+    ("citrus", _("Цитрусовые")),
+    ("aquatic", _("Водные")),
+    ("gourmand", _("Гурманские")),
+    ("aromatic", _("Ароматические")),
+]
+
+PERFUMERY_GENDER_CHOICES = [
+    ("men", _("Мужской")),
+    ("women", _("Женский")),
+    ("unisex", _("Унисекс")),
+]
+
+
+class PerfumeryProduct(AbstractDomainProduct):
+    """Товар — Парфюмерия."""
+
+    _domain_product_type = "perfumery"
+
+    # Связь с generic Product (shadow-копия)
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="perfumery_item",
+        verbose_name=_("Базовый товар (shadow)"),
+    )
+
+    # Парфюмерные поля
+    volume = models.CharField(
+        _("Объём"), max_length=50, blank=True,
+        help_text=_("Например: '50ml', '100ml'"),
+    )
+    fragrance_type = models.CharField(
+        _("Тип аромата"), max_length=20,
+        choices=FRAGRANCE_TYPE_CHOICES, blank=True,
+    )
+    fragrance_family = models.CharField(
+        _("Семейство аромата"), max_length=20,
+        choices=FRAGRANCE_FAMILY_CHOICES, blank=True,
+    )
+    gender = models.CharField(
+        _("Пол"), max_length=10,
+        choices=PERFUMERY_GENDER_CHOICES, blank=True,
+    )
+    top_notes = models.CharField(
+        _("Верхние ноты"), max_length=500, blank=True,
+    )
+    heart_notes = models.CharField(
+        _("Средние ноты"), max_length=500, blank=True,
+    )
+    base_notes = models.CharField(
+        _("Базовые ноты"), max_length=500, blank=True,
+    )
+
+    class Meta:
+        verbose_name = _("Товар — Парфюмерия")
+        verbose_name_plural = _("Товары — Парфюмерия")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+            models.Index(fields=["fragrance_type"]),
+            models.Index(fields=["gender"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+
+class PerfumeryProductTranslation(models.Model):
+    """Переводы товара парфюмерии."""
+
+    LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
+
+    product = models.ForeignKey(
+        PerfumeryProduct,
+        on_delete=models.CASCADE,
+        related_name="translations",
+        verbose_name=_("Парфюмерия"),
+    )
+    locale = models.CharField(_("Язык"), max_length=10, choices=LOCALE_CHOICES)
+    name = models.CharField(_("Название"), max_length=500, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+
+    class Meta:
+        verbose_name = _("Перевод парфюмерии")
+        verbose_name_plural = _("Переводы парфюмерии")
+        unique_together = [["product", "locale"]]
+        ordering = ["product", "locale"]
+
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class PerfumeryProductImage(models.Model):
+    """Изображение товара парфюмерии."""
+
+    product = models.ForeignKey(
+        PerfumeryProduct,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Парфюмерия"),
+    )
+    image_url = models.URLField(
+        _("URL изображения"), max_length=2000, blank=True,
+    )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/perfumery/gallery/",
+        blank=True,
+        null=True,
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение парфюмерии")
+        verbose_name_plural = _("Изображения парфюмерии")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
+
+
+class PerfumeryVariant(models.Model):
+    """Вариант парфюмерии (объём, цены, остаток, галерея)."""
+
+    product = models.ForeignKey(
+        PerfumeryProduct,
+        on_delete=models.CASCADE,
+        related_name="variants",
+        verbose_name=_("Товар парфюмерии (родитель)"),
+    )
+    name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    name_en = models.CharField(_("Название (англ.)"), max_length=500, blank=True)
+    slug = models.SlugField(
+        _("Slug варианта"), max_length=600, unique=True,
+        help_text=_("Автогенерация, можно переопределить."),
+    )
+    volume = models.CharField(
+        _("Объём"), max_length=50, blank=True,
+        help_text=_("Например: '30ml', '50ml', '100ml'"),
+    )
+    sku = models.CharField(_("SKU"), max_length=100, blank=True)
+    barcode = models.CharField(_("Штрихкод"), max_length=100, blank=True)
+    price = models.DecimalField(
+        _("Цена"), max_digits=10, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    currency = models.CharField(
+        _("Валюта"), max_length=5, choices=CURRENCY_CHOICES, default="RUB",
+    )
+    old_price = models.DecimalField(
+        _("Старая цена"), max_digits=10, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(
+        _("Количество на складе"), null=True, blank=True,
+    )
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image_file = models.ImageField(
+        _("Главное изображение варианта (файл)"),
+        upload_to="products/perfumery/variants/",
+        blank=True,
+        null=True,
+    )
+    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Вариант парфюмерии")
+        verbose_name_plural = _("Варианты парфюмерии")
+        ordering = ["product", "sort_order", "-created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["slug"]),
+            models.Index(fields=["is_active", "is_available"]),
+        ]
+
+    def __str__(self):
+        base = self.name or self.product.name
+        attrs = self.volume or ""
+        return f"{base} ({attrs})" if attrs else base
+
+    def save(self, *args, **kwargs):
+        """Автогенерация slug, если не заполнен."""
+        if not self.slug:
+            base_name = self.name or self.product.name
+            composed = f"{base_name}-{self.volume or ''}".strip()
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip("-")
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+
+class PerfumeryVariantImage(models.Model):
+    """Изображение варианта парфюмерии."""
+
+    variant = models.ForeignKey(
+        PerfumeryVariant,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Вариант парфюмерии"),
+    )
+    image_url = models.URLField(
+        _("URL изображения"),
+        help_text=_("Ссылка на изображение."),
+    )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to="products/perfumery/variants/gallery/",
+        blank=True,
+        null=True,
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение варианта парфюмерии")
+        verbose_name_plural = _("Изображения вариантов парфюмерии")
+        ordering = ["sort_order", "created_at"]
+        indexes = [
+            models.Index(fields=["variant", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"Изображение варианта {self.variant}"
+
+
+# ============================================================================
+# МЕДИКАМЕНТЫ (MedicineProduct)
+# ============================================================================
+
+DOSAGE_FORM_CHOICES = [
+    ("tablet", _("Таблетки")),
+    ("capsule", _("Капсулы")),
+    ("syrup", _("Сироп")),
+    ("drops", _("Капли")),
+    ("ointment", _("Мазь")),
+    ("cream", _("Крем")),
+    ("gel", _("Гель")),
+    ("injection", _("Инъекция")),
+    ("powder", _("Порошок")),
+    ("spray", _("Спрей")),
+    ("suppository", _("Суппозитории")),
+    ("other", _("Прочее")),
+]
+
+
+class MedicineProduct(AbstractDomainProduct):
+    """Товар — Медикамент."""
+
+    _domain_product_type = "medicines"
+
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="medicine_item",
+        verbose_name=_("Базовый товар (shadow)"),
+    )
+
+    dosage_form = models.CharField(
+        _("Лекарственная форма"), max_length=20,
+        choices=DOSAGE_FORM_CHOICES, blank=True,
+    )
+    active_ingredient = models.CharField(
+        _("Действующее вещество"), max_length=300, blank=True,
+    )
+    prescription_required = models.BooleanField(
+        _("Требуется рецепт"), default=False,
+    )
+
+    class Meta:
+        verbose_name = _("Товар — Медикамент")
+        verbose_name_plural = _("Товары — Медикаменты")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+
+class MedicineProductTranslation(models.Model):
+    LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
+
+    product = models.ForeignKey(
+        MedicineProduct, on_delete=models.CASCADE, related_name="translations",
+    )
+    locale = models.CharField(_("Локаль"), max_length=10, choices=LOCALE_CHOICES, default="ru")
+    name = models.CharField(_("Название"), max_length=500, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+
+    class Meta:
+        verbose_name = _("Перевод медикамента")
+        verbose_name_plural = _("Переводы медикаментов")
+        unique_together = ("product", "locale")
+
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class MedicineProductImage(models.Model):
+    product = models.ForeignKey(
+        MedicineProduct, on_delete=models.CASCADE, related_name="gallery_images",
+    )
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(
+        _("Изображение (файл)"), upload_to="products/medicines/gallery/",
+        blank=True, null=True,
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение медикамента")
+        verbose_name_plural = _("Изображения медикаментов")
+        ordering = ["sort_order", "created_at"]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
+
+
+# ============================================================================
+# БАДы (SupplementProduct)
+# ============================================================================
+
+class SupplementProduct(AbstractDomainProduct):
+    """Товар — БАД."""
+
+    _domain_product_type = "supplements"
+
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="supplement_item",
+        verbose_name=_("Базовый товар (shadow)"),
+    )
+
+    dosage_form = models.CharField(
+        _("Форма выпуска"), max_length=20,
+        choices=DOSAGE_FORM_CHOICES, blank=True,
+    )
+    active_ingredient = models.CharField(
+        _("Активный ингредиент"), max_length=300, blank=True,
+    )
+    serving_size = models.CharField(
+        _("Размер порции"), max_length=100, blank=True,
+        help_text=_("Например: '2 капсулы', '30мл'"),
+    )
+
+    class Meta:
+        verbose_name = _("Товар — БАД")
+        verbose_name_plural = _("Товары — БАДы")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+
+class SupplementProductTranslation(models.Model):
+    LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
+
+    product = models.ForeignKey(
+        SupplementProduct, on_delete=models.CASCADE, related_name="translations",
+    )
+    locale = models.CharField(_("Локаль"), max_length=10, choices=LOCALE_CHOICES, default="ru")
+    name = models.CharField(_("Название"), max_length=500, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+
+    class Meta:
+        verbose_name = _("Перевод БАДа")
+        verbose_name_plural = _("Переводы БАДов")
+        unique_together = ("product", "locale")
+
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class SupplementProductImage(models.Model):
+    product = models.ForeignKey(
+        SupplementProduct, on_delete=models.CASCADE, related_name="gallery_images",
+    )
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(
+        _("Изображение (файл)"), upload_to="products/supplements/gallery/",
+        blank=True, null=True,
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение БАДа")
+        verbose_name_plural = _("Изображения БАДов")
+        ordering = ["sort_order", "created_at"]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
+
+
+# ============================================================================
+# МЕДТЕХНИКА (MedicalEquipmentProduct)
+# ============================================================================
+
+class MedicalEquipmentProduct(AbstractDomainProduct):
+    """Товар — Медицинское оборудование."""
+
+    _domain_product_type = "medical_equipment"
+
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="medical_equipment_item",
+        verbose_name=_("Базовый товар (shadow)"),
+    )
+
+    equipment_type = models.CharField(
+        _("Тип оборудования"), max_length=100, blank=True,
+    )
+    warranty_months = models.PositiveIntegerField(
+        _("Гарантия (месяцев)"), null=True, blank=True,
+    )
+
+    class Meta:
+        verbose_name = _("Товар — Медтехника")
+        verbose_name_plural = _("Товары — Медтехника")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+
+class MedicalEquipmentProductTranslation(models.Model):
+    LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
+
+    product = models.ForeignKey(
+        MedicalEquipmentProduct, on_delete=models.CASCADE, related_name="translations",
+    )
+    locale = models.CharField(_("Локаль"), max_length=10, choices=LOCALE_CHOICES, default="ru")
+    name = models.CharField(_("Название"), max_length=500, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+
+    class Meta:
+        verbose_name = _("Перевод медтехники")
+        verbose_name_plural = _("Переводы медтехники")
+        unique_together = ("product", "locale")
+
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class MedicalEquipmentProductImage(models.Model):
+    product = models.ForeignKey(
+        MedicalEquipmentProduct, on_delete=models.CASCADE, related_name="gallery_images",
+    )
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(
+        _("Изображение (файл)"), upload_to="products/medical_equipment/gallery/",
+        blank=True, null=True,
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение медтехники")
+        verbose_name_plural = _("Изображения медтехники")
+        ordering = ["sort_order", "created_at"]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
+
+
+# ============================================================================
+# ПОСУДА (TablewareProduct)
+# ============================================================================
+
+class TablewareProduct(AbstractDomainProduct):
+    """Товар — Посуда."""
+
+    _domain_product_type = "tableware"
+
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="tableware_item",
+        verbose_name=_("Базовый товар (shadow)"),
+    )
+
+    material = models.CharField(
+        _("Материал"), max_length=100, blank=True,
+    )
+    set_pieces_count = models.PositiveIntegerField(
+        _("Количество предметов в наборе"), null=True, blank=True,
+    )
+
+    class Meta:
+        verbose_name = _("Товар — Посуда")
+        verbose_name_plural = _("Товары — Посуда")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+
+class TablewareProductTranslation(models.Model):
+    LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
+
+    product = models.ForeignKey(
+        TablewareProduct, on_delete=models.CASCADE, related_name="translations",
+    )
+    locale = models.CharField(_("Локаль"), max_length=10, choices=LOCALE_CHOICES, default="ru")
+    name = models.CharField(_("Название"), max_length=500, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+
+    class Meta:
+        verbose_name = _("Перевод посуды")
+        verbose_name_plural = _("Переводы посуды")
+        unique_together = ("product", "locale")
+
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class TablewareProductImage(models.Model):
+    product = models.ForeignKey(
+        TablewareProduct, on_delete=models.CASCADE, related_name="gallery_images",
+    )
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(
+        _("Изображение (файл)"), upload_to="products/tableware/gallery/",
+        blank=True, null=True,
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение посуды")
+        verbose_name_plural = _("Изображения посуды")
+        ordering = ["sort_order", "created_at"]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
+
+
+# ============================================================================
+# АКСЕССУАРЫ (AccessoryProduct)
+# ============================================================================
+
+class AccessoryProduct(AbstractDomainProduct):
+    """Товар — Аксессуар."""
+
+    _domain_product_type = "accessories"
+
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="accessory_item",
+        verbose_name=_("Базовый товар (shadow)"),
+    )
+
+    accessory_type = models.CharField(
+        _("Тип аксессуара"), max_length=100, blank=True,
+    )
+    material = models.CharField(
+        _("Материал"), max_length=100, blank=True,
+    )
+
+    class Meta:
+        verbose_name = _("Товар — Аксессуар")
+        verbose_name_plural = _("Товары — Аксессуары")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+
+class AccessoryProductTranslation(models.Model):
+    LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
+
+    product = models.ForeignKey(
+        AccessoryProduct, on_delete=models.CASCADE, related_name="translations",
+    )
+    locale = models.CharField(_("Локаль"), max_length=10, choices=LOCALE_CHOICES, default="ru")
+    name = models.CharField(_("Название"), max_length=500, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+
+    class Meta:
+        verbose_name = _("Перевод аксессуара")
+        verbose_name_plural = _("Переводы аксессуаров")
+        unique_together = ("product", "locale")
+
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class AccessoryProductImage(models.Model):
+    product = models.ForeignKey(
+        AccessoryProduct, on_delete=models.CASCADE, related_name="gallery_images",
+    )
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(
+        _("Изображение (файл)"), upload_to="products/accessories/gallery/",
+        blank=True, null=True,
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение аксессуара")
+        verbose_name_plural = _("Изображения аксессуаров")
+        ordering = ["sort_order", "created_at"]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
+
+
+# ============================================================================
+# БЛАГОВОНИЯ (IncenseProduct)
+# ============================================================================
+
+class IncenseProduct(AbstractDomainProduct):
+    """Товар — Благовония."""
+
+    _domain_product_type = "incense"
+
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="incense_item",
+        verbose_name=_("Базовый товар (shadow)"),
+    )
+
+    scent_type = models.CharField(
+        _("Тип аромата"), max_length=100, blank=True,
+    )
+    burn_time = models.CharField(
+        _("Время горения"), max_length=50, blank=True,
+        help_text=_("Например: '30 минут', '1 час'"),
+    )
+    weight_grams = models.PositiveIntegerField(
+        _("Вес (граммы)"), null=True, blank=True,
+    )
+
+    class Meta:
+        verbose_name = _("Товар — Благовония")
+        verbose_name_plural = _("Товары — Благовония")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+
+class IncenseProductTranslation(models.Model):
+    LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
+
+    product = models.ForeignKey(
+        IncenseProduct, on_delete=models.CASCADE, related_name="translations",
+    )
+    locale = models.CharField(_("Локаль"), max_length=10, choices=LOCALE_CHOICES, default="ru")
+    name = models.CharField(_("Название"), max_length=500, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+
+    class Meta:
+        verbose_name = _("Перевод благовоний")
+        verbose_name_plural = _("Переводы благовоний")
+        unique_together = ("product", "locale")
+
+    def __str__(self):
+        return f"{self.product.name} ({self.get_locale_display()})"
+
+
+class IncenseProductImage(models.Model):
+    product = models.ForeignKey(
+        IncenseProduct, on_delete=models.CASCADE, related_name="gallery_images",
+    )
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(
+        _("Изображение (файл)"), upload_to="products/incense/gallery/",
+        blank=True, null=True,
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение благовоний")
+        verbose_name_plural = _("Изображения благовоний")
+        ordering = ["sort_order", "created_at"]
+
+    def __str__(self):
+        return f"Изображение {self.product.name}"
 
 
 class Banner(models.Model):
@@ -3592,7 +4302,7 @@ class BookVariant(models.Model):
     """Вариант книги (обложка, формат, цена)."""
     
     product = models.ForeignKey(
-        Product,
+        BookProduct,
         on_delete=models.CASCADE,
         related_name="book_variants",
         verbose_name=_("Книга (родитель)")
@@ -3723,10 +4433,10 @@ class ProductAuthor(models.Model):
     """Связь товара с авторами (для книг)."""
     
     product = models.ForeignKey(
-        Product,
+        BookProduct,
         on_delete=models.CASCADE,
         related_name="book_authors",
-        verbose_name=_("Товар")
+        verbose_name=_("Книга")
     )
     author = models.ForeignKey(
         Author,
@@ -3755,10 +4465,10 @@ class ProductGenre(models.Model):
     """Связь книги с жанрами."""
 
     product = models.ForeignKey(
-        Product,
+        BookProduct,
         on_delete=models.CASCADE,
         related_name="book_genres",
-        verbose_name=_("Товар")
+        verbose_name=_("Книга")
     )
     genre = models.ForeignKey(
         Category,
@@ -3939,3 +4649,271 @@ def cleanup_shoe_variant_products(sender, instance, **kwargs):
 def cleanup_shoe_variant_products_on_deactivate(sender, instance, **kwargs):
     if not instance.is_active:
         _cleanup_variant_products(instance)
+
+# ============================================================================
+# SPORTS
+# ============================================================================
+
+class SportsProduct(AbstractDomainProduct):
+    """Спортивные товары."""
+    
+    _domain_product_type = "sports"
+    
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sports_item",
+        verbose_name=_("Базовый товар (shadow)"),
+    )
+    
+    sport_type = models.CharField(_("Вид спорта"), max_length=100, blank=True)
+    equipment_type = models.CharField(_("Тип инвентаря"), max_length=100, blank=True)
+    material = models.CharField(_("Материал"), max_length=100, blank=True)
+
+    class Meta(AbstractDomainProduct.Meta):
+        verbose_name = _("Спорттовар")
+        verbose_name_plural = _("Спорттовары")
+        
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+
+class SportsProductTranslation(models.Model):
+    """Переводы для спортивных товаров."""
+    
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+        ('tr', _('Турецкий')),
+    ]
+    
+    product = models.ForeignKey(
+        SportsProduct,
+        on_delete=models.CASCADE,
+        related_name="translations",
+        verbose_name=_("Товар")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default="ru"
+    )
+    name = models.CharField(_("Название"), max_length=255, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+    
+    class Meta:
+        verbose_name = _("Перевод спорттовара")
+        verbose_name_plural = _("Переводы спорттоваров")
+        unique_together = ("product", "locale")
+
+
+class SportsProductImage(models.Model):
+    """Дополнительные изображения для спорттоваров."""
+    
+    product = models.ForeignKey(
+        SportsProduct,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Товар")
+    )
+    image_file = models.ImageField(
+        _("Файл изображения"),
+        upload_to=get_product_upload_path,
+        max_length=500,
+        null=True,
+        blank=True
+    )
+    image_url = models.URLField(_("URL изображения"), max_length=1000, blank=True)
+    alt_text = models.CharField(_("Альтернативный текст"), max_length=255, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное?"), default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = _("Изображение спорттовара")
+        verbose_name_plural = _("Изображения спорттоваров")
+        ordering = ["-is_main", "-created_at"]
+
+
+# ============================================================================
+# AUTO PARTS
+# ============================================================================
+
+class AutoPartProduct(AbstractDomainProduct):
+    """Автозапчасти."""
+    
+    _domain_product_type = "auto_parts"
+    
+    base_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="auto_part_item",
+        verbose_name=_("Базовый товар (shadow)"),
+    )
+    
+    part_number = models.CharField(_("Артикул"), max_length=100, blank=True)
+    car_brand = models.CharField(_("Марка авто"), max_length=100, blank=True)
+    car_model = models.CharField(_("Модель авто"), max_length=100, blank=True)
+    compatibility_years = models.CharField(_("Годы совместимости"), max_length=50, blank=True)
+    
+    class Meta(AbstractDomainProduct.Meta):
+        verbose_name = _("Автозапчасть")
+        verbose_name_plural = _("Автозапчасти")
+        
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+
+class AutoPartProductTranslation(models.Model):
+    """Переводы для автозапчастей."""
+    
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+        ('tr', _('Турецкий')),
+    ]
+    
+    product = models.ForeignKey(
+        AutoPartProduct,
+        on_delete=models.CASCADE,
+        related_name="translations",
+        verbose_name=_("Товар")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default="ru"
+    )
+    name = models.CharField(_("Название"), max_length=255, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+    
+    class Meta:
+        verbose_name = _("Перевод автозапчасти")
+        verbose_name_plural = _("Переводы автозапчастей")
+        unique_together = ("product", "locale")
+
+
+class AutoPartProductImage(models.Model):
+    """Дополнительные изображения для автозапчастей."""
+    
+    product = models.ForeignKey(
+        AutoPartProduct,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Товар")
+    )
+    image_file = models.ImageField(
+        _("Файл изображения"),
+        upload_to=get_product_upload_path,
+        max_length=500,
+        null=True,
+        blank=True
+    )
+    image_url = models.URLField(_("URL изображения"), max_length=1000, blank=True)
+    alt_text = models.CharField(_("Альтернативный текст"), max_length=255, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное?"), default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = _("Изображение автозапчасти")
+        verbose_name_plural = _("Изображения автозапчастей")
+        ordering = ["-is_main", "-created_at"]
+
+class SportsVariant(models.Model):
+    """Вариант спортивного товара (цвет/размер)."""
+    product = models.ForeignKey(
+        SportsProduct,
+        on_delete=models.CASCADE,
+        related_name="variants",
+        verbose_name=_("Товар")
+    )
+    color = models.CharField(_("Цвет"), max_length=50, blank=True)
+    size = models.CharField(_("Размер"), max_length=50, blank=True)
+    sku = models.CharField(_("Артикул"), max_length=100, blank=True)
+    
+    price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2, null=True, blank=True)
+    old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество"), default=0)
+    
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    
+    class Meta:
+        verbose_name = _("Вариант спорттовара")
+        verbose_name_plural = _("Варианты спорттоваров")
+
+class SportsVariantImage(models.Model):
+    """Изображение варианта спортивного товара."""
+    variant = models.ForeignKey(
+        SportsVariant,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Вариант")
+    )
+    image_file = models.ImageField(
+        _("Файл изображения"),
+        upload_to=get_product_upload_path,
+        max_length=500
+    )
+    is_main = models.BooleanField(_("Главное?"), default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = _("Изображение варианта")
+        verbose_name_plural = _("Изображения вариантов")
+
+
+class AutoPartVariant(models.Model):
+    """Вариант автозапчасти (например, состояние/производитель)."""
+    product = models.ForeignKey(
+        AutoPartProduct,
+        on_delete=models.CASCADE,
+        related_name="variants",
+        verbose_name=_("Товар")
+    )
+    condition = models.CharField(
+        _("Состояние"), 
+        max_length=50, 
+        choices=[('new', _('Новая')), ('used', _('Б/У')), ('rebuilt', _('Восстановленная'))],
+        default='new'
+    )
+    sku = models.CharField(_("Артикул"), max_length=100, blank=True)
+    manufacturer = models.CharField(_("Производитель"), max_length=100, blank=True)
+    
+    price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2, null=True, blank=True)
+    old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество"), default=0)
+    
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    
+    class Meta:
+        verbose_name = _("Вариант автозапчасти")
+        verbose_name_plural = _("Варианты автозапчастей")
+
+class AutoPartVariantImage(models.Model):
+    """Изображение варианта автозапчасти."""
+    variant = models.ForeignKey(
+        AutoPartVariant,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Вариант")
+    )
+    image_file = models.ImageField(
+        _("Файл изображения"),
+        upload_to=get_product_upload_path,
+        max_length=500
+    )
+    is_main = models.BooleanField(_("Главное?"), default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        verbose_name = _("Изображение варианта")
+        verbose_name_plural = _("Изображения вариантов")

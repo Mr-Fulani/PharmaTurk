@@ -4,32 +4,34 @@ from django.utils.html import format_html, escape
 from django.utils.safestring import mark_safe
 from django.urls import reverse, NoReverseMatch
 from apps.catalog.models import (
-    ProductMedicines,
-    ProductSupplements,
-    ProductMedicalEquipment,
-    ProductTableware,
-    ProductFurniture,
-    ProductAccessories,
+    MedicineProduct,
+    SupplementProduct,
+    MedicalEquipmentProduct,
+    TablewareProduct,
+    FurnitureProduct,
+    AccessoryProduct,
     JewelryProduct,
-    ProductUnderwear,
-    ProductHeadwear,
-    ProductBooks,
+    ClothingProduct,
+    BookProduct,
+    IncenseProduct,
 )
 from .models import AIProcessingLog, AITemplate, AIModerationQueue, AIProcessingStatus
 
 
 def _get_product_admin_url(product):
     product_type_map = {
-        "medicines": ProductMedicines,
-        "supplements": ProductSupplements,
-        "medical_equipment": ProductMedicalEquipment,
-        "tableware": ProductTableware,
-        "furniture": ProductFurniture,
-        "accessories": ProductAccessories,
+        "medicines": MedicineProduct,
+        "supplements": SupplementProduct,
+        "medical_equipment": MedicalEquipmentProduct,
+        "tableware": TablewareProduct,
+        "furniture": FurnitureProduct,
+        "accessories": AccessoryProduct,
         "jewelry": JewelryProduct,
-        "underwear": ProductUnderwear,
-        "headwear": ProductHeadwear,
-        "books": ProductBooks,
+        "clothing": ClothingProduct,
+        "underwear": ClothingProduct,
+        "headwear": ClothingProduct,
+        "books": BookProduct,
+        "incense": IncenseProduct,
     }
     model = product_type_map.get(product.product_type)
     if model:

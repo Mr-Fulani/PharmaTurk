@@ -229,7 +229,7 @@ def delete_clothing_variant_image_files(sender, instance, **kwargs):
 @receiver(post_delete, sender=ShoeProduct)
 def delete_shoe_product_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.main_image_file)
-    delete_file_from_storage(instance.main_video_file)
+
 
 
 @receiver(post_delete, sender=ShoeProductImage)
@@ -253,7 +253,8 @@ def delete_shoe_variant_image_files(sender, instance, **kwargs):
 @receiver(post_delete, sender=ElectronicsProduct)
 def delete_electronics_product_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.main_image_file)
-    delete_file_from_storage(instance.main_video_file)
+    if hasattr(instance, "main_video_file"):
+        delete_file_from_storage(instance.main_video_file)
 
 
 @receiver(post_delete, sender=ElectronicsProductImage)
@@ -267,7 +268,7 @@ def delete_electronics_product_image_files(sender, instance, **kwargs):
 @receiver(post_delete, sender=FurnitureProduct)
 def delete_furniture_product_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.main_image_file)
-    delete_file_from_storage(instance.main_video_file)
+
 
 
 @receiver(post_delete, sender=FurnitureVariant)

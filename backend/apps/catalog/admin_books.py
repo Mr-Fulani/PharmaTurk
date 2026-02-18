@@ -5,10 +5,11 @@ from django.utils.translation import gettext_lazy as _
 from django.utils.html import format_html
 from django.db import models as django_models
 from .models import (
-    Author, ProductAuthor, Product, ProductBooks, 
+    Author, ProductAuthor, BookProduct,
+    BookProductTranslation, BookProductImage,
     Category, CategoryBooks,
     BookVariant, BookVariantSize, BookVariantImage,
-    ProductTranslation, ProductImage, ProductAttribute, ProductGenre
+    ProductGenre
 )
 
 
@@ -60,20 +61,20 @@ class BookVariantAdmin(admin.ModelAdmin):
     inlines = [BookVariantSizeInline, BookVariantImageInline]
 
 
-class ProductTranslationInline(admin.TabularInline):
-    """Inline для переводов товара."""
-    model = ProductTranslation
+class BookProductTranslationInline(admin.TabularInline):
+    """Inline для переводов книги."""
+    model = BookProductTranslation
     extra = 1
     fields = ('locale', 'name', 'description')
     verbose_name = _('Перевод')
     verbose_name_plural = _('Переводы')
 
 
-class ProductImageInline(admin.TabularInline):
-    """Inline для изображений товара."""
-    model = ProductImage
+class BookProductImageInline(admin.TabularInline):
+    """Inline для изображений книги."""
+    model = BookProductImage
     extra = 1
-    fields = ('image_file', 'image_url', 'video_file', 'video_url', 'alt_text', 'is_main', 'sort_order', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'is_main', 'sort_order')
     readonly_fields = ('image_preview',)
     verbose_name = _('Изображение')
     verbose_name_plural = _('Изображения')
@@ -83,33 +84,15 @@ class ProductImageInline(admin.TabularInline):
             media_url = None
             if obj.image_file:
                 media_url = obj.image_file.url
-            elif obj.video_file:
-                media_url = obj.video_file.url
             elif obj.image_url:
                 media_url = obj.image_url
-            elif obj.video_url:
-                media_url = obj.video_url
             if media_url:
-                if obj.video_file or obj.video_url:
-                    return format_html(
-                        '<video src="{}" style="max-width: 140px; max-height: 100px;" muted controls />',
-                        media_url
-                    )
                 return format_html(
                     '<img src="{}" style="max-width: 100px; max-height: 100px;" />',
                     media_url
                 )
         return "-"
     image_preview.short_description = _("Превью")
-
-
-class ProductAttributeInline(admin.TabularInline):
-    """Inline для атрибутов товара."""
-    model = ProductAttribute
-    extra = 1
-    fields = ('attribute_type', 'name', 'value', 'sort_order')
-    verbose_name = _('Атрибут')
-    verbose_name_plural = _('Атрибуты')
 
 
 class ProductAuthorInline(admin.TabularInline):
@@ -140,19 +123,19 @@ class ProductGenreInline(admin.TabularInline):
 
 
 class BookVariantInline(admin.TabularInline):
-    """Inline для вариантов книг в ProductBooks."""
+    """Inline для вариантов книг в BookProduct."""
     model = BookVariant
     extra = 0
     fields = ('name', 'name_en', 'cover_type', 'format_type', 'price', 'currency', 'main_image', 'is_active', 'sort_order')
 
 
-@admin.register(ProductBooks)
-class ProductBooksAdmin(admin.ModelAdmin):
+@admin.register(BookProduct)
+class BookProductAdmin(admin.ModelAdmin):
     """Админка для товаров-книг."""
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = [
         'name', 'authors_list', 'category', 'price', 
-        'old_price', 'rating', 'is_available', 'is_bestseller',
+        'old_price', 'is_available', 'is_bestseller',
         'is_new', 'isbn', 'publisher', 'created_at'
     ]
     list_filter = [
@@ -162,61 +145,34 @@ class ProductBooksAdmin(admin.ModelAdmin):
     list_editable = ['price', 'old_price', 'is_available', 'is_bestseller']
     search_fields = ['name', 'description', 'isbn', 'publisher']
     prepopulated_fields = {'slug': ('name',)}
-    readonly_fields = ['product_type', 'rating', 'reviews_count', 'slug_preview', 'last_synced_at', 'created_at', 'updated_at']
+    readonly_fields = ['rating', 'reviews_count', 'slug_preview', 'created_at', 'updated_at']
     
     fieldsets = (
         (_('Основное'), {
             'fields': ('name', 'slug', 'slug_preview', 'description')
         }),
         (_('Категоризация'), {
-            'fields': ('product_type', 'category')
+            'fields': ('category', 'brand')
         }),
         (_('Информация о книге'), {
             'fields': ('isbn', 'publisher', 'publication_date', 'pages', 'language', 'cover_type')
         }),
         (_('Цены и наличие'), {
-            'fields': (
-                'price', 'currency', 'old_price', 'margin_percent_applied',
-                'availability_status', 'is_available', 'stock_quantity',
-                'min_order_quantity', 'pack_quantity'
-            )
+            'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')
         }),
         (_('Рейтинг и статус'), {
             'fields': ('rating', 'reviews_count', 'is_featured', 'is_bestseller', 'is_new')
         }),
-        (_('Логистика'), {
-            'fields': (
-                'gtin', 'mpn', 'weight_value', 'weight_unit', 'length',
-                'width', 'height', 'dimensions_unit', 'country_of_origin'
-            ),
-            'classes': ('collapse',)
-        }),
-        (_('SEO (EN)'), {
-            'fields': (
-                'meta_title', 'meta_description', 'meta_keywords',
-                'og_title', 'og_description', 'og_image_url'
-            ),
-            'classes': ('collapse',),
-            'description': _('Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях.')
-        }),
         (_('Медиа'), {
-            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')
-        }),
-        (_('Мета'), {
-            'fields': ('sku', 'barcode'),
-            'classes': ('collapse',)
+            'fields': ('main_image', 'main_image_file')
         }),
         (_('Внешние данные'), {
             'fields': ('external_id', 'external_url', 'external_data'),
             'classes': ('collapse',)
         }),
-        (_('Синхронизация'), {
-            'fields': ('last_synced_at',),
-            'classes': ('collapse',)
-        }),
     )
     
-    inlines = [ProductAuthorInline, ProductGenreInline, ProductTranslationInline, ProductImageInline, ProductAttributeInline, BookVariantInline]
+    inlines = [ProductAuthorInline, ProductGenreInline, BookProductTranslationInline, BookProductImageInline, BookVariantInline]
     
     def authors_list(self, obj):
         """Список авторов через запятую."""
@@ -225,8 +181,8 @@ class ProductBooksAdmin(admin.ModelAdmin):
     authors_list.short_description = _('Авторы')
     
     def get_queryset(self, request):
-        """Фильтруем только книги."""
-        return super().get_queryset(request).filter(product_type='books')
+        """Книги — теперь из собственной таблицы."""
+        return super().get_queryset(request)
     
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """Фильтруем категории только для книг."""
@@ -290,8 +246,7 @@ class ProductBooksAdmin(admin.ModelAdmin):
     run_find_merge_duplicates.short_description = _("Поиск и объединение дубликатов")
 
     def save_model(self, request, obj, form, change):
-        """Автоматически устанавливаем product_type='books'."""
-        obj.product_type = 'books'
+        """Сохраняем книгу."""
         super().save_model(request, obj, form, change)
 
 
@@ -346,7 +301,7 @@ class AuthorAdmin(admin.ModelAdmin):
     books_count.short_description = _('Количество книг')
 
 
-# ProductAuthor скрыт из меню - управляется через inline в ProductBooksAdmin
+# ProductAuthor скрыт из меню - управляется через inline в BookProductAdmin
 # Но регистрируем для возможности прямого доступа при необходимости
 @admin.register(ProductAuthor)
 class ProductAuthorAdmin(admin.ModelAdmin):

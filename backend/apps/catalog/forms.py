@@ -130,3 +130,13 @@ class CategoryForm(forms.ModelForm):
         if not category_type:
             raise ValidationError(_("Необходимо выбрать тип категории! Если нужного типа нет, создайте его в разделе 'Типы категорий'."))
         return category_type
+
+    def clean(self):
+        cleaned_data = super().clean()
+        parent = cleaned_data.get("parent")
+        category_type = cleaned_data.get("category_type")
+        if parent and category_type and parent.category_type_id != category_type.id:
+            raise ValidationError(_("Родитель должен быть того же типа категории."))
+        if parent and parent.parent_id:
+            raise ValidationError(_("Родитель должен быть корневой категорией."))
+        return cleaned_data
