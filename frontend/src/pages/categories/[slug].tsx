@@ -59,6 +59,12 @@ interface Product {
   specifications?: any
   warranty?: string
   power_consumption?: string
+  meta_title?: string | null
+  meta_description?: string | null
+  meta_keywords?: string | null
+  og_title?: string | null
+  og_description?: string | null
+  og_image_url?: string | null
   translations?: ProductTranslation[]
 }
 
@@ -214,14 +220,14 @@ const filterBrandsByProducts = (
 const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): string => {
   const slug = Array.isArray(slugRaw) ? slugRaw[0] : slugRaw || ''
   const norm = slug.toLowerCase().replace(/_/g, '-')
-  
+
   // Известные специальные типы
   if (norm.startsWith('shoes') || norm.endsWith('shoes') || norm.includes('-shoes')) return 'shoes'
   if (norm.startsWith('clothing')) return 'clothing'
   if (norm.startsWith('electronics')) return 'electronics'
   if (norm.startsWith('furniture')) return 'furniture'
   if (norm.startsWith('jewelry')) return 'jewelry'
-  
+
   // Для всех остальных возвращаем нормализованный слаг как тип
   return norm || 'medicines'
 }
@@ -279,7 +285,7 @@ const formatPrice = (value: string | number | null | undefined): string | null =
   if (value === null || typeof value === 'undefined') return null
   const num = parseNumber(value)
   if (num === null) return String(value)
-  
+
   // Убираем лишние нули после запятой
   const str = num.toString()
   if (str.includes('.')) {
@@ -411,25 +417,25 @@ const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => 
   return sections.map(({ key, title, titleKey }) => {
     const genderKeywords = clothingGenderKeywords[key] || []
     const subitemsStructure = GENDER_SUBITEMS[key] || []
-    
+
     const genderCategories = categories.filter((category) => {
-        // Check explicit gender field if available
-        if (category.gender) {
-            return category.gender === key
-        }
-        // Fallback to keyword matching in slug/name
-        return genderKeywords.some((keyword) => category.slug.includes(keyword) || category.name.toLowerCase().includes(keyword))
+      // Check explicit gender field if available
+      if (category.gender) {
+        return category.gender === key
+      }
+      // Fallback to keyword matching in slug/name
+      return genderKeywords.some((keyword) => category.slug.includes(keyword) || category.name.toLowerCase().includes(keyword))
     })
 
     const subcategories: SidebarTreeItem[] = []
     const usedCategoryIds = new Set<number>()
-    
+
     // Добавляем подкатегории для данного гендера
     subitemsStructure.forEach((itemStruct, index) => {
-      const match = genderCategories.find(cat => 
+      const match = genderCategories.find(cat =>
         itemStruct.keywords.some(kw => cat.slug.toLowerCase().includes(kw) || cat.name.toLowerCase().includes(kw))
       )
-      
+
       if (match && !usedCategoryIds.has(match.id)) {
         usedCategoryIds.add(match.id)
         subcategories.push({
@@ -455,9 +461,9 @@ const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => 
 
     // Добавляем оставшиеся категории, которых нет в структуре
     genderCategories.forEach(cat => {
-        if (!usedCategoryIds.has(cat.id)) {
-            subcategories.push(createTreeItem(cat))
-        }
+      if (!usedCategoryIds.has(cat.id)) {
+        subcategories.push(createTreeItem(cat))
+      }
     })
 
     // Создаем главный раздел с вложенными подкатегориями
@@ -564,13 +570,13 @@ const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] =>
 
     const subcategories: SidebarTreeItem[] = []
     const usedCategoryIds = new Set<number>()
-    
+
     // Добавляем подкатегории для данной группы
     group.subitems.forEach((itemStruct, index) => {
-      const match = groupCategories.find(cat => 
+      const match = groupCategories.find(cat =>
         itemStruct.keywords.some(kw => cat.slug.toLowerCase().includes(kw) || cat.name.toLowerCase().includes(kw))
       )
-      
+
       if (match && !usedCategoryIds.has(match.id)) {
         usedCategoryIds.add(match.id)
         subcategories.push({
@@ -597,16 +603,16 @@ const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] =>
 
     // Добавляем оставшиеся категории группы, которых нет в структуре
     groupCategories.forEach(cat => {
-        if (!usedCategoryIds.has(cat.id)) {
-            subcategories.push({
-              id: `med-${cat.id}`,
-              name: cat.name,
-              slug: cat.slug,
-              dataId: cat.id,
-              count: cat.product_count,
-              type: 'category'
-            })
-        }
+      if (!usedCategoryIds.has(cat.id)) {
+        subcategories.push({
+          id: `med-${cat.id}`,
+          name: cat.name,
+          slug: cat.slug,
+          dataId: cat.id,
+          count: cat.product_count,
+          type: 'category'
+        })
+      }
     })
 
     // Создаем главный раздел с вложенными подкатегориями
@@ -725,7 +731,7 @@ const mapJewelryTypesFromSlugs = (slugs: string[]): string[] => {
 // Фронтовая фильтрация по дополнительным фильтрам (без нагрузки на бэкенд)
 const filterProductsByExtraFilters = (products: Product[], filters: FilterState, categoryType: CategoryTypeKey) => {
   console.log(`filterProductsByExtraFilters: ${products.length} products, categoryType: ${categoryType}`)
-  
+
   const norm = (v: any) => normalizeSlug(v)
   const getCatSlug = (p: any) => norm(p?.category?.slug || (p as any).category_slug || '')
   const tokenize = (value: any) =>
@@ -931,7 +937,7 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
   }
 
   // Для книг не применяем фильтрацию - показываем все книги
-  
+
   console.log(`filterProductsByExtraFilters result: ${result.length} products`)
 
   return result
@@ -975,7 +981,7 @@ export default function CategoryPage({
 
     const scrollKey = `scroll_${router.asPath}`
     let shouldRestoreScroll = false
-    
+
     // Сохраняем позицию скролла при уходе со страницы
     const handleRouteChangeStart = (url: string) => {
       if (url !== router.asPath) {
@@ -1055,7 +1061,7 @@ export default function CategoryPage({
   const localizedCategoryName = useMemo(() => {
     const routeSlug = Array.isArray(slug) ? slug[0] : slug
     const normalizedSlug = routeSlug ? routeSlug.toLowerCase().replace(/_/g, '-') : null
-    
+
     // Используем функцию локализации, которая проверяет JSON, потом API, потом fallback
     if (currentCategory) {
       return getLocalizedCategoryName(
@@ -1066,7 +1072,7 @@ export default function CategoryPage({
         router.locale
       )
     }
-    
+
     // Fallback на старый подход, если категория не найдена
     if (normalizedSlug) {
       const slugKey = `category_${normalizedSlug}_name`
@@ -1075,7 +1081,7 @@ export default function CategoryPage({
         return translatedBySlug
       }
     }
-    
+
     // Fallback на статический маппинг по categoryType
     const categoryNameKeys: Record<string, string> = {
       medicines: 'category_medicines',
@@ -1151,7 +1157,7 @@ export default function CategoryPage({
   // Используем реальный тип из API если есть, иначе fallback на маппинг
   const resolvedBrandType = useMemo(() => categoryTypeSlug || resolveBrandProductType(categoryType), [categoryTypeSlug, categoryType])
   const filtersInitialized = useRef<string>('')
-  
+
   const updatePageQuery = useCallback((page: number, options: { replace?: boolean } = {}) => {
     if (!router.isReady) return
     const nextQuery: Record<string, string | string[] | undefined> = { ...router.query }
@@ -1191,7 +1197,7 @@ export default function CategoryPage({
       console.error('Не удалось сбросить фильтры в URL:', error)
     })
   }, [defaultFilters, router])
-  
+
   useEffect(() => {
     if (!router.isReady) return
     const nextPage = normalizePageParam(router.query.page)
@@ -1201,14 +1207,14 @@ export default function CategoryPage({
   // Инициализация фильтров из query параметров
   useEffect(() => {
     if (!router.isReady) return
-    
+
     const { brand_id } = router.query
     const brandIdStr = brand_id ? (Array.isArray(brand_id) ? brand_id[0] : String(brand_id)) : ''
     const initKey = `${router.asPath}-${brandIdStr}`
-    
+
     // Если уже инициализировали для этого URL, пропускаем
     if (filtersInitialized.current === initKey) return
-    
+
     if (brand_id) {
       const brandId = Array.isArray(brand_id) ? parseInt(brand_id[0]) : parseInt(brand_id as string)
       if (!isNaN(brandId)) {
@@ -1322,21 +1328,21 @@ export default function CategoryPage({
             }
           }
         }
-        
+
         // Если нет brand_id в URL, очищаем только несуществующие бренды
         setFilters((prev) => {
           const allowedIds = new Set(normalizedList.map((brand: any) => brand.id))
           const allowedSlugs = new Set(normalizedList.map((brand: any) => brand.slug))
           const nextBrandIds = prev.brands.filter((id) => allowedIds.has(id))
           const nextBrandSlugs = prev.brandSlugs.filter((slug) => !slug || allowedSlugs.has(slug))
-          
+
           // Обновляем только если действительно изменилось
-          if (nextBrandIds.length === prev.brands.length && 
-              nextBrandSlugs.length === prev.brandSlugs.length &&
-              nextBrandIds.every((id, idx) => prev.brands[idx] === id)) {
+          if (nextBrandIds.length === prev.brands.length &&
+            nextBrandSlugs.length === prev.brandSlugs.length &&
+            nextBrandIds.every((id, idx) => prev.brands[idx] === id)) {
             return prev
           }
-          
+
           return {
             ...prev,
             brands: nextBrandIds,
@@ -1349,7 +1355,7 @@ export default function CategoryPage({
     }
 
     loadBrands()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedBrandType, filters.categories, filters.categorySlugs, filters.inStock, router.query.brand_id, router.locale])
 
   // Загрузка товаров с фильтрами
@@ -1358,24 +1364,24 @@ export default function CategoryPage({
 
     const loadProducts = async () => {
       if (!router.isReady) return
-      
+
       // Если brand_id есть в URL, используем его напрямую, даже если фильтры еще не инициализированы
       const { brand_id } = router.query
       let brandIdToUse: number | null = null
-      
+
       if (brand_id) {
         const brandIdFromUrl = Array.isArray(brand_id) ? parseInt(brand_id[0]) : parseInt(brand_id as string)
         if (!isNaN(brandIdFromUrl)) {
           brandIdToUse = brandIdFromUrl
         }
       }
-      
+
       // Если brand_id в URL, но его нет в фильтрах, используем brand_id из URL
       // Это нужно для случая, когда фильтры еще не инициализированы
-      const effectiveBrandIds = brandIdToUse && !filters.brands.includes(brandIdToUse) 
-        ? [brandIdToUse] 
+      const effectiveBrandIds = brandIdToUse && !filters.brands.includes(brandIdToUse)
+        ? [brandIdToUse]
         : filters.brands
-      
+
       setLoading(true)
       try {
         const params: any = {
@@ -1490,7 +1496,7 @@ export default function CategoryPage({
         }
 
         const api = getApiForCategory(categoryType)
-        
+
         console.log('Loading products with params:', params)
         const response = await api.getProducts(params)
         const data = response.data
@@ -1758,7 +1764,7 @@ export default function CategoryPage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
         />
       </Head>
-      
+
       {/* Hero Section */}
       <div className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -1766,7 +1772,7 @@ export default function CategoryPage({
             <div>
               <h1 className="text-4xl md:text-5xl font-bold mb-4">{localizedCategoryName}</h1>
               {(() => {
-                const localizedDesc = currentCategory 
+                const localizedDesc = currentCategory
                   ? getLocalizedCategoryDescription(currentCategory.slug, currentCategory.description, t, currentCategory.translations, router.locale)
                   : categoryDescription
                 return localizedDesc ? (
@@ -1843,30 +1849,28 @@ export default function CategoryPage({
               <div className="flex items-center gap-2 ml-auto">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-2 rounded-lg transition-colors ${
-                    viewMode === 'grid'
+                  className={`p-2 rounded-lg transition-colors ${viewMode === 'grid'
                       ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
                       : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
-                  }`}
+                    }`}
                   aria-label="Grid view"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                   </svg>
                 </button>
-                  <button
+                <button
                   onClick={() => setViewMode('list')}
-                  className={`p-2 rounded-lg transition-colors ${
-                    viewMode === 'list'
+                  className={`p-2 rounded-lg transition-colors ${viewMode === 'list'
                       ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
                       : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
-                  }`}
+                    }`}
                   aria-label="List view"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                   </svg>
-                  </button>
+                </button>
               </div>
             </div>
 
@@ -1895,21 +1899,21 @@ export default function CategoryPage({
                     const displayPrice = parsedVariantPrice ?? parsedBasePrice ?? product.price
                     const displayCurrency = product.active_variant_currency || parsedVariantCurrency || parsedBaseCurrency || product.currency
                     const displayOldCurrency = parsedOldCurrency || displayCurrency
-                    
+
                     // Форматируем старую цену, убирая лишние нули
                     let displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? product.old_price : null
                     if (displayOldPrice && typeof displayOldPrice === 'string') {
                       // Убираем лишние нули после запятой
                       displayOldPrice = displayOldPrice.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '')
                     }
-                    
+
                     // Форматируем цены для отображения
                     const displayPriceFormatted = displayPrice ? formatPrice(displayPrice) : null
                     const displayOldPriceFormatted = displayOldPrice ? formatPrice(displayOldPrice) : null
                     const effectiveProductType = (product.product_type || categoryType).replace(/_/g, '-')
                     const productHref = `/product/${effectiveProductType}/${product.slug}`
                     const isBaseProduct = isBaseProductType(effectiveProductType)
-                    
+
                     return (
                       <ProductCard
                         key={product.id}
@@ -1985,9 +1989,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
   try {
     const routeSlug = Array.isArray(slug) ? slug[0] : (slug as string | undefined)
-    
+
     const { getInternalApiUrl } = await import('../../lib/urls')
-    
+
     // Получаем категорию из API чтобы узнать её реальный тип
     let categoryTypeFromApi: string | null = null
     let catData: any = null
@@ -2004,7 +2008,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         // ignore
       }
     }
-    
+
     // Используем тип из API, если есть, иначе угадываем из слага
     let categoryType: CategoryTypeKey = categoryTypeFromApi as CategoryTypeKey || resolveCategoryTypeFromSlug(routeSlug)
 
@@ -2060,7 +2064,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     const brandSlug = Array.isArray(brand) ? brand[0] : brand
     const brandId = Array.isArray(brand_id) ? brand_id[0] : brand_id
-    
+
     // Используем реальный тип из API для запросов, иначе fallback
     const brandProductType = categoryTypeFromApi || resolveBrandProductType(categoryType)
 
@@ -2080,7 +2084,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         }
         // Всегда добавляем product_type для более точной фильтрации
         brandParams.product_type = brandProductType
-        
+
         const brandRes = await axios.get(getInternalApiUrl('catalog/brands'), { params: brandParams })
         brands = ensureOtherBrand(brandRes.data.results || [])
       } catch {
@@ -2227,8 +2231,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
           : []
         if (candidates.length === 0) {
           candidates = allList.filter((c: any) => {
-          const cType = normalizeSlug(c.category_type_slug || c.category_type)
-          return cType === normalizedType && (c.parent === null || typeof c.parent === 'undefined')
+            const cType = normalizeSlug(c.category_type_slug || c.category_type)
+            return cType === normalizedType && (c.parent === null || typeof c.parent === 'undefined')
           })
         }
         if (candidates.length === 0 && normalizedType === 'shoes') {
@@ -2332,7 +2336,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
   } catch (error) {
     console.error('Error fetching data:', error)
-    
+
     return {
       props: {
         products: [],

@@ -73,10 +73,29 @@ def build_book_seo_defaults(product) -> Dict[str, str]:
 
 
 def resolve_book_seo_value(product, field_name: str) -> str | None:
+    # 1. Try exact field name (e.g. meta_title on domain product)
+    val = getattr(product, field_name, None)
+    if val:
+        return val
+
+    # 2. Fallback for Product model fields (seo_title, etc.)
+    if field_name == "meta_title":
+        val = getattr(product, "seo_title", None)
+    elif field_name == "meta_description":
+        val = getattr(product, "seo_description", None)
+    elif field_name == "meta_keywords":
+        kw = getattr(product, "keywords", None)
+        if isinstance(kw, list):
+            val = ", ".join([str(x) for x in kw if x])
+        else:
+            val = kw
+            
+    if val:
+        return val
+
+    # 3. Auto-generation for Books only
     if not product or getattr(product, "product_type", None) != "books":
-        return getattr(product, field_name, None)
-    current_value = getattr(product, field_name, None)
-    if current_value:
-        return current_value
+        return None
+
     value = build_book_seo_defaults(product).get(field_name)
     return value or None

@@ -30,23 +30,29 @@ interface ProductCardProps {
   publisher?: string
   pages?: number
   language?: string
-  authors?: Array<{id: number, author: {full_name: string, full_name_en?: string}}>
+  authors?: Array<{ id: number, author: { full_name: string, full_name_en?: string } }>
   reviewsCount?: number
   isBestseller?: boolean
   isNew?: boolean
   isFeatured?: boolean
+  meta_title?: string | null
+  meta_description?: string | null
+  meta_keywords?: string | null
+  og_title?: string | null
+  og_description?: string | null
+  og_image_url?: string | null
 }
 
-export default function ProductCard({ 
-  id, 
+export default function ProductCard({
+  id,
   baseProductId,
-  name, 
-  slug, 
-  price, 
-  currency, 
-  oldPrice, 
-  badge, 
-  rating, 
+  name,
+  slug,
+  price,
+  currency,
+  oldPrice,
+  badge,
+  rating,
   imageUrl,
   videoUrl,
   viewMode = 'grid',
@@ -74,7 +80,7 @@ export default function ProductCard({
     translations,
     locale || i18n.language
   )
-  
+
   const resolvedImage =
     imageUrl && !isVideoUrl(imageUrl) ? resolveMediaUrl(imageUrl) : null
   const resolvedVideoUrl = videoUrl && isVideoUrl(videoUrl)
@@ -140,7 +146,7 @@ export default function ProductCard({
         </div>
         <div className="flex-1 flex flex-col justify-between">
           <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2 hover-text-warm transition-colors">{localizedName}</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2 hover-text-warm transition-colors">{localizedName}</h3>
             {localizedDescription && (
               <p className="text-sm text-gray-600 line-clamp-2 mb-3">{localizedDescription}</p>
             )}
@@ -176,19 +182,19 @@ export default function ProductCard({
               {t('product_details', 'Подробнее')}
             </Link>
             <div className="flex items-center gap-2 ml-auto">
-              <FavoriteButton 
+              <FavoriteButton
                 productId={id}
                 productType={productType}
                 iconOnly={true}
                 className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
               />
-            <AddToCartButton 
-              productId={isBaseProduct ? (baseProductId ?? id) : undefined} 
-              productType={productType}
-              productSlug={slug}
+              <AddToCartButton
+                productId={isBaseProduct ? (baseProductId ?? id) : undefined}
+                productType={productType}
+                productSlug={slug}
                 className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
                 label=""
-            />
+              />
             </div>
           </div>
         </div>
@@ -259,7 +265,7 @@ export default function ProductCard({
       <h3 className="mt-3 line-clamp-2 text-base font-semibold text-gray-900 hover-text-warm transition-colors">
         {localizedName}
       </h3>
-      
+
       {/* Информация специфичная для книг */}
       {productType === 'books' && (
         <div className="mt-2 space-y-1">
@@ -316,14 +322,14 @@ export default function ProductCard({
           {t('product_details', 'Подробнее')}
         </Link>
         <div className="flex gap-2 ml-auto">
-          <FavoriteButton 
+          <FavoriteButton
             productId={id}
             productType={productType}
             iconOnly={true}
             className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
           />
-          <AddToCartButton 
-            productId={isBaseProduct ? (baseProductId ?? id) : undefined} 
+          <AddToCartButton
+            productId={isBaseProduct ? (baseProductId ?? id) : undefined}
             productType={productType}
             productSlug={slug}
             className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"

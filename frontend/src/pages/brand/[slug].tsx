@@ -15,8 +15,17 @@ interface Product {
   name: string
   slug: string
   price: string | null
+  price_formatted?: string
+  old_price?: string | number | null
+  old_price_formatted?: string
   currency: string
   main_image_url?: string | null
+  meta_title?: string | null
+  meta_description?: string | null
+  meta_keywords?: string | null
+  og_title?: string | null
+  og_description?: string | null
+  og_image_url?: string | null
   translations?: ProductTranslation[]
 }
 
@@ -92,7 +101,7 @@ export default function BrandPage({
 
     const scrollKey = `scroll_${router.asPath}`
     let shouldRestoreScroll = false
-    
+
     // Сохраняем позицию скролла при уходе со страницы
     const handleRouteChangeStart = (url: string) => {
       if (url !== router.asPath) {
@@ -199,10 +208,10 @@ export default function BrandPage({
             sortBy={sortBy}
             inStockOnly={inStockOnly}
             isOpen={true}
-            onToggle={() => {}}
+            onToggle={() => { }}
           />
         </div>
-        
+
         {/* Mobile Sidebar */}
         <div className="md:hidden">
           <Sidebar
@@ -220,7 +229,7 @@ export default function BrandPage({
             onToggle={() => setSidebarOpen(!sidebarOpen)}
           />
         </div>
-        
+
         {/* Main Content */}
         <main className="flex-1 p-4 sm:p-6">
           {/* Mobile sidebar toggle */}
@@ -248,7 +257,7 @@ export default function BrandPage({
             <h1 className="text-3xl font-bold text-gray-900 mb-2">{brandData.name}</h1>
             <p className="text-gray-600">{brandData.description}</p>
           </div>
-          
+
           <div className="mt-2 w-full">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-7">
               {brandData.products.map((p) => {
@@ -414,14 +423,14 @@ export async function getServerSideProps(ctx: any) {
       },
     }
   } catch (e) {
-    return { 
-      props: { 
-        ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), 
+    return {
+      props: {
+        ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
         brandData: null,
         page: 1,
         categories: [],
         brands: []
-      } 
+      }
     }
   }
 }

@@ -1382,6 +1382,12 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = ClothingProductTranslationSerializer(many=True, read_only=True)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = ClothingProduct
@@ -1394,7 +1400,9 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -1656,6 +1664,24 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             return _resolve_media_url(first_img.image_url, request)
         return None
 
+    def get_meta_title(self, obj):
+        return resolve_book_seo_value(obj, "meta_title")
+
+    def get_meta_description(self, obj):
+        return resolve_book_seo_value(obj, "meta_description")
+
+    def get_meta_keywords(self, obj):
+        return resolve_book_seo_value(obj, "meta_keywords")
+
+    def get_og_title(self, obj):
+        return resolve_book_seo_value(obj, "og_title")
+
+    def get_og_description(self, obj):
+        return resolve_book_seo_value(obj, "og_description")
+
+    def get_og_image_url(self, obj):
+        return resolve_book_seo_value(obj, "og_image_url")
+
 
 class ShoeCategorySerializer(serializers.ModelSerializer):
     """Сериализатор для категорий обуви."""
@@ -1716,7 +1742,14 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     active_variant_stock_quantity = serializers.SerializerMethodField()
     active_variant_main_image_url = serializers.SerializerMethodField()
     active_variant_old_price_formatted = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = ShoeProductTranslationSerializer(many=True, read_only=True)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = ShoeProduct
@@ -1729,7 +1762,9 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -1976,6 +2011,24 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             return _resolve_media_url(first_img.image_url, request)
         return None
 
+    def get_meta_title(self, obj):
+        return resolve_book_seo_value(obj, "meta_title")
+
+    def get_meta_description(self, obj):
+        return resolve_book_seo_value(obj, "meta_description")
+
+    def get_meta_keywords(self, obj):
+        return resolve_book_seo_value(obj, "meta_keywords")
+
+    def get_og_title(self, obj):
+        return resolve_book_seo_value(obj, "og_title")
+
+    def get_og_description(self, obj):
+        return resolve_book_seo_value(obj, "og_description")
+
+    def get_og_image_url(self, obj):
+        return resolve_book_seo_value(obj, "og_image_url")
+
 
 class ShoeProductImageSerializer(serializers.ModelSerializer):
     """Сериализатор изображений обуви."""
@@ -2120,7 +2173,14 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     translations = ElectronicsProductTranslationSerializer(many=True, read_only=True)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = ElectronicsProduct
@@ -2130,7 +2190,9 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
             'currency', 'model', 'specifications', 'warranty', 'power_consumption',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
             'images',
-            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -2198,6 +2260,24 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
         if not gallery:
             return []
         return ElectronicsProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+
+    def get_meta_title(self, obj):
+        return resolve_book_seo_value(obj, "meta_title")
+
+    def get_meta_description(self, obj):
+        return resolve_book_seo_value(obj, "meta_description")
+
+    def get_meta_keywords(self, obj):
+        return resolve_book_seo_value(obj, "meta_keywords")
+
+    def get_og_title(self, obj):
+        return resolve_book_seo_value(obj, "og_title")
+
+    def get_og_description(self, obj):
+        return resolve_book_seo_value(obj, "og_description")
+
+    def get_og_image_url(self, obj):
+        return resolve_book_seo_value(obj, "og_image_url")
 
 
 # ============================================================================
@@ -2338,6 +2418,12 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = FurnitureProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
     
     class Meta:
         model = FurnitureProduct
@@ -2351,7 +2437,9 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
-            'base_product_id'
+            'base_product_id',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -2643,6 +2731,24 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
             return _resolve_media_url(first_img.image_url, request)
         return None
 
+    def get_meta_title(self, obj):
+        return resolve_book_seo_value(obj, "meta_title")
+
+    def get_meta_description(self, obj):
+        return resolve_book_seo_value(obj, "meta_description")
+
+    def get_meta_keywords(self, obj):
+        return resolve_book_seo_value(obj, "meta_keywords")
+
+    def get_og_title(self, obj):
+        return resolve_book_seo_value(obj, "og_title")
+
+    def get_og_description(self, obj):
+        return resolve_book_seo_value(obj, "og_description")
+
+    def get_og_image_url(self, obj):
+        return resolve_book_seo_value(obj, "og_image_url")
+
 
 # ============================================================================
 # СЕРИАЛИЗАТОРЫ ДЛЯ УКРАШЕНИЙ
@@ -2807,7 +2913,14 @@ class JewelryProductSerializer(serializers.ModelSerializer):
     active_variant_stock_quantity = serializers.SerializerMethodField()
     active_variant_main_image_url = serializers.SerializerMethodField()
     active_variant_old_price_formatted = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = JewelryProductTranslationSerializer(many=True, read_only=True)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = JewelryProduct
@@ -2820,7 +2933,9 @@ class JewelryProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -3110,6 +3225,24 @@ class JewelryProductSerializer(serializers.ModelSerializer):
             )
             return f"{price_val} {curr}" if price_val is not None else None
         return None
+
+    def get_meta_title(self, obj):
+        return resolve_book_seo_value(obj, "meta_title")
+
+    def get_meta_description(self, obj):
+        return resolve_book_seo_value(obj, "meta_description")
+
+    def get_meta_keywords(self, obj):
+        return resolve_book_seo_value(obj, "meta_keywords")
+
+    def get_og_title(self, obj):
+        return resolve_book_seo_value(obj, "og_title")
+
+    def get_og_description(self, obj):
+        return resolve_book_seo_value(obj, "og_description")
+
+    def get_og_image_url(self, obj):
+        return resolve_book_seo_value(obj, "og_image_url")
 
 
 # ============================================================================
@@ -3750,6 +3883,24 @@ class PerfumeryProductSerializer(serializers.ModelSerializer):
             return f"{formatted} {from_currency}"
         return None
 
+    def get_meta_title(self, obj):
+        return resolve_book_seo_value(obj, "meta_title")
+
+    def get_meta_description(self, obj):
+        return resolve_book_seo_value(obj, "meta_description")
+
+    def get_meta_keywords(self, obj):
+        return resolve_book_seo_value(obj, "meta_keywords")
+
+    def get_og_title(self, obj):
+        return resolve_book_seo_value(obj, "og_title")
+
+    def get_og_description(self, obj):
+        return resolve_book_seo_value(obj, "og_description")
+
+    def get_og_image_url(self, obj):
+        return resolve_book_seo_value(obj, "og_image_url")
+
 
 # ─────────────────────────────────────────────────────────────
 #                 ПРОСТЫЕ ДОМЕНЫ (Волна 2)
@@ -3759,6 +3910,18 @@ class PerfumeryProductSerializer(serializers.ModelSerializer):
 
 class _SimpleDomainMixin:
     """Общие helper-методы для доменных сериализаторов без вариантов."""
+
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
 
     def _get_preferred_currency(self, obj):
         request = self.context.get('request')
@@ -3822,6 +3985,24 @@ class _SimpleDomainMixin:
         image_serializer = self._image_serializer_class
         return image_serializer(imgs, many=True, context=from_context).data
 
+    def get_meta_title(self, obj):
+        return resolve_book_seo_value(obj, "meta_title")
+
+    def get_meta_description(self, obj):
+        return resolve_book_seo_value(obj, "meta_description")
+
+    def get_meta_keywords(self, obj):
+        return resolve_book_seo_value(obj, "meta_keywords")
+
+    def get_og_title(self, obj):
+        return resolve_book_seo_value(obj, "og_title")
+
+    def get_og_description(self, obj):
+        return resolve_book_seo_value(obj, "og_description")
+
+    def get_og_image_url(self, obj):
+        return resolve_book_seo_value(obj, "og_image_url")
+
 
 # ─── МЕДИКАМЕНТЫ ───
 
@@ -3857,6 +4038,12 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     images = serializers.SerializerMethodField()
     translations = MedicineProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = MedicineProduct
@@ -3867,6 +4054,8 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -3905,6 +4094,12 @@ class SupplementProductSerializer(_SimpleDomainMixin, serializers.ModelSerialize
     images = serializers.SerializerMethodField()
     translations = SupplementProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = SupplementProduct
@@ -3915,6 +4110,8 @@ class SupplementProductSerializer(_SimpleDomainMixin, serializers.ModelSerialize
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -3953,6 +4150,12 @@ class MedicalEquipmentProductSerializer(_SimpleDomainMixin, serializers.ModelSer
     images = serializers.SerializerMethodField()
     translations = MedicalEquipmentProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = MedicalEquipmentProduct
@@ -3963,6 +4166,8 @@ class MedicalEquipmentProductSerializer(_SimpleDomainMixin, serializers.ModelSer
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -4001,6 +4206,12 @@ class TablewareProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
     images = serializers.SerializerMethodField()
     translations = TablewareProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = TablewareProduct
@@ -4011,6 +4222,8 @@ class TablewareProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -4049,6 +4262,12 @@ class AccessoryProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
     images = serializers.SerializerMethodField()
     translations = AccessoryProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = AccessoryProduct
@@ -4059,6 +4278,8 @@ class AccessoryProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -4097,6 +4318,12 @@ class IncenseProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
     translations = IncenseProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = IncenseProduct
@@ -4107,6 +4334,8 @@ class IncenseProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -4169,6 +4398,14 @@ class SportsVariantSerializer(serializers.ModelSerializer):
 class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     """Списковый сериализатор для спорттоваров."""
     variants = SportsVariantSerializer(many=True, read_only=True)
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = SportsProduct
@@ -4177,7 +4414,9 @@ class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
             'is_available', 'is_new', 'is_featured', 'main_image', 
             'sport_type', 'equipment_type',
             'price_formatted', 'old_price_formatted',
-            'variants'
+            'variants',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
 
 
@@ -4203,7 +4442,9 @@ class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeriali
             'translations', 'images', 'variants',
             'sport_type', 'equipment_type', 'material', 
             'price_formatted', 'old_price_formatted', 
-            'similar_products'
+            'similar_products',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
 
     def get_similar_products(self, obj):
@@ -4258,6 +4499,14 @@ class AutoPartVariantSerializer(serializers.ModelSerializer):
 class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     """Списковый сериализатор для автозапчастей."""
     variants = AutoPartVariantSerializer(many=True, read_only=True)
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = AutoPartProduct
@@ -4266,7 +4515,9 @@ class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'is_available', 'is_new', 'is_featured', 'main_image', 
             'part_number', 'car_brand', 'car_model',
             'price_formatted', 'old_price_formatted',
-            'variants'
+            'variants',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
 
 
@@ -4292,7 +4543,9 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
             'translations', 'images', 'variants',
             'part_number', 'car_brand', 'car_model', 'compatibility_years',
             'price_formatted', 'old_price_formatted', 
-            'similar_products'
+            'similar_products',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url',
         ]
 
     def get_similar_products(self, obj):

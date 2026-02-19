@@ -145,6 +145,7 @@ interface Product {
   // SEO (с бэкенда — для книг и др.)
   meta_title?: string | null
   meta_description?: string | null
+  meta_keywords?: string | null
   og_title?: string | null
   og_description?: string | null
   og_image_url?: string | null
@@ -575,6 +576,7 @@ export default function ProductPage({
       <Head>
         <title>{metaTitle}</title>
         <meta name="description" content={metaDescription} />
+        {product.meta_keywords && <meta name="keywords" content={product.meta_keywords} />}
         <link rel="canonical" href={canonicalUrl} />
         <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
         <meta property="og:title" content={metaTitle} />
@@ -871,8 +873,8 @@ export default function ProductPage({
                             title={label}
                             aria-label={label}
                             className={`h-16 w-16 overflow-hidden rounded-md border bg-white transition ${isActive
-                                ? 'border-violet-600 ring-2 ring-violet-200'
-                                : 'border-gray-300 hover:border-violet-400'
+                              ? 'border-violet-600 ring-2 ring-violet-200'
+                              : 'border-gray-300 hover:border-violet-400'
                               }`}
                           >
                             <img
@@ -914,10 +916,10 @@ export default function ProductPage({
                               setSelectedSize(s.sizeValue)
                             }}
                             className={`min-w-[56px] rounded-md px-3 py-2 text-sm border transition ${isAvailable
-                                ? isActive
-                                  ? 'border-violet-600 bg-violet-50 text-violet-700'
-                                  : 'border-gray-300 bg-white text-gray-800 hover:border-violet-400'
-                                : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                              ? isActive
+                                ? 'border-violet-600 bg-violet-50 text-violet-700'
+                                : 'border-gray-300 bg-white text-gray-800 hover:border-violet-400'
+                              : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
                               }`}
                             disabled={!isAvailable}
                           >
