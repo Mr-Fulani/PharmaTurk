@@ -13,7 +13,7 @@ from .parsers.registry import get_parser
 from .base.scraper import ScrapedProduct
 from apps.catalog.services import CatalogNormalizer
 from apps.catalog.seo_defaults import build_book_seo_defaults
-from apps.catalog.models import Product, Category, Brand, Author, ProductAuthor
+from apps.catalog.models import Product, BookProduct, Category, Brand, Author, ProductAuthor
 from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
 from apps.catalog.utils.storage_paths import detect_media_type
 import datetime
@@ -548,6 +548,10 @@ class ScraperIntegrationService:
                 if existing_product.product_type != "books":
                     existing_product.product_type = "books"
                     updated = True
+            
+            if existing_product.product_type == "books" and existing_product.brand:
+                existing_product.brand = None
+                updated = True
 
         # Обновляем external_data
         if not isinstance(existing_product.external_data, dict):
@@ -586,13 +590,18 @@ class ScraperIntegrationService:
                     existing_product, scraped_product.images
                 )
 
-            # Обновляем авторов, если они есть в атрибутах
-            if scraped_product.attributes and "author" in scraped_product.attributes:
+            # Обновляем авторов, если они есть в атрибутах (авторы привязаны к BookProduct)
+            if (
+                scraped_product.attributes
+                and "author" in scraped_product.attributes
+                and existing_product.product_type == "books"
+            ):
                 try:
                     author_str = scraped_product.attributes["author"]
                     if author_str:
+                        book_product = self._get_book_product(existing_product)
                         # Очищаем текущих авторов
-                        existing_product.book_authors.all().delete()
+                        book_product.book_authors.all().delete()
 
                         author_names = [a.strip() for a in author_str.split(",") if a.strip()]
                         for idx, name in enumerate(author_names):
@@ -620,9 +629,9 @@ class ScraperIntegrationService:
                                 first_name=first_name, last_name=last_name, defaults={"bio": ""}
                             )
 
-                            # Связываем с товаром
+                            # Связываем с BookProduct
                             ProductAuthor.objects.create(
-                                product=existing_product, author=author, sort_order=idx
+                                product=book_product, author=author, sort_order=idx
                             )
                 except Exception as e:
                     self.logger.error(
@@ -676,55 +685,105 @@ class ScraperIntegrationService:
 
         return "updated", existing_product
 
+    def _get_book_product(self, product: Product) -> 'BookProduct':
+        """Находит или создаёт BookProduct для Product с product_type='books'."""
+        book = getattr(product, 'book_item', None)
+        if book:
+            return book
+        # Создаём BookProduct, привязанный к shadow Product
+        from django.utils.text import slugify
+        base_slug = product.slug or slugify(product.name)
+        slug = f"book-{base_slug}"
+        i = 2
+        while BookProduct.objects.filter(slug=slug).exists():
+            slug = f"book-{base_slug}-{i}"
+            i += 1
+        book = BookProduct(
+            base_product=product,
+            name=product.name,
+            slug=slug,
+            description=product.description or "",
+            category=product.category,
+            brand=product.brand,
+            price=product.price,
+            currency=product.currency or "RUB",
+            old_price=product.old_price,
+            external_id=product.external_id or "",
+            external_url=product.external_url or "",
+            external_data=product.external_data or {},
+            is_active=product.is_active,
+            is_available=product.is_available,
+            main_image=product.main_image or "",
+        )
+        book.save()
+        # Обновляем кеш, чтобы product.book_item возвращал созданный объект
+        product.book_item = book
+        return book
+
     def _update_product_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
-        """Обновляет атрибуты товара из словаря."""
+        """Обновляет атрибуты товара из словаря.
+
+        Книжные поля (isbn, pages, publisher, cover_type, language, publication_date)
+        записываются в BookProduct через product.book_item.
+        Общие поля (weight, SEO) записываются в Product.
+        """
         updated = False
+        book_updated = False
+        book_product = None
 
-        if "isbn" in attrs and attrs["isbn"]:
-            new_isbn = str(attrs["isbn"]).strip()
-            digits = re.sub(r"\D", "", new_isbn)
-            is_valid_length = len(digits) in [10, 13]
-            is_placeholder = "00000" in new_isbn or "..." in new_isbn
-            if is_valid_length and not is_placeholder and new_isbn != product.isbn:
-                product.isbn = new_isbn
-                updated = True
+        # --- Книжные поля → BookProduct ---
+        if product.product_type == "books":
+            book_fields_present = any(
+                k in attrs for k in ("isbn", "publisher", "pages", "cover_type", "language", "publication_year")
+            )
+            if book_fields_present:
+                book_product = self._get_book_product(product)
 
-        # Publisher
-        if "publisher" in attrs and attrs["publisher"] != product.publisher:
-            product.publisher = attrs["publisher"]
-            updated = True
+                if "isbn" in attrs and attrs["isbn"]:
+                    new_isbn = str(attrs["isbn"]).strip()
+                    digits = re.sub(r"\D", "", new_isbn)
+                    is_valid_length = len(digits) in [10, 13]
+                    is_placeholder = "00000" in new_isbn or "..." in new_isbn
+                    if is_valid_length and not is_placeholder and new_isbn != (book_product.isbn or ""):
+                        book_product.isbn = new_isbn
+                        book_updated = True
 
-        # Pages
-        if "pages" in attrs:
-            try:
-                pages_val = int(attrs["pages"])
-                if 0 < pages_val < 10000 and pages_val != product.pages:
-                    product.pages = pages_val
+                if "publisher" in attrs and attrs["publisher"] != (book_product.publisher or ""):
+                    book_product.publisher = attrs["publisher"]
+                    book_updated = True
+
+                if "pages" in attrs:
+                    try:
+                        pages_val = int(attrs["pages"])
+                        if 0 < pages_val < 10000 and pages_val != book_product.pages:
+                            book_product.pages = pages_val
+                            book_updated = True
+                    except (ValueError, TypeError):
+                        pass
+
+                if "cover_type" in attrs and attrs["cover_type"] != (book_product.cover_type or ""):
+                    book_product.cover_type = attrs["cover_type"]
+                    book_updated = True
+
+                if "language" in attrs and attrs["language"] != (book_product.language or ""):
+                    book_product.language = attrs["language"]
+                    book_updated = True
+
+                if "publication_year" in attrs and attrs["publication_year"]:
+                    try:
+                        year = int(attrs["publication_year"])
+                        new_date = datetime.date(year, 1, 1)
+                        if book_product.publication_date != new_date:
+                            book_product.publication_date = new_date
+                            book_updated = True
+                    except (ValueError, TypeError):
+                        pass
+
+                if book_updated:
+                    book_product.save()
                     updated = True
-            except (ValueError, TypeError):
-                pass
 
-        # Cover Type
-        if "cover_type" in attrs and attrs["cover_type"] != product.cover_type:
-            product.cover_type = attrs["cover_type"]
-            updated = True
-
-        # Language
-        if "language" in attrs and attrs["language"] != product.language:
-            product.language = attrs["language"]
-            updated = True
-
-        # Publication Date (from Year)
-        if "publication_year" in attrs and attrs["publication_year"]:
-            try:
-                year = int(attrs["publication_year"])
-                # Ставим 1 января указанного года
-                new_date = datetime.date(year, 1, 1)
-                if product.publication_date != new_date:
-                    product.publication_date = new_date
-                    updated = True
-            except (ValueError, TypeError):
-                pass
+        # --- Общие поля → Product ---
 
         # Weight (e.g. "0,441" kg from ummaland)
         if "weight" in attrs and attrs["weight"]:
@@ -861,6 +920,11 @@ class ScraperIntegrationService:
 
         # Создаем товар через CatalogNormalizer
         product = self.catalog_normalizer.normalize_product(product_data)
+        
+        # Для книг убираем бренд, если он проставился
+        if product.product_type == "books" and product.brand:
+            product.brand = None
+            product.save()
 
         # Обновляем дополнительные атрибуты (ISBN, SEO и т.д.)
         updated = False
@@ -871,13 +935,14 @@ class ScraperIntegrationService:
         if updated:
             product.save()
 
-            # Обновляем авторов для нового товара
-            if "author" in scraped_product.attributes:
+            # Обновляем авторов для нового товара (авторы привязаны к BookProduct)
+            if "author" in scraped_product.attributes and product.product_type == "books":
                 try:
                     author_str = scraped_product.attributes["author"]
                     if author_str:
+                        book_product = self._get_book_product(product)
                         # Очищаем текущих (на всякий случай)
-                        product.book_authors.all().delete()
+                        book_product.book_authors.all().delete()
 
                         author_names = [a.strip() for a in author_str.split(",") if a.strip()]
                         for idx, name in enumerate(author_names):
@@ -904,7 +969,7 @@ class ScraperIntegrationService:
                             )
 
                             ProductAuthor.objects.create(
-                                product=product, author=author, sort_order=idx
+                                product=book_product, author=author, sort_order=idx
                             )
                 except Exception as e:
                     self.logger.error(

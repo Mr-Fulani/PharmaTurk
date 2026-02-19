@@ -52,6 +52,10 @@ const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
       return `/api/catalog/furniture/products/${slug}`
     case 'jewelry':
       return `/api/catalog/jewelry/products/${slug}`
+    case 'books':
+      return `/api/catalog/books/products/${slug}`
+    case 'perfumery':
+      return `/api/catalog/perfumery/products/${slug}`
     default:
       // Для всех остальных категорий (включая новые динамические) используем общий эндпоинт
       return `/api/catalog/products/${slug}`
@@ -85,7 +89,7 @@ const formatPrice = (value: string | number | null | undefined): string | null =
   if (value === null || typeof value === 'undefined') return null
   const num = parseNumber(value)
   if (num === null) return String(value)
-  
+
   // Убираем лишние нули после запятой
   const str = num.toString()
   if (str.includes('.')) {
@@ -300,7 +304,7 @@ export default function ProductPage({
         if (!cancelled && res?.data) {
           setProduct(res.data)
         }
-      } catch {}
+      } catch { }
     }
     loadVariantDetails()
     return () => {
@@ -320,14 +324,14 @@ export default function ProductPage({
       setActiveImage(
         resolveMediaUrl(
           found.main_image ||
-            found.images?.find((img) => img.is_main)?.image_url ||
-            found.images?.[0]?.image_url ||
-            product.active_variant_main_image_url ||
-            product.main_image_url ||
-            product.main_image ||
-            gallerySourceLocal.find((img) => img.is_main)?.image_url ||
-            gallerySourceLocal[0]?.image_url ||
-            null
+          found.images?.find((img) => img.is_main)?.image_url ||
+          found.images?.[0]?.image_url ||
+          product.active_variant_main_image_url ||
+          product.main_image_url ||
+          product.main_image ||
+          gallerySourceLocal.find((img) => img.is_main)?.image_url ||
+          gallerySourceLocal[0]?.image_url ||
+          null
         ) || null
       )
     }
@@ -418,26 +422,26 @@ export default function ProductPage({
   const gallerySource = useMemo(() => buildGallerySource(), [buildGallerySource])
   const galleryMainImageUrl = normalizeMediaValue(
     gallerySource.find((img) => !img.isVideo && img.is_main)?.image_url ||
-      gallerySource.find((img) => !img.isVideo && img.image_url)?.image_url
+    gallerySource.find((img) => !img.isVideo && img.image_url)?.image_url
   )
   const initialImage =
     resolveMediaUrl(
       galleryMainImageUrl ||
-        normalizeMediaValue(selectedVariant?.main_image) ||
-        normalizeMediaValue(selectedVariant?.images?.find((img) => img.is_main)?.image_url) ||
-        normalizeMediaValue(selectedVariant?.images?.[0]?.image_url) ||
-        normalizeMediaValue(product?.active_variant_main_image_url || null) ||
-        normalizeMediaValue(product?.main_image_url || null) ||
-        normalizeMediaValue(product?.main_image || null) ||
-        normalizeMediaValue(gallerySource.find((img) => !img.isVideo && img.image_url)?.image_url)
+      normalizeMediaValue(selectedVariant?.main_image) ||
+      normalizeMediaValue(selectedVariant?.images?.find((img) => img.is_main)?.image_url) ||
+      normalizeMediaValue(selectedVariant?.images?.[0]?.image_url) ||
+      normalizeMediaValue(product?.active_variant_main_image_url || null) ||
+      normalizeMediaValue(product?.main_image_url || null) ||
+      normalizeMediaValue(product?.main_image || null) ||
+      normalizeMediaValue(gallerySource.find((img) => !img.isVideo && img.image_url)?.image_url)
     ) || ''
   const hasImageSource = Boolean(
     normalizeMediaValue(selectedVariant?.main_image) ||
-      selectedVariant?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
-      normalizeMediaValue(product?.main_image_url || null) ||
-      normalizeMediaValue(product?.main_image || null) ||
-      product?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
-      gallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
+    selectedVariant?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
+    normalizeMediaValue(product?.main_image_url || null) ||
+    normalizeMediaValue(product?.main_image || null) ||
+    product?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
+    gallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
   )
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
   const [mainImageLoading, setMainImageLoading] = useState(false)
@@ -462,14 +466,14 @@ export default function ProductPage({
     const newImage =
       resolveMediaUrl(
         imageFromGallery ||
-          normalizeMediaValue(selectedVariant?.main_image) ||
-          normalizeMediaValue(selectedVariant?.images?.find((img) => img.is_main)?.image_url) ||
-          normalizeMediaValue(selectedVariant?.images?.[0]?.image_url) ||
-          normalizeMediaValue(product.active_variant_main_image_url || null) ||
-          normalizeMediaValue(product.main_image_url || null) ||
-          normalizeMediaValue(product.main_image || null) ||
-          normalizeMediaValue(currentGallerySource.find((img) => !img.isVideo && img.image_url)?.image_url) ||
-          null
+        normalizeMediaValue(selectedVariant?.main_image) ||
+        normalizeMediaValue(selectedVariant?.images?.find((img) => img.is_main)?.image_url) ||
+        normalizeMediaValue(selectedVariant?.images?.[0]?.image_url) ||
+        normalizeMediaValue(product.active_variant_main_image_url || null) ||
+        normalizeMediaValue(product.main_image_url || null) ||
+        normalizeMediaValue(product.main_image || null) ||
+        normalizeMediaValue(currentGallerySource.find((img) => !img.isVideo && img.image_url)?.image_url) ||
+        null
       ) || null
     setActiveImage(newImage)
     setMainImageLoading(false)
@@ -480,10 +484,10 @@ export default function ProductPage({
     setActiveVideoUrl(freshVideoUrl)
     const hasImages = Boolean(
       normalizeMediaValue(selectedVariant?.main_image) ||
-        selectedVariant?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
-        normalizeMediaValue(product.main_image_url || null) ||
-        normalizeMediaValue(product.main_image || null) ||
-        currentGallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
+      selectedVariant?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
+      normalizeMediaValue(product.main_image_url || null) ||
+      normalizeMediaValue(product.main_image || null) ||
+      currentGallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
     )
     setActiveMediaType(freshVideoUrl ? 'video' : (hasImages ? 'image' : 'image'))
   }, [buildGallerySource, product, selectedVariant, router.asPath])
@@ -494,7 +498,7 @@ export default function ProductPage({
 
   // Получаем числовое значение цены для расчетов
   const parsedActiveVariantPrice = parsePriceWithCurrency(product.active_variant_price ?? null)
-  const priceValue = selectedVariant?.price 
+  const priceValue = selectedVariant?.price
     ? parseFloat(String(selectedVariant.price))
     : (product.active_variant_price ? parseFloat(String(product.active_variant_price)) : (product.price ? parseFloat(String(product.price)) : null))
   const currency =
@@ -520,16 +524,16 @@ export default function ProductPage({
   const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
     ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
     : null
-  
+
   // Вычисляем общую сумму с учетом количества
   const totalPrice = priceValue !== null ? (priceValue * quantity).toFixed(2) : null
-  const displayPrice = priceValue !== null 
+  const displayPrice = priceValue !== null
     ? `${priceValue} ${currency}`
     : t('price_on_request')
-  const displayTotalPrice = totalPrice !== null 
+  const displayTotalPrice = totalPrice !== null
     ? `${totalPrice} ${currency}`
     : t('price_on_request')
-  
+
   const sizeRequired = normalizedSizes.length > 0
   const siteUrl = getSiteOrigin()
   const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
@@ -558,12 +562,12 @@ export default function ProductPage({
     sku: product.slug,
     offers: priceForSchema
       ? {
-          '@type': 'Offer',
-          price: priceForSchema,
-          priceCurrency: currencyForSchema || 'USD',
-          availability,
-          url: canonicalUrl,
-        }
+        '@type': 'Offer',
+        price: priceForSchema,
+        priceCurrency: currencyForSchema || 'USD',
+        availability,
+        url: canonicalUrl,
+      }
       : undefined,
   }
   return (
@@ -687,17 +691,17 @@ export default function ProductPage({
                     decoding="async"
                     onLoad={() => setMainImageLoading(false)}
                     onError={(e) => {
-                    // Фолбек на picsum, завязанный на id товара
-                    const { getPlaceholderImageUrl } = require('../../lib/media')
-                    setMainImageLoading(false)
-                    e.currentTarget.src = getPlaceholderImageUrl({
-                      type: 'product',
-                      id: product.id,
-                      width: 800,
-                      height: 800,
-                    })
-                  }}
-                />
+                      // Фолбек на picsum, завязанный на id товара
+                      const { getPlaceholderImageUrl } = require('../../lib/media')
+                      setMainImageLoading(false)
+                      e.currentTarget.src = getPlaceholderImageUrl({
+                        type: 'product',
+                        id: product.id,
+                        width: 800,
+                        height: 800,
+                      })
+                    }}
+                  />
                 </div>
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -718,7 +722,7 @@ export default function ProductPage({
             </div>
           </div>
           <div>
-            <h1 
+            <h1
               className="text-2xl font-bold"
               style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
             >
@@ -726,7 +730,7 @@ export default function ProductPage({
             </h1>
             {/* Блок «Книга»: автор, издательство, страницы, ISBN, язык, обложка, рейтинг */}
             {productType === 'books' && (
-              <div 
+              <div
                 className="mt-3 space-y-1.5 text-sm"
                 style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
               >
@@ -831,7 +835,7 @@ export default function ProductPage({
               <div className="mt-4 flex flex-col gap-4">
                 {colors.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <span 
+                    <span
                       className="text-sm font-semibold"
                       style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
                     >
@@ -866,11 +870,10 @@ export default function ProductPage({
                             }}
                             title={label}
                             aria-label={label}
-                            className={`h-16 w-16 overflow-hidden rounded-md border bg-white transition ${
-                              isActive
+                            className={`h-16 w-16 overflow-hidden rounded-md border bg-white transition ${isActive
                                 ? 'border-violet-600 ring-2 ring-violet-200'
                                 : 'border-gray-300 hover:border-violet-400'
-                            }`}
+                              }`}
                           >
                             <img
                               src={thumbSrc}
@@ -893,7 +896,7 @@ export default function ProductPage({
                 )}
                 {sizesForColor.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <span 
+                    <span
                       className="text-sm font-semibold"
                       style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
                     >
@@ -910,13 +913,12 @@ export default function ProductPage({
                               if (!isAvailable) return
                               setSelectedSize(s.sizeValue)
                             }}
-                            className={`min-w-[56px] rounded-md px-3 py-2 text-sm border transition ${
-                              isAvailable
+                            className={`min-w-[56px] rounded-md px-3 py-2 text-sm border transition ${isAvailable
                                 ? isActive
                                   ? 'border-violet-600 bg-violet-50 text-violet-700'
                                   : 'border-gray-300 bg-white text-gray-800 hover:border-violet-400'
                                 : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                            }`}
+                              }`}
                             disabled={!isAvailable}
                           >
                             {s.sizeLabel || t('size', 'Размер')}
@@ -928,10 +930,10 @@ export default function ProductPage({
                 )}
               </div>
             )}
-            
+
             {/* Селектор количества */}
             <div className="mt-4 flex flex-col gap-2">
-              <span 
+              <span
                 className="text-sm font-semibold"
                 style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
               >
@@ -948,7 +950,7 @@ export default function ProductPage({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                   </svg>
                 </button>
-                <span 
+                <span
                   className="min-w-[3rem] text-center text-2xl font-extrabold"
                   style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
                 >
@@ -985,12 +987,12 @@ export default function ProductPage({
 
             {/* Кнопки действий */}
             <div className="mt-4 flex flex-col gap-3">
-            <AddToCartButton
-              productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
-              productType={productType}
-              productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
-              size={selectedSize}
-              requireSize={!isBaseProduct && sizeRequired}
+              <AddToCartButton
+                productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
+                productType={productType}
+                productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+                size={selectedSize}
+                requireSize={!isBaseProduct && sizeRequired}
                 quantity={quantity}
                 showPrice={true}
                 price={displayTotalPrice}
@@ -1005,10 +1007,10 @@ export default function ProductPage({
                 requireSize={!isBaseProduct && sizeRequired}
                 quantity={quantity}
                 className="w-full"
-            />
+              />
               {product.id && (
                 <div className="flex justify-center">
-                <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
+                  <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
                 </div>
               )}
             </div>
@@ -1019,9 +1021,9 @@ export default function ProductPage({
         </div>
 
         {/* Описание товара - на всю ширину */}
-        <div 
+        <div
           className="mt-6 rounded-lg border dark:border-gray-700 overflow-hidden w-full"
-          style={{ 
+          style={{
             borderColor: theme === 'dark' ? '#374151' : '#E5E7EB',
             backgroundColor: theme === 'dark' ? '#1F2937' : '#FFF8E7'
           }}
@@ -1029,7 +1031,7 @@ export default function ProductPage({
           <button
             onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
             className="w-full flex items-center justify-between p-4 text-left transition-colors"
-            style={{ 
+            style={{
               backgroundColor: 'transparent'
             }}
             onMouseEnter={(e) => {
@@ -1039,7 +1041,7 @@ export default function ProductPage({
               e.currentTarget.style.backgroundColor = 'transparent'
             }}
           >
-            <span 
+            <span
               className="font-medium"
               style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
             >
@@ -1057,15 +1059,15 @@ export default function ProductPage({
           </button>
 
           {isDescriptionExpanded && (
-            <div 
+            <div
               className="border-t dark:border-gray-700 p-6"
-              style={{ 
+              style={{
                 borderTopColor: theme === 'dark' ? '#374151' : '#E5E7EB',
                 backgroundColor: theme === 'dark' ? '#111827' : '#FFFBF0'
               }}
             >
               <div className="prose max-w-none dark:prose-invert">
-                <div 
+                <div
                   className="whitespace-pre-wrap leading-relaxed text-base"
                   style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
                   dangerouslySetInnerHTML={{ __html: getLocalizedProductDescription(product.description, t, product.translations, router.locale) }}
@@ -1109,7 +1111,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const cookieHeader: string = ctx.req.headers.cookie || ''
   const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
   const currency = currencyMatch ? currencyMatch[1] : 'RUB'
-  
+
   const localePrefix = ctx.locale ? `/${ctx.locale}` : ''
   const fetchProduct = (type: CategoryType, slug: string) =>
     axios.get(getInternalApiUrl(resolveDetailEndpoint(type, slug).replace(/^\/api\//, '')), {
@@ -1161,12 +1163,12 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     // Редирект на канонический URL, если тип в URL не совпадает с реальным product_type
     // (напр. /product/medicines/kolco-s-kamnem → /product/jewelry/kolco-s-kamnem)
     if (actualType && actualType !== categoryType) {
-         return {
-            redirect: {
-              destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
-              permanent: false,
-            },
-         }
+      return {
+        redirect: {
+          destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
+          permanent: false,
+        },
+      }
     }
 
     const activeVariantSlug = res.data?.active_variant_slug

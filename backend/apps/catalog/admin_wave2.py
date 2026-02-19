@@ -106,6 +106,16 @@ class _SimpleDomainAdmin(admin.ModelAdmin):
         }),
     )
 
+    _seo_fieldsets = (
+        (_("SEO (EN)"), {
+            "fields": (
+                "meta_title", "meta_description", "meta_keywords",
+                "og_title", "og_description", "og_image_url"
+            ),
+            "description": _("Англоязычные SEO-поля и OpenGraph.")
+        }),
+    )
+
     # Подклассы переопределяют этот атрибут
     _domain_fieldset = None
     # Slug типа категории для фильтрации FK
@@ -118,6 +128,7 @@ class _SimpleDomainAdmin(admin.ModelAdmin):
             parts.append(self._domain_fieldset)
         parts.extend(self._price_fieldsets)
         parts.extend(self._status_fieldsets)
+        parts.extend(self._seo_fieldsets)
         return tuple(parts)
 
     def slug_preview(self, obj):

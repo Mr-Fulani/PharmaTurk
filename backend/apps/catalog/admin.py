@@ -1019,6 +1019,13 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
         (_('Clothing'), {'fields': ('material', 'season')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('SEO (EN)'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
@@ -1357,6 +1364,13 @@ class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAd
         (_('Shoes'), {'fields': ('material', 'heel_height', 'sole_type')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('SEO (EN)'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
@@ -1540,6 +1554,13 @@ class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.
         (_('Electronics'), {'fields': ('model', 'specifications', 'warranty', 'power_consumption')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('SEO (EN)'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
@@ -1587,6 +1608,13 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Mod
         (_('Furniture'), {'fields': ('material', 'furniture_type', 'dimensions')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('SEO (EN)'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
@@ -1678,6 +1706,13 @@ class JewelryProductAdmin(CategoryTypeFilterMixin, admin.ModelAdmin):
         (_('Украшение'), {'fields': ('jewelry_type', 'gender', 'material', 'metal_purity', 'stone_type', 'carat_weight')}),
         (_('Цены'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Наличие'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('SEO (EN)'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
         (_('Медиа'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
         (_('Настройки'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),

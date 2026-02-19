@@ -46,6 +46,13 @@ class FurnitureProductAdmin(admin.ModelAdmin):
         (_("Цена и наличие"), {
             "fields": ("price", "currency", "old_price", "stock_quantity", "is_available", "is_active")
         }),
+        (_("SEO (EN)"), {
+            "fields": (
+                "meta_title", "meta_description", "meta_keywords",
+                "og_title", "og_description", "og_image_url"
+            ),
+            "description": _("Англоязычные SEO-поля и OpenGraph.")
+        }),
         (_("Медиа"), {
             "fields": ("main_image_file", "main_image")
         }),

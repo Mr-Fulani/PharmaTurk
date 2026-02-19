@@ -470,21 +470,31 @@ class UmmalandParser(BaseScraper):
             images = []
             
             # Главное изображение
-            main_img = soup.select_one('.product-gallery__image')
-            if main_img:
-                src = main_img.get('data-src') or main_img.get('src')
-                if src:
-                    images.append(src)
+            main_img_candidates = [
+                '.product-gallery__image',
+                '.woocommerce-product-gallery__image img',
+                '.wp-post-image'
+            ]
+            for sel in main_img_candidates:
+                main_img = soup.select_one(sel)
+                if main_img:
+                    src = main_img.get('data-src') or main_img.get('src') or main_img.get('data-large_image')
+                    if src:
+                        images.append(src)
+                        break
                 
             # Галерея
-            gallery_previews = soup.select('.product-gallery__preview-image')
-            for img in gallery_previews:
-                preview_parent = img.find_parent(attrs={"data-video": True}) or img.find_parent(attrs={"data-video-src": True}) or img.find_parent(attrs={"data-video-url": True})
-                if preview_parent:
-                    continue
-                src = img.get('data-src') or img.get('src')
-                if src and src not in images:
-                    images.append(src)
+            gallery_candidates = [
+                '.product-gallery__preview-image',
+                '.woocommerce-product-gallery__image a',
+                '.flex-control-thumbs img'
+            ]
+            for sel in gallery_candidates:
+                gallery_imgs = soup.select(sel)
+                for img in gallery_imgs:
+                    src = img.get('href') or img.get('data-src') or img.get('src') or img.get('data-large_image')
+                    if src and src not in images:
+                        images.append(src)
 
             video_urls = []
             video_posters = []
@@ -538,23 +548,47 @@ class UmmalandParser(BaseScraper):
                 attributes['video_url'] = video_urls[0]
             
             # 5. Цена и наличие
-            price_elem = soup.select_one('.product-price')
+            # Пробуем более точный селектор для цены, исключая скидки/старые цены
             price = None
-            if price_elem:
-                price_text = clean_text(price_elem.text)
+            price_container = soup.select_one('.product-price') or soup.select_one('.price')
+            if price_container:
+                # Если есть ins (новая цена), берем ее
+                ins_price = price_container.select_one('ins .woocommerce-Price-amount') or price_container.select_one('ins')
+                if ins_price:
+                    price_text = clean_text(ins_price.text)
+                else:
+                    # Иначе просто текст (возможно range или одна цена)
+                    # Если есть del (старая цена), удаляем ее из текста
+                    if price_container.select_one('del'):
+                        for old in price_container.select('del'):
+                            old.decompose()
+                    price_text = clean_text(price_container.text)
+                
+                # Обработка ситуаций, когда текст содержит "от 100 руб" или диапазон
+                # Извлекаем первое числовое значение
                 price = normalize_price(price_text)
             
             is_available = True
-            stock_elem = soup.select_one('.product-available__text')
+            stock_elem = soup.select_one('.product-available__text') or soup.select_one('.stock')
             if stock_elem:
                 stock_text = stock_elem.text.lower()
-                if 'нет в наличии' in stock_text or 'недоступно' in stock_text:
+                if 'нет в наличии' in stock_text or 'недоступно' in stock_text or 'out of stock' in stock_text:
                     is_available = False
             
             # Кнопка покупки
-            buy_btn = soup.select_one('.product-buy-button')
+            buy_btn = soup.select_one('.product-buy-button') or soup.select_one('.single_add_to_cart_button')
             if buy_btn and buy_btn.has_attr('disabled'):
                 is_available = False
+
+            # Язык
+            if 'language' not in attributes:
+                for prop in properties:
+                    key_elem = prop.select_one('.product-property__key')
+                    val_elem = prop.select_one('.product-property__value')
+                    if key_elem and val_elem:
+                        key = clean_text(key_elem.text).lower()
+                        if 'язык' in key or 'language' in key:
+                            attributes['language'] = clean_text(val_elem.text)
 
             return ScrapedProduct(
                 name=name,

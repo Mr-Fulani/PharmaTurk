@@ -112,6 +112,13 @@ class PerfumeryProductAdmin(admin.ModelAdmin):
         (_('Наличие'), {
             'fields': ('is_available', 'stock_quantity'),
         }),
+        (_("SEO (EN)"), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
         (_('Медиа'), {
             'fields': ('main_image', 'main_image_file'),
         }),

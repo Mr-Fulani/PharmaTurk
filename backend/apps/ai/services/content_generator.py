@@ -12,6 +12,7 @@ import requests
 from django.utils.text import slugify
 from apps.catalog.models import (
     Product,
+    BookProduct,
     Category,
     ProductTranslation,
     Author,
@@ -261,12 +262,22 @@ class ContentGenerator:
                     data["description"] = str(raw_caption)
 
         # Атрибуты книг/товара — всегда добавляем в контекст (не только при external_data)
-        if getattr(product, "isbn", None):
-            data["isbn"] = product.isbn
-        if getattr(product, "publisher", None):
-            data["publisher"] = product.publisher
-        if getattr(product, "pages", None):
-            data["pages"] = product.pages
+        book_item = getattr(product, "book_item", None)
+        if book_item:
+            if book_item.isbn:
+                data["isbn"] = book_item.isbn
+            if book_item.publisher:
+                data["publisher"] = book_item.publisher
+            if book_item.pages:
+                data["pages"] = book_item.pages
+        else:
+            # Fallback (если вдруг поля остались в Product или это другой тип)
+            if getattr(product, "isbn", None):
+                data["isbn"] = product.isbn
+            if getattr(product, "publisher", None):
+                data["publisher"] = product.publisher
+            if getattr(product, "pages", None):
+                data["pages"] = product.pages
 
         return data
 
@@ -675,8 +686,9 @@ class ContentGenerator:
                 product.category = log.suggested_category
 
             # Книги: GTIN и штрихкод из ISBN, если не заданы
-            if getattr(product, "product_type", None) == "books" and getattr(product, "isbn", None):
-                isbn_val = (product.isbn or "").strip()
+            book_item = getattr(product, "book_item", None)
+            if getattr(product, "product_type", None) == "books" and book_item and book_item.isbn:
+                isbn_val = (book_item.isbn or "").strip()
                 if isbn_val:
                     if not (getattr(product, "gtin", None) or "").strip():
                         product.gtin = isbn_val[:64]
@@ -737,46 +749,52 @@ class ContentGenerator:
                     product.update_currency_prices()
                     product.save()  # сохраняем converted_price_*, final_price_*
 
-                # Авторы
-                if "author" in attrs and not product.book_authors.exists():
-                    authors_list = attrs["author"]
-                    if isinstance(authors_list, str):
-                        authors_list = [authors_list]
+                # Авторы (только если BookProduct)
+                if "author" in attrs and getattr(product, "product_type", None) == "books":
+                    # Получаем/создаем BookProduct для привязки авторов
+                    book_product = self._get_or_create_book_product(product)
+                    
+                    if not book_product.book_authors.exists():
+                        authors_list = attrs["author"]
+                        if isinstance(authors_list, str):
+                            authors_list = [authors_list]
 
-                    if isinstance(authors_list, list):
-                        # Очистка текущих авторов не производится, только добавление новых
-                        for idx, auth_name in enumerate(authors_list):
-                            # Пропускаем "пустые" имена
-                            if not auth_name or auth_name.lower().strip() in [
-                                "не указано",
-                                "нет",
-                                "unknown",
-                                "not specified",
-                                "неизвестен",
-                                "нет автора",
-                            ]:
-                                continue
+                        if isinstance(authors_list, list):
+                            # Очистка текущих авторов не производится, только добавление новых
+                            for idx, auth_name in enumerate(authors_list):
+                                # Пропускаем "пустые" имена
+                                if not auth_name or auth_name.lower().strip() in [
+                                    "не указано",
+                                    "нет",
+                                    "unknown",
+                                    "not specified",
+                                    "неизвестен",
+                                    "нет автора",
+                                ]:
+                                    continue
 
-                            parts = auth_name.strip().split()
-                            if len(parts) >= 2:
-                                first_name = parts[0]
-                                last_name = " ".join(parts[1:])
-                            else:
-                                first_name = auth_name
-                                last_name = ""
+                                parts = auth_name.strip().split()
+                                if len(parts) >= 2:
+                                    first_name = parts[0]
+                                    last_name = " ".join(parts[1:])
+                                else:
+                                    first_name = auth_name
+                                    last_name = ""
 
-                            author, _ = Author.objects.get_or_create(
-                                first_name=first_name, last_name=last_name
-                            )
-                            ProductAuthor.objects.get_or_create(
-                                product=product, author=author, defaults={"sort_order": idx}
-                            )
+                                author, _ = Author.objects.get_or_create(
+                                    first_name=first_name, last_name=last_name
+                                )
+                                ProductAuthor.objects.get_or_create(
+                                    product=book_product, author=author, defaults={"sort_order": idx}
+                                )
 
                 # Переплёт книги (из описания или image_analysis)
                 if getattr(product, "product_type", None) == "books" and "cover_type" in attrs and attrs["cover_type"]:
                     ct = str(attrs["cover_type"]).strip()
-                    if ct and not (getattr(product, "cover_type", None) or "").strip():
-                        product.cover_type = ct[:50]
+                    book_product = self._get_or_create_book_product(product)
+                    if ct and not (book_product.cover_type or "").strip():
+                        book_product.cover_type = ct[:50]
+                        book_product.save()
 
                 # Изображения из текста
                 if "images" in attrs and isinstance(attrs["images"], list):
@@ -835,3 +853,37 @@ class ContentGenerator:
             elif log.generated_seo_title and not product.meta_title:
                 # Это fallback, если LLM не вернул структуру "en"
                 pass
+
+    def _get_or_create_book_product(self, product: Product) -> 'BookProduct':
+        """Находит или создаёт BookProduct для Product с product_type='books'."""
+        book = getattr(product, 'book_item', None)
+        if book:
+            return book
+        from apps.catalog.models import BookProduct
+        # Создаём BookProduct, привязанный к shadow Product
+        base_slug = product.slug or slugify(product.name)
+        slug = f"book-{base_slug}"
+        i = 2
+        while BookProduct.objects.filter(slug=slug).exists():
+            slug = f"book-{base_slug}-{i}"
+            i += 1
+        book = BookProduct.objects.create(
+            base_product=product,
+            name=product.name,
+            slug=slug,
+            description=product.description or "",
+            category=product.category,
+            brand=product.brand,
+            price=product.price,
+            currency=product.currency or "RUB",
+            old_price=product.old_price,
+            external_id=product.external_id or "",
+            external_url=product.external_url or "",
+            external_data=product.external_data or {},
+            is_active=product.is_active,
+            is_available=product.is_available,
+            main_image=product.main_image or "",
+        )
+        # Обновляем кеш, чтобы product.book_item возвращал созданный объект
+        product.book_item = book
+        return book

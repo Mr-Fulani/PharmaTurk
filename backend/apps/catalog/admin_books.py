@@ -163,6 +163,13 @@ class BookProductAdmin(admin.ModelAdmin):
         (_('Рейтинг и статус'), {
             'fields': ('rating', 'reviews_count', 'is_featured', 'is_bestseller', 'is_new')
         }),
+        (_("SEO (EN)"), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
         (_('Медиа'), {
             'fields': ('main_image', 'main_image_file')
         }),

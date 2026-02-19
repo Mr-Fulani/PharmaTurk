@@ -83,47 +83,109 @@ class CatalogNormalizer:
             return
 
         updated_fields: List[str] = []
+        book_updated = False
+        book_product = None
 
-        isbn = attrs.get("isbn")
-        if isbn:
-            new_isbn = str(isbn).strip()
-            digits = re.sub(r"\D", "", new_isbn)
-            is_valid_length = len(digits) in (10, 13)
-            is_placeholder = "00000" in new_isbn or "..." in new_isbn
-            if is_valid_length and not is_placeholder and new_isbn != (product.isbn or ""):
-                product.isbn = new_isbn
-                updated_fields.append("isbn")
+        # --- Книжные поля → BookProduct ---
+        if product.product_type == "books":
+            # Проверяем, есть ли книжные поля в атрибутах
+            book_keys = ("isbn", "publisher", "pages", "cover_type", "language", "publication_year")
+            if any(k in attrs for k in book_keys):
+                # Получаем или создаем BookProduct
+                book_product = getattr(product, 'book_item', None)
+                if not book_product:
+                    from apps.catalog.models import BookProduct
+                    from django.utils.text import slugify
+                    base_slug = product.slug or slugify(product.name)
+                    slug = f"book-{base_slug}"
+                    i = 2
+                    while BookProduct.objects.filter(slug=slug).exists():
+                        slug = f"book-{base_slug}-{i}"
+                        i += 1
+                    
+                    book_product = BookProduct.objects.create(
+                        base_product=product,
+                        name=product.name,
+                        slug=slug,
+                        description=product.description or "",
+                        category=product.category,
+                        brand=product.brand,
+                        price=product.price,
+                        currency=product.currency or "RUB",
+                        old_price=product.old_price,
+                        external_id=product.external_id or "",
+                        external_url=product.external_url or "",
+                        external_data=product.external_data or {},
+                        is_active=product.is_active,
+                        is_available=product.is_available,
+                        main_image=product.main_image or "",
+                    )
+                    # Обновляем кеш
+                    product.book_item = book_product
 
-        pages = attrs.get("pages")
-        if pages is not None:
-            try:
-                pages_val = int(str(pages).strip())
-            except (ValueError, TypeError):
-                pages_val = None
-            if pages_val is not None and 0 < pages_val < 10000 and pages_val != product.pages:
-                product.pages = pages_val
-                updated_fields.append("pages")
+                # ISBN
+                isbn = attrs.get("isbn")
+                if isbn:
+                    new_isbn = str(isbn).strip()
+                    digits = re.sub(r"\D", "", new_isbn)
+                    is_valid_length = len(digits) in (10, 13)
+                    is_placeholder = "00000" in new_isbn or "..." in new_isbn
+                    if is_valid_length and not is_placeholder and new_isbn != (book_product.isbn or ""):
+                        book_product.isbn = new_isbn
+                        book_updated = True
 
-        publisher = attrs.get("publisher")
-        if publisher:
-            publisher_val = str(publisher).strip()
-            if publisher_val and publisher_val != (product.publisher or ""):
-                product.publisher = publisher_val
-                updated_fields.append("publisher")
+                # Pages
+                pages = attrs.get("pages")
+                if pages is not None:
+                    try:
+                        pages_val = int(str(pages).strip())
+                    except (ValueError, TypeError):
+                        pages_val = None
+                    if pages_val is not None and 0 < pages_val < 10000 and pages_val != book_product.pages:
+                        book_product.pages = pages_val
+                        book_updated = True
 
-        cover_type = attrs.get("cover_type")
-        if cover_type:
-            cover_type_val = str(cover_type).strip()
-            if cover_type_val and cover_type_val != (product.cover_type or ""):
-                product.cover_type = cover_type_val
-                updated_fields.append("cover_type")
+                # Publisher
+                publisher = attrs.get("publisher")
+                if publisher:
+                    publisher_val = str(publisher).strip()
+                    if publisher_val and publisher_val != (book_product.publisher or ""):
+                        book_product.publisher = publisher_val
+                        book_updated = True
 
-        language = attrs.get("language")
-        if language:
-            language_val = str(language).strip()
-            if language_val and language_val != (product.language or ""):
-                product.language = language_val
-                updated_fields.append("language")
+                # Cover Type
+                cover_type = attrs.get("cover_type")
+                if cover_type:
+                    cover_type_val = str(cover_type).strip()
+                    if cover_type_val and cover_type_val != (book_product.cover_type or ""):
+                        book_product.cover_type = cover_type_val
+                        book_updated = True
+
+                # Language
+                language = attrs.get("language")
+                if language:
+                    language_val = str(language).strip()
+                    if language_val and language_val != (book_product.language or ""):
+                        book_product.language = language_val
+                        book_updated = True
+
+                # Publication Date (from Year)
+                publication_year = attrs.get("publication_year")
+                if publication_year is not None and str(publication_year).strip():
+                    try:
+                        year = int(str(publication_year).strip())
+                        if 1900 <= year <= 2100:
+                            new_date = datetime.date(year, 1, 1)
+                            if book_product.publication_date != new_date:
+                                book_product.publication_date = new_date
+                                book_updated = True
+                    except (ValueError, TypeError):
+                        pass
+
+                if book_updated:
+                    book_product.save()
+
+        # --- Общие поля → Product ---
 
         weight = attrs.get("weight")
         if weight is not None and str(weight).strip():
@@ -134,18 +196,6 @@ class CatalogNormalizer:
                     product.weight_value = weight_val
                     product.weight_unit = getattr(product, "weight_unit", None) or "kg"
                     updated_fields.extend(["weight_value", "weight_unit"])
-            except (ValueError, TypeError):
-                pass
-
-        publication_year = attrs.get("publication_year")
-        if publication_year is not None and str(publication_year).strip():
-            try:
-                year = int(str(publication_year).strip())
-                if 1900 <= year <= 2100:
-                    new_date = datetime.date(year, 1, 1)
-                    if product.publication_date != new_date:
-                        product.publication_date = new_date
-                        updated_fields.append("publication_date")
             except (ValueError, TypeError):
                 pass
 

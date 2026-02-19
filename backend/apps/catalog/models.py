@@ -705,6 +705,43 @@ class AbstractDomainProduct(models.Model):
     external_url = models.URLField(_("Внешняя ссылка"), blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
 
+    # SEO (EN) & OpenGraph
+    meta_title = models.CharField(
+        _("Meta Title"),
+        max_length=255,
+        blank=True,
+        help_text=_("Англоязычный SEO title, используется на всех фронтенд-страницах.")
+    )
+    meta_description = models.CharField(
+        _("Meta Description"),
+        max_length=500,
+        blank=True,
+        help_text=_("Англоязычный SEO description для карточки товара.")
+    )
+    meta_keywords = models.CharField(
+        _("Meta Keywords"),
+        max_length=500,
+        blank=True,
+        help_text=_("Ключевые слова для индексации (англ.).")
+    )
+    og_title = models.CharField(
+        _("OG Title"),
+        max_length=255,
+        blank=True,
+        help_text=_("OpenGraph title (англ.), если отличается от meta title.")
+    )
+    og_description = models.CharField(
+        _("OG Description"),
+        max_length=500,
+        blank=True,
+        help_text=_("OpenGraph description (англ.) для социальных сетей.")
+    )
+    og_image_url = models.URLField(
+        _("OG Image URL"),
+        blank=True,
+        help_text=_("Ссылка на изображение для OpenGraph, если оно отличается от основного.")
+    )
+
     # Статус
     is_active = models.BooleanField(_("Активен"), default=True)
     is_new = models.BooleanField(_("Новинка"), default=False)
@@ -766,6 +803,12 @@ class AbstractDomainProduct(models.Model):
                 external_id=self.external_id,
                 external_url=self.external_url,
                 external_data=self.external_data,
+                meta_title=self.meta_title,
+                meta_description=self.meta_description,
+                meta_keywords=self.meta_keywords,
+                og_title=self.og_title,
+                og_description=self.og_description,
+                og_image_url=self.og_image_url,
                 is_active=self.is_active,
                 is_new=self.is_new,
                 is_featured=self.is_featured,
@@ -794,6 +837,12 @@ class AbstractDomainProduct(models.Model):
         product.external_id = self.external_id
         product.external_url = self.external_url
         product.external_data = self.external_data
+        product.meta_title = self.meta_title
+        product.meta_description = self.meta_description
+        product.meta_keywords = self.meta_keywords
+        product.og_title = self.og_title
+        product.og_description = self.og_description
+        product.og_image_url = self.og_image_url
         product.is_active = self.is_active
         product.is_new = self.is_new
         product.is_featured = self.is_featured
