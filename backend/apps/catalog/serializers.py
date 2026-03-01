@@ -759,18 +759,17 @@ class ProductSerializer(serializers.ModelSerializer):
         preferred_currency = self._get_preferred_currency(request)
         if obj.price is not None:
             from_currency = (obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(obj.price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(obj.price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                pass
             return f"{obj.price} {from_currency}"
         return None
     
@@ -780,19 +779,17 @@ class ProductSerializer(serializers.ModelSerializer):
             request = self.context.get('request')
             preferred_currency = self._get_preferred_currency(request)
             from_currency = (obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(obj.old_price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    pass
-            # Форматируем число, убирая лишние нули после запятой
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(obj.old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                pass
             formatted_price = f"{obj.old_price}"
             if '.' in formatted_price:
                 formatted_price = formatted_price.rstrip('0').rstrip('.')
@@ -1479,18 +1476,17 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             return None
 
         from_currency = (obj.currency or 'RUB').upper()
-        if preferred_currency != from_currency:
-            try:
-                from .utils.currency_converter import currency_converter
-                _, _, price_with_margin = currency_converter.convert_price(
-                    Decimal(obj.price),
-                    from_currency,
-                    preferred_currency,
-                    apply_margin=True,
-                )
-                return f"{price_with_margin} {preferred_currency}"
-            except Exception:
-                pass
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(obj.price),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return f"{price_with_margin} {preferred_currency}"
+        except Exception:
+            pass
 
         return f"{obj.price} {from_currency}"
     
@@ -1499,18 +1495,17 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         if obj.old_price is not None:
             preferred_currency = self._get_preferred_currency(obj)
             from_currency = (obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(obj.old_price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(obj.old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                pass
             # Форматируем число, убирая лишние нули после запятой
             formatted_price = f"{obj.old_price}"
             if '.' in formatted_price:
@@ -1606,22 +1601,21 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         preferred_currency = self._get_preferred_currency(obj)
         if variant and variant.old_price is not None:
             from_currency = (variant.currency or obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(variant.old_price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    # Форматируем число, убирая лишние нули после запятой
-                    formatted_price = f"{variant.old_price}"
-                    if '.' in formatted_price:
-                        formatted_price = formatted_price.rstrip('0').rstrip('.')
-                    return f"{formatted_price} {from_currency}"
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(variant.old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                # Форматируем число, убирая лишние нули после запятой
+                formatted_price = f"{variant.old_price}"
+                if '.' in formatted_price:
+                    formatted_price = formatted_price.rstrip('0').rstrip('.')
+                return f"{formatted_price} {from_currency}"
             # Форматируем число, убирая лишние нули после запятой
             formatted_price = f"{variant.old_price}"
             if '.' in formatted_price:
@@ -1825,18 +1819,17 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             return None
 
         from_currency = (obj.currency or 'RUB').upper()
-        if preferred_currency != from_currency:
-            try:
-                from .utils.currency_converter import currency_converter
-                _, _, price_with_margin = currency_converter.convert_price(
-                    Decimal(obj.price),
-                    from_currency,
-                    preferred_currency,
-                    apply_margin=True,
-                )
-                return f"{price_with_margin} {preferred_currency}"
-            except Exception:
-                pass
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(obj.price),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return f"{price_with_margin} {preferred_currency}"
+        except Exception:
+            pass
 
         return f"{obj.price} {from_currency}"
     
@@ -1845,18 +1838,17 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         if obj.old_price is not None:
             preferred_currency = self._get_preferred_currency(obj)
             from_currency = (obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(obj.old_price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(obj.old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                pass
             # Форматируем число, убирая лишние нули после запятой
             formatted_price = f"{obj.old_price}"
             if '.' in formatted_price:
@@ -1869,22 +1861,21 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         preferred_currency = self._get_preferred_currency(obj)
         if variant and variant.old_price is not None:
             from_currency = (variant.currency or obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(variant.old_price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    # Форматируем число, убирая лишние нули после запятой
-                    formatted_price = f"{variant.old_price}"
-                    if '.' in formatted_price:
-                        formatted_price = formatted_price.rstrip('0').rstrip('.')
-                    return f"{formatted_price} {from_currency}"
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(variant.old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                # Форматируем число, убирая лишние нули после запятой
+                formatted_price = f"{variant.old_price}"
+                if '.' in formatted_price:
+                    formatted_price = formatted_price.rstrip('0').rstrip('.')
+                return f"{formatted_price} {from_currency}"
             # Форматируем число, убирая лишние нули после запятой
             formatted_price = f"{variant.old_price}"
             if '.' in formatted_price:
@@ -2239,18 +2230,17 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
                 preferred_currency = request.headers.get('X-Currency') or request.query_params.get('currency')
             preferred_currency = (preferred_currency or obj.currency or 'RUB').upper()
             from_currency = (obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(obj.old_price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(obj.old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                pass
             return f"{obj.old_price} {from_currency}"
         return None
 
@@ -2479,34 +2469,32 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         if variant and variant.price is not None:
             preferred_currency = self._get_preferred_currency(obj)
             from_currency = (variant.currency or obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(variant.price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(variant.price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                pass
             return f"{variant.price} {from_currency}"
         if obj.price is not None:
             preferred_currency = self._get_preferred_currency(obj)
             from_currency = (obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(obj.price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(obj.price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                pass
             return f"{obj.price} {from_currency}"
         return None
     
@@ -2516,22 +2504,21 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         preferred_currency = self._get_preferred_currency(obj)
         if variant and variant.old_price is not None:
             from_currency = (variant.currency or obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(variant.old_price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    # Форматируем число, убирая лишние нули после запятой
-                    formatted_price = f"{variant.old_price}"
-                    if '.' in formatted_price:
-                        formatted_price = formatted_price.rstrip('0').rstrip('.')
-                    return f"{formatted_price} {from_currency}"
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(variant.old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                # Форматируем число, убирая лишние нули после запятой
+                formatted_price = f"{variant.old_price}"
+                if '.' in formatted_price:
+                    formatted_price = formatted_price.rstrip('0').rstrip('.')
+                return f"{formatted_price} {from_currency}"
             # Форматируем число, убирая лишние нули после запятой
             formatted_price = f"{variant.old_price}"
             if '.' in formatted_price:
@@ -2539,22 +2526,21 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
             return f"{formatted_price} {from_currency}"
         if obj.old_price is not None:
             from_currency = (obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(obj.old_price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    # Форматируем число, убирая лишние нули после запятой
-                    formatted_price = f"{obj.old_price}"
-                    if '.' in formatted_price:
-                        formatted_price = formatted_price.rstrip('0').rstrip('.')
-                    return f"{formatted_price} {from_currency}"
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(obj.old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                # Форматируем число, убирая лишние нули после запятой
+                formatted_price = f"{obj.old_price}"
+                if '.' in formatted_price:
+                    formatted_price = formatted_price.rstrip('0').rstrip('.')
+                return f"{formatted_price} {from_currency}"
             # Форматируем число, убирая лишние нули после запятой
             formatted_price = f"{obj.old_price}"
             if '.' in formatted_price:
@@ -2567,22 +2553,21 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         preferred_currency = self._get_preferred_currency(obj)
         if variant and variant.old_price is not None:
             from_currency = (variant.currency or obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(variant.old_price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    # Форматируем число, убирая лишние нули после запятой
-                    formatted_price = f"{variant.old_price}"
-                    if '.' in formatted_price:
-                        formatted_price = formatted_price.rstrip('0').rstrip('.')
-                    return f"{formatted_price} {from_currency}"
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(variant.old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return f"{price_with_margin} {preferred_currency}"
+            except Exception:
+                # Форматируем число, убирая лишние нули после запятой
+                formatted_price = f"{variant.old_price}"
+                if '.' in formatted_price:
+                    formatted_price = formatted_price.rstrip('0').rstrip('.')
+                return f"{formatted_price} {from_currency}"
             # Форматируем число, убирая лишние нули после запятой
             formatted_price = f"{variant.old_price}"
             if '.' in formatted_price:
@@ -2639,28 +2624,10 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         if variant and variant.price is not None:
             preferred_currency = self._get_preferred_currency(obj)
             from_currency = (variant.currency or obj.currency or 'RUB').upper()
-            if preferred_currency != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_with_margin = currency_converter.convert_price(
-                        Decimal(variant.price),
-                        from_currency,
-                        preferred_currency,
-                        apply_margin=True,
-                    )
-                    return f"{price_with_margin} {preferred_currency}"
-                except Exception:
-                    pass
-            return f"{variant.price} {from_currency}"
-        if obj.price is None:
-            return None
-        preferred_currency = self._get_preferred_currency(obj)
-        from_currency = (obj.currency or 'RUB').upper()
-        if preferred_currency != from_currency:
             try:
                 from .utils.currency_converter import currency_converter
                 _, _, price_with_margin = currency_converter.convert_price(
-                    Decimal(obj.price),
+                    Decimal(variant.price),
                     from_currency,
                     preferred_currency,
                     apply_margin=True,
@@ -2668,6 +2635,22 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
                 return f"{price_with_margin} {preferred_currency}"
             except Exception:
                 pass
+            return f"{variant.price} {from_currency}"
+        if obj.price is None:
+            return None
+        preferred_currency = self._get_preferred_currency(obj)
+        from_currency = (obj.currency or 'RUB').upper()
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(obj.price),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return f"{price_with_margin} {preferred_currency}"
+        except Exception:
+            pass
         return f"{obj.price} {from_currency}"
 
     def get_active_variant_currency(self, obj):
@@ -3382,6 +3365,8 @@ class BookProductSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
@@ -3466,29 +3451,61 @@ class BookProductSerializer(serializers.ModelSerializer):
                 return _resolve_media_url(v_main.image_url, request)
         return None
 
+
+    def get_price(self, obj):
+        """Конвертированная цена с маржой (вариант или базовый товар)."""
+        variant = self._get_active_variant(obj)
+        price_val = variant.price if (variant and variant.price is not None) else obj.price
+        if price_val is None:
+            return None
+        preferred = self._get_preferred_currency(obj)
+        src_currency = (variant.currency if variant and variant.currency else obj.currency) or 'RUB'
+        from_currency = src_currency.upper()
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_m = currency_converter.convert_price(Decimal(price_val), from_currency, preferred, apply_margin=True)
+            return price_m
+        except Exception:
+            pass
+        return price_val
+
+    def get_currency(self, obj):
+        """Валюта цены (preferred если конвертация прошла)."""
+        variant = self._get_active_variant(obj)
+        price_val = variant.price if (variant and variant.price is not None) else obj.price
+        preferred = self._get_preferred_currency(obj)
+        src_currency = (variant.currency if variant and variant.currency else obj.currency) or 'RUB'
+        from_currency = src_currency.upper()
+        if price_val is not None:
+            try:
+                from .utils.currency_converter import currency_converter
+                currency_converter.convert_price(Decimal(price_val), from_currency, preferred, apply_margin=True)
+                return preferred
+            except Exception:
+                pass
+        return from_currency
+
     def get_price_formatted(self, obj):
         variant = self._get_active_variant(obj)
         if variant and variant.price is not None:
             preferred = self._get_preferred_currency(obj)
             from_currency = (variant.currency or obj.currency or 'RUB').upper()
-            if preferred != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_m = currency_converter.convert_price(Decimal(variant.price), from_currency, preferred, apply_margin=True)
-                    return f"{price_m} {preferred}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(variant.price), from_currency, preferred, apply_margin=True)
+                return f"{price_m} {preferred}"
+            except Exception:
+                pass
             return f"{variant.price} {from_currency}"
         if obj.price is not None:
             preferred = self._get_preferred_currency(obj)
             from_currency = (obj.currency or 'RUB').upper()
-            if preferred != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_m = currency_converter.convert_price(Decimal(obj.price), from_currency, preferred, apply_margin=True)
-                    return f"{price_m} {preferred}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(obj.price), from_currency, preferred, apply_margin=True)
+                return f"{price_m} {preferred}"
+            except Exception:
+                pass
             return f"{obj.price} {from_currency}"
         return None
 
@@ -3499,13 +3516,12 @@ class BookProductSerializer(serializers.ModelSerializer):
         if price_val is not None:
             preferred = self._get_preferred_currency(obj)
             from_currency = cur.upper()
-            if preferred != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_m = currency_converter.convert_price(Decimal(price_val), from_currency, preferred, apply_margin=True)
-                    return f"{price_m} {preferred}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(price_val), from_currency, preferred, apply_margin=True)
+                return f"{price_m} {preferred}"
+            except Exception:
+                pass
             formatted = f"{price_val}"
             if '.' in formatted:
                 formatted = formatted.rstrip('0').rstrip('.')
@@ -3536,13 +3552,12 @@ class BookProductSerializer(serializers.ModelSerializer):
         if v and v.price is not None:
             preferred = self._get_preferred_currency(obj)
             from_currency = (v.currency or obj.currency or 'RUB').upper()
-            if preferred != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_m = currency_converter.convert_price(Decimal(v.price), from_currency, preferred, apply_margin=True)
-                    return str(price_m)
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(v.price), from_currency, preferred, apply_margin=True)
+                return str(price_m)
+            except Exception:
+                pass
             return str(v.price)
         return None
 
@@ -3580,13 +3595,12 @@ class BookProductSerializer(serializers.ModelSerializer):
         if v and v.old_price is not None:
             preferred = self._get_preferred_currency(obj)
             from_currency = (v.currency or obj.currency or 'RUB').upper()
-            if preferred != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_m = currency_converter.convert_price(Decimal(v.old_price), from_currency, preferred, apply_margin=True)
-                    return f"{price_m} {preferred}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(v.old_price), from_currency, preferred, apply_margin=True)
+                return f"{price_m} {preferred}"
+            except Exception:
+                pass
             formatted = f"{v.old_price}"
             if '.' in formatted:
                 formatted = formatted.rstrip('0').rstrip('.')
@@ -3684,6 +3698,8 @@ class PerfumeryProductSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
@@ -3734,6 +3750,39 @@ class PerfumeryProductSerializer(serializers.ModelSerializer):
         language_code = getattr(request, 'LANGUAGE_CODE', None)
         return {'en': 'USD', 'ru': 'RUB'}.get(language_code, 'RUB')
 
+    def get_price(self, obj):
+        """Конвертированная цена с маржой: берём из активного варианта или из самого товара."""
+        variant = self._get_active_variant(obj)
+        price_val = variant.price if (variant and variant.price is not None) else obj.price
+        if price_val is None:
+            return None
+        preferred = self._get_preferred_currency(obj)
+        src_currency = (variant.currency if variant and variant.currency else obj.currency) or 'RUB'
+        from_currency = src_currency.upper()
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_m = currency_converter.convert_price(Decimal(price_val), from_currency, preferred, apply_margin=True)
+            return price_m
+        except Exception:
+            pass
+        return price_val
+
+    def get_currency(self, obj):
+        """Валюта цены (preferred если конвертация прошла успешно)."""
+        variant = self._get_active_variant(obj)
+        price_val = variant.price if (variant and variant.price is not None) else obj.price
+        preferred = self._get_preferred_currency(obj)
+        src_currency = (variant.currency if variant and variant.currency else obj.currency) or 'RUB'
+        from_currency = src_currency.upper()
+        if price_val is not None:
+            try:
+                from .utils.currency_converter import currency_converter
+                currency_converter.convert_price(Decimal(price_val), from_currency, preferred, apply_margin=True)
+                return preferred
+            except Exception:
+                pass
+        return from_currency
+
     def get_main_image_url(self, obj):
         request = self.context.get('request')
         file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
@@ -3761,24 +3810,22 @@ class PerfumeryProductSerializer(serializers.ModelSerializer):
         if variant and variant.price is not None:
             preferred = self._get_preferred_currency(obj)
             from_currency = (variant.currency or obj.currency or 'RUB').upper()
-            if preferred != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_m = currency_converter.convert_price(Decimal(variant.price), from_currency, preferred, apply_margin=True)
-                    return f"{price_m} {preferred}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(variant.price), from_currency, preferred, apply_margin=True)
+                return f"{price_m} {preferred}"
+            except Exception:
+                pass
             return f"{variant.price} {from_currency}"
         if obj.price is not None:
             preferred = self._get_preferred_currency(obj)
             from_currency = (obj.currency or 'RUB').upper()
-            if preferred != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_m = currency_converter.convert_price(Decimal(obj.price), from_currency, preferred, apply_margin=True)
-                    return f"{price_m} {preferred}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(obj.price), from_currency, preferred, apply_margin=True)
+                return f"{price_m} {preferred}"
+            except Exception:
+                pass
             return f"{obj.price} {from_currency}"
         return None
 
@@ -3789,13 +3836,12 @@ class PerfumeryProductSerializer(serializers.ModelSerializer):
         if price_val is not None:
             preferred = self._get_preferred_currency(obj)
             from_currency = cur.upper()
-            if preferred != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_m = currency_converter.convert_price(Decimal(price_val), from_currency, preferred, apply_margin=True)
-                    return f"{price_m} {preferred}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(price_val), from_currency, preferred, apply_margin=True)
+                return f"{price_m} {preferred}"
+            except Exception:
+                pass
             formatted = f"{price_val}"
             if '.' in formatted:
                 formatted = formatted.rstrip('0').rstrip('.')
@@ -3826,13 +3872,12 @@ class PerfumeryProductSerializer(serializers.ModelSerializer):
         if v and v.price is not None:
             preferred = self._get_preferred_currency(obj)
             from_currency = (v.currency or obj.currency or 'RUB').upper()
-            if preferred != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_m = currency_converter.convert_price(Decimal(v.price), from_currency, preferred, apply_margin=True)
-                    return str(price_m)
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(v.price), from_currency, preferred, apply_margin=True)
+                return str(price_m)
+            except Exception:
+                pass
             return str(v.price)
         return None
 
@@ -3870,13 +3915,12 @@ class PerfumeryProductSerializer(serializers.ModelSerializer):
         if v and v.old_price is not None:
             preferred = self._get_preferred_currency(obj)
             from_currency = (v.currency or obj.currency or 'RUB').upper()
-            if preferred != from_currency:
-                try:
-                    from .utils.currency_converter import currency_converter
-                    _, _, price_m = currency_converter.convert_price(Decimal(v.old_price), from_currency, preferred, apply_margin=True)
-                    return f"{price_m} {preferred}"
-                except Exception:
-                    pass
+            try:
+                from .utils.currency_converter import currency_converter
+                _, _, price_m = currency_converter.convert_price(Decimal(v.old_price), from_currency, preferred, apply_margin=True)
+                return f"{price_m} {preferred}"
+            except Exception:
+                pass
             formatted = f"{v.old_price}"
             if '.' in formatted:
                 formatted = formatted.rstrip('0').rstrip('.')
@@ -3912,6 +3956,8 @@ class _SimpleDomainMixin:
     """Общие helper-методы для доменных сериализаторов без вариантов."""
 
     main_image_url = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
@@ -3948,18 +3994,42 @@ class _SimpleDomainMixin:
             return _resolve_media_url(img.image_url, request)
         return None
 
+    def get_price(self, obj):
+        if obj.price is None:
+            return None
+        preferred = self._get_preferred_currency(obj)
+        from_currency = (obj.currency or 'RUB').upper()
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_m = currency_converter.convert_price(Decimal(obj.price), from_currency, preferred, apply_margin=True)
+            return price_m
+        except Exception:
+            pass
+        return obj.price
+
+    def get_currency(self, obj):
+        preferred = self._get_preferred_currency(obj)
+        from_currency = (obj.currency or 'RUB').upper()
+        if obj.price is not None:
+            try:
+                from .utils.currency_converter import currency_converter
+                currency_converter.convert_price(Decimal(obj.price), from_currency, preferred, apply_margin=True)
+                return preferred
+            except Exception:
+                pass
+        return from_currency
+
     def get_price_formatted(self, obj):
         if obj.price is None:
             return None
         preferred = self._get_preferred_currency(obj)
         from_currency = (obj.currency or 'RUB').upper()
-        if preferred != from_currency:
-            try:
-                from .utils.currency_converter import currency_converter
-                _, _, price_m = currency_converter.convert_price(Decimal(obj.price), from_currency, preferred, apply_margin=True)
-                return f"{price_m} {preferred}"
-            except Exception:
-                pass
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_m = currency_converter.convert_price(Decimal(obj.price), from_currency, preferred, apply_margin=True)
+            return f"{price_m} {preferred}"
+        except Exception:
+            pass
         return f"{obj.price} {from_currency}"
 
     def get_old_price_formatted(self, obj):
@@ -3967,13 +4037,12 @@ class _SimpleDomainMixin:
             return None
         preferred = self._get_preferred_currency(obj)
         from_currency = (obj.currency or 'RUB').upper()
-        if preferred != from_currency:
-            try:
-                from .utils.currency_converter import currency_converter
-                _, _, price_m = currency_converter.convert_price(Decimal(obj.old_price), from_currency, preferred, apply_margin=True)
-                return f"{price_m} {preferred}"
-            except Exception:
-                pass
+        try:
+            from .utils.currency_converter import currency_converter
+            _, _, price_m = currency_converter.convert_price(Decimal(obj.old_price), from_currency, preferred, apply_margin=True)
+            return f"{price_m} {preferred}"
+        except Exception:
+            pass
         formatted = f"{obj.old_price}"
         if '.' in formatted:
             formatted = formatted.rstrip('0').rstrip('.')
