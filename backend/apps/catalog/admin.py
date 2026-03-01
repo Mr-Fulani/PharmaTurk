@@ -11,7 +11,7 @@ from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFor
 from .models import (
     CategoryType, Category, CategoryTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
-    CategoryUnderwear, CategoryHeadwear, CategoryServices, CategoryPerfumery, MarketingCategory, MarketingRootCategory,
+    CategoryUnderwear, CategoryHeadwear, CategoryServices, CategoryPerfumery, CategoryIncense, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
     Brand, BrandTranslation, MarketingBrand, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
@@ -392,6 +392,11 @@ class CategoryPerfumeryAdmin(BaseCategoryAdmin):
     fieldsets = BaseCategoryAdmin.fieldsets + (
         (_('Подсказка'), {'fields': (), 'description': _("Парфюмерия: женская, мужская, унисекс, нишевая; ароматы для дома; EDP, EDT.")}),
     )
+
+
+@admin.register(CategoryIncense)
+class CategoryIncenseAdmin(BaseCategoryAdmin):
+    required_category_type_slug = "incense"
 
 
 @admin.register(Brand)

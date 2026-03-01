@@ -273,39 +273,45 @@ export const incenseApi = {
   getFeatured: () => api.get('/catalog/incense/products/featured'),
 }
 
-// Универсальная функция для получения API в зависимости от типа товаров
+// Спорттовары
+export const sportsApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/sports/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/sports/products/${slug}`),
+  getFeatured: () => api.get('/catalog/sports/products/featured'),
+}
+
+// Автозапчасти
+export const autoPartsApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/auto-parts/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/auto-parts/products/${slug}`),
+  getFeatured: () => api.get('/catalog/auto-parts/products/featured'),
+}
+
+// Универсальная функция для получения API в зависимости от типа товаров.
+// categoryType всегда приходит с дефисами (categoryTypeFromApi делает replace(/_/g, '-')).
 export function getApiForCategory(
   categoryType: string
 ) {
   switch (categoryType) {
-    case 'clothing':
-      return clothingApi
-    case 'shoes':
-      return shoesApi
-    case 'electronics':
-      return electronicsApi
-    case 'furniture':
-      return furnitureApi
-    case 'jewelry':
-      return jewelryApi
-    case 'books':
-      return booksApi
-    case 'perfumery':
-      return perfumeryApi
-    case 'medicines_domain':
-      return medicinesDomainApi
-    case 'supplements':
-      return supplementsApi
-    case 'medical_equipment':
-      return medicalEquipmentApi
-    case 'tableware':
-      return tablewareApi
-    case 'accessories':
-      return accessoriesApi
-    case 'incense':
-      return incenseApi
-    default:
-      return medicinesApi
+    case 'clothing':          return clothingApi
+    case 'shoes':             return shoesApi
+    case 'electronics':       return electronicsApi
+    case 'furniture':         return furnitureApi
+    case 'jewelry':           return jewelryApi
+    case 'books':             return booksApi
+    case 'perfumery':         return perfumeryApi
+    case 'medicines':
+    case 'medicines-domain':  return medicinesDomainApi
+    case 'supplements':       return supplementsApi
+    case 'medical-equipment': return medicalEquipmentApi
+    case 'tableware':         return tablewareApi
+    case 'accessories':       return accessoriesApi
+    case 'incense':           return incenseApi
+    case 'sports':            return sportsApi
+    case 'auto-parts':        return autoPartsApi
+    default:                  return medicinesApi
   }
 }
 

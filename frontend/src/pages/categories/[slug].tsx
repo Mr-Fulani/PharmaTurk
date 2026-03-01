@@ -232,20 +232,17 @@ const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): st
   return norm || 'medicines'
 }
 
+// Возвращает API-эндпоинт для листинга товаров по типу категории.
+// Типы с выделенным доменным вьюсетом используют свой эндпоинт;
+// все остальные — универсальный /api/catalog/products с фильтром category_slug.
 const resolveProductsEndpoint = (categoryType: string) => {
   switch (categoryType) {
-    case 'clothing':
-      return '/api/catalog/clothing/products'
-    case 'shoes':
-      return '/api/catalog/shoes/products'
-    case 'electronics':
-      return '/api/catalog/electronics/products'
-    case 'furniture':
-      return '/api/catalog/furniture/products'
-    case 'jewelry':
-      return '/api/catalog/jewelry/products'
-    default:
-      return '/api/catalog/products'
+    case 'clothing':    return '/api/catalog/clothing/products'
+    case 'shoes':       return '/api/catalog/shoes/products'
+    case 'electronics': return '/api/catalog/electronics/products'
+    case 'furniture':   return '/api/catalog/furniture/products'
+    case 'jewelry':     return '/api/catalog/jewelry/products'
+    default:            return '/api/catalog/products'
   }
 }
 
@@ -1495,10 +1492,12 @@ export default function CategoryPage({
           }
         }
 
-        const api = getApiForCategory(categoryType)
+        // Используем тот же эндпоинт, что и SSR — это гарантирует согласованность
+        // между серверным рендером и клиентской перезагрузкой при смене фильтров.
+        const productsEndpoint = resolveProductsEndpoint(categoryType).replace('/api/', '')
 
         console.log('Loading products with params:', params)
-        const response = await api.getProducts(params)
+        const response = await api.get(productsEndpoint, { params })
         const data = response.data
         const productsList = Array.isArray(data) ? data : (data.results || [])
         let filteredList = filterProductsByExtraFilters(productsList, filters, categoryType)
@@ -1514,7 +1513,7 @@ export default function CategoryPage({
           const retryParams = { ...params }
           delete retryParams.material
           delete retryParams.gender
-          const retryResponse = await api.getProducts(retryParams)
+          const retryResponse = await api.get(productsEndpoint, { params: retryParams })
           const retryData = retryResponse.data
           const retryProductsList = Array.isArray(retryData) ? retryData : (retryData.results || [])
           filteredList = filterProductsByExtraFilters(retryProductsList, filters, categoryType)

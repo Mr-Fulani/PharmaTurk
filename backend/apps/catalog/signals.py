@@ -1,11 +1,12 @@
 """Сигналы для каскадного удаления медиа-файлов из хранилища (R2/локальное) и автоскачивания из URL."""
 import logging
 
-from django.db.models.signals import post_delete, pre_save
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
 from .models import (
     BannerMedia,
+    BookProductImage,
     BookVariantImage,
     Brand,
     Category,
@@ -112,6 +113,58 @@ def delete_product_image_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.video_file)
     delete_url_from_storage(instance.image_url)
     delete_url_from_storage(instance.video_url)
+
+
+@receiver(pre_save, sender=ProductImage)
+def auto_download_product_image_from_url(sender, instance, **kwargs):
+    """Автоматически скачивать изображения из URL в файлы ProductImage."""
+    if instance.image_url and not instance.image_file:
+        if not is_internal_storage_url(instance.image_url):
+            file_obj = _download_url_to_file(instance.image_url)
+            if file_obj:
+                _save_downloaded_file_to_storage(instance, "image_file", file_obj)
+                logger.info("Auto-downloaded ProductImage URL to image_file for Product %s", instance.product_id)
+
+
+def _auto_download_impl(instance, field_name="image_file", url_field="image_url"):
+    """Реализация автоскачивания для любой модели."""
+    url = getattr(instance, url_field, None)
+    file_val = getattr(instance, field_name, None)
+    if url and not file_val:
+        if not is_internal_storage_url(url):
+            file_obj = _download_url_to_file(url)
+            if file_obj:
+                _save_downloaded_file_to_storage(instance, field_name, file_obj)
+                logger.info(f"Auto-downloaded {instance.__class__.__name__} URL to {field_name}")
+        else:
+            # Если URL внутренний (например, cdn.it-dev.space), пробуем извлечь путь
+            try:
+                from urllib.parse import urlparse
+                path = urlparse(url).path 
+                if path.startswith("/"):
+                    path = path[1:]
+                # Простая проверка: если путь не пустой, сохраняем как файл
+                if path:
+                    setattr(instance, field_name, path)
+                    # Обычно сохранять модель здесь не нужно, так как это pre_save сигнал,
+                    # но изменения поля будут сохранены при сохранении инстанса.
+                    logger.info(f"Set {field_name} from internal URL: {path}")
+            except Exception as e:
+                logger.warning(f"Failed to set internal path for {instance.__class__.__name__}: {e}")
+
+
+@receiver(pre_save, sender=BookProductImage)
+@receiver(pre_save, sender=ClothingProductImage)
+@receiver(pre_save, sender=ClothingVariantImage)
+@receiver(pre_save, sender=ElectronicsProductImage)
+@receiver(pre_save, sender=FurnitureVariantImage)
+@receiver(pre_save, sender=JewelryProductImage)
+@receiver(pre_save, sender=JewelryVariantImage)
+@receiver(pre_save, sender=ShoeProductImage)
+@receiver(pre_save, sender=ShoeVariantImage)
+def auto_download_domain_image_from_url(sender, instance, **kwargs):
+    """Автоматически скачивать изображения для доменных моделей."""
+    _auto_download_impl(instance)
 
 
 # --- Category, Brand ---
@@ -367,6 +420,17 @@ def _save_downloaded_file_to_storage(instance, file_attr, file_obj):
     setattr(instance, file_attr, ContentFile(content, name=basename))
 
 
+@receiver(post_save, sender=Product)
+def ensure_domain_product_for_base_product(sender, instance, **kwargs):
+    """
+    При сохранении Product (скрапер, импорт, админка) создаём запись в доменной
+    модели (PerfumeryProduct, MedicineProduct и т.д.), если её ещё нет, чтобы
+    товар отображался в нужном разделе админки и в правильном API.
+    """
+    from .domain_sync import ensure_domain_product_for_base
+    ensure_domain_product_for_base(instance)
+
+
 @receiver(pre_save, sender=Product)
 def auto_set_product_type_from_category(sender, instance, **kwargs):
     """
@@ -418,23 +482,27 @@ def auto_set_product_type_from_category(sender, instance, **kwargs):
 @receiver(pre_save, sender=Product)
 def auto_download_product_media_from_url(sender, instance, **kwargs):
     """Автоматически скачивать медиа из URL полей в файловые поля Product (через default_storage → R2)."""
-    external_data = instance.external_data if isinstance(instance.external_data, dict) else {}
-    source = external_data.get("source")
-    if source and source != "api":
-        return
-
     # Удалить старые файлы из R2 при замене на URL или очистке
     if instance.pk:
         try:
-            old = Product.objects.only("main_image_file", "main_video_file").get(pk=instance.pk)
+            old = Product.objects.only("main_image", "main_image_file", "main_video_file", "video_url").get(pk=instance.pk)
+            
+            # Удаляем фото только если URL фото изменился ИЛИ был очищен, 
+            # и при этом текущий instance.main_image_file пуст (что значит файл не был перекачан в этом сохранении)
             if old.main_image_file and old.main_image_file.name:
-                if not (instance.main_image_file and instance.main_image_file.name):
+                url_changed = (instance.main_image != old.main_image)
+                is_empty = not (instance.main_image_file and instance.main_image_file.name)
+                # Если URL изменился на другой или на пустой, и в инстансе нет файла — удаляем старый
+                if url_changed and is_empty:
                     delete_file_from_storage(old.main_image_file)
-                    logger.info("Deleted old main_image_file from R2 for Product %s", instance.pk)
+                    logger.info("Deleted old main_image_file for Product %s (URL changed or cleared)", instance.pk)
+            
             if old.main_video_file and old.main_video_file.name:
-                if not (instance.main_video_file and instance.main_video_file.name):
+                v_url_changed = (instance.video_url != old.video_url)
+                v_is_empty = not (instance.main_video_file and instance.main_video_file.name)
+                if v_url_changed and v_is_empty:
                     delete_file_from_storage(old.main_video_file)
-                    logger.info("Deleted old main_video_file from R2 for Product %s", instance.pk)
+                    logger.info("Deleted old main_video_file for Product %s (URL changed or cleared)", instance.pk)
         except Product.DoesNotExist:
             pass
 

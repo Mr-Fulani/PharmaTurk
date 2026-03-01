@@ -458,6 +458,14 @@ class CategoryPerfumery(Category):
         verbose_name_plural = _("Категории — Парфюмерия")
 
 
+class CategoryIncense(Category):
+    """Прокси-модель для категорий благовоний."""
+    class Meta:
+        proxy = True
+        verbose_name = _("Категория — Благовония")
+        verbose_name_plural = _("Категории — Благовония")
+
+
 class MarketingCategory(Category):
     class Meta:
         proxy = True
@@ -763,6 +771,14 @@ class AbstractDomainProduct(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def domain_item(self):
+        """
+        Для доменных моделей возвращает саму себя.
+        (Переопределено в Product для поиска доменного объекта)
+        """
+        return self
 
     def get_translated_description(self, locale: str = "ru") -> str:
         """Получает переведенное описание товара."""
@@ -1093,6 +1109,27 @@ class Product(models.Model):
             models.Index(fields=["availability_status"]),
             models.Index(fields=["country_of_origin"]),
         ]
+
+    @property
+    def domain_item(self):
+        """
+        Автоматически находит связанный доменный объект (BookProduct, ClothingProduct и т.д.).
+        Если доменный объект не найден, возвращает сам Product (self).
+        """
+        for rel in self._meta.related_objects:
+            if rel.one_to_one:
+                try:
+                    accessor_name = rel.get_accessor_name()
+                    # Игнорируем технические связи (например, переводы) и селф-референсы
+                    if accessor_name.startswith('_'):
+                        continue
+                    obj = getattr(self, accessor_name, None)
+                    # Доменный объект должен иметь атрибут _domain_product_type
+                    if obj and hasattr(obj, '_domain_product_type'):
+                        return obj
+                except Exception:
+                    continue
+        return self
 
     def __str__(self):
         return self.name
