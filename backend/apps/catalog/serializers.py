@@ -1044,7 +1044,10 @@ class ProductDetailSerializer(ProductSerializer):
     def get_book_variants(self, obj):
         if (obj.product_type or "").lower() != "books":
             return []
-        variants = obj.book_variants.filter(is_active=True).order_by("sort_order", "id")
+        book_product = getattr(obj, "book_item", None)
+        if book_product is None:
+            return []
+        variants = book_product.book_variants.filter(is_active=True).order_by("sort_order", "id")
         return BookVariantSerializer(variants, many=True, context={"request": self.context.get("request")}).data
     
     def get_og_image_url(self, obj):

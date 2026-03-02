@@ -1354,8 +1354,9 @@ class Product(models.Model):
 
             price_info = self.price_info
             
-            # Базовая цена
-            prices[self.currency] = {
+            # Базовая цена (если price_info только что создан, base_currency может быть из продукта)
+            base_currency = (price_info.base_currency or self.currency or 'RUB').upper()
+            prices[base_currency] = {
                 'original_price': price_info.base_price,
                 'converted_price': price_info.base_price,
                 'price_with_margin': price_info.base_price,
@@ -1408,8 +1409,59 @@ class Product(models.Model):
                 }
                 
         except ProductPrice.DoesNotExist:
-            # Если цен нет, возвращаем базовую цену
+            # Для невариативных товаров без ProductPrice создаём запись (конвертация по валютам),
+            # чтобы смена валюты на фронте работала. Затем повторно строим словарь цен.
             if self.price is not None and self.currency:
+                try:
+                    self.update_currency_prices()
+                    price_info = ProductPrice.objects.filter(product=self).first()
+                    if price_info:
+                        base_currency = (price_info.base_currency or self.currency or 'RUB').upper()
+                        prices[base_currency] = {
+                            'original_price': price_info.base_price,
+                            'converted_price': price_info.base_price,
+                            'price_with_margin': price_info.base_price,
+                            'is_base_price': True
+                        }
+                        if price_info.rub_price_with_margin:
+                            prices['RUB'] = {
+                                'original_price': price_info.rub_price,
+                                'converted_price': price_info.rub_price,
+                                'price_with_margin': price_info.rub_price_with_margin,
+                                'is_base_price': False
+                            }
+                        if price_info.usd_price_with_margin:
+                            prices['USD'] = {
+                                'original_price': price_info.usd_price,
+                                'converted_price': price_info.usd_price,
+                                'price_with_margin': price_info.usd_price_with_margin,
+                                'is_base_price': False
+                            }
+                        if price_info.kzt_price_with_margin:
+                            prices['KZT'] = {
+                                'original_price': price_info.kzt_price,
+                                'converted_price': price_info.kzt_price,
+                                'price_with_margin': price_info.kzt_price_with_margin,
+                                'is_base_price': False
+                            }
+                        if price_info.eur_price_with_margin:
+                            prices['EUR'] = {
+                                'original_price': price_info.eur_price,
+                                'converted_price': price_info.eur_price,
+                                'price_with_margin': price_info.eur_price_with_margin,
+                                'is_base_price': False
+                            }
+                        if price_info.try_price_with_margin:
+                            prices['TRY'] = {
+                                'original_price': price_info.try_price,
+                                'converted_price': price_info.try_price,
+                                'price_with_margin': price_info.try_price_with_margin,
+                                'is_base_price': False
+                            }
+                        return prices
+                except Exception:
+                    pass
+                # Fallback: только базовая валюта
                 prices[self.currency] = {
                     'original_price': self.price,
                     'converted_price': self.price,

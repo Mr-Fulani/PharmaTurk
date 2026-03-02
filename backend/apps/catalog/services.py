@@ -369,22 +369,21 @@ class CatalogNormalizer:
             
             product.save()
 
-        if hasattr(product_data, "metadata") and product_data.metadata:
-            self._sync_product_fields_from_metadata(product, product_data.metadata)
-        
-        # Обрабатываем категорию
-        # Если категория пришла как строка (название), ищем или создаем по названию
+        # Обрабатываем категорию ПЕРВЫМ ДЕЛОМ — до синхронизации метаданных,
+        # чтобы product_type был корректно установлен сигналом до записи книжных полей.
         if product_data.category:
             if isinstance(product_data.category, str) and not product_data.category.isdigit():
-                # Это название категории (например "Книги")
-                # Ищем категорию по имени или slug
+                # Это название категории (slug или имя), ищем по нему
                 from apps.catalog.constants import ROOT_CATEGORIES, get_or_create_root_category
 
                 cat_name = product_data.category
                 cat_slug = trans_slugify(cat_name, language_code='ru') or slugify(cat_name)
                 normalized_name = (cat_name or "").strip().lower()
                 allowed_root_slugs = {slug for slug, *_ in ROOT_CATEGORIES}
-                if cat_slug == "knigi" or normalized_name in {"книги", "книга", "books"}:
+
+                is_book = cat_slug == "books" or cat_slug == "knigi" or normalized_name in {"книги", "книга", "books"}
+
+                if is_book:
                     books_category = Category.objects.filter(slug="books").first()
                     if books_category:
                         category = books_category
@@ -395,26 +394,26 @@ class CatalogNormalizer:
                     category = Category.objects.filter(
                         Q(name__iexact=cat_name) | Q(slug=cat_slug)
                     ).first()
-                
+
                 if not category:
                     if cat_slug in allowed_root_slugs:
                         category = get_or_create_root_category(cat_slug)
                     else:
-                        self.logger.warning(f"Категория '{cat_name}' (slug={cat_slug}) не соответствует корневым категориям. Товар будет удален.")
-                        product.delete()
-                        return product
+                        self.logger.warning(
+                            f"Категория '{cat_name}' (slug={cat_slug}) не опознана. Товар сохранится без категории."
+                        )
 
                 if category and category.parent_id is None and category.slug not in allowed_root_slugs:
-                    self.logger.warning(f"Категория '{category.name}' (slug={category.slug}) некорректна для корня. Товар будет удален.")
-                    product.delete()
-                    return product
+                    self.logger.warning(
+                        f"Корневая категория '{category.name}' (slug={category.slug}) не в списке разрешенных ROOT_CATEGORIES."
+                    )
 
                 product.category = category
-                
-                # Обновляем product_type если категория "Книги"
-                if cat_name.lower() == 'книги' or cat_slug == 'knigi' or cat_slug == 'books':
+
+                # Устанавливаем product_type только если это явно книжная категория
+                if is_book:
                     product.product_type = 'books'
-                
+
                 product.save()
             else:
                 # Это ID категории
@@ -425,25 +424,10 @@ class CatalogNormalizer:
                     product.category = category
                     product.save()
 
-        attrs = {}
+        # Синхронизируем книжные поля ПОСЛЕ того, как product_type установлен сигналом
         if hasattr(product_data, "metadata") and product_data.metadata:
-            attrs = (product_data.metadata or {}).get("attributes") or {}
+            self._sync_product_fields_from_metadata(product, product_data.metadata)
 
-        if self._is_books_payload(product_data.category, attrs):
-            books_category = Category.objects.filter(slug="books").first()
-            if not books_category:
-                books_category = Category.objects.create(
-                    name="Книги",
-                    slug="books",
-                    description="Книги",
-                    is_active=True,
-                )
-            if not self._is_books_category(product.category):
-                product.category = books_category
-            if product.product_type != "books":
-                product.product_type = "books"
-            product.save()
-        
         # Обрабатываем бренд
         if product_data.brand:
             brand = Brand.objects.filter(
@@ -452,13 +436,13 @@ class CatalogNormalizer:
             if brand:
                 product.brand = brand
                 product.save()
-        
+
         # Обрабатываем изображения
         self._normalize_product_images(product, product_data.images)
-        
+
         action = "создан" if created else "обновлен"
         self.logger.info(f"Товар {product.name} {action} (external_id: {external_id})")
-        
+
         return product
     
     def _normalize_product_images(self, product: Product, image_urls: List[str]):
@@ -466,6 +450,10 @@ class CatalogNormalizer:
         if not image_urls:
             return
 
+        # Используем максимально специфичный объект (BookProduct и т.д.) для сохранения изображений
+        target = product.domain_item
+        is_domain = target != product
+        
         metadata = product.external_data if isinstance(product.external_data, dict) else {}
         attrs = metadata.get("attributes") if isinstance(metadata.get("attributes"), dict) else {}
         gallery_video_url = next(
@@ -493,19 +481,35 @@ class CatalogNormalizer:
         image_urls = deduped_urls
         
         # Удаляем старые изображения, которых нет в новом списке
-        existing_image_urls = set(product.images.values_list("image_url", flat=True))
-        existing_video_urls = set(product.images.values_list("video_url", flat=True))
-        existing_urls = existing_image_urls | existing_video_urls
-        new_urls = set(image_urls)
-        
-        # Удаляем изображения, которых больше нет
-        product.images.exclude(Q(image_url__in=new_urls) | Q(video_url__in=new_urls)).delete()
+        # Используем manager target.images, который для ProductImage/BookProductImage/etc одинаковый по названию
+        try:
+            existing_image_urls = set(target.images.values_list("image_url", flat=True))
+            # В доменных моделях (типа BookProductImage) может не быть video_url, поэтому аккуратно
+            existing_video_urls = set()
+            if hasattr(target.images.model, 'video_url'):
+                existing_video_urls = set(target.images.values_list("video_url", flat=True))
+            
+            new_urls = set(image_urls)
+            
+            # Удаляем изображения, которых больше нет
+            exclude_query = Q(image_url__in=new_urls)
+            if hasattr(target.images.model, 'video_url'):
+                exclude_query |= Q(video_url__in=new_urls)
+            
+            target.images.exclude(exclude_query).delete()
+        except Exception as e:
+            self.logger.warning(f"Error while cleaning up images for {product.pk}: {e}")
         
         # Добавляем новые изображения
         main_image_url = None
         for i, image_url in enumerate(image_urls):
             media_type = self._resolve_media_type(image_url)
-            existing_item = product.images.filter(Q(image_url=image_url) | Q(video_url=image_url)).first()
+            
+            filter_query = Q(image_url=image_url)
+            if hasattr(target.images.model, 'video_url'):
+                filter_query |= Q(video_url=image_url)
+                
+            existing_item = target.images.filter(filter_query).first()
             desired_is_main = False
             if preferred_main_video_url:
                 if media_type == "video" and image_url == preferred_main_video_url:
@@ -513,53 +517,62 @@ class CatalogNormalizer:
             elif media_type == "image" and main_image_url is None:
                 desired_is_main = True
                 main_image_url = image_url
+            
             if existing_item:
-                updates = {}
-                if media_type == "video" and existing_item.video_url != image_url:
-                    updates = {"video_url": image_url, "image_url": "", "is_main": False}
-                elif media_type == "image" and existing_item.image_url != image_url:
-                    updates = {"image_url": image_url, "video_url": ""}
+                updates: Dict[str, Any] = {}
+                if hasattr(existing_item, 'video_url'):
+                    if media_type == "video" and existing_item.video_url != image_url:
+                        updates = {"video_url": image_url, "image_url": "", "is_main": False}
+                    elif media_type == "image" and existing_item.image_url != image_url:
+                        updates = {"image_url": image_url, "video_url": ""}
+                else:
+                    if media_type == "image" and existing_item.image_url != image_url:
+                        updates = {"image_url": image_url}
+                
                 if existing_item.sort_order != i:
                     updates["sort_order"] = i
                 if existing_item.is_main != desired_is_main:
                     updates["is_main"] = desired_is_main
+                
                 if updates:
                     existing_item.__class__.objects.filter(pk=existing_item.pk).update(**updates)
                 continue
-            ProductImage.objects.create(
-                product=product,
-                image_url=image_url if media_type == "image" else "",
-                video_url=image_url if media_type == "video" else "",
-                sort_order=i,
-                is_main=desired_is_main
-            )
+            
+            # Создаем новое изображение в правильной модели
+            create_kwargs = {
+                "image_url": image_url if media_type == "image" else "",
+                "sort_order": i,
+                "is_main": desired_is_main
+            }
+            # Если это ProductImage, у него есть video_url. В доменных моделях обычно нет (они проще)
+            if hasattr(target.images.model, 'video_url'):
+                create_kwargs["video_url"] = image_url if media_type == "video" else ""
+            
+            # У BookProductImage поле называется 'product' (но указывает на BookProduct)
+            # У ProductImage поле называется 'product' (указывает на Product)
+            # В коде выше мы получили target = product.domain_item. 
+            # Нам нужно передать правильный объект в FK.
+            create_kwargs["product"] = target
+            target.images.model.objects.create(**create_kwargs)
         
+        # Обновляем главное медиа в самих объектах
         if preferred_main_video_url:
-            product.images.filter(is_main=True).exclude(video_url=preferred_main_video_url).update(is_main=False)
-            product.images.filter(video_url=preferred_main_video_url).update(is_main=True)
-            update_fields = []
-            if product.main_image:
-                product.main_image = ""
-                update_fields.append("main_image")
-            if product.video_url != preferred_main_video_url:
-                product.video_url = preferred_main_video_url
-                update_fields.append("video_url")
-            if update_fields:
-                product.save(update_fields=update_fields)
+            target.images.filter(is_main=True).exclude(video_url=preferred_main_video_url).update(is_main=False)
+            target.images.filter(video_url=preferred_main_video_url).update(is_main=True)
+            
+            for obj in [product, target] if is_domain else [product]:
+                update_fields = []
+                if hasattr(obj, 'main_image') and obj.main_image:
+                    obj.main_image = ""
+                    update_fields.append("main_image")
+                if hasattr(obj, 'video_url') and obj.video_url != preferred_main_video_url:
+                    obj.video_url = preferred_main_video_url
+                    update_fields.append("video_url")
+                if update_fields:
+                    obj.save(update_fields=update_fields)
             return
 
-        if gallery_video_url:
-            update_fields = []
-            if product.video_url != gallery_video_url:
-                product.video_url = gallery_video_url
-                update_fields.append("video_url")
-            if product.main_video_file:
-                product.main_video_file.delete(save=False)
-                product.main_video_file = None
-                update_fields.append("main_video_file")
-            if update_fields:
-                product.save(update_fields=update_fields)
-
+        # Поиск главного фото
         main_image_url = None
         for media_url in image_urls:
             if self._resolve_media_type(media_url) == "image":
@@ -567,15 +580,19 @@ class CatalogNormalizer:
                 break
 
         if main_image_url:
-            product.images.filter(is_main=True).exclude(image_url=main_image_url).update(is_main=False)
-            product.images.filter(image_url=main_image_url).update(is_main=True)
-            product.main_image = main_image_url
-            product.save()
+            target.images.filter(is_main=True).exclude(image_url=main_image_url).update(is_main=False)
+            target.images.filter(image_url=main_image_url).update(is_main=True)
+            
+            for obj in [product, target] if is_domain else [product]:
+                if hasattr(obj, 'main_image') and obj.main_image != main_image_url:
+                    obj.main_image = main_image_url
+                    obj.save(update_fields=['main_image'])
         else:
-            product.images.filter(is_main=True).update(is_main=False)
-            if product.main_image:
-                product.main_image = ""
-                product.save()
+            target.images.filter(is_main=True).update(is_main=False)
+            for obj in [product, target] if is_domain else [product]:
+                if hasattr(obj, 'main_image') and obj.main_image:
+                    obj.main_image = ""
+                    obj.save(update_fields=['main_image'])
     
     def normalize_product_attributes(self, product: Product, attributes_data: Dict[str, Any]):
         """Нормализует атрибуты товара из API."""

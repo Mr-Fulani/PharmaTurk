@@ -78,6 +78,7 @@ def run_scraper_task(self,
             f"Старт: {timezone.now().isoformat()}"
         ]
 
+        target_category = None
         if site_task:
             SiteScraperTask.objects.filter(id=site_task.id, status='pending').update(
                 status='running'
@@ -85,10 +86,11 @@ def run_scraper_task(self,
             SiteScraperTask.objects.filter(id=site_task.id, started_at__isnull=True).update(
                 started_at=timezone.now()
             )
+            # Получаем свежие данные задачи
+            site_task.refresh_from_db()
             if max_images_per_product is None:
-                max_images_per_product = SiteScraperTask.objects.filter(id=site_task.id).values_list(
-                    'max_images_per_product', flat=True
-                ).first()
+                max_images_per_product = site_task.max_images_per_product
+            target_category = site_task.target_category
 
         # Запускаем парсер
         integration_service = ScraperIntegrationService()
@@ -97,7 +99,8 @@ def run_scraper_task(self,
             start_url=start_url,
             max_pages=max_pages,
             max_products=max_products,
-            max_images_per_product=max_images_per_product
+            max_images_per_product=max_images_per_product,
+            target_category=target_category,
         )
         
         result = {

@@ -5,12 +5,15 @@ from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.contrib import messages
 from django.http import HttpResponseRedirect
 
+from django.db.models import Count, Case, When, IntegerField
+from apps.catalog.models import Product, Category
 from .models import (
     ScraperConfig,
     ScrapingSession,
@@ -66,8 +69,11 @@ class ScraperConfigAdmin(admin.ModelAdmin):
     search_fields = ["name", "base_url", "description"]
     ordering = ["priority", "name"]
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     fieldsets = [
-        ("Основная информация", {"fields": ["name", "parser_class", "base_url", "description"]}),
+        ("Основная информация", {"fields": ["name", "parser_class", "base_url", "description", "default_category"]}),
         ("Статус и настройки", {"fields": ["status", "is_enabled", "priority"]}),
         (
             "Параметры парсинга",
@@ -257,17 +263,21 @@ class ScraperConfigAdmin(admin.ModelAdmin):
 class SiteScraperTaskAdmin(admin.ModelAdmin):
     list_display = [
         "scraper_config",
+        "target_category",
         "status_badge",
         "max_pages",
         "max_products",
+        "max_images_per_product",
         "products_stats",
+        "ai_status_display",
         "created_at",
         "duration_display",
         "actions_column",
     ]
-    list_filter = ["status", "scraper_config", "created_at"]
+    list_filter = ["status", "scraper_config", "target_category", "created_at"]
     search_fields = ["scraper_config__name", "start_url", "error_message"]
     ordering = ["-created_at"]
+    raw_id_fields = ["target_category"]
 
     fieldsets = [
         (
@@ -275,11 +285,13 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             {
                 "fields": [
                     "scraper_config",
+                    "target_category",
                     "start_url",
                     "max_pages",
                     "max_products",
                     "max_images_per_product",
-                ]
+                ],
+                "description": "Выберите целевую категорию — товары будут сохранены в неё. Если не указана, используется категория по умолчанию из конфигурации парсера.",
             },
         ),
         (
@@ -318,7 +330,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         "finished_at",
     ]
 
-    actions = ["run_site_scraping", "rerun_site_scraping"]
+    actions = ["run_site_scraping", "rerun_site_scraping", "run_ai_for_tasks"]
 
     def status_badge(self, obj):
         colors = {"pending": "blue", "running": "orange", "completed": "green", "failed": "red"}
@@ -360,10 +372,130 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
 
     duration_display.short_description = "Длительность"
 
+    def ai_status_display(self, obj):
+        """AI обработка: количество завершённых/всего логов для товаров задачи."""
+        if not obj.session_id:
+            return "—"
+
+        from apps.ai.models import AIProcessingLog
+
+        product_ids = list(
+            ScrapedProductLog.objects.filter(
+                session=obj.session,
+                product__isnull=False,
+                action__in=["created", "updated"],
+            ).values_list("product_id", flat=True).distinct()
+        )
+        if not product_ids:
+            return "—"
+
+        stats = AIProcessingLog.objects.filter(product_id__in=product_ids).aggregate(
+            total=Count("id"),
+            completed=Count(Case(When(status__in=["completed", "approved", "moderation"], then=1), output_field=IntegerField())),
+            processing=Count(Case(When(status="processing", then=1), output_field=IntegerField())),
+            failed=Count(Case(When(status="failed", then=1), output_field=IntegerField())),
+        )
+        total = stats["total"]
+        if not total:
+            return format_html('<span style="color:gray;">нет логов</span>')
+
+        completed = stats["completed"]
+        processing = stats["processing"]
+        failed = stats["failed"]
+        pending = total - completed - processing - failed
+
+        parts = []
+        if completed:
+            parts.append(f'<span style="color:green;" title="Завершено">✓{completed}</span>')
+        if processing:
+            parts.append(f'<span style="color:orange;" title="Обрабатывается">⏳{processing}</span>')
+        if failed:
+            parts.append(f'<span style="color:red;" title="Ошибка">✗{failed}</span>')
+        if pending:
+            parts.append(f'<span style="color:#888;" title="Ожидает">◷{pending}</span>')
+
+        logs_url = (
+            reverse("admin:ai_aiprocessinglog_changelist")
+            + "?product__id__in="
+            + ",".join(str(pid) for pid in product_ids)
+        )
+        inner = " ".join(parts)
+        return format_html(
+            '<a href="{}" title="Открыть логи AI">{} / {}</a>',
+            logs_url,
+            mark_safe(inner),
+            total,
+        )
+
+    ai_status_display.short_description = "AI обработка"
+
     def actions_column(self, obj):
+        if obj.status == "completed" and obj.session_id:
+            run_ai_url = reverse("admin:scrapers_sitescrapertask_run_ai", args=[obj.pk])
+            task_id_html = f'<span style="font-size:11px;color:gray;">{obj.task_id or "-"}</span>'
+            return format_html(
+                '{} <a href="{}" class="button" style="margin-left:4px;">Запустить AI</a>',
+                task_id_html,
+                run_ai_url,
+            )
         return format_html("<span>{}</span>", obj.task_id or "-")
 
-    actions_column.short_description = "ID задачи"
+    actions_column.short_description = "ID задачи / Действия"
+
+    def get_urls(self):
+        from django.urls import path
+
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "<int:task_id>/run-ai/",
+                self.admin_site.admin_view(self.run_ai_view),
+                name="scrapers_sitescrapertask_run_ai",
+            ),
+        ]
+        return custom_urls + urls
+
+    def run_ai_view(self, request, task_id):
+        try:
+            task = SiteScraperTask.objects.get(id=task_id)
+        except SiteScraperTask.DoesNotExist:
+            messages.error(request, "Задача парсинга не найдена")
+            return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+        if not task.session_id:
+            messages.warning(request, "У задачи нет привязанной сессии — нечего обработать AI")
+            return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+        product_ids = (
+            ScrapedProductLog.objects.filter(
+                session=task.session,
+                product__isnull=False,
+                action__in=["created", "updated"],
+            )
+            .values_list("product_id", flat=True)
+            .distinct()
+        )
+
+        product_ids = list(product_ids)
+        if not product_ids:
+            messages.warning(request, "В задаче нет товаров для AI обработки")
+            return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+        from apps.ai.tasks import process_product_ai_task
+
+        for product_id in product_ids:
+            process_product_ai_task.delay(
+                product_id=product_id,
+                processing_type="full",
+                auto_apply=False,
+            )
+
+        messages.success(
+            request,
+            f"Запущена AI обработка для {len(product_ids)} товаров из задачи #{task_id}. "
+            "Результаты появятся в разделе «Логи AI»; применить к товару — вручную после проверки.",
+        )
+        return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
 
     def run_site_scraping(self, request, queryset):
         from django.utils import timezone
@@ -444,6 +576,36 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                 messages.error(request, f"Ошибка повторного запуска: {e}")
 
     rerun_site_scraping.short_description = "Повторно запустить парсинг сайта"
+
+    def run_ai_for_tasks(self, request, queryset):
+        """Запустить AI обработку для всех товаров выбранных задач."""
+        from apps.ai.tasks import process_product_ai_task
+
+        total = 0
+        for task in queryset.filter(session__isnull=False):
+            product_ids = (
+                ScrapedProductLog.objects.filter(
+                    session=task.session,
+                    product__isnull=False,
+                    action__in=["created", "updated"],
+                )
+                .values_list("product_id", flat=True)
+                .distinct()
+            )
+            for pid in product_ids:
+                process_product_ai_task.delay(
+                    product_id=pid,
+                    processing_type="full",
+                    auto_apply=False,
+                )
+                total += 1
+
+        if total:
+            messages.success(request, f"Запущена AI обработка для {total} товаров (auto_apply=False)")
+        else:
+            messages.warning(request, "Не найдено товаров для AI обработки в выбранных задачах")
+
+    run_ai_for_tasks.short_description = "Запустить AI обработку для товаров задач"
 
 
 @admin.register(ScrapingSession)

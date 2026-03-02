@@ -12,7 +12,6 @@ import requests
 from django.utils.text import slugify
 from apps.catalog.models import (
     Product,
-    BookProduct,
     Category,
     ProductTranslation,
     Author,
@@ -34,9 +33,14 @@ class ContentGenerator:
     Оркестрирует работу LLM, R2MediaProcessor и Qdrant (RAG).
     """
 
+    RETRY_COUNT = 3
+
     def __init__(self):
+        self.logger = logging.getLogger(__name__)
         self.llm = LLMClient()
         self.media_processor = R2MediaProcessor()
+        from .result_applier import AIResultApplier
+        self.result_applier = AIResultApplier()
         try:
             self.vector_store = QdrantManager()
         except Exception as e:
@@ -177,29 +181,38 @@ class ContentGenerator:
                 # Парсинг результатов
                 self._parse_and_save_results(log_entry, content)
 
-            # 4. Завершение и проверка на модерацию
+            # 4. Завершение + применение
             log_entry.completed_at = timezone.now()
-            if self._check_needs_moderation(log_entry):
-                log_entry.status = AIProcessingStatus.MODERATION
-                log_entry.save()
-                self._create_moderation_task(log_entry)
-                return log_entry
 
-            log_entry.status = AIProcessingStatus.COMPLETED
-            log_entry.save()
-
-            # 5. Применение изменений (опционально)
             if auto_apply:
-                self._apply_changes_to_product(product, log_entry)
+                # Авто-применение: применяем немедленно, модерацию не проверяем —
+                # администратор явно выбрал этот режим и принимает результат.
+                try:
+                    self._apply_changes_to_product(product, log_entry)
+                    log_entry.status = AIProcessingStatus.APPROVED
+                except Exception as e:
+                    logger.exception(f"Error applying AI changes to product {product_id}: {e}")
+                    log_entry.status = AIProcessingStatus.FAILED
+                    log_entry.error_message = f"Error applying changes: {str(e)}"
+            else:
+                # Без авто-применения: проверяем нужна ли ручная модерация
+                if self._check_needs_moderation(log_entry):
+                    log_entry.status = AIProcessingStatus.MODERATION
+                    log_entry.save()
+                    self._create_moderation_task(log_entry)
+                    return log_entry
+                log_entry.status = AIProcessingStatus.COMPLETED
 
+            log_entry.save()
             return log_entry
 
         except Exception as e:
             logger.error(f"Error processing product {product_id}: {e}")
-            log_entry.status = AIProcessingStatus.FAILED
-            log_entry.error_message = str(e)
-            log_entry.stack_trace = traceback.format_exc()
-            log_entry.save()
+            if 'log_entry' in locals():
+                log_entry.status = AIProcessingStatus.FAILED
+                log_entry.error_message = str(e)
+                log_entry.stack_trace = traceback.format_exc()
+                log_entry.save()
             raise
 
     # Расширения URL, которые не отправляем в Vision (видео; GIF оставляем — это изображение)
@@ -214,16 +227,26 @@ class ContentGenerator:
     def _get_product_image_urls(self, product: Product) -> List[str]:
         """
         Список URL изображений товара для Vision API.
-        Видео-URL исключаются (Vision не анализирует видео); приоритет: главное изображение, затем галерея.
-        Если главное — видео или гиф, в анализ пойдут следующие по порядку изображения.
+        Видео-URL исключаются; приоритет: главное изображение (base или domain), затем галерея.
         """
         urls = []
-        if product.main_image and not self._is_video_url(product.main_image):
-            urls.append(product.main_image)
+        # Главное изображение из base Product или domain (BookProduct)
+        domain = getattr(product, "domain_item", None)
+        main_image = product.main_image or (getattr(domain, "main_image", None) if domain and domain is not product else None)
+        if main_image and not self._is_video_url(main_image):
+            urls.append(main_image)
 
+        # Галерея base Product (ProductImage)
         if hasattr(product, "images"):
             for img in product.images.all():
                 u = img.image_url or (img.image_file.url if getattr(img, "image_file", None) else None)
+                if u and not self._is_video_url(u):
+                    urls.append(u)
+
+        # Галерея domain-объекта (BookProductImage и т.д.)
+        if domain and domain is not product and hasattr(domain, "images"):
+            for img in domain.images.all():
+                u = getattr(img, "image_url", None) or (img.image_file.url if getattr(img, "image_file", None) else None)
                 if u and not self._is_video_url(u):
                     urls.append(u)
 
@@ -239,10 +262,15 @@ class ContentGenerator:
 
     def _collect_input_data(self, product: Product) -> Dict:
         """Сбор исходных данных о товаре."""
-        # Описание: основное поле или перевод (ru), чтобы AI видел текст даже без картинок
+        # Описание: base Product → перевод RU → domain model (BookProduct и т.д.)
         description = product.description or ""
         if not description.strip() and hasattr(product, "get_translated_description"):
             description = (product.get_translated_description("ru") or "").strip()
+        # Fallback на доменный объект (BookProduct.description может быть заполнен отдельно)
+        if not description.strip():
+            domain = getattr(product, "domain_item", None)
+            if domain and domain is not product:
+                description = getattr(domain, "description", "") or ""
         data = {
             "name": product.name,
             "description": description,
@@ -408,12 +436,13 @@ class ContentGenerator:
 
         Правила:
         - Описание на русском (ru.generated_description) и на английском (en.generated_description) — ОДИН И ТОТ ЖЕ смысл; длина каждого: от 20 до 100 слов.
+        - ВАЖНО: en.generated_description ДОЛЖНО БЫТЬ НА АНГЛИЙСКОМ ЯЗЫКЕ. Если исходный текст на русском — ПЕРЕВЕДИ его. Не оставляй кириллицу в en.generated_description.
         - Если есть raw_description (сырое описание от парсера, может быть на RU/EN/TR):
           • СНАЧАЛА очисти от цен, ссылок, хештегов, контактов и рекламы; улучши формулировки.
-          • Если исходный язык — русский: результат → ru.generated_description; en.generated_description = перевод на английский.
-          • Если исходный язык — английский: результат → en.generated_description; ru.generated_description = перевод на русский.
+          • Если исходный язык — русский: результат → ru.generated_description; en.generated_description = перевод на АНГЛИЙСКИЙ.
+          • Если исходный язык — английский: результат → en.generated_description; ru.generated_description = перевод на РУССКИЙ.
           • Если исходный язык — турецкий (или другой): переведи на русский → ru.generated_description; переведи на английский → en.generated_description.
-        - В итоге ВСЕГДА заполняй оба: ru.generated_description и en.generated_description.
+        - В итоге ВСЕГДА заполняй оба: ru.generated_description (RU) и en.generated_description (EN).
         - Технические поля (ISBN, автор, издательство, страницы, price, cover_type и т.д.) заполняй если данные есть в current_description, raw_description, known_attributes ИЛИ image_analysis. Для книг cover_type (переплёт: твердый, мягкий, суперобложка) можно определить по фото, если не указано в тексте. Не придумывай.
         - Название (generated_title): только основной заголовок, без подзаголовка. Например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура». Для книг: если в image_analysis есть name (название с обложки) — используй его; автор — из image_analysis.author.
         - SEO — только на английском (латиница). Кириллица в SEO недопустима.
@@ -441,6 +470,8 @@ class ContentGenerator:
                 "isbn": null,
                 "publisher": null,
                 "cover_type": "твердый/мягкий/суперобложка (from image or text)",
+                "language": "язык книги (rus/eng/ara/tur и т.д.) если видно в тексте или на обложке",
+                "publication_year": "год издания (4 цифры), если упомянут",
                 "stock_quantity": 3,
                 "price": null,
                 "currency": null
@@ -542,14 +573,21 @@ class ContentGenerator:
         if "generated_description" in data_source and data_source["generated_description"]:
             log.generated_description = data_source["generated_description"]
 
-        # SEO только из en (английский, латиница). Кириллицу не записываем.
+        # SEO только из en (английский, латиница). Кириллицу не записываем даже в логи.
         en_data = content.get("en") or {}
-        if en_data.get("seo_title"):
+        
+        def is_clean_en(text):
+            if not text: return True
+            return not bool(re.search("[а-яА-Я]", str(text)))
+
+        if en_data.get("seo_title") and is_clean_en(en_data["seo_title"]):
             log.generated_seo_title = (en_data["seo_title"] or "")[:70]
-        if en_data.get("seo_description"):
+        if en_data.get("seo_description") and is_clean_en(en_data["seo_description"]):
             log.generated_seo_description = (en_data["seo_description"] or "")[:160]
         if en_data.get("keywords"):
-            log.generated_keywords = en_data["keywords"]
+            # Фильтруем ключевые слова от кириллицы
+            clean_keywords = [k for k in en_data["keywords"] if is_clean_en(k)]
+            log.generated_keywords = clean_keywords
 
         if "attributes" in content and content["attributes"]:
             log.extracted_attributes = content["attributes"]
@@ -558,13 +596,22 @@ class ContentGenerator:
         if en_data:
             if not log.extracted_attributes:
                 log.extracted_attributes = {}
-            log.extracted_attributes["seo_en"] = {
-                "title": en_data.get("seo_title"),
-                "description": en_data.get("seo_description"),
-                "keywords": en_data.get("keywords"),
+            
+            # В структуре внутри attributes фильтруем тоже
+            seo_en_data = {
+                "title": en_data.get("seo_title") if is_clean_en(en_data.get("seo_title")) else None,
+                "description": en_data.get("seo_description") if is_clean_en(en_data.get("seo_description")) else None,
+                "keywords": [k for k in en_data.get("keywords", []) if is_clean_en(k)],
                 "generated_title": en_data.get("generated_title"),
                 "generated_description": en_data.get("generated_description"),
             }
+            # Авто-заполнение OG-тегов из SEO, если они есть
+            if seo_en_data["title"]:
+                seo_en_data["og_title"] = seo_en_data["title"]
+            if seo_en_data["description"]:
+                seo_en_data["og_description"] = seo_en_data["description"]
+            
+            log.extracted_attributes["seo_en"] = seo_en_data
 
         # Попытка найти категорию
         if "suggested_category_name" in content:
@@ -627,263 +674,42 @@ class ContentGenerator:
         )
 
     def _apply_changes_to_product(self, product: Product, log: AIProcessingLog):
-        """Применение сгенерированных данных к товару."""
-        with transaction.atomic():
-            # 1. Применяем основные данные (RU)
-            if log.generated_title:
-                normalized_name = self._normalize_product_name(
-                    log.generated_title, getattr(product, "product_type", None)
-                )
-                if normalized_name:
-                    product.name = normalized_name
-            if log.generated_description:
-                product.description = log.generated_description  # всегда применяем (очищенное AI)
+        """Применение сгенерированных данных к товару через AIResultApplier."""
+        original_name = product.name or ""
 
-            seo_title = (log.generated_seo_title or "").strip()
-            if seo_title and not re.search("[а-яА-Я]", seo_title):
-                product.seo_title = seo_title[:70]
-            seo_description = (log.generated_seo_description or "").strip()
-            if seo_description and not re.search("[а-яА-Я]", seo_description):
-                product.seo_description = seo_description[:160]
-            if log.generated_keywords:
-                keywords_text = (
-                    " ".join([str(item) for item in log.generated_keywords])
-                    if isinstance(log.generated_keywords, list)
-                    else str(log.generated_keywords)
-                )
-                if keywords_text and not re.search("[а-яА-Я]", keywords_text):
-                    product.keywords = log.generated_keywords
+        # Английское описание и название хранятся в seo_en внутри extracted_attributes
+        seo_en = (log.extracted_attributes or {}).get('seo_en', {})
+        en_description = seo_en.get('generated_description') or log.generated_description or ""
+        en_name = log.generated_seo_title or seo_en.get('generated_title') or log.generated_title or original_name
 
-            # SEO только на английском (латиница). Кириллицу не записываем.
-            def _no_cyrillic(s):
-                return s and not re.search("[а-яА-Я]", str(s))
+        ai_data = {
+            # generated_title намеренно не передаём — BaseAIApplier не трогает name
+            'generated_description': log.generated_description,
+            'generated_seo_title': log.generated_seo_title,
+            'generated_seo_description': log.generated_seo_description,
+            'generated_keywords': log.generated_keywords,
+            # OG-поля: og_title / og_description из seo_en; og_image_url из изображения товара
+            'og_title': seo_en.get('og_title') or log.generated_seo_title,
+            'og_description': seo_en.get('og_description') or log.generated_seo_description,
+            'og_image_url': product.main_image or getattr(getattr(product, 'domain_item', None), 'main_image', None),
+            'extracted_attributes': log.extracted_attributes,
+            'suggested_category': log.suggested_category,
+            'category_confidence': log.category_confidence,
+            'translations': {
+                'ru': {
+                    'name': original_name,
+                    'description': log.generated_description,
+                },
+                'en': {
+                    'name': en_name,
+                    'description': en_description,
+                }
+            }
+        }
 
-            if log.extracted_attributes and "seo_en" in log.extracted_attributes:
-                seo_en = log.extracted_attributes["seo_en"]
-                if _no_cyrillic(seo_en.get("title")):
-                    product.meta_title = (seo_en["title"] or "")[:255]
-                    product.og_title = (seo_en["title"] or "")[:255]
-                if _no_cyrillic(seo_en.get("description")):
-                    product.meta_description = (seo_en["description"] or "")[:500]
-                    product.og_description = (seo_en["description"] or "")[:500]
-                # OG Image: по умолчанию — главное изображение товара, если своё не задано
-                if not (getattr(product, "og_image_url", None) or "").strip():
-                    main_url = getattr(product, "main_image", None) or ""
-                    if not main_url and hasattr(product, "images"):
-                        first_img = product.images.order_by("-is_main", "sort_order").first()
-                        if first_img and (first_img.image_url or (first_img.image_file and first_img.image_file.url)):
-                            main_url = first_img.image_url or (first_img.image_file.url if first_img.image_file else "")
-                    if main_url:
-                        product.og_image_url = main_url[:2000]
-                kw = seo_en.get("keywords")
-                if kw and _no_cyrillic(" ".join(kw) if isinstance(kw, list) else kw):
-                    product.meta_keywords = (
-                        ", ".join(kw)[:500] if isinstance(kw, list) else str(kw)[:500]
-                    )
+        # Делегируем применение результатов специализированному сервису
+        self.result_applier.apply_to_product(product, ai_data)
+        
+        log.applied_at = timezone.now()
+        log.save()
 
-            # Category logic
-            if log.suggested_category and log.category_confidence > 0.8:
-                product.category = log.suggested_category
-
-            # Книги: GTIN и штрихкод из ISBN, если не заданы
-            book_item = getattr(product, "book_item", None)
-            if getattr(product, "product_type", None) == "books" and book_item and book_item.isbn:
-                isbn_val = (book_item.isbn or "").strip()
-                if isbn_val:
-                    if not (getattr(product, "gtin", None) or "").strip():
-                        product.gtin = isbn_val[:64]
-                    if not (getattr(product, "barcode", None) or "").strip():
-                        product.barcode = isbn_val[:50]
-
-            # Применение извлеченных атрибутов
-            if log.extracted_attributes:
-                attrs = log.extracted_attributes
-
-                # Название (если AI извлёк — нормализуем)
-                if "name" in attrs and attrs["name"]:
-                    norm_name = self._normalize_product_name(
-                        str(attrs["name"]).strip(), getattr(product, "product_type", None)
-                    )
-                    if norm_name:
-                        product.name = norm_name
-
-                # Цена, Старая цена и Валюта
-                price_updated = False
-                if "price" in attrs and attrs["price"]:
-                    try:
-                        product.price = Decimal(str(attrs["price"]))
-                        price_updated = True
-                    except (ValueError, TypeError, Exception):
-                        pass
-
-                if "old_price" in attrs and attrs["old_price"]:
-                    try:
-                        product.old_price = Decimal(str(attrs["old_price"]))
-                    except (ValueError, TypeError, Exception):
-                        pass
-
-                if "currency" in attrs and attrs["currency"]:
-                    product.currency = self._normalize_currency(str(attrs["currency"]))
-                    price_updated = True
-                elif price_updated and not (product.currency or "").strip():
-                    product.currency = "RUB"  # по умолчанию для RU-контента
-
-                # Количество на складе (stock_quantity)
-                # Если AI нашел значение - используем его.
-                # Если нет, и у товара оно не установлено - ставим 3 по умолчанию.
-                if "stock_quantity" in attrs and attrs["stock_quantity"] is not None:
-                    try:
-                        product.stock_quantity = int(attrs["stock_quantity"])
-                    except (ValueError, TypeError):
-                        pass
-                elif product.stock_quantity is None:
-                    product.stock_quantity = 3
-
-                product.save()
-
-                # Обновление мультивалютных цен (маржа, конвертация)
-                if price_updated:
-                    # Нормализуем валюту: ₽, руб и т.п. → RUB (иначе курс не найдётся)
-                    product.currency = self._normalize_currency(product.currency or "RUB")
-                    product.save()
-                    product.update_currency_prices()
-                    product.save()  # сохраняем converted_price_*, final_price_*
-
-                # Авторы (только если BookProduct)
-                if "author" in attrs and getattr(product, "product_type", None) == "books":
-                    # Получаем/создаем BookProduct для привязки авторов
-                    book_product = self._get_or_create_book_product(product)
-                    
-                    if not book_product.book_authors.exists():
-                        authors_list = attrs["author"]
-                        if isinstance(authors_list, str):
-                            authors_list = [authors_list]
-
-                        if isinstance(authors_list, list):
-                            # Очистка текущих авторов не производится, только добавление новых
-                            for idx, auth_name in enumerate(authors_list):
-                                # Пропускаем "пустые" имена
-                                if not auth_name or auth_name.lower().strip() in [
-                                    "не указано",
-                                    "нет",
-                                    "unknown",
-                                    "not specified",
-                                    "неизвестен",
-                                    "нет автора",
-                                ]:
-                                    continue
-
-                                parts = auth_name.strip().split()
-                                if len(parts) >= 2:
-                                    first_name = parts[0]
-                                    last_name = " ".join(parts[1:])
-                                else:
-                                    first_name = auth_name
-                                    last_name = ""
-
-                                author, _ = Author.objects.get_or_create(
-                                    first_name=first_name, last_name=last_name
-                                )
-                                ProductAuthor.objects.get_or_create(
-                                    product=book_product, author=author, defaults={"sort_order": idx}
-                                )
-
-                # Переплёт книги (из описания или image_analysis)
-                if getattr(product, "product_type", None) == "books" and "cover_type" in attrs and attrs["cover_type"]:
-                    ct = str(attrs["cover_type"]).strip()
-                    book_product = self._get_or_create_book_product(product)
-                    if ct and not (book_product.cover_type or "").strip():
-                        book_product.cover_type = ct[:50]
-                        book_product.save()
-
-                # Изображения из текста
-                if "images" in attrs and isinstance(attrs["images"], list):
-                    for img_url in attrs["images"]:
-                        if not img_url:
-                            continue
-                        try:
-                            # Проверяем, нет ли уже такого изображения
-                            if ProductImage.objects.filter(
-                                product=product, image_url=img_url
-                            ).exists():
-                                continue
-
-                            resp = requests.get(img_url, timeout=10)
-                            if resp.status_code == 200:
-                                filename = (
-                                    img_url.split("/")[-1].split("?")[0]
-                                    or f"image_{timezone.now().timestamp()}.jpg"
-                                )
-                                img_obj = ProductImage(
-                                    product=product,
-                                    image_url=img_url,  # Сохраняем исходный URL
-                                    is_main=not product.images.exists(),  # Если нет картинок, первая будет главной
-                                )
-                                img_obj.image_file.save(
-                                    filename, ContentFile(resp.content), save=True
-                                )
-                        except Exception as e:
-                            logger.error(f"Failed to download image {img_url}: {e}")
-
-            # 2. Сохраняем переводы (EN), если они есть в raw_llm_response
-            if log.raw_llm_response and "content" in log.raw_llm_response:
-                content = log.raw_llm_response["content"]
-                if "en" in content:
-                    en_data = content["en"]
-                    en_desc = en_data.get("generated_description")
-                    if en_desc:
-                        ProductTranslation.objects.update_or_create(
-                            product=product, locale="en", defaults={"description": en_desc}
-                        )
-
-                    # Сохраняем SEO только если на английском (без кириллицы)
-                    if en_data.get("seo_title") and not re.search("[а-яА-Я]", en_data["seo_title"]):
-                        product.meta_title = en_data["seo_title"][:255]
-                        product.og_title = en_data["seo_title"][:255]
-                    if en_data.get("seo_description") and not re.search("[а-яА-Я]", en_data["seo_description"]):
-                        product.meta_description = en_data["seo_description"][:500]
-                        product.og_description = en_data["seo_description"][:500]
-                    kw = en_data.get("keywords")
-                    if kw and not re.search("[а-яА-Я]", " ".join(kw) if isinstance(kw, list) else str(kw)):
-                        product.meta_keywords = ", ".join(kw)[:500] if isinstance(kw, list) else str(kw)[:500]
-
-                    product.save()
-
-            # Если нет EN данных в ответе, но есть RU, переводим RU SEO для заполнения EN полей
-            elif log.generated_seo_title and not product.meta_title:
-                # Это fallback, если LLM не вернул структуру "en"
-                pass
-
-    def _get_or_create_book_product(self, product: Product) -> 'BookProduct':
-        """Находит или создаёт BookProduct для Product с product_type='books'."""
-        book = getattr(product, 'book_item', None)
-        if book:
-            return book
-        from apps.catalog.models import BookProduct
-        # Создаём BookProduct, привязанный к shadow Product
-        base_slug = product.slug or slugify(product.name)
-        slug = f"book-{base_slug}"
-        i = 2
-        while BookProduct.objects.filter(slug=slug).exists():
-            slug = f"book-{base_slug}-{i}"
-            i += 1
-        book = BookProduct.objects.create(
-            base_product=product,
-            name=product.name,
-            slug=slug,
-            description=product.description or "",
-            category=product.category,
-            brand=product.brand,
-            price=product.price,
-            currency=product.currency or "RUB",
-            old_price=product.old_price,
-            external_id=product.external_id or "",
-            external_url=product.external_url or "",
-            external_data=product.external_data or {},
-            is_active=product.is_active,
-            is_available=product.is_available,
-            main_image=product.main_image or "",
-        )
-        # Обновляем кеш, чтобы product.book_item возвращал созданный объект
-        product.book_item = book
-        return book

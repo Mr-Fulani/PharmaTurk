@@ -147,9 +147,9 @@ class _SimpleDomainAdmin(admin.ModelAdmin):
 
     def run_ai(self, request, queryset):
         from apps.ai.tasks import process_product_ai_task
-        for product in queryset:
+        for obj in queryset:
             process_product_ai_task.delay(
-                product_id=product.id,
+                product_id=getattr(obj, "base_product_id", None) or obj.id,
                 processing_type="full",
                 auto_apply=False,
             )
@@ -163,9 +163,9 @@ class _SimpleDomainAdmin(admin.ModelAdmin):
 
     def run_ai_auto_apply(self, request, queryset):
         from apps.ai.tasks import process_product_ai_task
-        for product in queryset:
+        for obj in queryset:
             process_product_ai_task.delay(
-                product_id=product.id,
+                product_id=getattr(obj, "base_product_id", None) or obj.id,
                 processing_type="full",
                 auto_apply=True,
             )

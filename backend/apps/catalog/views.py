@@ -7,7 +7,8 @@ from datetime import timedelta
 from django.shortcuts import get_object_or_404
 from django.db import models
 from django.db.models import F
-from django.db.models.functions import Coalesce
+from django.db.models.functions import Coalesce, Least
+from django.db.models import Case, When
 from django.http import HttpResponse, JsonResponse, Http404
 from django.views.decorators.http import require_GET
 from django.core.cache import cache
@@ -106,19 +107,29 @@ def _get_preferred_currency(request) -> str:
     return (preferred or '').upper()
 
 
+def _effective_selling_price_expr():
+    """Эффективная цена для фильтра: при скидке (old_price > price) — цена со скидкой (min)."""
+    return Case(
+        When(old_price__isnull=False, old_price__gt=0, then=Least(F('price'), F('old_price'))),
+        default=F('price'),
+    )
+
+
 def _resolve_price_filter_expression(queryset, request):
+    """Выражение для фильтра по цене: итоговая цена в выбранной валюте (с маржой), fallback — эффективная базовая (со скидкой)."""
     preferred = _get_preferred_currency(request)
     if queryset.model is Product:
+        effective = _effective_selling_price_expr()
         if preferred == 'USD':
-            return Coalesce('final_price_usd', 'price_info__usd_price_with_margin', 'price')
+            return Coalesce(F('final_price_usd'), F('price_info__usd_price_with_margin'), effective)
         if preferred == 'RUB':
-            return Coalesce('final_price_rub', 'price_info__rub_price_with_margin', 'price')
+            return Coalesce(F('final_price_rub'), F('price_info__rub_price_with_margin'), effective)
         if preferred == 'KZT':
-            return Coalesce('price_info__kzt_price_with_margin', 'price')
+            return Coalesce(F('price_info__kzt_price_with_margin'), effective)
         if preferred == 'EUR':
-            return Coalesce('price_info__eur_price_with_margin', 'price')
+            return Coalesce(F('price_info__eur_price_with_margin'), effective)
         if preferred == 'TRY':
-            return Coalesce('price_info__try_price_with_margin', 'price')
+            return Coalesce(F('price_info__try_price_with_margin'), effective)
     return F('price')
 
 
@@ -790,14 +801,35 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             if category_ids:
                 queryset = queryset.filter(category_id__in=category_ids)
 
-        authors_qs = Author.objects.filter(books__product__in=queryset).distinct().order_by('last_name', 'first_name')
-        genres_qs = Category.objects.filter(book_genre_products__product__in=queryset, is_active=True).distinct().order_by('name')
+        authors_qs = Author.objects.filter(books__product__base_product__in=queryset).distinct().order_by('last_name', 'first_name')
+        # Жанры: из ProductGenre (какие реально есть у товаров) + дочерние категории корня «Книги» (все возможные жанры для сайдбара)
+        genre_ids_from_products = set(
+            Category.objects.filter(
+                book_genre_products__product__base_product__in=queryset, is_active=True
+            ).values_list('id', flat=True).distinct()
+        )
+        books_root = Category.objects.filter(slug='books', is_active=True).first()
+        if books_root:
+            genre_ids_from_tree = set(
+                Category.objects.filter(parent_id=books_root.id, is_active=True).values_list('id', flat=True)
+            )
+            genre_ids_from_products |= genre_ids_from_tree
+        genres_qs = (
+            Category.objects.filter(pk__in=genre_ids_from_products, is_active=True).order_by('name')
+            if genre_ids_from_products
+            else Category.objects.none()
+        )
 
+        from apps.catalog.models import BookProduct as BookProductModel
         publishers_raw = list(
-            queryset.exclude(publisher__isnull=True).exclude(publisher__exact='').values_list('publisher', flat=True).distinct()
+            BookProductModel.objects.filter(base_product__in=queryset)
+            .exclude(publisher__isnull=True).exclude(publisher__exact='')
+            .values_list('publisher', flat=True).distinct()
         )
         languages_raw = list(
-            queryset.exclude(language__isnull=True).exclude(language__exact='').values_list('language', flat=True).distinct()
+            BookProductModel.objects.filter(base_product__in=queryset)
+            .exclude(language__isnull=True).exclude(language__exact='')
+            .values_list('language', flat=True).distinct()
         )
 
         def normalize_list(values: list[str]) -> list[str]:

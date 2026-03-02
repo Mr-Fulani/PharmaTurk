@@ -20,6 +20,12 @@ class ScraperConfig(models.Model):
     parser_class = models.CharField(_("Класс парсера"), max_length=200)
     base_url = models.URLField(_("Базовый URL"))
     description = models.TextField(_("Описание"), blank=True)
+    default_category = models.ForeignKey(
+        "catalog.Category",
+        on_delete=models.PROTECT,
+        verbose_name=_("Категория по умолчанию"),
+        help_text=_("Категория-домен для всех товаров этого парсера (обязательно)"),
+    )
 
     # Статус и настройки
     status = models.CharField(_("Статус"), max_length=20, choices=STATUS_CHOICES, default="active")
@@ -170,6 +176,15 @@ class ScrapingSession(models.Model):
         _("Макс. медиа на товар"),
         default=5,
         validators=[MinValueValidator(1), MaxValueValidator(20)],
+    )
+    target_category = models.ForeignKey(
+        "catalog.Category",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scraping_sessions",
+        verbose_name=_("Целевая категория"),
+        help_text=_("Категория, в которую сохранять товары из этой сессии"),
     )
 
     # Результаты
@@ -444,6 +459,15 @@ class SiteScraperTask(models.Model):
         on_delete=models.CASCADE,
         related_name="site_tasks",
         verbose_name=_("Конфигурация парсера"),
+    )
+    target_category = models.ForeignKey(
+        "catalog.Category",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="site_scraper_tasks",
+        verbose_name=_("Целевая категория"),
+        help_text=_("Категория, в которую сохранять товары. Переопределяет категорию по умолчанию из конфигурации парсера."),
     )
     start_url = models.URLField(_("Начальный URL"))
     max_pages = models.PositiveIntegerField(

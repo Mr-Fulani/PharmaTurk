@@ -431,6 +431,21 @@ def ensure_domain_product_for_base_product(sender, instance, **kwargs):
     ensure_domain_product_for_base(instance)
 
 
+@receiver(post_save, sender=Product)
+def ensure_product_price_info(sender, instance, **kwargs):
+    """
+    После сохранения Product создаём/обновляем запись ProductPrice (конвертация
+    по валютам с маржой), чтобы невариативные товары отображались корректно
+    при смене валюты на фронте и были в разделе «💰 Валюты — Цены товаров».
+    """
+    if instance.price is None or not instance.currency:
+        return
+    try:
+        instance.update_currency_prices()
+    except Exception as e:
+        logger.exception("ensure_product_price_info: %s", e)
+
+
 @receiver(pre_save, sender=Product)
 def auto_set_product_type_from_category(sender, instance, **kwargs):
     """

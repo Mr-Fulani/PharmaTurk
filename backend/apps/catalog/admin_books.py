@@ -210,9 +210,9 @@ class BookProductAdmin(admin.ModelAdmin):
     def run_ai(self, request, queryset):
         """Поставить выбранные товары в очередь AI; результат — в логах, применить вручную после одобрения."""
         from apps.ai.tasks import process_product_ai_task
-        for product in queryset:
+        for book in queryset:
             process_product_ai_task.delay(
-                product_id=product.id,
+                product_id=book.base_product_id,
                 processing_type="full",
                 auto_apply=False,
             )
@@ -227,9 +227,9 @@ class BookProductAdmin(admin.ModelAdmin):
     def run_ai_auto_apply(self, request, queryset):
         """Один запуск: полная обработка + авто-применение. Не нужно идти в «Логи AI»."""
         from apps.ai.tasks import process_product_ai_task
-        for product in queryset:
+        for book in queryset:
             process_product_ai_task.delay(
-                product_id=product.id,
+                product_id=book.base_product_id,
                 processing_type="full",
                 auto_apply=True,
             )

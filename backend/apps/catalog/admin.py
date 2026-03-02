@@ -566,11 +566,19 @@ class ProductAttributeInline(admin.TabularInline):
 class RunAIActionMixin:
     """Миксин: действия AI обработки для выбранных товаров."""
 
+    def _resolve_base_product_id(self, obj) -> int:
+        """Возвращает pk базового Product независимо от типа obj.
+
+        Работает и для base Product, и для доменных моделей
+        (BookProduct, ClothingProduct, …), у которых есть base_product_id.
+        """
+        return getattr(obj, "base_product_id", None) or obj.id
+
     def run_ai(self, request, queryset):
         from apps.ai.tasks import process_product_ai_task
-        for product in queryset:
+        for obj in queryset:
             process_product_ai_task.delay(
-                product_id=product.id,
+                product_id=self._resolve_base_product_id(obj),
                 processing_type="full",
                 auto_apply=False,
             )
@@ -585,9 +593,9 @@ class RunAIActionMixin:
     def run_ai_auto_apply(self, request, queryset):
         """Один запуск: полная обработка + авто-применение. Не нужно идти в «Логи AI»."""
         from apps.ai.tasks import process_product_ai_task
-        for product in queryset:
+        for obj in queryset:
             process_product_ai_task.delay(
-                product_id=product.id,
+                product_id=self._resolve_base_product_id(obj),
                 processing_type="full",
                 auto_apply=True,
             )

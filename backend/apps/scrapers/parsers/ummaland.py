@@ -23,7 +23,10 @@ class UmmalandParser(BaseScraper):
     
     def get_supported_domains(self) -> List[str]:
         """Возвращает список поддерживаемых доменов."""
-        return ["ummaland.com", "www.ummaland.com"]
+        return [
+            "ummaland.com", "www.ummaland.com",
+            "umma-land.com", "www.umma-land.com"
+        ]
     
     def parse_categories(self) -> List[Dict[str, Any]]:
         """Парсит список категорий."""

@@ -84,20 +84,14 @@ def _base_product_to_domain_kwargs(product):
 
 
 def _enrich_domain_kwargs_from_product(kwargs, product, DomainModel):
-    """Добавляет meta/og и stock_quantity в kwargs для доменной модели."""
+    """Добавляет stock_quantity в kwargs для доменной модели.
+
+    EN SEO поля (meta_title, og_title, …) намеренно НЕ копируются из Product:
+    они предназначены для AI-генерации и должны оставаться пустыми до обработки.
+    Русские RU-поля (seo_title, seo_description, keywords) остаются на Product.
+    """
     if hasattr(DomainModel, "stock_quantity"):
         kwargs["stock_quantity"] = getattr(product, "stock_quantity", None)
-    for key in ("meta_title", "meta_description", "meta_keywords", "og_title", "og_description", "og_image_url"):
-        if hasattr(DomainModel, key):
-            if key == "meta_title" and hasattr(product, "seo_title"):
-                kwargs[key] = getattr(product, "seo_title", "") or ""
-            elif key == "meta_description" and hasattr(product, "seo_description"):
-                kwargs[key] = getattr(product, "seo_description", "") or ""
-            elif key == "meta_keywords" and hasattr(product, "keywords"):
-                kw = product.keywords
-                kwargs[key] = ", ".join(kw) if isinstance(kw, list) else (kw or "")
-            else:
-                kwargs[key] = getattr(product, key, "") or ""
 
 
 # Поля, которые синхронизируем из Product в домен при создании и при обновлении
@@ -148,11 +142,13 @@ def ensure_domain_product_for_base(product):
         for field in DOMAIN_SYNC_FIELDS:
             if hasattr(DomainModel, field) and field in kwargs:
                 update_dict[field] = kwargs[field]
-        if hasattr(DomainModel, "stock_quantity") and "stock_quantity" in kwargs:
+        # stock_quantity синхронизируем только если базовый Product имеет значение.
+        # Если Product.stock_quantity = None — не перезаписываем доменную модель:
+        # там может стоять значение от AI или вручную выставленное.
+        if hasattr(DomainModel, "stock_quantity") and kwargs.get("stock_quantity") is not None:
             update_dict["stock_quantity"] = kwargs["stock_quantity"]
-        for key in ("meta_title", "meta_description", "meta_keywords", "og_title", "og_description", "og_image_url"):
-            if hasattr(DomainModel, key) and key in kwargs:
-                update_dict[key] = kwargs[key]
+        # EN SEO поля (meta_title, og_title, …) не синхронизируем из Product при обновлении —
+        # они заполняются AI и не должны перезаписываться данными из base Product.
         if update_dict:
             if hasattr(DomainModel, "updated_at"):
                 update_dict["updated_at"] = timezone.now()
