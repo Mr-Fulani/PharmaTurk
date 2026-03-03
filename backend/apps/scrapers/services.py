@@ -69,6 +69,41 @@ class ScraperIntegrationService:
         self.logger = logging.getLogger(__name__)
         self.catalog_normalizer = CatalogNormalizer()
 
+    def _normalize_and_get_author(self, name: str) -> Optional[Author]:
+        lowered = name.lower().strip()
+        if lowered in [
+            "не указано", "нет", "unknown", "not specified", "неизвестен", "нет автора",
+        ]:
+            return None
+        
+        # Очищаем от лишних пробелов и кавычек
+        clean_name = re.sub(r'[\"\'«»]', '', name)
+        clean_name = re.sub(r'\s+', ' ', clean_name).strip()
+        if not clean_name:
+            return None
+            
+        parts = clean_name.split()
+        if len(parts) >= 2:
+            first_name = parts[0].title()
+            last_name = " ".join(parts[1:]).title()
+        else:
+            first_name = clean_name.title()
+            last_name = ""
+            
+        # Поиск независимый от регистра для предотвращения дублей
+        author = Author.objects.filter(
+            first_name__iexact=first_name, 
+            last_name__iexact=last_name
+        ).first()
+        
+        if not author:
+            author = Author.objects.create(
+                first_name=first_name, 
+                last_name=last_name, 
+                bio=""
+            )
+        return author
+
     def run_scraper(
         self,
         scraper_config: ScraperConfig,
@@ -637,9 +672,16 @@ class ScraperIntegrationService:
         if updated:
             existing_product.save()
 
-            if scraped_product.images:
+        # Всегда нормализуем медиа (обновляем галереи) независимо от того,
+        # поменялись ли текстовые атрибуты, так как могли измениться лимиты или тип продукта
+        if scraped_product.images:
+            try:
                 self.catalog_normalizer._normalize_product_images(
                     existing_product, scraped_product.images
+                )
+            except Exception as e:
+                self.logger.warning(
+                    f"Ошибка при нормализации изображений для товара {existing_product.id}: {e}"
                 )
 
             # Обновляем авторов, если они есть в атрибутах (авторы привязаны к BookProduct)
@@ -657,34 +699,12 @@ class ScraperIntegrationService:
 
                         author_names = [a.strip() for a in author_str.split(",") if a.strip()]
                         for idx, name in enumerate(author_names):
-                            lowered = name.lower().strip()
-                            if lowered in [
-                                "не указано",
-                                "нет",
-                                "unknown",
-                                "not specified",
-                                "неизвестен",
-                                "нет автора",
-                            ]:
-                                continue
-                            # Разбиваем имя на имя и фамилию
-                            parts = name.split()
-                            if len(parts) >= 2:
-                                first_name = parts[0]
-                                last_name = " ".join(parts[1:])
-                            else:
-                                first_name = name
-                                last_name = ""
-
-                            # Создаем или находим автора
-                            author, _ = Author.objects.get_or_create(
-                                first_name=first_name, last_name=last_name, defaults={"bio": ""}
-                            )
-
-                            # Связываем с BookProduct
-                            ProductAuthor.objects.create(
-                                product=book_product, author=author, sort_order=idx
-                            )
+                            author = self._normalize_and_get_author(name)
+                            if author:
+                                # Связываем с BookProduct
+                                ProductAuthor.objects.create(
+                                    product=book_product, author=author, sort_order=idx
+                                )
                 except Exception as e:
                     self.logger.error(
                         f"Ошибка при обновлении авторов для товара {existing_product.id}: {e}"
@@ -1040,30 +1060,11 @@ class ScraperIntegrationService:
 
                     author_names = [a.strip() for a in author_str.split(",") if a.strip()]
                     for idx, name in enumerate(author_names):
-                        lowered = name.lower().strip()
-                        if lowered in [
-                            "не указано",
-                            "нет",
-                            "unknown",
-                            "not specified",
-                            "неизвестен",
-                            "нет автора",
-                        ]:
-                            continue
-                        parts = name.split()
-                        if len(parts) >= 2:
-                            first_name = parts[0]
-                            last_name = " ".join(parts[1:])
-                        else:
-                            first_name = name
-                            last_name = ""
-
-                        author, _ = Author.objects.get_or_create(
-                            first_name=first_name, last_name=last_name, defaults={"bio": ""}
-                        )
-                        ProductAuthor.objects.create(
-                            product=book_product, author=author, sort_order=idx
-                        )
+                        author = self._normalize_and_get_author(name)
+                        if author:
+                            ProductAuthor.objects.create(
+                                product=book_product, author=author, sort_order=idx
+                            )
             except Exception as e:
                 self.logger.error(
                     f"Ошибка при добавлении авторов для нового товара {product.id}: {e}"

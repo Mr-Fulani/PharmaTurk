@@ -9,7 +9,7 @@ from .models import (
     BookProductTranslation, BookProductImage,
     Category, CategoryBooks,
     BookVariant, BookVariantSize, BookVariantImage,
-    ProductGenre
+    ProductGenre, CategoryTranslation
 )
 
 
@@ -282,6 +282,15 @@ class CategoryBooksAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     readonly_fields = ('created_at', 'updated_at')
     ordering = ('sort_order', 'name')
+    
+    class CategoryBooksTranslationInline(admin.TabularInline):
+        model = CategoryTranslation
+        extra = 1
+        fields = ('locale', 'name', 'description')
+        verbose_name = _('Перевод')
+        verbose_name_plural = _('Переводы')
+
+    inlines = [CategoryBooksTranslationInline]
     
     fieldsets = (
         (None, {

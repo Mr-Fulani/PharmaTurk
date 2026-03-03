@@ -406,6 +406,15 @@ class InstagramScraperTask(models.Model):
             "Определяет product_type (книги → BookProduct, одежда → ClothingProduct и т.д.)."
         ),
     )
+    target_subcategory = models.ForeignKey(
+        "catalog.Category",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="instagram_tasks_sub",
+        verbose_name=_("Подкатегория"),
+        help_text=_("Опционально. Узкая подкатегория (например, жанр книги или тип одежды). Если выбрано, товары будут сохранены сюда."),
+    )
     # Fallback-категория (slug): сохраняется для обратной совместимости.
     # Используется если target_category не выбрана.
     category = models.CharField(
@@ -491,6 +500,15 @@ class SiteScraperTask(models.Model):
         related_name="site_scraper_tasks",
         verbose_name=_("Целевая категория"),
         help_text=_("Категория, в которую сохранять товары. Переопределяет категорию по умолчанию из конфигурации парсера."),
+    )
+    target_subcategory = models.ForeignKey(
+        "catalog.Category",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="site_tasks_sub",
+        verbose_name=_("Подкатегория"),
+        help_text=_("Опционально. Узкая подкатегория (например, жанр книги или тип одежды). Если выбрано, товары будут сохранены сюда."),
     )
     start_url = models.URLField(_("Начальный URL"))
     max_pages = models.PositiveIntegerField(

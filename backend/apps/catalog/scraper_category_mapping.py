@@ -95,9 +95,21 @@ def resolve_category_and_product_type(category_value: str) -> Tuple[Optional[Cat
         return None, None
 
     # product_type в модели Product с подчёркиваниями (medical_equipment, auto_parts)
-    if getattr(category, "category_type", None) and category.category_type:
-        product_type = (category.category_type.slug or "").replace("-", "_")
-    else:
-        product_type = (category.slug or "").replace("-", "_")
+    current_cat = category
+    product_type = None
+    
+    # 1. Ищем category_type вверх по дереву
+    while current_cat:
+        if getattr(current_cat, "category_type", None) and current_cat.category_type:
+            product_type = (current_cat.category_type.slug or "").replace("-", "_")
+            break
+        current_cat = current_cat.parent
+        
+    # 2. Если category_type нигде нет, берём slug корневой категории
+    if not product_type:
+        current_cat = category
+        while current_cat.parent:
+            current_cat = current_cat.parent
+        product_type = (current_cat.slug or "").replace("-", "_")
 
     return category, product_type or None

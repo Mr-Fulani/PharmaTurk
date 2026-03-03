@@ -84,11 +84,35 @@ class CatalogNormalizer:
             )
         )
 
+    def _normalize_publisher(self, p: str) -> str:
+        if not p:
+            return ""
+        
+        # 1. Убираем кавычки
+        p = re.sub(r'[\"\'«»]', '', p)
+        
+        # 2. Убираем слова издательство, издательский дом (игнорируя регистр)
+        p = re.sub(r'(?i)\b(издательский\s+дом|издательство)\b', '', p)
+        
+        # 3. Убираем лишние пробелы по краям и внутри
+        p = re.sub(r'\s+', ' ', p).strip()
+        
+        if not p:
+            return ""
+
+        # 4. Спец-кейсы написания:
+        if p.upper() == 'UMMA LAND':
+            p = 'UMMALAND'
+        
+        # 5. Красивый регистр: если все большими буквами, делаем Title (кроме некоторых)
+        if p.isupper() and p.upper() != 'UMMALAND':
+            p = p.title()
+            
+        return p
+
     def _sync_books_metadata(self, product: Product, attrs: Dict[str, Any]) -> None:
         """Синхронизирует книжные атрибуты в BookProduct."""
         book_keys = ("isbn", "publisher", "pages", "cover_type", "language", "publication_year")
-        if not any(k in attrs for k in book_keys):
-            return
         from apps.catalog.models import BookProduct
 
         book_product = getattr(product, "book_item", None)
@@ -137,7 +161,7 @@ class CatalogNormalizer:
                 pass
         publisher = attrs.get("publisher")
         if publisher:
-            v = str(publisher).strip()
+            v = self._normalize_publisher(str(publisher))
             if v and v != (book_product.publisher or ""):
                 book_product.publisher = v
                 book_updated = True

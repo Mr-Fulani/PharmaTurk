@@ -286,6 +286,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                 "fields": [
                     "scraper_config",
                     "target_category",
+                    "target_subcategory",
                     "start_url",
                     "max_pages",
                     "max_products",
@@ -892,6 +893,7 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
                     "max_posts",
                     # target_category — основной способ задать категорию (FK на каталог)
                     "target_category",
+                    "target_subcategory",
                     # category — fallback, используется только если target_category пустое
                     "category",
                 ],
@@ -1028,6 +1030,10 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
             Объект Category или None.
         """
         from apps.catalog.models import Category
+
+        # Приоритет 0: Подкатегория (самая специфичная)
+        if hasattr(task, 'target_subcategory') and getattr(task, 'target_subcategory_id', None):
+            return task.target_subcategory
 
         # Приоритет 1: FK-категория
         if task.target_category_id:
@@ -1277,20 +1283,6 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
             messages.error(request, f"Ошибка запуска: {e}")
 
         return HttpResponseRedirect(reverse("admin:scrapers_instagramscrapertask_changelist"))
-
-    def save_model(self, request, obj, form, change):
-        """При создании новой задачи автоматически запускаем парсинг."""
-        is_new = obj.pk is None
-        super().save_model(request, obj, form, change)
-
-        if is_new and obj.status == "pending":
-            # Автоматически запускаем парсинг сразу после создания задачи
-            success, msg = self._run_task(obj, reset_stats=False)
-            if success:
-                messages.success(request, msg)
-            else:
-                messages.error(request, msg)
-
 
 # Кастомизация админки
 admin.site.site_header = "PharmaTurk - Управление парсерами"
