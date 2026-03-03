@@ -682,8 +682,41 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         product_type = self.request.query_params.get('product_type')
         if product_type:
             queryset = queryset.filter(product_type=product_type)
+            
+            if product_type == 'books':
+                # Фильтр по автору (поддержка массивов)
+                author_ids = self.request.query_params.getlist('author_id') or self.request.query_params.getlist('author_id[]')
+                if author_ids:
+                    try:
+                        author_ids = [int(aid) for aid in author_ids if aid]
+                        if author_ids:
+                            queryset = queryset.filter(book_item__book_authors__author_id__in=author_ids)
+                    except (ValueError, TypeError):
+                        pass
 
+                # Фильтр по жанру книги
+                genre_ids = self.request.query_params.getlist('genre_id') or self.request.query_params.getlist('genre_id[]')
+                if genre_ids:
+                    try:
+                        genre_ids = [int(gid) for gid in genre_ids if gid]
+                        if genre_ids:
+                            queryset = queryset.filter(book_item__book_genres__genre_id__in=genre_ids)
+                    except (ValueError, TypeError):
+                        pass
 
+                # Фильтр по издательству
+                publishers = self.request.query_params.get('publisher')
+                if publishers:
+                    publisher_list = [p.strip() for p in publishers.split(',') if p.strip()]
+                    if publisher_list:
+                        queryset = queryset.filter(book_item__publisher__in=publisher_list)
+
+                # Фильтр по языку
+                languages = self.request.query_params.get('language')
+                if languages:
+                    language_list = [l.strip() for l in languages.split(',') if l.strip()]
+                    if language_list:
+                        queryset = queryset.filter(book_item__language__in=language_list)
 
         # Фильтр по статусу доступности
         availability_status = self.request.query_params.get('availability_status')
