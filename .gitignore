@@ -58,3 +58,15 @@ dist/
 .next/
 coverage/
 *.tsbuildinfo
+
+# Cursor
+.cursor/
+.cursorrules
+
+# Pyright
+pyrightconfig.json
+
+# Local scripts & dev files
+check_ai_logs.py
+requirements-mac.txt
+requirements-nomarker.txt
