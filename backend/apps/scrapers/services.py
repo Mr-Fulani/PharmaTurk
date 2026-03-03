@@ -164,11 +164,38 @@ class ScraperIntegrationService:
                     scraped_products.extend(products)
                     session.pages_processed += 1
 
-            elif "/product/" in start_url or "/p/" in start_url:
-                # Парсинг отдельного товара
+            elif "/product/" in start_url or (
+                "/p/" in start_url and "instagram.com" not in start_url
+            ):
+                # Парсинг отдельного товара (не Instagram)
                 product = parser.parse_product_detail(start_url)
                 if product:
                     scraped_products.append(product)
+                session.pages_processed += 1
+
+            elif "instagram.com" in start_url:
+                # --- Instagram: три варианта URL ---
+                # 1. Конкретный пост:  instagram.com/p/SHORTCODE/
+                # 2. Reels:            instagram.com/reel/SHORTCODE/
+                # 3. Профиль:          instagram.com/username/
+                # 4. Хештег:           instagram.com/explore/tags/tag/
+                if "/p/" in start_url or "/reel/" in start_url:
+                    # Парсим один пост
+                    self.logger.info("Instagram: парсинг отдельного поста %s", start_url)
+                    product = parser.parse_product_detail(start_url)
+                    if product:
+                        scraped_products.append(product)
+                else:
+                    # Парсим профиль или хештег — возвращает список постов
+                    self.logger.info(
+                        "Instagram: парсинг профиля/хештега %s (макс. %d постов)",
+                        start_url,
+                        session.max_pages,
+                    )
+                    products = parser.parse_product_list(
+                        start_url, max_pages=session.max_pages
+                    )
+                    scraped_products.extend(products)
                 session.pages_processed += 1
 
             else:

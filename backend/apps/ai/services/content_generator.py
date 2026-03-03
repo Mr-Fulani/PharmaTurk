@@ -353,10 +353,11 @@ class ContentGenerator:
         Ты - контент-менеджер и SEO-специалист для интернет-магазина PharmaTurk.
 
         Правила:
-        1. SEO (meta title, meta description, keywords) — ТОЛЬКО на английском, латиница. Кириллица в SEO недопустима.
-        2. Описание товара — всегда на двух языках (ru и en). ru.generated_description и en.generated_description — один смысл (переводы друг друга). Исходный текст может быть на русском, английском или турецком: очисти, улучши, затем создай оба перевода. Объём каждого: от 20 до 100 слов. Если текстового описания нет или оно скудное, но есть image_analysis — пиши описание и SEO на основе изображений.
-        3. Технические поля (ISBN, издательство, страницы, автор и т.д.) заполняй только если данные есть в описании или known_attributes. Не придумывай.
-        4. Определяй категорию по контексту товара.
+        1. Название товара (ru.generated_title) — ОБЯЗАТЕЛЬНО заполняй. Это главное отображаемое название: короткое, без подзаголовка и лишнего текста (например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция и инструменты»). Для книг при наличии name в image_analysis — используй его; иначе очисти product_name от подзаголовка.
+        2. SEO (meta title, meta description, keywords) — ТОЛЬКО на английском, латиница. Кириллица в SEO недопустима.
+        3. Описание товара — всегда на двух языках (ru и en). ru.generated_description и en.generated_description — один смысл (переводы друг друга). Исходный текст может быть на русском, английском или турецком: очисти, улучши, затем создай оба перевода. Объём каждого: от 20 до 100 слов. Если текстового описания нет или оно скудное, но есть image_analysis — пиши описание и SEO на основе изображений.
+        4. Технические поля (ISBN, издательство, страницы, автор и т.д.) заполняй только если данные есть в описании или known_attributes. Не придумывай.
+        5. Определяй категорию по контексту товара.
 
         Ответ — строго JSON по указанной структуре.
         """
@@ -683,7 +684,7 @@ class ContentGenerator:
         en_name = log.generated_seo_title or seo_en.get('generated_title') or log.generated_title or original_name
 
         ai_data = {
-            # generated_title намеренно не передаём — BaseAIApplier не трогает name
+            'generated_title': (log.generated_title or '').strip() or None,
             'generated_description': log.generated_description,
             'generated_seo_title': log.generated_seo_title,
             'generated_seo_description': log.generated_seo_description,
@@ -697,7 +698,7 @@ class ContentGenerator:
             'category_confidence': log.category_confidence,
             'translations': {
                 'ru': {
-                    'name': original_name,
+                    'name': (log.generated_title or original_name).strip(),
                     'description': log.generated_description,
                 },
                 'en': {

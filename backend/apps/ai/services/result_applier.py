@@ -248,6 +248,11 @@ class AIResultApplier:
             
         handler = handler_class()
         logger.info(f"Applying AI results to {product} (type: {product_type}, site: {site}) via {handler.__class__.__name__}")
-        
+
+        # Применяем сгенерированное название к базовому товару (name показывается на сайте)
         with transaction.atomic():
+            new_title = (ai_data.get("generated_title") or "").strip()
+            if new_title:
+                product.name = new_title[:500]
+                product.save(update_fields=["name"])
             return handler.apply(target, ai_data)

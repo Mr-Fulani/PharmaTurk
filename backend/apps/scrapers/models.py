@@ -392,8 +392,31 @@ class InstagramScraperTask(models.Model):
         blank=True,
         help_text=_("Введите username без @ (например: book.warrior). Не нужен, если указана ссылка на пост."),
     )
+    # Категория через ForeignKey — как у SiteScraperTask.
+    # Выпадающий список из каталога. Имеет ПРИОРИТЕТ над полем category ниже.
+    target_category = models.ForeignKey(
+        "catalog.Category",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="instagram_tasks",
+        verbose_name=_("Целевая категория"),
+        help_text=_(
+            "Категория из каталога (выпадающий список). Имеет приоритет над полем «Категория товаров». "
+            "Определяет product_type (книги → BookProduct, одежда → ClothingProduct и т.д.)."
+        ),
+    )
+    # Fallback-категория (slug): сохраняется для обратной совместимости.
+    # Используется если target_category не выбрана.
     category = models.CharField(
-        _("Категория товаров"), max_length=50, choices=CATEGORY_CHOICES, default="books"
+        _("Категория товаров (fallback)"),
+        max_length=50,
+        choices=CATEGORY_CHOICES,
+        default="books",
+        help_text=_(
+            "Используется только если «Целевая категория» не выбрана. "
+            "Рекомендуется использовать «Целевая категория»."
+        ),
     )
     max_posts = models.PositiveIntegerField(
         _("Максимум постов"),
