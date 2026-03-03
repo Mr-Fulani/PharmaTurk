@@ -3391,6 +3391,7 @@ class BookProductSerializer(serializers.ModelSerializer):
     og_title = serializers.SerializerMethodField()
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
 
     class Meta:
         model = BookProduct
@@ -3401,6 +3402,7 @@ class BookProductSerializer(serializers.ModelSerializer):
             'isbn', 'publisher', 'publication_date', 'pages', 'language',
             'cover_type', 'rating', 'reviews_count', 'is_bestseller',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
+            'video_url',
             'images',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
@@ -3454,6 +3456,28 @@ class BookProductSerializer(serializers.ModelSerializer):
                 return _resolve_media_url(v_main.image_url, request)
         return None
 
+    def get_video_url(self, obj):
+        """URL видео: у книги или у базового Product (видео часто сохраняется в base_product)."""
+        request = self.context.get('request')
+        raw_url = getattr(obj, "video_url", None) or ""
+        if raw_url and raw_url.strip():
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+        file_field = getattr(obj, "main_video_file", None)
+        if file_field and getattr(file_field, "name", None):
+            return _resolve_file_url(file_field, request)
+        base = getattr(obj, "base_product", None)
+        if base:
+            raw_url = getattr(base, "video_url", None) or ""
+            if raw_url and raw_url.strip():
+                path_lower = raw_url.split("?")[0].lower()
+                if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                    return _resolve_media_url(raw_url, request)
+            file_field = getattr(base, "main_video_file", None)
+            if file_field and getattr(file_field, "name", None):
+                return _resolve_file_url(file_field, request)
+        return None
 
     def get_price(self, obj):
         """Конвертированная цена с маржой (вариант или базовый товар)."""
@@ -3532,7 +3556,35 @@ class BookProductSerializer(serializers.ModelSerializer):
         return None
 
     def get_images(self, obj):
-        product_images = BookProductImageSerializer(obj.images.all(), many=True, context=self.context).data
+        images_qs = obj.images.all()
+        base = getattr(obj, "base_product", None)
+
+        # Фильтруем превью-видео, которые парсер складывает в external_data.attributes.video_posters
+        if base and isinstance(getattr(base, "external_data", None), dict):
+            attrs = base.external_data.get("attributes") or {}
+            if isinstance(attrs, dict):
+                video_posters = attrs.get("video_posters") or []
+                if isinstance(video_posters, (list, tuple)):
+                    poster_urls = [u for u in video_posters if isinstance(u, str) and u]
+                    if poster_urls:
+                        images_qs = images_qs.exclude(image_url__in=poster_urls)
+
+                # Дополнительный хак: UmmaLand-книги с видео.
+                # Лишнее превью обычно последним кадром галереи, но учитываем только товары с видео.
+                source = attrs.get("source") or base.external_data.get("source")
+                raw_video = attrs.get("video_url") or base.external_data.get("video_url")
+                has_video = bool(raw_video or getattr(base, "video_url", None))
+                if (
+                    has_video
+                    and isinstance(source, str)
+                    and "umma-land.com" in source
+                ):
+                    ordered = list(images_qs.order_by("sort_order", "id"))
+                    if len(ordered) >= 2:
+                        last = ordered[-1]
+                        images_qs = images_qs.exclude(pk=last.pk)
+
+        product_images = BookProductImageSerializer(images_qs, many=True, context=self.context).data
         variant = self._get_active_variant(obj)
         if variant:
             variant_images = BookVariantImageSerializer(variant.images.all(), many=True, context=self.context).data

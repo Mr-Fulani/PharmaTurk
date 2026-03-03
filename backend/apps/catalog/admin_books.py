@@ -180,7 +180,23 @@ class BookProductAdmin(admin.ModelAdmin):
     )
     
     inlines = [ProductAuthorInline, ProductGenreInline, BookProductTranslationInline, BookProductImageInline, BookVariantInline]
-    
+
+    def delete_queryset(self, request, queryset):
+        """При удалении книг в админке удаляем и базовый Product, чтобы товар пропал с фронта."""
+        from apps.catalog.models import Product
+        base_ids = list(queryset.values_list("base_product_id", flat=True).distinct())
+        super().delete_queryset(request, queryset)
+        if base_ids:
+            Product.objects.filter(pk__in=base_ids).delete()
+
+    def delete_model(self, request, obj):
+        """При удалении одной книги удаляем и базовый Product."""
+        from apps.catalog.models import Product
+        base_id = obj.base_product_id
+        super().delete_model(request, obj)
+        if base_id:
+            Product.objects.filter(pk=base_id).delete()
+
     def authors_list(self, obj):
         """Список авторов через запятую."""
         authors = obj.book_authors.all()

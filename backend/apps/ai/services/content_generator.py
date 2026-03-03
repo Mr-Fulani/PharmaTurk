@@ -110,7 +110,7 @@ class ContentGenerator:
             if use_images and processing_type in ["full", "image_analysis"]:
                 image_urls = self._get_product_image_urls(product)
                 max_images = 5  # как в media_processor.get_product_images_batch
-                requested_urls = image_urls[:max_images]
+                requested_urls = [u for i, u in enumerate(image_urls) if i < max_images]
                 images_data = self.media_processor.get_product_images_batch(image_urls)
                 success_urls = [img.get("url") for img in images_data if img.get("url")]
                 failed_urls = [u for u in requested_urls if u not in success_urls]
@@ -126,13 +126,7 @@ class ContentGenerator:
             # 2. Анализ изображений (Vision API)
             image_analysis_result = {}
             if use_images and processing_type in ["full", "image_analysis"] and images_data:
-                is_books = self._is_books_product(product)
-                default_prompt = (
-                    self._get_books_image_prompt()
-                    if is_books
-                    else "Опиши этот товар, укажи цвет, материал и тип. "
-                    "Если это одежда/обувь — укажи бренд. Ответ в формате JSON."
-                )
+                default_prompt = self._get_default_image_prompt_for_product(product)
                 vision_prompt = self._get_prompt_template(
                     "image_prompt",
                     default_prompt,
@@ -244,11 +238,14 @@ class ContentGenerator:
                     urls.append(u)
 
         # Галерея domain-объекта (BookProductImage и т.д.)
-        if domain and domain is not product and hasattr(domain, "images"):
-            for img in domain.images.all():
-                u = getattr(img, "image_url", None) or (img.image_file.url if getattr(img, "image_file", None) else None)
-                if u and not self._is_video_url(u):
-                    urls.append(u)
+        if domain and domain is not product:
+            domain_images = getattr(domain, "images", None)
+            if domain_images and hasattr(domain_images, "all"):
+                for img in domain_images.all():
+                    image_file = getattr(img, "image_file", None)
+                    u = getattr(img, "image_url", None) or (getattr(image_file, "url", None) if image_file else None)
+                    if u and not self._is_video_url(u):
+                        urls.append(u)
 
         # Remove duplicates while preserving order
         seen = set()
@@ -286,10 +283,10 @@ class ContentGenerator:
             if raw_caption:
                 data["raw_description"] = raw_caption
                 # Используем сырое описание как основное, если оно богаче
-                if len(str(raw_caption)) > len(data["description"]):
+                if len(str(raw_caption)) > len(str(data.get("description", ""))):
                     data["description"] = str(raw_caption)
 
-        # Атрибуты книг/товара — всегда добавляем в контекст (не только при external_data)
+        # Атрибуты по типу товара — в контекст для AI (known_attributes в промпте)
         book_item = getattr(product, "book_item", None)
         if book_item:
             if book_item.isbn:
@@ -299,13 +296,27 @@ class ContentGenerator:
             if book_item.pages:
                 data["pages"] = book_item.pages
         else:
-            # Fallback (если вдруг поля остались в Product или это другой тип)
             if getattr(product, "isbn", None):
                 data["isbn"] = product.isbn
             if getattr(product, "publisher", None):
                 data["publisher"] = product.publisher
             if getattr(product, "pages", None):
                 data["pages"] = product.pages
+
+        jewelry_item = getattr(product, "jewelry_item", None)
+        if jewelry_item:
+            if getattr(jewelry_item, "jewelry_type", None):
+                data["jewelry_type"] = jewelry_item.jewelry_type
+            if getattr(jewelry_item, "material", None):
+                data["material"] = jewelry_item.material
+            if getattr(jewelry_item, "metal_purity", None):
+                data["metal_purity"] = jewelry_item.metal_purity
+            if getattr(jewelry_item, "stone_type", None):
+                data["stone_type"] = jewelry_item.stone_type
+            if getattr(jewelry_item, "carat_weight", None):
+                data["carat_weight"] = str(jewelry_item.carat_weight)
+            if getattr(jewelry_item, "gender", None):
+                data["gender"] = jewelry_item.gender
 
         return data
 
@@ -322,12 +333,47 @@ class ContentGenerator:
                 return True
         return False
 
+    def _get_product_type(self, product: Product) -> str:
+        """Возвращает product_type товара (books, jewelry, clothing и т.д.)."""
+        return (getattr(product, "product_type", None) or "").strip().lower()
+
+    def _get_default_image_prompt_for_product(self, product: Product) -> str:
+        """Промпт для анализа фото в зависимости от типа товара. Для кастомных промптов используйте AITemplate (image_prompt) по категории."""
+        pt = self._get_product_type(product)
+        if pt == "books":
+            return self._get_books_image_prompt()
+        if pt == "jewelry":
+            return self._get_jewelry_image_prompt()
+        if pt in ("clothing", "shoes", "underwear", "headwear"):
+            return self._get_clothing_image_prompt()
+        return (
+            "Опиши этот товар по фото: тип, цвет, материал, ключевые характеристики. "
+            "Ответ в формате JSON с полями product_type, color, material, краткое описание."
+        )
+
     def _get_books_image_prompt(self) -> str:
         """Промпт для анализа обложки книги: название и автор на обложке."""
         return (
             "Это книга. На обложке изображения указаны название и автор — извлеки их из фото. "
             "Также укажи издательство, тип переплёта (cover_type: твердый/мягкий/суперобложка), если видно. "
             "Ответ в формате JSON: name (название с обложки), author (автор), publisher, cover_type."
+        )
+
+    def _get_jewelry_image_prompt(self) -> str:
+        """Промпт для анализа фото украшения."""
+        return (
+            "Это ювелирное изделие или бижутерия. По фото определи: тип (ring/bracelet/necklace/earrings/pendant), "
+            "материал (золото, серебро, бижутерия и т.д.), цвет металла/камней, наличие камней (stone_type), "
+            "для кого (gender: женский/мужской/унисекс). Ответ в формате JSON: jewelry_type, material, metal_purity (если видно), "
+            "stone_type, color, gender, краткое описание на русском."
+        )
+
+    def _get_clothing_image_prompt(self) -> str:
+        """Промпт для анализа фото одежды/обуви."""
+        return (
+            "Это одежда или обувь. По фото определи: тип (верх/низ/обувь/аксессуар), цвет, материал, "
+            "сезонность, пол (gender: мужской/женский/унисекс). Если виден бренд — укажи. "
+            "Ответ в формате JSON: product_type, color, material, gender, brand (если видно), краткое описание."
         )
 
     def _get_prompt_template(
@@ -382,8 +428,12 @@ class ContentGenerator:
                         name = c.get("category_name") or c.get("payload", {}).get("category_name", "")
                         parent = c.get("parent") or c.get("payload", {}).get("parent", "")
                         examples = c.get("examples") or c.get("payload", {}).get("examples", "") or ""
+                        examples_str = str(examples)
+                        if len(examples_str) > 200:
+                            examples_str = examples_str.replace('\n', ' ')
+                            examples_str = "".join([c for i, c in enumerate(examples_str) if i < 200])
                         sim = c.get("score", 0)
-                        lines.append(f"- {name} (родитель: {parent}, схожесть: {sim:.2f}). Примеры: {str(examples)[:200]}")
+                        lines.append(f"- {name} (родитель: {parent}, схожесть: {sim:.2f}). Примеры: {examples_str}")
                     categories_context = "Доступные категории из каталога (используй при выборе suggested_category_name):\n" + "\n".join(lines) + "\n\n"
             except Exception as e:
                 logger.debug(f"RAG categories skipped: {e}")
@@ -397,15 +447,23 @@ class ContentGenerator:
             except Exception as e:
                 logger.debug(f"RAG templates skipped: {e}")
 
+        known_attrs = {
+            "isbn": input_data.get("isbn"),
+            "publisher": input_data.get("publisher"),
+            "pages": input_data.get("pages"),
+        }
+        if input_data.get("jewelry_type") is not None or input_data.get("material") is not None:
+            known_attrs["jewelry_type"] = input_data.get("jewelry_type")
+            known_attrs["material"] = input_data.get("material")
+            known_attrs["metal_purity"] = input_data.get("metal_purity")
+            known_attrs["stone_type"] = input_data.get("stone_type")
+            known_attrs["carat_weight"] = input_data.get("carat_weight")
+            known_attrs["gender"] = input_data.get("gender")
         data = {
             "product_name": input_data["name"],
-            "current_description": input_data["description"],  # основное описание (или raw_caption если богаче)
+            "current_description": input_data["description"],
             "brand": input_data["brand"] or "Unknown",
-            "known_attributes": {
-                "isbn": input_data.get("isbn"),
-                "publisher": input_data.get("publisher"),
-                "pages": input_data.get("pages"),
-            },
+            "known_attributes": known_attrs,
             "image_analysis": image_analysis,
         }
         # raw_description — оригинал от парсера (Instagram и др.); AI использует для извлечения цены, автора и т.д.
@@ -444,7 +502,9 @@ class ContentGenerator:
           • Если исходный язык — английский: результат → en.generated_description; ru.generated_description = перевод на РУССКИЙ.
           • Если исходный язык — турецкий (или другой): переведи на русский → ru.generated_description; переведи на английский → en.generated_description.
         - В итоге ВСЕГДА заполняй оба: ru.generated_description (RU) и en.generated_description (EN).
-        - Технические поля (ISBN, автор, издательство, страницы, price, cover_type и т.д.) заполняй если данные есть в current_description, raw_description, known_attributes ИЛИ image_analysis. Для книг cover_type (переплёт: твердый, мягкий, суперобложка) можно определить по фото, если не указано в тексте. Не придумывай.
+        - Технические поля заполняй только если данные есть в current_description, raw_description, known_attributes ИЛИ image_analysis. Не придумывай.
+        - Для книг: author, pages, isbn, publisher, cover_type, language, publication_year. cover_type (переплёт) можно определить по фото.
+        - Для украшений (jewelry): обязательно извлекай в attributes: jewelry_type (ring/bracelet/necklace/earrings/pendant), material (серебро/silver, золото/gold), metal_purity из текста про пробу («925 пробы», «585», «проба 750» → metal_purity: «925» / «585» / «750»), stone_type, carat_weight, gender — по описанию или по фото.
         - Название (generated_title): только основной заголовок, без подзаголовка. Например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура». Для книг: если в image_analysis есть name (название с обложки) — используй его; автор — из image_analysis.author.
         - SEO — только на английском (латиница). Кириллица в SEO недопустима.
         - В "ru" — название и описание на русском; в "en" — название, описание (перевод ru) и все SEO на английском.
@@ -466,13 +526,19 @@ class ContentGenerator:
             "suggested_category_name": "Category name (RU)",
             "category_confidence": 0.95,
             "attributes": {{
-                "author": ["Only if in source"],
+                "author": ["Only for books, if in source"],
                 "pages": null,
                 "isbn": null,
                 "publisher": null,
-                "cover_type": "твердый/мягкий/суперобложка (from image or text)",
-                "language": "язык книги (rus/eng/ara/tur и т.д.) если видно в тексте или на обложке",
-                "publication_year": "год издания (4 цифры), если упомянут",
+                "cover_type": "Only for books: твердый/мягкий/суперобложка",
+                "language": "Only for books: rus/eng/ara/tur",
+                "publication_year": "Only for books: year 4 digits",
+                "jewelry_type": "Only for jewelry: ring/bracelet/necklace/earrings/pendant",
+                "material": "Only for jewelry: e.g. gold, silver",
+                "metal_purity": "Only for jewelry: e.g. 925, 585, 750 from text like '925 пробы'",
+                "stone_type": "Only for jewelry if has stones",
+                "carat_weight": "Only for jewelry if applicable",
+                "gender": "For jewelry/clothing: женский/мужской/унисекс",
                 "stock_quantity": 3,
                 "price": null,
                 "currency": null
@@ -491,18 +557,18 @@ class ContentGenerator:
             # Убрать открывающий ```json или ```
             first = text.split("\n", 1)[0]
             if "json" in first.lower():
-                text = text[len(first) :].lstrip("\n")
+                text = str(text)[len(first) :].lstrip("\n")
             else:
-                text = text[3:].lstrip("\n")
+                text = str(text)[3:].lstrip("\n")
             if text.endswith("```"):
-                text = text[:-3].rstrip()
+                text = str(text)[:-3].rstrip()
         try:
             return json.loads(text) if text else {}
         except json.JSONDecodeError:
             logger.warning("LLM response is not valid JSON, raw snippet: %s", text[:500])
             return {}
 
-    def _normalize_product_name(self, name: str, product_type: str = None) -> str:
+    def _normalize_product_name(self, name: str, product_type: Optional[str] = None) -> str:
         """
         Нормализует название: убирает подзаголовок и лишние слова в конце.
         Напр. «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура» → «ИСЛАМСКИЕ ФИНАНСЫ»
@@ -518,24 +584,12 @@ class ContentGenerator:
         if first_line:
             s = first_line
 
-        # 2. Для книг: обрезаем по первому слову с маленькой буквы (подзаголовок)
-        if (product_type or "").lower() == "books":
-            words = s.split()
-            result = []
-            for w in words:
-                if not w:
-                    continue
-                if w[0].islower():
-                    break
-                result.append(w)
-            if result:
-                s = " ".join(result)
-
-        # 3. Обрезаем по запятой (формат «Название, подзаголовок»)
+        # 2. Обрезаем по запятой (формат «Название, подзаголовок»)
         if "," in s:
             s = s.split(",")[0].strip()
 
-        return s[:255] if len(s) > 255 else s
+        s_str = str(s)
+        return s_str[:255] if len(s_str) > 255 else s_str
 
     def _normalize_currency(self, raw: str) -> str:
         """Нормализация валюты из ответа AI в код (RUB, USD, TRY и т.д.)."""
@@ -678,8 +732,18 @@ class ContentGenerator:
         """Применение сгенерированных данных к товару через AIResultApplier."""
         original_name = product.name or ""
 
+        # Для украшений: дополняем extracted_attributes из image_analysis при применении (LLM мог не вернуть metal_purity)
+        attrs = dict(log.extracted_attributes or {})
+        if getattr(product, "product_type", None) == "jewelry" and log.image_analysis:
+            img = log.image_analysis if isinstance(log.image_analysis, dict) else (log.image_analysis[0] if log.image_analysis else None)
+            if isinstance(img, dict):
+                for key in ("jewelry_type", "material", "metal_purity", "stone_type", "gender"):
+                    if key not in attrs or not attrs.get(key):
+                        if img.get(key):
+                            attrs[key] = img[key]
+
         # Английское описание и название хранятся в seo_en внутри extracted_attributes
-        seo_en = (log.extracted_attributes or {}).get('seo_en', {})
+        seo_en = dict(attrs.get('seo_en') or {})
         en_description = seo_en.get('generated_description') or log.generated_description or ""
         en_name = log.generated_seo_title or seo_en.get('generated_title') or log.generated_title or original_name
 
@@ -693,7 +757,7 @@ class ContentGenerator:
             'og_title': seo_en.get('og_title') or log.generated_seo_title,
             'og_description': seo_en.get('og_description') or log.generated_seo_description,
             'og_image_url': product.main_image or getattr(getattr(product, 'domain_item', None), 'main_image', None),
-            'extracted_attributes': log.extracted_attributes,
+            'extracted_attributes': attrs,
             'suggested_category': log.suggested_category,
             'category_confidence': log.category_confidence,
             'translations': {
@@ -710,7 +774,4 @@ class ContentGenerator:
 
         # Делегируем применение результатов специализированному сервису
         self.result_applier.apply_to_product(product, ai_data)
-        
-        log.applied_at = timezone.now()
-        log.save()
 

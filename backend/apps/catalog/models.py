@@ -3362,6 +3362,7 @@ class BookProductImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to="products/books/gallery/",
+        max_length=2000,
         blank=True,
         null=True,
     )

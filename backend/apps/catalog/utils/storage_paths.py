@@ -202,7 +202,7 @@ def get_jewelry_variant_gallery_upload_path(instance, filename):
     return f"products/jewelry/{type_slug}/variants/gallery/{media_folder}/{readable_name}"
 
 
-def get_parsed_media_upload_path(parser_name, media_type, filename):
+def get_parsed_media_upload_path(parser_name, media_type, filename, sub_folder=None):
     """
     Динамический upload_to для медиа из парсеров.
 
@@ -210,9 +210,10 @@ def get_parsed_media_upload_path(parser_name, media_type, filename):
         parser_name: Имя парсера (instagram, ilacabak, zara и т.д.)
         media_type: Тип медиа ('image', 'video', 'gif')
         filename: Имя файла
+        sub_folder: Опциональная подпапка для группировки (имя аккаунта или категория)
 
     Returns:
-        str: Путь в формате products/parsed/{parser_name}/{media_type}s/{filename}
+        str: Путь в формате products/parsed/{parser_name}/[{sub_folder}/]{media_type}s/{filename}
     """
     parser_slug = parser_name.lower().replace(" ", "-").replace("_", "-")
 
@@ -221,6 +222,11 @@ def get_parsed_media_upload_path(parser_name, media_type, filename):
         "video": "videos",
         "gif": "gifs",
     }.get(media_type, "images")
+
+    if sub_folder:
+        sub_slug = _normalize_slug(sub_folder, "")
+        if sub_slug:
+            return f"products/parsed/{parser_slug}/{sub_slug}/{media_folder}/{filename}"
 
     return f"products/parsed/{parser_slug}/{media_folder}/{filename}"
 

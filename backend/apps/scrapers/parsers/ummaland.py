@@ -517,7 +517,17 @@ class UmmalandParser(BaseScraper):
                 for elem in soup.select(f'[{attr}]'):
                     val = elem.get(attr)
                     if val:
+                        # data-video / data-video-* всегда считаем ссылкой на видео
                         video_urls.append(val)
+                        # если это <img> с превью, его src/data-src считаем постером видео
+                        if elem.name == 'img':
+                            poster_src = (
+                                elem.get('data-src')
+                                or elem.get('src')
+                                or elem.get('data-large_image')
+                            )
+                            if poster_src:
+                                video_posters.append(poster_src)
 
             video_pattern = re.compile(r'(https?://[^"\']+\.(?:mp4|webm|mov|m4v|m3u8)(?:\?[^"\']*)?)', re.IGNORECASE)
             for match in video_pattern.findall(html or ""):

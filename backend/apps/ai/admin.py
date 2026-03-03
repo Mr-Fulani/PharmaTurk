@@ -1,4 +1,5 @@
 import json
+from django import forms
 from django.contrib import admin, messages
 from django.utils import timezone
 from django.utils.html import format_html, escape
@@ -19,6 +20,162 @@ from apps.catalog.models import (
     PerfumeryProduct,
 )
 from .models import AIProcessingLog, AITemplate, AIModerationQueue, AIProcessingStatus
+
+
+# Атрибуты украшений для формы модерации (применяются к JewelryProduct)
+JEWELRY_TYPE_CHOICES = [
+    ("", "—"),
+    ("ring", "Кольцо"),
+    ("bracelet", "Браслет"),
+    ("necklace", "Цепь/ожерелье"),
+    ("earrings", "Серьги"),
+    ("pendant", "Подвеска"),
+]
+GENDER_CHOICES_FORM = [
+    ("", "—"),
+    ("men", "Мужская"),
+    ("women", "Женская"),
+    ("unisex", "Унисекс"),
+    ("kids", "Детская"),
+]
+
+
+class AIProcessingLogForm(forms.ModelForm):
+    """Форма с полями EN/OG и атрибутами украшений; всё хранится в extracted_attributes и применяется к товару."""
+    generated_en_title = forms.CharField(
+        max_length=255,
+        required=False,
+        label="Заголовок (EN)",
+        help_text="Английское название — уходит в перевод en и в карточку товара.",
+        widget=forms.TextInput(attrs={"size": 80}),
+    )
+    generated_en_description = forms.CharField(
+        required=False,
+        label="Описание (EN)",
+        help_text="Английское описание — уходит в перевод en.",
+        widget=forms.Textarea(attrs={"rows": 4, "cols": 80}),
+    )
+    og_title = forms.CharField(
+        max_length=255,
+        required=False,
+        label="OG title",
+        help_text="og:title для соцсетей (латиница).",
+        widget=forms.TextInput(attrs={"size": 80}),
+    )
+    og_description = forms.CharField(
+        max_length=255,
+        required=False,
+        label="OG description",
+        help_text="og:description для соцсетей (латиница).",
+        widget=forms.Textarea(attrs={"rows": 2, "cols": 80}),
+    )
+    # Атрибуты украшений (применяются к JewelryProduct при «Сохранить и применить»)
+    jewelry_type = forms.ChoiceField(
+        choices=JEWELRY_TYPE_CHOICES,
+        required=False,
+        label="Тип украшения",
+        widget=forms.Select(attrs={"style": "max-width: 200px"}),
+    )
+    material = forms.CharField(
+        max_length=100,
+        required=False,
+        label="Материал",
+        widget=forms.TextInput(attrs={"size": 40}),
+    )
+    metal_purity = forms.CharField(
+        max_length=50,
+        required=False,
+        label="Проба металла",
+        help_text="Напр. 925, 585",
+        widget=forms.TextInput(attrs={"size": 20}),
+    )
+    stone_type = forms.CharField(
+        max_length=100,
+        required=False,
+        label="Тип камня",
+        widget=forms.TextInput(attrs={"size": 40}),
+    )
+    carat_weight = forms.DecimalField(
+        required=False,
+        label="Вес камней (карат)",
+        min_value=0,
+        max_digits=6,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={"step": "0.01", "style": "width: 100px"}),
+    )
+    gender = forms.ChoiceField(
+        choices=GENDER_CHOICES_FORM,
+        required=False,
+        label="Пол",
+        widget=forms.Select(attrs={"style": "max-width: 120px"}),
+    )
+
+    class Meta:
+        model = AIProcessingLog
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            attrs = self.instance.extracted_attributes or {}
+            seo_en = attrs.get("seo_en") or {}
+            self.fields["generated_en_title"].initial = seo_en.get("generated_title") or ""
+            self.fields["generated_en_description"].initial = seo_en.get("generated_description") or ""
+            self.fields["og_title"].initial = seo_en.get("og_title") or ""
+            self.fields["og_description"].initial = seo_en.get("og_description") or ""
+            # Атрибуты украшений из лога или с карточки товара
+            self.fields["jewelry_type"].initial = attrs.get("jewelry_type") or ""
+            self.fields["material"].initial = attrs.get("material") or ""
+            self.fields["metal_purity"].initial = attrs.get("metal_purity") or ""
+            self.fields["stone_type"].initial = attrs.get("stone_type") or ""
+            self.fields["carat_weight"].initial = attrs.get("carat_weight")
+            self.fields["gender"].initial = attrs.get("gender") or ""
+            product = getattr(self.instance, "product", None)
+            if product and getattr(product, "product_type", None) == "jewelry":
+                domain = getattr(product, "jewelry_item", None)
+                if domain and not attrs.get("metal_purity") and getattr(domain, "metal_purity", None):
+                    self.fields["metal_purity"].initial = domain.metal_purity
+                if domain and not attrs.get("material") and getattr(domain, "material", None):
+                    self.fields["material"].initial = domain.material
+                if domain and not attrs.get("jewelry_type") and getattr(domain, "jewelry_type", None):
+                    self.fields["jewelry_type"].initial = domain.jewelry_type
+                if domain and not attrs.get("stone_type") and getattr(domain, "stone_type", None):
+                    self.fields["stone_type"].initial = domain.stone_type
+                if domain and getattr(domain, "gender", None):
+                    self.fields["gender"].initial = domain.gender or ""
+
+    def save(self, commit=True):
+        obj = super().save(commit=commit)
+        if commit and obj.pk:
+            attrs = dict(obj.extracted_attributes or {})
+            seo_en = dict(attrs.get("seo_en") or {})
+            if self.cleaned_data.get("generated_en_title") is not None:
+                seo_en["generated_title"] = (self.cleaned_data.get("generated_en_title") or "").strip() or None
+            if self.cleaned_data.get("generated_en_description") is not None:
+                seo_en["generated_description"] = (self.cleaned_data.get("generated_en_description") or "").strip() or None
+            if self.cleaned_data.get("og_title") is not None:
+                seo_en["og_title"] = (self.cleaned_data.get("og_title") or "").strip() or None
+            if self.cleaned_data.get("og_description") is not None:
+                seo_en["og_description"] = (self.cleaned_data.get("og_description") or "").strip() or None
+            attrs["seo_en"] = seo_en
+            # Атрибуты украшений
+            for key, field_name in [
+                ("jewelry_type", "jewelry_type"),
+                ("material", "material"),
+                ("metal_purity", "metal_purity"),
+                ("stone_type", "stone_type"),
+                ("carat_weight", "carat_weight"),
+                ("gender", "gender"),
+            ]:
+                val = self.cleaned_data.get(field_name)
+                if val is not None:
+                    if val == "" or (isinstance(val, (int, float)) and val == 0 and key != "carat_weight"):
+                        attrs[key] = None
+                    else:
+                        attrs[key] = val
+            obj.extracted_attributes = attrs
+            obj.save(update_fields=["extracted_attributes"])
+        return obj
 
 
 def _get_product_admin_url(product):
@@ -78,6 +235,7 @@ def _get_product_admin_url(product):
 
 @admin.register(AIProcessingLog)
 class AIProcessingLogAdmin(admin.ModelAdmin):
+    form = AIProcessingLogForm
     change_list_template = "admin/ai/aiprocessinglog/change_list.html"
     change_form_template = "admin/ai/aiprocessinglog/change_form.html"
     list_display = (
@@ -147,7 +305,8 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                     "suggested_category",
                     "category_confidence",
                     "extracted_attributes",
-                )
+                ),
+                "description": "Все поля в блоках «Результаты генерации», «SEO» и «EN / OG» применяются к товару по кнопке «Сохранить и применить к товару».",
             },
         ),
         (
@@ -158,6 +317,32 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
                     "generated_seo_description",
                     "generated_keywords",
                 )
+            },
+        ),
+        (
+            "EN / OG (применяются к переводам и карточке)",
+            {
+                "fields": (
+                    "generated_en_title",
+                    "generated_en_description",
+                    "og_title",
+                    "og_description",
+                ),
+                "description": "Эти поля попадают в перевод en и в og:title / og:description на карточке товара.",
+            },
+        ),
+        (
+            "Атрибуты украшения (применяются к карточке товара)",
+            {
+                "fields": (
+                    "jewelry_type",
+                    "material",
+                    "metal_purity",
+                    "stone_type",
+                    "carat_weight",
+                    "gender",
+                ),
+                "description": "Заполняются AI или вручную. При нажатии «Сохранить и применить к товару» записываются в карточку JewelryProduct.",
             },
         ),
         (

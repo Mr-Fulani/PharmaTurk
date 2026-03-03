@@ -153,7 +153,6 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
                 logger.warning(f"Failed to set internal path for {instance.__class__.__name__}: {e}")
 
 
-@receiver(pre_save, sender=BookProductImage)
 @receiver(pre_save, sender=ClothingProductImage)
 @receiver(pre_save, sender=ClothingVariantImage)
 @receiver(pre_save, sender=ElectronicsProductImage)
@@ -527,9 +526,6 @@ def auto_download_product_media_from_url(sender, instance, **kwargs):
             if file_obj:
                 _save_downloaded_file_to_storage(instance, "main_image_file", file_obj)
                 logger.info("Auto-downloaded main_image URL to main_image_file for Product %s", instance.id or "new")
-
-    if instance.video_url and external_data.get("source") and not is_internal_storage_url(instance.video_url):
-        return
 
     if instance.video_url and not instance.main_video_file and not is_internal_storage_url(instance.video_url):
         file_obj = _download_url_to_file(instance.video_url)

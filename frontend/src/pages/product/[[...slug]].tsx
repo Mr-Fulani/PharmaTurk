@@ -359,20 +359,14 @@ export default function ProductPage({
     const baseImages: GalleryItem[] = mergedImages.flatMap((img) => {
       const imageUrl = normalizeMediaValue(img.image_url)
       const videoUrl = normalizeMediaValue((img as { video_url?: string | null }).video_url)
+      // Если у элемента есть video_url — не добавляем отдельную «превью»-картинку в галерею,
+      // само видео будет отображаться через product.video_url / main-video.
       if (videoUrl && isVideoUrl(videoUrl)) {
         if (seenVideoUrls.has(videoUrl)) {
           return []
         }
         seenVideoUrls.add(videoUrl)
-        return [{
-          id: `video-${img.id}`,
-          image_url: imageUrl || '',
-          video_url: videoUrl,
-          alt_text: img.alt_text,
-          is_main: img.is_main,
-          sort_order: (img as { sort_order?: number }).sort_order,
-          isVideo: true
-        } as GalleryItem]
+        return []
       }
       if (!imageUrl) {
         return []

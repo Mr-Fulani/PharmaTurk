@@ -769,6 +769,10 @@ class BaseProductProxyAdmin(CategoryTypeFilterMixin, BaseProductAdmin):
         return new_fieldsets
 
 
+@admin.register(Product)
+class ProductAdmin(BaseProductAdmin):
+    """Базовые товары (Product). Все типы; здесь же можно удалить «осиротевшие» записи (например после удаления книги)."""
+    pass
 
 
 
@@ -1017,7 +1021,7 @@ class ClothingVariantAdmin(admin.ModelAdmin):
 class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров одежды."""
     category_field_name = "clothing_type"
-    actions = ["run_ai", "run_find_merge_duplicates"]
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'season', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material')
@@ -1362,7 +1366,7 @@ class ShoeVariantAdmin(admin.ModelAdmin):
 class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров обуви."""
     category_field_name = "shoe_type"
-    actions = ["run_ai", "run_find_merge_duplicates"]
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'heel_height', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material')
@@ -1554,7 +1558,7 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
 class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров электроники."""
     category_field_name = "device_type"
-    actions = ["run_ai", "run_find_merge_duplicates"]
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_available', 'is_new', 'is_featured', 'category', 'brand', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'model')
@@ -1608,7 +1612,7 @@ class FurnitureVariantAdmin(admin.ModelAdmin):
 class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров мебели."""
     category_type_slug = "furniture"
-    actions = ["run_ai", "run_find_merge_duplicates"]
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'furniture_type', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'furniture_type')
@@ -1704,9 +1708,10 @@ class JewelryVariantAdmin(admin.ModelAdmin):
 
 
 @admin.register(JewelryProduct)
-class JewelryProductAdmin(CategoryTypeFilterMixin, admin.ModelAdmin):
+class JewelryProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Товары украшений с вариантами и размерами (кольца, браслеты и т.д.)."""
     category_type_slug = "jewelry"
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'jewelry_type', 'gender', 'material', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_new', 'is_featured', 'jewelry_type', 'gender', 'category', 'brand', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'metal_purity', 'stone_type')

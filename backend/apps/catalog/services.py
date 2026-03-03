@@ -14,10 +14,17 @@ from django.db import transaction
 from django.db.models import Q
 
 from .models import Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory
+from .scraper_category_mapping import resolve_category_and_product_type
 from apps.vapi.client import ProductData
 from apps.catalog.utils.storage_paths import detect_media_type
 
 logger = logging.getLogger(__name__)
+
+# Реестр: product_type → имя метода CatalogNormalizer для синхронизации атрибутов в доменную модель
+SYNC_METADATA_HANDLER_NAMES = {
+    "books": "_sync_books_metadata",
+    "jewelry": "_sync_jewelry_metadata",
+}
 
 
 class CatalogNormalizer:
@@ -77,116 +84,147 @@ class CatalogNormalizer:
             )
         )
 
+    def _sync_books_metadata(self, product: Product, attrs: Dict[str, Any]) -> None:
+        """Синхронизирует книжные атрибуты в BookProduct."""
+        book_keys = ("isbn", "publisher", "pages", "cover_type", "language", "publication_year")
+        if not any(k in attrs for k in book_keys):
+            return
+        from apps.catalog.models import BookProduct
+
+        book_product = getattr(product, "book_item", None)
+        if not book_product:
+            base_slug = product.slug or slugify(product.name)
+            slug = f"book-{base_slug}"
+            i = 2
+            while BookProduct.objects.filter(slug=slug).exists():
+                slug = f"book-{base_slug}-{i}"
+                i += 1
+            book_product = BookProduct.objects.create(
+                base_product=product,
+                name=product.name,
+                slug=slug,
+                description=product.description or "",
+                category=product.category,
+                brand=product.brand,
+                price=product.price,
+                currency=product.currency or "RUB",
+                old_price=product.old_price,
+                external_id=product.external_id or "",
+                external_url=product.external_url or "",
+                external_data=product.external_data or {},
+                is_active=product.is_active,
+                is_available=product.is_available,
+                main_image=product.main_image or "",
+            )
+            product.book_item = book_product
+
+        book_updated = False
+        isbn = attrs.get("isbn")
+        if isbn:
+            new_isbn = str(isbn).strip()
+            digits = re.sub(r"\D", "", new_isbn)
+            if len(digits) in (10, 13) and "00000" not in new_isbn and "..." not in new_isbn and new_isbn != (book_product.isbn or ""):
+                book_product.isbn = new_isbn
+                book_updated = True
+        pages = attrs.get("pages")
+        if pages is not None:
+            try:
+                pages_val = int(str(pages).strip())
+                if 0 < pages_val < 10000 and pages_val != book_product.pages:
+                    book_product.pages = pages_val
+                    book_updated = True
+            except (ValueError, TypeError):
+                pass
+        publisher = attrs.get("publisher")
+        if publisher:
+            v = str(publisher).strip()
+            if v and v != (book_product.publisher or ""):
+                book_product.publisher = v
+                book_updated = True
+        cover_type = attrs.get("cover_type")
+        if cover_type:
+            v = str(cover_type).strip()
+            if v and v != (book_product.cover_type or ""):
+                book_product.cover_type = v
+                book_updated = True
+        language = attrs.get("language")
+        if language:
+            v = str(language).strip()
+            if v and v != (book_product.language or ""):
+                book_product.language = v
+                book_updated = True
+        publication_year = attrs.get("publication_year")
+        if publication_year is not None and str(publication_year).strip():
+            try:
+                year = int(str(publication_year).strip())
+                if 1900 <= year <= 2100:
+                    new_date = datetime.date(year, 1, 1)
+                    if book_product.publication_date != new_date:
+                        book_product.publication_date = new_date
+                        book_updated = True
+            except (ValueError, TypeError):
+                pass
+        if book_updated:
+            book_product.save()
+
+    def _sync_jewelry_metadata(self, product: Product, attrs: Dict[str, Any]) -> None:
+        """Синхронизирует атрибуты украшений в JewelryProduct."""
+        jewelry_keys = ("jewelry_type", "material", "metal_purity", "stone_type", "carat_weight", "gender")
+        if not any(k in attrs for k in jewelry_keys):
+            return
+        jewelry_product = getattr(product, "jewelry_item", None)
+        if not jewelry_product:
+            return  # домен создаётся сигналом ensure_domain_product_for_base при save Product
+        jewelry_updated = False
+        valid_jewelry_types = {"ring", "bracelet", "necklace", "earrings", "pendant"}
+        if "jewelry_type" in attrs and attrs["jewelry_type"]:
+            v = str(attrs["jewelry_type"]).strip().lower()
+            if v in valid_jewelry_types and v != (jewelry_product.jewelry_type or ""):
+                jewelry_product.jewelry_type = v
+                jewelry_updated = True
+        if "material" in attrs and attrs["material"]:
+            v = str(attrs["material"]).strip()[:100]
+            if v != (jewelry_product.material or ""):
+                jewelry_product.material = v
+                jewelry_updated = True
+        if "metal_purity" in attrs and attrs["metal_purity"]:
+            v = str(attrs["metal_purity"]).strip()[:50]
+            if v != (jewelry_product.metal_purity or ""):
+                jewelry_product.metal_purity = v
+                jewelry_updated = True
+        if "stone_type" in attrs and attrs["stone_type"]:
+            v = str(attrs["stone_type"]).strip()[:100]
+            if v != (jewelry_product.stone_type or ""):
+                jewelry_product.stone_type = v
+                jewelry_updated = True
+        if "carat_weight" in attrs and attrs["carat_weight"] is not None:
+            try:
+                v = Decimal(str(attrs["carat_weight"]).strip().replace(",", "."))
+                if v >= 0 and (jewelry_product.carat_weight is None or jewelry_product.carat_weight != v):
+                    jewelry_product.carat_weight = v
+                    jewelry_updated = True
+            except (ValueError, TypeError):
+                pass
+        if "gender" in attrs and attrs["gender"]:
+            v = str(attrs["gender"]).strip()[:10]
+            if v != (jewelry_product.gender or ""):
+                jewelry_product.gender = v
+                jewelry_updated = True
+        if jewelry_updated:
+            jewelry_product.save()
+
     def _sync_product_fields_from_metadata(self, product: Product, metadata: Dict[str, Any]) -> None:
         attrs = (metadata or {}).get("attributes") or {}
         if not isinstance(attrs, dict):
             return
 
+        handler_name = SYNC_METADATA_HANDLER_NAMES.get(product.product_type)
+        if handler_name:
+            handler = getattr(self, handler_name, None)
+            if handler:
+                handler(product, attrs)
+
         updated_fields: List[str] = []
-        book_updated = False
-        book_product = None
-
-        # --- Книжные поля → BookProduct ---
-        if product.product_type == "books":
-            # Проверяем, есть ли книжные поля в атрибутах
-            book_keys = ("isbn", "publisher", "pages", "cover_type", "language", "publication_year")
-            if any(k in attrs for k in book_keys):
-                # Получаем или создаем BookProduct
-                book_product = getattr(product, 'book_item', None)
-                if not book_product:
-                    from apps.catalog.models import BookProduct
-                    from django.utils.text import slugify
-                    base_slug = product.slug or slugify(product.name)
-                    slug = f"book-{base_slug}"
-                    i = 2
-                    while BookProduct.objects.filter(slug=slug).exists():
-                        slug = f"book-{base_slug}-{i}"
-                        i += 1
-                    
-                    book_product = BookProduct.objects.create(
-                        base_product=product,
-                        name=product.name,
-                        slug=slug,
-                        description=product.description or "",
-                        category=product.category,
-                        brand=product.brand,
-                        price=product.price,
-                        currency=product.currency or "RUB",
-                        old_price=product.old_price,
-                        external_id=product.external_id or "",
-                        external_url=product.external_url or "",
-                        external_data=product.external_data or {},
-                        is_active=product.is_active,
-                        is_available=product.is_available,
-                        main_image=product.main_image or "",
-                    )
-                    # Обновляем кеш
-                    product.book_item = book_product
-
-                # ISBN
-                isbn = attrs.get("isbn")
-                if isbn:
-                    new_isbn = str(isbn).strip()
-                    digits = re.sub(r"\D", "", new_isbn)
-                    is_valid_length = len(digits) in (10, 13)
-                    is_placeholder = "00000" in new_isbn or "..." in new_isbn
-                    if is_valid_length and not is_placeholder and new_isbn != (book_product.isbn or ""):
-                        book_product.isbn = new_isbn
-                        book_updated = True
-
-                # Pages
-                pages = attrs.get("pages")
-                if pages is not None:
-                    try:
-                        pages_val = int(str(pages).strip())
-                    except (ValueError, TypeError):
-                        pages_val = None
-                    if pages_val is not None and 0 < pages_val < 10000 and pages_val != book_product.pages:
-                        book_product.pages = pages_val
-                        book_updated = True
-
-                # Publisher
-                publisher = attrs.get("publisher")
-                if publisher:
-                    publisher_val = str(publisher).strip()
-                    if publisher_val and publisher_val != (book_product.publisher or ""):
-                        book_product.publisher = publisher_val
-                        book_updated = True
-
-                # Cover Type
-                cover_type = attrs.get("cover_type")
-                if cover_type:
-                    cover_type_val = str(cover_type).strip()
-                    if cover_type_val and cover_type_val != (book_product.cover_type or ""):
-                        book_product.cover_type = cover_type_val
-                        book_updated = True
-
-                # Language
-                language = attrs.get("language")
-                if language:
-                    language_val = str(language).strip()
-                    if language_val and language_val != (book_product.language or ""):
-                        book_product.language = language_val
-                        book_updated = True
-
-                # Publication Date (from Year)
-                publication_year = attrs.get("publication_year")
-                if publication_year is not None and str(publication_year).strip():
-                    try:
-                        year = int(str(publication_year).strip())
-                        if 1900 <= year <= 2100:
-                            new_date = datetime.date(year, 1, 1)
-                            if book_product.publication_date != new_date:
-                                book_product.publication_date = new_date
-                                book_updated = True
-                    except (ValueError, TypeError):
-                        pass
-
-                if book_updated:
-                    book_product.save()
-
-        # --- Общие поля → Product ---
-
         weight = attrs.get("weight")
         if weight is not None and str(weight).strip():
             try:
@@ -284,14 +322,20 @@ class CatalogNormalizer:
     def normalize_product(self, product_data: ProductData) -> Product:
         """Нормализует данные товара из API."""
         external_id = str(product_data.id).strip() if product_data.id is not None else ""
-        
+
+        # Разрешаем категорию и product_type до создания Product (единый маппинг)
+        resolved_category = None
+        resolved_product_type = None
+        if product_data.category and isinstance(product_data.category, str) and not product_data.category.isdigit():
+            resolved_category, resolved_product_type = resolve_category_and_product_type(product_data.category)
+
         # Ищем существующий товар по external_id
         # Используем filter().first() вместо get_or_create, так как external_id не уникален
         if external_id:
             existing_products = Product.objects.filter(external_id=external_id)
         else:
             existing_products = Product.objects.none()
-        
+
         # Генерируем slug
         base_slug = trans_slugify(product_data.name, language_code='ru') or slugify(product_data.name)
         if not base_slug:
@@ -320,7 +364,11 @@ class CatalogNormalizer:
             "external_url": product_data.url or "",
             "external_data": product_data.metadata,
         }
-        
+        if resolved_category is not None:
+            defaults["category_id"] = resolved_category.pk
+        if resolved_product_type is not None:
+            defaults["product_type"] = resolved_product_type
+
         if existing_products.exists():
             product = existing_products.first()
             created = False
@@ -369,52 +417,15 @@ class CatalogNormalizer:
             
             product.save()
 
-        # Обрабатываем категорию ПЕРВЫМ ДЕЛОМ — до синхронизации метаданных,
-        # чтобы product_type был корректно установлен сигналом до записи книжных полей.
+        # Обрабатываем категорию: для существующего товара обновляем category и product_type из маппинга
         if product_data.category:
             if isinstance(product_data.category, str) and not product_data.category.isdigit():
-                # Это название категории (slug или имя), ищем по нему
-                from apps.catalog.constants import ROOT_CATEGORIES, get_or_create_root_category
-
-                cat_name = product_data.category
-                cat_slug = trans_slugify(cat_name, language_code='ru') or slugify(cat_name)
-                normalized_name = (cat_name or "").strip().lower()
-                allowed_root_slugs = {slug for slug, *_ in ROOT_CATEGORIES}
-
-                is_book = cat_slug == "books" or cat_slug == "knigi" or normalized_name in {"книги", "книга", "books"}
-
-                if is_book:
-                    books_category = Category.objects.filter(slug="books").first()
-                    if books_category:
-                        category = books_category
-                        cat_slug = "books"
-                    else:
-                        category = None
-                else:
-                    category = Category.objects.filter(
-                        Q(name__iexact=cat_name) | Q(slug=cat_slug)
-                    ).first()
-
-                if not category:
-                    if cat_slug in allowed_root_slugs:
-                        category = get_or_create_root_category(cat_slug)
-                    else:
-                        self.logger.warning(
-                            f"Категория '{cat_name}' (slug={cat_slug}) не опознана. Товар сохранится без категории."
-                        )
-
-                if category and category.parent_id is None and category.slug not in allowed_root_slugs:
-                    self.logger.warning(
-                        f"Корневая категория '{category.name}' (slug={category.slug}) не в списке разрешенных ROOT_CATEGORIES."
-                    )
-
-                product.category = category
-
-                # Устанавливаем product_type только если это явно книжная категория
-                if is_book:
-                    product.product_type = 'books'
-
-                product.save()
+                category, product_type = resolve_category_and_product_type(product_data.category)
+                if category is not None:
+                    product.category = category
+                    if product_type is not None:
+                        product.product_type = product_type
+                    product.save()
             else:
                 # Это ID категории
                 category = Category.objects.filter(
@@ -456,6 +467,7 @@ class CatalogNormalizer:
         
         metadata = product.external_data if isinstance(product.external_data, dict) else {}
         attrs = metadata.get("attributes") if isinstance(metadata.get("attributes"), dict) else {}
+        source = metadata.get("source") or attrs.get("source")
         gallery_video_url = next(
             (url for url in image_urls if self._resolve_media_type(url) == "video"),
             None,

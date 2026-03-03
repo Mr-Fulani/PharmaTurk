@@ -3,9 +3,34 @@ import logging
 import re
 from typing import Any, Dict, Optional, List
 from django.db import transaction
+from django.utils.text import slugify as django_slugify
 from apps.catalog.models import Product
 
 logger = logging.getLogger(__name__)
+
+
+def _make_unique_slug_for_domain(name: str, model_class, current_pk: Optional[int] = None, max_length: int = 500) -> str:
+    """Генерирует уникальный slug из названия для доменной модели (кириллица → латиница)."""
+    try:
+        from transliterate import slugify as trans_slugify
+        base_slug = (trans_slugify(name, language_code="ru") or django_slugify(name) or "").strip("-")[:max_length]
+    except Exception:
+        base_slug = (django_slugify(name) or "").strip("-")[:max_length]
+    if not base_slug:
+        base_slug = "product"
+    slug = base_slug
+    qs = model_class.objects.filter(slug=slug)
+    if current_pk is not None:
+        qs = qs.exclude(pk=current_pk)
+    i = 2
+    while qs.exists():
+        suffix = f"-{i}"
+        slug = f"{base_slug[:max_length - len(suffix)]}{suffix}"
+        qs = model_class.objects.filter(slug=slug)
+        if current_pk is not None:
+            qs = qs.exclude(pk=current_pk)
+        i += 1
+    return slug
 
 class BaseAIApplier:
     """Базовый класс для применения результатов AI к любым товарам."""
@@ -217,11 +242,56 @@ class BookAIApplier(BaseAIApplier):
         
         return True
 
+
+class JewelryAIApplier(BaseAIApplier):
+    """Применяет результаты AI к украшениям: SEO, переводы + атрибуты (jewelry_type, material, gender и т.д.)."""
+
+    _valid_jewelry_types = {"ring", "bracelet", "necklace", "earrings", "pendant"}
+
+    def apply(self, target: Any, ai_data: Dict[str, Any]) -> bool:
+        updated = super().apply(target, ai_data)
+        attrs = ai_data.get("extracted_attributes") or {}
+        if not attrs:
+            return updated
+        jewelry_updated = False
+        if attrs.get("jewelry_type"):
+            v = str(attrs["jewelry_type"]).strip().lower()
+            if v in self._valid_jewelry_types and hasattr(target, "jewelry_type"):
+                if (target.jewelry_type or "") != v:
+                    target.jewelry_type = v
+                    jewelry_updated = True
+        for field in ("material", "metal_purity", "stone_type", "gender"):
+            if field not in attrs or not hasattr(target, field):
+                continue
+            v = str(attrs[field]).strip()
+            if not v:
+                continue
+            max_len = {"material": 100, "metal_purity": 50, "stone_type": 100, "gender": 10}.get(field, 100)
+            v = v[:max_len]
+            if (getattr(target, field) or "") != v:
+                setattr(target, field, v)
+                jewelry_updated = True
+        if attrs.get("carat_weight") is not None and hasattr(target, "carat_weight"):
+            try:
+                from decimal import Decimal
+                v = Decimal(str(attrs["carat_weight"]).strip().replace(",", "."))
+                if v >= 0 and (target.carat_weight is None or target.carat_weight != v):
+                    target.carat_weight = v
+                    jewelry_updated = True
+            except (ValueError, TypeError):
+                pass
+        if jewelry_updated:
+            target.save()
+            updated = True
+        return updated
+
+
 class AIResultApplier:
     """Сервис-диспетчер для применения результатов AI."""
     
     _type_handlers = {
-        'books': BookAIApplier,
+        "books": BookAIApplier,
+        "jewelry": JewelryAIApplier,
     }
     
     _site_handlers = {
@@ -249,10 +319,18 @@ class AIResultApplier:
         handler = handler_class()
         logger.info(f"Applying AI results to {product} (type: {product_type}, site: {site}) via {handler.__class__.__name__}")
 
-        # Применяем сгенерированное название к базовому товару (name показывается на сайте)
+        # Применяем сгенерированное название к товару: обновляем доменную модель (name + slug), sync скопирует в Product
         with transaction.atomic():
             new_title = (ai_data.get("generated_title") or "").strip()
-            if new_title:
+            if new_title and target is not None:
+                target.name = new_title[:500]
+                target.slug = _make_unique_slug_for_domain(
+                    new_title,
+                    target.__class__,
+                    current_pk=getattr(target, "pk", None),
+                )
+                target.save(update_fields=["name", "slug"])
+            elif new_title:
                 product.name = new_title[:500]
                 product.save(update_fields=["name"])
             return handler.apply(target, ai_data)

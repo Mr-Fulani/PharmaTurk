@@ -17,7 +17,7 @@ _scraping_thread_local = threading.local()
 
 def is_scraping_in_progress() -> bool:
     """Возвращает True, если текущий поток находится в процессе парсинга."""
-    return getattr(_scraping_thread_local, 'in_progress', False)
+    return getattr(_scraping_thread_local, "in_progress", False)
 
 
 @contextmanager
@@ -29,14 +29,37 @@ def scraping_in_progress_context():
     finally:
         _scraping_thread_local.in_progress = False
 
-from .models import ScraperConfig, ScrapingSession, CategoryMapping, BrandMapping, ScrapedProductLog
+
+from .models import ScraperConfig, ScrapingSession, ScrapedProductLog
 from .parsers.registry import get_parser
 from .base.scraper import ScrapedProduct
 from apps.catalog.services import CatalogNormalizer
-from apps.catalog.models import Product, BookProduct, Category, Brand, Author, ProductAuthor
+from apps.catalog.models import (
+    Product,
+    BookProduct,
+    JewelryProduct,
+    Author,
+    ProductAuthor,
+)
+from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
 from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
-from apps.catalog.utils.storage_paths import detect_media_type
 import datetime
+
+
+# Типы товаров, для которых при парсинге обнуляется бренд (например книги)
+BRAND_CLEAR_PRODUCT_TYPES = {"books"}
+
+# Реестр: product_type → метод получения/создания доменного объекта
+_DOMAIN_GETTER_NAMES = {
+    "books": "_get_book_product",
+    "jewelry": "_get_jewelry_product",
+}
+
+# Реестр: product_type → метод обновления атрибутов доменной модели из attrs
+_ATTRIBUTE_UPDATE_HANDLER_NAMES = {
+    "books": "_update_book_attributes",
+    "jewelry": "_update_jewelry_attributes",
+}
 
 
 class ScraperIntegrationService:
@@ -192,9 +215,7 @@ class ScraperIntegrationService:
                         start_url,
                         session.max_pages,
                     )
-                    products = parser.parse_product_list(
-                        start_url, max_pages=session.max_pages
-                    )
+                    products = parser.parse_product_list(start_url, max_pages=session.max_pages)
                     scraped_products.extend(products)
                 session.pages_processed += 1
 
@@ -341,6 +362,16 @@ class ScraperIntegrationService:
         if not media_urls:
             return
 
+        # Определяем sub_folder для группировки медиа
+        sub_folder = None
+        if isinstance(scraped_product.attributes, dict):
+            # Для Instagram и др. соцсетей приоритет отдаем автору/аккаунту
+            sub_folder = scraped_product.attributes.get("username")
+
+        if not sub_folder and scraped_product.category:
+            # Иначе используем категорию
+            sub_folder = scraped_product.category
+
         scraper_config = session.scraper_config
         parser_name = scraped_product.source or scraper_config.parser_class
         max_images = session.max_images_per_product or scraper_config.max_images_per_product or 0
@@ -354,12 +385,13 @@ class ScraperIntegrationService:
         if not product_id:
             parsed_url = urlparse(scraped_product.url or "")
             last_segment = parsed_url.path.rstrip("/").split("/")[-1]
-            product_id = (
-                last_segment
-                or hashlib.md5(
+            if last_segment:
+                product_id = last_segment
+            else:
+                raw_hash = hashlib.md5(
                     (scraped_product.url or scraped_product.name or "").encode("utf-8")
-                ).hexdigest()[:12]
-            )
+                ).hexdigest()
+                product_id = raw_hash[:12]
 
         normalized_images = []
         for index, url in enumerate(images):
@@ -373,6 +405,7 @@ class ScraperIntegrationService:
                 product_id=product_id,
                 index=index,
                 headers=headers or None,
+                sub_folder=sub_folder,
             )
             if r2_url:
                 normalized_images.append(r2_url)
@@ -392,6 +425,18 @@ class ScraperIntegrationService:
         if api_product:
             # Товар уже есть из API - пропускаем или обновляем дополнительные данные
             return self._handle_api_conflict(scraped_product, api_product)
+
+        # Для парсеров (не API) тоже привязываемся по external_id, если он уже есть
+        if scraped_product.external_id:
+            existing_by_external_id = Product.objects.filter(
+                external_id=scraped_product.external_id
+            ).first()
+            if existing_by_external_id:
+                return self._update_existing_product(
+                    session,
+                    scraped_product,
+                    existing_by_external_id,
+                )
 
         # Проверяем дубликаты по названию и бренду
         similar_products = Product.objects.filter(
@@ -545,17 +590,18 @@ class ScraperIntegrationService:
                 updated = True
 
         if scraped_product.category:
-            normalized_name = scraped_product.category.strip().lower()
-            if normalized_name in {"книги", "книга", "books"}:
-                books_category = Category.objects.filter(slug="books").first()
-                if books_category and existing_product.category_id != books_category.id:
-                    existing_product.category = books_category
+            category, product_type = resolve_category_and_product_type(scraped_product.category)
+            if category is not None:
+                if existing_product.category_id != category.id:
+                    existing_product.category = category
                     updated = True
-                if existing_product.product_type != "books":
-                    existing_product.product_type = "books"
+                if product_type is not None and existing_product.product_type != product_type:
+                    existing_product.product_type = product_type
                     updated = True
-            
-            if existing_product.product_type == "books" and existing_product.brand:
+            if (
+                existing_product.product_type in BRAND_CLEAR_PRODUCT_TYPES
+                and existing_product.brand
+            ):
                 existing_product.brand = None
                 updated = True
 
@@ -646,13 +692,14 @@ class ScraperIntegrationService:
 
         return "updated", existing_product
 
-    def _get_book_product(self, product: Product) -> 'BookProduct':
+    def _get_book_product(self, product: Product) -> "BookProduct":
         """Находит или создаёт BookProduct для Product с product_type='books'."""
-        book = getattr(product, 'book_item', None)
+        book = getattr(product, "book_item", None)
         if book:
             return book
         # Создаём BookProduct, привязанный к shadow Product
         from django.utils.text import slugify
+
         base_slug = product.slug or slugify(product.name)
         slug = f"book-{base_slug}"
         i = 2
@@ -681,68 +728,168 @@ class ScraperIntegrationService:
         product.book_item = book
         return book
 
+    def _get_jewelry_product(self, product: Product) -> JewelryProduct:
+        """Находит или создаёт JewelryProduct для Product с product_type='jewelry'."""
+        jewelry = getattr(product, "jewelry_item", None)
+        if jewelry:
+            return jewelry
+        from django.utils.text import slugify
+
+        base_slug = product.slug or slugify(product.name)
+        slug = f"jewelry-{base_slug}"
+        i = 2
+        while JewelryProduct.objects.filter(slug=slug).exists():
+            slug = f"jewelry-{base_slug}-{i}"
+            i += 1
+        jewelry = JewelryProduct(
+            base_product=product,
+            name=product.name,
+            slug=slug,
+            description=product.description or "",
+            category=product.category,
+            brand=product.brand,
+            price=product.price,
+            currency=product.currency or "RUB",
+            old_price=product.old_price,
+            external_id=product.external_id or "",
+            external_url=product.external_url or "",
+            external_data=product.external_data or {},
+            is_active=product.is_active,
+            is_available=product.is_available,
+            main_image=product.main_image or "",
+        )
+        jewelry.save()
+        product.jewelry_item = jewelry
+        return jewelry
+
+    def _update_book_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
+        """Обновляет книжные атрибуты в BookProduct."""
+        if not any(
+            k in attrs
+            for k in ("isbn", "publisher", "pages", "cover_type", "language", "publication_year")
+        ):
+            return False
+        book_product = self._get_book_product(product)
+        updated = False
+        if "isbn" in attrs and attrs["isbn"]:
+            new_isbn = str(attrs["isbn"]).strip()
+            digits = re.sub(r"\D", "", new_isbn)
+            if (
+                len(digits) in (10, 13)
+                and "00000" not in new_isbn
+                and "..." not in new_isbn
+                and new_isbn != (book_product.isbn or "")
+            ):
+                book_product.isbn = new_isbn
+                updated = True
+        if "publisher" in attrs and attrs["publisher"] != (book_product.publisher or ""):
+            book_product.publisher = attrs["publisher"]
+            updated = True
+        if "pages" in attrs:
+            try:
+                pages_val = int(attrs["pages"])
+                if 0 < pages_val < 10000 and pages_val != book_product.pages:
+                    book_product.pages = pages_val
+                    updated = True
+            except (ValueError, TypeError):
+                pass
+        if "cover_type" in attrs and attrs["cover_type"] != (book_product.cover_type or ""):
+            book_product.cover_type = attrs["cover_type"]
+            updated = True
+        if "language" in attrs and attrs["language"] != (book_product.language or ""):
+            book_product.language = attrs["language"]
+            updated = True
+        if "publication_year" in attrs and attrs["publication_year"]:
+            try:
+                year = int(attrs["publication_year"])
+                new_date = datetime.date(year, 1, 1)
+                if book_product.publication_date != new_date:
+                    book_product.publication_date = new_date
+                    updated = True
+            except (ValueError, TypeError):
+                pass
+        if updated:
+            book_product.save()
+        return updated
+
+    def _update_jewelry_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
+        """Обновляет атрибуты украшений в JewelryProduct."""
+        if not any(
+            k in attrs
+            for k in (
+                "jewelry_type",
+                "material",
+                "metal_purity",
+                "stone_type",
+                "carat_weight",
+                "gender",
+            )
+        ):
+            return False
+        jewelry_product = self._get_jewelry_product(product)
+        updated = False
+        from decimal import Decimal
+
+        valid_types = {"ring", "bracelet", "necklace", "earrings", "pendant"}
+        if "jewelry_type" in attrs and attrs["jewelry_type"]:
+            v = str(attrs["jewelry_type"]).strip().lower()
+            if v in valid_types and v != (jewelry_product.jewelry_type or ""):
+                jewelry_product.jewelry_type = v
+                updated = True
+        if (
+            "material" in attrs
+            and attrs["material"]
+            and str(attrs["material"]).strip() != (jewelry_product.material or "")
+        ):
+            jewelry_product.material = str(attrs["material"]).strip()[:100]
+            updated = True
+        if (
+            "metal_purity" in attrs
+            and attrs["metal_purity"]
+            and str(attrs["metal_purity"]).strip() != (jewelry_product.metal_purity or "")
+        ):
+            jewelry_product.metal_purity = str(attrs["metal_purity"]).strip()[:50]
+            updated = True
+        if (
+            "stone_type" in attrs
+            and attrs["stone_type"]
+            and str(attrs["stone_type"]).strip() != (jewelry_product.stone_type or "")
+        ):
+            jewelry_product.stone_type = str(attrs["stone_type"]).strip()[:100]
+            updated = True
+        if "carat_weight" in attrs and attrs["carat_weight"] is not None:
+            try:
+                v = Decimal(str(attrs["carat_weight"]).strip().replace(",", "."))
+                if v >= 0 and (
+                    jewelry_product.carat_weight is None or jewelry_product.carat_weight != v
+                ):
+                    jewelry_product.carat_weight = v
+                    updated = True
+            except (ValueError, TypeError):
+                pass
+        if (
+            "gender" in attrs
+            and attrs["gender"]
+            and str(attrs["gender"]).strip() != (jewelry_product.gender or "")
+        ):
+            jewelry_product.gender = str(attrs["gender"]).strip()[:10]
+            updated = True
+        if updated:
+            jewelry_product.save()
+        return updated
+
     def _update_product_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
         """Обновляет атрибуты товара из словаря.
 
-        Книжные поля (isbn, pages, publisher, cover_type, language, publication_date)
-        записываются в BookProduct через product.book_item.
-        Общие поля (weight, SEO) записываются в Product.
+        Специфичные поля типа (книги, украшения) — через реестр _ATTRIBUTE_UPDATE_HANDLER_NAMES.
+        Общие поля (weight, SEO, OG) записываются в Product.
         """
         updated = False
-        book_updated = False
-        book_product = None
-
-        # --- Книжные поля → BookProduct ---
-        if product.product_type == "books":
-            book_fields_present = any(
-                k in attrs for k in ("isbn", "publisher", "pages", "cover_type", "language", "publication_year")
-            )
-            if book_fields_present:
-                book_product = self._get_book_product(product)
-
-                if "isbn" in attrs and attrs["isbn"]:
-                    new_isbn = str(attrs["isbn"]).strip()
-                    digits = re.sub(r"\D", "", new_isbn)
-                    is_valid_length = len(digits) in [10, 13]
-                    is_placeholder = "00000" in new_isbn or "..." in new_isbn
-                    if is_valid_length and not is_placeholder and new_isbn != (book_product.isbn or ""):
-                        book_product.isbn = new_isbn
-                        book_updated = True
-
-                if "publisher" in attrs and attrs["publisher"] != (book_product.publisher or ""):
-                    book_product.publisher = attrs["publisher"]
-                    book_updated = True
-
-                if "pages" in attrs:
-                    try:
-                        pages_val = int(attrs["pages"])
-                        if 0 < pages_val < 10000 and pages_val != book_product.pages:
-                            book_product.pages = pages_val
-                            book_updated = True
-                    except (ValueError, TypeError):
-                        pass
-
-                if "cover_type" in attrs and attrs["cover_type"] != (book_product.cover_type or ""):
-                    book_product.cover_type = attrs["cover_type"]
-                    book_updated = True
-
-                if "language" in attrs and attrs["language"] != (book_product.language or ""):
-                    book_product.language = attrs["language"]
-                    book_updated = True
-
-                if "publication_year" in attrs and attrs["publication_year"]:
-                    try:
-                        year = int(attrs["publication_year"])
-                        new_date = datetime.date(year, 1, 1)
-                        if book_product.publication_date != new_date:
-                            book_product.publication_date = new_date
-                            book_updated = True
-                    except (ValueError, TypeError):
-                        pass
-
-                if book_updated:
-                    book_product.save()
-                    updated = True
+        handler_name = _ATTRIBUTE_UPDATE_HANDLER_NAMES.get(product.product_type)
+        if handler_name:
+            handler = getattr(self, handler_name, None)
+            if handler:
+                updated = handler(product, attrs)
 
         # --- Общие поля → Product ---
 
@@ -751,7 +898,9 @@ class ScraperIntegrationService:
             try:
                 weight_str = str(attrs["weight"]).strip().replace(",", ".")
                 weight_val = float(weight_str)
-                if weight_val >= 0 and (product.weight_value is None or float(product.weight_value) != weight_val):
+                if weight_val >= 0 and (
+                    product.weight_value is None or float(product.weight_value) != weight_val
+                ):
                     product.weight_value = weight_val
                     product.weight_unit = "kg"
                     updated = True
@@ -848,17 +997,34 @@ class ScraperIntegrationService:
             product.stock_quantity = 3
             product.save(update_fields=["stock_quantity"])
 
-        # Для книг убираем бренд, если он проставился
-        if product.product_type == "books" and product.brand:
+        # Для типов из BRAND_CLEAR_PRODUCT_TYPES убираем бренд, если проставился
+        if product.product_type in BRAND_CLEAR_PRODUCT_TYPES and product.brand:
             product.brand = None
             product.save(update_fields=["brand"])
 
         # Обновляем дополнительные атрибуты (ISBN, SEO, вес и т.д.)
         # normalize_product уже вызвал _sync_product_fields_from_metadata, но
-        # _update_product_attributes дополнительно заполняет SEO поля и вес.
+        # _update_product_attributes дополнительно заполняет SEO поля и вес,
+        # а также создаёт доменные объекты (BookProduct, JewelryProduct и т.д.).
         if scraped_product.attributes:
             if self._update_product_attributes(product, scraped_product.attributes):
                 product.save()
+
+        # После создания доменной модели нужно переназначить галерею на неё, а не на Product.
+        # normalize_product вызывал _normalize_product_images до появления domain_item,
+        # поэтому изображения могли сохраниться как ProductImage и быть невидимыми для BookProduct и др.
+        # Здесь повторно вызываем нормализацию медиа: теперь product.domain_item указывает
+        # на конкретную доменную модель, и все изображения попадут в её gallery (BookProductImage и т.п.).
+        if scraped_product.images:
+            try:
+                self.catalog_normalizer._normalize_product_images(product, scraped_product.images)
+            except Exception as e:
+                self.logger.warning(
+                    "Failed to re-normalize media for new product %s (external_id=%s): %s",
+                    product.pk,
+                    scraped_product.external_id,
+                    e,
+                )
 
         # Авторы привязаны к BookProduct — сохраняем всегда, не зависит от updated
         if (
@@ -934,7 +1100,7 @@ class ScraperIntegrationService:
             for param in ["q", "query", "search", "searchTerm", "arama"]:
                 if param in query_params:
                     return query_params[param][0]
-        except:
+        except Exception:
             pass
 
         return None

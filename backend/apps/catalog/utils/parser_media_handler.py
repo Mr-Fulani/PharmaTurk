@@ -24,6 +24,7 @@ def download_and_optimize_parsed_media(
     index,
     headers=None,
     timeout=15,
+    sub_folder=None,
 ):
     """
     Универсальная функция для загрузки медиа (фото/видео/гиф) из любого парсера.
@@ -35,6 +36,7 @@ def download_and_optimize_parsed_media(
         index: Индекс файла (0 для главного)
         headers: Опциональные HTTP-заголовки
         timeout: Таймаут запроса в секундах
+        sub_folder: Опциональная подпапка для сохранения (например, имя аккаунта)
 
     Returns:
         str: URL загруженного файла в R2/локальном хранилище или пустая строка при ошибке
@@ -86,9 +88,10 @@ def download_and_optimize_parsed_media(
             else:
                 ext = ext or ".jpg"
 
-            url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()[:12]
+            raw_hash = str(hashlib.md5(url.encode("utf-8")).hexdigest())
+            url_hash = "".join(c for i, c in enumerate(raw_hash) if i < 12)
             filename = f"{parser_slug}-{product_id}-{index}-{url_hash}{ext}"
-            path = get_parsed_media_upload_path(parser_name, media_type, filename)
+            path = get_parsed_media_upload_path(parser_name, media_type, filename, sub_folder)
             if default_storage.exists(path):
                 return default_storage.url(path)
 
