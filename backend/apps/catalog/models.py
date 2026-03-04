@@ -815,6 +815,8 @@ class AbstractDomainProduct(models.Model):
                 price=self.price,
                 currency=self.currency,
                 old_price=self.old_price,
+                is_available=getattr(self, 'is_available', True),
+                stock_quantity=getattr(self, 'stock_quantity', None),
                 product_type=self._domain_product_type,
                 external_id=self.external_id,
                 external_url=self.external_url,
@@ -846,6 +848,9 @@ class AbstractDomainProduct(models.Model):
         product.price = self.price
         product.currency = self.currency
         product.old_price = self.old_price
+        product.is_available = getattr(self, 'is_available', True)
+        if hasattr(self, 'stock_quantity'):
+            product.stock_quantity = getattr(self, 'stock_quantity', None)
         product.product_type = self._domain_product_type
         product.external_id = self.external_id
         product.external_url = self.external_url

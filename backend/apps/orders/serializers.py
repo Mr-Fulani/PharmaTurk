@@ -727,9 +727,20 @@ class CartItemSerializer(serializers.ModelSerializer):
         product = obj.product
         if not product:
             return []
+        
+        # Сначала проверяем прямые переводы
         translations = _serialize_translations_qs(getattr(product, "translations", None))
         if translations:
             return translations
+            
+        # Проверяем доменную модель, если это пустой Base Product
+        if hasattr(product, "domain_item"):
+            domain_obj = product.domain_item
+            if domain_obj and hasattr(domain_obj, 'translations') and domain_obj != product:
+                domain_trans = getattr(domain_obj, "translations", None)
+                if domain_trans:
+                    return _serialize_translations_qs(domain_trans)
+
         return _resolve_variant_translations(product)
     
     def _get_preferred_currency(self, request):
@@ -1369,9 +1380,20 @@ class OrderItemSerializer(serializers.ModelSerializer):
         product = obj.product
         if not product:
             return []
+        
+        # Сначала проверяем прямые переводы
         translations = _serialize_translations_qs(getattr(product, "translations", None))
         if translations:
             return translations
+            
+        # Проверяем доменную модель, если это пустой Base Product
+        if hasattr(product, "domain_item"):
+            domain_obj = product.domain_item
+            if domain_obj and hasattr(domain_obj, 'translations') and domain_obj != product:
+                domain_trans = getattr(domain_obj, "translations", None)
+                if domain_trans:
+                    return _serialize_translations_qs(domain_trans)
+
         return _resolve_variant_translations(product)
     
     def get_product_image_url(self, obj):

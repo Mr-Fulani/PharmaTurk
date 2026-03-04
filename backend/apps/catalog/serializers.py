@@ -538,7 +538,7 @@ class ProductSerializer(serializers.ModelSerializer):
     prices_in_currencies = serializers.SerializerMethodField()
     current_price = serializers.SerializerMethodField()
     price_breakdown = serializers.SerializerMethodField()
-    translations = ProductTranslationSerializer(many=True, read_only=True)
+    translations = serializers.SerializerMethodField()
     book_authors = ProductAuthorSerializer(many=True, read_only=True)
     book_genres = ProductGenreSerializer(many=True, read_only=True)
     book_attributes = serializers.SerializerMethodField()
@@ -582,6 +582,32 @@ class ProductSerializer(serializers.ModelSerializer):
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_translations(self, obj):
+        # Retrieve pre-fetched translations if any
+        base_trans = []
+        if hasattr(obj, 'translations') and hasattr(obj.translations, 'all'):
+            # Pre-fetched relationships do not cause N+1 query
+            base_trans = list(obj.translations.all())
+        
+        if base_trans:
+            return ProductTranslationSerializer(base_trans, many=True).data
+
+        # Fallback to domain models
+        try:
+            if hasattr(obj, 'domain_item'):
+                domain_obj = obj.domain_item
+                if domain_obj and hasattr(domain_obj, 'translations') and domain_obj != obj:
+                    domain_trans = domain_obj.translations.all()
+                    if domain_trans:
+                        return [
+                            {"locale": t.locale, "name": t.name, "description": t.description}
+                            for t in domain_trans
+                        ]
+        except Exception:
+            pass
+
+        return []
     
     def get_main_image_url(self, obj):
         """URL главного изображения."""
