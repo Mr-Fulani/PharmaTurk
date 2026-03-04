@@ -142,6 +142,30 @@ def _parse_decimal(value):
         return None
 
 
+
+from django.db.models import Q
+
+def _apply_availability_filter(queryset, request):
+    in_stock = request.query_params.get('in_stock')
+    is_available = request.query_params.get('is_available')
+    
+    if in_stock is not None:
+        in_stock_val = str(in_stock).lower() in ('true', '1', 'yes')
+        if in_stock_val:
+            if hasattr(queryset.model, 'availability_status') and hasattr(queryset.model, 'stock_quantity'):
+                queryset = queryset.filter(Q(availability_status='in_stock') | Q(is_available=True, stock_quantity__gt=0))
+            else:
+                queryset = queryset.filter(is_available=True)
+    elif is_available is not None:
+        is_avail_val = str(is_available).lower() in ('true', '1', 'yes')
+        queryset = queryset.filter(is_available=is_avail_val)
+        
+    availability_status = request.query_params.get('availability_status')
+    if availability_status and hasattr(queryset.model, 'availability_status'):
+        queryset = queryset.filter(availability_status=availability_status)
+        
+    return queryset
+
 def _apply_price_filter(queryset, request):
     min_price_raw = request.query_params.get('min_price') or request.query_params.get('price_min')
     max_price_raw = request.query_params.get('max_price') or request.query_params.get('price_max')
@@ -718,11 +742,6 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
                     if language_list:
                         queryset = queryset.filter(book_item__language__in=language_list)
 
-        # Фильтр по статусу доступности
-        availability_status = self.request.query_params.get('availability_status')
-        if availability_status:
-            queryset = queryset.filter(availability_status=availability_status)
-
         # Фильтр по стране происхождения
         country_of_origin = self.request.query_params.get('country_of_origin')
         if country_of_origin:
@@ -730,12 +749,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             if countries:
                 queryset = queryset.filter(country_of_origin__in=countries)
         
-        # Фильтр по наличию
-        is_available = self.request.query_params.get('is_available')
-        if is_available is not None:
-            is_available = is_available.lower() in ('true', '1', 'yes')
-            queryset = queryset.filter(is_available=is_available)
-        
+        queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
@@ -1200,6 +1214,7 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
@@ -1407,6 +1422,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
@@ -1571,6 +1587,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
@@ -1683,6 +1700,7 @@ class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
         if search:
             queryset = queryset.filter(name__icontains=search)
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         ordering = self.request.query_params.get('ordering', '-created_at')
         queryset = queryset.order_by(self._normalize_ordering(ordering))
@@ -1779,6 +1797,7 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         
         # Сортировка
@@ -2459,6 +2478,7 @@ class BookProductViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
 
         # Сортировка
@@ -2583,6 +2603,7 @@ class PerfumeryProductViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
 
         # Сортировка
@@ -2678,6 +2699,7 @@ class _SimpleDomainViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_availability_filter(queryset, self.request)
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
 
         # Доменные фильтры

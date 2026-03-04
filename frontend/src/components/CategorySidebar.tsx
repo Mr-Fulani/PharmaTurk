@@ -163,7 +163,7 @@ export default function CategorySidebar({
     furnitureTypes: [],
   }
   const [filters, setFilters] = useState<FilterState>(initialFilters || defaultFilters)
-  
+
   // Синхронизация с внешними фильтрами
   useEffect(() => {
     if (initialFilters) {
@@ -190,10 +190,10 @@ export default function CategorySidebar({
     initialFilters?.priceMin,
     initialFilters?.priceMax
   ])
-  
-  const [priceRange, setPriceRange] = useState({ 
-    min: initialFilters?.priceMin?.toString() || '', 
-    max: initialFilters?.priceMax?.toString() || '' 
+
+  const [priceRange, setPriceRange] = useState({
+    min: initialFilters?.priceMin?.toString() || '',
+    max: initialFilters?.priceMax?.toString() || ''
   })
   const [expandedSections, setExpandedSections] = useState({
     categories: true,
@@ -411,9 +411,8 @@ export default function CategorySidebar({
         <div key={item.id} className="space-y-1">
           <button
             type="button"
-            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm font-medium ${
-              item.dataId ? 'text-gray-700 hover:text-violet-700 cursor-pointer' : 'text-gray-400 cursor-not-allowed'
-            }`}
+            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm font-medium ${item.dataId ? 'text-gray-700 hover:text-violet-700 cursor-pointer' : 'text-gray-400 cursor-not-allowed'
+              }`}
             onClick={() => {
               if (hasChildren) {
                 toggleTreeItem(item.id)
@@ -434,11 +433,11 @@ export default function CategorySidebar({
             <span className="flex-1 truncate">
               {item.nameKey
                 ? t(item.nameKey)
-                : item.slug && item.type === 'category' 
-                ? getLocalizedCategoryName(item.slug, item.name, t, undefined, router.locale)
-                : item.type === 'brand' && item.slug
-                ? getLocalizedBrandName(item.slug, item.name, t, undefined, router.locale)
-                : item.name
+                : item.slug && item.type === 'category'
+                  ? getLocalizedCategoryName(item.slug, item.name, t, undefined, router.locale)
+                  : item.type === 'brand' && item.slug
+                    ? getLocalizedBrandName(item.slug, item.name, t, undefined, router.locale)
+                    : item.name
               }
             </span>
             {item.count !== undefined && <span className="ml-3 text-xs text-gray-500">({item.count})</span>}
@@ -520,6 +519,7 @@ export default function CategorySidebar({
   const jewelryGenderOptions = [
     { value: 'women', label: t('filter_women', 'Женские') },
     { value: 'men', label: t('filter_men', 'Мужские') },
+    { value: 'unisex', label: t('filter_unisex', 'Унисекс') },
     { value: 'kids', label: t('filter_kids', 'Детские') },
   ]
 
@@ -856,16 +856,16 @@ export default function CategorySidebar({
                       <input
                         type="checkbox"
                         checked={filters.subcategories.includes(subcategory.id)}
-                          onChange={() =>
-                            toggleSubcategoryFilter(
-                              subcategory.id,
-                              categoryType === 'jewelry' ? getJewelrySubcategoryKey(subcategory) : subcategory.slug
-                            )
-                          }
+                        onChange={() =>
+                          toggleSubcategoryFilter(
+                            subcategory.id,
+                            categoryType === 'jewelry' ? getJewelrySubcategoryKey(subcategory) : subcategory.slug
+                          )
+                        }
                         className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
                       />
                       <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">
-                          {getSubcategoryLabel(subcategory)}
+                        {getSubcategoryLabel(subcategory)}
                       </span>
                       {subcategory.product_count !== undefined && (
                         <span className="text-xs text-gray-500">({subcategory.product_count})</span>
