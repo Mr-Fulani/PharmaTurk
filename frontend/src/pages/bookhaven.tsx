@@ -69,10 +69,12 @@ const BookHavenPage: React.FC = () => {
   useEffect(() => {
     loadCategories();
     loadBooks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     loadBooks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, selectedCategory, sortBy]);
 
   const loadCategories = async () => {
@@ -96,7 +98,7 @@ const BookHavenPage: React.FC = () => {
         product_type: 'books',
         page_size: 100
       };
-      
+
       if (searchTerm) params.search = searchTerm;
       if (selectedCategory) params.category_slug = selectedCategory;
       if (sortBy) params.ordering = sortBy;
@@ -123,21 +125,19 @@ const BookHavenPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-4">
               <button
-                className={`p-2 rounded-lg transition-colors ${
-                  viewMode === 'grid'
+                className={`p-2 rounded-lg transition-colors ${viewMode === 'grid'
                     ? 'bg-[#ff8c42] text-white'
                     : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
+                  }`}
                 onClick={() => setViewMode('grid')}
               >
                 <Grid className="w-4 h-4" />
               </button>
               <button
-                className={`p-2 rounded-lg transition-colors ${
-                  viewMode === 'list'
+                className={`p-2 rounded-lg transition-colors ${viewMode === 'list'
                     ? 'bg-[#ff8c42] text-white'
                     : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
+                  }`}
                 onClick={() => setViewMode('list')}
               >
                 <List className="w-4 h-4" />

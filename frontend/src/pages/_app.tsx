@@ -10,14 +10,14 @@ import { useRouter } from 'next/router'
 import { useCartStore } from '../store/cart'
 import { initCartSession } from '../lib/api'
 import { appWithTranslation } from 'next-i18next'
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line
 const nextI18NextConfig = require('../../next-i18next.config.js')
 
 function App({ Component, pageProps }: AppProps) {
   const router = useRouter()
   const { refresh } = useCartStore()
   const is404 = router.pathname === '/404'
-  
+
   useEffect(() => {
     // Гарантируем, что cookie cart_session создана до первого запроса
     initCartSession()

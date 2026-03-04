@@ -7,926 +7,975 @@
   "menu_home": "Главная",
   "menu_categories": "Категории",
   "menu_cart": "Корзина",
-  "menu_login_register": "Войти / Регистрация"
-  ,"search_button": "Поиск"
-  ,"cart_empty": "Корзина пуста"
-  ,"cart_empty_description": "Добавьте товары в корзину, чтобы продолжить покупки"
-  ,"color_черный": "Черный"
-  ,"cart_total": "Итого"
-  ,"cart_checkout": "Перейти к оформлению заказа"
-  ,"cart_continue_shopping": "Продолжить покупки"
-  ,"cart_clear": "Очистить корзину"
-  ,"cart_confirm_remove": "Вы уверены, что хотите удалить этот товар из корзины?"
-  ,"cart_confirm_clear": "Вы уверены, что хотите очистить корзину?"
-  ,"cart_summary": "Итоги заказа"
-  ,"cart_items_count": "Товаров"
-  ,"cart_item_total": "Итого"
-  ,"cart_delivery_info_title": "Бесплатная доставка"
-  ,"cart_delivery_info_text": "При заказе от определенной суммы"
-  ,"product_details": "Подробнее"
-  ,"price_on_request": "Цена по запросу"
-  ,"section_daily_deals": "Товары дня"
-  ,"section_best_sellers": "Хиты продаж"
-  ,"trending_now": "Популярное сейчас"
-  ,"header_profile": "Профиль"
-  ,"header_logout": "Выйти"
-  ,"add_to_cart": "В корзину"
-  ,"adding": "Добавляем..."
-  ,"added": "Добавлено"
-  ,"search_results": "Результаты поиска"
-  ,"search_for": "По запросу"
-  ,"email": "Email"
-  ,"username": "Имя пользователя"
-  ,"remove": "Удалить"
-  ,"checkout_page_title": "Оформление заказа — Turk-Export"
-  ,"checkout_title": "Оформление заказа"
-  ,"checkout_recipient_name": "Имя получателя"
-  ,"checkout_phone": "Телефон"
-  ,"checkout_email_optional": "Email (необязательно)"
-  ,"checkout_shipping_address": "Адрес доставки"
-  ,"checkout_contact_info": "Контактная информация"
-  ,"checkout_use_manual_address": "Указать адрес вручную"
-  ,"checkout_address_placeholder": "Страна, город, улица, дом, квартира"
-  ,"checkout_order_summary": "Итоги заказа"
-  ,"checkout_back_to_cart": "Вернуться в корзину"
-  ,"checkout_items": "Товары"
-  ,"checkout_qty": "Кол-во"
-  ,"checkout_per_item": "за шт."
-  ,"checkout_save_address": "Сохранить адрес в профиле"
-  ,"checkout_save_address_as_second": "Сохранить как второй адрес"
-  ,"checkout_use_this_address": "Использовать этот адрес"
-  ,"checkout_fill_address_form": "Заполнить подробный адрес"
-  ,"checkout_payment_method": "Способ оплаты"
-  ,"payment_cod": "Наложенный платёж"
-  ,"payment_cod_description": "Оплата при получении товара"
-  ,"payment_card": "Банковская карта"
-  ,"payment_card_description": "Оплата банковской картой онлайн"
-  ,"payment_crypto": "Криптовалюта"
-  ,"payment_crypto_description": "Оплата криптовалютой (Bitcoin, Ethereum, USDT и др.)"
-  ,"payment_card_details": "Данные карты"
-  ,"payment_card_number": "Номер карты"
-  ,"payment_card_expiry": "Срок действия"
-  ,"payment_card_cvv": "CVV"
-  ,"payment_card_holder": "Имя держателя карты"
-  ,"payment_card_security_info": "Ваши данные защищены. Мы не храним данные карты на наших серверах."
-  ,"payment_crypto_wallet": "Адрес криптокошелька"
-  ,"payment_crypto_wallet_address": "Адрес кошелька для получения"
-  ,"payment_crypto_supported": "Поддерживаемые криптовалюты: Bitcoin (BTC), Ethereum (ETH), USDT (TRC20/ERC20), Tether (USDT)"
-  ,"payment_crypto_info_title": "Как это работает:"
-  ,"payment_crypto_info_1": "После подтверждения заказа вы получите адрес для оплаты"
-  ,"payment_crypto_info_2": "Отправьте точную сумму на указанный адрес"
-  ,"payment_crypto_info_3": "После подтверждения транзакции заказ будет обработан"
-  ,"checkout_crypto_pay_title": "Оплата криптовалютой"
-  ,"checkout_crypto_address": "Адрес для оплаты"
-  ,"checkout_crypto_amount": "Сумма к оплате"
-  ,"checkout_crypto_expires": "Время на оплату"
-  ,"checkout_crypto_paid": "Оплачено"
-  ,"checkout_crypto_redirecting": "Переход на страницу заказа..."
-  ,"checkout_crypto_copy_address": "Копировать"
-  ,"checkout_crypto_copied": "Скопировано"
-  ,"checkout_crypto_instruction": "Отправьте указанную сумму USDT на адрес ниже. После подтверждения транзакции заказ будет обработан."
-  ,"checkout_crypto_load_error": "Не удалось загрузить заказ"
-  ,"checkout_crypto_no_order": "Укажите номер заказа"
-  ,"checkout_crypto_expired": "Время истекло"
-  ,"checkout_crypto_open_invoice": "Открыть страницу оплаты"
-  ,"checkout_crypto_no_payment_data": "Данные для оплаты недоступны. Обратитесь в поддержку."
-  ,"checkout_submitting": "Отправка..."
-  ,"checkout_submit": "Оформить заказ"
-  ,"login_required_to_checkout": "Для оформления заказа необходимо войти"
-  ,"checkout_error_generic": "Ошибка оформления заказа"
-  ,"footer_contacts": "Контакты"
-  ,"footer_phone": "+90 552 582 14 97"
-  ,"footer_email": "fulani.dev@gmail.com"
-  ,"footer_location": "Стамбул, Турция"
-  ,"footer_social_networks": "Наши соцсети"
-  ,"footer_information": "Информация"
-  ,"footer_delivery_payment": "Доставка и оплата"
-  ,"footer_return": "Возврат товара"
-  ,"footer_privacy": "Политика конфиденциальности"
-  ,"footer_crypto_payment": "Возможна оплата криптовалютой"
-  ,"sidebar_categories": "Категории"
-  ,"sidebar_brands": "Бренды"
-  ,"sidebar_filters": "Фильтры"
-  ,"sidebar_furniture_type": "Тип мебели"
-  ,"sidebar_book_genres": "Жанры"
-  ,"sidebar_price_range": "Диапазон цен"
-  ,"sidebar_price_min": "От"
-  ,"sidebar_price_max": "До"
-  ,"sidebar_sort_by": "Сортировка"
-  ,"sidebar_sort_price_asc": "Цена: по возрастанию"
-  ,"sidebar_sort_price_desc": "Цена: по убыванию"
-  ,"sidebar_sort_name_asc": "Название: А-Я"
-  ,"sidebar_sort_name_desc": "Название: Я-А"
-  ,"sidebar_availability": "Наличие"
-  ,"sidebar_in_stock": "В наличии"
-  ,"sidebar_new": "Новинки"
-  ,"sidebar_show_more": "Показать ещё"
-  ,"sidebar_show_less": "Свернуть"
-  ,"sidebar_apply": "Применить"
-  ,"profile_title": "Профиль"
-  ,"profile_personal_info": "Личная информация"
-  ,"profile_first_name": "Имя"
-  ,"profile_last_name": "Фамилия"
-  ,"profile_email": "Email"
-  ,"profile_phone": "Телефон"
-  ,"profile_edit": "Редактировать"
-  ,"profile_save": "Сохранить"
-  ,"profile_cancel": "Отмена"
-  ,"profile_upload_avatar": "Загрузить фото"
-  ,"profile_change_avatar": "Изменить фото"
-  ,"profile_orders": "Мои заказы"
-  ,"profile_statistics": "Статистика"
-  ,"profile_total_orders": "Всего заказов"
-  ,"profile_total_spent": "Потрачено всего"
-  ,"profile_order_number": "Заказ"
-  ,"profile_order_date": "Дата"
-  ,"profile_order_status": "Статус"
-  ,"profile_order_total": "Сумма"
-  ,"profile_no_orders": "У вас пока нет заказов"
-  ,"profile_order_details": "Детали заказа"
-  ,"profile_order_items": "Товары"
-  ,"profile_loading": "Загрузка..."
-  ,"profile_saving": "Сохранение..."
-  ,"profile_saved": "Сохранено"
-  ,"profile_error": "Ошибка"
-  ,"profile_not_public": "Профиль не является публичным"
-  ,"back_to_home": "Вернуться на главную"
-  ,"pagination_back": "Назад"
-  ,"pagination_forward": "Вперед"
-  ,"order_status_new": "Новый"
-  ,"order_status_pending_payment": "Ожидает оплаты"
-  ,"order_status_paid": "Оплачен"
-  ,"order_status_processing": "В обработке"
-  ,"order_status_shipped": "Отправлен"
-  ,"order_status_delivered": "Доставлен"
-  ,"order_status_cancelled": "Отменён"
-  ,"profile_addresses": "Адреса доставки"
-  ,"profile_add_address": "Добавить адрес"
-  ,"profile_edit_address": "Редактировать адрес"
-  ,"profile_delete_address": "Удалить адрес"
-  ,"profile_no_addresses": "У вас пока нет сохранённых адресов"
-  ,"profile_address_default": "Адрес по умолчанию"
-  ,"profile_address_type": "Тип адреса"
-  ,"profile_address_type_home": "Дом"
-  ,"profile_address_type_work": "Работа"
-  ,"profile_address_type_other": "Другое"
-  ,"profile_address_contact_name": "Имя получателя"
-  ,"profile_address_contact_phone": "Телефон получателя"
-  ,"profile_address_country": "Страна"
-  ,"profile_address_region": "Область/регион"
-  ,"profile_address_city": "Город"
-  ,"profile_address_postal_code": "Почтовый индекс"
-  ,"profile_address_street": "Улица"
-  ,"profile_address_house": "Дом"
-  ,"profile_address_apartment": "Квартира"
-  ,"profile_address_entrance": "Подъезд"
-  ,"profile_address_floor": "Этаж"
-  ,"profile_address_intercom": "Домофон"
-  ,"profile_address_comment": "Комментарий"
-  ,"profile_address_set_default": "Установить по умолчанию"
-  ,"profile_address_required": "Обязательное поле"
-  ,"profile_show_order_history": "Показать все заказы"
-  ,"profile_hide_order_history": "Скрыть историю заказов"
-  ,"profile_address_creating": "Создание..."
-  ,"profile_address_updating": "Обновление..."
-  ,"profile_address_deleting": "Удаление..."
-  ,"profile_whatsapp": "WhatsApp"
-  ,"profile_telegram": "Telegram"
-  ,"profile_messengers": "Мессенджеры"
-  ,"social_networks": "Социальные сети"
-  ,"orders": "заказов"
-  ,"currency": "Валюта"
-  ,"order_success_page_title": "Заказ оформлен"
-  ,"order_success_heading": "Заказ оформлен!"
-  ,"order_success_subheading": "Спасибо за доверие"
-  ,"order_success_lead": "Мы уже собираем заказ №{{number}}. Подтверждение и чек отправим на почту."
-  ,"order_success_number": "Номер заказа"
-  ,"order_success_status": "Статус заказа"
-  ,"order_success_payment_method": "Способ оплаты"
-  ,"order_success_total": "Итого к оплате"
-  ,"order_success_actions_download": "Сохранить чек"
-  ,"order_success_actions_view_orders": "К заказам"
-  ,"order_success_actions_continue": "Продолжить покупки"
-  ,"order_success_receipt_title": "Цифровой чек"
-  ,"order_success_receipt_description": "Все позиции и суммы заказа"
-  ,"order_success_subtotal": "Сумма товаров"
-  ,"order_success_shipping_cost": "Стоимость доставки"
-  ,"order_success_discount": "Скидка"
-  ,"order_success_promo_code": "Промокод"
-  ,"order_success_send_receipt_title": "Отправка чека"
-  ,"order_success_send_receipt_placeholder": "E-mail для получения чека"
-  ,"order_success_send_receipt_sending": "Отправляем..."
-  ,"order_success_send_button": "Отправить чек"
-  ,"order_success_send_success": "Чек отправлен на {{email}}"
-  ,"order_success_send_error": "Не удалось отправить чек"
-  ,"order_success_download_hint": "Вы можете сохранить чек как PDF или распечатать его."
-  ,"order_success_shipping": "Доставка"
-  ,"order_success_loading": "Загружаем информацию о заказе..."
-  ,"order_success_no_number": "Номер заказа не передан. Найдите чек в профиле."
-  ,"order_success_qty": "×{{count}} шт."
-  ,"receipt_print_title": "Чек заказа №"
-  ,"receipt_print_issued": "Выдан"
-  ,"receipt_print_product": "Товар"
-  ,"receipt_print_qty": "Кол-во"
-  ,"receipt_print_price": "Цена"
-  ,"receipt_print_total_col": "Сумма"
-  ,"receipt_print_total_label": "Итого"
-  ,"promo_code_placeholder": "Промокод"
-  ,"promo_code_applied": "Промокод применён"
-  ,"promo_code_error": "Ошибка применения промокода"
-  ,"apply": "Применить"
-  ,"applying": "Применение..."
-  ,"cart_subtotal": "Сумма товаров"
-  ,"cart_discount": "Скидка"
-  ,"menu_favorites": "Избранное"
-  ,"favorites_title": "Избранное"
-  ,"favorites_empty_title": "Избранное пусто"
-  ,"favorites_empty_description": "Добавьте товары в избранное, чтобы не потерять их"
-  ,"favorites_go_shopping": "Перейти к покупкам"
-  ,"add_to_favorites": "В избранное"
-  ,"remove_from_favorites": "Удалить из избранного"
-  ,"favorite_error": "Ошибка при работе с избранным"
-  ,"processing": "Обработка..."
-  ,"popular_products_title": "Популярные товары"
-  ,"product_new": "Новинка"
-  ,"testimonials_title": "Что говорят наши клиенты"
-  ,"testimonial_image_alt": "Изображение к отзыву от {{author_name}}"
-  ,"testimonial_video_alt": "Видео к отзыву от {{author_name}}"
-  ,"view_testimonial": "Посмотреть отзыв"
-  ,"video_tag_unsupported": "Ваш браузер не поддерживает видео."
-  ,"testimonials_page_title": "Отзывы клиентов"
-  ,"testimonials_page_description": "Что говорят наши клиенты о наших товарах и услугах"
-  ,"filtered_by_user": "Отзывы пользователя"
-  ,"show_all_testimonials": "Показать все отзывы"
-  ,"no_testimonials": "Пока нет отзывов"
-  ,"loading": "Загрузка..."
-  ,"testimonial_not_found": "Отзыв не найден"
-  ,"login_required_to_submit_testimonial": "Для отправки отзыва необходимо войти."
-  ,"back_to_testimonials": "Вернуться к отзывам"
-  ,"add_testimonial": "Оставить отзыв"
-  ,"cancel": "Отмена"
-  ,"your_name": "Ваше имя"
-  ,"rating": "Рейтинг"
-  ,"testimonial_text": "Текст отзыва"
-  ,"add_media": "Добавить медиа"
-  ,"add_image": "Добавить изображение"
-  ,"add_video_file": "Добавить видео файл"
-  ,"video_url_placeholder": "URL видео (YouTube, Vimeo)"
-  ,"submit_testimonial": "Отправить отзыв"
-  ,"submitting": "Отправка..."
-  ,"testimonial_submit_error": "Ошибка при отправке отзыва. Попробуйте еще раз."
-  ,"video_preview_unavailable": "Предпросмотр недоступен"
-  ,"testimonial_submitted_title": "Отзыв отправлен!"
-  ,"testimonial_moderation_message": "Спасибо за ваш отзыв! Он отправлен на модерацию и будет опубликован после проверки администратором."
-  ,"testimonial_will_be_signed_as": "Отзыв будет подписан как:"
-  ,"theme_dark": "Тёмная"
-  ,"theme_light": "Светлая"
-  ,"theme_dark_title": "Тёмная тема"
-  ,"theme_light_title": "Светлая тема"
-  ,"language": "Язык"
-  ,"categories_catalog": "Каталог"
-  ,"categories_title": "Категории товаров"
-  ,"categories_description": "Выберите основную категорию — карточки и баннеры как на главной."
-  ,"products_found": "Найдено товаров"
-  ,"breadcrumb_home": "Главная"
-  ,"breadcrumb_categories": "Категории"
-  ,"category": "Категория"
-  ,"products_not_found": "Товары не найдены"
-  ,"products_not_found_description": "Попробуйте изменить параметры фильтров или выберите другую категорию"
-  ,"reset_filters": "Сбросить фильтры"
-  ,"sidebar_reset": "Сбросить"
-  ,"sidebar_price": "Цена"
-  ,"sidebar_price_from": "От"
-  ,"sidebar_price_to": "До"
-  ,"sidebar_sort": "Сортировка"
-  ,"sidebar_sort_name_asc_short": "По названию (А-Я)"
-  ,"sidebar_sort_name_desc_short": "По названию (Я-А)"
-  ,"sidebar_sort_price_asc_short": "По цене (возрастание)"
-  ,"sidebar_sort_price_desc_short": "По цене (убывание)"
-  ,"sidebar_sort_newest": "Сначала новые"
-  ,"sidebar_sort_popular": "Популярные"
-  ,"sidebar_additional": "Дополнительно"
-  ,"sidebar_subcategories": "Подкатегории"
-  ,"sidebar_perfumery_by_audience": "По аудитории"
-  ,"sidebar_perfumery_by_type": "По типу"
-  ,"sidebar_shoe_types": "Тип обуви"
-  ,"sidebar_clothing_items": "Предметы одежды"
-  ,"sidebar_jewelry_material": "Материал"
-  ,"sidebar_jewelry_gender": "Для кого"
-  ,"sidebar_headwear_types": "Тип головного убора"
-  ,"sidebar_book_authors": "Авторы"
-  ,"sidebar_book_publishers": "Издательства"
-  ,"sidebar_book_languages": "Язык"
-  ,"sidebar_clothing_male": "Мужская одежда"
-  ,"sidebar_clothing_female": "Женская одежда"
-  ,"sidebar_clothing_kids": "Детская одежда"
-  ,"sidebar_medicine_painkillers": "Обезболивающие"
-  ,"sidebar_medicine_antibiotics": "Антибиотики"
-  ,"sidebar_medicine_vitamins": "Витамины и иммунитет"
-  ,"sidebar_medicine_gynecology": "Гинекология"
-  ,"sidebar_medicine_oncology": "Онкология"
-  ,"sidebar_books_islamic": "Исламская литература"
-  ,"sidebar_books_business": "Бизнес"
-  ,"sidebar_books_science": "Наука"
-  ,"sidebar_books_fiction": "Художественная"
-  ,"sidebar_book_fiqh": "Исламский фикх"
-  ,"sidebar_book_tafsir": "Тафсир"
-  ,"sidebar_book_adab": "Адаб"
-  ,"sidebar_book_hadith": "Хадис"
-  ,"sidebar_book_history": "История"
-  ,"sidebar_book_business": "Бизнес литература"
-  ,"sidebar_book_science": "Научная литература"
-  ,"sidebar_book_fiction": "Художественная литература"
-  ,"sidebar_med_analgesics": "Анальгетики"
-  ,"sidebar_med_antiinflammatory": "Противовоспалительные"
-  ,"sidebar_med_antispasmodics": "Спазмолитики"
-  ,"sidebar_med_pain_creams": "Обезболивающие мази"
-  ,"sidebar_med_migraine": "Мигрень и головная боль"
-  ,"sidebar_med_penicillins": "Пенициллины"
-  ,"sidebar_med_cephalosporins": "Цефалоспорины"
-  ,"sidebar_med_macrolides": "Макролиды"
-  ,"sidebar_med_fluoroquinolones": "Фторхинолоны"
-  ,"sidebar_med_tetracyclines": "Тетрациклины"
-  ,"sidebar_med_broad_spectrum": "Антибиотики широкого спектра"
-  ,"sidebar_med_vitamin_c": "Витамин C"
-  ,"sidebar_med_vitamin_d": "Витамин D"
-  ,"sidebar_med_vitamin_b": "Витамин B комплекс"
-  ,"sidebar_med_multivitamins": "Мультивитамины"
-  ,"sidebar_med_calcium_magnesium": "Кальций и магний"
-  ,"sidebar_med_iron": "Железо"
-  ,"sidebar_med_omega3": "Омега-3"
-  ,"sidebar_med_immunomodulators": "Иммуномодуляторы"
-  ,"sidebar_med_contraceptives": "Контрацептивы"
-  ,"sidebar_med_hormonal": "Гормональные препараты"
-  ,"sidebar_med_antiinflammatory_gynec": "Противовоспалительные"
-  ,"sidebar_med_candidiasis": "Молочница"
-  ,"sidebar_med_menopause": "Климакс"
-  ,"sidebar_med_pregnancy": "Беременность"
-  ,"sidebar_med_chemotherapy": "Химиотерапия"
-  ,"sidebar_med_immunotherapy": "Иммунотерапия"
-  ,"sidebar_med_pain_management": "Обезболивание"
-  ,"sidebar_med_supportive_care": "Поддерживающая терапия"
-  ,"sidebar_med_recovery": "Восстановление"
-  ,"filter_sneakers": "Кроссовки"
-  ,"filter_boots": "Ботинки/Ботильоны"
-  ,"filter_sandals": "Сандалии/Шлёпанцы"
-  ,"filter_shoes": "Туфли"
-  ,"filter_home_shoes": "Домашняя обувь/Тапки"
-  ,"filter_loafers": "Лоферы/Мокасины"
-  ,"filter_jeans": "Джинсы"
-  ,"filter_tshirts": "Футболки"
-  ,"filter_hoodies": "Худи"
-  ,"filter_sweaters": "Джемперы/Свитеры"
-  ,"filter_shirts": "Рубашки"
-  ,"filter_blouses": "Блузки"
-  ,"filter_jackets": "Куртки"
-  ,"filter_coats": "Пальто"
-  ,"filter_trousers": "Брюки"
-  ,"filter_shorts": "Шорты"
-  ,"filter_socks": "Носки"
-  ,"filter_dresses": "Платья"
-  ,"filter_skirts": "Юбки"
-  ,"filter_gold": "Золото"
-  ,"filter_silver": "Серебро"
-  ,"filter_bijouterie": "Бижутерия"
-  ,"filter_women": "Женские"
-  ,"filter_men": "Мужские"
-  ,"filter_kids": "Детские"
-  ,"filter_unisex": "Унисекс"
-  ,"books_page_title": "Книги"
-  ,"books_page_subtitle": "Ваша книжная гавань"
-  ,"books_not_found": "Книги не найдены"
-  ,"books_not_found_description": "Попробуйте изменить параметры поиска или фильтры"
-  ,"books_search_placeholder": "Поиск книг, авторов..."
-  ,"books_all_categories": "Все категории"
-  ,"books_sort_newest": "Новинки"
-  ,"books_sort_name_asc": "По названию А-Я"
-  ,"books_sort_name_desc": "По названию Я-А"
-  ,"books_sort_price_asc": "Цена: по возрастанию"
-  ,"books_sort_price_desc": "Цена: по убыванию"
-  ,"books_sort_rating": "По рейтингу"
-  ,"category_islamic_fiqh": "Исламский фикх"
-  ,"category_tafsir": "Тафсир"
-  ,"category_adab": "Адаб"
-  ,"category_hadith": "Хадис"
-  ,"category_history": "История"
-  ,"category_business": "Бизнес литература"
-  ,"category_science": "Научная литература"
-  ,"category_fiction": "Художественная литература"
-  ,"sidebar_book_categories": "Жанры книг"
-  ,"sidebar_islamic_literature": "Исламская литература"
-  ,"category_books_name": "Книги"
-  ,"category_books_description": "Художественная и научная литература"
-  ,"filter_caps": "Кепки"
-  ,"filter_hats": "Шапки"
-  ,"filter_panama": "Панамки"
-  ,"filter_chairs": "Стулья"
-  ,"filter_tables": "Столы"
-  ,"filter_wardrobes": "Шкафы"
-  ,"filter_sofas": "Диваны"
-  ,"category_medicines": "Медикаменты"
-  ,"category_supplements": "БАДы"
-  ,"category_clothing": "Одежда"
-  ,"category_shoes": "Обувь"
-  ,"category_electronics": "Электроника"
-  ,"category_tableware": "Посуда"
-  ,"category_furniture": "Мебель"
-  ,"category_accessories": "Аксессуары"
-  ,"category_jewelry": "Украшения"
-  ,"category_underwear": "Нижнее бельё"
-  ,"category_headwear": "Головные уборы"
-  ,"category_medical_equipment": "Медицинский инвентарь"
-  ,"catalog_of_category": "Каталог {{category}} в PharmaTurk"
-  ,"products_count": "товаров"
-  ,"categories_not_found_title": "Не нашли нужную категорию?"
-  ,"categories_not_found_description": "Напишите нам в чат — подскажем и подберём товары под ваш запрос."
-  ,"view_brands": "Посмотреть бренды"
-  ,"brands_not_found_title": "Не нашли нужный бренд?"
-  ,"brands_not_found_description": "Напишите нам в чат — поможем подобрать и добавить товары по запросу."
-  ,"go_to_catalog": "Перейти в каталог"
-  ,"brands": "Бренды"
-  ,"popular_brands": "Популярные бренды"
-  ,"all_brands": "Все бренды"
-  ,"brands_description": "Выберите бренд, чтобы увидеть товары. Видео и внешние медиа поддерживаются."
-  ,"brands_page_title": "Бренды — PharmaTurk"
-  ,"brands_page_description": "Популярные бренды из Турции: одежда, обувь, электроника, аксессуары и товары для здоровья."
-  ,"all_categories": "Все категории"
-  ,"categories_section_title": "Категории товаров"
-  ,"_comment_category_translations": "Переводы для категорий: формат ключа - category_{slug}_name и category_{slug}_description. Slug нормализуется (подчеркивания заменяются на дефисы, нижний регистр). Примеры ниже."
-  ,"category_medicines_name": "Медикаменты"
-  ,"category_medicines_description": "Лекарственные препараты и медикаменты из Турции"
-  ,"category_supplements_name": "БАДы"
-  ,"category_supplements_description": "Биологически активные добавки"
-  ,"category_clothing_name": "Одежда"
-  ,"category_clothing_description": "Модная одежда для всей семьи из Турции"
-  ,"category_shoes_name": "Обувь"
-  ,"category_shoes_description": "Качественная обувь для всей семьи"
-  ,"category_electronics_name": "Электроника"
-  ,"category_electronics_description": "Современные гаджеты и техника"
-  ,"category_tableware_name": "Посуда"
-  ,"category_tableware_description": "Кухонная посуда и аксессуары"
-  ,"category_furniture_name": "Мебель"
-  ,"category_furniture_description": "Мебель для дома и офиса"
-  ,"category_accessories_name": "Аксессуары"
-  ,"category_accessories_description": "Сумки, ремни, кошельки и другие аксессуары"
-  ,"category_jewelry_name": "Украшения"
-  ,"category_jewelry_description": "Украшения и бижутерия из Турции"
-  ,"category_perfumery_name": "Парфюмерия"
-  ,"category_perfumery_description": "Парфюмерия и ароматы"
-  ,"category_women-perfume_name": "Женская парфюмерия"
-  ,"category_women-perfume_description": "Женские ароматы"
-  ,"category_men-perfume_name": "Мужская парфюмерия"
-  ,"category_men-perfume_description": "Мужские ароматы"
-  ,"category_unisex-perfume_name": "Унисекс"
-  ,"category_unisex-perfume_description": "Универсальные ароматы"
-  ,"category_niche-perfume_name": "Нишевая парфюмерия"
-  ,"category_niche-perfume_description": "Нишевые и авторские ароматы"
-  ,"category_home-fragrances_name": "Ароматы для дома"
-  ,"category_home-fragrances_description": "Ароматизаторы и диффузоры"
-  ,"category_eau-de-parfum_name": "Парфюмерная вода (EDP)"
-  ,"category_eau-de-parfum_description": "Eau de Parfum"
-  ,"category_eau-de-toilette_name": "Туалетная вода (EDT)"
-  ,"category_eau-de-toilette_description": "Eau de Toilette"
-  ,"category_underwear_name": "Нижнее бельё"
-  ,"category_underwear_description": "Базовое и повседневное нижнее бельё"
-  ,"category_headwear_name": "Головные уборы"
-  ,"category_headwear_description": "Кепки, шапки и другие головные уборы"
-  ,"category_medical-equipment_name": "Медицинский инвентарь"
-  ,"category_medical-equipment_description": "Инструменты и оборудование для медицины"
-  ,"category_uslugi_name": "Услуги"
-  ,"category_uslugi_description": "Услуги и консультации"
-  ,"category_sports_name": "Спорттовары"
-  ,"category_sports_description": "Товары для спорта и активного отдыха"
-  ,"category_auto-parts_name": "Автозапчасти"
-  ,"category_auto-parts_description": "Автозапчасти и аксессуары"
-  ,"category_islamic-clothing_name": "Исламская одежда"
-  ,"category_islamic-clothing_description": "Мусульманская одежда и хиджабы"
-  ,"category_incense_name": "Благовония"
-  ,"category_incense_description": "Благовония и ароматические продукты"
-  ,"category_books_name": "Книги"
-  ,"category_books_description": "Книги и литература"
-  ,"category_apartment-renovation_name": "Ремонт квартир"
-  ,"category_apartment-renovation_description": "Ремонт и отделка квартир"
-  ,"category_cargo-transport_name": "Перевозка грузов"
-  ,"category_cargo-transport_description": "Перевозка грузов"
-  ,"category_cargo_name": "Карго"
-  ,"category_cargo_description": "Карго и логистика"
-  ,"category_cleaning_name": "Клининг"
-  ,"category_cleaning_description": "Клининговые услуги"
-  ,"category_consultations_name": "Консультации"
-  ,"category_consultations_description": "Консультационные услуги"
-  ,"category_diagnostics_name": "Диагностика"
-  ,"category_diagnostics_description": "Диагностические услуги"
-  ,"category_bags_name": "Сумки"
-  ,"category_bags_description": ""
-  ,"category_belts_name": "Ремни"
-  ,"category_belts_description": ""
-  ,"category_wallets_name": "Кошельки"
-  ,"category_wallets_description": ""
-  ,"category_watches_name": "Часы"
-  ,"category_watches_description": ""
-  ,"category_vitamins_name": "Витамины"
-  ,"category_vitamins_description": "Витаминные комплексы и минеральные добавки"
-  ,"category_minerals_name": "Минералы"
-  ,"category_minerals_description": "Минералы"
-  ,"category_cardio_name": "Кардио"
-  ,"category_cardio_description": "Кардио"
-  ,"category_omega-fish-oil_name": "Омега/рыбий жир"
-  ,"category_omega-fish-oil_description": "Омега/рыбий жир"
-  ,"category_protein-amino_name": "Протеин/аминокислоты"
-  ,"category_protein-amino_description": "Протеин/аминокислоты"
-  ,"category_collagen_name": "Коллаген"
-  ,"category_collagen_description": "Коллаген"
-  ,"category_probiotics_name": "Пробиотики"
-  ,"category_probiotics_description": "Пробиотики"
-  ,"category_kids-supplements_name": "Детские БАДы"
-  ,"category_kids-supplements_description": "Детские БАДы"
-  ,"category_women-headwear_name": "Женские"
-  ,"category_women-headwear_description": ""
-  ,"category_men-headwear_name": "Мужские"
-  ,"category_men-headwear_description": ""
-  ,"category_kids-headwear_name": "Детские"
-  ,"category_kids-headwear_description": ""
-  ,"category_unisex-headwear_name": "Унисекс"
-  ,"category_unisex-headwear_description": ""
-  ,"category_living-room_name": "Гостиная"
-  ,"category_living-room_description": "Гостиная"
-  ,"category_bedroom_name": "Спальня"
-  ,"category_bedroom_description": "Спальня"
-  ,"category_office_name": "Офис"
-  ,"category_office_description": "Офис"
-  ,"category_storage_name": "Хранение"
-  ,"category_storage_description": "Хранение"
-  ,"category_antibiotics_name": "Антибиотики"
-  ,"category_antibiotics_description": "Антибактериальные препараты для лечения инфекций"
-  ,"category_painkillers_name": "Обезболивающие"
-  ,"category_painkillers_description": "Препараты для снятия боли и воспаления"
-  ,"category_cardiovascular_name": "Сердечно-сосудистые"
-  ,"category_cardiovascular_description": "Препараты для лечения сердечно-сосудистых заболеваний"
-  ,"category_skincare_name": "Средства для кожи"
-  ,"category_skincare_description": "Кремы, мази и средства для ухода за кожей"
-  ,"category_dermatology_name": "Дерматология"
-  ,"category_dermatology_description": "Дерматология"
-  ,"category_cold-flu_name": "Простуда/ОРВИ"
-  ,"category_cold-flu_description": "Простуда/ОРВИ"
-  ,"category_gastro_name": "ЖКТ"
-  ,"category_gastro_description": "ЖКТ"
-  ,"category_immunity_name": "Иммунитет"
-  ,"category_immunity_description": "Иммунитет"
-  ,"category_endocrinology-diabetes_name": "Эндокринология/Диабет"
-  ,"category_endocrinology-diabetes_description": "Эндокринология/Диабет"
-  ,"category_ent_name": "ЛОР"
-  ,"category_ent_description": "ЛОР"
-  ,"category_measuring-devices_name": "Измерительные (тонометры, глюкометры)"
-  ,"category_measuring-devices_description": "Измерительные (тонометры, глюкометры)"
-  ,"category_care-devices_name": "Уход/устройства (небулайзеры, ингаляторы)"
-  ,"category_care-devices_description": "Уход/устройства (небулайзеры, ингаляторы)"
-  ,"category_rehab-orthoses_name": "Реабилитация/ортезы"
-  ,"category_rehab-orthoses_description": "Реабилитация/ортезы"
-  ,"category_consumables_name": "Расходники (маски, перчатки)"
-  ,"category_consumables_description": "Расходники (маски, перчатки)"
-  ,"category_dentistry-tools_name": "Стоматология — инструменты"
-  ,"category_dentistry-tools_description": "Стоматология — инструменты"
-  ,"category_dentistry-consumables_name": "Стоматология — расходники"
-  ,"category_dentistry-consumables_description": "Стоматология — расходники"
-  ,"category_orthopedics_name": "Ортопедия/Травмы"
-  ,"category_orthopedics_description": "Ортопедия/Травмы"
-  ,"category_underwear-women_name": "Женское нижнее белье"
-  ,"category_underwear-women_description": "Женское нижнее белье Турецкого производства."
-  ,"category_underwear-men_name": "Мужское нижнее бельё"
-  ,"category_underwear-men_description": "Мужское нижнее белье Турецкого производства."
-  ,"category_women-shoes_name": "Женская обувь"
-  ,"category_women-shoes_description": ""
-  ,"category_men-shoes_name": "Мужская обувь"
-  ,"category_men-shoes_description": ""
-  ,"category_kids-shoes_name": "Детская обувь"
-  ,"category_kids-shoes_description": ""
-  ,"category_unisex-shoes_name": "Унисекс обувь"
-  ,"category_unisex-shoes_description": ""
-  ,"category_womens-wear_name": "Женская одежда"
-  ,"category_womens-wear_description": "Женская одежда Zara"
-  ,"category_men-clothing_name": "Мужская одежда"
-  ,"category_men-clothing_description": ""
-  ,"category_kids-clothing_name": "Детская одежда"
-  ,"category_kids-clothing_description": ""
-  ,"category_unisex-clothing_name": "Унисекс одежда"
-  ,"category_unisex-clothing_description": ""
-  ,"category_kitchen-cookware_name": "Кухонная (сковороды/кастрюли)"
-  ,"category_kitchen-cookware_description": "Кухонная (сковороды/кастрюли)"
-  ,"category_serving_name": "Сервировка"
-  ,"category_serving_description": "Сервировка"
-  ,"category_kitchen-dining_name": "Кухня/столовая"
-  ,"category_kitchen-dining_description": "Кухня/столовая"
-  ,"category_copper_name": "Материал: медная"
-  ,"category_copper_description": "Материал: медная"
-  ,"category_porcelain_name": "Материал: фарфор"
-  ,"category_porcelain_description": "Материал: фарфор"
-  ,"category_glass-ceramic_name": "Материал: стекло/керамика"
-  ,"category_glass-ceramic_description": "Материал: стекло/керамика"
-  ,"category_rings_name": "Кольца"
-  ,"category_rings_description": "Кольца"
-  ,"category_chains_name": "Цепочки"
-  ,"category_chains_description": "Цепочки"
-  ,"category_bracelets_name": "Браслеты"
-  ,"category_bracelets_description": "Браслеты"
-  ,"category_earrings_name": "Серьги"
-  ,"category_earrings_description": "Серьги"
-  ,"category_pendants_name": "Подвески"
-  ,"category_pendants_description": "Подвески"
-  ,"category_wedding_name": "Обручальные"
-  ,"category_wedding_description": "Обручальные"
-  ,"category_remont_name": "Ремонт"
-  ,"category_remont_description": "Ремонт квартир, торговых и офисных помещений, частично и под ключ."
-  ,"category_gruzoperevozki_name": "Грузоперевозки"
-  ,"category_gruzoperevozki_description": "Грузоперевозки и транспортные услуги."
-  ,"category_smartphones_name": "Смартфоны"
-  ,"category_smartphones_description": ""
-  ,"category_laptops_name": "Ноутбуки"
-  ,"category_laptops_description": ""
-  ,"category_smart-tv_name": "Умные телевизоры"
-  ,"category_smart-tv_description": ""
-  ,"category_audio_name": "Аудио/Наушники"
-  ,"category_audio_description": ""
-  ,"category_tv-video_name": "TV/Видео"
-  ,"category_tv-video_description": ""
-  ,"_comment_brand_translations": "Переводы для брендов: формат ключа - brand_{slug}_name и brand_{slug}_description. Slug нормализуется (подчеркивания заменяются на дефисы, нижний регистр). Примеры ниже."
-  ,"brand_abdi-ibrahim_name": "Abdi İbrahim"
-  ,"brand_abdi-ibrahim_description": "Ведущий фармпроизводитель Турции."
-  ,"brand_addidas_name": "Addidas"
-  ,"brand_addidas_description": ""
-  ,"brand_alvimedica_name": "Alvimedica"
-  ,"brand_alvimedica_description": "Стенты, катетеры и кардиология."
-  ,"brand_ankara-healthcare_name": "Ankara Healthcare"
-  ,"brand_ankara-healthcare_description": "Производитель госпитального оборудования."
-  ,"brand_apple_name": "Apple"
-  ,"brand_apple_description": "Американская технологическая компания"
-  ,"brand_arcelik_name": "Arçelik"
-  ,"brand_arcelik_description": "Производитель техники и электроники."
-  ,"brand_astrazeneca_name": "AstraZeneca"
-  ,"brand_astrazeneca_description": ""
-  ,"brand_atabay-ilac_name": "Atabay İlaç"
-  ,"brand_atabay-ilac_description": "Локальный производитель API и готовых лекарственных форм."
-  ,"brand_bayer_name": "Bayer"
-  ,"brand_bayer_description": ""
-  ,"brand_beko_name": "Beko"
-  ,"brand_beko_description": "Международный бренд бытовой техники (группа Arçelik)."
-  ,"brand_bellona_name": "Bellona"
-  ,"brand_bellona_description": "Мебель и текстиль для дома."
-  ,"brand_beymen_name": "Beymen"
-  ,"brand_beymen_description": "Люксовый fashion-ретейлер и дом моды."
-  ,"brand_bilim-ilac_name": "Bilim İlaç"
-  ,"brand_bilim-ilac_description": "Одна из крупнейших фармацевтических компаний Турции."
-  ,"brand_boyner_name": "Boyner"
-  ,"brand_boyner_description": "Турецкий универмаг премиальной одежды и аксессуаров"
-  ,"brand_bcakclar_name": "Bıçakcılar"
-  ,"brand_bcakclar_description": "Медицинские расходники и аппараты."
-  ,"brand_calvin-klein-underwear_name": "Calvin Klein Underwear"
-  ,"brand_calvin-klein-underwear_description": ""
-  ,"brand_casper_name": "Casper"
-  ,"brand_casper_description": "Турецкий бренд ноутбуков и смартфонов."
-  ,"brand_centurion-pharma_name": "Centurion Pharma"
-  ,"brand_centurion-pharma_description": "Компания-экспортер лекарств и медпродукции."
-  ,"brand_damat-tween_name": "Damat Tween"
-  ,"brand_damat-tween_description": "Мужские костюмы и smart casual."
-  ,"brand_defacto_name": "DeFacto"
-  ,"brand_defacto_description": "Турецкий бренд стильной и доступной одежды"
-  ,"brand_demofoot_name": "DemoFoot"
-  ,"brand_demofoot_description": "Тестовая категория - бренд обуви для визуализации."
-  ,"brand_derimod_name": "Derimod"
-  ,"brand_derimod_description": "Кожаная обувь и аксессуары."
-  ,"brand_deva-holding_name": "Deva Holding"
-  ,"brand_deva-holding_description": "Фармацевтическая группа с широкой линейкой препаратов."
-  ,"brand_dogtas_name": "Doğtaş"
-  ,"brand_dogtas_description": "Мебель для дома и офиса."
-  ,"brand_eli-lilly_name": "Eli Lilly"
-  ,"brand_eli-lilly_description": ""
-  ,"brand_emsan_name": "Emsan"
-  ,"brand_emsan_description": "Посуда и кухонные аксессуары."
-  ,"brand_emsan-home_name": "Emsan Home"
-  ,"brand_emsan-home_description": ""
-  ,"brand_enza-home_name": "Enza Home"
-  ,"brand_enza-home_description": "Современная мебель и декор (Yataş Group)."
-  ,"brand_flo_name": "FLO"
-  ,"brand_flo_description": "Крупнейший обувной ретейлер Турции."
-  ,"brand_general-mobile_name": "General Mobile"
-  ,"brand_general-mobile_description": "Смартфоны программы Android One."
-  ,"brand_glaxosmithkline_name": "GlaxoSmithKline"
-  ,"brand_glaxosmithkline_description": ""
-  ,"brand_greyder_name": "Greyder"
-  ,"brand_greyder_description": "Производитель повседневной обуви."
-  ,"brand_gural-porselen_name": "Güral Porselen"
-  ,"brand_gural-porselen_description": "Фарфоровая посуда."
-  ,"brand_hammer-jack_name": "Hammer Jack"
-  ,"brand_hammer-jack_description": "Обувь повседневного стиля."
-  ,"brand_hisar_name": "Hisar"
-  ,"brand_hisar_description": "Столовые приборы и посуда."
-  ,"brand_hotic_name": "Hotiç"
-  ,"brand_hotic_description": "Сеть премиальной обуви и аксессуаров."
-  ,"brand_ikea_name": "IKEA"
-  ,"brand_ikea_description": ""
-  ,"brand_intimissimi_name": "Intimissimi"
-  ,"brand_intimissimi_description": ""
-  ,"brand_johnson-johnson_name": "Johnson & Johnson"
-  ,"brand_johnson-johnson_description": ""
-  ,"brand_kangol_name": "Kangol"
-  ,"brand_kangol_description": ""
-  ,"brand_karaca_name": "Karaca"
-  ,"brand_karaca_description": "Посуда и товары для дома из Турции."
-  ,"brand_kelebek_name": "Kelebek"
-  ,"brand_kelebek_description": "Один из старейших мебельных брендов."
-  ,"brand_kigl_name": "Kiğılı"
-  ,"brand_kigl_description": "Мужская классическая одежда."
-  ,"brand_koton_name": "Koton"
-  ,"brand_koton_description": "Турецкий fashion-ритейлер с современной одеждой"
-  ,"brand_kutahya-porselen_name": "Kütahya Porselen"
-  ,"brand_kutahya-porselen_description": "Фарфор и сервизы."
-  ,"brand_lc-waikiki_name": "LC Waikiki"
-  ,"brand_lc-waikiki_description": "Турецкий бренд доступной модной одежды для всей семьи"
-  ,"brand_lazzoni_name": "Lazzoni"
-  ,"brand_lazzoni_description": "Современная мебель ручной работы."
-  ,"brand_lescon_name": "Lescon"
-  ,"brand_lescon_description": "Спортивная обувь и экипировка."
-  ,"brand_luminarc_name": "Luminarc"
-  ,"brand_luminarc_description": ""
-  ,"brand_mavi_name": "Mavi"
-  ,"brand_mavi_description": "Турецкий премиальный джинсовый бренд"
-  ,"brand_merck_name": "Merck"
-  ,"brand_merck_description": ""
-  ,"brand_muwahhid_name": "Muwahhid"
-  ,"brand_muwahhid_description": "Muslim Stile"
-  ,"brand_new-era_name": "New Era"
-  ,"brand_new-era_description": ""
-  ,"brand_nike_name": "Nike"
-  ,"brand_nike_description": "Американский спортивный бренд"
-  ,"brand_nills_name": "Nill's"
-  ,"brand_nills_description": "Премиальная мебель из Измира."
-  ,"brand_nobel-ilac_name": "Nobel İlaç"
-  ,"brand_nobel-ilac_description": "Производитель препаратов для госпитального сегмента и аптек."
-  ,"brand_novartis_name": "Novartis"
-  ,"brand_novartis_description": ""
-  ,"brand_pandora_name": "Pandora"
-  ,"brand_pandora_description": ""
-  ,"brand_pasabahce_name": "Paşabahçe"
-  ,"brand_pasabahce_description": "Стеклянная посуда и бокалы."
-  ,"brand_penti_name": "Penti"
-  ,"brand_penti_description": "Нижнее белье и домашняя одежда."
-  ,"brand_pfizer_name": "Pfizer"
-  ,"brand_pfizer_description": ""
-  ,"brand_philips_name": "Philips"
-  ,"brand_philips_description": ""
-  ,"brand_polaris_name": "Polaris"
-  ,"brand_polaris_description": "Обувной бренд сети FLO."
-  ,"brand_porland_name": "Porland"
-  ,"brand_porland_description": "Профессиональная и домашняя посуда."
-  ,"brand_profilo_name": "Profilo"
-  ,"brand_profilo_description": "Бытовая техника для дома."
-  ,"brand_reeder_name": "Reeder"
-  ,"brand_reeder_description": "Производитель смартфонов и планшетов."
-  ,"brand_roche_name": "Roche"
-  ,"brand_roche_description": ""
-  ,"brand_samsung_name": "Samsung"
-  ,"brand_samsung_description": "Южнокорейская технологическая компания"
-  ,"brand_sanofi_name": "Sanofi"
-  ,"brand_sanofi_description": ""
-  ,"brand_santa-farma_name": "Santa Farma"
-  ,"brand_santa-farma_description": "Турецкая фармкомпания с историей более 75 лет."
-  ,"brand_sunny_name": "Sunny"
-  ,"brand_sunny_description": "Бытовая электроника и ТВ."
-  ,"brand_swarovski_name": "Swarovski"
-  ,"brand_swarovski_description": ""
-  ,"brand_tantitoni_name": "Tantitoni"
-  ,"brand_tantitoni_description": "Посуда и кухонные гаджеты в ярком стиле."
-  ,"brand_tefal_name": "Tefal"
-  ,"brand_tefal_description": ""
-  ,"brand_tous_name": "Tous"
-  ,"brand_tous_description": ""
-  ,"brand_turkuaz-healthcare_name": "Turkuaz Healthcare"
-  ,"brand_turkuaz-healthcare_description": "Оборудование и медтехника."
-  ,"brand_tpsan_name": "Tıpsan"
-  ,"brand_tpsan_description": "Медицинские кровати и оборудование."
-  ,"brand_vakko_name": "Vakko"
-  ,"brand_vakko_description": "Премиальный дом моды из Турции."
-  ,"brand_vestel_name": "Vestel"
-  ,"brand_vestel_description": "Крупнейший производитель электроники и ТВ в Турции."
-  ,"brand_villeroy-boch_name": "Villeroy & Boch"
-  ,"brand_villeroy-boch_description": ""
-  ,"brand_xiaomi_name": "Xiaomi"
-  ,"brand_xiaomi_description": ""
-  ,"brand_yatas_name": "Yataş"
-  ,"brand_yatas_description": "Мебель и матрасы."
-  ,"brand_zara_name": "Zara"
-  ,"brand_zara_description": "Испанский бренд одежды"
-  ,"brand_ie-ulagay_name": "İ.E. Ulagay"
-  ,"brand_ie-ulagay_description": "Старейшая фармкомпания Турции, основана в 1903 году."
-  ,"brand_ider_name": "İder"
-  ,"brand_ider_description": "Модульная мебель и декор."
-  ,"brand_inci_name": "İnci"
-  ,"brand_inci_description": "Исторический бренд кожаной обуви."
-  ,"brand_ipekyol_name": "İpekyol"
-  ,"brand_ipekyol_description": "Женская одежда и аксессуары."
-  ,"select_size": "Выберите размер"
-  ,"add_to_cart_error": "Ошибка добавления в корзину"
-  ,"buy_now": "Купить в один клик"
-  ,"buy_now_error": "Ошибка при оформлении заказа"
-  ,"decrease_quantity": "Уменьшить количество"
-  ,"increase_quantity": "Увеличить количество"
-  ,"buy_on_pharmaturk": "купить на PharmaTurk"
-  ,"similar_products": "Похожие товары"
-  ,"product_featured": "Хит"
-  ,"badge_recommend": "Рекомендуем"
-  ,"badge_similar_style": "Очень похожий стиль"
-  ,"badge_similar_design": "Похожий дизайн"
-  ,"badge_brand": "Бренд {{brand}}"
-  ,"not_found": "Товар не найден"
-  ,"color": "Цвет"
-  ,"size": "Размер"
-  ,"quantity": "Количество"
-  ,"description": "Описание"
-  ,"security_and_service": "Безопасность и сервис"
-  ,"payment_security": "Безопасность платежей"
-  ,"payment_security_description": "Мы гарантируем безопасность ваших платежей. Ваши платежные данные защищены и передаются только проверенным платежным системам."
-  ,"privacy_protection": "Защита конфиденциальности"
-  ,"privacy_protection_description": "Мы используем современные методы шифрования для защиты ваших персональных данных. Ваша конфиденциальность - наш приоритет."
-  ,"fast_safe_delivery": "Быстрая и безопасная доставка"
-  ,"delivery_description": "Мы обеспечиваем быструю и надежную доставку. Вы можете отслеживать статус заказа в реальном времени."
-  ,"customer_service": "Служба поддержки"
-  ,"customer_service_description": "Наша служба поддержки готова помочь вам с любыми вопросами. Свяжитесь с нами в любое время."
-  ,"color_чёрный": "Чёрный"
-  ,"color_black": "Чёрный"
-  ,"color_белый": "Белый"
-  ,"color_white": "Белый"
-  ,"color_красный": "Красный"
-  ,"color_red": "Красный"
-  ,"color_синий": "Синий"
-  ,"color_blue": "Синий"
-  ,"color_зелёный": "Зелёный"
-  ,"color_green": "Зелёный"
-  ,"color_жёлтый": "Жёлтый"
-  ,"color_yellow": "Жёлтый"
-  ,"color_оранжевый": "Оранжевый"
-  ,"color_orange": "Оранжевый"
-  ,"color_фиолетовый": "Фиолетовый"
-  ,"color_purple": "Фиолетовый"
-  ,"color_розовый": "Розовый"
-  ,"color_pink": "Розовый"
-  ,"color_серый": "Серый"
-  ,"color_gray": "Серый"
-  ,"color_grey": "Серый"
-  ,"color_коричневый": "Коричневый"
-  ,"color_brown": "Коричневый"
-  ,"color_бежевый": "Бежевый"
-  ,"color_beige": "Бежевый"
-  ,"color_хаки": "Хаки"
-  ,"color_khaki": "Хаки"
-  ,"color_золотой": "Золотой"
-  ,"color_gold": "Золотой"
-  ,"color_серебряный": "Серебряный"
-  ,"color_silver": "Серебряный"
-  ,"color_голубой": "Голубой"
-  ,"color_light_blue": "Голубой"
-  ,"color_тёмно_синий": "Тёмно-синий"
-  ,"color_dark_blue": "Тёмно-синий"
-  ,"color_navy": "Тёмно-синий"
-  ,"color_бордовый": "Бордовый"
-  ,"color_burgundy": "Бордовый"
-  ,"color_maroon": "Бордовый"
-  ,"color_бирюзовый": "Бирюзовый"
-  ,"color_turquoise": "Бирюзовый"
-  ,"color_оливковый": "Оливковый"
-  ,"color_olive": "Оливковый"
-  ,"color_лайм": "Лайм"
-  ,"color_lime": "Лайм"
-  ,"color_мятный": "Мятный"
-  ,"color_mint": "Мятный"
-  ,"color_персиковый": "Персиковый"
-  ,"color_peach": "Персиковый"
-  ,"color_коралловый": "Коралловый"
-  ,"color_coral": "Коралловый"
-  ,"color_лавандовый": "Лавандовый"
-  ,"color_lavender": "Лавандовый"
-  ,"color_сливовый": "Сливовый"
-  ,"color_plum": "Сливовый"
-  ,"color_вишнёвый": "Вишнёвый"
-  ,"color_cherry": "Вишнёвый"
-  ,"color_шоколадный": "Шоколадный"
-  ,"color_chocolate": "Шоколадный"
-  ,"color_кремовый": "Кремовый"
-  ,"color_cream": "Кремовый"
-  ,"color_молочный": "Молочный"
-  ,"color_milk": "Молочный"
-  ,"color_слоновая_кость": "Слоновая кость"
-  ,"color_ivory": "Слоновая кость"
-  ,"author": "Автор"
-  ,"pages": "стр."
-  ,"reviews": "отзывов"
-  ,"bestseller": "Бестселлер"
-  ,"new": "Новинка"
-  ,"book_weight": "Вес"
-  ,"book_thickness_mm": "Толщина, мм"
-  ,"book_format": "Формат"
-  ,"book_cover_type": "Обложка"
-  ,"book_publication_year": "Год издания"
-  ,"cover_type_твердый_переплет": "Твердый переплет"
-  ,"cover_type_мягкий_переплет": "Мягкий переплет"
-  ,"cover_type_интегральный_переплет": "Интегральный переплет"
+  "menu_login_register": "Войти / Регистрация",
+  "search_button": "Поиск",
+  "cart_empty": "Корзина пуста",
+  "cart_empty_description": "Добавьте товары в корзину, чтобы продолжить покупки",
+  "color_черный": "Черный",
+  "cart_total": "Итого",
+  "cart_checkout": "Перейти к оформлению заказа",
+  "cart_continue_shopping": "Продолжить покупки",
+  "cart_clear": "Очистить корзину",
+  "cart_confirm_remove": "Вы уверены, что хотите удалить этот товар из корзины?",
+  "cart_confirm_clear": "Вы уверены, что хотите очистить корзину?",
+  "cart_summary": "Итоги заказа",
+  "cart_items_count": "Товаров",
+  "cart_item_total": "Итого",
+  "cart_delivery_info_title": "Бесплатная доставка",
+  "cart_delivery_info_text": "При заказе от определенной суммы",
+  "product_details": "Подробнее",
+  "price_on_request": "Цена по запросу",
+  "section_daily_deals": "Товары дня",
+  "section_best_sellers": "Хиты продаж",
+  "trending_now": "Популярное сейчас",
+  "header_profile": "Профиль",
+  "header_logout": "Выйти",
+  "add_to_cart": "В корзину",
+  "adding": "Добавляем...",
+  "added": "Добавлено",
+  "search_results": "Результаты поиска",
+  "search_for": "По запросу",
+  "email": "Email",
+  "username": "Имя пользователя",
+  "remove": "Удалить",
+  "checkout_page_title": "Оформление заказа — Turk-Export",
+  "checkout_title": "Оформление заказа",
+  "checkout_recipient_name": "Имя получателя",
+  "checkout_phone": "Телефон",
+  "checkout_email_optional": "Email (необязательно)",
+  "checkout_shipping_address": "Адрес доставки",
+  "checkout_contact_info": "Контактная информация",
+  "checkout_use_manual_address": "Указать адрес вручную",
+  "checkout_address_placeholder": "Страна, город, улица, дом, квартира",
+  "checkout_order_summary": "Итоги заказа",
+  "checkout_back_to_cart": "Вернуться в корзину",
+  "checkout_items": "Товары",
+  "checkout_qty": "Кол-во",
+  "checkout_per_item": "за шт.",
+  "checkout_save_address": "Сохранить адрес в профиле",
+  "checkout_save_address_as_second": "Сохранить как второй адрес",
+  "checkout_use_this_address": "Использовать этот адрес",
+  "checkout_fill_address_form": "Заполнить подробный адрес",
+  "checkout_payment_method": "Способ оплаты",
+  "payment_cod": "Наложенный платёж",
+  "payment_cod_description": "Оплата при получении товара",
+  "payment_card": "Банковская карта",
+  "payment_card_description": "Оплата банковской картой онлайн",
+  "payment_crypto": "Криптовалюта",
+  "payment_crypto_description": "Оплата криптовалютой (Bitcoin, Ethereum, USDT и др.)",
+  "payment_card_details": "Данные карты",
+  "payment_card_number": "Номер карты",
+  "payment_card_expiry": "Срок действия",
+  "payment_card_cvv": "CVV",
+  "payment_card_holder": "Имя держателя карты",
+  "payment_card_security_info": "Ваши данные защищены. Мы не храним данные карты на наших серверах.",
+  "payment_crypto_wallet": "Адрес криптокошелька",
+  "payment_crypto_wallet_address": "Адрес кошелька для получения",
+  "payment_crypto_supported": "Поддерживаемые криптовалюты: Bitcoin (BTC), Ethereum (ETH), USDT (TRC20/ERC20), Tether (USDT)",
+  "payment_crypto_info_title": "Как это работает:",
+  "payment_crypto_info_1": "После подтверждения заказа вы получите адрес для оплаты",
+  "payment_crypto_info_2": "Отправьте точную сумму на указанный адрес",
+  "payment_crypto_info_3": "После подтверждения транзакции заказ будет обработан",
+  "checkout_crypto_pay_title": "Оплата криптовалютой",
+  "checkout_crypto_address": "Адрес для оплаты",
+  "checkout_crypto_amount": "Сумма к оплате",
+  "checkout_crypto_expires": "Время на оплату",
+  "checkout_crypto_paid": "Оплачено",
+  "checkout_crypto_redirecting": "Переход на страницу заказа...",
+  "checkout_crypto_copy_address": "Копировать",
+  "checkout_crypto_copied": "Скопировано",
+  "checkout_crypto_instruction": "Отправьте указанную сумму USDT на адрес ниже. После подтверждения транзакции заказ будет обработан.",
+  "checkout_crypto_load_error": "Не удалось загрузить заказ",
+  "checkout_crypto_no_order": "Укажите номер заказа",
+  "checkout_crypto_expired": "Время истекло",
+  "checkout_crypto_open_invoice": "Открыть страницу оплаты",
+  "checkout_crypto_no_payment_data": "Данные для оплаты недоступны. Обратитесь в поддержку.",
+  "checkout_submitting": "Отправка...",
+  "checkout_submit": "Оформить заказ",
+  "login_required_to_checkout": "Для оформления заказа необходимо войти",
+  "checkout_error_generic": "Ошибка оформления заказа",
+  "footer_contacts": "Контакты",
+  "footer_phone": "+90 552 582 14 97",
+  "footer_email": "fulani.dev@gmail.com",
+  "footer_location": "Стамбул, Турция",
+  "footer_social_networks": "Наши соцсети",
+  "footer_information": "Информация",
+  "footer_delivery_payment": "Доставка и оплата",
+  "footer_return": "Возврат товара",
+  "footer_privacy": "Политика конфиденциальности",
+  "footer_crypto_payment": "Возможна оплата криптовалютой",
+  "sidebar_categories": "Категории",
+  "sidebar_brands": "Бренды",
+  "sidebar_filters": "Фильтры",
+  "sidebar_furniture_type": "Тип мебели",
+  "sidebar_book_genres": "Жанры",
+  "sidebar_price_range": "Диапазон цен",
+  "sidebar_price_min": "От",
+  "sidebar_price_max": "До",
+  "sidebar_sort_by": "Сортировка",
+  "sidebar_sort_price_asc": "Цена: по возрастанию",
+  "sidebar_sort_price_desc": "Цена: по убыванию",
+  "sidebar_sort_name_asc": "Название: А-Я",
+  "sidebar_sort_name_desc": "Название: Я-А",
+  "sidebar_availability": "Наличие",
+  "sidebar_in_stock": "В наличии",
+  "sidebar_new": "Новинки",
+  "sidebar_show_more": "Показать ещё",
+  "sidebar_show_less": "Свернуть",
+  "sidebar_apply": "Применить",
+  "profile_title": "Профиль",
+  "profile_personal_info": "Личная информация",
+  "profile_first_name": "Имя",
+  "profile_last_name": "Фамилия",
+  "profile_email": "Email",
+  "profile_phone": "Телефон",
+  "profile_edit": "Редактировать",
+  "profile_save": "Сохранить",
+  "profile_cancel": "Отмена",
+  "profile_upload_avatar": "Загрузить фото",
+  "profile_change_avatar": "Изменить фото",
+  "profile_orders": "Мои заказы",
+  "profile_statistics": "Статистика",
+  "profile_total_orders": "Всего заказов",
+  "profile_total_spent": "Потрачено всего",
+  "profile_order_number": "Заказ",
+  "profile_order_date": "Дата",
+  "profile_order_status": "Статус",
+  "profile_order_total": "Сумма",
+  "profile_no_orders": "У вас пока нет заказов",
+  "profile_order_details": "Детали заказа",
+  "profile_order_items": "Товары",
+  "profile_loading": "Загрузка...",
+  "profile_saving": "Сохранение...",
+  "profile_saved": "Сохранено",
+  "profile_error": "Ошибка",
+  "profile_not_public": "Профиль не является публичным",
+  "back_to_home": "Вернуться на главную",
+  "pagination_back": "Назад",
+  "pagination_forward": "Вперед",
+  "order_status_new": "Новый",
+  "order_status_pending_payment": "Ожидает оплаты",
+  "order_status_paid": "Оплачен",
+  "order_status_processing": "В обработке",
+  "order_status_shipped": "Отправлен",
+  "order_status_delivered": "Доставлен",
+  "order_status_cancelled": "Отменён",
+  "profile_addresses": "Адреса доставки",
+  "profile_add_address": "Добавить адрес",
+  "profile_edit_address": "Редактировать адрес",
+  "profile_delete_address": "Удалить адрес",
+  "profile_no_addresses": "У вас пока нет сохранённых адресов",
+  "profile_address_default": "Адрес по умолчанию",
+  "profile_address_type": "Тип адреса",
+  "profile_address_type_home": "Дом",
+  "profile_address_type_work": "Работа",
+  "profile_address_type_other": "Другое",
+  "profile_address_contact_name": "Имя получателя",
+  "profile_address_contact_phone": "Телефон получателя",
+  "profile_address_country": "Страна",
+  "profile_address_region": "Область/регион",
+  "profile_address_city": "Город",
+  "profile_address_postal_code": "Почтовый индекс",
+  "profile_address_street": "Улица",
+  "profile_address_house": "Дом",
+  "profile_address_apartment": "Квартира",
+  "profile_address_entrance": "Подъезд",
+  "profile_address_floor": "Этаж",
+  "profile_address_intercom": "Домофон",
+  "profile_address_comment": "Комментарий",
+  "profile_address_set_default": "Установить по умолчанию",
+  "profile_address_required": "Обязательное поле",
+  "profile_show_order_history": "Показать все заказы",
+  "profile_hide_order_history": "Скрыть историю заказов",
+  "profile_address_creating": "Создание...",
+  "profile_address_updating": "Обновление...",
+  "profile_address_deleting": "Удаление...",
+  "profile_whatsapp": "WhatsApp",
+  "profile_telegram": "Telegram",
+  "profile_messengers": "Мессенджеры",
+  "social_networks": "Социальные сети",
+  "orders": "заказов",
+  "currency": "Валюта",
+  "order_success_page_title": "Заказ оформлен",
+  "order_success_heading": "Заказ оформлен!",
+  "order_success_subheading": "Спасибо за доверие",
+  "order_success_lead": "Мы уже собираем заказ №{{number}}. Подтверждение и чек отправим на почту.",
+  "order_success_number": "Номер заказа",
+  "order_success_status": "Статус заказа",
+  "order_success_payment_method": "Способ оплаты",
+  "order_success_total": "Итого к оплате",
+  "order_success_actions_download": "Сохранить чек",
+  "order_success_actions_view_orders": "К заказам",
+  "order_success_actions_continue": "Продолжить покупки",
+  "order_success_receipt_title": "Цифровой чек",
+  "order_success_receipt_description": "Все позиции и суммы заказа",
+  "order_success_subtotal": "Сумма товаров",
+  "order_success_shipping_cost": "Стоимость доставки",
+  "order_success_discount": "Скидка",
+  "order_success_promo_code": "Промокод",
+  "order_success_send_receipt_title": "Отправка чека",
+  "order_success_send_receipt_placeholder": "E-mail для получения чека",
+  "order_success_send_receipt_sending": "Отправляем...",
+  "order_success_send_button": "Отправить чек",
+  "order_success_send_success": "Чек отправлен на {{email}}",
+  "order_success_send_error": "Не удалось отправить чек",
+  "order_success_download_hint": "Вы можете сохранить чек как PDF или распечатать его.",
+  "order_success_shipping": "Доставка",
+  "order_success_loading": "Загружаем информацию о заказе...",
+  "order_success_no_number": "Номер заказа не передан. Найдите чек в профиле.",
+  "order_success_qty": "×{{count}} шт.",
+  "receipt_print_title": "Чек заказа №",
+  "receipt_print_issued": "Выдан",
+  "receipt_print_product": "Товар",
+  "receipt_print_qty": "Кол-во",
+  "receipt_print_price": "Цена",
+  "receipt_print_total_col": "Сумма",
+  "receipt_print_total_label": "Итого",
+  "promo_code_placeholder": "Промокод",
+  "promo_code_applied": "Промокод применён",
+  "promo_code_error": "Ошибка применения промокода",
+  "apply": "Применить",
+  "applying": "Применение...",
+  "cart_subtotal": "Сумма товаров",
+  "cart_discount": "Скидка",
+  "menu_favorites": "Избранное",
+  "favorites_title": "Избранное",
+  "favorites_empty_title": "Избранное пусто",
+  "favorites_empty_description": "Добавьте товары в избранное, чтобы не потерять их",
+  "favorites_go_shopping": "Перейти к покупкам",
+  "add_to_favorites": "В избранное",
+  "remove_from_favorites": "Удалить из избранного",
+  "favorite_error": "Ошибка при работе с избранным",
+  "processing": "Обработка...",
+  "popular_products_title": "Популярные товары",
+  "product_new": "Новинка",
+  "delivery_title": "Доставка и оплата",
+  "delivery_subtitle": "Информация о способах доставки и оплаты",
+  "delivery_shipping_title": "Доставка",
+  "delivery_shipping_text1": "Мы осуществляем доставку по всему миру. Сроки доставки зависят от региона и выбранной транспортной компании.",
+  "delivery_shipping_text2": "Стоимость доставки рассчитывается индивидуально в зависимости от веса посылки и страны назначения.",
+  "delivery_payment_title": "Оплата",
+  "delivery_payment_text1": "Вы можете оплатить заказ банковской картой, банковским переводом или криптовалютой.",
+  "delivery_payment_text2": "Все платежи надежно защищены современными системами шифрования. Мы не храним данные ваших карт.",
+  "returns_title": "Возврат и обмен",
+  "returns_subtitle": "Гарантия качества и правила возврата",
+  "returns_conditions_title": "Условия возврата",
+  "returns_conditions_text1": "Вы можете вернуть товар надлежащего качества в течение 14 дней с момента получения заказа.",
+  "returns_conditions_text2": "Товар должен сохранить свой первоначальный товарный вид, оригинальную упаковку и все фабричные ярлыки.",
+  "returns_process_title": "Как оформить возврат",
+  "returns_process_text1": "Для оформления возврата свяжитесь с нашей службой поддержки по электронной почте или в любом удобном мессенджере, указанном в контактах.",
+  "privacy_title": "Политика конфиденциальности",
+  "privacy_subtitle": "Защита ваших персональных данных",
+  "privacy_collection_title": "Сбор информации",
+  "privacy_collection_text": "Мы собираем информацию, которую вы предоставляете при регистрации на сайте, оформлении заказа и подписке на рассылку.",
+  "privacy_usage_title": "Использование данных",
+  "privacy_usage_text": "Ваши данные используются исключительно для обработки заказов, улучшения качества обслуживания и информирования о новых специальных предложениях.",
+  "privacy_protection_title": "Защита данных",
+  "privacy_protection_text": "Мы применяем современные технические средства для защиты вашей персональной информации от несанкционированного доступа или разглашения.",
+  "delivery_methods": "Способы доставки",
+  "delivery_air": "Воздушным путем",
+  "delivery_air_desc": "Самый быстрый способ доставки. Идеально подходит для срочных грузов и небольших посылок. Сроки: от 3 до 7 дней.",
+  "delivery_ground": "Наземным путем",
+  "delivery_ground_desc": "Оптимальное соотношение цены и скорости. Доставка автотранспортом. Сроки: от 7 до 14 дней в зависимости от региона.",
+  "delivery_sea": "Морским путем",
+  "delivery_sea_desc": "Лучший выбор для крупногабаритных грузов и оптовых партий. Наиболее экономичный вариант. Сроки: от 20 до 45 дней.",
+  "payment_methods": "Безопасная оплата",
+  "payment_cards": "Банковские карты и переводы",
+  "delivery_payment_security": "100% Защита платежей",
+  "returns_steps": "Как оформить возврат? 3 простых шага",
+  "return_step_1_title": "1. Свяжитесь со службой поддержки",
+  "return_step_1_text": "Напишите нам в течение 14 дней. Мы оперативно обработаем вашу заявку и согласуем процесс возврата.",
+  "return_step_2_title": "2. Упакуйте и отправьте товар",
+  "return_step_2_text": "Убедитесь, что товар сохранил свой первоначальный вид, пломбы и бирки. Отправьте посылку по указанному нами адресу.",
+  "return_step_3_title": "3. Получите возврат средств",
+  "return_step_3_text": "После получения и проверки товара мы переведем средства или отправим вам новый товар на замену в течение 3-5 дней.",
+  "return_policy_note": "Есть вопросы по возврату брака?",
+  "return_policy_note_desc": "Если вы обнаружили брак, мы берем на себя все транспортные расходы и произведем обмен в максимально короткие сроки. Пожалуйста, приложите фото брака к своему обращению в поддержку.",
+  "privacy_features": "Наш подход к безопасности",
+  "privacy_secure": "Полная защита",
+  "privacy_secure_desc": "Все данные, передаваемые между вашим браузером и нашим сервером, шифруются по протоколу SSL. Мы не передаем вашу информацию третьим лицам без вашего согласия.",
+  "privacy_data": "Сбор данных",
+  "privacy_data_desc": "Мы собираем только ту информацию, которая необходима для обработки вашего заказа: контакты, адрес доставки и данные профиля.",
+  "privacy_info": "Ваши права",
+  "privacy_info_desc": "Вы можете в любой момент запросить удаление ваших данных, а также отказаться от рассылок в настройках личного кабинета.",
+  "testimonials_title": "Что говорят наши клиенты",
+  "testimonial_image_alt": "Изображение к отзыву от {{author_name}}",
+  "testimonial_video_alt": "Видео к отзыву от {{author_name}}",
+  "view_testimonial": "Посмотреть отзыв",
+  "video_tag_unsupported": "Ваш браузер не поддерживает видео.",
+  "testimonials_page_title": "Отзывы клиентов",
+  "testimonials_page_description": "Что говорят наши клиенты о наших товарах и услугах",
+  "filtered_by_user": "Отзывы пользователя",
+  "show_all_testimonials": "Показать все отзывы",
+  "no_testimonials": "Пока нет отзывов",
+  "no_testimonials_yet": "Пока нет отзывов. Станьте первым!",
+  "leave_first_testimonial": "Написать первый отзыв",
+  "loading": "Загрузка...",
+  "testimonial_not_found": "Отзыв не найден",
+  "login_required_to_submit_testimonial": "Для отправки отзыва необходимо войти.",
+  "back_to_testimonials": "Вернуться к отзывам",
+  "add_testimonial": "Оставить отзыв",
+  "cancel": "Отмена",
+  "your_name": "Ваше имя",
+  "rating": "Рейтинг",
+  "testimonial_text": "Текст отзыва",
+  "add_media": "Добавить медиа",
+  "add_image": "Добавить изображение",
+  "add_video_file": "Добавить видео файл",
+  "video_url_placeholder": "URL видео (YouTube, Vimeo)",
+  "submit_testimonial": "Отправить отзыв",
+  "submitting": "Отправка...",
+  "testimonial_submit_error": "Ошибка при отправке отзыва. Попробуйте еще раз.",
+  "video_preview_unavailable": "Предпросмотр недоступен",
+  "testimonial_submitted_title": "Отзыв отправлен!",
+  "testimonial_moderation_message": "Спасибо за ваш отзыв! Он отправлен на модерацию и будет опубликован после проверки администратором.",
+  "testimonial_will_be_signed_as": "Отзыв будет подписан как:",
+  "theme_dark": "Тёмная",
+  "theme_light": "Светлая",
+  "theme_dark_title": "Тёмная тема",
+  "theme_light_title": "Светлая тема",
+  "language": "Язык",
+  "categories_catalog": "Каталог",
+  "categories_title": "Категории товаров",
+  "categories_description": "Выберите основную категорию — карточки и баннеры как на главной.",
+  "products_found": "Найдено товаров",
+  "breadcrumb_home": "Главная",
+  "breadcrumb_categories": "Категории",
+  "category": "Категория",
+  "products_not_found": "Товары не найдены",
+  "products_not_found_description": "Попробуйте изменить параметры фильтров или выберите другую категорию",
+  "reset_filters": "Сбросить фильтры",
+  "sidebar_reset": "Сбросить",
+  "sidebar_price": "Цена",
+  "sidebar_price_from": "От",
+  "sidebar_price_to": "До",
+  "sidebar_sort": "Сортировка",
+  "sidebar_sort_name_asc_short": "По названию (А-Я)",
+  "sidebar_sort_name_desc_short": "По названию (Я-А)",
+  "sidebar_sort_price_asc_short": "По цене (возрастание)",
+  "sidebar_sort_price_desc_short": "По цене (убывание)",
+  "sidebar_sort_newest": "Сначала новые",
+  "sidebar_sort_popular": "Популярные",
+  "sidebar_additional": "Дополнительно",
+  "sidebar_subcategories": "Подкатегории",
+  "sidebar_perfumery_by_audience": "По аудитории",
+  "sidebar_perfumery_by_type": "По типу",
+  "sidebar_shoe_types": "Тип обуви",
+  "sidebar_clothing_items": "Предметы одежды",
+  "sidebar_jewelry_material": "Материал",
+  "sidebar_jewelry_gender": "Для кого",
+  "sidebar_headwear_types": "Тип головного убора",
+  "sidebar_book_authors": "Авторы",
+  "sidebar_book_publishers": "Издательства",
+  "sidebar_book_languages": "Язык",
+  "sidebar_clothing_male": "Мужская одежда",
+  "sidebar_clothing_female": "Женская одежда",
+  "sidebar_clothing_kids": "Детская одежда",
+  "sidebar_medicine_painkillers": "Обезболивающие",
+  "sidebar_medicine_antibiotics": "Антибиотики",
+  "sidebar_medicine_vitamins": "Витамины и иммунитет",
+  "sidebar_medicine_gynecology": "Гинекология",
+  "sidebar_medicine_oncology": "Онкология",
+  "sidebar_books_islamic": "Исламская литература",
+  "sidebar_books_business": "Бизнес",
+  "sidebar_books_science": "Наука",
+  "sidebar_books_fiction": "Художественная",
+  "sidebar_book_fiqh": "Исламский фикх",
+  "sidebar_book_tafsir": "Тафсир",
+  "sidebar_book_adab": "Адаб",
+  "sidebar_book_hadith": "Хадис",
+  "sidebar_book_history": "История",
+  "sidebar_book_business": "Бизнес литература",
+  "sidebar_book_science": "Научная литература",
+  "sidebar_book_fiction": "Художественная литература",
+  "sidebar_med_analgesics": "Анальгетики",
+  "sidebar_med_antiinflammatory": "Противовоспалительные",
+  "sidebar_med_antispasmodics": "Спазмолитики",
+  "sidebar_med_pain_creams": "Обезболивающие мази",
+  "sidebar_med_migraine": "Мигрень и головная боль",
+  "sidebar_med_penicillins": "Пенициллины",
+  "sidebar_med_cephalosporins": "Цефалоспорины",
+  "sidebar_med_macrolides": "Макролиды",
+  "sidebar_med_fluoroquinolones": "Фторхинолоны",
+  "sidebar_med_tetracyclines": "Тетрациклины",
+  "sidebar_med_broad_spectrum": "Антибиотики широкого спектра",
+  "sidebar_med_vitamin_c": "Витамин C",
+  "sidebar_med_vitamin_d": "Витамин D",
+  "sidebar_med_vitamin_b": "Витамин B комплекс",
+  "sidebar_med_multivitamins": "Мультивитамины",
+  "sidebar_med_calcium_magnesium": "Кальций и магний",
+  "sidebar_med_iron": "Железо",
+  "sidebar_med_omega3": "Омега-3",
+  "sidebar_med_immunomodulators": "Иммуномодуляторы",
+  "sidebar_med_contraceptives": "Контрацептивы",
+  "sidebar_med_hormonal": "Гормональные препараты",
+  "sidebar_med_antiinflammatory_gynec": "Противовоспалительные",
+  "sidebar_med_candidiasis": "Молочница",
+  "sidebar_med_menopause": "Климакс",
+  "sidebar_med_pregnancy": "Беременность",
+  "sidebar_med_chemotherapy": "Химиотерапия",
+  "sidebar_med_immunotherapy": "Иммунотерапия",
+  "sidebar_med_pain_management": "Обезболивание",
+  "sidebar_med_supportive_care": "Поддерживающая терапия",
+  "sidebar_med_recovery": "Восстановление",
+  "filter_sneakers": "Кроссовки",
+  "filter_boots": "Ботинки/Ботильоны",
+  "filter_sandals": "Сандалии/Шлёпанцы",
+  "filter_shoes": "Туфли",
+  "filter_home_shoes": "Домашняя обувь/Тапки",
+  "filter_loafers": "Лоферы/Мокасины",
+  "filter_jeans": "Джинсы",
+  "filter_tshirts": "Футболки",
+  "filter_hoodies": "Худи",
+  "filter_sweaters": "Джемперы/Свитеры",
+  "filter_shirts": "Рубашки",
+  "filter_blouses": "Блузки",
+  "filter_jackets": "Куртки",
+  "filter_coats": "Пальто",
+  "filter_trousers": "Брюки",
+  "filter_shorts": "Шорты",
+  "filter_socks": "Носки",
+  "filter_dresses": "Платья",
+  "filter_skirts": "Юбки",
+  "filter_gold": "Золото",
+  "filter_silver": "Серебро",
+  "filter_bijouterie": "Бижутерия",
+  "filter_women": "Женские",
+  "filter_men": "Мужские",
+  "filter_kids": "Детские",
+  "filter_unisex": "Унисекс",
+  "books_page_title": "Книги",
+  "books_page_subtitle": "Ваша книжная гавань",
+  "books_not_found": "Книги не найдены",
+  "books_not_found_description": "Попробуйте изменить параметры поиска или фильтры",
+  "books_search_placeholder": "Поиск книг, авторов...",
+  "books_all_categories": "Все категории",
+  "books_sort_newest": "Новинки",
+  "books_sort_name_asc": "По названию А-Я",
+  "books_sort_name_desc": "По названию Я-А",
+  "books_sort_price_asc": "Цена: по возрастанию",
+  "books_sort_price_desc": "Цена: по убыванию",
+  "books_sort_rating": "По рейтингу",
+  "category_islamic_fiqh": "Исламский фикх",
+  "category_tafsir": "Тафсир",
+  "category_adab": "Адаб",
+  "category_hadith": "Хадис",
+  "category_history": "История",
+  "category_business": "Бизнес литература",
+  "category_science": "Научная литература",
+  "category_fiction": "Художественная литература",
+  "sidebar_book_categories": "Жанры книг",
+  "sidebar_islamic_literature": "Исламская литература",
+  "filter_caps": "Кепки",
+  "filter_hats": "Шапки",
+  "filter_panama": "Панамки",
+  "filter_chairs": "Стулья",
+  "filter_tables": "Столы",
+  "filter_wardrobes": "Шкафы",
+  "filter_sofas": "Диваны",
+  "category_medicines": "Медикаменты",
+  "category_supplements": "БАДы",
+  "category_clothing": "Одежда",
+  "category_shoes": "Обувь",
+  "category_electronics": "Электроника",
+  "category_tableware": "Посуда",
+  "category_furniture": "Мебель",
+  "category_accessories": "Аксессуары",
+  "category_jewelry": "Украшения",
+  "category_underwear": "Нижнее бельё",
+  "category_headwear": "Головные уборы",
+  "category_medical_equipment": "Медицинский инвентарь",
+  "catalog_of_category": "Каталог {{category}} в PharmaTurk",
+  "products_count": "товаров",
+  "categories_not_found_title": "Не нашли нужную категорию?",
+  "categories_not_found_description": "Напишите нам в чат — подскажем и подберём товары под ваш запрос.",
+  "view_brands": "Посмотреть бренды",
+  "brands_not_found_title": "Не нашли нужный бренд?",
+  "brands_not_found_description": "Напишите нам в чат — поможем подобрать и добавить товары по запросу.",
+  "go_to_catalog": "Перейти в каталог",
+  "brands": "Бренды",
+  "popular_brands": "Популярные бренды",
+  "all_brands": "Все бренды",
+  "brands_description": "Выберите бренд, чтобы увидеть товары. Видео и внешние медиа поддерживаются.",
+  "brands_page_title": "Бренды — PharmaTurk",
+  "brands_page_description": "Популярные бренды из Турции: одежда, обувь, электроника, аксессуары и товары для здоровья.",
+  "all_categories": "Все категории",
+  "categories_section_title": "Категории товаров",
+  "_comment_category_translations": "Переводы для категорий: формат ключа - category_{slug}_name и category_{slug}_description. Slug нормализуется (подчеркивания заменяются на дефисы, нижний регистр). Примеры ниже.",
+  "category_medicines_name": "Медикаменты",
+  "category_medicines_description": "Лекарственные препараты и медикаменты из Турции",
+  "category_supplements_name": "БАДы",
+  "category_supplements_description": "Биологически активные добавки",
+  "category_clothing_name": "Одежда",
+  "category_clothing_description": "Модная одежда для всей семьи из Турции",
+  "category_shoes_name": "Обувь",
+  "category_shoes_description": "Качественная обувь для всей семьи",
+  "category_electronics_name": "Электроника",
+  "category_electronics_description": "Современные гаджеты и техника",
+  "category_tableware_name": "Посуда",
+  "category_tableware_description": "Кухонная посуда и аксессуары",
+  "category_furniture_name": "Мебель",
+  "category_furniture_description": "Мебель для дома и офиса",
+  "category_accessories_name": "Аксессуары",
+  "category_accessories_description": "Сумки, ремни, кошельки и другие аксессуары",
+  "category_jewelry_name": "Украшения",
+  "category_jewelry_description": "Украшения и бижутерия из Турции",
+  "category_perfumery_name": "Парфюмерия",
+  "category_perfumery_description": "Парфюмерия и ароматы",
+  "category_women-perfume_name": "Женская парфюмерия",
+  "category_women-perfume_description": "Женские ароматы",
+  "category_men-perfume_name": "Мужская парфюмерия",
+  "category_men-perfume_description": "Мужские ароматы",
+  "category_unisex-perfume_name": "Унисекс",
+  "category_unisex-perfume_description": "Универсальные ароматы",
+  "category_niche-perfume_name": "Нишевая парфюмерия",
+  "category_niche-perfume_description": "Нишевые и авторские ароматы",
+  "category_home-fragrances_name": "Ароматы для дома",
+  "category_home-fragrances_description": "Ароматизаторы и диффузоры",
+  "category_eau-de-parfum_name": "Парфюмерная вода (EDP)",
+  "category_eau-de-parfum_description": "Eau de Parfum",
+  "category_eau-de-toilette_name": "Туалетная вода (EDT)",
+  "category_eau-de-toilette_description": "Eau de Toilette",
+  "category_underwear_name": "Нижнее бельё",
+  "category_underwear_description": "Базовое и повседневное нижнее бельё",
+  "category_headwear_name": "Головные уборы",
+  "category_headwear_description": "Кепки, шапки и другие головные уборы",
+  "category_medical-equipment_name": "Медицинский инвентарь",
+  "category_medical-equipment_description": "Инструменты и оборудование для медицины",
+  "category_uslugi_name": "Услуги",
+  "category_uslugi_description": "Услуги и консультации",
+  "category_sports_name": "Спорттовары",
+  "category_sports_description": "Товары для спорта и активного отдыха",
+  "category_auto-parts_name": "Автозапчасти",
+  "category_auto-parts_description": "Автозапчасти и аксессуары",
+  "category_islamic-clothing_name": "Исламская одежда",
+  "category_islamic-clothing_description": "Мусульманская одежда и хиджабы",
+  "category_incense_name": "Благовония",
+  "category_incense_description": "Благовония и ароматические продукты",
+  "category_books_name": "Книги",
+  "category_books_description": "Книги и литература",
+  "category_apartment-renovation_name": "Ремонт квартир",
+  "category_apartment-renovation_description": "Ремонт и отделка квартир",
+  "category_cargo-transport_name": "Перевозка грузов",
+  "category_cargo-transport_description": "Перевозка грузов",
+  "category_cargo_name": "Карго",
+  "category_cargo_description": "Карго и логистика",
+  "category_cleaning_name": "Клининг",
+  "category_cleaning_description": "Клининговые услуги",
+  "category_consultations_name": "Консультации",
+  "category_consultations_description": "Консультационные услуги",
+  "category_diagnostics_name": "Диагностика",
+  "category_diagnostics_description": "Диагностические услуги",
+  "category_bags_name": "Сумки",
+  "category_bags_description": "",
+  "category_belts_name": "Ремни",
+  "category_belts_description": "",
+  "category_wallets_name": "Кошельки",
+  "category_wallets_description": "",
+  "category_watches_name": "Часы",
+  "category_watches_description": "",
+  "category_vitamins_name": "Витамины",
+  "category_vitamins_description": "Витаминные комплексы и минеральные добавки",
+  "category_minerals_name": "Минералы",
+  "category_minerals_description": "Минералы",
+  "category_cardio_name": "Кардио",
+  "category_cardio_description": "Кардио",
+  "category_omega-fish-oil_name": "Омега/рыбий жир",
+  "category_omega-fish-oil_description": "Омега/рыбий жир",
+  "category_protein-amino_name": "Протеин/аминокислоты",
+  "category_protein-amino_description": "Протеин/аминокислоты",
+  "category_collagen_name": "Коллаген",
+  "category_collagen_description": "Коллаген",
+  "category_probiotics_name": "Пробиотики",
+  "category_probiotics_description": "Пробиотики",
+  "category_kids-supplements_name": "Детские БАДы",
+  "category_kids-supplements_description": "Детские БАДы",
+  "category_women-headwear_name": "Женские",
+  "category_women-headwear_description": "",
+  "category_men-headwear_name": "Мужские",
+  "category_men-headwear_description": "",
+  "category_kids-headwear_name": "Детские",
+  "category_kids-headwear_description": "",
+  "category_unisex-headwear_name": "Унисекс",
+  "category_unisex-headwear_description": "",
+  "category_living-room_name": "Гостиная",
+  "category_living-room_description": "Гостиная",
+  "category_bedroom_name": "Спальня",
+  "category_bedroom_description": "Спальня",
+  "category_office_name": "Офис",
+  "category_office_description": "Офис",
+  "category_storage_name": "Хранение",
+  "category_storage_description": "Хранение",
+  "category_antibiotics_name": "Антибиотики",
+  "category_antibiotics_description": "Антибактериальные препараты для лечения инфекций",
+  "category_painkillers_name": "Обезболивающие",
+  "category_painkillers_description": "Препараты для снятия боли и воспаления",
+  "category_cardiovascular_name": "Сердечно-сосудистые",
+  "category_cardiovascular_description": "Препараты для лечения сердечно-сосудистых заболеваний",
+  "category_skincare_name": "Средства для кожи",
+  "category_skincare_description": "Кремы, мази и средства для ухода за кожей",
+  "category_dermatology_name": "Дерматология",
+  "category_dermatology_description": "Дерматология",
+  "category_cold-flu_name": "Простуда/ОРВИ",
+  "category_cold-flu_description": "Простуда/ОРВИ",
+  "category_gastro_name": "ЖКТ",
+  "category_gastro_description": "ЖКТ",
+  "category_immunity_name": "Иммунитет",
+  "category_immunity_description": "Иммунитет",
+  "category_endocrinology-diabetes_name": "Эндокринология/Диабет",
+  "category_endocrinology-diabetes_description": "Эндокринология/Диабет",
+  "category_ent_name": "ЛОР",
+  "category_ent_description": "ЛОР",
+  "category_measuring-devices_name": "Измерительные (тонометры, глюкометры)",
+  "category_measuring-devices_description": "Измерительные (тонометры, глюкометры)",
+  "category_care-devices_name": "Уход/устройства (небулайзеры, ингаляторы)",
+  "category_care-devices_description": "Уход/устройства (небулайзеры, ингаляторы)",
+  "category_rehab-orthoses_name": "Реабилитация/ортезы",
+  "category_rehab-orthoses_description": "Реабилитация/ортезы",
+  "category_consumables_name": "Расходники (маски, перчатки)",
+  "category_consumables_description": "Расходники (маски, перчатки)",
+  "category_dentistry-tools_name": "Стоматология — инструменты",
+  "category_dentistry-tools_description": "Стоматология — инструменты",
+  "category_dentistry-consumables_name": "Стоматология — расходники",
+  "category_dentistry-consumables_description": "Стоматология — расходники",
+  "category_orthopedics_name": "Ортопедия/Травмы",
+  "category_orthopedics_description": "Ортопедия/Травмы",
+  "category_underwear-women_name": "Женское нижнее белье",
+  "category_underwear-women_description": "Женское нижнее белье Турецкого производства.",
+  "category_underwear-men_name": "Мужское нижнее бельё",
+  "category_underwear-men_description": "Мужское нижнее белье Турецкого производства.",
+  "category_women-shoes_name": "Женская обувь",
+  "category_women-shoes_description": "",
+  "category_men-shoes_name": "Мужская обувь",
+  "category_men-shoes_description": "",
+  "category_kids-shoes_name": "Детская обувь",
+  "category_kids-shoes_description": "",
+  "category_unisex-shoes_name": "Унисекс обувь",
+  "category_unisex-shoes_description": "",
+  "category_womens-wear_name": "Женская одежда",
+  "category_womens-wear_description": "Женская одежда Zara",
+  "category_men-clothing_name": "Мужская одежда",
+  "category_men-clothing_description": "",
+  "category_kids-clothing_name": "Детская одежда",
+  "category_kids-clothing_description": "",
+  "category_unisex-clothing_name": "Унисекс одежда",
+  "category_unisex-clothing_description": "",
+  "category_kitchen-cookware_name": "Кухонная (сковороды/кастрюли)",
+  "category_kitchen-cookware_description": "Кухонная (сковороды/кастрюли)",
+  "category_serving_name": "Сервировка",
+  "category_serving_description": "Сервировка",
+  "category_kitchen-dining_name": "Кухня/столовая",
+  "category_kitchen-dining_description": "Кухня/столовая",
+  "category_copper_name": "Материал: медная",
+  "category_copper_description": "Материал: медная",
+  "category_porcelain_name": "Материал: фарфор",
+  "category_porcelain_description": "Материал: фарфор",
+  "category_glass-ceramic_name": "Материал: стекло/керамика",
+  "category_glass-ceramic_description": "Материал: стекло/керамика",
+  "category_rings_name": "Кольца",
+  "category_rings_description": "Кольца",
+  "category_chains_name": "Цепочки",
+  "category_chains_description": "Цепочки",
+  "category_bracelets_name": "Браслеты",
+  "category_bracelets_description": "Браслеты",
+  "category_earrings_name": "Серьги",
+  "category_earrings_description": "Серьги",
+  "category_pendants_name": "Подвески",
+  "category_pendants_description": "Подвески",
+  "category_wedding_name": "Обручальные",
+  "category_wedding_description": "Обручальные",
+  "category_remont_name": "Ремонт",
+  "category_remont_description": "Ремонт квартир, торговых и офисных помещений, частично и под ключ.",
+  "category_gruzoperevozki_name": "Грузоперевозки",
+  "category_gruzoperevozki_description": "Грузоперевозки и транспортные услуги.",
+  "category_smartphones_name": "Смартфоны",
+  "category_smartphones_description": "",
+  "category_laptops_name": "Ноутбуки",
+  "category_laptops_description": "",
+  "category_smart-tv_name": "Умные телевизоры",
+  "category_smart-tv_description": "",
+  "category_audio_name": "Аудио/Наушники",
+  "category_audio_description": "",
+  "category_tv-video_name": "TV/Видео",
+  "category_tv-video_description": "",
+  "_comment_brand_translations": "Переводы для брендов: формат ключа - brand_{slug}_name и brand_{slug}_description. Slug нормализуется (подчеркивания заменяются на дефисы, нижний регистр). Примеры ниже.",
+  "brand_abdi-ibrahim_name": "Abdi İbrahim",
+  "brand_abdi-ibrahim_description": "Ведущий фармпроизводитель Турции.",
+  "brand_addidas_name": "Addidas",
+  "brand_addidas_description": "",
+  "brand_alvimedica_name": "Alvimedica",
+  "brand_alvimedica_description": "Стенты, катетеры и кардиология.",
+  "brand_ankara-healthcare_name": "Ankara Healthcare",
+  "brand_ankara-healthcare_description": "Производитель госпитального оборудования.",
+  "brand_apple_name": "Apple",
+  "brand_apple_description": "Американская технологическая компания",
+  "brand_arcelik_name": "Arçelik",
+  "brand_arcelik_description": "Производитель техники и электроники.",
+  "brand_astrazeneca_name": "AstraZeneca",
+  "brand_astrazeneca_description": "",
+  "brand_atabay-ilac_name": "Atabay İlaç",
+  "brand_atabay-ilac_description": "Локальный производитель API и готовых лекарственных форм.",
+  "brand_bayer_name": "Bayer",
+  "brand_bayer_description": "",
+  "brand_beko_name": "Beko",
+  "brand_beko_description": "Международный бренд бытовой техники (группа Arçelik).",
+  "brand_bellona_name": "Bellona",
+  "brand_bellona_description": "Мебель и текстиль для дома.",
+  "brand_beymen_name": "Beymen",
+  "brand_beymen_description": "Люксовый fashion-ретейлер и дом моды.",
+  "brand_bilim-ilac_name": "Bilim İlaç",
+  "brand_bilim-ilac_description": "Одна из крупнейших фармацевтических компаний Турции.",
+  "brand_boyner_name": "Boyner",
+  "brand_boyner_description": "Турецкий универмаг премиальной одежды и аксессуаров",
+  "brand_bcakclar_name": "Bıçakcılar",
+  "brand_bcakclar_description": "Медицинские расходники и аппараты.",
+  "brand_calvin-klein-underwear_name": "Calvin Klein Underwear",
+  "brand_calvin-klein-underwear_description": "",
+  "brand_casper_name": "Casper",
+  "brand_casper_description": "Турецкий бренд ноутбуков и смартфонов.",
+  "brand_centurion-pharma_name": "Centurion Pharma",
+  "brand_centurion-pharma_description": "Компания-экспортер лекарств и медпродукции.",
+  "brand_damat-tween_name": "Damat Tween",
+  "brand_damat-tween_description": "Мужские костюмы и smart casual.",
+  "brand_defacto_name": "DeFacto",
+  "brand_defacto_description": "Турецкий бренд стильной и доступной одежды",
+  "brand_demofoot_name": "DemoFoot",
+  "brand_demofoot_description": "Тестовая категория - бренд обуви для визуализации.",
+  "brand_derimod_name": "Derimod",
+  "brand_derimod_description": "Кожаная обувь и аксессуары.",
+  "brand_deva-holding_name": "Deva Holding",
+  "brand_deva-holding_description": "Фармацевтическая группа с широкой линейкой препаратов.",
+  "brand_dogtas_name": "Doğtaş",
+  "brand_dogtas_description": "Мебель для дома и офиса.",
+  "brand_eli-lilly_name": "Eli Lilly",
+  "brand_eli-lilly_description": "",
+  "brand_emsan_name": "Emsan",
+  "brand_emsan_description": "Посуда и кухонные аксессуары.",
+  "brand_emsan-home_name": "Emsan Home",
+  "brand_emsan-home_description": "",
+  "brand_enza-home_name": "Enza Home",
+  "brand_enza-home_description": "Современная мебель и декор (Yataş Group).",
+  "brand_flo_name": "FLO",
+  "brand_flo_description": "Крупнейший обувной ретейлер Турции.",
+  "brand_general-mobile_name": "General Mobile",
+  "brand_general-mobile_description": "Смартфоны программы Android One.",
+  "brand_glaxosmithkline_name": "GlaxoSmithKline",
+  "brand_glaxosmithkline_description": "",
+  "brand_greyder_name": "Greyder",
+  "brand_greyder_description": "Производитель повседневной обуви.",
+  "brand_gural-porselen_name": "Güral Porselen",
+  "brand_gural-porselen_description": "Фарфоровая посуда.",
+  "brand_hammer-jack_name": "Hammer Jack",
+  "brand_hammer-jack_description": "Обувь повседневного стиля.",
+  "brand_hisar_name": "Hisar",
+  "brand_hisar_description": "Столовые приборы и посуда.",
+  "brand_hotic_name": "Hotiç",
+  "brand_hotic_description": "Сеть премиальной обуви и аксессуаров.",
+  "brand_ikea_name": "IKEA",
+  "brand_ikea_description": "",
+  "brand_intimissimi_name": "Intimissimi",
+  "brand_intimissimi_description": "",
+  "brand_johnson-johnson_name": "Johnson & Johnson",
+  "brand_johnson-johnson_description": "",
+  "brand_kangol_name": "Kangol",
+  "brand_kangol_description": "",
+  "brand_karaca_name": "Karaca",
+  "brand_karaca_description": "Посуда и товары для дома из Турции.",
+  "brand_kelebek_name": "Kelebek",
+  "brand_kelebek_description": "Один из старейших мебельных брендов.",
+  "brand_kigl_name": "Kiğılı",
+  "brand_kigl_description": "Мужская классическая одежда.",
+  "brand_koton_name": "Koton",
+  "brand_koton_description": "Турецкий fashion-ритейлер с современной одеждой",
+  "brand_kutahya-porselen_name": "Kütahya Porselen",
+  "brand_kutahya-porselen_description": "Фарфор и сервизы.",
+  "brand_lc-waikiki_name": "LC Waikiki",
+  "brand_lc-waikiki_description": "Турецкий бренд доступной модной одежды для всей семьи",
+  "brand_lazzoni_name": "Lazzoni",
+  "brand_lazzoni_description": "Современная мебель ручной работы.",
+  "brand_lescon_name": "Lescon",
+  "brand_lescon_description": "Спортивная обувь и экипировка.",
+  "brand_luminarc_name": "Luminarc",
+  "brand_luminarc_description": "",
+  "brand_mavi_name": "Mavi",
+  "brand_mavi_description": "Турецкий премиальный джинсовый бренд",
+  "brand_merck_name": "Merck",
+  "brand_merck_description": "",
+  "brand_muwahhid_name": "Muwahhid",
+  "brand_muwahhid_description": "Muslim Stile",
+  "brand_new-era_name": "New Era",
+  "brand_new-era_description": "",
+  "brand_nike_name": "Nike",
+  "brand_nike_description": "Американский спортивный бренд",
+  "brand_nills_name": "Nill's",
+  "brand_nills_description": "Премиальная мебель из Измира.",
+  "brand_nobel-ilac_name": "Nobel İlaç",
+  "brand_nobel-ilac_description": "Производитель препаратов для госпитального сегмента и аптек.",
+  "brand_novartis_name": "Novartis",
+  "brand_novartis_description": "",
+  "brand_pandora_name": "Pandora",
+  "brand_pandora_description": "",
+  "brand_pasabahce_name": "Paşabahçe",
+  "brand_pasabahce_description": "Стеклянная посуда и бокалы.",
+  "brand_penti_name": "Penti",
+  "brand_penti_description": "Нижнее белье и домашняя одежда.",
+  "brand_pfizer_name": "Pfizer",
+  "brand_pfizer_description": "",
+  "brand_philips_name": "Philips",
+  "brand_philips_description": "",
+  "brand_polaris_name": "Polaris",
+  "brand_polaris_description": "Обувной бренд сети FLO.",
+  "brand_porland_name": "Porland",
+  "brand_porland_description": "Профессиональная и домашняя посуда.",
+  "brand_profilo_name": "Profilo",
+  "brand_profilo_description": "Бытовая техника для дома.",
+  "brand_reeder_name": "Reeder",
+  "brand_reeder_description": "Производитель смартфонов и планшетов.",
+  "brand_roche_name": "Roche",
+  "brand_roche_description": "",
+  "brand_samsung_name": "Samsung",
+  "brand_samsung_description": "Южнокорейская технологическая компания",
+  "brand_sanofi_name": "Sanofi",
+  "brand_sanofi_description": "",
+  "brand_santa-farma_name": "Santa Farma",
+  "brand_santa-farma_description": "Турецкая фармкомпания с историей более 75 лет.",
+  "brand_sunny_name": "Sunny",
+  "brand_sunny_description": "Бытовая электроника и ТВ.",
+  "brand_swarovski_name": "Swarovski",
+  "brand_swarovski_description": "",
+  "brand_tantitoni_name": "Tantitoni",
+  "brand_tantitoni_description": "Посуда и кухонные гаджеты в ярком стиле.",
+  "brand_tefal_name": "Tefal",
+  "brand_tefal_description": "",
+  "brand_tous_name": "Tous",
+  "brand_tous_description": "",
+  "brand_turkuaz-healthcare_name": "Turkuaz Healthcare",
+  "brand_turkuaz-healthcare_description": "Оборудование и медтехника.",
+  "brand_tpsan_name": "Tıpsan",
+  "brand_tpsan_description": "Медицинские кровати и оборудование.",
+  "brand_vakko_name": "Vakko",
+  "brand_vakko_description": "Премиальный дом моды из Турции.",
+  "brand_vestel_name": "Vestel",
+  "brand_vestel_description": "Крупнейший производитель электроники и ТВ в Турции.",
+  "brand_villeroy-boch_name": "Villeroy & Boch",
+  "brand_villeroy-boch_description": "",
+  "brand_xiaomi_name": "Xiaomi",
+  "brand_xiaomi_description": "",
+  "brand_yatas_name": "Yataş",
+  "brand_yatas_description": "Мебель и матрасы.",
+  "brand_zara_name": "Zara",
+  "brand_zara_description": "Испанский бренд одежды",
+  "brand_ie-ulagay_name": "İ.E. Ulagay",
+  "brand_ie-ulagay_description": "Старейшая фармкомпания Турции, основана в 1903 году.",
+  "brand_ider_name": "İder",
+  "brand_ider_description": "Модульная мебель и декор.",
+  "brand_inci_name": "İnci",
+  "brand_inci_description": "Исторический бренд кожаной обуви.",
+  "brand_ipekyol_name": "İpekyol",
+  "brand_ipekyol_description": "Женская одежда и аксессуары.",
+  "select_size": "Выберите размер",
+  "add_to_cart_error": "Ошибка добавления в корзину",
+  "buy_now": "Купить в один клик",
+  "buy_now_error": "Ошибка при оформлении заказа",
+  "decrease_quantity": "Уменьшить количество",
+  "increase_quantity": "Увеличить количество",
+  "buy_on_pharmaturk": "купить на PharmaTurk",
+  "similar_products": "Похожие товары",
+  "product_featured": "Хит",
+  "badge_recommend": "Рекомендуем",
+  "badge_similar_style": "Очень похожий стиль",
+  "badge_similar_design": "Похожий дизайн",
+  "badge_brand": "Бренд {{brand}}",
+  "not_found": "Товар не найден",
+  "color": "Цвет",
+  "size": "Размер",
+  "quantity": "Количество",
+  "description": "Описание",
+  "security_and_service": "Безопасность и сервис",
+  "payment_security": "Безопасность платежей",
+  "payment_security_description": "Мы гарантируем безопасность ваших платежей. Ваши платежные данные защищены и передаются только проверенным платежным системам.",
+  "privacy_protection": "Защита конфиденциальности",
+  "privacy_protection_description": "Мы используем современные методы шифрования для защиты ваших персональных данных. Ваша конфиденциальность - наш приоритет.",
+  "fast_safe_delivery": "Быстрая и безопасная доставка",
+  "delivery_description": "Мы обеспечиваем быструю и надежную доставку. Вы можете отслеживать статус заказа в реальном времени.",
+  "customer_service": "Служба поддержки",
+  "customer_service_description": "Наша служба поддержки готова помочь вам с любыми вопросами. Свяжитесь с нами в любое время.",
+  "color_чёрный": "Чёрный",
+  "color_black": "Чёрный",
+  "color_белый": "Белый",
+  "color_white": "Белый",
+  "color_красный": "Красный",
+  "color_red": "Красный",
+  "color_синий": "Синий",
+  "color_blue": "Синий",
+  "color_зелёный": "Зелёный",
+  "color_green": "Зелёный",
+  "color_жёлтый": "Жёлтый",
+  "color_yellow": "Жёлтый",
+  "color_оранжевый": "Оранжевый",
+  "color_orange": "Оранжевый",
+  "color_фиолетовый": "Фиолетовый",
+  "color_purple": "Фиолетовый",
+  "color_розовый": "Розовый",
+  "color_pink": "Розовый",
+  "color_серый": "Серый",
+  "color_gray": "Серый",
+  "color_grey": "Серый",
+  "color_коричневый": "Коричневый",
+  "color_brown": "Коричневый",
+  "color_бежевый": "Бежевый",
+  "color_beige": "Бежевый",
+  "color_хаки": "Хаки",
+  "color_khaki": "Хаки",
+  "color_золотой": "Золотой",
+  "color_gold": "Золотой",
+  "color_серебряный": "Серебряный",
+  "color_silver": "Серебряный",
+  "color_голубой": "Голубой",
+  "color_light_blue": "Голубой",
+  "color_тёмно_синий": "Тёмно-синий",
+  "color_dark_blue": "Тёмно-синий",
+  "color_navy": "Тёмно-синий",
+  "color_бордовый": "Бордовый",
+  "color_burgundy": "Бордовый",
+  "color_maroon": "Бордовый",
+  "color_бирюзовый": "Бирюзовый",
+  "color_turquoise": "Бирюзовый",
+  "color_оливковый": "Оливковый",
+  "color_olive": "Оливковый",
+  "color_лайм": "Лайм",
+  "color_lime": "Лайм",
+  "color_мятный": "Мятный",
+  "color_mint": "Мятный",
+  "color_персиковый": "Персиковый",
+  "color_peach": "Персиковый",
+  "color_коралловый": "Коралловый",
+  "color_coral": "Коралловый",
+  "color_лавандовый": "Лавандовый",
+  "color_lavender": "Лавандовый",
+  "color_сливовый": "Сливовый",
+  "color_plum": "Сливовый",
+  "color_вишнёвый": "Вишнёвый",
+  "color_cherry": "Вишнёвый",
+  "color_шоколадный": "Шоколадный",
+  "color_chocolate": "Шоколадный",
+  "color_кремовый": "Кремовый",
+  "color_cream": "Кремовый",
+  "color_молочный": "Молочный",
+  "color_milk": "Молочный",
+  "color_слоновая_кость": "Слоновая кость",
+  "color_ivory": "Слоновая кость",
+  "author": "Автор",
+  "pages": "стр.",
+  "reviews": "отзывов",
+  "bestseller": "Бестселлер",
+  "new": "Новинка",
+  "book_weight": "Вес",
+  "book_thickness_mm": "Толщина, мм",
+  "book_format": "Формат",
+  "book_cover_type": "Обложка",
+  "book_publication_year": "Год издания",
+  "cover_type_твердый_переплет": "Твердый переплет",
+  "cover_type_мягкий_переплет": "Мягкий переплет",
+  "cover_type_интегральный_переплет": "Интегральный переплет"
 }

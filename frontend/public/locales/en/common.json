@@ -7,249 +7,298 @@
   "menu_home": "Home",
   "menu_categories": "Categories",
   "menu_cart": "Cart",
-  "menu_login_register": "Login / Register"
-  ,"search_button": "Search"
-  ,"cart_empty": "Cart is empty"
-  ,"cart_empty_description": "Add items to your cart to continue shopping"
-  ,"color_черный": "Black"
-  ,"cart_total": "Total"
-  ,"cart_checkout": "Proceed to checkout"
-  ,"cart_continue_shopping": "Continue shopping"
-  ,"cart_clear": "Clear cart"
-  ,"cart_confirm_remove": "Are you sure you want to remove this item from cart?"
-  ,"cart_confirm_clear": "Are you sure you want to clear the cart?"
-  ,"cart_summary": "Order Summary"
-  ,"cart_items_count": "Items"
-  ,"cart_item_total": "Total"
-  ,"cart_delivery_info_title": "Free Delivery"
-  ,"cart_delivery_info_text": "On orders over a certain amount"
-  ,"product_details": "Details"
-  ,"price_on_request": "Price on request"
-  ,"section_daily_deals": "Deals of the day"
-  ,"section_best_sellers": "Bestsellers"
-  ,"trending_now": "Trending now"
-  ,"header_profile": "Profile"
-  ,"header_logout": "Logout"
-  ,"add_to_cart": "Add to cart"
-  ,"adding": "Adding..."
-  ,"added": "Added"
-  ,"search_results": "Search results"
-  ,"search_for": "For query"
-  ,"email": "Email"
-  ,"username": "Username"
-  ,"remove": "Remove"
-  ,"checkout_page_title": "Checkout — Turk-Export"
-  ,"checkout_title": "Checkout"
-  ,"checkout_recipient_name": "Recipient name"
-  ,"checkout_phone": "Phone"
-  ,"checkout_email_optional": "Email (optional)"
-  ,"checkout_shipping_address": "Shipping address"
-  ,"checkout_contact_info": "Contact information"
-  ,"checkout_use_manual_address": "Enter address manually"
-  ,"checkout_address_placeholder": "Country, city, street, house, apartment"
-  ,"checkout_order_summary": "Order summary"
-  ,"checkout_back_to_cart": "Back to cart"
-  ,"checkout_items": "Items"
-  ,"checkout_qty": "Qty"
-  ,"checkout_per_item": "each"
-  ,"checkout_save_address": "Save address to profile"
-  ,"checkout_save_address_as_second": "Save as second address"
-  ,"checkout_use_this_address": "Use this address"
-  ,"checkout_fill_address_form": "Fill detailed address"
-  ,"checkout_payment_method": "Payment method"
-  ,"payment_cod": "Cash on delivery"
-  ,"payment_cod_description": "Pay when receiving the order"
-  ,"payment_card": "Bank card"
-  ,"payment_card_description": "Pay online with bank card"
-  ,"payment_crypto": "Cryptocurrency"
-  ,"payment_crypto_description": "Pay with cryptocurrency (Bitcoin, Ethereum, USDT, etc.)"
-  ,"payment_card_details": "Card Details"
-  ,"payment_card_number": "Card Number"
-  ,"payment_card_expiry": "Expiry Date"
-  ,"payment_card_cvv": "CVV"
-  ,"payment_card_holder": "Cardholder Name"
-  ,"payment_card_security_info": "Your data is secure. We do not store card data on our servers."
-  ,"payment_crypto_wallet": "Cryptocurrency Wallet Address"
-  ,"payment_crypto_wallet_address": "Wallet Address for Payment"
-  ,"payment_crypto_supported": "Supported cryptocurrencies: Bitcoin (BTC), Ethereum (ETH), USDT (TRC20/ERC20), Tether (USDT)"
-  ,"payment_crypto_info_title": "How it works:"
-  ,"payment_crypto_info_1": "After confirming your order, you will receive a payment address"
-  ,"payment_crypto_info_2": "Send the exact amount to the specified address"
-  ,"payment_crypto_info_3": "After transaction confirmation, your order will be processed"
-  ,"checkout_crypto_pay_title": "Pay with cryptocurrency"
-  ,"checkout_crypto_address": "Payment address"
-  ,"checkout_crypto_amount": "Amount to pay"
-  ,"checkout_crypto_expires": "Time to pay"
-  ,"checkout_crypto_paid": "Paid"
-  ,"checkout_crypto_redirecting": "Redirecting to order page..."
-  ,"checkout_crypto_copy_address": "Copy"
-  ,"checkout_crypto_copied": "Copied"
-  ,"checkout_crypto_instruction": "Send the specified USDT amount to the address below. After transaction confirmation, your order will be processed."
-  ,"checkout_crypto_load_error": "Failed to load order"
-  ,"checkout_crypto_no_order": "Provide order number"
-  ,"checkout_crypto_expired": "Time expired"
-  ,"checkout_crypto_open_invoice": "Open payment page"
-  ,"checkout_crypto_no_payment_data": "Payment details unavailable. Please contact support."
-  ,"checkout_submitting": "Submitting..."
-  ,"checkout_submit": "Place order"
-  ,"login_required_to_checkout": "You must log in to place an order"
-  ,"checkout_error_generic": "Checkout error"
-  ,"footer_contacts": "Contacts"
-  ,"footer_phone": "+90 552 582 14 97"
-  ,"footer_email": "fulani.dev@gmail.com"
-  ,"footer_location": "Istanbul, TR"
-  ,"footer_social_networks": "Our social networks"
-  ,"footer_information": "Information"
-  ,"footer_delivery_payment": "Delivery and payment"
-  ,"footer_return": "Return policy"
-  ,"footer_privacy": "Privacy policy"
-  ,"footer_crypto_payment": "Crypto payment available"
-  ,"sidebar_categories": "Categories"
-  ,"sidebar_brands": "Brands"
-  ,"sidebar_filters": "Filters"
-  ,"sidebar_furniture_type": "Furniture Type"
-  ,"sidebar_book_genres": "Genres"
-  ,"sidebar_price_range": "Price range"
-  ,"sidebar_price_min": "Min"
-  ,"sidebar_price_max": "Max"
-  ,"sidebar_sort_by": "Sort by"
-  ,"sidebar_sort_price_asc": "Price: Low to High"
-  ,"sidebar_sort_price_desc": "Price: High to Low"
-  ,"sidebar_sort_name_asc": "Name: A to Z"
-  ,"sidebar_sort_name_desc": "Name: Z to A"
-  ,"sidebar_availability": "Availability"
-  ,"sidebar_in_stock": "In stock"
-  ,"sidebar_new": "New arrivals"
-  ,"sidebar_show_more": "Show more"
-  ,"sidebar_show_less": "Show less"
-  ,"sidebar_apply": "Apply"
-  ,"profile_title": "Profile"
-  ,"profile_personal_info": "Personal Information"
-  ,"profile_first_name": "First Name"
-  ,"profile_last_name": "Last Name"
-  ,"profile_email": "Email"
-  ,"profile_phone": "Phone"
-  ,"profile_edit": "Edit"
-  ,"profile_save": "Save"
-  ,"profile_cancel": "Cancel"
-  ,"profile_upload_avatar": "Upload Photo"
-  ,"profile_change_avatar": "Change Photo"
-  ,"profile_orders": "My Orders"
-  ,"profile_statistics": "Statistics"
-  ,"profile_total_orders": "Total Orders"
-  ,"profile_total_spent": "Total Spent"
-  ,"profile_order_number": "Order"
-  ,"profile_order_date": "Date"
-  ,"profile_order_status": "Status"
-  ,"profile_order_total": "Total"
-  ,"profile_no_orders": "You have no orders yet"
-  ,"profile_order_details": "Order Details"
-  ,"profile_order_items": "Items"
-  ,"profile_loading": "Loading..."
-  ,"profile_saving": "Saving..."
-  ,"profile_saved": "Saved"
-  ,"profile_error": "Error"
-  ,"profile_not_public": "Profile is not public"
-  ,"back_to_home": "Back to home"
-  ,"pagination_back": "Back"
-  ,"pagination_forward": "Forward"
-  ,"order_status_new": "New"
-  ,"order_status_pending_payment": "Pending Payment"
-  ,"order_status_paid": "Paid"
-  ,"order_status_processing": "Processing"
-  ,"order_status_shipped": "Shipped"
-  ,"order_status_delivered": "Delivered"
-  ,"order_status_cancelled": "Cancelled"
-  ,"profile_addresses": "Delivery Addresses"
-  ,"profile_add_address": "Add Address"
-  ,"profile_edit_address": "Edit Address"
-  ,"profile_delete_address": "Delete Address"
-  ,"profile_no_addresses": "You don't have any saved addresses yet"
-  ,"profile_address_default": "Default Address"
-  ,"profile_address_type": "Address Type"
-  ,"profile_address_type_home": "Home"
-  ,"profile_address_type_work": "Work"
-  ,"profile_address_type_other": "Other"
-  ,"profile_address_contact_name": "Recipient Name"
-  ,"profile_address_contact_phone": "Recipient Phone"
-  ,"profile_address_country": "Country"
-  ,"profile_address_region": "Region/State"
-  ,"profile_address_city": "City"
-  ,"profile_address_postal_code": "Postal Code"
-  ,"profile_address_street": "Street"
-  ,"profile_address_house": "House/Building"
-  ,"profile_address_apartment": "Apartment"
-  ,"profile_address_entrance": "Entrance"
-  ,"profile_address_floor": "Floor"
-  ,"profile_address_intercom": "Intercom"
-  ,"profile_address_comment": "Comment"
-  ,"profile_address_set_default": "Set as Default"
-  ,"profile_address_required": "Required field"
-  ,"profile_show_order_history": "Show All Orders"
-  ,"profile_hide_order_history": "Hide Order History"
-  ,"profile_address_creating": "Creating..."
-  ,"profile_address_updating": "Updating..."
-  ,"profile_address_deleting": "Deleting..."
-  ,"profile_whatsapp": "WhatsApp"
-  ,"profile_telegram": "Telegram"
-  ,"profile_messengers": "Messengers"
-  ,"social_networks": "Social networks"
-  ,"orders": "orders"
-  ,"currency": "Currency"
-  ,"order_success_page_title": "Order completed"
-  ,"order_success_heading": "Order confirmed!"
-  ,"order_success_subheading": "Thank you for choosing us"
-  ,"order_success_lead": "We are already preparing order №{{number}}. You will receive a confirmation and a receipt by email."
-  ,"order_success_number": "Order number"
-  ,"order_success_status": "Order status"
-  ,"order_success_payment_method": "Payment method"
-  ,"order_success_total": "Total to pay"
-  ,"order_success_actions_download": "Save receipt"
-  ,"order_success_actions_view_orders": "Go to orders"
-  ,"order_success_actions_continue": "Continue shopping"
-  ,"order_success_receipt_title": "Digital receipt"
-  ,"order_success_receipt_description": "All items with current totals"
-  ,"order_success_subtotal": "Items total"
-  ,"order_success_shipping_cost": "Shipping cost"
-  ,"order_success_discount": "Discount"
-  ,"order_success_promo_code": "Promo code"
-  ,"order_success_send_receipt_title": "Send receipt"
-  ,"order_success_send_receipt_placeholder": "Email for the receipt"
-  ,"order_success_send_receipt_sending": "Sending..."
-  ,"order_success_send_button": "Send receipt"
-  ,"order_success_send_success": "Receipt sent to {{email}}"
-  ,"order_success_send_error": "Failed to send the receipt"
-  ,"order_success_download_hint": "Save the receipt as PDF or print it."
-  ,"order_success_shipping": "Shipping"
-  ,"order_success_loading": "Loading your order..."
-  ,"order_success_no_number": "Order number is missing. Please check your profile."
-  ,"order_success_qty": "×{{count}} pcs"
-  ,"receipt_print_title": "Order receipt #"
-  ,"receipt_print_issued": "Issued"
-  ,"receipt_print_product": "Product"
-  ,"receipt_print_qty": "Qty"
-  ,"receipt_print_price": "Price"
-  ,"receipt_print_total_col": "Total"
-  ,"receipt_print_total_label": "Total"
-  ,"promo_code_placeholder": "Promo code"
-  ,"promo_code_applied": "Promo code applied"
-  ,"promo_code_error": "Error applying promo code"
-  ,"apply": "Apply"
-  ,"applying": "Applying..."
-  ,"cart_subtotal": "Subtotal"
-  ,"cart_discount": "Discount"
-  ,"menu_favorites": "Favorites"
-  ,"favorites_title": "Favorites"
-  ,"favorites_empty_title": "Favorites is empty"
-  ,"favorites_empty_description": "Add items to favorites to keep them for later"
-  ,"favorites_go_shopping": "Go shopping"
-  ,"add_to_favorites": "Add to favorites"
-  ,"remove_from_favorites": "Remove from favorites"
-  ,"favorite_error": "Error working with favorites"
-  ,"processing": "Processing..."
-  ,"popular_products_title": "Popular Products"
-  ,"product_new": "New"
-  ,"testimonials_title": "What Our Clients Say",
+  "menu_login_register": "Login / Register",
+  "search_button": "Search",
+  "cart_empty": "Cart is empty",
+  "cart_empty_description": "Add items to your cart to continue shopping",
+  "color_черный": "Black",
+  "cart_total": "Total",
+  "cart_checkout": "Proceed to checkout",
+  "cart_continue_shopping": "Continue shopping",
+  "cart_clear": "Clear cart",
+  "cart_confirm_remove": "Are you sure you want to remove this item from cart?",
+  "cart_confirm_clear": "Are you sure you want to clear the cart?",
+  "cart_summary": "Order Summary",
+  "cart_items_count": "Items",
+  "cart_item_total": "Total",
+  "cart_delivery_info_title": "Free Delivery",
+  "cart_delivery_info_text": "On orders over a certain amount",
+  "product_details": "Details",
+  "price_on_request": "Price on request",
+  "section_daily_deals": "Deals of the day",
+  "section_best_sellers": "Bestsellers",
+  "trending_now": "Trending now",
+  "header_profile": "Profile",
+  "header_logout": "Logout",
+  "add_to_cart": "Add to cart",
+  "adding": "Adding...",
+  "added": "Added",
+  "search_results": "Search results",
+  "search_for": "For query",
+  "email": "Email",
+  "username": "Username",
+  "remove": "Remove",
+  "checkout_page_title": "Checkout — Turk-Export",
+  "checkout_title": "Checkout",
+  "checkout_recipient_name": "Recipient name",
+  "checkout_phone": "Phone",
+  "checkout_email_optional": "Email (optional)",
+  "checkout_shipping_address": "Shipping address",
+  "checkout_contact_info": "Contact information",
+  "checkout_use_manual_address": "Enter address manually",
+  "checkout_address_placeholder": "Country, city, street, house, apartment",
+  "checkout_order_summary": "Order summary",
+  "checkout_back_to_cart": "Back to cart",
+  "checkout_items": "Items",
+  "checkout_qty": "Qty",
+  "checkout_per_item": "each",
+  "checkout_save_address": "Save address to profile",
+  "checkout_save_address_as_second": "Save as second address",
+  "checkout_use_this_address": "Use this address",
+  "checkout_fill_address_form": "Fill detailed address",
+  "checkout_payment_method": "Payment method",
+  "payment_cod": "Cash on delivery",
+  "payment_cod_description": "Pay when receiving the order",
+  "payment_card": "Bank card",
+  "payment_card_description": "Pay online with bank card",
+  "payment_crypto": "Cryptocurrency",
+  "payment_crypto_description": "Pay with cryptocurrency (Bitcoin, Ethereum, USDT, etc.)",
+  "payment_card_details": "Card Details",
+  "payment_card_number": "Card Number",
+  "payment_card_expiry": "Expiry Date",
+  "payment_card_cvv": "CVV",
+  "payment_card_holder": "Cardholder Name",
+  "payment_card_security_info": "Your data is secure. We do not store card data on our servers.",
+  "payment_crypto_wallet": "Cryptocurrency Wallet Address",
+  "payment_crypto_wallet_address": "Wallet Address for Payment",
+  "payment_crypto_supported": "Supported cryptocurrencies: Bitcoin (BTC), Ethereum (ETH), USDT (TRC20/ERC20), Tether (USDT)",
+  "payment_crypto_info_title": "How it works:",
+  "payment_crypto_info_1": "After confirming your order, you will receive a payment address",
+  "payment_crypto_info_2": "Send the exact amount to the specified address",
+  "payment_crypto_info_3": "After transaction confirmation, your order will be processed",
+  "checkout_crypto_pay_title": "Pay with cryptocurrency",
+  "checkout_crypto_address": "Payment address",
+  "checkout_crypto_amount": "Amount to pay",
+  "checkout_crypto_expires": "Time to pay",
+  "checkout_crypto_paid": "Paid",
+  "checkout_crypto_redirecting": "Redirecting to order page...",
+  "checkout_crypto_copy_address": "Copy",
+  "checkout_crypto_copied": "Copied",
+  "checkout_crypto_instruction": "Send the specified USDT amount to the address below. After transaction confirmation, your order will be processed.",
+  "checkout_crypto_load_error": "Failed to load order",
+  "checkout_crypto_no_order": "Provide order number",
+  "checkout_crypto_expired": "Time expired",
+  "checkout_crypto_open_invoice": "Open payment page",
+  "checkout_crypto_no_payment_data": "Payment details unavailable. Please contact support.",
+  "checkout_submitting": "Submitting...",
+  "checkout_submit": "Place order",
+  "login_required_to_checkout": "You must log in to place an order",
+  "checkout_error_generic": "Checkout error",
+  "footer_contacts": "Contacts",
+  "footer_phone": "+90 552 582 14 97",
+  "footer_email": "fulani.dev@gmail.com",
+  "footer_location": "Istanbul, TR",
+  "footer_social_networks": "Our social networks",
+  "footer_information": "Information",
+  "footer_delivery_payment": "Delivery and payment",
+  "footer_return": "Return policy",
+  "footer_privacy": "Privacy policy",
+  "footer_crypto_payment": "Crypto payment available",
+  "sidebar_categories": "Categories",
+  "sidebar_brands": "Brands",
+  "sidebar_filters": "Filters",
+  "sidebar_furniture_type": "Furniture Type",
+  "sidebar_book_genres": "Genres",
+  "sidebar_price_range": "Price range",
+  "sidebar_price_min": "Min",
+  "sidebar_price_max": "Max",
+  "sidebar_sort_by": "Sort by",
+  "sidebar_sort_price_asc": "Price: Low to High",
+  "sidebar_sort_price_desc": "Price: High to Low",
+  "sidebar_sort_name_asc": "Name: A to Z",
+  "sidebar_sort_name_desc": "Name: Z to A",
+  "sidebar_availability": "Availability",
+  "sidebar_in_stock": "In stock",
+  "sidebar_new": "New arrivals",
+  "sidebar_show_more": "Show more",
+  "sidebar_show_less": "Show less",
+  "sidebar_apply": "Apply",
+  "profile_title": "Profile",
+  "profile_personal_info": "Personal Information",
+  "profile_first_name": "First Name",
+  "profile_last_name": "Last Name",
+  "profile_email": "Email",
+  "profile_phone": "Phone",
+  "profile_edit": "Edit",
+  "profile_save": "Save",
+  "profile_cancel": "Cancel",
+  "profile_upload_avatar": "Upload Photo",
+  "profile_change_avatar": "Change Photo",
+  "profile_orders": "My Orders",
+  "profile_statistics": "Statistics",
+  "profile_total_orders": "Total Orders",
+  "profile_total_spent": "Total Spent",
+  "profile_order_number": "Order",
+  "profile_order_date": "Date",
+  "profile_order_status": "Status",
+  "profile_order_total": "Total",
+  "profile_no_orders": "You have no orders yet",
+  "profile_order_details": "Order Details",
+  "profile_order_items": "Items",
+  "profile_loading": "Loading...",
+  "profile_saving": "Saving...",
+  "profile_saved": "Saved",
+  "profile_error": "Error",
+  "profile_not_public": "Profile is not public",
+  "back_to_home": "Back to home",
+  "pagination_back": "Back",
+  "pagination_forward": "Forward",
+  "order_status_new": "New",
+  "order_status_pending_payment": "Pending Payment",
+  "order_status_paid": "Paid",
+  "order_status_processing": "Processing",
+  "order_status_shipped": "Shipped",
+  "order_status_delivered": "Delivered",
+  "order_status_cancelled": "Cancelled",
+  "profile_addresses": "Delivery Addresses",
+  "profile_add_address": "Add Address",
+  "profile_edit_address": "Edit Address",
+  "profile_delete_address": "Delete Address",
+  "profile_no_addresses": "You don't have any saved addresses yet",
+  "profile_address_default": "Default Address",
+  "profile_address_type": "Address Type",
+  "profile_address_type_home": "Home",
+  "profile_address_type_work": "Work",
+  "profile_address_type_other": "Other",
+  "profile_address_contact_name": "Recipient Name",
+  "profile_address_contact_phone": "Recipient Phone",
+  "profile_address_country": "Country",
+  "profile_address_region": "Region/State",
+  "profile_address_city": "City",
+  "profile_address_postal_code": "Postal Code",
+  "profile_address_street": "Street",
+  "profile_address_house": "House/Building",
+  "profile_address_apartment": "Apartment",
+  "profile_address_entrance": "Entrance",
+  "profile_address_floor": "Floor",
+  "profile_address_intercom": "Intercom",
+  "profile_address_comment": "Comment",
+  "profile_address_set_default": "Set as Default",
+  "profile_address_required": "Required field",
+  "profile_show_order_history": "Show All Orders",
+  "profile_hide_order_history": "Hide Order History",
+  "profile_address_creating": "Creating...",
+  "profile_address_updating": "Updating...",
+  "profile_address_deleting": "Deleting...",
+  "profile_whatsapp": "WhatsApp",
+  "profile_telegram": "Telegram",
+  "profile_messengers": "Messengers",
+  "social_networks": "Social networks",
+  "orders": "orders",
+  "currency": "Currency",
+  "order_success_page_title": "Order completed",
+  "order_success_heading": "Order confirmed!",
+  "order_success_subheading": "Thank you for choosing us",
+  "order_success_lead": "We are already preparing order №{{number}}. You will receive a confirmation and a receipt by email.",
+  "order_success_number": "Order number",
+  "order_success_status": "Order status",
+  "order_success_payment_method": "Payment method",
+  "order_success_total": "Total to pay",
+  "order_success_actions_download": "Save receipt",
+  "order_success_actions_view_orders": "Go to orders",
+  "order_success_actions_continue": "Continue shopping",
+  "order_success_receipt_title": "Digital receipt",
+  "order_success_receipt_description": "All items with current totals",
+  "order_success_subtotal": "Items total",
+  "order_success_shipping_cost": "Shipping cost",
+  "order_success_discount": "Discount",
+  "order_success_promo_code": "Promo code",
+  "order_success_send_receipt_title": "Send receipt",
+  "order_success_send_receipt_placeholder": "Email for the receipt",
+  "order_success_send_receipt_sending": "Sending...",
+  "order_success_send_button": "Send receipt",
+  "order_success_send_success": "Receipt sent to {{email}}",
+  "order_success_send_error": "Failed to send the receipt",
+  "order_success_download_hint": "Save the receipt as PDF or print it.",
+  "order_success_shipping": "Shipping",
+  "order_success_loading": "Loading your order...",
+  "order_success_no_number": "Order number is missing. Please check your profile.",
+  "order_success_qty": "×{{count}} pcs",
+  "receipt_print_title": "Order receipt #",
+  "receipt_print_issued": "Issued",
+  "receipt_print_product": "Product",
+  "receipt_print_qty": "Qty",
+  "receipt_print_price": "Price",
+  "receipt_print_total_col": "Total",
+  "receipt_print_total_label": "Total",
+  "promo_code_placeholder": "Promo code",
+  "promo_code_applied": "Promo code applied",
+  "promo_code_error": "Error applying promo code",
+  "apply": "Apply",
+  "applying": "Applying...",
+  "cart_subtotal": "Subtotal",
+  "cart_discount": "Discount",
+  "menu_favorites": "Favorites",
+  "favorites_title": "Favorites",
+  "favorites_empty_title": "Favorites is empty",
+  "favorites_empty_description": "Add items to favorites to keep them for later",
+  "favorites_go_shopping": "Go shopping",
+  "add_to_favorites": "Add to favorites",
+  "remove_from_favorites": "Remove from favorites",
+  "favorite_error": "Error working with favorites",
+  "processing": "Processing...",
+  "popular_products_title": "Popular Products",
+  "product_new": "New",
+  "delivery_title": "Delivery and Payment",
+  "delivery_subtitle": "Information about delivery and payment methods",
+  "delivery_shipping_title": "Delivery",
+  "delivery_shipping_text1": "We offer worldwide shipping. Delivery times vary by region and carrier.",
+  "delivery_shipping_text2": "Shipping costs are calculated individually based on package weight and destination country.",
+  "delivery_payment_title": "Payment",
+  "delivery_payment_text1": "You can pay for your order with a credit card, bank transfer, or cryptocurrency.",
+  "delivery_payment_text2": "All payments are securely protected by modern encryption systems. We do not store your card details.",
+  "returns_title": "Returns and Exchanges",
+  "returns_subtitle": "Quality guarantee and return policy",
+  "returns_conditions_title": "Return Conditions",
+  "returns_conditions_text1": "You can return a product of proper quality within 14 days from the receipt of the order.",
+  "returns_conditions_text2": "The product must retain its original appearance, packaging, and all factory tags.",
+  "returns_process_title": "How to Process a Return",
+  "returns_process_text1": "To process a return, please contact our customer support via email or any messenger specified in the contacts.",
+  "privacy_title": "Privacy Policy",
+  "privacy_subtitle": "Protection of your personal data",
+  "privacy_collection_title": "Information Collection",
+  "privacy_collection_text": "We collect information you provide when registering on the site, placing an order, and subscribing to our newsletters.",
+  "privacy_usage_title": "Data Usage",
+  "privacy_usage_text": "Your data is strictly used to process orders, improve service quality, and inform you about new special offers.",
+  "privacy_protection_title": "Data Protection",
+  "privacy_protection_text": "We apply modern technical measures to protect your personal information from unauthorized access or disclosure.",
+  "delivery_methods": "Delivery Methods",
+  "delivery_air": "By Air",
+  "delivery_air_desc": "The fastest delivery method. Ideal for urgent cargo and small parcels. Term: from 3 to 7 days.",
+  "delivery_ground": "By Ground",
+  "delivery_ground_desc": "Optimal balance of price and speed. Delivery by road transport. Term: from 7 to 14 days depending on the region.",
+  "delivery_sea": "By Sea",
+  "delivery_sea_desc": "The best choice for oversized cargo and bulk shipments. The most economical option. Term: from 20 to 45 days.",
+  "payment_methods": "Secure Payment",
+  "payment_cards": "Bank Cards and Transfers",
+  "delivery_payment_security": "100% Payment Protection",
+  "returns_steps": "How to process a return? 3 simple steps",
+  "return_step_1_title": "1. Contact Customer Support",
+  "return_step_1_text": "Write to us within 14 days. We will quickly process your request and coordinate the return process.",
+  "return_step_2_title": "2. Pack and Ship the Item",
+  "return_step_2_text": "Make sure the item has retained its original appearance, seals, and tags. Send the parcel to the address we provide.",
+  "return_step_3_title": "3. Get a Refund",
+  "return_step_3_text": "After receiving and checking the goods, we will transfer the funds or send you a new replacement item within 3-5 days.",
+  "return_policy_note": "Questions about returning defective items?",
+  "return_policy_note_desc": "If you discover a defect, we will cover all shipping costs and arrange a replacement as quickly as possible. Please attach a photo of the defect when contacting support.",
+  "privacy_features": "Our Approach to Security",
+  "privacy_secure": "Complete Protection",
+  "privacy_secure_desc": "All data transferred between your browser and our server is encrypted using the SSL protocol. We do not share your information with third parties without your consent.",
+  "privacy_data": "Data Collection",
+  "privacy_data_desc": "We only collect the information necessary to process your order: contacts, delivery address, and profile details.",
+  "privacy_info": "Your Rights",
+  "privacy_info_desc": "You can request the deletion of your data at any time or unsubscribe from newsletters in your account settings.",
+  "testimonials_title": "What Our Clients Say",
   "testimonial_image_alt": "Testimonial image from {{author_name}}",
   "testimonial_video_alt": "Testimonial video from {{author_name}}",
   "view_testimonial": "View testimonial",
@@ -259,6 +308,8 @@
   "filtered_by_user": "Reviews by user",
   "show_all_testimonials": "Show all reviews",
   "no_testimonials": "No reviews yet",
+  "no_testimonials_yet": "No reviews yet. Be the first to leave one!",
+  "leave_first_testimonial": "Leave your first review",
   "loading": "Loading...",
   "testimonial_not_found": "Review not found",
   "login_required_to_submit_testimonial": "Please log in to submit a review.",
@@ -393,31 +444,29 @@
   "filter_men": "Men's",
   "filter_kids": "Kids",
   "filter_unisex": "Unisex",
-  "books_page_title": "Books"
-  ,"books_page_subtitle": "Your book haven"
-  ,"books_not_found": "No books found"
-  ,"books_not_found_description": "Try changing search parameters or filters"
-  ,"books_search_placeholder": "Search books, authors..."
-  ,"books_all_categories": "All categories"
-  ,"books_sort_newest": "Newest"
-  ,"books_sort_name_asc": "By title A-Z"
-  ,"books_sort_name_desc": "By title Z-A"
-  ,"books_sort_price_asc": "Price: Low to High"
-  ,"books_sort_price_desc": "Price: High to Low"
-  ,"books_sort_rating": "By rating"
-  ,"category_islamic_fiqh": "Islamic Fiqh"
-  ,"category_tafsir": "Tafsir"
-  ,"category_adab": "Adab"
-  ,"category_hadith": "Hadith"
-  ,"category_history": "History"
-  ,"category_business": "Business Literature"
-  ,"category_science": "Scientific Literature"
-  ,"category_fiction": "Fiction"
-  ,"sidebar_book_categories": "Book Genres"
-  ,"sidebar_islamic_literature": "Islamic Literature"
-  ,"category_books_name": "Books"
-  ,"category_books_description": "Fiction and scientific literature"
-  ,"filter_caps": "Caps",
+  "books_page_title": "Books",
+  "books_page_subtitle": "Your book haven",
+  "books_not_found": "No books found",
+  "books_not_found_description": "Try changing search parameters or filters",
+  "books_search_placeholder": "Search books, authors...",
+  "books_all_categories": "All categories",
+  "books_sort_newest": "Newest",
+  "books_sort_name_asc": "By title A-Z",
+  "books_sort_name_desc": "By title Z-A",
+  "books_sort_price_asc": "Price: Low to High",
+  "books_sort_price_desc": "Price: High to Low",
+  "books_sort_rating": "By rating",
+  "category_islamic_fiqh": "Islamic Fiqh",
+  "category_tafsir": "Tafsir",
+  "category_adab": "Adab",
+  "category_hadith": "Hadith",
+  "category_history": "History",
+  "category_business": "Business Literature",
+  "category_science": "Scientific Literature",
+  "category_fiction": "Fiction",
+  "sidebar_book_categories": "Book Genres",
+  "sidebar_islamic_literature": "Islamic Literature",
+  "filter_caps": "Caps",
   "filter_hats": "Hats",
   "filter_panama": "Panama Hats",
   "filter_chairs": "Chairs",
