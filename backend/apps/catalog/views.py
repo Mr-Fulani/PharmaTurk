@@ -153,7 +153,8 @@ def _apply_availability_filter(queryset, request):
         in_stock_val = str(in_stock).lower() in ('true', '1', 'yes')
         if in_stock_val:
             if hasattr(queryset.model, 'availability_status') and hasattr(queryset.model, 'stock_quantity'):
-                queryset = queryset.filter(Q(availability_status='in_stock') | Q(is_available=True, stock_quantity__gt=0))
+                # Require is_available=True AND either status=in_stock OR stock_quantity > 0
+                queryset = queryset.filter(is_available=True).filter(Q(availability_status='in_stock') | Q(stock_quantity__gt=0))
             else:
                 queryset = queryset.filter(is_available=True)
     elif is_available is not None:
