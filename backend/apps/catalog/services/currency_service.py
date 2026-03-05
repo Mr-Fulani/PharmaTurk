@@ -68,7 +68,30 @@ class CurrencyRateService:
                 value = Decimal(str(currency_data['Value'])) / Decimal(str(currency_data['Nominal']))
                 rates[f"{code}-{base_currency}"] = value
                 rates[f"{base_currency}-{code}"] = Decimal('1') / value
-        
+                
+        # Добавляем кросс-курс USDT на основе USD (+3% к цене товара)
+        # Чтобы цена товара в USDT была на 3% выше, курс USDT должен быть ниже на 3%
+        usd_to_rub = rates.get(f"USD-{base_currency}")
+        if usd_to_rub:
+            # 1 USDT программно стоит дешевле, чтобы покупатель платил больше единиц USDT
+            usdt_to_rub = usd_to_rub / Decimal('1.03')
+            rates[f"USDT-{base_currency}"] = usdt_to_rub
+            rates[f"{base_currency}-USDT"] = Decimal('1') / usdt_to_rub
+            
+            # Добавляем кросс-курсы USDT для других валют
+            for currency in ['EUR', 'TRY', 'KZT']:
+                curr_to_rub = rates.get(f"{currency}-{base_currency}")
+                if curr_to_rub:
+                    # USDT-TRY = сколько TRY стоит 1 USDT = USDT-RUB / TRY-RUB
+                    usdt_to_curr = usdt_to_rub / curr_to_rub
+                    rates[f"USDT-{currency}"] = usdt_to_curr
+                    rates[f"{currency}-USDT"] = Decimal('1') / usdt_to_curr
+                    
+                    # USD-TRY = USD-RUB / TRY-RUB
+                    usd_to_curr = usd_to_rub / curr_to_rub
+                    rates[f"USD-{currency}"] = usd_to_curr
+                    rates[f"{currency}-USD"] = Decimal('1') / usd_to_curr
+                    
         return rates
     
     def _parse_openexchangerates_response(self, data: Dict) -> Dict[str, Decimal]:
@@ -81,6 +104,19 @@ class CurrencyRateService:
                 rate_decimal = Decimal(str(rate))
                 rates[f"{base_currency}-{currency}"] = rate_decimal
                 rates[f"{currency}-{base_currency}"] = Decimal('1') / rate_decimal
+                
+        # Добавляем кросс-курс USDT (считаем USD базой)
+        # 1 USDT = 1 USD / 1.03 (чтобы цена была выше)
+        rates[f"USDT-{base_currency}"] = Decimal('1') / Decimal('1.03')
+        rates[f"{base_currency}-USDT"] = Decimal('1.03')
+        
+        # Кросс-курсы USDT для других валют
+        for currency in ['RUB', 'EUR', 'TRY', 'KZT']:
+            usd_to_curr = rates.get(f"{base_currency}-{currency}") # например USD-RUB
+            if usd_to_curr:
+                usdt_to_curr = usd_to_curr / Decimal('1.03')
+                rates[f"USDT-{currency}"] = usdt_to_curr
+                rates[f"{currency}-USDT"] = Decimal('1') / usdt_to_curr
         
         return rates
     
@@ -101,7 +137,22 @@ class CurrencyRateService:
                     rate = Decimal(str(description))
                     rates[f"{title}-{base_currency}"] = rate
                     rates[f"{base_currency}-{title}"] = Decimal('1') / rate
-            
+                    
+            # Добавляем кросс-курс USDT на основе USD (+3%)
+            usd_to_kzt = rates.get(f"USD-{base_currency}")
+            if usd_to_kzt:
+                usdt_to_kzt = usd_to_kzt / Decimal('1.03')
+                rates[f"USDT-{base_currency}"] = usdt_to_kzt
+                rates[f"{base_currency}-USDT"] = Decimal('1') / usdt_to_kzt
+                
+                # Добавляем кросс-курсы USDT для других валют
+                for currency in ['EUR', 'RUB', 'TRY']:
+                    curr_to_kzt = rates.get(f"{currency}-{base_currency}")
+                    if curr_to_kzt:
+                        usdt_to_curr = usdt_to_kzt / curr_to_kzt
+                        rates[f"USDT-{currency}"] = usdt_to_curr
+                        rates[f"{currency}-USDT"] = Decimal('1') / usdt_to_curr
+                        
             return rates
         except Exception as e:
             logger.error(f"Error parsing NBK XML: {str(e)}")
@@ -124,7 +175,22 @@ class CurrencyRateService:
                         rate = Decimal(str(forexbuying.text.replace(',', '.')))
                         rates[f"{code}-{base_currency}"] = rate
                         rates[f"{base_currency}-{code}"] = Decimal('1') / rate
-            
+                        
+            # Добавляем кросс-курс USDT на основе USD (+3%)
+            usd_to_try = rates.get(f"USD-{base_currency}")
+            if usd_to_try:
+                usdt_to_try = usd_to_try / Decimal('1.03')
+                rates[f"USDT-{base_currency}"] = usdt_to_try
+                rates[f"{base_currency}-USDT"] = Decimal('1') / usdt_to_try
+                
+                # Добавляем кросс-курсы USDT для других валют
+                for currency in ['EUR', 'RUB', 'KZT']:
+                    curr_to_try = rates.get(f"{currency}-{base_currency}")
+                    if curr_to_try:
+                        usdt_to_curr = usdt_to_try / curr_to_try
+                        rates[f"USDT-{currency}"] = usdt_to_curr
+                        rates[f"{currency}-USDT"] = Decimal('1') / usdt_to_curr
+                        
             return rates
         except Exception as e:
             logger.error(f"Error parsing TCMB XML: {str(e)}")

@@ -14,6 +14,7 @@ class CurrencyRate(models.Model):
         ('KZT', 'Казахстанский тенге'),
         ('USD', 'Доллар США'),
         ('EUR', 'Евро'),
+        ('USDT', 'Tether (USDT)'),
     ]
     
     SOURCE_CHOICES = [
@@ -25,8 +26,8 @@ class CurrencyRate(models.Model):
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    from_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, verbose_name='Из валюты')
-    to_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, verbose_name='В валюту')
+    from_currency = models.CharField(max_length=4, choices=CURRENCY_CHOICES, verbose_name='Из валюты')
+    to_currency = models.CharField(max_length=4, choices=CURRENCY_CHOICES, verbose_name='В валюту')
     rate = models.DecimalField(max_digits=10, decimal_places=6, validators=[MinValueValidator(0)], verbose_name='Курс')
     source = models.CharField(max_length=50, choices=SOURCE_CHOICES, verbose_name='Источник')
     is_active = models.BooleanField(default=True, verbose_name='Активен')
@@ -86,6 +87,7 @@ class ProductPrice(models.Model):
         ('KZT', 'Казахстанский тенге'),
         ('USD', 'Доллар США'),
         ('EUR', 'Евро'),
+        ('USDT', 'Tether (USDT)'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -97,7 +99,7 @@ class ProductPrice(models.Model):
     )
     
     # Базовая цена товара
-    base_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='TRY', verbose_name='Базовая валюта')
+    base_currency = models.CharField(max_length=4, choices=CURRENCY_CHOICES, default='TRY', verbose_name='Базовая валюта')
     base_price = models.DecimalField(
         max_digits=10, 
         decimal_places=2,
@@ -186,6 +188,22 @@ class ProductPrice(models.Model):
         validators=[MinValueValidator(0)],
         null=True, blank=True,
         verbose_name='Цена в TRY с маржой'
+    )
+    
+    usdt_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в USDT',
+        help_text="Конвертированная цена в USDT"
+    )
+    usdt_price_with_margin = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в USDT с маржой'
     )
     
     # Будущие поля для доставки
@@ -255,6 +273,7 @@ class ProductVariantPrice(models.Model):
         ('KZT', 'Казахстанский тенге'),
         ('USD', 'Доллар США'),
         ('EUR', 'Евро'),
+        ('USDT', 'Tether (USDT)'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -265,7 +284,7 @@ class ProductVariantPrice(models.Model):
     variant = GenericForeignKey('content_type', 'object_id')
     
     # Базовая цена варианта
-    base_currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='TRY', verbose_name='Базовая валюта')
+    base_currency = models.CharField(max_length=4, choices=CURRENCY_CHOICES, default='TRY', verbose_name='Базовая валюта')
     base_price = models.DecimalField(
         max_digits=10, 
         decimal_places=2,
@@ -354,6 +373,22 @@ class ProductVariantPrice(models.Model):
         validators=[MinValueValidator(0)],
         null=True, blank=True,
         verbose_name='Цена в TRY с маржой'
+    )
+    
+    usdt_price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в USDT',
+        help_text="Конвертированная цена в USDT"
+    )
+    usdt_price_with_margin = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True, blank=True,
+        verbose_name='Цена в USDT с маржой'
     )
     
     # Стоимость доставки для варианта

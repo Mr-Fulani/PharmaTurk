@@ -29,11 +29,12 @@ from .utils.storage_paths import (
 )
 
 CURRENCY_CHOICES = [
-    ("RUB", "RUB"),
-    ("USD", "USD"),
-    ("EUR", "EUR"),
-    ("TRY", "TRY"),
-    ("KZT", "KZT"),
+    ('TRY', 'Турецкая лира'),
+    ('RUB', 'Российский рубль'),
+    ('KZT', 'Казахстанский тенге'),
+    ('USD', 'Доллар США'),
+    ('EUR', 'Евро'),
+    ('USDT', 'Tether (USDT)'),
 ]
 
 CARD_MEDIA_ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"]
@@ -1225,6 +1226,10 @@ class Product(models.Model):
             if 'TRY' in results and results['TRY']:
                 price_info.try_price = results['TRY']['converted_price']
                 price_info.try_price_with_margin = results['TRY']['price_with_margin']
+                
+            if 'USDT' in results and results['USDT']:
+                price_info.usdt_price = results['USDT']['converted_price']
+                price_info.usdt_price_with_margin = results['USDT']['price_with_margin']
             
             price_info.save()
             # Не вызываем self.save() чтобы избежать бесконечной рекурсии
@@ -1279,6 +1284,7 @@ class Product(models.Model):
                     'KZT': variant_price.kzt_price_with_margin,
                     'EUR': variant_price.eur_price_with_margin,
                     'TRY': variant_price.try_price_with_margin,
+                    'USDT': variant_price.usdt_price_with_margin,
                 }
                 price = currency_map.get(target_currency)
                 if price is not None:
@@ -1298,6 +1304,8 @@ class Product(models.Model):
                     return price_info.eur_price_with_margin
                 elif target_currency == 'TRY' and price_info.try_price_with_margin:
                     return price_info.try_price_with_margin
+                elif target_currency == 'USDT' and price_info.usdt_price_with_margin:
+                    return price_info.usdt_price_with_margin
                 elif target_currency == self.currency:
                     return price_info.base_price
                     
@@ -1369,6 +1377,13 @@ class Product(models.Model):
                         'price_with_margin': variant_price.try_price_with_margin,
                         'is_base_price': False
                     }
+                if variant_price.usdt_price_with_margin:
+                    prices['USDT'] = {
+                        'original_price': variant_price.usdt_price,
+                        'converted_price': variant_price.usdt_price,
+                        'price_with_margin': variant_price.usdt_price_with_margin,
+                        'is_base_price': False
+                    }
                 return prices
 
             price_info = self.price_info
@@ -1427,6 +1442,15 @@ class Product(models.Model):
                     'is_base_price': False
                 }
                 
+            # USDT
+            if price_info.usdt_price_with_margin:
+                prices['USDT'] = {
+                    'original_price': price_info.usdt_price,
+                    'converted_price': price_info.usdt_price,
+                    'price_with_margin': price_info.usdt_price_with_margin,
+                    'is_base_price': False
+                }
+                
         except ProductPrice.DoesNotExist:
             # Для невариативных товаров без ProductPrice создаём запись (конвертация по валютам),
             # чтобы смена валюты на фронте работала. Затем повторно строим словарь цен.
@@ -1475,6 +1499,13 @@ class Product(models.Model):
                                 'original_price': price_info.try_price,
                                 'converted_price': price_info.try_price,
                                 'price_with_margin': price_info.try_price_with_margin,
+                                'is_base_price': False
+                            }
+                        if price_info.usdt_price_with_margin:
+                            prices['USDT'] = {
+                                'original_price': price_info.usdt_price,
+                                'converted_price': price_info.usdt_price,
+                                'price_with_margin': price_info.usdt_price_with_margin,
                                 'is_base_price': False
                             }
                         return prices

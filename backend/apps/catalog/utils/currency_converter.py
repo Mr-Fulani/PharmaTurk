@@ -210,7 +210,7 @@ class CurrencyConverter:
     
     def get_supported_currencies(self) -> list:
         """Получение списка поддерживаемых валют"""
-        return ['TRY', 'RUB', 'KZT', 'USD', 'EUR']
+        return ['TRY', 'RUB', 'KZT', 'USD', 'EUR', 'USDT']
     
     def validate_currency_pair(self, from_currency: str, to_currency: str) -> bool:
         """Проверка поддержки пары валют"""
@@ -270,7 +270,7 @@ class CurrencyConverter:
             
             # Конвертируем в основные валюты
             results = self.convert_to_multiple_currencies(
-                base_price, base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY'], apply_margin=True
+                base_price, base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY', 'USDT'], apply_margin=True
             )
             
             # Создаем или обновляем запись
@@ -290,6 +290,8 @@ class CurrencyConverter:
                     'eur_price_with_margin': results['EUR']['price_with_margin'] if results['EUR'] else None,
                     'try_price': results['TRY']['converted_price'] if results['TRY'] else None,
                     'try_price_with_margin': results['TRY']['price_with_margin'] if results['TRY'] else None,
+                    'usdt_price': results['USDT']['converted_price'] if results['USDT'] else None,
+                    'usdt_price_with_margin': results['USDT']['price_with_margin'] if results['USDT'] else None,
                 }
             )
             
