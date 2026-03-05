@@ -1,8 +1,12 @@
+import uuid
+from decimal import Decimal
 from django.db import models
+from django.db.models import JSONField
+from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.core.cache import cache
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-import uuid
 
 
 class CurrencyRate(models.Model):
@@ -42,6 +46,62 @@ class CurrencyRate(models.Model):
     
     def __str__(self):
         return f"{self.from_currency} → {self.to_currency}: {self.rate}"
+
+
+class GlobalCurrencySettings(models.Model):
+    """
+    Глобальные настройки валют и маржи для интернет-магазина (Singleton).
+    """
+    
+    default_margin_percentage = models.DecimalField(
+        max_digits=5, 
+        decimal_places=2, 
+        default=Decimal('15.00'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Маржа по умолчанию (%)',
+        help_text="Используется если для конкретной пары валют не задана своя маржа (по умолчанию 15%)."
+    )
+    
+    usdt_markup_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('3.00'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Наценка USDT (%)',
+        help_text="На сколько процентов USDT дороже базового USD (по умолчанию 3%)."
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлено')
+
+    class Meta:
+        verbose_name = 'глобальная настройка валют'
+        verbose_name_plural = '🌐 Настройки: Валюты и Маржа'
+
+    def __str__(self):
+        return f"Глобальные настройки валют (Маржа: {self.default_margin_percentage}%, USDT наценка: {self.usdt_markup_percentage}%)"
+        
+    def save(self, *args, **kwargs):
+        """Гарантирует существование только одной записи (Singleton) и очищает кэш при сохранении."""
+        self.pk = 1
+        super().save(*args, **kwargs)
+        cache.delete("global_currency_settings")
+
+    def delete(self, *args, **kwargs):
+        """Предотвращает удаление единственной записи."""
+        pass
+
+    @classmethod
+    def load(cls):
+        """
+        Загружает настройки из кэша. Если в кэше нет — берет из БД (или создает дефолтные).
+        """
+        if obj := cache.get("global_currency_settings"):
+            return obj
+            
+        obj, created = cls.objects.get_or_create(pk=1)
+        cache.set("global_currency_settings", obj, timeout=60 * 60 * 24)  # Кэшируем на сутки
+        return obj
 
 
 class MarginSettings(models.Model):

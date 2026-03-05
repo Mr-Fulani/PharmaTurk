@@ -1069,6 +1069,7 @@ class CartSerializer(serializers.ModelSerializer):
     total_amount = serializers.SerializerMethodField()
     discount_amount = serializers.SerializerMethodField()
     final_amount = serializers.SerializerMethodField()
+    shipping_options = serializers.SerializerMethodField()
     promo_code = PromoCodeSerializer(read_only=True)
     currency = serializers.SerializerMethodField()  # Изменено на метод
 
@@ -1077,10 +1078,10 @@ class CartSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'session_key', 'currency',
             'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount',
-            'promo_code',
+            'shipping_options', 'promo_code',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['user', 'created_at', 'updated_at', 'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount', 'currency']
+        read_only_fields = ['user', 'created_at', 'updated_at', 'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount', 'currency', 'shipping_options']
 
     def _get_preferred_currency(self, request):
         """Определяет валюту по приоритетам: explicit -> user -> язык -> default."""
@@ -1140,24 +1141,51 @@ class CartSerializer(serializers.ModelSerializer):
                             continue
                 prices = item.product.get_all_prices()
                 if prices and preferred_currency in prices:
+                    # Нужная валюта найдена напрямую
                     price = prices[preferred_currency].get('price_with_margin', 0)
                 elif prices:
-                    # Если предпочитаемой валюты нет, используем базовую
+                    # Предпочитаемой валюты нет в кэше — находим базовую цену и конвертируем
+                    base_price_val = 0
+                    base_curr = None
                     for currency, data in prices.items():
                         if data.get('is_base_price'):
-                            price = data.get('price_with_margin', 0)
+                            base_price_val = data.get('price_with_margin') or data.get('converted_price') or 0
+                            base_curr = currency
                             break
+                    if not base_curr and prices:
+                        first_key = list(prices.keys())[0]
+                        base_price_val = prices[first_key].get('price_with_margin', 0)
+                        base_curr = first_key
+
+                    if base_curr and base_price_val and base_curr.upper() != preferred_currency.upper():
+                        # Конвертируем из базовой валюты в предпочитаемую
+                        try:
+                            _, _, price = currency_converter.convert_price(
+                                Decimal(str(base_price_val)),
+                                base_curr,
+                                preferred_currency,
+                                apply_margin=True,
+                            )
+                        except Exception:
+                            price = base_price_val
                     else:
-                        # Если базовой нет, берем первую
-                        first_currency = list(prices.keys())[0]
-                        price = prices[first_currency].get('price_with_margin', 0)
+                        price = base_price_val
                 else:
-                    # Fallback к старому полю
-                    price = item.price
+                    # Fallback к старому полю — конвертируем если валюта другая
+                    raw_price = item.price
+                    try:
+                        _, _, price = currency_converter.convert_price(
+                            Decimal(str(raw_price)),
+                            'RUB',
+                            preferred_currency,
+                            apply_margin=False,
+                        )
+                    except Exception:
+                        price = raw_price
                 
                 total += price * item.quantity
             except Exception:
-                # Fallback к старому полю
+                # Финальный fallback к старому полю без конвертации
                 total += item.price * item.quantity
         
         return float(round(total, 2))
@@ -1190,6 +1218,107 @@ class CartSerializer(serializers.ModelSerializer):
             discount_dec = Decimal('0')
 
         return float((total_dec - discount_dec).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+
+    def get_shipping_options(self, obj):
+        """Возвращает варианты доставки и их стоимость для всей корзины."""
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        
+        shipping_costs = {
+            'air': 0.0,
+            'sea': 0.0,
+            'ground': 0.0
+        }
+        
+        from apps.catalog.currency_models import ProductVariantPrice
+        from django.contrib.contenttypes.models import ContentType
+        from apps.catalog.utils.currency_converter import currency_converter
+        from decimal import Decimal
+        
+        for item in obj.items.all():
+            if not item.product:
+                continue
+                
+            # Валюта доставки всегда фиксированно USD по требованию
+            shipping_base_currency = 'USD'
+            air_cost = sea_cost = ground_cost = 0
+                
+            if item.product.external_data and (
+                'source_variant_id' in item.product.external_data or 'jewelry_variant_id' in item.product.external_data
+            ):
+                variant_model = None
+                if item.product.product_type == 'clothing':
+                    from apps.catalog.models import ClothingVariant
+                    variant_model = ClothingVariant
+                elif item.product.product_type == 'shoes':
+                    from apps.catalog.models import ShoeVariant
+                    variant_model = ShoeVariant
+                elif item.product.product_type == 'jewelry':
+                    from apps.catalog.models import JewelryVariant
+                    variant_model = JewelryVariant
+                elif item.product.product_type == 'furniture':
+                    from apps.catalog.models import FurnitureVariant
+                    variant_model = FurnitureVariant
+                elif item.product.product_type == 'books':
+                    from apps.catalog.models import BookVariant
+                    variant_model = BookVariant
+                
+                if variant_model:
+                    variant_id = item.product.external_data.get('source_variant_id') or item.product.external_data.get('jewelry_variant_id')
+                    variant = variant_model.objects.filter(id=variant_id).first()
+                    
+                    if variant:
+                        content_type = ContentType.objects.get_for_model(variant)
+                        variant_price = ProductVariantPrice.objects.filter(
+                            content_type=content_type,
+                            object_id=variant.id
+                        ).first()
+                        
+                        if variant_price:
+                            air_cost = variant_price.air_shipping_cost or 0
+                            sea_cost = variant_price.sea_shipping_cost or 0
+                            ground_cost = variant_price.ground_shipping_cost or 0
+
+                # Если не нашли через ProductVariantPrice — пробуем price_info (ProductPrice)
+                # Это актуально для ювелирки и других товаров, у которых данные в ProductPrice
+                if not any([air_cost, sea_cost, ground_cost]):
+                    price_info = getattr(item.product, 'price_info', None)
+                    if price_info:
+                        air_cost = price_info.air_shipping_cost or 0
+                        sea_cost = price_info.sea_shipping_cost or 0
+                        ground_cost = price_info.ground_shipping_cost or 0
+            else:
+                # Обычные товары без вариантов — читаем из price_info напрямую
+                price_info = getattr(item.product, 'price_info', None)
+                if price_info:
+                    air_cost = price_info.air_shipping_cost or 0
+                    sea_cost = price_info.sea_shipping_cost or 0
+                    ground_cost = price_info.ground_shipping_cost or 0
+                    
+            def convert_cost(cost):
+                if not cost: return 0
+                if shipping_base_currency.upper() == preferred_currency:
+                    return float(cost)
+                try:
+                    _, converted, _ = currency_converter.convert_price(
+                        Decimal(str(cost)),
+                        shipping_base_currency,
+                        preferred_currency,
+                        apply_margin=False
+                    )
+                    return float(converted)
+                except Exception:
+                    return float(cost)
+                    
+            shipping_costs['air'] += convert_cost(air_cost) * item.quantity
+            shipping_costs['sea'] += convert_cost(sea_cost) * item.quantity
+            shipping_costs['ground'] += convert_cost(ground_cost) * item.quantity
+            
+        return {
+            'air': float(round(shipping_costs['air'], 2)),
+            'sea': float(round(shipping_costs['sea'], 2)),
+            'ground': float(round(shipping_costs['ground'], 2)),
+        }
 
 
 class AddToCartSerializer(serializers.Serializer):

@@ -5,7 +5,8 @@ from datetime import datetime
 from typing import Dict, Optional, Tuple
 from django.conf import settings
 from django.core.cache import cache
-from ..models import CurrencyRate, CurrencyUpdateLog
+from apps.catalog.models import CurrencyRate, CurrencyUpdateLog
+from apps.catalog.currency_models import GlobalCurrencySettings
 
 logger = logging.getLogger(__name__)
 
@@ -69,12 +70,15 @@ class CurrencyRateService:
                 rates[f"{code}-{base_currency}"] = value
                 rates[f"{base_currency}-{code}"] = Decimal('1') / value
                 
-        # Добавляем кросс-курс USDT на основе USD (+3% к цене товара)
-        # Чтобы цена товара в USDT была на 3% выше, курс USDT должен быть ниже на 3%
+        # Добавляем кросс-курс USDT на основе USD (+ X% к цене товара)
+        # Чтобы цена товара в USDT была выше, курс USDT должен быть ниже
         usd_to_rub = rates.get(f"USD-{base_currency}")
         if usd_to_rub:
+            markup = GlobalCurrencySettings.load().usdt_markup_percentage
+            usdt_modifier = Decimal('1') + (markup / Decimal('100'))
+            
             # 1 USDT программно стоит дешевле, чтобы покупатель платил больше единиц USDT
-            usdt_to_rub = usd_to_rub / Decimal('1.03')
+            usdt_to_rub = usd_to_rub / usdt_modifier
             rates[f"USDT-{base_currency}"] = usdt_to_rub
             rates[f"{base_currency}-USDT"] = Decimal('1') / usdt_to_rub
             
@@ -106,15 +110,17 @@ class CurrencyRateService:
                 rates[f"{currency}-{base_currency}"] = Decimal('1') / rate_decimal
                 
         # Добавляем кросс-курс USDT (считаем USD базой)
-        # 1 USDT = 1 USD / 1.03 (чтобы цена была выше)
-        rates[f"USDT-{base_currency}"] = Decimal('1') / Decimal('1.03')
-        rates[f"{base_currency}-USDT"] = Decimal('1.03')
+        markup = GlobalCurrencySettings.load().usdt_markup_percentage
+        usdt_modifier = Decimal('1') + (markup / Decimal('100'))
+        
+        rates[f"USDT-{base_currency}"] = Decimal('1') / usdt_modifier
+        rates[f"{base_currency}-USDT"] = usdt_modifier
         
         # Кросс-курсы USDT для других валют
         for currency in ['RUB', 'EUR', 'TRY', 'KZT']:
             usd_to_curr = rates.get(f"{base_currency}-{currency}") # например USD-RUB
             if usd_to_curr:
-                usdt_to_curr = usd_to_curr / Decimal('1.03')
+                usdt_to_curr = usd_to_curr / usdt_modifier
                 rates[f"USDT-{currency}"] = usdt_to_curr
                 rates[f"{currency}-USDT"] = Decimal('1') / usdt_to_curr
         
@@ -138,10 +144,12 @@ class CurrencyRateService:
                     rates[f"{title}-{base_currency}"] = rate
                     rates[f"{base_currency}-{title}"] = Decimal('1') / rate
                     
-            # Добавляем кросс-курс USDT на основе USD (+3%)
+            # Добавляем кросс-курс USDT на основе USD
             usd_to_kzt = rates.get(f"USD-{base_currency}")
             if usd_to_kzt:
-                usdt_to_kzt = usd_to_kzt / Decimal('1.03')
+                markup = GlobalCurrencySettings.load().usdt_markup_percentage
+                usdt_modifier = Decimal('1') + (markup / Decimal('100'))
+                usdt_to_kzt = usd_to_kzt / usdt_modifier
                 rates[f"USDT-{base_currency}"] = usdt_to_kzt
                 rates[f"{base_currency}-USDT"] = Decimal('1') / usdt_to_kzt
                 
@@ -176,10 +184,12 @@ class CurrencyRateService:
                         rates[f"{code}-{base_currency}"] = rate
                         rates[f"{base_currency}-{code}"] = Decimal('1') / rate
                         
-            # Добавляем кросс-курс USDT на основе USD (+3%)
+            # Добавляем кросс-курс USDT на основе USD
             usd_to_try = rates.get(f"USD-{base_currency}")
             if usd_to_try:
-                usdt_to_try = usd_to_try / Decimal('1.03')
+                markup = GlobalCurrencySettings.load().usdt_markup_percentage
+                usdt_modifier = Decimal('1') + (markup / Decimal('100'))
+                usdt_to_try = usd_to_try / usdt_modifier
                 rates[f"USDT-{base_currency}"] = usdt_to_try
                 rates[f"{base_currency}-USDT"] = Decimal('1') / usdt_to_try
                 

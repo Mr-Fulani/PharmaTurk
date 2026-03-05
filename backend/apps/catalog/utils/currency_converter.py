@@ -197,8 +197,9 @@ class CurrencyConverter:
             )
             margin_rate = margin_setting.margin_percentage
         except MarginSettings.DoesNotExist:
+            from apps.catalog.currency_models import GlobalCurrencySettings
             # Если конкретной настройки нет, используем глобальную маржу по умолчанию
-            margin_rate = Decimal('15.00')  # 15% по умолчанию
+            margin_rate = GlobalCurrencySettings.load().default_margin_percentage
             logger.info(f"Using default margin for {currency_pair}: {margin_rate}%")
         
         self._margin_cache[cache_key] = margin_rate

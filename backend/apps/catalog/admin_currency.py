@@ -6,7 +6,40 @@ from django.db.models import Count
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 from decimal import Decimal
-from .currency_models import CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog, ProductVariantPrice
+from .currency_models import CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog, ProductVariantPrice, GlobalCurrencySettings
+
+
+@admin.register(GlobalCurrencySettings)
+class GlobalCurrencySettingsAdmin(admin.ModelAdmin):
+    """Админ-панель для глобальных настроек валют."""
+    
+    list_display = [
+        'id_display', 'default_margin_percentage', 'usdt_markup_percentage', 
+        'updated_at'
+    ]
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Основные настройки', {
+            'fields': ('default_margin_percentage', 'usdt_markup_percentage')
+        }),
+        ('Временные метки', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    def id_display(self, obj):
+        return "Глобальные настройки магазина"
+    id_display.short_description = 'Настройки'
+    
+    def has_add_permission(self, request):
+        if self.model.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(CurrencyRate)
@@ -171,9 +204,10 @@ class ProductPriceAdmin(admin.ModelAdmin):
     """Админ-панель для цен товаров."""
     
     list_display = [
-        'product_link', 'base_currency', 'base_price', 
-        'rub_price_with_margin', 'usd_price_with_margin', 
-        'kzt_price_with_margin', 'try_price_with_margin', 'updated_at'
+        'product_link', 'base_currency', 'base_price',
+        'rub_price_with_margin', 'usd_price_with_margin',
+        'kzt_price_with_margin', 'try_price_with_margin',
+        'usdt_price_with_margin', 'shipping_info', 'updated_at'
     ]
     list_filter = ['base_currency', 'updated_at']
     search_fields = ['product__name', 'product__slug']
@@ -227,6 +261,20 @@ class ProductPriceAdmin(admin.ModelAdmin):
         return '-'
     product_link.short_description = 'Товар'
     
+    def shipping_info(self, obj):
+        """Информация о стоимости доставки."""
+        costs = []
+        if obj.air_shipping_cost:
+            costs.append(f"Авиа: {obj.air_shipping_cost}")
+        if obj.sea_shipping_cost:
+            costs.append(f"Море: {obj.sea_shipping_cost}")
+        if obj.ground_shipping_cost:
+            costs.append(f"Назем: {obj.ground_shipping_cost}")
+        if costs:
+            return format_html('<br>'.join(costs))
+        return 'Не указана'
+    shipping_info.short_description = 'Доставка'
+
     def get_queryset(self, request):
         """Оптимизация запросов."""
         return super().get_queryset(request).select_related('product')
@@ -246,7 +294,7 @@ class ProductPriceAdmin(admin.ModelAdmin):
                 if price_info.base_price and price_info.base_currency:
                     # Конвертируем в целевые валюты
                     results = currency_converter.convert_to_multiple_currencies(
-                        price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY'], apply_margin=True
+                        price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY', 'USDT'], apply_margin=True
                     )
                     
                     if 'RUB' in results and results['RUB']:
@@ -268,6 +316,10 @@ class ProductPriceAdmin(admin.ModelAdmin):
                     if 'TRY' in results and results['TRY']:
                         price_info.try_price = results['TRY']['converted_price']
                         price_info.try_price_with_margin = results['TRY']['price_with_margin']
+                    
+                    if 'USDT' in results and results['USDT']:
+                        price_info.usdt_price = results['USDT']['converted_price']
+                        price_info.usdt_price_with_margin = results['USDT']['price_with_margin']
                     
                     price_info.save()
                     success_count += 1
@@ -304,10 +356,10 @@ class ProductVariantPriceAdmin(admin.ModelAdmin):
     """Админ-панель для цен вариантов товаров."""
     
     list_display = [
-        'variant_link', 'base_currency', 'base_price', 
-        'rub_price_with_margin', 'usd_price_with_margin', 
-        'kzt_price_with_margin', 'try_price_with_margin', 
-        'shipping_info', 'updated_at'
+        'variant_link', 'base_currency', 'base_price',
+        'rub_price_with_margin', 'usd_price_with_margin',
+        'kzt_price_with_margin', 'try_price_with_margin',
+        'usdt_price_with_margin', 'shipping_info', 'updated_at'
     ]
     list_filter = ['base_currency', 'updated_at']
     search_fields = ['content_type__model', 'object_id']
@@ -348,22 +400,22 @@ class ProductVariantPriceAdmin(admin.ModelAdmin):
     )
     
     def variant_link(self, obj):
-        """Ссылка на вариант."""
+        """Ссылка на редактирование цены варианта (эта запись price)."""
         try:
+            # Ссылка ведёт на саму запись ProductVariantPrice, а не на вариант
+            url = reverse('admin:catalog_productvariantprice_change', args=[obj.id])
+            # Название варианта — для удобства отображения в списке
             variant = obj.variant
             if variant:
-                # Определяем админ URL для разных типов вариантов
-                app_label = 'catalog'
-                model_name = obj.content_type.model
-                url = reverse(f'admin:{app_label}_{model_name}_change', args=[variant.id])
-                return format_html(
-                    '<a href="{}">{}</a>',
-                    url, str(variant)
-                )
-        except:
-            pass
-        return '-'
-    variant_link.short_description = 'Вариант'
+                label = getattr(variant, 'name', None) or str(variant)
+            else:
+                label = f"{obj.content_type.model} #{obj.object_id}"
+            if len(label) > 60:
+                label = label[:60] + '...'
+            return format_html('<a href="{}">{}</a>', url, label)
+        except Exception:
+            return str(obj.object_id)
+    variant_link.short_description = 'Вариант / Цена'
     
     def shipping_info(self, obj):
         """Информация о доставке."""
@@ -395,7 +447,7 @@ class ProductVariantPriceAdmin(admin.ModelAdmin):
                 if price_info.base_price and price_info.base_currency:
                     # Конвертируем в целевые валюты
                     results = currency_converter.convert_to_multiple_currencies(
-                        price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY'], apply_margin=True
+                        price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY', 'USDT'], apply_margin=True
                     )
                     
                     if 'RUB' in results and results['RUB']:
@@ -417,6 +469,10 @@ class ProductVariantPriceAdmin(admin.ModelAdmin):
                     if 'TRY' in results and results['TRY']:
                         price_info.try_price = results['TRY']['converted_price']
                         price_info.try_price_with_margin = results['TRY']['price_with_margin']
+                    
+                    if 'USDT' in results and results['USDT']:
+                        price_info.usdt_price = results['USDT']['converted_price']
+                        price_info.usdt_price_with_margin = results['USDT']['price_with_margin']
                     
                     price_info.save()
                     success_count += 1
@@ -557,7 +613,7 @@ class CurrencyUpdateLogAdmin(admin.ModelAdmin):
                 if price_info.base_price and price_info.base_currency:
                     # Конвертируем в целевые валюты
                     results = currency_converter.convert_to_multiple_currencies(
-                        price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY'], apply_margin=True
+                        price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY', 'USDT'], apply_margin=True
                     )
                     
                     if 'RUB' in results and results['RUB']:
@@ -579,6 +635,10 @@ class CurrencyUpdateLogAdmin(admin.ModelAdmin):
                     if 'TRY' in results and results['TRY']:
                         price_info.try_price = results['TRY']['converted_price']
                         price_info.try_price_with_margin = results['TRY']['price_with_margin']
+                    
+                    if 'USDT' in results and results['USDT']:
+                        price_info.usdt_price = results['USDT']['converted_price']
+                        price_info.usdt_price_with_margin = results['USDT']['price_with_margin']
                     
                     price_info.save()
                     success_count += 1
