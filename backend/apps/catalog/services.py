@@ -409,18 +409,21 @@ class CatalogNormalizer:
                 product.stock_quantity = stock
                 product.save(update_fields=['stock_quantity'])
 
-        # Обновляем video_url если есть в метаданных (от парсеров)
+        # Обновляем video_url если есть в метаданных (от парсеров) и у нас его нет
         if hasattr(product_data, 'metadata') and product_data.metadata:
             attributes = product_data.metadata.get('attributes', {})
-            if attributes.get('video_url'):
+            if attributes.get('video_url') and not product.video_url:
                 product.video_url = attributes['video_url']
                 product.save(update_fields=['video_url'])
 
         if not created:
             # Обновляем существующий товар
             old_price = product.price
-            product.name = product_data.name
-            product.description = product_data.description or product.description
+            if not product.name and product_data.name:
+                product.name = product_data.name
+            if not product.description and product_data.description:
+                product.description = product_data.description
+            
             product.is_available = product_data.availability
             product.external_data = product_data.metadata
             product.last_synced_at = timezone.now()
@@ -442,12 +445,12 @@ class CatalogNormalizer:
             product.save()
 
         # Обрабатываем категорию: для существующего товара обновляем category и product_type из маппинга
-        if product_data.category:
+        if product_data.category and not product.category:
             if isinstance(product_data.category, str) and not product_data.category.isdigit():
                 category, product_type = resolve_category_and_product_type(product_data.category)
                 if category is not None:
                     product.category = category
-                    if product_type is not None:
+                    if product_type is not None and not product.product_type:
                         product.product_type = product_type
                     product.save()
             else:
@@ -464,7 +467,7 @@ class CatalogNormalizer:
             self._sync_product_fields_from_metadata(product, product_data.metadata)
 
         # Обрабатываем бренд
-        if product_data.brand:
+        if product_data.brand and not product.brand:
             brand = Brand.objects.filter(
                 external_id=product_data.brand
             ).first()
@@ -516,25 +519,48 @@ class CatalogNormalizer:
             seen_urls.add(url)
         image_urls = deduped_urls
         
-        # Удаляем старые изображения, которых нет в новом списке
-        # Используем manager target.images, который для ProductImage/BookProductImage/etc одинаковый по названию
+        # 1. Удаляем ВСЕ парсерные картинки (в которых есть /products/parsed/), чтобы при этом парсинге скачать и заново сохранить только свежие хэши от инстаграма.
+        # Ручные загрузки (image_file и image_url без /products/parsed/) не трогаем!
         try:
-            existing_image_urls = set(target.images.values_list("image_url", flat=True))
-            # В доменных моделях (типа BookProductImage) может не быть video_url, поэтому аккуратно
-            existing_video_urls = set()
+            parser_images_query = Q(image_url__contains='/products/parsed/')
+            
             if hasattr(target.images.model, 'video_url'):
-                existing_video_urls = set(target.images.values_list("video_url", flat=True))
-            
-            new_urls = set(image_urls)
-            
-            # Удаляем изображения, которых больше нет
-            exclude_query = Q(image_url__in=new_urls)
-            if hasattr(target.images.model, 'video_url'):
-                exclude_query |= Q(video_url__in=new_urls)
-            
-            target.images.exclude(exclude_query).delete()
+                parser_images_query |= Q(video_url__contains='/products/parsed/')
+                
+            # Мы удаляем все парсерные картинки. Если они есть в новом списке - они добавятся заново ниже.
+            # Если их нет в новом списке - они просто удалятся.
+            # Это решает проблему дублирования и "бесконечного накопления" парсерных картинок.
+            target.images.filter(parser_images_query).delete()
         except Exception as e:
-            self.logger.warning(f"Error while cleaning up images for {product.pk}: {e}")
+            self.logger.warning(f"Error while cleaning up old parser images for {product.pk}: {e}")
+
+        # 2. Проверяем оставшиеся существующие изображения: если внешняя ссылка битая (404), удаляем из базы!
+        existing_images = list(target.images.all())
+        broken_ids = []
+        
+        import httpx
+        with httpx.Client(timeout=3, follow_redirects=True) as client:
+            for img in existing_images:
+                url_to_check = img.video_url if hasattr(img, 'video_url') and img.video_url else img.image_url
+                if not url_to_check:
+                    continue
+                # Проверяем только HTTP ссылки
+                if not url_to_check.startswith('http'):
+                    continue
+                try:
+                    res = client.head(url_to_check)
+                    if res.status_code >= 400:
+                        self.logger.info(f"Найдена битая ссылка {url_to_check} у товара {product.name}, удаляем из базы.")
+                        broken_ids.append(img.pk)
+                except Exception as e:
+                    self.logger.warning(f"Ошибка проверки ссылки {url_to_check}: {e}")
+
+        if broken_ids:
+            target.images.filter(pk__in=broken_ids).delete()
+
+        # Узнаем, установлено ли уже главное изображение вручную или с прошлого парсинга
+        existing_any_main = target.images.filter(is_main=True).exists()
+        has_manual_main = bool(getattr(product, 'main_image_file', None)) or bool(getattr(product, 'main_image', None))
         
         # Добавляем новые изображения
         main_image_url = None
@@ -546,28 +572,30 @@ class CatalogNormalizer:
                 filter_query |= Q(video_url=image_url)
                 
             existing_item = target.images.filter(filter_query).first()
+            
             desired_is_main = False
-            if preferred_main_video_url:
-                if media_type == "video" and image_url == preferred_main_video_url:
+            if not existing_any_main and not has_manual_main:
+                if preferred_main_video_url:
+                    if media_type == "video" and image_url == preferred_main_video_url:
+                        desired_is_main = True
+                elif media_type == "image" and main_image_url is None:
                     desired_is_main = True
-            elif media_type == "image" and main_image_url is None:
-                desired_is_main = True
-                main_image_url = image_url
+                    main_image_url = image_url
             
             if existing_item:
                 updates: Dict[str, Any] = {}
                 if hasattr(existing_item, 'video_url'):
                     if media_type == "video" and existing_item.video_url != image_url:
-                        updates = {"video_url": image_url, "image_url": "", "is_main": False}
+                        updates = {"video_url": image_url, "image_url": ""}
                     elif media_type == "image" and existing_item.image_url != image_url:
                         updates = {"image_url": image_url, "video_url": ""}
                 else:
                     if media_type == "image" and existing_item.image_url != image_url:
                         updates = {"image_url": image_url}
                 
-                if existing_item.sort_order != i:
-                    updates["sort_order"] = i
-                if existing_item.is_main != desired_is_main:
+                # Обновляем is_main только если мы решили его сделать главным, 
+                # и он сейчас таковым не является
+                if desired_is_main and not existing_item.is_main:
                     updates["is_main"] = desired_is_main
                 
                 if updates:
@@ -577,57 +605,30 @@ class CatalogNormalizer:
             # Создаем новое изображение в правильной модели
             create_kwargs = {
                 "image_url": image_url if media_type == "image" else "",
-                "sort_order": i,
+                "sort_order": target.images.count() + i,
                 "is_main": desired_is_main
             }
-            # Если это ProductImage, у него есть video_url. В доменных моделях обычно нет (они проще)
             if hasattr(target.images.model, 'video_url'):
                 create_kwargs["video_url"] = image_url if media_type == "video" else ""
             
-            # У BookProductImage поле называется 'product' (но указывает на BookProduct)
-            # У ProductImage поле называется 'product' (указывает на Product)
-            # В коде выше мы получили target = product.domain_item. 
-            # Нам нужно передать правильный объект в FK.
             create_kwargs["product"] = target
             target.images.model.objects.create(**create_kwargs)
         
-        # Обновляем главное медиа в самих объектах
+        # Обновляем главное медиа в самих объектах ТОЛЬКО если оно пустое
         if preferred_main_video_url:
-            target.images.filter(is_main=True).exclude(video_url=preferred_main_video_url).update(is_main=False)
-            target.images.filter(video_url=preferred_main_video_url).update(is_main=True)
-            
             for obj in [product, target] if is_domain else [product]:
                 update_fields = []
-                if hasattr(obj, 'main_image') and obj.main_image:
-                    obj.main_image = ""
-                    update_fields.append("main_image")
-                if hasattr(obj, 'video_url') and obj.video_url != preferred_main_video_url:
+                if hasattr(obj, 'video_url') and not obj.video_url:
                     obj.video_url = preferred_main_video_url
                     update_fields.append("video_url")
                 if update_fields:
                     obj.save(update_fields=update_fields)
             return
 
-        # Поиск главного фото
-        main_image_url = None
-        for media_url in image_urls:
-            if self._resolve_media_type(media_url) == "image":
-                main_image_url = media_url
-                break
-
-        if main_image_url:
-            target.images.filter(is_main=True).exclude(image_url=main_image_url).update(is_main=False)
-            target.images.filter(image_url=main_image_url).update(is_main=True)
-            
+        if main_image_url and not existing_any_main and not has_manual_main:
             for obj in [product, target] if is_domain else [product]:
-                if hasattr(obj, 'main_image') and obj.main_image != main_image_url:
+                if hasattr(obj, 'main_image') and not obj.main_image:
                     obj.main_image = main_image_url
-                    obj.save(update_fields=['main_image'])
-        else:
-            target.images.filter(is_main=True).update(is_main=False)
-            for obj in [product, target] if is_domain else [product]:
-                if hasattr(obj, 'main_image') and obj.main_image:
-                    obj.main_image = ""
                     obj.save(update_fields=['main_image'])
     
     def normalize_product_attributes(self, product: Product, attributes_data: Dict[str, Any]):

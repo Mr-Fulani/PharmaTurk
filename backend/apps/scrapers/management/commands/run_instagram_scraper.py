@@ -286,7 +286,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.WARNING("Режим DRY-RUN: товары не сохраняются в БД"))
 
         parser = InstagramParser(username=login, password=password)
-            products = []
+        products = []
 
         try:
             if post_url:
@@ -387,20 +387,20 @@ class Command(BaseCommand):
 
         preset = CATEGORY_PRESETS.get(category_slug.lower())
         if preset:
-        slug, name = preset
+            slug, name = preset
             cat, created = Category.objects.get_or_create(
-            slug=slug,
+                slug=slug,
                 defaults={"name": name, "description": name, "is_active": True},
-        )
+            )
             if created:
                 self.stdout.write(f"Создана новая категория: {name} (slug={slug})")
-        return cat
+            return cat
 
         return None
 
     def _print_session_stats(self, session):
         """Выводит статистику выполненной сессии парсинга."""
-            self.stdout.write(
+        self.stdout.write(
             self.style.SUCCESS(f"\n✓ Парсинг завершён (сессия #{session.id})")
         )
         self.stdout.write(f"  Статус:    {session.get_status_display()}")
@@ -412,4 +412,4 @@ class Command(BaseCommand):
         if session.status == "failed" and session.error_message:
             self.stdout.write(
                 self.style.ERROR(f"  Ошибка: {session.error_message}")
-        )
+            )

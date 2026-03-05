@@ -624,7 +624,7 @@ class ScraperIntegrationService:
                 existing_product.main_image = main_image_url
                 updated = True
 
-        if scraped_product.category:
+        if scraped_product.category and not existing_product.category:
             category, product_type = resolve_category_and_product_type(scraped_product.category)
             if category is not None:
                 if existing_product.category_id != category.id:
@@ -684,27 +684,25 @@ class ScraperIntegrationService:
                     f"Ошибка при нормализации изображений для товара {existing_product.id}: {e}"
                 )
 
-            # Обновляем авторов, если они есть в атрибутах (авторы привязаны к BookProduct)
+            # Обновляем авторов, только если их сейчас нет (или перенесли на проверку)
             if (
                 scraped_product.attributes
                 and "author" in scraped_product.attributes
                 and existing_product.product_type == "books"
             ):
                 try:
-                    author_str = scraped_product.attributes["author"]
-                    if author_str:
-                        book_product = self._get_book_product(existing_product)
-                        # Очищаем текущих авторов
-                        book_product.book_authors.all().delete()
-
-                        author_names = [a.strip() for a in author_str.split(",") if a.strip()]
-                        for idx, name in enumerate(author_names):
-                            author = self._normalize_and_get_author(name)
-                            if author:
-                                # Связываем с BookProduct
-                                ProductAuthor.objects.create(
-                                    product=book_product, author=author, sort_order=idx
-                                )
+                    book_product = self._get_book_product(existing_product)
+                    if not book_product.book_authors.exists():
+                        author_str = scraped_product.attributes["author"]
+                        if author_str:
+                            author_names = [a.strip() for a in author_str.split(",") if a.strip()]
+                            for idx, name in enumerate(author_names):
+                                author = self._normalize_and_get_author(name)
+                                if author:
+                                    # Связываем с BookProduct
+                                    ProductAuthor.objects.create(
+                                        product=book_product, author=author, sort_order=idx
+                                    )
                 except Exception as e:
                     self.logger.error(
                         f"Ошибка при обновлении авторов для товара {existing_product.id}: {e}"
@@ -798,34 +796,33 @@ class ScraperIntegrationService:
                 len(digits) in (10, 13)
                 and "00000" not in new_isbn
                 and "..." not in new_isbn
-                and new_isbn != (book_product.isbn or "")
+                and not book_product.isbn
             ):
                 book_product.isbn = new_isbn
                 updated = True
-        if "publisher" in attrs and attrs["publisher"] != (book_product.publisher or ""):
+        if "publisher" in attrs and attrs["publisher"] and not book_product.publisher:
             book_product.publisher = attrs["publisher"]
             updated = True
-        if "pages" in attrs:
+        if "pages" in attrs and not book_product.pages:
             try:
                 pages_val = int(attrs["pages"])
-                if 0 < pages_val < 10000 and pages_val != book_product.pages:
+                if 0 < pages_val < 10000:
                     book_product.pages = pages_val
                     updated = True
             except (ValueError, TypeError):
                 pass
-        if "cover_type" in attrs and attrs["cover_type"] != (book_product.cover_type or ""):
+        if "cover_type" in attrs and attrs["cover_type"] and not book_product.cover_type:
             book_product.cover_type = attrs["cover_type"]
             updated = True
-        if "language" in attrs and attrs["language"] != (book_product.language or ""):
+        if "language" in attrs and attrs["language"] and not book_product.language:
             book_product.language = attrs["language"]
             updated = True
-        if "publication_year" in attrs and attrs["publication_year"]:
+        if "publication_year" in attrs and attrs["publication_year"] and not book_product.publication_date:
             try:
                 year = int(attrs["publication_year"])
                 new_date = datetime.date(year, 1, 1)
-                if book_product.publication_date != new_date:
-                    book_product.publication_date = new_date
-                    updated = True
+                book_product.publication_date = new_date
+                updated = True
             except (ValueError, TypeError):
                 pass
         if updated:
@@ -851,38 +848,36 @@ class ScraperIntegrationService:
         from decimal import Decimal
 
         valid_types = {"ring", "bracelet", "necklace", "earrings", "pendant"}
-        if "jewelry_type" in attrs and attrs["jewelry_type"]:
+        if "jewelry_type" in attrs and attrs["jewelry_type"] and not jewelry_product.jewelry_type:
             v = str(attrs["jewelry_type"]).strip().lower()
-            if v in valid_types and v != (jewelry_product.jewelry_type or ""):
+            if v in valid_types:
                 jewelry_product.jewelry_type = v
                 updated = True
         if (
             "material" in attrs
             and attrs["material"]
-            and str(attrs["material"]).strip() != (jewelry_product.material or "")
+            and not jewelry_product.material
         ):
             jewelry_product.material = str(attrs["material"]).strip()[:100]
             updated = True
         if (
             "metal_purity" in attrs
             and attrs["metal_purity"]
-            and str(attrs["metal_purity"]).strip() != (jewelry_product.metal_purity or "")
+            and not jewelry_product.metal_purity
         ):
             jewelry_product.metal_purity = str(attrs["metal_purity"]).strip()[:50]
             updated = True
         if (
             "stone_type" in attrs
             and attrs["stone_type"]
-            and str(attrs["stone_type"]).strip() != (jewelry_product.stone_type or "")
+            and not jewelry_product.stone_type
         ):
             jewelry_product.stone_type = str(attrs["stone_type"]).strip()[:100]
             updated = True
-        if "carat_weight" in attrs and attrs["carat_weight"] is not None:
+        if "carat_weight" in attrs and attrs["carat_weight"] is not None and jewelry_product.carat_weight is None:
             try:
                 v = Decimal(str(attrs["carat_weight"]).strip().replace(",", "."))
-                if v >= 0 and (
-                    jewelry_product.carat_weight is None or jewelry_product.carat_weight != v
-                ):
+                if v >= 0:
                     jewelry_product.carat_weight = v
                     updated = True
             except (ValueError, TypeError):
@@ -890,7 +885,7 @@ class ScraperIntegrationService:
         if (
             "gender" in attrs
             and attrs["gender"]
-            and str(attrs["gender"]).strip() != (jewelry_product.gender or "")
+            and not jewelry_product.gender
         ):
             jewelry_product.gender = str(attrs["gender"]).strip()[:10]
             updated = True
@@ -914,13 +909,11 @@ class ScraperIntegrationService:
         # --- Общие поля → Product ---
 
         # Weight (e.g. "0,441" kg from ummaland)
-        if "weight" in attrs and attrs["weight"]:
+        if "weight" in attrs and attrs["weight"] and product.weight_value is None:
             try:
                 weight_str = str(attrs["weight"]).strip().replace(",", ".")
                 weight_val = float(weight_str)
-                if weight_val >= 0 and (
-                    product.weight_value is None or float(product.weight_value) != weight_val
-                ):
+                if weight_val >= 0:
                     product.weight_value = weight_val
                     product.weight_unit = "kg"
                     updated = True
@@ -937,7 +930,7 @@ class ScraperIntegrationService:
         if (
             "meta_title" in attrs
             and attrs["meta_title"]
-            and attrs["meta_title"] != product.seo_title
+            and not product.seo_title
         ):
             product.seo_title = attrs["meta_title"][:70]
             updated = True
@@ -946,17 +939,16 @@ class ScraperIntegrationService:
         if (
             "meta_description" in attrs
             and attrs["meta_description"]
-            and attrs["meta_description"] != product.seo_description
+            and not product.seo_description
         ):
             product.seo_description = attrs["meta_description"][:160]
             updated = True
 
         # Keywords -> keywords (RU) - JSON field
-        if "meta_keywords" in attrs and attrs["meta_keywords"]:
+        if "meta_keywords" in attrs and attrs["meta_keywords"] and not product.keywords:
             keywords_list = [k.strip() for k in attrs["meta_keywords"].split(",") if k.strip()]
-            if keywords_list != product.keywords:
-                product.keywords = keywords_list
-                updated = True
+            product.keywords = keywords_list
+            updated = True
 
         # OG-данные от источника (на языке источника) — сохраняем в external_data для справки AI,
         # но НЕ устанавливаем в EN SEO поля модели (og_image_url, og_title, og_description).
@@ -971,9 +963,9 @@ class ScraperIntegrationService:
             if "seo_data" not in product.external_data:
                 product.external_data["seo_data"] = {}
             for attr_key, data_key in og_keys.items():
-                if attr_key in attrs and attrs[attr_key]:
+                if attr_key in attrs and attrs[attr_key] and data_key not in product.external_data["seo_data"]:
                     product.external_data["seo_data"][data_key] = attrs[attr_key]
-            updated = True
+                    updated = True
 
         return updated
 

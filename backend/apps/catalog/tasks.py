@@ -105,18 +105,19 @@ def _normalize_media_path(path: str) -> str:
 def _collect_db_media_paths():
     """
     Собрать все пути к медиа-файлам из БД.
-    Динамически обходит все модели всех приложений, находит FileField/ImageField
-    и собирает пути. Это защищает от пропуска новых моделей/полей.
+    Динамически обходит все модели всех приложений, находит FileField/ImageField,
+    а также URLField, и собирает пути. Это защищает от пропуска новых моделей/полей.
     """
     from django.apps import apps
-    from django.db.models import FileField, ImageField
+    from django.db.models import FileField, ImageField, URLField
+    from urllib.parse import urlparse
 
     paths = set()
     seen = set()  # (model_label, field_name) для логирования
 
     for model in apps.get_models():
         for field in model._meta.get_fields():
-            if not isinstance(field, (FileField, ImageField)):
+            if not isinstance(field, (FileField, ImageField, URLField)):
                 continue
             key = (model._meta.label, field.name)
             if key in seen:
@@ -126,10 +127,20 @@ def _collect_db_media_paths():
                 manager = getattr(model, "_base_manager", model.objects)
                 for obj in manager.only(field.name).iterator(chunk_size=500):
                     val = getattr(obj, field.name, None)
-                    if val and getattr(val, "name", None):
-                        normalized = _normalize_media_path(val.name)
-                        if normalized:
-                            paths.add(normalized)
+                    if not val:
+                        continue
+                    if isinstance(field, (FileField, ImageField)):
+                        if getattr(val, "name", None):
+                            normalized = _normalize_media_path(val.name)
+                            if normalized:
+                                paths.add(normalized)
+                    elif isinstance(field, URLField):
+                        if isinstance(val, str) and val.strip():
+                            parsed = urlparse(val)
+                            path = parsed.path
+                            normalized = _normalize_media_path(path)
+                            if normalized:
+                                paths.add(normalized)
             except Exception as e:
                 logger.warning("cleanup_orphaned_media: skip %s.%s: %s", model._meta.label, field.name, e)
     return paths
@@ -157,6 +168,7 @@ _PROTECTED_STORAGE_PREFIXES = (
     "products/original/",
     "products/processed/",
     "products/thumbs/",
+    "products/parsed/",  # файлы, скачанные парсерами
     "temp/",
     "avatars/",  # аватарки пользователей (users.User.avatar)
     "testimonials/",  # аватарки авторов отзывов (feedback.Testimonial.author_avatar)

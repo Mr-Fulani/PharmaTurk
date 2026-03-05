@@ -827,7 +827,14 @@ class AbstractDomainProduct(models.Model):
                 is_active=self.is_active,
                 is_new=self.is_new,
                 is_featured=self.is_featured,
+                main_image=self.main_image,
+                main_image_file=self.main_image_file,
             )
+            if hasattr(self, 'video_url'):
+                product.video_url = self.video_url
+            if hasattr(self, 'main_video_file'):
+                product.main_video_file = self.main_video_file
+                
             product.save()
             self.__class__.objects.filter(pk=self.pk).update(base_product=product)
             return
@@ -861,6 +868,13 @@ class AbstractDomainProduct(models.Model):
         product.is_active = self.is_active
         product.is_new = self.is_new
         product.is_featured = self.is_featured
+        product.main_image = self.main_image
+        product.main_image_file = self.main_image_file
+        if hasattr(self, 'video_url'):
+            product.video_url = self.video_url
+        if hasattr(self, 'main_video_file'):
+            product.main_video_file = self.main_video_file
+            
         product.save()
 
 
