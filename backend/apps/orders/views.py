@@ -67,10 +67,13 @@ def _create_crypto_invoice(number: str, total, cart_currency: str, locale: str =
         expiry_minutes=30,
         description=f"Order {number}",
     )
-    if not invoice_data and getattr(settings, "DEBUG", False):
+
+    # Dummy-режим ТОЛЬКО при явном CRYPTO_DUMMY_MODE=1 (не просто DEBUG).
+    # Это позволяет тестировать через реальный CoinRemitter (TCN/USDTTRC20) даже в dev.
+    if not invoice_data and getattr(settings, "CRYPTO_DUMMY_MODE", False):
         logger.warning(
-            "CoinRemitter create_invoice failed, using dummy (API key set: %s). "
-            "Check COINREMITTER_API_KEY, COINREMITTER_API_PASSWORD and backend logs.",
+            "CoinRemitter create_invoice failed, using DUMMY (CRYPTO_DUMMY_MODE=1). "
+            "API key set: %s. Check COINREMITTER_API_KEY / COINREMITTER_API_PASSWORD.",
             bool(getattr(settings, "COINREMITTER_API_KEY", "")),
         )
         invoice_data = create_invoice_dummy(
@@ -82,6 +85,12 @@ def _create_crypto_invoice(number: str, total, cart_currency: str, locale: str =
             fail_url=fail_url,
             expiry_minutes=30,
             description=f"Order {number}",
+        )
+    elif not invoice_data:
+        logger.error(
+            "CoinRemitter create_invoice failed and CRYPTO_DUMMY_MODE is off. "
+            "API key set: %s. Returning 503 to client.",
+            bool(getattr(settings, "COINREMITTER_API_KEY", "")),
         )
     if not invoice_data:
         return None, None

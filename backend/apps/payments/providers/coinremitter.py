@@ -69,10 +69,17 @@ def create_invoice(
     # Coin is determined by wallet (API key). Path is /v1/invoice/create per Swagger/Node SDK.
     url = f"{COINREMITTER_BASE}/invoice/create"
 
-    # CoinRemitter проверяет success_url/fail_url/notify_url POST-запросом — нужен публичный URL.
-    # localhost недоступен с их серверов → не передаём, инвойс создаётся без редиректа после оплаты.
     def _is_public(u: str) -> bool:
-        return bool(u and "localhost" not in u.lower() and "127.0.0.1" not in u)
+        if not u:
+            return False
+        u = u.lower()
+        if "localhost" in u or "127.0.0.1" in u:
+            return False
+        # Бесплатный Ngrok отдаёт HTML-заглушку ("Visit Site") при первом визите,
+        # из-за чего CoinRemitter API не видит 200 OK и выбрасывает ошибку 1001.
+        if "ngrok-free.dev" in u or "ngrok.io" in u or "ngrok.app" in u:
+            return False
+        return True
 
     payload: dict[str, str | int] = {
         "amount": str(amount_fiat),
@@ -104,8 +111,8 @@ def create_invoice(
 
     if not data.get("success"):
         logger.warning(
-            "CoinRemitter create_invoice failed: %s (sent amount=%s %s)",
-            data, amount_fiat, fiat_currency,
+            "CoinRemitter create_invoice failed: status_code=%s body=%s (sent amount=%s %s)",
+            resp.status_code, data, amount_fiat, fiat_currency,
         )
         return None
 
@@ -114,15 +121,19 @@ def create_invoice(
     invoice_id_long = inner.get("id") or ""
 
     # Create response may not include address/qr_code. Fetch full invoice via invoice/get.
-    address = ""
-    qr_code = ""
     if invoice_id_short or invoice_id_long:
         get_data = _get_invoice(config, invoice_id_short or invoice_id_long)
         if get_data:
             inner = get_data
-            logger.info("CoinRemitter: got address/qr from invoice/get")
+            logger.info("CoinRemitter: got full invoice data from invoice/get")
 
-    # Parse address and qr_code from response (create or get)
+    # -- Адрес и QR-код -------------------------------------------------------
+    # Возможные форматы ответа:
+    #   1. inner["crypto_currency"] = [{"address": ..., "qr_code": ...}]  (старый / ERC20)
+    #   2. inner["address"] = "..."  (прямое поле)
+    #   3. Нет адреса (TCN test coin) — пользователь идёт по invoice_url
+    address = ""
+    qr_code = ""
     if "crypto_currency" in inner:
         cc = inner["crypto_currency"]
         if isinstance(cc, list) and cc:
@@ -137,26 +148,52 @@ def create_invoice(
     if not qr_code:
         qr_code = inner.get("qr_code") or inner.get("qr_code_url") or ""
 
-    amount_str = inner.get("amount") or "0"
-    usd_str = inner.get("usd_amount") or amount_str
-    try:
-        amount_crypto = Decimal(amount_str)
-        amount_usd = Decimal(usd_str)
-    except Exception:
-        amount_crypto = Decimal("0")
-        amount_usd = Decimal(usd_str) if isinstance(amount_fiat, Decimal) else Decimal(str(amount_fiat))
+    # -- Сумма в крипте -------------------------------------------------------
+    # Новый формат: total_amount = {"TCN": "1.00000000", "USD": "1.0000"}
+    # Старый формат: amount = "1.74"
+    coin_symbol = inner.get("coin_symbol") or ""
+    amount_crypto = Decimal("0")
+    total_amount_obj = inner.get("total_amount")
+    if isinstance(total_amount_obj, dict) and coin_symbol and coin_symbol in total_amount_obj:
+        try:
+            amount_crypto = Decimal(str(total_amount_obj[coin_symbol]))
+        except Exception:
+            pass
+    if amount_crypto == Decimal("0"):
+        amount_str = inner.get("amount") or "0"
+        try:
+            amount_crypto = Decimal(str(amount_str))
+        except Exception:
+            amount_crypto = Decimal("0")
 
-    from datetime import datetime, timedelta, timezone
+    # -- Сумма в USD ----------------------------------------------------------
+    usd_str = inner.get("usd_amount") or "0"
+    try:
+        amount_usd = Decimal(str(usd_str))
+    except Exception:
+        amount_usd = Decimal(str(amount_fiat))
+    if amount_usd == Decimal("0"):
+        amount_usd = Decimal(str(amount_fiat))
+
+    # -- Время истечения ------------------------------------------------------
+    from datetime import datetime, timezone as py_tz
     from django.utils import timezone as django_tz
     expires_at = None
     if "expire_on_timestamp" in inner:
         try:
             ts = int(inner["expire_on_timestamp"])
-            expires_at = datetime.fromtimestamp(ts / 1000.0, tz=timezone.utc)
+            expires_at = datetime.fromtimestamp(ts / 1000.0, tz=py_tz.utc)
         except (TypeError, ValueError):
             pass
     if expires_at is None:
         expires_at = django_tz.now() + timedelta(minutes=expiry_minutes)
+
+    invoice_url = inner.get("url") or inner.get("invoice_url") or ""
+
+    logger.info(
+        "CoinRemitter invoice ready: id=%s coin=%s amount=%s address=%s has_url=%s",
+        inner.get("id") or invoice_id_short, coin_symbol, amount_crypto, bool(address), bool(invoice_url),
+    )
 
     return {
         "invoice_id": inner.get("id") or inner.get("invoice_id") or "",
@@ -166,5 +203,5 @@ def create_invoice(
         "amount_usd": amount_usd,
         "currency": fiat_currency.upper()[:3],
         "expires_at": expires_at,
-        "invoice_url": inner.get("url") or "",
+        "invoice_url": invoice_url,
     }

@@ -102,8 +102,15 @@ class CryptoWebhookView(APIView):
                 cp.status = "confirmed"
                 cp.save(update_fields=["status"])
             logger.info("Crypto payment confirmed: order=%s invoice_id=%s", order.number, invoice_id)
+            # Уведомляем пользователя через Telegram (graceful: не ломает при отсутствии токена)
+            from .tasks import notify_crypto_payment_confirmed
+            notify_crypto_payment_confirmed.delay(order.id)
         elif status in ("expire", "expired", "0"):
             cp.status = "expired"
             cp.save(update_fields=["status"])
+            logger.info("Crypto payment expired: order=%s invoice_id=%s", order.number, invoice_id)
+            # Уведомляем пользователя об истечении инвойса
+            from .tasks import notify_crypto_payment_expired
+            notify_crypto_payment_expired.delay(order.id)
         return Response({"ok": True}, status=200)
 
