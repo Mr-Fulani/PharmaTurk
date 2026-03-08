@@ -8,6 +8,9 @@ interface User {
   id: number
   email: string
   username: string
+  first_name?: string
+  last_name?: string
+  phone_number?: string
   currency?: string
 }
 
@@ -29,7 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const refreshCartRef = useRef(useCartStore.getState().refresh)
   const refreshFavoritesRef = useRef(useFavoritesStore.getState().refresh)
-  
+
   // Обновляем ref при изменении store
   useEffect(() => {
     refreshCartRef.current = useCartStore.getState().refresh
@@ -52,6 +55,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: profile.id,
           email: profile.user_email,
           username: profile.user_username,
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          phone_number: profile.phone_number,
           currency: profile.currency
         })
         if (profile.currency) {
@@ -76,7 +82,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { tokens, user } = res.data
       if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
       if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
-      setUser({ id: user.id, email: user.email, username: user.username, currency: user.currency })
+      setUser({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        phone_number: user.phone_number,
+        currency: user.currency
+      })
       if (user.currency) {
         Cookies.set('currency', user.currency, { sameSite: 'Lax', path: '/' })
         setPreferredCurrency(user.currency)
@@ -91,7 +105,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { tokens, user } = res.data
       if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
       if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
-      setUser({ id: user.id, email: user.email, username: user.username, currency: user.currency })
+      setUser({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        phone_number: user.phone_number,
+        currency: user.currency
+      })
       if (user.currency) {
         Cookies.set('currency', user.currency, { sameSite: 'Lax', path: '/' })
         setPreferredCurrency(user.currency)

@@ -8,12 +8,20 @@ from django.views.decorators.http import require_http_methods
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework import serializers
 from drf_spectacular.utils import extend_schema
 
 from .models import CryptoPayment
 from .providers import DummyProvider
 
 logger = logging.getLogger(__name__)
+
+
+class CoinRemitterWebhookSerializer(serializers.Serializer):
+    """Строгая валидация входящих данных от CoinRemitter Webhook."""
+    id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    invoice_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    status = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
 class PaymentInitView(APIView):
@@ -74,9 +82,17 @@ class CryptoWebhookView(APIView):
         if not _verify_webhook_request(request):
             logger.warning("Crypto webhook: rejected IP %s", request.META.get("REMOTE_ADDR"))
             return Response(status=403)
+            
         data = _parse_webhook_payload(request)
-        invoice_id = (data.get("id") or data.get("invoice_id") or "").strip()
-        status = (data.get("status") or "").strip().lower()
+        serializer = CoinRemitterWebhookSerializer(data=data)
+        if not serializer.is_valid():
+            logger.warning("Crypto webhook: invalid payload %s", serializer.errors)
+            return Response({"ok": False, "errors": serializer.errors}, status=400)
+            
+        validated_data = serializer.validated_data
+        invoice_id = (validated_data.get("id") or validated_data.get("invoice_id") or "").strip()
+        status = (validated_data.get("status") or "").strip().lower()
+        
         if not invoice_id:
             # CoinRemitter отправляет тестовый POST при валидации URL — возвращаем 200
             logger.info("Crypto webhook: validation ping (no invoice_id)")

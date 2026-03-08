@@ -326,7 +326,16 @@ X_FRAME_OPTIONS = "DENY"
 APPEND_SLASH = False
 
 # Email/Company defaults
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=EMAIL_PORT == 587)
+EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=EMAIL_PORT == 465)
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=30)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@pharmaturk.local")
+SERVER_EMAIL = env("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+EMAIL_ADMIN = env("EMAIL_ADMIN", default=DEFAULT_FROM_EMAIL)
 COMPANY_NAME = env("COMPANY_NAME", default="PharmaTurk")
 COMPANY_SUPPORT_EMAIL = env("COMPANY_SUPPORT_EMAIL", default=DEFAULT_FROM_EMAIL)
 COMPANY_SUPPORT_PHONE = env("COMPANY_SUPPORT_PHONE", default="+90 (000) 000-00-00")
@@ -434,3 +443,8 @@ COINREMITTER_WEBHOOK_IP_WHITELIST = env.list("COINREMITTER_WEBHOOK_IP_WHITELIST"
 SITE_URL = env("SITE_URL", default="http://localhost:3000").rstrip("/")
 # Для success_url/fail_url: URL фронтенда (checkout-success). По умолчанию = SITE_URL.
 FRONTEND_SITE_URL = env("FRONTEND_SITE_URL", default="").rstrip("/") or SITE_URL
+
+# Telegram notifications
+TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", default="")
+TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", default="")
+TELEGRAM_CHAT_ID = env("TELEGRAM_CHAT_ID", default="")

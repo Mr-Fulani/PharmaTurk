@@ -39,7 +39,7 @@ interface Order {
   items: OrderItem[]
 }
 
-interface ReceiptItem extends OrderItem {}
+interface ReceiptItem extends OrderItem { }
 
 interface OrderReceipt {
   number: string
@@ -166,10 +166,10 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
         locale: router.locale || 'ru',
       })
       setSendState('success')
-      setSendMessage(res.data?.detail || t('order_success_send_success', { email: sendEmail }))
+      setSendMessage(t('order_success_send_success', { email: sendEmail }))
     } catch (err: any) {
       setSendState('error')
-      setSendMessage(err?.response?.data?.detail || t('order_success_send_error'))
+      setSendMessage(t('order_success_send_error'))
     }
   }
 
@@ -270,7 +270,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                     />
                     <StatisticCard
                       label={t('order_success_payment_method')}
-                      value={order.payment_method || '—'}
+                      value={order.payment_method ? t(`payment_${order.payment_method}`, { defaultValue: order.payment_method }) : '—'}
                       accent="from-blue-500/10 to-blue-100/40"
                     />
                     <StatisticCard
@@ -334,9 +334,8 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                   </div>
                   {sendMessage && (
                     <p
-                      className={`mt-3 text-sm ${
-                        sendState === 'success' ? 'text-emerald-600' : 'text-rose-600'
-                      }`}
+                      className={`mt-3 text-sm ${sendState === 'success' ? 'text-emerald-600' : 'text-rose-600'
+                        }`}
                     >
                       {sendMessage}
                     </p>

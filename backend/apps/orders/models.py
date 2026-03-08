@@ -124,7 +124,7 @@ class Cart(models.Model):
     """Корзина товаров пользователя или гостя."""
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name="carts", verbose_name=_("Пользователь"))
     session_key = models.CharField(_("Ключ сессии"), max_length=64, blank=True, db_index=True)
-    currency = models.CharField(_("Валюта"), max_length=3, default="USD")
+    currency = models.CharField(_("Валюта"), max_length=10, default="USD")
     promo_code = models.ForeignKey(PromoCode, on_delete=models.SET_NULL, null=True, blank=True, related_name="carts", verbose_name=_("Промокод"))
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
@@ -203,7 +203,7 @@ class CartItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="cart_items", verbose_name=_("Товар"))
     quantity = models.PositiveIntegerField(_("Количество"), default=1, validators=[MinValueValidator(1)])
     price = models.DecimalField(_("Цена на момент добавления"), max_digits=10, decimal_places=2)
-    currency = models.CharField(_("Валюта"), max_length=3, default="USD")
+    currency = models.CharField(_("Валюта"), max_length=10, default="USD")
     chosen_size = models.CharField(_("Выбранный размер"), max_length=50, blank=True, default="")
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
@@ -266,7 +266,7 @@ class Order(models.Model):
     shipping_amount = models.DecimalField(_("Доставка"), max_digits=12, decimal_places=2, default=0)
     discount_amount = models.DecimalField(_("Скидка"), max_digits=12, decimal_places=2, default=0)
     total_amount = models.DecimalField(_("Итого"), max_digits=12, decimal_places=2, default=0)
-    currency = models.CharField(_("Валюта"), max_length=3, default="USD")
+    currency = models.CharField(_("Валюта"), max_length=10, default="USD")
 
     # Контакты/доставка
     contact_name = models.CharField(_("Имя получателя"), max_length=150)
@@ -283,6 +283,8 @@ class Order(models.Model):
     promo_code = models.ForeignKey(PromoCode, on_delete=models.SET_NULL, null=True, blank=True, related_name="orders", verbose_name=_("Промокод"))
 
     comment = models.TextField(_("Комментарий"), blank=True)
+    
+    receipt_url = models.URLField(_("Ссылка на чек (PDF)"), blank=True, null=True, max_length=1000)
 
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)

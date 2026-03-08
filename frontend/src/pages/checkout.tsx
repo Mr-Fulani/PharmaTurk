@@ -139,6 +139,18 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     loadData()
   }, [])
 
+  // Обновляем контактные данные при загрузке профиля пользователя
+  useEffect(() => {
+    if (user) {
+      if (!selectedAddressId) {
+        const fullName = `${(user as any).first_name || ''} ${(user as any).last_name || ''}`.trim()
+        if (fullName && !contactName) setContactName(fullName)
+        if ((user as any).phone_number && !contactPhone) setContactPhone((user as any).phone_number)
+      }
+      if (!contactEmail) setContactEmail(user.email || '')
+    }
+  }, [user, selectedAddressId, contactName, contactPhone, contactEmail])
+
   const handleAddressSelect = (address: Address) => {
     setSelectedAddressId(address.id)
     setUseSavedAddress(true)
@@ -307,8 +319,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       <div
                         key={address.id}
                         className={`rounded-lg border-2 p-4 cursor-pointer transition-all ${selectedAddressId === address.id && useSavedAddress
-                            ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
-                            : 'border-gray-200 hover:border-gray-300'
+                          ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                          : 'border-gray-200 hover:border-gray-300'
                           }`}
                         onClick={() => handleAddressSelect(address)}
                       >
@@ -697,8 +709,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('checkout_shipping_method', 'Способ доставки')}</h2>
                 <div className="space-y-3">
                   <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${shippingMethod === 'ground'
-                      ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
-                      : 'border-gray-200 hover:bg-gray-50'
+                    ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                    : 'border-gray-200 hover:bg-gray-50'
                     }`}>
                     <input
                       type="radio"
@@ -720,8 +732,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   </label>
 
                   <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${shippingMethod === 'air'
-                      ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
-                      : 'border-gray-200 hover:bg-gray-50'
+                    ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                    : 'border-gray-200 hover:bg-gray-50'
                     }`}>
                     <input
                       type="radio"
@@ -743,8 +755,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   </label>
 
                   <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${shippingMethod === 'sea'
-                      ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
-                      : 'border-gray-200 hover:bg-gray-50'
+                    ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                    : 'border-gray-200 hover:bg-gray-50'
                     }`}>
                     <input
                       type="radio"
@@ -773,8 +785,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 <div className="space-y-3">
                   {/* Наложенный платёж */}
                   <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${paymentMethod === 'cod'
-                      ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
-                      : 'border-gray-200 hover:bg-gray-50'
+                    ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                    : 'border-gray-200 hover:bg-gray-50'
                     }`}>
                     <input
                       type="radio"
@@ -797,8 +809,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
 
                   {/* Банковская карта */}
                   <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${paymentMethod === 'card'
-                      ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
-                      : 'border-gray-200 hover:bg-gray-50'
+                    ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                    : 'border-gray-200 hover:bg-gray-50'
                     }`}>
                     <input
                       type="radio"
@@ -821,8 +833,8 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
 
                   {/* Криптовалюта */}
                   <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${paymentMethod === 'crypto'
-                      ? 'border-violet-500 bg-violet-50'
-                      : 'border-gray-200 hover:bg-gray-50'
+                    ? 'border-violet-500 bg-violet-50'
+                    : 'border-gray-200 hover:bg-gray-50'
                     }`}>
                     <input
                       type="radio"

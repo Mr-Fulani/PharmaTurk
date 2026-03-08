@@ -9,6 +9,13 @@ find /app -type f -name "*.pyo" -delete 2>/dev/null || true
 find /app -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 echo "✅ Кэш Python очищен"
 
+# Устанавливаем weasyprint если не установлен (требует системных библиотек Pango/Cairo из Dockerfile)
+echo "📦 Проверяем weasyprint..."
+poetry run python -c "import weasyprint" 2>/dev/null || {
+    echo "⬇️  weasyprint не найден, устанавливаем..."
+    poetry run pip install weasyprint -q && echo "✅ weasyprint установлен" || echo "⚠️  weasyprint не удалось установить (PDF-чеки будут недоступны)"
+}
+
 # Очистка кэша Django
 echo "🧹 Очищаем кэш Django..."
 poetry run python manage.py clear_cache 2>/dev/null || true

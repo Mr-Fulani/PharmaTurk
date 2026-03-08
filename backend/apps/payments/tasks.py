@@ -40,6 +40,7 @@ def notify_crypto_payment_confirmed(self, order_id: int) -> None:
     Работает gracefully: если Telegram не настроен — просто логирует без ошибки.
     """
     from apps.orders.models import Order
+    from apps.orders.tasks import send_order_receipt_task
 
     try:
         order = Order.objects.select_related("user").get(id=order_id)
@@ -48,21 +49,14 @@ def notify_crypto_payment_confirmed(self, order_id: int) -> None:
         return
 
     bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
-    chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+    admin_chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
 
-    # Если пользователь прилинкован к Telegram-аккаунту, берём его chat_id
     user = order.user
+    user_chat_id = ""
     if user:
-        user_tg_id = getattr(user, "telegram_chat_id", None) or getattr(user, "tg_chat_id", None)
-        if user_tg_id:
-            chat_id = str(user_tg_id)
-
-    if not bot_token or not chat_id:
-        logger.info(
-            "Telegram not configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID empty). "
-            "Skipping notification for order %s.", order.number
-        )
-        return
+        utg = getattr(user, "telegram_chat_id", None) or getattr(user, "tg_chat_id", None)
+        if utg:
+            user_chat_id = str(utg)
 
     amount_info = ""
     try:
@@ -71,27 +65,51 @@ def notify_crypto_payment_confirmed(self, order_id: int) -> None:
     except CryptoPayment.DoesNotExist:
         pass
 
-    text = (
-        f"✅ *Оплата подтверждена!*\n"
-        f"Заказ: `{order.number}`"
-        f"{amount_info}\n"
-        f"Статус: *Оплачен*\n\n"
-        f"Ваш заказ принят в обработку. Мы свяжемся с вами в ближайшее время."
-    )
+    def _send_tg(chat_id: str, text: str):
+        if not bot_token or not chat_id:
+            return
+        try:
+            resp = requests.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+                timeout=10,
+            )
+            if not resp.ok:
+                logger.warning("Telegram notification failed for order %s: %s", order.number, resp.text)
+            else:
+                logger.info("Telegram notification sent for order %s → chat_id=%s", order.number, chat_id)
+        except requests.RequestException as e:
+            logger.warning("Telegram send error for order %s: %s", order.number, e)
 
-    try:
-        resp = requests.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=10,
+    # Уведомление админу
+    if admin_chat_id:
+        admin_text = (
+            f"🔔 *Новая оплата!*\n"
+            f"Заказ: `{order.number}`"
+            f"{amount_info}\n"
+            f"Статус: *Оплачен*"
         )
-        if not resp.ok:
-            logger.warning("Telegram notification failed for order %s: %s", order.number, resp.text)
-        else:
-            logger.info("Telegram notification sent for order %s → chat_id=%s", order.number, chat_id)
-    except requests.RequestException as e:
-        logger.warning("Telegram send error for order %s: %s", order.number, e)
-        raise  # Позволяет Celery retry
+        _send_tg(admin_chat_id, admin_text)
+
+    # Уведомление покупателю
+    if user_chat_id and user_chat_id != admin_chat_id:
+        user_text = (
+            f"✅ *Ваш заказ оплачен!*\n"
+            f"Заказ: `{order.number}`"
+            f"{amount_info}\n\n"
+            f"Мы приняли его в обработку и скоро с вами свяжемся."
+        )
+        _send_tg(user_chat_id, user_text)
+
+    # Отправляем чек на почту (и генерируем PDF)
+    try:
+        user_email = getattr(order, 'contact_email', None) or (order.user.email if order.user else None)
+        if user_email:
+            # Отправка чека по email
+            send_order_receipt_task.delay(order_id=order.id, email=user_email)
+            logger.info("Triggered order receipt email for order %s to %s", order.number, user_email)
+    except Exception as e:
+        logger.error("Failed to trigger send_order_receipt_task for order %s: %s", order.number, e)
 
 
 @app.task(bind=True, autoretry_for=(Exception,), retry_backoff=30, max_retries=3)
@@ -105,33 +123,43 @@ def notify_crypto_payment_expired(self, order_id: int) -> None:
         return
 
     bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
-    chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+    admin_chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
 
     user = order.user
+    user_chat_id = ""
     if user:
-        user_tg_id = getattr(user, "telegram_chat_id", None) or getattr(user, "tg_chat_id", None)
-        if user_tg_id:
-            chat_id = str(user_tg_id)
+        utg = getattr(user, "telegram_chat_id", None) or getattr(user, "tg_chat_id", None)
+        if utg:
+            user_chat_id = str(utg)
 
-    if not bot_token or not chat_id:
-        logger.info("Telegram not configured. Skipping expire notification for order %s.", order.number)
-        return
+    def _send_tg(chat_id: str, text: str):
+        if not bot_token or not chat_id:
+            return
+        try:
+            resp = requests.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+                timeout=10,
+            )
+            if not resp.ok:
+                logger.warning("Telegram notification failed for order %s: %s", order.number, resp.text)
+            else:
+                logger.info("Telegram notification sent for order %s → chat_id=%s", order.number, chat_id)
+        except requests.RequestException as e:
+            logger.warning("Telegram send error for order %s: %s", order.number, e)
 
-    text = (
-        f"⏰ *Время оплаты истекло*\n"
-        f"Заказ: `{order.number}`\n\n"
-        f"К сожалению, время на оплату крипто-инвойса истекло. "
-        f"Вы можете создать новый заказ."
-    )
-
-    try:
-        resp = requests.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=10,
+    if admin_chat_id:
+        admin_text = (
+            f"⚠️ *Истекло время оплаты*\n"
+            f"Заказ: `{order.number}`\n"
+            f"Покупатель не успел оплатить крипто-инвойс."
         )
-        if not resp.ok:
-            logger.warning("Telegram expire notification failed for order %s: %s", order.number, resp.text)
-    except requests.RequestException as e:
-        logger.warning("Telegram send error for order %s: %s", order.number, e)
-        raise
+        _send_tg(admin_chat_id, admin_text)
+
+    if user_chat_id and user_chat_id != admin_chat_id:
+        user_text = (
+            f"⏰ *Время оплаты истекло*\n"
+            f"Заказ: `{order.number}`\n\n"
+            f"К сожалению, время на оплату крипто-инвойса истекло. Вы можете создать новый заказ."
+        )
+        _send_tg(user_chat_id, user_text)

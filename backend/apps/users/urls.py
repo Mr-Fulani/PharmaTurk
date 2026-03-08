@@ -20,7 +20,8 @@ from .views import (
     SMSSendCodeView,
     SMSVerifyCodeView,
     SocialAuthView,
-    PublicUserProfileView
+    PublicUserProfileView,
+    TelegramWebhookView
 )
 
 # Роутер для ViewSets
@@ -56,6 +57,10 @@ urlpatterns = [
     # Смена пароля
     path('change-password/', UserPasswordChangeView.as_view(), name='user-change-password'),
     re_path(r'^change-password$', UserPasswordChangeView.as_view(), name='user-change-password-noslash'),
+    
+    # Telegram Вебхук
+    path('telegram/webhook/', TelegramWebhookView.as_view(), name='telegram-webhook'),
+    re_path(r'^telegram/webhook$', TelegramWebhookView.as_view(), name='telegram-webhook-noslash'),
     
     # Статистика
     path('stats/', UserStatsView.as_view(), name='user-stats'),

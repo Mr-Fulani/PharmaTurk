@@ -95,7 +95,8 @@ api.interceptors.request.use((config) => {
     ; (config.headers as AxiosRequestHeaders)['Accept-Language'] = locale
 
   const storedCurrency = Cookies.get('currency')
-  const resolvedCurrency = storedCurrency || preferredCurrency || (!access ? 'RUB' : null)
+  // для авторизованных пользователей: берём из cookie, иначе из preferredCurrency, иначе fallback RUB
+  const resolvedCurrency = storedCurrency || preferredCurrency || 'RUB'
   if (process.env.NODE_ENV === 'development') {
     console.log('[API Currency]', { storedCurrency, preferredCurrency, resolvedCurrency, url: config.url })
   }
@@ -295,23 +296,23 @@ export function getApiForCategory(
   categoryType: string
 ) {
   switch (categoryType) {
-    case 'clothing':          return clothingApi
-    case 'shoes':             return shoesApi
-    case 'electronics':       return electronicsApi
-    case 'furniture':         return furnitureApi
-    case 'jewelry':           return jewelryApi
-    case 'books':             return booksApi
-    case 'perfumery':         return perfumeryApi
+    case 'clothing': return clothingApi
+    case 'shoes': return shoesApi
+    case 'electronics': return electronicsApi
+    case 'furniture': return furnitureApi
+    case 'jewelry': return jewelryApi
+    case 'books': return booksApi
+    case 'perfumery': return perfumeryApi
     case 'medicines':
-    case 'medicines-domain':  return medicinesDomainApi
-    case 'supplements':       return supplementsApi
+    case 'medicines-domain': return medicinesDomainApi
+    case 'supplements': return supplementsApi
     case 'medical-equipment': return medicalEquipmentApi
-    case 'tableware':         return tablewareApi
-    case 'accessories':       return accessoriesApi
-    case 'incense':           return incenseApi
-    case 'sports':            return sportsApi
-    case 'auto-parts':        return autoPartsApi
-    default:                  return medicinesApi
+    case 'tableware': return tablewareApi
+    case 'accessories': return accessoriesApi
+    case 'incense': return incenseApi
+    case 'sports': return sportsApi
+    case 'auto-parts': return autoPartsApi
+    default: return medicinesApi
   }
 }
 

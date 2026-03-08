@@ -69,33 +69,12 @@ services:
         condition: service_started
       qdrant:
         condition: service_started
+    env_file:
+      - .env
     environment:
-      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
-      DATABASE_URL: ${DATABASE_URL:-postgres://pharmaturk:pharmaturk@postgres:5432/pharmaturk}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
-      SENTRY_DSN: ${SENTRY_DSN:-}
-      VAPI_BASE_URL: ${VAPI_BASE_URL:-https://api.vapi.co}
-      VAPI_API_KEY: ${VAPI_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LOG_FORMAT: ${LOG_FORMAT:-json}
       USE_RUNSERVER: ${USE_RUNSERVER:-1}
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
-      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
-      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
-      R2_USE_SSL: ${R2_USE_SSL:-true}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
-      COINREMITTER_API_KEY: ${COINREMITTER_API_KEY:-}
-      COINREMITTER_API_PASSWORD: ${COINREMITTER_API_PASSWORD:-}
-      COINREMITTER_COIN: ${COINREMITTER_COIN:-USDTTRC20}
-      SITE_URL: ${SITE_URL:-http://localhost:3001}
-      FRONTEND_SITE_URL: ${FRONTEND_SITE_URL:-}
     entrypoint: ["bash", "/app/docker-entrypoint.sh"]
     mem_limit: 1.5g
 
@@ -140,25 +119,9 @@ services:
         condition: service_started
       qdrant:
         condition: service_started
+    env_file:
+      - .env
     environment:
-      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
-      DATABASE_URL: ${DATABASE_URL:-postgres://pharmaturk:pharmaturk@postgres:5432/pharmaturk}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
-      SENTRY_DSN: ${SENTRY_DSN:-}
-      VAPI_BASE_URL: ${VAPI_BASE_URL:-https://api.vapi.co}
-      VAPI_API_KEY: ${VAPI_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LOG_FORMAT: ${LOG_FORMAT:-json}
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
-      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
-      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
-      R2_USE_SSL: ${R2_USE_SSL:-true}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
     command: bash -c "poetry run celery -A config worker -Q celery,recsys --loglevel=info --concurrency=2"
@@ -177,23 +140,9 @@ services:
         condition: service_started
       qdrant:
         condition: service_started
+    env_file:
+      - .env
     environment:
-      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
-      DATABASE_URL: ${DATABASE_URL:-postgres://pharmaturk:pharmaturk@postgres:5432/pharmaturk}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
-      SENTRY_DSN: ${SENTRY_DSN:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LOG_FORMAT: ${LOG_FORMAT:-json}
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
-      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
-      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
-      R2_USE_SSL: ${R2_USE_SSL:-true}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
     command: bash -c "poetry run celery -A config worker -Q ai -n ai_worker@%h --loglevel=info --concurrency=2"
@@ -212,25 +161,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    environment:
-      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-secret-key}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
-      DATABASE_URL: ${DATABASE_URL:-postgres://pharmaturk:pharmaturk@postgres:5432/pharmaturk}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
-      SENTRY_DSN: ${SENTRY_DSN:-}
-      VAPI_BASE_URL: ${VAPI_BASE_URL:-https://api.vapi.co}
-      VAPI_API_KEY: ${VAPI_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      LOG_FORMAT: ${LOG_FORMAT:-json}
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
-      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
-      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
-      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
-      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
-      R2_USE_SSL: ${R2_USE_SSL:-true}
+    env_file:
+      - .env
     command: bash -c "poetry run celery -A config beat --loglevel=info"
 
 volumes:
@@ -238,4 +170,3 @@ volumes:
   redis_data:
   opensearch_data:
   qdrant_data:
-

@@ -12,6 +12,9 @@ from typing import Any, Dict, List
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.core.files.base import ContentFile  # noqa: F401 – kept for potential future use
+
+import boto3
 
 from apps.catalog.models import (
     ClothingVariant,
@@ -24,6 +27,60 @@ from apps.users.models import UserAddress
 
 from .models import Order
 
+
+SHIPPING_METHOD_TRANSLATIONS = {
+    "ru": {
+        "air": "Авиадоставка",
+        "sea": "Морская доставка",
+        "ground": "Наземная доставка",
+        "pickup": "Самовывоз",
+    },
+    "en": {
+        "air": "Air Delivery",
+        "sea": "Sea Delivery",
+        "ground": "Ground Delivery",
+        "pickup": "Pickup",
+    }
+}
+
+PAYMENT_METHOD_TRANSLATIONS = {
+    "ru": {
+        "cod": "Наложенный платеж (при получении)",
+        "card": "Банковской картой",
+        "crypto": "Криптовалюта",
+    },
+    "en": {
+        "cod": "Cash on Delivery",
+        "card": "Bank Card",
+        "crypto": "Cryptocurrency",
+    }
+}
+
+PAYMENT_STATUS_TRANSLATIONS = {
+    "ru": {
+        "unpaid": "Не оплачено",
+        "pending": "В ожидании оплаты",
+        "paid": "Оплачено",
+        "failed": "Ошибка оплаты",
+        "expired": "Просрочено",
+        "canceled": "Отменено",
+    },
+    "en": {
+        "unpaid": "Unpaid",
+        "pending": "Pending",
+        "paid": "Paid",
+        "failed": "Failed",
+        "expired": "Expired",
+        "canceled": "Canceled",
+    }
+}
+
+def translate_method(method: str | None, dict_map: Dict[str, Dict[str, str]], locale: str) -> str:
+    if not method:
+        return "-"
+    m = method.strip().lower()
+    loc = "en" if locale == "en" else "ru"
+    return dict_map.get(loc, {}).get(m, method)
 
 def _decimal(value: Decimal | None) -> Decimal:
     return value if isinstance(value, Decimal) else Decimal(value or 0)
@@ -114,7 +171,7 @@ def _serialize_product_translations(product) -> List[Dict[str, Any]]:
 
 
 # TODO: Функционал чеков временно отключен. Будет доработан позже.
-def build_order_receipt_payload(order: Order) -> Dict[str, Any]:
+def build_order_receipt_payload(order: Order, locale: str = 'ru') -> Dict[str, Any]:
     """Формирует структуру данных для отображения/отправки чека."""
     issued_at = timezone.now()
     currency = order.currency or "USD"
@@ -144,6 +201,20 @@ def build_order_receipt_payload(order: Order) -> Dict[str, Any]:
         "address": getattr(settings, "COMPANY_ADDRESS", ""),
         "site": getattr(settings, "COMPANY_SITE_URL", "https://pharmaturk.ru"),
     }
+    # Добавляем ссылки соцсетей из FooterSettings
+    try:
+        from apps.settings.models import FooterSettings
+        fs = FooterSettings.objects.first()
+        if fs:
+            seller["telegram_url"] = getattr(fs, "telegram_url", "") or ""
+            seller["whatsapp_url"] = getattr(fs, "whatsapp_url", "") or ""
+            seller["instagram_url"] = getattr(fs, "instagram_url", "") or ""
+            if getattr(fs, "phone", ""):
+                seller["phone"] = fs.phone
+            if getattr(fs, "email", ""):
+                seller["email"] = fs.email
+    except Exception:
+        pass
 
     customer = {
         "name": order.contact_name,
@@ -152,14 +223,14 @@ def build_order_receipt_payload(order: Order) -> Dict[str, Any]:
     }
 
     shipping_info = {
-        "method": order.shipping_method or "-",
+        "method": translate_method(order.shipping_method, SHIPPING_METHOD_TRANSLATIONS, locale),
         "address": order.shipping_address_text
         or _format_address(order.shipping_address),
     }
 
     payment = {
-        "method": order.payment_method or "-",
-        "status": order.payment_status or "unpaid",
+        "method": translate_method(order.payment_method, PAYMENT_METHOD_TRANSLATIONS, locale),
+        "status": translate_method(order.payment_status or "unpaid", PAYMENT_STATUS_TRANSLATIONS, locale),
     }
 
     totals = {
@@ -241,8 +312,8 @@ def render_receipt_html(
     order: Order, receipt: Dict[str, Any] | None = None, locale: str = "ru"
 ) -> str:
     """Рендерит HTML-версию чека на указанном языке."""
-    payload = receipt or build_order_receipt_payload(order)
     loc = "en" if (locale or "").strip().lower() == "en" else "ru"
+    payload = receipt or build_order_receipt_payload(order, locale=loc)
     labels = RECEIPT_LABELS.get(loc, RECEIPT_LABELS["ru"])
     context = {
         "order": order,
@@ -251,3 +322,54 @@ def render_receipt_html(
         "lang": loc,
     }
     return render_to_string("emails/order_receipt.html", context)
+
+
+def generate_and_save_receipt(order: Order, locale: str = "ru") -> tuple[str | None, bytes | None]:
+    """Генерирует PDF-версию чека и сохраняет её в Cloudflare R2 (или ином S3-хранилище).
+    Возвращает (URL чека на CDN, сырые байты PDF).
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        if not settings.R2_CONFIG.get("endpoint_url") or not settings.R2_CONFIG.get("bucket_name"):
+            return None, None
+        html_string = render_receipt_html(order, locale=locale)
+        from weasyprint import HTML  # lazy import — требует системных библиотек Pango/Cairo
+        pdf_file = HTML(string=html_string).write_pdf()
+
+        # Настраиваем boto3 клиент для работы с R2
+        file_key = f"receipts/{order.number}.pdf"
+        s3 = boto3.client(
+            's3',
+            endpoint_url=settings.R2_CONFIG['endpoint_url'],
+            aws_access_key_id=settings.R2_CONFIG['aws_access_key_id'],
+            aws_secret_access_key=settings.R2_CONFIG['aws_secret_access_key'],
+            region_name=settings.R2_CONFIG.get('region_name', 'auto')
+        )
+        bucket_name = settings.R2_CONFIG['bucket_name']
+
+        # Загружаем PDF в бакет
+        s3.put_object(
+            Bucket=bucket_name,
+            Key=file_key,
+            Body=pdf_file,
+            ContentType='application/pdf',
+            ContentDisposition=f'inline; filename="receipt_{order.number}.pdf"',
+        )
+
+        cdn_url = settings.AI_R2_SETTINGS.get('cdn_url', '').rstrip('/')
+        if not cdn_url:
+            cdn_url = f"{settings.R2_CONFIG['endpoint_url']}/{bucket_name}"
+
+        receipt_url = f"{cdn_url}/{file_key}"
+        
+        # Сохраняем URL в заказ
+        order.receipt_url = receipt_url
+        order.save(update_fields=['receipt_url'])
+
+        return receipt_url, pdf_file
+
+    except Exception as e:
+        logger.error(f"Error generating and saving receipt for order {order.number}: {e}")
+        return None, None

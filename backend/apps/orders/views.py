@@ -141,7 +141,7 @@ from .serializers import (
     UpdateCartItemSerializer,
 )
 from .services import build_order_receipt_payload, render_receipt_html  # TODO: Функционал чеков временно отключен. Будет доработан позже.
-from .tasks import send_order_receipt_task  # TODO: Функционал чеков временно отключен. Будет доработан позже.
+from .tasks import send_order_receipt_task, notify_new_order_telegram  # TODO: Функционал чеков временно отключен. Будет доработан позже.
 
 logger = logging.getLogger(__name__)
 
@@ -1061,14 +1061,18 @@ class OrderViewSet(viewsets.ViewSet):
                         if has_sizes and not item.chosen_size:
                             return Response({"detail": _("Укажите размер для товара в корзине")}, status=400)
 
-        # Расчет сумм
-        subtotal = sum((i.price * i.quantity for i in cart.items.all()))
-        
-        # Расчет стоимости доставки на основе вариантов в корзине
+        # Расчет сумм и конвертация валют
         # Используем логику из CartSerializer для правильной конвертации валют
         from apps.orders.serializers import CartSerializer
         cart_serializer = CartSerializer(cart, context={'request': request})
+        
+        order_currency = cart_serializer.get_currency(cart)
+        subtotal = cart_serializer.get_total_amount(cart)
         shipping_options = cart_serializer.get_shipping_options(cart)
+        
+        # Получаем конвертированные цены для позиций заказа
+        serialized_items = cart_serializer.data.get('items', [])
+        converted_prices = {item['id']: item['price'] for item in serialized_items}
         
         shipping_method = serializer.validated_data.get('shipping_method', '').lower()
         if 'air' in shipping_method or 'авиа' in shipping_method:
@@ -1089,9 +1093,9 @@ class OrderViewSet(viewsets.ViewSet):
             try:
                 promo_code = PromoCode.objects.get(code__iexact=promo_code_value)
                 # Проверка валидности промокода
-                is_valid, error = promo_code.is_valid(user=request.user, cart_total=float(subtotal), cart_currency=cart.currency)
+                is_valid, error = promo_code.is_valid(user=request.user, cart_total=float(subtotal), cart_currency=order_currency)
                 if is_valid:
-                    discount = promo_code.calculate_discount(float(subtotal), currency=cart.currency)
+                    discount = promo_code.calculate_discount(float(subtotal), currency=order_currency)
                     # Увеличиваем счетчик использований
                     promo_code.used_count += 1
                     promo_code.save(update_fields=['used_count'])
@@ -1100,7 +1104,7 @@ class OrderViewSet(viewsets.ViewSet):
             except PromoCode.DoesNotExist:
                 pass
 
-        total = subtotal + Decimal(str(shipping)) - Decimal(str(discount))
+        total = Decimal(str(subtotal)) + Decimal(str(shipping)) - Decimal(str(discount))
 
         # Генерация номера заказа
         number = uuid.uuid4().hex[:12].upper()
@@ -1108,11 +1112,12 @@ class OrderViewSet(viewsets.ViewSet):
         is_crypto = payment_method == 'crypto'
 
         # Крипто: создаём инвойс ДО заказа, чтобы не терять корзину при ошибке провайдера
+        locale = (serializer.validated_data.get("locale") or "").strip() or request.META.get("HTTP_ACCEPT_LANGUAGE", "").split(",")[0].split("-")[0] or "en"
+        if locale not in ("ru", "en"):
+            locale = "en"
+
         if is_crypto:
-            locale = (serializer.validated_data.get("locale") or "").strip() or request.META.get("HTTP_ACCEPT_LANGUAGE", "").split(",")[0].split("-")[0] or "en"
-            if locale not in ("ru", "en"):
-                locale = "en"
-            invoice_data, payment_data = _create_crypto_invoice(number, total, cart.currency, locale=locale)
+            invoice_data, payment_data = _create_crypto_invoice(number, total, order_currency, locale=locale)
             if not invoice_data:
                 return Response(
                     {"detail": _("Не удалось создать платёжную ссылку. Попробуйте позже или выберите другой способ оплаты.")},
@@ -1126,7 +1131,7 @@ class OrderViewSet(viewsets.ViewSet):
             shipping_amount=shipping,
             discount_amount=discount,
             total_amount=total,
-            currency=cart.currency,
+            currency=order_currency,
             promo_code=promo_code,
             contact_name=serializer.validated_data.get('contact_name'),
             contact_phone=serializer.validated_data.get('contact_phone'),
@@ -1150,16 +1155,17 @@ class OrderViewSet(viewsets.ViewSet):
 
         if is_crypto:
             # Крипто: сохраняем CryptoPayment, позиции заказа без списания остатка
-            _save_crypto_payment(order, invoice_data, cart.currency)
+            _save_crypto_payment(order, invoice_data, order_currency)
             for item in cart.items.select_related('product').all():
+                item_price = converted_prices.get(item.id, item.price)
                 OrderItem.objects.create(
                     order=order,
                     product=item.product,
                     product_name=item.product.name,
                     chosen_size=item.chosen_size,
-                    price=item.price,
+                    price=item_price,
                     quantity=item.quantity,
-                    total=item.price * item.quantity,
+                    total=Decimal(str(item_price)) * item.quantity,
                 )
             cart.items.all().delete()
             response_data = OrderSerializer(order).data
@@ -1169,14 +1175,29 @@ class OrderViewSet(viewsets.ViewSet):
             # Позиции заказа + атомарное списание остатка
             for item in cart.items.select_related('product').all():
                 _decrement_stock_for_cart_item(item.product, item.chosen_size, item.quantity)
+                item_price = converted_prices.get(item.id, item.price)
                 OrderItem.objects.create(
                     order=order,
                     product=item.product,
                     product_name=item.product.name,
                     chosen_size=item.chosen_size,
-                    price=item.price,
+                    price=item_price,
                     quantity=item.quantity,
-                    total=item.price * item.quantity,
+                    total=Decimal(str(item_price)) * item.quantity,
                 )
             cart.items.all().delete()
+
+            # Отправляем чек по email и уведомление в Telegram
+            # send_order_receipt_task генерирует PDF (сохраняет в R2),
+            # после чего Telegram-задача использует уже готовый чек
+            receipt_email = order.contact_email or (order.user.email if order.user else None)
+            if receipt_email:
+                send_order_receipt_task.apply_async(
+                    (order.id, receipt_email),
+                    {"locale": locale},
+                    link=notify_new_order_telegram.signature((order.id,), {"locale": locale})
+                )
+            else:
+                notify_new_order_telegram.delay(order.id, locale=locale)
+
             return Response(OrderSerializer(order).data, status=201)

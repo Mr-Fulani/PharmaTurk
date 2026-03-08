@@ -26,6 +26,7 @@ from .serializers import (
     SMSSendCodeSerializer, SMSVerifyCodeSerializer, SocialAuthSerializer,
     PublicUserProfileSerializer
 )
+from .telegram_auth import generate_telegram_sync_token, process_telegram_webhook
 
 
 def create_user_session(user, request):
@@ -246,6 +247,26 @@ class UserLogoutView(APIView):
                 'message': _('Ошибка при выходе из системы')
             }, status=status.HTTP_400_BAD_REQUEST)
 
+class TelegramWebhookView(APIView):
+    """
+    Обработчик вебхуков от Telegram
+    """
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        summary="Вебхук Telegram",
+        description="Эндпоинт для принятия сообщений от Telegram-бота для привязки аккаунтов.",
+        responses={200: {"type": "object", "properties": {"status": {"type": "string"}}}}
+    )
+    def post(self, request):
+        # Telegram отправляет JSON
+        success = process_telegram_webhook(request.data)
+        if success:
+            return Response({"status": "ok"})
+        # Всегда возвращаем 200, чтобы Telegram не переотправлял апдейты, 
+        # но логируем ошибку внутри process_telegram_webhook
+        return Response({"status": "error_handled_gracefully"})
+
 
 class UserProfileViewSet(viewsets.ModelViewSet):
     """
@@ -352,6 +373,36 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(request.user, context={'request': request})
         return Response(serializer.data)
+
+    @extend_schema(
+        summary="Получить ссылку для привязки Telegram",
+        description="Генерация ссылки с временным токеном для безопасной привязки аккаунта Telegram бота к аккаунту пользователя",
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "link": {"type": "string"}
+                }
+            }
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='telegram-bind-link')
+    def telegram_bind_link(self, request):
+        """Получить ссылку для привязки Telegram"""
+        from django.conf import settings
+        from apps.users.telegram_auth import generate_telegram_sync_token
+        
+        token = generate_telegram_sync_token(request.user)
+        bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', '')
+        
+        if not bot_username:
+            # Предупреждаем, если имя бота не задано
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning("TELEGRAM_BOT_USERNAME is not set in settings")
+            
+        link = f"tg://resolve?domain={bot_username}&start={token}"
+        return Response({'link': link})
 
 
 class UserAddressViewSet(viewsets.ModelViewSet):

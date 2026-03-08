@@ -110,11 +110,13 @@ export default function ProfilePage() {
 
   // Состояние для управления отображением заказов
   const [showAllOrders, setShowAllOrders] = useState(false)
+  const [isBindingTelegram, setIsBindingTelegram] = useState(false)
 
   // Форма редактирования
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
+    email: '',
     phone_number: '',
     whatsapp_phone: '',
     telegram_username: '',
@@ -206,6 +208,7 @@ export default function ProfilePage() {
       setFormData({
         first_name: profileData.first_name || '',
         last_name: profileData.last_name || '',
+        email: profileData.user_email || '',
         phone_number: profileData.phone_number || '',
         whatsapp_phone: profileData.whatsapp_phone || '',
         telegram_username: profileData.telegram_username || '',
@@ -351,6 +354,7 @@ export default function ProfilePage() {
       setFormData({
         first_name: profile.first_name || '',
         last_name: profile.last_name || '',
+        email: profile.user_email || '',
         phone_number: profile.phone_number || '',
         whatsapp_phone: profile.whatsapp_phone || '',
         telegram_username: profile.telegram_username || '',
@@ -381,6 +385,8 @@ export default function ProfilePage() {
         await api.patch(`/users/profile/${currentProfile.id}`, {
           first_name: formData.first_name,
           last_name: formData.last_name,
+          email: formData.email,
+          phone_number: formData.phone_number,
           whatsapp_phone: formData.whatsapp_phone,
           telegram_username: formData.telegram_username,
         })
@@ -396,6 +402,22 @@ export default function ProfilePage() {
       alert(error?.response?.data?.error || t('profile_error'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleBindTelegram = async () => {
+    setIsBindingTelegram(true)
+    try {
+      const response = await api.get('/users/profile/telegram-bind-link/')
+      if (response.data && response.data.link) {
+        window.location.href = response.data.link
+        // Дополнительно можно обновить профиль, чтобы проверить статус
+      }
+    } catch (error) {
+      console.error('Failed to get Telegram bind link:', error)
+      alert(t('profile_error') || 'Failed')
+    } finally {
+      setIsBindingTelegram(false)
     }
   }
 
@@ -577,9 +599,9 @@ export default function ProfilePage() {
                       </label>
                       <input
                         type="email"
-                        value={profile.user_email}
-                        disabled
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                       />
                     </div>
                     <div>
@@ -589,8 +611,8 @@ export default function ProfilePage() {
                       <input
                         type="tel"
                         value={formData.phone_number}
-                        disabled
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                        onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                       />
                     </div>
                     <div>
@@ -609,13 +631,23 @@ export default function ProfilePage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         {t('profile_telegram')}
                       </label>
-                      <input
-                        type="text"
-                        value={formData.telegram_username}
-                        onChange={(e) => setFormData({ ...formData, telegram_username: e.target.value })}
-                        placeholder="@username"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                      />
+                      <div className="flex items-center space-x-2">
+                        {profile.telegram_username ? (
+                          <div className="flex-1 px-3 py-2 border border-green-300 bg-green-50 rounded-md text-green-700 flex items-center">
+                            <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
+                            @{profile.telegram_username}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleBindTelegram}
+                            disabled={isBindingTelegram}
+                            className="flex-1 bg-[#229ED9] text-white px-4 py-2 rounded-md hover:bg-[#1E8CC0] transition-colors disabled:opacity-50 flex items-center justify-center font-medium"
+                          >
+                            {isBindingTelegram ? t('telegram_binding') : t('telegram_bind_button')}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="flex gap-2 pt-4">
                       <button

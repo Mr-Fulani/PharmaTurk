@@ -55,14 +55,14 @@ class OrderAdmin(admin.ModelAdmin):
     list_filter = ('status', 'currency', 'payment_method', 'payment_status', 'promo_code', 'created_at')
     search_fields = ('number', 'user__email', 'contact_name', 'contact_phone', 'promo_code__code')
     ordering = ('-created_at',)
-    readonly_fields = ('number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at')
+    readonly_fields = ('number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at', 'receipt_url')
     
     fieldsets = (
         (None, {'fields': ('number', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
         (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email')}),
         (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method')}),
-        (_('Payment'), {'fields': ('payment_method', 'payment_status')}),
+        (_('Payment & Documents'), {'fields': ('payment_method', 'payment_status', 'receipt_url')}),
         (_('Additional'), {'fields': ('comment',)}),
         (_('Timestamps'), {'fields': ('created_at', 'updated_at')}),
     )
