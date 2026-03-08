@@ -66,7 +66,7 @@ const formatPrice = (value: string | number | null | undefined): string | null =
   if (value === null || typeof value === 'undefined') return null
   const num = parseNumber(value)
   if (num === null) return String(value)
-  
+
   // Убираем лишние нули после запятой
   const str = num.toString()
   if (str.includes('.')) {
@@ -112,14 +112,21 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
         allProducts.push(...processResponse(electronicsRes, 'electronics'))
         allProducts.push(...processResponse(jewelryRes, 'jewelry'))
 
-        if (allProducts.length === 0) {
+        if (allProducts.length < 8) {
           try {
             const response = await api.get('/catalog/products', {
               params: { ordering: '-created_at', limit: 20 },
             })
             const data = response.data
             const productsList = Array.isArray(data) ? data : data.results || []
-            allProducts.push(...productsList.map((p: any) => ({ ...p, product_type: p.product_type || 'medicines' })))
+
+            // Фильтруем дубликаты, если какие-то featured товары уже есть в списке последних
+            const existingIds = new Set(allProducts.map((p: any) => p.id))
+            const newProducts = productsList
+              .filter((p: any) => !existingIds.has(p.id))
+              .map((p: any) => ({ ...p, product_type: p.product_type || 'medicines' }))
+
+            allProducts.push(...newProducts)
           } catch (error) {
             console.error('Failed to fetch latest products:', error)
           }
@@ -150,7 +157,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
         // Ensure we don't scroll past the last possible position
         const maxScrollLeft = scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth
         const scrollAmount = Math.min(targetIndex * (cardWidth + gap), maxScrollLeft)
-        
+
         scrollContainerRef.current.scrollTo({
           left: scrollAmount,
           behavior: 'smooth',
@@ -203,20 +210,20 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
       if (container) {
         const card = container.children[0] as HTMLElement
         if (!card) return
-        
+
         const cardWidth = card.offsetWidth
         const gap = 16
         const pageWidth = itemsPerPage * (cardWidth + gap)
-        
+
         // Use Math.floor to be more precise about which page we're on
         const newPage = Math.floor((container.scrollLeft + pageWidth / 2) / pageWidth)
-        
+
         if (newPage < totalPages && newPage !== currentPage) {
           setCurrentPage(newPage)
         }
       }
     }
-    
+
     const debouncedHandleScroll = () => {
       clearTimeout(scrollTimeout)
       scrollTimeout = setTimeout(handleScroll, 150)
@@ -294,14 +301,14 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                 product.oldPrice
               const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(oldPriceSource)
               const displayOldCurrency = parsedOldCurrency || displayCurrency || product.currency
-              
+
               // Форматируем старую цену, убирая лишние нули
               let displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? oldPriceSource : null
               if (displayOldPrice && typeof displayOldPrice === 'string') {
                 // Убираем лишние нули после запятой
                 displayOldPrice = displayOldPrice.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '')
               }
-              
+
               const displayPriceLabel = displayPrice ? formatPrice(displayPrice) : null
               const displayOldPriceLabel = displayOldPrice ? formatPrice(displayOldPrice) : null
               const displayCurrencyLabel = displayCurrency ? String(displayCurrency) : null
@@ -318,102 +325,102 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                   key={product.id}
                   className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden group"
                 >
-                <Link
-                  href={buildProductUrl(product.product_type || 'medicines', product.slug)}
-                  className="relative block w-full h-80 overflow-hidden bg-gray-100"
-                >
-                  {product.video_url && isVideoUrl(product.video_url) ? (
-                    <video
-                      src={resolveMediaUrl(product.video_url)}
-                      poster={
-                        (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
-                        getPlaceholderImageUrl({ type: 'product', id: product.id })
-                      }
-                      muted
-                      playsInline
-                      loop
-                      autoPlay
-                      preload="metadata"
-                      className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-                    />
-                  ) : (
-                    <img
-                      src={
-                        (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
-                        getPlaceholderImageUrl({ type: 'product', id: product.id })
-                      }
-                      alt={localizedName}
-                      className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-                      onError={(e) => {
-                        e.currentTarget.src = getPlaceholderImageUrl({
-                          type: 'product',
-                          id: `${product.id}-fallback`,
-                        })
-                      }}
-                    />
-                  )}
-                  {product.is_new && (
-                    <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
-                      {t('product_new', 'Новинка')}
-                    </span>
-                  )}
-                  <div
-                    className="absolute top-2 right-2 z-20"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                    }}
-                  >
-                    <FavoriteButton
-                      productId={product.id}
-                      productType={product.product_type || 'medicines'}
-                      iconOnly={true}
-                      className="!p-2 !rounded-full w-10 h-10 bg-white/90 hover:bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform"
-                    />
-                  </div>
-                </Link>
-                <div className="p-4">
-                  {product.brand && (
-                    <div className="text-xs text-gray-500 mb-1">{product.brand.name}</div>
-                  )}
                   <Link
                     href={buildProductUrl(product.product_type || 'medicines', product.slug)}
-                    className="block mb-2"
+                    className="relative block w-full h-80 overflow-hidden bg-gray-100"
                   >
-                  <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 hover-text-warm transition-colors">
-                      {localizedName}
-                    </h3>
-                  </Link>
-                  <div className="mb-3">
-                    <div className="flex items-baseline gap-2">
-                      <div className="text-lg font-bold text-[var(--text-strong)]">
-                        {displayPriceLabel
-                          ? displayCurrencyLabel
-                            ? `${displayPriceLabel} ${displayCurrencyLabel}`
-                            : displayPriceLabel
-                          : t('price_on_request', 'Цена по запросу')}
-                      </div>
-                      {displayOldPriceLabel && (
-                        <div className="text-sm text-gray-400 line-through">
-                          {displayOldCurrencyLabel
-                            ? `${displayOldPriceLabel} ${displayOldCurrencyLabel}`
-                            : displayOldPriceLabel}
-                        </div>
-                      )}
-                      {displayOldPriceLabel && discountPercent !== null && (
-                        <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
-                      )}
+                    {product.video_url && isVideoUrl(product.video_url) ? (
+                      <video
+                        src={resolveMediaUrl(product.video_url)}
+                        poster={
+                          (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
+                          getPlaceholderImageUrl({ type: 'product', id: product.id })
+                        }
+                        muted
+                        playsInline
+                        loop
+                        autoPlay
+                        preload="metadata"
+                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                      />
+                    ) : (
+                      <img
+                        src={
+                          (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
+                          getPlaceholderImageUrl({ type: 'product', id: product.id })
+                        }
+                        alt={localizedName}
+                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                        onError={(e) => {
+                          e.currentTarget.src = getPlaceholderImageUrl({
+                            type: 'product',
+                            id: `${product.id}-fallback`,
+                          })
+                        }}
+                      />
+                    )}
+                    {product.is_new && (
+                      <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
+                        {t('product_new', 'Новинка')}
+                      </span>
+                    )}
+                    <div
+                      className="absolute top-2 right-2 z-20"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                    >
+                      <FavoriteButton
+                        productId={product.id}
+                        productType={product.product_type || 'medicines'}
+                        iconOnly={true}
+                        className="!p-2 !rounded-full w-10 h-10 bg-white/90 hover:bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform"
+                      />
                     </div>
+                  </Link>
+                  <div className="p-4">
+                    {product.brand && (
+                      <div className="text-xs text-gray-500 mb-1">{product.brand.name}</div>
+                    )}
+                    <Link
+                      href={buildProductUrl(product.product_type || 'medicines', product.slug)}
+                      className="block mb-2"
+                    >
+                      <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 hover-text-warm transition-colors">
+                        {localizedName}
+                      </h3>
+                    </Link>
+                    <div className="mb-3">
+                      <div className="flex items-baseline gap-2">
+                        <div className="text-lg font-bold text-[var(--text-strong)]">
+                          {displayPriceLabel
+                            ? displayCurrencyLabel
+                              ? `${displayPriceLabel} ${displayCurrencyLabel}`
+                              : displayPriceLabel
+                            : t('price_on_request', 'Цена по запросу')}
+                        </div>
+                        {displayOldPriceLabel && (
+                          <div className="text-sm text-gray-400 line-through">
+                            {displayOldCurrencyLabel
+                              ? `${displayOldPriceLabel} ${displayOldCurrencyLabel}`
+                              : displayOldPriceLabel}
+                          </div>
+                        )}
+                        {displayOldPriceLabel && discountPercent !== null && (
+                          <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
+                        )}
+                      </div>
+                    </div>
+                    <AddToCartButton
+                      productId={product.product_type === 'furniture' ? (product.base_product_id ?? product.id) : product.id}
+                      productType={product.product_type || 'medicines'}
+                      productSlug={product.slug}
+                      className="w-full"
+                      label={t('add_to_cart', 'В корзину')}
+                    />
                   </div>
-                  <AddToCartButton
-                    productId={product.product_type === 'furniture' ? (product.base_product_id ?? product.id) : product.id}
-                    productType={product.product_type || 'medicines'}
-                    productSlug={product.slug}
-                    className="w-full"
-                    label={t('add_to_cart', 'В корзину')}
-                  />
                 </div>
-              </div>
               )
             })}
           </div>

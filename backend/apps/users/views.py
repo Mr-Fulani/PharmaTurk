@@ -930,48 +930,87 @@ class SMSVerifyCodeView(APIView):
 
 class SocialAuthView(APIView):
     """
-    Авторизация через социальные сети.
-    TODO: Реализовать после интеграции OAuth провайдеров.
+    Авторизация через социальные сети (Google, VK).
+    Принимает access_token / id_token от провайдера, верифицирует его
+    через соответствующий API и возвращает JWT токены.
     """
     permission_classes = [AllowAny]
-    
+
     @extend_schema(
         summary="Войти через соцсеть",
-        description="Авторизация через Google, Facebook, VK, Yandex или Apple",
+        description=(
+            "Авторизация через Google или VK. "
+            "Для Google передайте `credential` (id_token из Google One Tap) или `access_token` (OAuth2 popup). "
+            "Для VK передайте `access_token` из VK ID SDK. "
+            "Опционально: `vk_user_id` для VK."
+        ),
         request=SocialAuthSerializer,
         responses={
             200: {
                 "type": "object",
                 "properties": {
                     "user": {"type": "object"},
-                    "tokens": {"type": "object"},
+                    "tokens": {
+                        "type": "object",
+                        "properties": {
+                            "access": {"type": "string"},
+                            "refresh": {"type": "string"}
+                        }
+                    },
                     "message": {"type": "string"}
                 }
             },
-            400: "Ошибка валидации"
+            400: "Ошибка валидации или данные от провайдера недействительны"
         }
     )
     def post(self, request):
-        """Авторизация через соцсеть"""
+        """Авторизация через Google или VK"""
+        from .social_auth import PROVIDERS, get_or_create_social_user
+
         serializer = SocialAuthSerializer(data=request.data)
-        if serializer.is_valid():
-            provider = serializer.validated_data['provider']
-            access_token = serializer.validated_data['access_token']
-            
-            # TODO: Реализовать OAuth авторизацию
-            # from .social_auth import authenticate_social_user
-            # user = authenticate_social_user(provider, access_token)
-            # if user:
-            #     # Генерируем токены и возвращаем
-            #     ...
-            
-            return Response({
-                'message': _('Авторизация через соцсети будет доступна в ближайшее время'),
-                'provider': provider,
-                'note': 'Функционал находится в разработке'
-            }, status=status.HTTP_501_NOT_IMPLEMENTED)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        provider_name: str = serializer.validated_data['provider']
+        access_token: str = serializer.validated_data['access_token']
+        # vk_user_id — опциональный параметр для VK (из VK ID SDK)
+        vk_user_id = request.data.get('vk_user_id')
+
+        provider_class = PROVIDERS.get(provider_name)
+        if not provider_class:
+            return Response(
+                {"detail": _(f"Провайдер '{provider_name}' не поддерживается. Доступны: google, vk")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        provider = provider_class()
+        user_info = provider.get_user_info(access_token, vk_user_id=vk_user_id)
+
+        if not user_info:
+            return Response(
+                {"detail": _("Не удалось получить данные от провайдера. Проверьте токен и попробуйте снова.")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user = get_or_create_social_user(provider, user_info)
+
+        # Обновляем метаданные входа
+        user.last_login = timezone.now()
+        user.last_login_ip = get_client_ip(request)
+        user.save(update_fields=['last_login', 'last_login_ip'])
+
+        # Генерируем JWT токены
+        refresh = RefreshToken.for_user(user)
+        create_user_session(user, request)
+
+        return Response({
+            'user': UserSerializer(user, context={'request': request}).data,
+            'tokens': {
+                'access': str(refresh.access_token),
+                'refresh': str(refresh)
+            },
+            'message': _(f'Успешный вход через {provider_name}')
+        })
 
 
 class PublicUserProfileView(APIView):

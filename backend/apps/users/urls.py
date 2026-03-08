@@ -48,8 +48,9 @@ urlpatterns = [
     path('sms/send-code/', SMSSendCodeView.as_view(), name='sms-send-code'),
     path('sms/verify/', SMSVerifyCodeView.as_view(), name='sms-verify'),
     
-    # Социальные сети (в разработке)
+    # Социальные сети (Google, VK)
     path('social-auth/', SocialAuthView.as_view(), name='social-auth'),
+    re_path(r'^social-auth$', SocialAuthView.as_view(), name='social-auth-noslash'),
     
     # Подтверждение email
     path('verify-email/', UserEmailVerificationView.as_view(), name='user-verify-email'),

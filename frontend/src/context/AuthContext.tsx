@@ -22,7 +22,7 @@ interface AuthContextValue {
   logout: () => void
   // Будущие методы для SMS и соцсетей
   loginWithSMS?: (phone: string, code: string) => Promise<void>
-  loginWithSocial?: (provider: 'google' | 'facebook' | 'vk' | 'yandex' | 'apple', token: string) => Promise<void>
+  loginWithSocial: (provider: 'google' | 'vk', token: string) => Promise<void>
   loginWithTelegram: (telegramData: any) => Promise<void>
 }
 
@@ -99,6 +99,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Обновляем корзину после входа для переноса товаров с анонимной сессии
       refreshCartRef.current()
       // Обновляем избранное после входа для загрузки избранного пользователя
+      refreshFavoritesRef.current()
+    },
+    async loginWithSocial(provider, token) {
+      const res = await api.post('/users/social-auth/', { provider, access_token: token })
+      const { tokens, user: userData } = res.data
+      if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
+      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
+      setUser({
+        id: userData.id,
+        email: userData.email,
+        username: userData.username,
+        first_name: userData.first_name,
+        last_name: userData.last_name,
+        phone_number: userData.phone_number,
+        currency: userData.currency
+      })
+      if (userData.currency) {
+        Cookies.set('currency', userData.currency, { sameSite: 'Lax', path: '/' })
+        setPreferredCurrency(userData.currency)
+      }
+      refreshCartRef.current()
       refreshFavoritesRef.current()
     },
     async loginWithTelegram(telegramData) {

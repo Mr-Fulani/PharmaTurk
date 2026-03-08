@@ -963,7 +963,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(products, many=True)
         return Response(serializer.data)
     
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='featured', url_name='featured')
     @extend_schema(
         summary="Рекомендуемые товары",
         description="Возвращает список рекомендуемых товаров"
@@ -1247,7 +1247,7 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
     
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='featured', url_name='featured')
     @extend_schema(
         summary="Рекомендуемые товары одежды",
         description="Возвращает список рекомендуемых товаров одежды"
@@ -1456,7 +1456,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
     
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='featured', url_name='featured')
     @extend_schema(
         summary="Рекомендуемые товары обуви",
         description="Возвращает список рекомендуемых товаров обуви"
@@ -1616,7 +1616,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
     
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='featured', url_name='featured')
     @extend_schema(
         summary="Рекомендуемые товары электроники",
         description="Возвращает список рекомендуемых товаров электроники"
@@ -1714,7 +1714,7 @@ class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
             context['active_variant_slug'] = active_slug
         return context
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='featured', url_name='featured')
     def featured(self, request):
         featured_products = JewelryProduct.objects.filter(
             is_active=True, is_featured=True
@@ -1728,6 +1728,21 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
     
     queryset = FurnitureProduct.objects.filter(is_active=True)
     serializer_class = FurnitureProductSerializer
+    pagination_class = StandardPagination
+    lookup_field = 'slug'
+    
+    def _normalize_ordering(self, ordering: str) -> str:
+        """Преобразует формат сортировки из фронтенда в формат Django."""
+        ordering_map = {
+            'name_asc': 'name',
+            'name_desc': '-name',
+            'price_asc': 'price',
+            'price_desc': '-price',
+            'newest': '-created_at',
+            'popular': '-is_featured',
+        }
+        return ordering_map.get(ordering, ordering)
+
     pagination_class = StandardPagination
     lookup_field = 'slug'
     
@@ -1827,7 +1842,7 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
     
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], url_path='featured', url_name='featured')
     @extend_schema(
         summary="Рекомендуемые товары мебели",
         description="Возвращает список рекомендуемых товаров мебели"
@@ -2991,93 +3006,4 @@ class AutoPartProductViewSet(_SimpleDomainViewSet):
         return super().retrieve(request, *args, **kwargs)
 
 
-# ============================================================================
-# JEWELRY
-# ============================================================================
 
-class JewelryProductViewSet(_SimpleDomainViewSet):
-    """API для работы с украшениями."""
-    queryset = JewelryProduct.objects.filter(is_active=True).order_by('-created_at')
-    serializer_class = JewelryProductSerializer
-
-    def _apply_domain_filters(self, queryset):
-        jewelry_type = self.request.query_params.get('jewelry_type')
-        if jewelry_type:
-            queryset = queryset.filter(jewelry_type=jewelry_type)
-        material = self.request.query_params.get('material')
-        if material:
-            queryset = queryset.filter(material__icontains=material)
-        gender = self.request.query_params.get('gender')
-        if gender:
-            queryset = queryset.filter(gender=gender)
-        return queryset
-
-    @extend_schema(summary="Получить список украшений")
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    @extend_schema(summary="Получить детали украшения")
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-
-# ============================================================================
-# FURNITURE
-# ============================================================================
-
-class FurnitureProductViewSet(_SimpleDomainViewSet):
-    """API для работы с мебелью."""
-    queryset = FurnitureProduct.objects.filter(is_active=True).order_by('-created_at')
-    serializer_class = FurnitureProductSerializer
-
-    def _apply_domain_filters(self, queryset):
-        furniture_types = self.request.query_params.getlist('furniture_type') or self.request.query_params.getlist('furniture_type[]')
-        if furniture_types:
-            queryset = queryset.filter(furniture_type__in=furniture_types)
-        material = self.request.query_params.get('material')
-        if material:
-            queryset = queryset.filter(material__icontains=material)
-        return queryset
-
-    @extend_schema(summary="Получить список мебели")
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    @extend_schema(summary="Получить детали мебели")
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-
-# ============================================================================
-# CLOTHING (Underwear, Headwear included)
-# ============================================================================
-
-class ClothingProductViewSet(_SimpleDomainViewSet):
-    """API для работы с одеждой."""
-    queryset = ClothingProduct.objects.filter(is_active=True).order_by('-created_at')
-    serializer_class = ClothingProductSerializer
-
-    def _apply_domain_filters(self, queryset):
-        season = self.request.query_params.get('season')
-        if season:
-            queryset = queryset.filter(season__icontains=season)
-        material = self.request.query_params.get('material')
-        if material:
-            queryset = queryset.filter(material__icontains=material)
-        colors = self.request.query_params.getlist('color') or self.request.query_params.getlist('color[]')
-        if colors:
-            # Ищем, входит ли цвет товара в список выбранных, или наоборот (icontains сложнее для списка)
-            # Для простоты пока ищем точное совпадение или __in
-            queryset = queryset.filter(color__in=colors)
-        clothing_items = self.request.query_params.getlist('clothing_item') or self.request.query_params.getlist('clothing_item[]')
-        if clothing_items:
-             queryset = queryset.filter(clothing_item__in=clothing_items)
-        return queryset
-
-    @extend_schema(summary="Получить список одежды")
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    @extend_schema(summary="Получить детали одежды")
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)

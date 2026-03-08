@@ -448,3 +448,11 @@ FRONTEND_SITE_URL = env("FRONTEND_SITE_URL", default="").rstrip("/") or SITE_URL
 TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", default="")
 TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", default="")
 TELEGRAM_CHAT_ID = env("TELEGRAM_CHAT_ID", default="")
+
+# Google OAuth2 (Sign In With Google / Google One Tap)
+GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
+GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", default="")
+
+# VK OAuth (VK ID SDK)
+VK_APP_ID = env("VK_APP_ID", default="")
+VK_APP_SECRET = env("VK_APP_SECRET", default="")
