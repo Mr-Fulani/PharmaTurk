@@ -48,6 +48,7 @@ interface UserProfile {
   avatar_url?: string
   whatsapp_phone?: string
   telegram_username?: string
+  telegram_notifications?: boolean
   total_orders?: number
   total_spent?: string
 }
@@ -120,6 +121,7 @@ export default function ProfilePage() {
     phone_number: '',
     whatsapp_phone: '',
     telegram_username: '',
+    telegram_notifications: true,
   })
 
   // Форма адреса
@@ -201,6 +203,7 @@ export default function ProfilePage() {
         avatar_url: profileData.avatar_url || (profileData.avatar ? resolveMediaUrl(profileData.avatar) : null),
         whatsapp_phone: profileData.whatsapp_phone || '',
         telegram_username: profileData.telegram_username || '',
+        telegram_notifications: profileData.telegram_notifications !== false,
         total_orders: profileData.total_orders || 0,
         total_spent: String(profileData.total_spent || '0'),
       })
@@ -212,6 +215,7 @@ export default function ProfilePage() {
         phone_number: profileData.phone_number || '',
         whatsapp_phone: profileData.whatsapp_phone || '',
         telegram_username: profileData.telegram_username || '',
+        telegram_notifications: profileData.telegram_notifications !== false,
       })
     } catch (error) {
       console.error('Failed to load profile:', error)
@@ -358,6 +362,7 @@ export default function ProfilePage() {
         phone_number: profile.phone_number || '',
         whatsapp_phone: profile.whatsapp_phone || '',
         telegram_username: profile.telegram_username || '',
+        telegram_notifications: profile.telegram_notifications !== false,
       })
     }
   }
@@ -389,6 +394,7 @@ export default function ProfilePage() {
           phone_number: formData.phone_number,
           whatsapp_phone: formData.whatsapp_phone,
           telegram_username: formData.telegram_username,
+          telegram_notifications: formData.telegram_notifications,
         })
       }
 
@@ -631,7 +637,7 @@ export default function ProfilePage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         {t('profile_telegram')}
                       </label>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2 mb-2">
                         {profile.telegram_username ? (
                           <div className="flex-1 px-3 py-2 border border-green-300 bg-green-50 rounded-md text-green-700 flex items-center">
                             <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
@@ -648,6 +654,15 @@ export default function ProfilePage() {
                           </button>
                         )}
                       </div>
+                      <label className="flex items-center space-x-2 text-sm text-gray-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.telegram_notifications}
+                          onChange={(e) => setFormData({ ...formData, telegram_notifications: e.target.checked })}
+                          className="rounded text-[var(--accent)] focus:ring-[var(--accent)]"
+                        />
+                        <span>{t('profile_telegram_notifications', 'Получать уведомления и чеки в Telegram')}</span>
+                      </label>
                     </div>
                     <div className="flex gap-2 pt-4">
                       <button

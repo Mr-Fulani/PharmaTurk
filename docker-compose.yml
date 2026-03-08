@@ -101,6 +101,7 @@ services:
       - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-}
       - SITE_URL=${SITE_URL:-}
       - WATCHPACK_POLLING=true
+      - NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=${NEXT_PUBLIC_TELEGRAM_BOT_USERNAME:-}
     depends_on:
       - backend
 

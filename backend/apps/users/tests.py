@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from apps.users.models import User
 from apps.users.telegram_auth import generate_telegram_sync_token
+from unittest.mock import patch
 
 class TelegramIntegrationTests(APITestCase):
     def setUp(self):
@@ -90,3 +91,54 @@ class TelegramIntegrationTests(APITestCase):
         # User should not be modified
         self.user.refresh_from_db()
         self.assertIn(self.user.telegram_id, [None, ''])
+
+    @patch('apps.users.telegram_auth.validate_telegram_data')
+    def test_telegram_auth_invalid_data(self, mock_validate):
+        """Test getting 400 with invalid telegram auth data"""
+        mock_validate.return_value = False
+        url = reverse('telegram-login')
+        response = self.client.post(url, {'id': '123'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch('apps.users.telegram_auth.validate_telegram_data')
+    def test_telegram_auth_new_user(self, mock_validate):
+        """Test creating a new user through telegram auth"""
+        mock_validate.return_value = True
+        url = reverse('telegram-login')
+        payload = {
+            'id': '111222333',
+            'first_name': 'New',
+            'last_name': 'User',
+            'username': 'newuser_tg'
+        }
+        response = self.client.post(url, payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('tokens', response.data)
+        
+        # Verify user created
+        new_user = User.objects.get(telegram_id='111222333')
+        self.assertEqual(new_user.first_name, 'New')
+        self.assertEqual(new_user.username, 'newuser_tg')
+        self.assertTrue(new_user.email.startswith('tg_111222333@'))
+        self.assertTrue(new_user.telegram_notifications)
+
+    @patch('apps.users.telegram_auth.validate_telegram_data')
+    def test_telegram_auth_existing_user(self, mock_validate):
+        """Test logging in an existing user through telegram auth"""
+        mock_validate.return_value = True
+        # Set telegram id for existing user
+        self.user.telegram_id = '999888777'
+        self.user.save()
+        
+        url = reverse('telegram-login')
+        payload = {
+            'id': '999888777',
+            'first_name': 'Updated',
+            'username': 'updated_username'
+        }
+        res = self.client.post(url, payload, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, 'Updated')
+        self.assertEqual(self.user.telegram_username, 'updated_username')

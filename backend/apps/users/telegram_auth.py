@@ -3,7 +3,61 @@ import logging
 from django.conf import settings
 from .models import User
 
+import hashlib
+import hmac
+import time
+import operator
+from urllib.parse import unquote
+
 logger = logging.getLogger(__name__)
+
+def validate_telegram_data(data: dict) -> bool:
+    """
+    Валидация данных от виджета Telegram Login.
+    Смотри: https://core.telegram.org/widgets/login
+    """
+    bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
+    if not bot_token:
+        logger.error("TELEGRAM_BOT_TOKEN is not configured")
+        return False
+        
+    secret = hashlib.sha256(bot_token.encode('utf-8')).digest()
+    
+    # Извлекаем и удаляем хэш из данных
+    auth_data = data.copy()
+    received_hash = auth_data.pop('hash', None)
+    
+    if not received_hash:
+        return False
+        
+    # Формируем строку для проверки (сортировка ключей по алфавиту)
+    # Исправление линтера: сортируем список кортежей
+    try:
+        sorted_items = sorted(list(auth_data.items()), key=lambda x: x[0])
+        data_check_string = "\n".join(
+            f"{k}={v}" for k, v in sorted_items
+        )
+    except Exception as e:
+        logger.error(f"Error sorting auth_data: {e}")
+        return False
+    
+    # Вычисляем HMAC-SHA-256
+    expected_hash = hmac.new(
+        secret, 
+        data_check_string.encode('utf-8'), 
+        hashlib.sha256
+    ).hexdigest()
+    
+    # Проверяем хэш
+    if not hmac.compare_digest(expected_hash, received_hash):
+        return False
+        
+    # Проверяем что авторизация не старше 24 часов (auth_date в unix time)
+    auth_date = int(auth_data.get('auth_date', 0))
+    if time.time() - auth_date > 86400:
+        return False
+        
+    return True
 
 def generate_telegram_sync_token(user: User) -> str:
     """Генерирует и сохраняет новый токен для привязки Telegram"""

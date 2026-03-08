@@ -159,8 +159,8 @@ export default function Header() {
 
   return (
     <header className={`sticky top-0 z-50 border-b backdrop-blur shadow-md transition-colors duration-200 ${isDark
-        ? 'border-[#1f2a3d] bg-[#0a1222] shadow-[0_10px_40px_rgba(0,0,0,0.6)]'
-        : 'border-[var(--border)] bg-[var(--surface)]'
+      ? 'border-[#1f2a3d] bg-[#0a1222] shadow-[0_10px_40px_rgba(0,0,0,0.6)]'
+      : 'border-[var(--border)] bg-[var(--surface)]'
       }`}>
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
         <div className="flex items-center justify-between gap-3 py-3">
@@ -179,7 +179,7 @@ export default function Header() {
               {showSuggestions && query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
                 <div className={`absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-lg border shadow-lg ${isDark ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'}`}>
                   {loadingSuggest ? (
-                    <div className={`px-3 py-2 text-sm ${isDark ? 'text-slate-300' : 'text-gray-500'}`}>Поиск…</div>
+                    <div className={`px-3 py-2 text-sm ${isDark ? 'text-slate-300' : 'text-gray-500'}`}>{t('search_loading')}</div>
                   ) : suggestions.map((p) => (
                     <button
                       key={p.id}
@@ -192,7 +192,7 @@ export default function Header() {
                   ))}
                   {suggestions.length > 0 && (
                     <div className={`border-t px-3 py-2 text-right ${isDark ? 'border-slate-700' : 'border-gray-200'}`}>
-                      <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`text-xs transition-colors duration-200 ${isDark ? 'text-slate-100 hover:text-white underline' : 'text-red-700 hover:text-red-800 hover:underline'}`}>Показать все результаты</button>
+                      <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`text-xs transition-colors duration-200 ${isDark ? 'text-slate-100 hover:text-white underline' : 'text-red-700 hover:text-red-800 hover:underline'}`}>{t('search_show_all')}</button>
                     </div>
                   )}
                 </div>
@@ -346,8 +346,8 @@ export default function Header() {
                 href="/auth"
                 onClick={() => setShowSuggestions(false)}
                 className={`rounded-md px-3 py-1.5 font-medium transition-all duration-200 hover:shadow-lg hover:scale-105 ${isDark
-                    ? 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]'
-                    : 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]'
+                  ? 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]'
+                  : 'bg-[var(--accent)] text-white hover:bg-[var(--accent-strong)]'
                   }`}
               >
                 {t('login', 'Войти')}
@@ -393,7 +393,7 @@ export default function Header() {
             {showSuggestions && query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
               <div className={`absolute left-0 top-full z-20 mt-1 w-full overflow-hidden rounded-lg border shadow-lg ${isDark ? 'border-slate-700 bg-slate-800' : 'border-gray-200 bg-white'}`}>
                 {loadingSuggest ? (
-                  <div className={`px-3 py-2 text-sm ${isDark ? 'text-slate-300' : 'text-gray-500'}`}>Поиск…</div>
+                  <div className={`px-3 py-2 text-sm ${isDark ? 'text-slate-300' : 'text-gray-500'}`}>{t('search_loading')}</div>
                 ) : suggestions.map((p) => (
                   <button
                     key={p.id}
@@ -406,7 +406,7 @@ export default function Header() {
                 ))}
                 {suggestions.length > 0 && (
                   <div className={`border-t px-3 py-2 text-right ${isDark ? 'border-slate-700' : 'border-gray-200'}`}>
-                    <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`text-xs transition-colors duration-200 ${isDark ? 'text-slate-100 hover:text-white underline' : 'text-red-700 hover:text-red-800 hover:underline'}`}>Показать все результаты</button>
+                    <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`text-xs transition-colors duration-200 ${isDark ? 'text-slate-100 hover:text-white underline' : 'text-red-700 hover:text-red-800 hover:underline'}`}>{t('search_show_all')}</button>
                   </div>
                 )}
               </div>

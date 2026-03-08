@@ -265,7 +265,121 @@ class TelegramWebhookView(APIView):
             return Response({"status": "ok"})
         # Всегда возвращаем 200, чтобы Telegram не переотправлял апдейты, 
         # но логируем ошибку внутри process_telegram_webhook
-        return Response({"status": "error_handled_gracefully"})
+        return Response({"status": "error"})
+
+
+class TelegramAuthView(APIView):
+    """
+    Авторизация через Telegram Widget
+    """
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        summary="Вход через Telegram Widget",
+        description="Аутентификация пользователя через Telegram Widget (1-click login) и получение JWT токенов.",
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "user": {"type": "object"},
+                    "tokens": {
+                        "type": "object",
+                        "properties": {
+                            "access": {"type": "string"},
+                            "refresh": {"type": "string"}
+                        }
+                    },
+                    "message": {"type": "string"}
+                }
+            },
+            400: "Ошибка аутентификации"
+        }
+    )
+    def post(self, request):
+        """Вход или регистрация пользователя через Telegram"""
+        from .telegram_auth import validate_telegram_data
+        
+        telegram_data = request.data
+        if not validate_telegram_data(telegram_data):
+            return Response(
+                {"detail": _("Неверная подпись данных Telegram. Попробуйте войти еще раз.")}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        telegram_id = str(telegram_data.get('id', ''))
+        first_name = telegram_data.get('first_name', '')
+        last_name = telegram_data.get('last_name', '')
+        username = telegram_data.get('username', '')
+        
+        if not telegram_id:
+            return Response({"detail": _("Не удалось получить ID из Telegram")}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Ищем пользователя по telegram_id
+        user = User.objects.filter(telegram_id=telegram_id).first()
+        
+        if not user:
+            from django.utils.crypto import get_random_string
+            # Создаем нового пользователя (генерируем заглушку для email)
+            dummy_email = f"tg_{telegram_id}@pharmaturk.local"
+            
+            # Проверяем, может быть кто-то уже занял такой email (крайне маловероятно)
+            if User.objects.filter(email=dummy_email).exists():
+                dummy_email = f"tg_{telegram_id}_{uuid.uuid4().hex[:6]}@pharmaturk.local"
+                
+            base_username = username or f"tg_{telegram_id}"
+            final_username = base_username
+            counter = 1
+            while User.objects.filter(username=final_username).exists():
+                final_username = f"{base_username}{counter}"
+                counter += 1
+                
+            user = User.objects.create_user(
+                email=dummy_email,
+                username=final_username,
+                password=get_random_string(16),
+                first_name=first_name,
+                last_name=last_name,
+                telegram_id=telegram_id,
+                telegram_username=username,
+                is_verified=True,  # Telegram аккаунты считаем подтвержденными
+                telegram_notifications=True # По умолчанию включаем уведомления
+            )
+            logger.info(f"Created new user via Telegram Login: {user.id}")
+        else:
+            # Обновляем данные пользователя при входе, если они изменились в Telegram
+            update_fields = []
+            if username and user.telegram_username != username:
+                user.telegram_username = username
+                update_fields.append('telegram_username')
+            if first_name and not user.first_name:
+                user.first_name = first_name
+                update_fields.append('first_name')    
+            if last_name and not user.last_name:
+                user.last_name = last_name
+                update_fields.append('last_name')
+                
+            if update_fields:
+                user.save(update_fields=update_fields)
+                
+        # Обновляем последний вход
+        user.last_login = timezone.now()
+        user.last_login_ip = get_client_ip(request)
+        user.save(update_fields=['last_login', 'last_login_ip'])
+        
+        # Генерируем JWT токены
+        refresh = RefreshToken.for_user(user)
+        
+        # Создаем сессию
+        create_user_session(user, request)
+        
+        return Response({
+            'user': UserSerializer(user, context={'request': request}).data,
+            'tokens': {
+                'access': str(refresh.access_token),
+                'refresh': str(refresh)
+            },
+            'message': _('Успешный вход через Telegram')
+        })
 
 
 class UserProfileViewSet(viewsets.ModelViewSet):
