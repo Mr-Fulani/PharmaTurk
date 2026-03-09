@@ -155,6 +155,12 @@ html, body {
   color: var(--text);
   transition: background-color 0.2s ease, color 0.2s ease;
 }
+
+/* Использование чистого шрифта для полей ввода (улучшение читаемости логинов/паролей/адресов) */
+input, textarea, select {
+  font-family: 'Poppins', 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 
 /* Единый кремовый текст и тёплый ховер ссылок */

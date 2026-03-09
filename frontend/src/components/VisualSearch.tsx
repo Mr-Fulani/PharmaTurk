@@ -88,12 +88,19 @@ export default function VisualSearch() {
         image_url: url.trim(),
         limit: 12,
       })
-      setResults(searchRes.data.results || [])
+      const foundResults = searchRes.data.results || []
+      setResults(foundResults)
+      if (foundResults.length === 0) {
+        setError(t('products_not_found', 'Товары не найдены'))
+      }
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        || (err as Error)?.message
-        || t('search_error', 'Ошибка поиска')
-      setError(String(msg))
+      const errorData = (err as { response?: { data?: { error?: string } } })?.response?.data
+      if (errorData?.error === "invalid_image_url") {
+        setError(t('invalid_image_url', 'Не удалось обработать URL. Убедитесь, что ссылка ведет на картинку (.jpg, .png), а не на веб-страницу.'))
+      } else {
+        const msg = errorData?.error || (err as Error)?.message || t('search_error', 'Ошибка поиска')
+        setError(String(msg))
+      }
       setResults([])
     } finally {
       setSearching(false)
@@ -101,11 +108,11 @@ export default function VisualSearch() {
   }
 
   return (
-    <div className="border rounded-lg p-6 bg-white dark:bg-gray-800">
-      <h3 className="text-lg font-semibold mb-4">
+    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-6 bg-white dark:bg-gray-800">
+      <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
         {t('visual_search', 'Поиск по фото')}
       </h3>
-      <div className="border-2 border-dashed rounded-lg p-6 text-center">
+      <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
         <input
           type="file"
           accept="image/*"
@@ -129,7 +136,7 @@ export default function VisualSearch() {
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             placeholder="https://..."
-            className="flex-1 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-700 px-3 py-2"
+            className="flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-400 px-3 py-2 focus:ring-2 focus:ring-accent focus:border-accent"
           />
           <button
             type="button"

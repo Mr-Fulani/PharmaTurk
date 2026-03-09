@@ -19,7 +19,7 @@ export default function SearchPage() {
     const run = async () => {
       if (!q) return
       setLoading(true)
-        try {
+      try {
         const r = await api.get('/catalog/products', { params: { search: q, page_size: 24 } })
         const data = Array.isArray(r.data) ? r.data : (r.data.results || [])
         setItems(data)
@@ -34,8 +34,8 @@ export default function SearchPage() {
     <>
       <Head><title>{t('search_results', 'Результаты поиска')} — {q}</title></Head>
       <main className="mx-auto max-w-6xl p-6">
-        <h1 className="text-2xl font-bold">{t('search_results', 'Результаты поиска')}</h1>
-        <div className="mt-1 text-sm text-gray-600">{q ? `${t('search_for', 'По запросу')}: "${q}"` : t('search_placeholder')}</div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('search_results', 'Результаты поиска')}</h1>
+        <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">{q ? `${t('search_for', 'По запросу')}: "${q}"` : t('search_placeholder')}</div>
         <div className="mt-8">
           <VisualSearch />
         </div>

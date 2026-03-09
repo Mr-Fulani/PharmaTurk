@@ -339,7 +339,7 @@ class QdrantRecommendationEngine:
         encoder = CLIPEncoder()
         image_vector = encoder.encode_image_from_url(image_url)
         if image_vector is None:
-            return []
+            raise ValueError("invalid_image_url")
         qfilter = self._build_filter(filters=filters)
         try:
             results = self.client.query_points(

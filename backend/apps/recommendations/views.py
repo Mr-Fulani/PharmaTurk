@@ -29,7 +29,18 @@ class RecommendationViewSet(viewsets.ViewSet):
                 image_url=image_url,
                 n_results=n_results,
             )
+        except ValueError as e:
+            if str(e) == "invalid_image_url":
+                return Response(
+                    {"error": "invalid_image_url", "message": "Failed to process the image URL. Please ensure it points directly to a valid image file (e.g., .jpg, .png)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except Exception as e:
+            # Usually caused by other unexpected errors
             return Response(
                 {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

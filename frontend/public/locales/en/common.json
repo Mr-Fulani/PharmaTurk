@@ -997,5 +997,15 @@
   "book_publication_year": "Publication year",
   "cover_type_твердый_переплет": "Hardcover",
   "cover_type_мягкий_переплет": "Paperback",
-  "cover_type_интегральный_переплет": "Integral binding"
+  "cover_type_интегральный_переплет": "Integral binding",
+  "visual_search": "Visual Search",
+  "upload_image_search": "Upload an image to search for similar products",
+  "or_paste_image_url": "Or paste image URL",
+  "search": "Search",
+  "select_image": "Select an image",
+  "upload_failed": "Failed to upload image. Use URL instead.",
+  "upload_unavailable": "File upload unavailable. Paste image URL below.",
+  "invalid_image_url": "Failed to process the URL. Ensure the link points directly to an image file (.jpg, .png) and not a webpage.",
+  "search_error": "Search error",
+  "searching": "Searching for similar..."
 }

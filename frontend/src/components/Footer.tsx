@@ -31,7 +31,7 @@ export default function Footer() {
     instagram_url: '',
     crypto_payment_text: defaultCryptoText
   })
-  
+
   useEffect(() => {
     // Загружаем настройки футера из API только на клиенте
     if (typeof window !== 'undefined') {
@@ -86,7 +86,7 @@ export default function Footer() {
       })
     }
   }, [defaultLocation, defaultCryptoText, i18n.language])
-  
+
   // Используем значения из API или значения по умолчанию
   const phone = settings.phone
   const email = settings.email
@@ -100,16 +100,16 @@ export default function Footer() {
           <div className="flex items-start justify-center sm:justify-start">
             {/* Логотип/изображение оплат — увеличенный размер и правильное выравнивание */}
             <div className="group relative">
-              <img 
-                src="/footer-payments.png" 
-                alt="payments" 
-                className="h-28 w-auto transition-all duration-200 group-hover:scale-105 group-hover:brightness-110" 
+              <img
+                src="/footer-payments.png"
+                alt="payments"
+                className="h-28 w-auto transition-all duration-200 group-hover:scale-105 group-hover:brightness-110"
               />
               <div className="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                <div className="bg-[var(--text-strong)] text-[var(--bg)] dark:bg-white dark:text-gray-900 text-xs px-2 py-1 rounded whitespace-nowrap shadow-lg">
+                <div className="bg-[var(--text-strong)] dark:!bg-[#1f2937] text-[var(--bg)] dark:!text-white dark:border dark:border-gray-600 text-xs px-2 py-1 rounded whitespace-nowrap shadow-lg">
                   {cryptoText}
                 </div>
-                <div className="w-2 h-2 bg-[var(--text-strong)] dark:bg-white rotate-45 absolute top-full left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
+                <div className="w-2 h-2 bg-[var(--text-strong)] dark:!bg-[#1f2937] dark:border-r dark:border-b dark:border-gray-600 rotate-45 absolute top-full left-1/2 -translate-x-1/2 -translate-y-1/2"></div>
               </div>
             </div>
           </div>
@@ -142,90 +142,90 @@ export default function Footer() {
             <div>
               <div className="mb-2 text-sm font-medium text-main">{t('footer_social_networks')}</div>
               <div className="flex items-center gap-3">
-                <a 
-                  href={settings.telegram_url || '#'} 
+                <a
+                  href={settings.telegram_url || '#'}
                   target={settings.telegram_url ? '_blank' : undefined}
                   rel={settings.telegram_url ? 'noopener noreferrer' : undefined}
-                  className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md" 
+                  className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md"
                   aria-label="Telegram"
                   style={{
                     borderColor: theme.theme === 'dark' ? '#9ca3af' : undefined,
                     backgroundColor: theme.theme === 'dark' ? '#4b5563' : undefined
                   }}
                 >
-                  <img 
-                    src="/telegram-icon.png" 
-                    alt="Telegram" 
-                    width="20" 
-                    height="20" 
-                    className="transition group-hover:scale-110" 
-                    style={{ 
+                  <img
+                    src="/telegram-icon.png"
+                    alt="Telegram"
+                    width="20"
+                    height="20"
+                    className="transition group-hover:scale-110"
+                    style={{
                       zIndex: 1
                     }}
                   />
                 </a>
-                <a 
-                  href={settings.whatsapp_url || '#'} 
+                <a
+                  href={settings.whatsapp_url || '#'}
                   target={settings.whatsapp_url ? '_blank' : undefined}
                   rel={settings.whatsapp_url ? 'noopener noreferrer' : undefined}
-                  className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition-all duration-200 hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md" 
+                  className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition-all duration-200 hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md"
                   aria-label="WhatsApp"
                   style={{
                     borderColor: theme.theme === 'dark' ? '#9ca3af' : undefined,
                     backgroundColor: theme.theme === 'dark' ? '#4b5563' : undefined
                   }}
                 >
-                  <img 
-                    src="/whatsapp-icon.png" 
-                    alt="WhatsApp" 
-                    width="20" 
-                    height="20" 
-                    className="transition group-hover:scale-110" 
-                    style={{ 
+                  <img
+                    src="/whatsapp-icon.png"
+                    alt="WhatsApp"
+                    width="20"
+                    height="20"
+                    className="transition group-hover:scale-110"
+                    style={{
                       zIndex: 1
                     }}
                   />
                 </a>
-                <a 
-                  href={settings.vk_url || '#'} 
+                <a
+                  href={settings.vk_url || '#'}
                   target={settings.vk_url ? '_blank' : undefined}
                   rel={settings.vk_url ? 'noopener noreferrer' : undefined}
-                  className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition-all duration-200 hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md" 
+                  className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition-all duration-200 hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md"
                   aria-label="VK"
                   style={{
                     borderColor: theme.theme === 'dark' ? '#9ca3af' : undefined,
                     backgroundColor: theme.theme === 'dark' ? '#4b5563' : undefined
                   }}
                 >
-                  <img 
-                    src="/vk_icon.png" 
-                    alt="VK" 
-                    width="20" 
-                    height="20" 
-                    className="transition group-hover:scale-110" 
-                    style={{ 
+                  <img
+                    src="/vk_icon.png"
+                    alt="VK"
+                    width="20"
+                    height="20"
+                    className="transition group-hover:scale-110"
+                    style={{
                       zIndex: 1
                     }}
                   />
                 </a>
-                <a 
-                  href={settings.instagram_url || '#'} 
+                <a
+                  href={settings.instagram_url || '#'}
                   target={settings.instagram_url ? '_blank' : undefined}
                   rel={settings.instagram_url ? 'noopener noreferrer' : undefined}
-                  className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition-all duration-200 hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md" 
+                  className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition-all duration-200 hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md"
                   aria-label="Instagram"
                   style={{
                     borderColor: theme.theme === 'dark' ? '#9ca3af' : undefined,
                     backgroundColor: theme.theme === 'dark' ? '#4b5563' : undefined
                   }}
                 >
-                  <img 
-                    src="/instagram-icon.png" 
-                    alt="Instagram" 
-                    width="20" 
-                    height="20" 
-                    className="transition group-hover:scale-110" 
-                    style={{ 
+                  <img
+                    src="/instagram-icon.png"
+                    alt="Instagram"
+                    width="20"
+                    height="20"
+                    className="transition group-hover:scale-110"
+                    style={{
                       zIndex: 1
                     }}
                   />
