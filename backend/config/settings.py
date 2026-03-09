@@ -200,6 +200,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.recommendations.tasks.sync_all_products_to_qdrant",
         "schedule": 60 * 60 * 24 * 3,  # раз в 3 дня
     },
+    # Очистка временных файлов поиска по фото (каждый час)
+    "cleanup-temp-images": {
+        "task": "apps.recommendations.tasks.cleanup_temp_images",
+        "schedule": 60 * 60,  # 1 hour
+    },
 }
 
 

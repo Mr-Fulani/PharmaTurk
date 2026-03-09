@@ -7,7 +7,7 @@ import { isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
 
-const UPLOAD_TEMP_ENABLED = false // set true when /api/upload/temp/ exists
+const UPLOAD_TEMP_ENABLED = true // set true when /api/upload/temp/ exists
 
 interface Product {
   id: number
@@ -45,7 +45,7 @@ export default function VisualSearch() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !file.type.startsWith('image/')) {
-      setError('Выберите изображение')
+      setError(t('select_image', 'Выберите изображение'))
       return
     }
     setError(null)
@@ -60,17 +60,17 @@ export default function VisualSearch() {
         })
         const imageUrl = uploadRes.data?.url || uploadRes.data?.image_url
         if (!imageUrl) {
-          setError('Не удалось загрузить изображение. Используйте URL.')
+          setError(t('upload_failed', 'Не удалось загрузить изображение. Используйте URL.'))
           return
         }
         await handleUrlSearch(imageUrl)
       } else {
-        setError('Загрузка файла недоступна. Вставьте URL изображения ниже.')
+        setError(t('upload_unavailable', 'Загрузка файла недоступна. Вставьте URL изображения ниже.'))
       }
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
         || (err as Error)?.message
-        || 'Ошибка поиска'
+        || t('search_error', 'Ошибка поиска')
       setError(String(msg))
       setResults([])
     } finally {
@@ -92,7 +92,7 @@ export default function VisualSearch() {
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
         || (err as Error)?.message
-        || 'Ошибка поиска'
+        || t('search_error', 'Ошибка поиска')
       setError(String(msg))
       setResults([])
     } finally {

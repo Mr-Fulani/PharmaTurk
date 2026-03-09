@@ -127,3 +127,49 @@ def log_recommendation_event(
             position=position,
             session_id=session_id or "",
         )
+
+
+@shared_task
+def cleanup_temp_images():
+    """
+    Delete temporary images older than 1 hour from the temp/ directory.
+    Uses default_storage which works with both local and S3 endpoints.
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    from django.core.files.storage import default_storage
+    import os
+
+    try:
+        # For S3, directories might not be explicitly returned but objects with "temp/" prefix exist
+        # default_storage listdir returns (dirs, files)
+        try:
+            _, files = default_storage.listdir("temp")
+        except FileNotFoundError:
+            # Local dev without temp dir created yet
+            return {"deleted": 0}
+
+        deleted_count = 0
+        now = timezone.now()
+        threshold = now - timedelta(hours=1)
+
+        for filename in files:
+            file_path = f"temp/{filename}"
+            try:
+                # Get modified time; works differently per storage backend but generally returns datetime
+                modified_time = default_storage.get_modified_time(file_path)
+                
+                # Make timezone aware if it's naive
+                if timezone.is_naive(modified_time):
+                    modified_time = timezone.make_aware(modified_time)
+                
+                if modified_time < threshold:
+                    default_storage.delete(file_path)
+                    deleted_count += 1
+            except Exception as e:
+                logger.error("Failed to delete temp file %s: %s", file_path, e)
+                
+        return {"deleted": deleted_count}
+    except Exception as e:
+        logger.error("Error running cleanup_temp_images: %s", e)
+        return {"error": str(e)}

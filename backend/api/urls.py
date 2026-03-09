@@ -2,13 +2,16 @@
 from django.urls import path, include, re_path
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import HealthCheckView, JWTObtainPairView
+from .views import HealthCheckView, JWTObtainPairView, TempImageUploadView
 
 TokenRefresh = TokenRefreshView.as_view()
 
 urlpatterns = [
     # Проверка здоровья сервиса
     path("health/", HealthCheckView.as_view(), name="health-check"),
+    
+    # Временная загрузка файлов
+    re_path(r"^upload/temp/?$", TempImageUploadView.as_view(), name="temp-upload"),
 
     # Аутентификация (JWT): в теле username или email + password
     path("auth/jwt/create/", JWTObtainPairView.as_view(), name="jwt-create"),
