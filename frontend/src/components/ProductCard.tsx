@@ -188,13 +188,15 @@ export default function ProductCard({
                 iconOnly={true}
                 className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
               />
-              <AddToCartButton
-                productId={isBaseProduct ? (baseProductId ?? id) : undefined}
-                productType={productType}
-                productSlug={slug}
-                className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
-                label=""
-              />
+              {productType !== 'services' && (
+                <AddToCartButton
+                  productId={isBaseProduct ? (baseProductId ?? id) : undefined}
+                  productType={productType}
+                  productSlug={slug}
+                  className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
+                  label=""
+                />
+              )}
             </div>
           </div>
         </div>
@@ -328,13 +330,15 @@ export default function ProductCard({
             iconOnly={true}
             className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
           />
-          <AddToCartButton
-            productId={isBaseProduct ? (baseProductId ?? id) : undefined}
-            productType={productType}
-            productSlug={slug}
-            className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
-            label=""
-          />
+          {productType !== 'services' && (
+            <AddToCartButton
+              productId={isBaseProduct ? (baseProductId ?? id) : undefined}
+              productType={productType}
+              productSlug={slug}
+              className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
+              label=""
+            />
+          )}
         </div>
       </div>
     </div>

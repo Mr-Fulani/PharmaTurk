@@ -11,7 +11,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, FileExtensionValidator
 from django.utils.text import slugify
 from django.contrib.contenttypes.models import ContentType
-from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from .currency_models import CurrencyRate, MarginSettings, ProductPrice, ServicePrice, CurrencyUpdateLog
 from .utils.storage_paths import (
     detect_media_type,
@@ -1854,8 +1854,8 @@ class ProductAttribute(models.Model):
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
 
     class Meta:
-        verbose_name = _("Атрибут товара")
-        verbose_name_plural = _("Атрибуты товаров")
+        verbose_name = _("Атрибут товара (статичный)")
+        verbose_name_plural = _("📦 Атрибуты товаров (статика)")
         ordering = ["sort_order", "name"]
         unique_together = ["product", "attribute_type", "name"]
 
@@ -3074,9 +3074,9 @@ class Service(models.Model):
         return self.price
 
 
-class ServiceAttributeKey(models.Model):
-    """Модель для хранения ключей атрибутов услуг (например, 'area_sqm').
-    Позволяет администратору создавать новые типы атрибутов через админку.
+class GlobalAttributeKey(models.Model):
+    """Модель для хранения универсальных ключей атрибутов (например, 'area_sqm', 'material').
+    Позволяет администратору создавать новые типы атрибутов через админку для любых товаров и услуг.
     """
     slug = models.SlugField(
         _("Slug"),
@@ -3086,22 +3086,20 @@ class ServiceAttributeKey(models.Model):
     )
     categories = models.ManyToManyField(
         Category,
-        related_name="service_attribute_keys",
+        related_name="global_attribute_keys",
         verbose_name=_("Категории"),
         blank=True,
-        limit_choices_to={'children__isnull': True},  # Только для конечных категорий
-        help_text=_("Категории услуг, для которых доступен этот атрибут.")
+        help_text=_("Категории товаров или услуг, для которых доступен этот атрибут.")
     )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
 
     class Meta:
-        verbose_name = _("Тип атрибута услуги")
-        verbose_name_plural = _("Типы атрибутов услуг")
+        verbose_name = _("Тип динамического атрибута")
+        verbose_name_plural = _("🛠️ Типы динамических атрибутов")
         ordering = ["sort_order", "slug"]
 
     def __str__(self):
-        # Если есть перевод для текущего языка - используем его, иначе slug
-        return self.slug
+        return self.name
 
     @property
     def name(self):
@@ -3110,30 +3108,27 @@ class ServiceAttributeKey(models.Model):
         if not lang:
             return self.slug
             
-        # Пытаемся найти точное совпадение (например, 'ru')
         trans = self.translations.filter(locale=lang).first()
         
-        # Если не нашли, пытаемся найти по префиксу (например, для 'en-us' ищем 'en')
         if not trans and '-' in lang:
             base_lang = lang.split('-')[0]
             trans = self.translations.filter(locale=base_lang).first()
             
-        # Если все еще не нашли, берем английский или первый попавшийся
         if not trans:
             trans = self.translations.filter(locale='en').first() or self.translations.first()
             
         return trans.name if trans else self.slug
 
 
-class ServiceAttributeKeyTranslation(models.Model):
-    """Перевод для ServiceAttributeKey"""
+class GlobalAttributeKeyTranslation(models.Model):
+    """Перевод для GlobalAttributeKey"""
     LANGUAGE_CHOICES = [
         ('ru', _('Русский')),
         ('en', _('Английский')),
         ('tr', _('Турецкий')),
     ]
     key_obj = models.ForeignKey(
-        ServiceAttributeKey,
+        GlobalAttributeKey,
         on_delete=models.CASCADE,
         related_name="translations",
         verbose_name=_("Тип атрибута")
@@ -3152,9 +3147,40 @@ class ServiceAttributeKeyTranslation(models.Model):
         verbose_name_plural = _("Переводы типов атрибутов")
         unique_together = [["key_obj", "locale"]]
 
+    def __str__(self):
+        return f"{self.get_locale_display()}: {self.name}"
+
+
+class ProductAttributeValue(models.Model):
+    """Динамические атрибуты для товаров (универсальные через GFK)."""
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey('content_type', 'object_id')
+
+    attribute_key = models.ForeignKey(
+        GlobalAttributeKey,
+        on_delete=models.CASCADE,
+        related_name="product_values",
+        verbose_name=_("Тип атрибута")
+    )
+    value = models.CharField(_("Значение"), max_length=500)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+
+    class Meta:
+        verbose_name = _("🛠️ Динамический атрибут товара")
+        verbose_name_plural = _("🛠️ Динамические атрибуты товаров")
+        ordering = ["sort_order", "attribute_key"]
+        indexes = [
+            models.Index(fields=["content_type", "object_id"]),
+        ]
+
+    def __str__(self):
+        name = getattr(self.attribute_key, 'name', str(self.attribute_key))
+        return f"{name}: {self.value}"
+
 
 class ServiceAttribute(models.Model):
-    """Специфичный атрибут услуги (площадь, срок, формат и т.д.)"""
+    """Динамические атрибуты конкретно для услуг."""
 
     service = models.ForeignKey(
         Service,
@@ -3163,9 +3189,9 @@ class ServiceAttribute(models.Model):
         verbose_name=_("Услуга")
     )
     attribute_key = models.ForeignKey(
-        ServiceAttributeKey,
+        GlobalAttributeKey,
         on_delete=models.CASCADE,
-        related_name="service_attributes",
+        related_name="service_values",
         verbose_name=_("Тип атрибута"),
         null=True,
         blank=False

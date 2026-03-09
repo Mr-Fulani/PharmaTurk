@@ -22,6 +22,7 @@ from .models import (
     AccessoryProduct, AccessoryProductTranslation, AccessoryProductImage,
     IncenseProduct, IncenseProductTranslation, IncenseProductImage,
     Service, ServiceTranslation, ServiceImage, ServicePrice, ServiceAttribute,
+    GlobalAttributeKey, ProductAttributeValue,
     Banner, BannerMedia, Author, ProductAuthor, ProductGenre, BookVariant, BookVariantSize, BookVariantImage,
     SportsProduct, SportsProductTranslation, SportsProductImage, SportsVariant, SportsVariantImage,
     AutoPartProduct, AutoPartProductTranslation, AutoPartProductImage, AutoPartVariant, AutoPartVariantImage,
@@ -418,6 +419,17 @@ class ProductAttributeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductAttribute
         fields = ['id', 'attribute_type', 'attribute_type_display', 'name', 'value', 'sort_order']
+
+
+class ProductDynamicAttributeSerializer(serializers.ModelSerializer):
+    """Сериализатор для динамических атрибутов товара."""
+    
+    key = serializers.ReadOnlyField(source='attribute_key.slug')
+    key_display = serializers.ReadOnlyField(source='attribute_key.name')
+    
+    class Meta:
+        model = ProductAttributeValue
+        fields = ['id', 'key', 'key_display', 'value', 'sort_order']
 
 
 class PriceHistorySerializer(serializers.ModelSerializer):
@@ -1420,6 +1432,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     og_title = serializers.SerializerMethodField()
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     
     class Meta:
         model = ClothingProduct
@@ -1428,7 +1441,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color', 'material', 'season',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
-            'images', 'sizes',
+            'images', 'sizes', 'dynamic_attributes',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
@@ -1773,6 +1786,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = ShoeProductTranslationSerializer(many=True, read_only=True)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
     meta_keywords = serializers.SerializerMethodField()
@@ -1787,7 +1801,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color', 'material',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
-            'images', 'sizes',
+            'images', 'sizes', 'dynamic_attributes',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
@@ -2201,6 +2215,7 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
     translations = ElectronicsProductTranslationSerializer(many=True, read_only=True)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
     meta_keywords = serializers.SerializerMethodField()
@@ -2215,7 +2230,7 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'model', 'specifications', 'warranty', 'power_consumption',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
-            'images',
+            'images', 'dynamic_attributes',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
@@ -2442,6 +2457,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
     active_variant_main_image_url = serializers.SerializerMethodField()
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = FurnitureProductTranslationSerializer(many=True, read_only=True)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
@@ -2457,7 +2473,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'material', 'furniture_type', 'dimensions',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
-            'images',
+            'images', 'dynamic_attributes',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
@@ -2933,6 +2949,7 @@ class JewelryProductSerializer(serializers.ModelSerializer):
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = JewelryProductTranslationSerializer(many=True, read_only=True)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
     meta_keywords = serializers.SerializerMethodField()
@@ -2947,7 +2964,7 @@ class JewelryProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'jewelry_type', 'material', 'metal_purity', 'stone_type', 'carat_weight', 'gender',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
-            'images',
+            'images', 'dynamic_attributes',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
@@ -3296,7 +3313,7 @@ class ServicePriceSerializer(serializers.ModelSerializer):
         ]
 
 class ServiceAttributeSerializer(serializers.ModelSerializer):
-    """Сериализатор специфичных атрибутов услуги."""
+    """Сериализатор динамических атрибутов услуги."""
 
     key = serializers.ReadOnlyField(source='attribute_key.slug')
     key_display = serializers.ReadOnlyField(source='attribute_key.name')

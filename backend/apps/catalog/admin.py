@@ -2,6 +2,7 @@ from django import forms
 from decimal import Decimal
 from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
+from django.contrib.contenttypes.admin import GenericTabularInline
 from django.core.exceptions import ValidationError
 from django.db.models import Case, When, Value, IntegerField, Q
 from django.utils.html import format_html, format_html_join
@@ -19,7 +20,8 @@ from .models import (
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
-    Service, ServiceTranslation, ServiceImage, ServiceAttribute, ServiceAttributeKey, ServiceAttributeKeyTranslation,
+    Service, ServiceTranslation, ServiceImage, ServiceAttribute, 
+    GlobalAttributeKey, GlobalAttributeKeyTranslation, ProductAttributeValue,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
     Author, ProductAuthor,
     # Валютные модели
@@ -207,15 +209,15 @@ class ServiceTranslationInline(admin.TabularInline):
     verbose_name_plural = _("Переводы")
 
 
-class ServiceAttributeKeyTranslationInline(admin.TabularInline):
-    model = ServiceAttributeKeyTranslation
+class GlobalAttributeKeyTranslationInline(admin.TabularInline):
+    model = GlobalAttributeKeyTranslation
     extra = 1
 
-@admin.register(ServiceAttributeKey)
-class ServiceAttributeKeyAdmin(admin.ModelAdmin):
-    list_display = ('slug', 'sort_order')
+@admin.register(GlobalAttributeKey)
+class GlobalAttributeKeyAdmin(admin.ModelAdmin):
+    list_display = ('slug', 'name', 'sort_order')
     search_fields = ('slug', 'translations__name')
-    inlines = [ServiceAttributeKeyTranslationInline]
+    inlines = [GlobalAttributeKeyTranslationInline]
     filter_horizontal = ('categories',)
 
 class ServiceImageInline(admin.TabularInline):
@@ -231,12 +233,25 @@ class ServiceAttributeInline(admin.TabularInline):
     model = ServiceAttribute
     extra = 0
     fields = ('attribute_key', 'value', 'sort_order')
-    verbose_name = _("Attribute service")
-    verbose_name_plural = _("Attributes service")
+    verbose_name = _("🛠️ Атрибут услуги")
+    verbose_name_plural = _("🛠️ Атрибуты услуг (динамические)")
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "attribute_key":
-            kwargs["queryset"] = ServiceAttributeKey.objects.all().order_by('sort_order', 'slug')
+            kwargs["queryset"] = GlobalAttributeKey.objects.all().order_by('sort_order', 'slug')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+class ProductAttributeValueInline(GenericTabularInline):
+    """Inline для динамических атрибутов товара (через GenericForeignKey)."""
+    model = ProductAttributeValue
+    extra = 0
+    fields = ('attribute_key', 'value', 'sort_order')
+    verbose_name = _("🛠️ Динамический атрибут")
+    verbose_name_plural = _("🛠️ Динамические атрибуты товаров")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "attribute_key":
+            kwargs["queryset"] = GlobalAttributeKey.objects.all().order_by('sort_order', 'slug')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -618,10 +633,12 @@ class ShoeVariantImageInline(admin.TabularInline):
 
 
 class ProductAttributeInline(admin.TabularInline):
-    """Инлайн для атрибутов товара."""
+    """Inline для (статичных) атрибутов товара."""
     model = ProductAttribute
     extra = 1
     fields = ('attribute_type', 'name', 'value', 'sort_order')
+    verbose_name = _("📦 Статичный атрибут")
+    verbose_name_plural = _("📦 Статичные атрибуты товаров")
 
 
 class RunAIActionMixin:
@@ -902,6 +919,9 @@ class ProductAttributeAdmin(admin.ModelAdmin):
     search_fields = ('product__name', 'name', 'value')
     ordering = ('product', 'sort_order', 'name')
 
+    class Meta:
+        verbose_name_plural = _("📦 Атрибуты товаров (статика)")
+
 
 @admin.register(PriceHistory)
 class PriceHistoryAdmin(admin.ModelAdmin):
@@ -1113,7 +1133,7 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ClothingProductTranslationInline, ClothingProductSizeInline, ClothingVariantInline, ClothingProductImageInline]
+    inlines = [ClothingProductTranslationInline, ClothingProductSizeInline, ClothingVariantInline, ClothingProductImageInline, ProductAttributeValueInline]
 
     def variant_prices_overview(self, obj):
         if not obj or not obj.pk:
@@ -1459,7 +1479,7 @@ class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAd
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     # Галерея для обуви теперь задается на уровне варианта (цвета), поэтому инлайн изображений товара убран
-    inlines = [ShoeProductTranslationInline, ShoeProductSizeInline, ShoeVariantInline]
+    inlines = [ShoeProductTranslationInline, ShoeProductSizeInline, ShoeVariantInline, ProductAttributeValueInline]
 
     def variant_prices_overview(self, obj):
         if not obj or not obj.pk:
@@ -1648,7 +1668,7 @@ class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ElectronicsProductTranslationInline, ElectronicsProductImageInline]
+    inlines = [ElectronicsProductTranslationInline, ElectronicsProductImageInline, ProductAttributeValueInline]
 
 
 @admin.register(FurnitureVariant)
@@ -1702,7 +1722,7 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Mod
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [FurnitureProductTranslationInline, FurnitureVariantInline]
+    inlines = [FurnitureProductTranslationInline, FurnitureVariantInline, ProductAttributeValueInline]
 
 
 # ============================================================================
@@ -1801,7 +1821,7 @@ class JewelryProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Model
         (_('Настройки'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [JewelryProductTranslationInline, JewelryVariantInline, JewelryProductImageInline]
+    inlines = [JewelryProductTranslationInline, JewelryVariantInline, JewelryProductImageInline, ProductAttributeValueInline]
 
     def variant_prices_overview(self, obj):
         if not obj or not obj.pk:
