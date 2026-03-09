@@ -237,12 +237,13 @@ const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): st
 // все остальные — универсальный /api/catalog/products с фильтром category_slug.
 const resolveProductsEndpoint = (categoryType: string) => {
   switch (categoryType) {
-    case 'clothing':    return '/api/catalog/clothing/products'
-    case 'shoes':       return '/api/catalog/shoes/products'
+    case 'clothing': return '/api/catalog/clothing/products'
+    case 'shoes': return '/api/catalog/shoes/products'
     case 'electronics': return '/api/catalog/electronics/products'
-    case 'furniture':   return '/api/catalog/furniture/products'
-    case 'jewelry':     return '/api/catalog/jewelry/products'
-    default:            return '/api/catalog/products'
+    case 'furniture': return '/api/catalog/furniture/products'
+    case 'jewelry': return '/api/catalog/jewelry/products'
+    case 'uslugi': return '/api/catalog/services'
+    default: return '/api/catalog/products'
   }
 }
 
@@ -1431,7 +1432,7 @@ export default function CategoryPage({
           // Для книг и мебели используем category_slug вместо subcategory_slug
           if (categoryType === 'jewelry' && jewelryTypeFilters.length > 0) {
             params.jewelry_type = jewelryTypeFilters.join(',')
-          } else if (categoryType === 'books' || categoryType === 'furniture') {
+          } else if (categoryType === 'books' || categoryType === 'furniture' || categoryType === 'uslugi') {
             params.category_slug = nonGenderSubSlugs.join(',')
           } else {
             params.subcategory_slug = nonGenderSubSlugs.join(',')
@@ -1849,8 +1850,8 @@ export default function CategoryPage({
                 <button
                   onClick={() => setViewMode('grid')}
                   className={`p-2 rounded-lg transition-colors ${viewMode === 'grid'
-                      ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                      : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
+                    ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                    : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
                     }`}
                   aria-label="Grid view"
                 >
@@ -1861,8 +1862,8 @@ export default function CategoryPage({
                 <button
                   onClick={() => setViewMode('list')}
                   className={`p-2 rounded-lg transition-colors ${viewMode === 'list'
-                      ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                      : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
+                    ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                    : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
                     }`}
                   aria-label="List view"
                 >

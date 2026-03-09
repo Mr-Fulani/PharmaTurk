@@ -21,7 +21,7 @@ from .models import (
     TablewareProduct, TablewareProductTranslation, TablewareProductImage,
     AccessoryProduct, AccessoryProductTranslation, AccessoryProductImage,
     IncenseProduct, IncenseProductTranslation, IncenseProductImage,
-    Service, ServiceTranslation,
+    Service, ServiceTranslation, ServiceImage, ServicePrice,
     Banner, BannerMedia, Author, ProductAuthor, ProductGenre, BookVariant, BookVariantSize, BookVariantImage,
     SportsProduct, SportsProductTranslation, SportsProductImage, SportsVariant, SportsVariantImage,
     AutoPartProduct, AutoPartProductTranslation, AutoPartProductImage, AutoPartVariant, AutoPartVariantImage,
@@ -1165,6 +1165,9 @@ class FavoriteSerializer(serializers.ModelSerializer):
         elif isinstance(product, Product):
             product_type = getattr(product, 'product_type', None) or 'medicines'
             product_data = ProductSerializer(product, context={'request': request}).data
+        elif isinstance(product, Service):
+            product_type = 'uslugi'
+            product_data = ServiceSerializer(product, context={'request': request}).data
         else:
             # Fallback для неизвестных типов
             product_data = {
@@ -1200,7 +1203,7 @@ class AddToFavoriteSerializer(serializers.Serializer):
         }.get(product_type, product_type)
         
         # Маппинг типов товаров на модели
-        from .models import Product, ClothingProduct, ShoeProduct, ElectronicsProduct, FurnitureProduct, JewelryProduct
+        from .models import Product, ClothingProduct, ShoeProduct, ElectronicsProduct, FurnitureProduct, JewelryProduct, Service
         
         PRODUCT_MODEL_MAP = {
             'medicines': Product,
@@ -1217,9 +1220,12 @@ class AddToFavoriteSerializer(serializers.Serializer):
             'shoes': ShoeProduct,
             'electronics': ElectronicsProduct,
             'furniture': FurnitureProduct,
+            'uslugi': Service,
         }
         
-        model_class = PRODUCT_MODEL_MAP.get(product_type, Product)
+        model_class = PRODUCT_MODEL_MAP.get(product_type)
+        if not model_class:
+            raise serializers.ValidationError({"product_type": f"Неизвестный тип продукта: {product_type}"})
         
         try:
             product = model_class.objects.get(id=product_id)
@@ -3261,33 +3267,117 @@ class JewelryProductSerializer(serializers.ModelSerializer):
 # СЕРИАЛИЗАТОРЫ ДЛЯ УСЛУГ
 # ============================================================================
 
+class ServiceImageSerializer(serializers.ModelSerializer):
+    """Сериализатор для галереи изображений услуги."""
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ServiceImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        if obj.image_file:
+            return obj.image_file.url
+        return obj.image_url
+
+
+class ServicePriceSerializer(serializers.ModelSerializer):
+    """Сериализатор мультивалютных цен услуги."""
+    class Meta:
+        model = ServicePrice
+        fields = [
+            'base_currency', 'base_price',
+            'rub_price', 'rub_price_with_margin',
+            'usd_price', 'usd_price_with_margin',
+            'kzt_price', 'kzt_price_with_margin',
+            'eur_price', 'eur_price_with_margin',
+            'try_price', 'try_price_with_margin',
+            'usdt_price', 'usdt_price_with_margin',
+        ]
+
+
 class ServiceSerializer(serializers.ModelSerializer):
     """Сериализатор для услуг."""
     
     category = CategorySerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
+    main_video_url = serializers.SerializerMethodField()
+    main_gif_url = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     translations = ServiceTranslationSerializer(many=True, read_only=True)
+    images = ServiceImageSerializer(many=True, read_only=True)
+    gallery = ServiceImageSerializer(source='images', many=True, read_only=True)
+    prices_info = ServicePriceSerializer(source='price_info', read_only=True)
     
     class Meta:
         model = Service
         fields = [
             'id', 'name', 'slug', 'description', 'category',
-            'price', 'price_formatted', 'currency',
+            'price', 'price_formatted', 'currency', 'prices_info',
             'duration', 'service_type',
-            'main_image', 'main_image_url',
+            'main_image', 'main_image_url', 'video_url', 'main_video_url', 'main_gif_url',
+            'gallery', 'images',
             'is_active', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_main_image_url(self, obj):
         """URL главного изображения."""
+        if obj.main_image_file:
+            return obj.main_image_file.url
         return obj.main_image if obj.main_image else None
-    
+
+    def get_main_video_url(self, obj):
+        """URL главного видео."""
+        if obj.main_video_file:
+            return obj.main_video_file.url
+        return obj.video_url if obj.video_url else None
+
+    def get_main_gif_url(self, obj):
+        """URL GIF."""
+        if obj.gif_file:
+            return obj.gif_file.url
+        return None
+
+    def _get_preferred_currency(self, request):
+        """Определяет предпочитаемую валюту."""
+        default_currency = 'RUB'
+        if not request:
+            return default_currency
+        preferred_currency = request.headers.get('X-Currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        preferred_currency = request.query_params.get('currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            user_currency = getattr(request.user, 'currency', None)
+            if user_currency:
+                return user_currency.upper()
+        language_code = getattr(request, 'LANGUAGE_CODE', None)
+        language_currency_map = {'en': 'USD', 'ru': 'RUB'}
+        return language_currency_map.get(language_code, default_currency)
+
+    def get_price(self, obj):
+        """Получает цену в предпочитаемой валюте."""
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        return obj.get_price(preferred_currency)
+
+    def get_currency(self, obj):
+        """Получает активную валюту."""
+        request = self.context.get('request')
+        return self._get_preferred_currency(request)
+
     def get_price_formatted(self, obj):
-        """Форматированная цена."""
-        if obj.price is not None:
-            return f"{obj.price} {obj.currency}"
+        """Форматированная цена в предпочитаемой валюте."""
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        price = obj.get_price(preferred_currency)
+        if price is not None:
+            return f"{price} {preferred_currency}"
         return None
 
 

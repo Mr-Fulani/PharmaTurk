@@ -32,7 +32,7 @@ interface FavoritesStore {
   add: (productId: number, productType?: string) => Promise<void>
   remove: (productId: number, productType?: string) => Promise<void>
   check: (productId: number, productType?: string) => Promise<boolean>
-  isFavorite: (productId: number) => boolean
+  isFavorite: (productId: number, productType?: string) => boolean
 }
 
 export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
@@ -40,13 +40,13 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
   count: 0,
   loading: false,
   refreshing: false,
-  
+
   refresh: async (currency?: string) => {
     // Предотвращаем множественные одновременные запросы
     if (get().refreshing) {
       return
     }
-    
+
     set({ refreshing: true, loading: true })
     try {
       initCartSession()
@@ -60,7 +60,7 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       set({ favorites: [], count: 0, loading: false, refreshing: false })
     }
   },
-  
+
   add: async (productId: number, productType: string = 'medicines') => {
     try {
       initCartSession()
@@ -71,7 +71,7 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       throw new Error(detail)
     }
   },
-  
+
   remove: async (productId: number, productType: string = 'medicines') => {
     try {
       initCartSession()
@@ -82,7 +82,7 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       throw new Error(detail)
     }
   },
-  
+
   check: async (productId: number, productType: string = 'medicines') => {
     try {
       initCartSession()
@@ -93,9 +93,15 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       return false
     }
   },
-  
-  isFavorite: (productId: number) => {
+
+  isFavorite: (productId: number, productType?: string) => {
     const { favorites } = get()
-    return favorites.some(fav => fav.product.id === productId)
+    return favorites.some(fav => {
+      const sameId = fav.product.id === productId
+      if (!productType) return sameId
+      // Если тип указан, проверяем и его
+      const type = fav.product._product_type || 'medicines'
+      return sameId && type === productType
+    })
   },
 }))

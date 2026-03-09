@@ -31,6 +31,7 @@ const CATEGORY_ALIASES: Record<string, CategoryType> = {
   underwear: 'underwear',
   headwear: 'headwear',
   books: 'books',
+  uslugi: 'uslugi',
 }
 
 const normalizeCategoryType = (value?: string): CategoryType => {
@@ -56,6 +57,8 @@ const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
       return `/api/catalog/books/products/${slug}`
     case 'perfumery':
       return `/api/catalog/perfumery/products/${slug}`
+    case 'uslugi':
+      return `/api/catalog/services/${slug}`
     default:
       // Для всех остальных категорий (включая новые динамические) используем общий эндпоинт
       return `/api/catalog/products/${slug}`
@@ -165,6 +168,10 @@ interface Product {
   weight_value?: number | string | null
   weight_unit?: string | null
   book_attributes?: { format?: string; thickness_mm?: string }
+  // Услуги
+  main_video_url?: string | null
+  main_gif_url?: string | null
+  gallery?: { id: number; image_url: string; alt_text?: string; sort_order?: number }[]
 }
 
 interface Variant {
@@ -351,8 +358,10 @@ export default function ProductPage({
       normalizeMediaValue(product.main_image_url) ||
       normalizeMediaValue(product.main_image)
     const mainImageUrl = resolveMediaUrl(mainImageRaw)
-    const normalizedProductVideoUrl = normalizeMediaValue(product.video_url)
+    const normalizedProductVideoUrl = normalizeMediaValue(product.video_url || product.main_video_url)
+    const normalizedProductGifUrl = normalizeMediaValue(product.main_gif_url)
     const hasVideo = Boolean(normalizedProductVideoUrl && isVideoUrl(normalizedProductVideoUrl))
+    const hasGif = Boolean(normalizedProductGifUrl)
     const seenVideoUrls = new Set<string>()
     const seenImageUrls = new Set<string>()
 
@@ -393,6 +402,9 @@ export default function ProductPage({
     }
     if (hasVideo && normalizedProductVideoUrl && !seenVideoUrls.has(normalizedProductVideoUrl)) {
       list = [{ id: 'main-video', image_url: '', video_url: normalizedProductVideoUrl, alt_text: 'Видео', isVideo: true, sort_order: -2 }, ...list]
+    }
+    if (hasGif && normalizedProductGifUrl) {
+      list = [{ id: 'main-gif', image_url: normalizedProductGifUrl, alt_text: 'GIF', sort_order: -1.5 }, ...list]
     }
     const sortPriority = (item: GalleryItem) => {
       if (item.isVideo && normalizedProductVideoUrl && item.video_url === normalizedProductVideoUrl) {

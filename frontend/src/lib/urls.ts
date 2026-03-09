@@ -49,6 +49,11 @@ export function buildProductUrl(productType: string, slug: string): string {
   const normalizedSlug = (slug || '').toString().trim().replace(/_/g, '-')
   const prefix = `${normalizedType}-`
   const cleanedSlug = normalizedSlug.startsWith(prefix) ? normalizedSlug.slice(prefix.length) : normalizedSlug
+
+  if (normalizedType === 'uslugi') {
+    return `/product/uslugi/${cleanedSlug || normalizedSlug}`
+  }
+
   return `/product/${normalizedType}/${cleanedSlug || normalizedSlug}`
 }
 

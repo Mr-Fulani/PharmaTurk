@@ -1019,7 +1019,7 @@ export default function CategorySidebar({
             </div>
           )}
 
-          {brandGroups.length > 0 && categoryType !== 'books' && (
+          {brandGroups.length > 0 && categoryType !== 'books' && categoryType !== 'uslugi' && (
             <div className="border-b pb-4">
               {brandGroups.map((group) => (
                 <div key={group.title}>
@@ -1030,7 +1030,7 @@ export default function CategorySidebar({
             </div>
           )}
 
-          {brands.length > 0 && brandGroups.length === 0 && categoryType !== 'books' && (
+          {brands.length > 0 && brandGroups.length === 0 && categoryType !== 'books' && categoryType !== 'uslugi' && (
             <div className="border-b pb-4">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, brands: !prev.brands }))}
@@ -1128,54 +1128,56 @@ export default function CategorySidebar({
             </select>
           </div>
 
-          <div>
-            <button
-              onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
-              className="flex items-center justify-between w-full mb-3"
-            >
-              <h3 className="text-base font-semibold text-gray-900">{t('sidebar_additional', 'Дополнительно')}</h3>
-              <svg
-                className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+          {categoryType !== 'uslugi' && (
+            <div>
+              <button
+                onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
+                className="flex items-center justify-between w-full mb-3"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {expandedSections.filters && (
-              <div className="space-y-3">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={filters.inStock}
-                    onChange={(e) =>
-                      updateFilters((prev) => ({
-                        ...prev,
-                        inStock: e.target.checked
-                      }))
-                    }
-                    className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
-                  />
-                  <span className="text-sm text-gray-700">{t('sidebar_in_stock')}</span>
-                </label>
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={filters.isNew}
-                    onChange={(e) =>
-                      updateFilters((prev) => ({
-                        ...prev,
-                        isNew: e.target.checked
-                      }))
-                    }
-                    className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
-                  />
-                  <span className="text-sm text-gray-700">{t('sidebar_new', 'Новинки')}</span>
-                </label>
-              </div>
-            )}
-          </div>
+                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_additional', 'Дополнительно')}</h3>
+                <svg
+                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {expandedSections.filters && (
+                <div className="space-y-3">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={filters.inStock}
+                      onChange={(e) =>
+                        updateFilters((prev) => ({
+                          ...prev,
+                          inStock: e.target.checked
+                        }))
+                      }
+                      className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                    />
+                    <span className="text-sm text-gray-700">{t('sidebar_in_stock')}</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={filters.isNew}
+                      onChange={(e) =>
+                        updateFilters((prev) => ({
+                          ...prev,
+                          isNew: e.target.checked
+                        }))
+                      }
+                      className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                    />
+                    <span className="text-sm text-gray-700">{t('sidebar_new', 'Новинки')}</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </aside>
     </>

@@ -25,7 +25,6 @@ export const BASE_PRODUCT_TYPES = [
   'headwear',
   'books',
   'perfumery',
-  'uslugi',
   'sports',
   'auto-parts',
   'islamic-clothing',
@@ -42,7 +41,7 @@ export const BASE_PRODUCT_TYPES = [
 export type BaseProductType = (typeof BASE_PRODUCT_TYPES)[number]
 
 /** Типы с отдельными моделями — всегда требуют type в URL. */
-export const TYPES_NEEDING_PATH = ['clothing', 'shoes', 'electronics', 'jewelry'] as const
+export const TYPES_NEEDING_PATH = ['clothing', 'shoes', 'electronics', 'jewelry', 'uslugi'] as const
 
 const normalizeProductType = (productType?: string | null) =>
   (productType || '').toString().trim().replace(/_/g, '-')

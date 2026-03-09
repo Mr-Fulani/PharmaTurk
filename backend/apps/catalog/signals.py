@@ -26,6 +26,8 @@ from .models import (
     JewelryVariantImage,
     Product,
     ProductImage,
+    Service,
+    ServiceImage,
     ShoeProduct,
     ShoeProductImage,
     ShoeVariant,
@@ -115,6 +117,23 @@ def delete_product_image_files(sender, instance, **kwargs):
     delete_url_from_storage(instance.video_url)
 
 
+@receiver(post_delete, sender=Service)
+def delete_service_files(sender, instance, **kwargs):
+    """Удалить файлы услуги из хранилища при удалении из БД."""
+    delete_file_from_storage(instance.main_image_file)
+    delete_file_from_storage(instance.main_video_file)
+    delete_file_from_storage(instance.gif_file)
+    delete_url_from_storage(instance.main_image)
+    delete_url_from_storage(instance.video_url)
+
+
+@receiver(post_delete, sender=ServiceImage)
+def delete_service_image_files(sender, instance, **kwargs):
+    """Удалить файлы из галереи услуги при удалении из БД."""
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
 @receiver(pre_save, sender=ProductImage)
 def auto_download_product_image_from_url(sender, instance, **kwargs):
     """Автоматически скачивать изображения из URL в файлы ProductImage."""
@@ -164,6 +183,12 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
 def auto_download_domain_image_from_url(sender, instance, **kwargs):
     """Автоматически скачивать изображения для доменных моделей."""
     _auto_download_impl(instance)
+
+
+@receiver(pre_save, sender=ServiceImage)
+def auto_download_service_image_gallery(sender, instance, **kwargs):
+    """Автоматически скачивать изображения для галереи услуг."""
+    _auto_download_impl(instance, "image_file", "image_url")
 
 
 # --- Category, Brand ---
@@ -297,6 +322,52 @@ def delete_shoe_variant_files(sender, instance, **kwargs):
 @receiver(post_delete, sender=ShoeVariantImage)
 def delete_shoe_variant_image_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.image_file)
+
+
+# --- Services Signal handlers for media and prices ---
+
+@receiver(post_save, sender=Service)
+def sync_service_price_info(sender, instance, created, **kwargs):
+    """Синхронизировать цену услуги с ServicePrice (конвертация + маржа)."""
+    if instance.price and instance.price > 0:
+        from .utils.currency_converter import currency_converter
+        currency_converter.update_or_create_service_price(
+            service_instance=instance,
+            base_price=instance.price,
+            base_currency=instance.currency or "RUB"
+        )
+
+
+@receiver(pre_save, sender=Service)
+def auto_download_service_media(sender, instance, **kwargs):
+    """Автоматически скачивать медиа из URL полей в файлы Service."""
+    # Удалить старые файлы при замене
+    if instance.pk:
+        try:
+            old = Service.objects.only("main_image", "main_image_file", "main_video_file", "gif_file").get(pk=instance.pk)
+            
+            # Если URL изображения изменился, удаляем старый файл
+            if old.main_image_file and old.main_image_file.name:
+                url_changed = (instance.main_image != old.main_image)
+                is_empty = not (instance.main_image_file and instance.main_image_file.name)
+                if url_changed and is_empty:
+                    delete_file_from_storage(old.main_image_file)
+            
+            # Если URL видео изменился
+            if old.main_video_file and old.main_video_file.name:
+                v_url_changed = (instance.video_url != old.video_url)
+                v_is_empty = not (instance.main_video_file and instance.main_video_file.name)
+                if v_url_changed and v_is_empty:
+                    delete_file_from_storage(old.main_video_file)
+        except Service.DoesNotExist:
+            pass
+
+    # Автоскачивание
+    if instance.main_image and not instance.main_image_file:
+        _auto_download_impl(instance, "main_image_file", "main_image")
+        
+    if instance.video_url and not instance.main_video_file:
+        _auto_download_impl(instance, "main_video_file", "video_url")
 
 
 # --- Electronics ---

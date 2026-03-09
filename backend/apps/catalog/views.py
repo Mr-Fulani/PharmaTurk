@@ -1865,6 +1865,18 @@ class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = StandardPagination
     lookup_field = 'slug'
     
+    def _normalize_ordering(self, ordering: str) -> str:
+        """Преобразует формат сортировки из фронтенда в формат Django."""
+        ordering_map = {
+            'name_asc': 'name',
+            'name_desc': '-name',
+            'price_asc': 'price',
+            'price_desc': '-price',
+            'newest': '-created_at',
+            'popular': '-created_at',  # Услуги пока не имеют отдельного поля популярности
+        }
+        return ordering_map.get(ordering, ordering)
+        
     def get_queryset(self):
         """Фильтрация услуг по параметрам."""
         queryset = Service.objects.filter(is_active=True)
@@ -1895,9 +1907,14 @@ class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
         search = self.request.query_params.get('search')
         if search:
             queryset = queryset.filter(name__icontains=search)
+            
+        # Фильтр по цене
+        queryset = _apply_price_filter(queryset, self.request)
         
         # Сортировка
-        queryset = queryset.order_by('-created_at')
+        ordering = self.request.query_params.get('ordering', '-created_at')
+        ordering = self._normalize_ordering(ordering)
+        queryset = queryset.order_by(ordering)
         
         return queryset
 
@@ -1906,6 +1923,7 @@ class FavoriteViewSet(viewsets.ViewSet):
     """API для работы с избранным."""
     
     from rest_framework.permissions import AllowAny
+    from .models import Service
     permission_classes = [AllowAny]
     
     def _get_session_key(self, request):
@@ -2146,9 +2164,12 @@ class FavoriteViewSet(viewsets.ViewSet):
             'shoes': ShoeProduct,
             'electronics': ElectronicsProduct,
             'furniture': FurnitureProduct,
+            'uslugi': Service,
         }
         
-        model_class = PRODUCT_MODEL_MAP.get(product_type, Product)
+        model_class = PRODUCT_MODEL_MAP.get(product_type)
+        if not model_class:
+            return Response({"is_favorite": False})
         
         try:
             product = model_class.objects.get(id=product_id)

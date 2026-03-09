@@ -6,7 +6,7 @@ from django.db.models import Count
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 from decimal import Decimal
-from .currency_models import CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog, ProductVariantPrice, GlobalCurrencySettings
+from .currency_models import CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog, ProductVariantPrice, GlobalCurrencySettings, ServicePrice
 
 
 @admin.register(GlobalCurrencySettings)
@@ -446,6 +446,129 @@ class ProductVariantPriceAdmin(admin.ModelAdmin):
                 # Используем base_price и base_currency из ProductVariantPrice
                 if price_info.base_price and price_info.base_currency:
                     # Конвертируем в целевые валюты
+                    results = currency_converter.convert_to_multiple_currencies(
+                        price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY', 'USDT'], apply_margin=True
+                    )
+                    
+                    if 'RUB' in results and results['RUB']:
+                        price_info.rub_price = results['RUB']['converted_price']
+                        price_info.rub_price_with_margin = results['RUB']['price_with_margin']
+                    
+                    if 'USD' in results and results['USD']:
+                        price_info.usd_price = results['USD']['converted_price']
+                        price_info.usd_price_with_margin = results['USD']['price_with_margin']
+                    
+                    if 'KZT' in results and results['KZT']:
+                        price_info.kzt_price = results['KZT']['converted_price']
+                        price_info.kzt_price_with_margin = results['KZT']['price_with_margin']
+                    
+                    if 'EUR' in results and results['EUR']:
+                        price_info.eur_price = results['EUR']['converted_price']
+                        price_info.eur_price_with_margin = results['EUR']['price_with_margin']
+                    
+                    if 'TRY' in results and results['TRY']:
+                        price_info.try_price = results['TRY']['converted_price']
+                        price_info.try_price_with_margin = results['TRY']['price_with_margin']
+                    
+                    if 'USDT' in results and results['USDT']:
+                        price_info.usdt_price = results['USDT']['converted_price']
+                        price_info.usdt_price_with_margin = results['USDT']['price_with_margin']
+                    
+                    price_info.save()
+                    success_count += 1
+                else:
+                    error_count += 1
+            except Exception:
+                error_count += 1
+        
+        self.message_user(
+            request, 
+            f'Пересчет завершен: успешно {success_count}, ошибок {error_count}'
+        )
+    recalculate_prices.short_description = 'Пересчитать цены'
+    
+    def delete_all_prices(self, request, queryset):
+        """Удалить все выбранные цены."""
+        count = queryset.count()
+        queryset.delete()
+        self.message_user(request, f'Удалено {count} записей цен')
+    delete_all_prices.short_description = 'Удалить цены'
+
+
+@admin.register(ServicePrice)
+class ServicePriceAdmin(admin.ModelAdmin):
+    """Админ-панель для цен услуг."""
+    
+    list_display = [
+        'service_link', 'base_currency', 'base_price',
+        'rub_price_with_margin', 'usd_price_with_margin',
+        'kzt_price_with_margin', 'try_price_with_margin',
+        'usdt_price_with_margin', 'updated_at'
+    ]
+    list_filter = ['base_currency', 'updated_at']
+    search_fields = ['service__name', 'service__slug']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('Основная информация', {
+            'fields': ('service', 'base_currency', 'base_price')
+        }),
+        ('Цены в рублях', {
+            'fields': ('rub_price', 'rub_price_with_margin'),
+            'classes': ('collapse',)
+        }),
+        ('Цены в долларах', {
+            'fields': ('usd_price', 'usd_price_with_margin'),
+            'classes': ('collapse',)
+        }),
+        ('Цены в тенге', {
+            'fields': ('kzt_price', 'kzt_price_with_margin'),
+            'classes': ('collapse',)
+        }),
+        ('Цены в евро', {
+            'fields': ('eur_price', 'eur_price_with_margin'),
+            'classes': ('collapse',)
+        }),
+        ('Цены в турецких лирах', {
+            'fields': ('try_price', 'try_price_with_margin'),
+            'classes': ('collapse',)
+        }),
+        ('Временные метки', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def service_link(self, obj):
+        """Ссылка на услугу."""
+        if obj.service:
+            try:
+                url = reverse('admin:apps_catalog_service_change', args=[obj.service.id])
+                return format_html(
+                    '<a href="{}">{}</a>',
+                    url, obj.service.name[:50] + '...' if len(obj.service.name) > 50 else obj.service.name
+                )
+            except:
+                return str(obj.service.name)
+        return '-'
+    service_link.short_description = 'Услуга'
+    
+    def get_queryset(self, request):
+        """Оптимизация запросов."""
+        return super().get_queryset(request).select_related('service')
+    
+    actions = ['recalculate_prices', 'delete_all_prices']
+    
+    def recalculate_prices(self, request, queryset):
+        """Пересчитать выбранные цены."""
+        from apps.catalog.utils.currency_converter import currency_converter
+        
+        success_count = 0
+        error_count = 0
+        
+        for price_info in queryset:
+            try:
+                if price_info.base_price and price_info.base_currency:
                     results = currency_converter.convert_to_multiple_currencies(
                         price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY', 'USDT'], apply_margin=True
                     )

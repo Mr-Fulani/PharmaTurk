@@ -301,6 +301,50 @@ class CurrencyConverter:
         except Exception as e:
             logger.error(f"Error updating variant price for {variant_instance}: {str(e)}")
             return None, False
+    def update_or_create_service_price(self, service_instance, base_price: Decimal, base_currency: str):
+        """
+        Обновить или создать цену для услуги
+        
+        Args:
+            service_instance: Экземпляр услуги (Service)
+            base_price: Базовая цена услуги
+            base_currency: Валюта базовой цены
+        """
+        from ..currency_models import ServicePrice
+        
+        try:
+            # Конвертируем в основные валюты
+            results = self.convert_to_multiple_currencies(
+                base_price, base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY', 'USDT'], apply_margin=True
+            )
+            
+            # Создаем или обновляем запись
+            price_obj, created = ServicePrice.objects.update_or_create(
+                service=service_instance,
+                defaults={
+                    'base_currency': base_currency,
+                    'base_price': base_price,
+                    'rub_price': results['RUB']['converted_price'] if results['RUB'] else None,
+                    'rub_price_with_margin': results['RUB']['price_with_margin'] if results['RUB'] else None,
+                    'usd_price': results['USD']['converted_price'] if results['USD'] else None,
+                    'usd_price_with_margin': results['USD']['price_with_margin'] if results['USD'] else None,
+                    'kzt_price': results['KZT']['converted_price'] if results['KZT'] else None,
+                    'kzt_price_with_margin': results['KZT']['price_with_margin'] if results['KZT'] else None,
+                    'eur_price': results['EUR']['converted_price'] if results['EUR'] else None,
+                    'eur_price_with_margin': results['EUR']['price_with_margin'] if results['EUR'] else None,
+                    'try_price': results['TRY']['converted_price'] if results['TRY'] else None,
+                    'try_price_with_margin': results['TRY']['price_with_margin'] if results['TRY'] else None,
+                    'usdt_price': results['USDT']['converted_price'] if results['USDT'] else None,
+                    'usdt_price_with_margin': results['USDT']['price_with_margin'] if results['USDT'] else None,
+                }
+            )
+            
+            return price_obj, created
+            
+        except Exception as e:
+            logger.error(f"Error updating service price for {service_instance}: {str(e)}")
+            return None, False
+
 
     def update_variant_shipping_costs(self, variant_instance, air_cost=None, sea_cost=None, ground_cost=None):
         """

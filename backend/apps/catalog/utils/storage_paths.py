@@ -100,6 +100,31 @@ def get_brand_card_upload_path(instance, filename):
     return f"marketing/cards/brands/{media_folder}/{readable_name}"
 
 
+def get_service_upload_path(instance, filename):
+    """Динамический upload_to для Service.main_image_file."""
+    category_slug = _normalize_slug(getattr(getattr(instance, "category", None), "slug", None), "uslugi")
+    media_folder = _media_folder_from_filename(filename)
+    readable_name = _build_readable_filename(
+        [category_slug, getattr(instance, "slug", None), getattr(instance, "name", None)],
+        filename,
+        "service-main",
+    )
+    return f"services/{category_slug}/main/{media_folder}/{readable_name}"
+
+
+def get_service_image_upload_path(instance, filename):
+    """Динамический upload_to для ServiceImage.image_file."""
+    service = getattr(instance, "service", None)
+    category_slug = _normalize_slug(getattr(getattr(service, "category", None), "slug", None), "uslugi")
+    media_folder = _media_folder_from_filename(filename)
+    readable_name = _build_readable_filename(
+        [category_slug, getattr(service, "slug", None) if service else "", "gallery"],
+        filename,
+        "service-gallery",
+    )
+    return f"services/{category_slug}/gallery/{media_folder}/{readable_name}"
+
+
 def get_banner_image_upload_path(instance, filename):
     banner = getattr(instance, "banner", None)
     position = _normalize_slug(getattr(banner, "position", None), "banner")

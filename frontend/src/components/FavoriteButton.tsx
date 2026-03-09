@@ -18,7 +18,7 @@ export default function FavoriteButton({
   const [loading, setLoading] = useState(false)
   const { isFavorite, add, remove } = useFavoritesStore()
   const { t } = useTranslation('common')
-  const favorite = isFavorite(productId)
+  const favorite = isFavorite(productId, productType)
 
   const toggle = async (e?: React.MouseEvent) => {
     if (e) {
@@ -44,11 +44,10 @@ export default function FavoriteButton({
       <button
         onClick={(e) => toggle(e)}
         disabled={loading}
-        className={`inline-flex items-center justify-center rounded-full p-2 transition-all duration-200 ${
-          favorite
+        className={`inline-flex items-center justify-center rounded-full p-2 transition-all duration-200 ${favorite
             ? 'bg-red-100 text-red-600 hover:bg-red-200'
             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-        } disabled:opacity-60 ${className}`}
+          } disabled:opacity-60 ${className}`}
         title={favorite ? t('remove_from_favorites', 'Удалить из избранного') : t('add_to_favorites', 'Добавить в избранное')}
       >
         {loading ? (
@@ -78,11 +77,10 @@ export default function FavoriteButton({
     <button
       onClick={(e) => toggle(e)}
       disabled={loading}
-      className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all duration-200 ${
-        favorite
+      className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all duration-200 ${favorite
           ? 'bg-red-100 text-red-700 hover:bg-red-200'
           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-      } disabled:opacity-60 ${className}`}
+        } disabled:opacity-60 ${className}`}
     >
       {loading ? (
         <>

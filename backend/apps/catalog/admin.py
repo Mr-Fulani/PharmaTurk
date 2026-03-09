@@ -19,11 +19,11 @@ from .models import (
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
-    Service, ServiceTranslation,
+    Service, ServiceTranslation, ServiceImage,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
     Author, ProductAuthor,
     # Валютные модели
-    CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog,
+    CurrencyRate, MarginSettings, ProductPrice, ServicePrice, CurrencyUpdateLog,
 )
 
 
@@ -205,6 +205,43 @@ class ServiceTranslationInline(admin.TabularInline):
     fields = ('locale', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
+
+
+class ServiceImageInline(admin.TabularInline):
+    """Inline для галереи изображений услуги."""
+    model = ServiceImage
+    extra = 1
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main')
+    verbose_name = _("Изображение в галерее")
+    verbose_name_plural = _("Галерея изображений")
+
+
+class ServicePriceInline(admin.StackedInline):
+    """Inline для просмотра конвертированных цен услуги."""
+    model = ServicePrice
+    can_delete = False
+    verbose_name = _("Конвертированные цены")
+    verbose_name_plural = _("Конвертированные цены по валютам")
+    classes = ('collapse',)
+    readonly_fields = (
+        'rub_price', 'rub_price_with_margin',
+        'usd_price', 'usd_price_with_margin',
+        'kzt_price', 'kzt_price_with_margin',
+        'eur_price', 'eur_price_with_margin',
+        'try_price', 'try_price_with_margin',
+        'usdt_price', 'usdt_price_with_margin',
+    )
+    fieldsets = (
+        (_('RUB'), {'fields': ('rub_price', 'rub_price_with_margin')}),
+        (_('USD'), {'fields': ('usd_price', 'usd_price_with_margin')}),
+        (_('KZT'), {'fields': ('kzt_price', 'kzt_price_with_margin')}),
+        (_('EUR'), {'fields': ('eur_price', 'eur_price_with_margin')}),
+        (_('TRY'), {'fields': ('try_price', 'try_price_with_margin')}),
+        (_('USDT'), {'fields': ('usdt_price', 'usdt_price_with_margin')}),
+    )
+
+    def has_add_permission(self, request, obj=None):
+        return False
 
 
 class BaseCategoryAdmin(admin.ModelAdmin):
@@ -1889,11 +1926,11 @@ class ServiceAdmin(admin.ModelAdmin):
         (_('Categorization'), {'fields': ('category',)}),
         (_('Service'), {'fields': ('service_type', 'duration')}),
         (_('Pricing'), {'fields': ('price', 'currency')}),
-        (_('Media'), {'fields': ('main_image',)}),
+        (_('Media Assets'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file', 'gif_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ServiceTranslationInline]
+    inlines = [ServiceTranslationInline, ServiceImageInline, ServicePriceInline]
 
 
 class BannerMediaInline(admin.StackedInline):

@@ -12,7 +12,7 @@ from django.core.validators import MinValueValidator, FileExtensionValidator
 from django.utils.text import slugify
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
-from .currency_models import CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog
+from .currency_models import CurrencyRate, MarginSettings, ProductPrice, ServicePrice, CurrencyUpdateLog
 from .utils.storage_paths import (
     detect_media_type,
     get_category_card_upload_path,
@@ -26,6 +26,8 @@ from .utils.storage_paths import (
     get_jewelry_gallery_upload_path,
     get_jewelry_variant_upload_path,
     get_jewelry_variant_gallery_upload_path,
+    get_service_upload_path,
+    get_service_image_upload_path,
 )
 
 CURRENCY_CHOICES = [
@@ -2964,6 +2966,34 @@ class Service(models.Model):
         blank=True,
         help_text=_("URL основного изображения (ссылка на CDN или внутреннее хранилище).")
     )
+    main_image_file = models.ImageField(
+        _("Главное изображение (файл)"),
+        upload_to=get_service_upload_path,
+        null=True,
+        blank=True,
+        help_text=_("Загрузите основное изображение для услуги.")
+    )
+    video_url = models.URLField(
+        _("URL видео"),
+        blank=True,
+        help_text=_("Ссылка на основное видео.")
+    )
+    main_video_file = models.FileField(
+        _("Главное видео (файл)"),
+        upload_to=get_service_upload_path,
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=['mp4', 'mov', 'webm'])],
+        help_text=_("Загрузите основное видео для услуги.")
+    )
+    gif_file = models.FileField(
+        _("GIF (файл)"),
+        upload_to=get_service_upload_path,
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=['gif'])],
+        help_text=_("Загрузите GIF для услуги.")
+    )
     
     # Внешние данные
     external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
@@ -2998,6 +3028,98 @@ class Service(models.Model):
         if translation and translation.description:
             return translation.description
         return self.description or ''
+
+    def get_all_prices(self):
+        """Получает цены во всех валютах из ServicePrice."""
+        prices = {}
+        try:
+            if hasattr(self, 'price_info'):
+                info = self.price_info
+                base_currency = (info.base_currency or 'TRY').upper()
+                prices[base_currency] = {
+                    'original_price': info.base_price,
+                    'converted_price': info.base_price,
+                    'price_with_margin': info.base_price,
+                    'is_base_price': True
+                }
+                
+                currency_fields = [
+                    ('RUB', info.rub_price, info.rub_price_with_margin),
+                    ('USD', info.usd_price, info.usd_price_with_margin),
+                    ('KZT', info.kzt_price, info.kzt_price_with_margin),
+                    ('EUR', info.eur_price, info.eur_price_with_margin),
+                    ('TRY', info.try_price, info.try_price_with_margin),
+                    ('USDT', info.usdt_price, info.usdt_price_with_margin),
+                ]
+                
+                for code, price, price_margin in currency_fields:
+                    if price_margin:
+                        prices[code] = {
+                            'original_price': price,
+                            'converted_price': price,
+                            'price_with_margin': price_margin,
+                            'is_base_price': False
+                        }
+        except Exception:
+            pass
+        return prices
+
+    def get_price(self, target_currency):
+        """Получает цену в целевой валюте."""
+        target_currency = (target_currency or 'RUB').upper()
+        
+        # 1. Сначала из ServicePrice
+        prices = self.get_all_prices()
+        if target_currency in prices:
+            return prices[target_currency].get('price_with_margin')
+            
+        # 2. Конвертация на лету
+        if self.price is not None:
+            from .utils.currency_converter import currency_converter
+            try:
+                # Из модели Service берем price и currency (базовые)
+                from_currency = (self.currency or 'RUB').upper()
+                _, _, price_with_margin = currency_converter.convert_price(
+                    self.price, from_currency, target_currency, apply_margin=True
+                )
+                return price_with_margin
+            except Exception:
+                pass
+        return self.price
+
+
+class ServiceImage(models.Model):
+    """Изображения в галерее услуги."""
+
+    service = models.ForeignKey(
+        Service,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name=_("Услуга")
+    )
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to=get_service_image_upload_path,
+        null=True,
+        blank=True
+    )
+    image_url = models.URLField(
+        _("URL изображения"),
+        blank=True,
+        help_text=_("Внешняя ссылка (если есть)")
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=255, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное"), default=False)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение услуги")
+        verbose_name_plural = _("Изображения услуг")
+        ordering = ["sort_order", "created_at"]
+
+    def __str__(self):
+        return f"Image for {self.service.name}"
 
 
 class ServiceTranslation(models.Model):
