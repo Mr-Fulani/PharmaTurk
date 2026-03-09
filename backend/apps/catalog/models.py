@@ -2946,20 +2946,6 @@ class Service(models.Model):
         default="RUB",
     )
     
-    # Специфичные для услуг поля
-    duration = models.CharField(
-        _("Длительность"),
-        max_length=100,
-        blank=True,
-        help_text=_("Например: '1 час', '30 минут', '1 день'")
-    )
-    service_type = models.CharField(
-        _("Тип услуги"),
-        max_length=100,
-        blank=True,
-        help_text=_("Например: 'Консультация', 'Диагностика', 'Лечение'")
-    )
-    
     # Изображения
     main_image = models.URLField(
         _("Главное изображение"),
@@ -3088,6 +3074,86 @@ class Service(models.Model):
         return self.price
 
 
+class ServiceAttribute(models.Model):
+    """Специфичный атрибут услуги (площадь, срок, формат и т.д.)
+    
+    Каждая подкатегория имеет свой допустимый набор ключей (ALLOWED_KEYS_BY_SUBCATEGORY).
+    Фронтенд отображает только те атрибуты, которые были заполнены в админке.
+    """
+
+    ATTRIBUTE_KEY_CHOICES = [
+        # Ремонт / покраска
+        ("area_sqm",        _("Площадь (м²)")),
+        ("duration_days",   _("Срок выполнения")),
+        ("work_type",       _("Вид работ")),
+        ("work_region",     _("Регион / район")),
+        # Перевозка / карго
+        ("weight_kg",       _("Вес груза (кг)")),
+        ("volume_m3",       _("Объём груза (м³)")),
+        ("cargo_type",      _("Тип груза")),
+        ("distance_km",     _("Расстояние (км)")),
+        # Консультации / диагностика
+        ("duration_hours",  _("Длительность (часов)")),
+        ("format",          _("Формат (онлайн/очно)")),
+        ("language",        _("Язык консультации")),
+        ("specialist",      _("Специалист")),
+        # Клининг
+        ("rooms_count",     _("Количество комнат")),
+        ("frequency",       _("Периодичность")),
+        # Общие
+        ("guarantee",       _("Гарантия")),
+        ("includes",        _("Что входит")),
+        ("excludes",        _("Что не входит")),
+        ("other",           _("Другое")),
+    ]
+
+    # Допустимые ключи по slug подкатегории.
+    # Используется в admin (ограничение queryset) и фронтенде (фильтрация отображения).
+    ALLOWED_KEYS_BY_SUBCATEGORY = {
+        "apartment-renovation": ["area_sqm", "duration_days", "work_type", "work_region", "guarantee", "includes", "excludes"],
+        "pokraska-pomeshenij":  ["area_sqm", "duration_days", "work_type", "work_region", "guarantee", "includes"],
+        "remont":               ["area_sqm", "duration_days", "work_type", "work_region", "guarantee", "includes", "excludes"],
+        "cleaning":             ["area_sqm", "rooms_count", "frequency", "includes", "guarantee"],
+        "cargo-transport":      ["weight_kg", "volume_m3", "cargo_type", "distance_km"],
+        "cargo":                ["weight_kg", "volume_m3", "cargo_type", "distance_km"],
+        "gruzoperevozki":       ["weight_kg", "volume_m3", "cargo_type", "distance_km"],
+        "consultations":        ["duration_hours", "format", "language", "specialist"],
+        "consultacii":          ["duration_hours", "format", "language", "specialist"],
+        "diagnostics":          ["duration_hours", "format", "specialist"],
+        "diagnostika":          ["duration_hours", "format", "specialist"],
+    }
+
+    service = models.ForeignKey(
+        Service,
+        on_delete=models.CASCADE,
+        related_name="service_attributes",
+        verbose_name=_("Услуга")
+    )
+    key = models.CharField(
+        _("Ключ атрибута"),
+        max_length=50,
+        choices=ATTRIBUTE_KEY_CHOICES,
+    )
+    value = models.CharField(
+        _("Значение"),
+        max_length=500,
+        help_text=_("Например: '50 м²', '3-5 дней', 'онлайн/очно'")
+    )
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+
+    class Meta:
+        verbose_name = _("Атрибут услуги")
+        verbose_name_plural = _("Атрибуты услуг")
+        ordering = ["sort_order", "key"]
+        unique_together = [["service", "key"]]
+        indexes = [
+            models.Index(fields=["service", "sort_order"]),
+        ]
+
+    def __str__(self):
+        return f"{self.service.name} — {self.get_key_display()}: {self.value}"
+
+
 class ServiceImage(models.Model):
     """Изображения в галерее услуги."""
 
@@ -3142,6 +3208,12 @@ class ServiceTranslation(models.Model):
         choices=LOCALE_CHOICES,
         default='ru',
         db_index=True
+    )
+    name = models.CharField(
+        _("Название услуги"),
+        max_length=500,
+        blank=True,
+        help_text=_("Переведенное название услуги")
     )
     description = models.TextField(
         _("Описание"),

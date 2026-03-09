@@ -7,6 +7,7 @@ import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
 import BuyNowButton from '../../components/BuyNowButton'
 import SecurityAndService from '../../components/SecurityAndService'
+import ServiceAttributes from '../../components/ServiceAttributes'
 import FavoriteButton from '../../components/FavoriteButton'
 import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
@@ -172,6 +173,15 @@ interface Product {
   main_video_url?: string | null
   main_gif_url?: string | null
   gallery?: { id: number; image_url: string; alt_text?: string; sort_order?: number }[]
+  service_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
+}
+
+interface FooterSettings {
+  phone: string
+  email: string
+  location: string
+  telegram_url: string
+  whatsapp_url: string
 }
 
 interface Variant {
@@ -245,6 +255,32 @@ export default function ProductPage({
   const displayProductName = localizedProductName || product?.name || ''
   const localeKey = (router.locale || '').toLowerCase()
   const isEnglishLocale = localeKey.startsWith('en')
+
+  const [footerSettings, setFooterSettings] = useState<FooterSettings>({
+    phone: '+90 552 582 14 97',
+    email: 'fulani.dev@gmail.com',
+    location: '',
+    telegram_url: 'https://t.me/fulani_admin',
+    whatsapp_url: 'https://wa.me/905525821497'
+  })
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      api.get('/settings/footer-settings')
+        .then(response => {
+          if (response.data) {
+            setFooterSettings({
+              phone: response.data.phone || '+90 552 582 14 97',
+              email: response.data.email || 'fulani.dev@gmail.com',
+              location: response.data.location || '',
+              telegram_url: response.data.telegram_url || 'https://t.me/fulani_admin',
+              whatsapp_url: response.data.whatsapp_url || 'https://wa.me/905525821497'
+            })
+          }
+        })
+        .catch(err => console.error('Error fetching footer settings:', err))
+    }
+  }, [])
 
   // Выбираем дефолтный вариант-цвет: активный, либо первый доступный
   const initialVariant =
@@ -577,6 +613,7 @@ export default function ProductPage({
       }
       : undefined,
   }
+  const isService = productType === 'uslugi'
   return (
     <>
       <Head>
@@ -939,83 +976,124 @@ export default function ProductPage({
               </div>
             )}
 
+            {/* Атрибуты услуги (площадь, срок, формат и т.д.) */}
+            {isService && product.service_attributes && product.service_attributes.length > 0 && (
+              <div className="mt-4">
+                <ServiceAttributes attributes={product.service_attributes} />
+              </div>
+            )}
+
             {/* Селектор количества */}
-            <div className="mt-4 flex flex-col gap-2">
-              <span
-                className="text-sm font-semibold"
-                style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
-              >
-                {t('quantity', 'Количество')}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  disabled={quantity <= 1}
-                  className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label={t('decrease_quantity', 'Уменьшить количество')}
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                  </svg>
-                </button>
+            {!isService && (
+              <div className="mt-4 flex flex-col gap-2">
                 <span
-                  className="min-w-[3rem] text-center text-2xl font-extrabold"
-                  style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
+                  className="text-sm font-semibold"
+                  style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
                 >
-                  {quantity}
+                  {t('quantity', 'Количество')}
                 </span>
-                <div className="relative group">
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => {
-                      if (sizeRequired && !selectedSize) {
-                        return
-                      }
-                      if (maxAvailable !== null) {
-                        setQuantity(Math.min(maxAvailable, quantity + 1))
-                        return
-                      }
-                      setQuantity(quantity + 1)
-                    }}
-                    disabled={(sizeRequired && !selectedSize) || (maxAvailable !== null && quantity >= maxAvailable)}
-                    className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
-                    aria-label={t('increase_quantity', 'Увеличить количество')}
+                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    disabled={quantity <= 1}
+                    className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label={t('decrease_quantity', 'Уменьшить количество')}
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                     </svg>
                   </button>
-                  {sizeRequired && !selectedSize && (
-                    <span className="pointer-events-none absolute -top-2 left-1/2 z-10 -translate-x-1/2 -translate-y-full rounded-md bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
-                      {sizeHintMessage}
-                    </span>
-                  )}
+                  <span
+                    className="min-w-[3rem] text-center text-2xl font-extrabold"
+                    style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
+                  >
+                    {quantity}
+                  </span>
+                  <div className="relative group">
+                    <button
+                      onClick={() => {
+                        if (sizeRequired && !selectedSize) {
+                          return
+                        }
+                        if (maxAvailable !== null) {
+                          setQuantity(Math.min(maxAvailable, quantity + 1))
+                          return
+                        }
+                        setQuantity(quantity + 1)
+                      }}
+                      disabled={(sizeRequired && !selectedSize) || (maxAvailable !== null && quantity >= maxAvailable)}
+                      className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
+                      aria-label={t('increase_quantity', 'Увеличить количество')}
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                    {sizeRequired && !selectedSize && (
+                      <span className="pointer-events-none absolute -top-2 left-1/2 z-10 -translate-x-1/2 -translate-y-full rounded-md bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+                        {sizeHintMessage}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Кнопки действий */}
             <div className="mt-4 flex flex-col gap-3">
-              <AddToCartButton
-                productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
-                productType={productType}
-                productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
-                size={selectedSize}
-                requireSize={!isBaseProduct && sizeRequired}
-                quantity={quantity}
-                showPrice={true}
-                price={displayTotalPrice}
-                className="w-full"
-                label={t('add_to_cart', 'В корзину')}
-              />
-              <BuyNowButton
-                productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
-                productType={productType}
-                productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
-                size={selectedSize}
-                requireSize={!isBaseProduct && sizeRequired}
-                quantity={quantity}
-                className="w-full"
-              />
+              {isService ? (
+                <>
+                  {/* Для услуг — связь через мессенджеры, а не корзина */}
+                  <div className="flex flex-col gap-3">
+                    <a
+                      href={`${footerSettings.whatsapp_url}?text=${encodeURIComponent(t('order_service_message', 'Здравствуйте! Хочу заказать услугу: ') + (displayProductName || product.name))}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 rounded-lg bg-[#25D366] px-6 py-4 font-bold text-white transition-all hover:scale-[1.02] hover:bg-[#128C7E] active:scale-[0.98]"
+                    >
+                      <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
+                        <path d="M17.472 14.382c-.022-.014-.503-.245-.582-.273-.08-.029-.137-.043-.194.043-.057.087-.222.28-.272.336-.05.056-.098.064-.188.019-.089-.044-.378-.14-.72-.445-.265-.236-.445-.53-.496-.618-.05-.088-.005-.136.039-.181.039-.039.088-.103.132-.154.044-.052.059-.088.088-.147.03-.059.015-.11-.008-.155-.022-.046-.194-.467-.266-.64-.07-.168-.14-.146-.194-.148-.05-.002-.108-.002-.165-.002-.057 0-.15-.021-.229.063-.079.084-.301.294-.301.718 0 .423.308.832.351.89.043.059.605.924 1.467 1.297.205.088.365.14.49.18.207.065.395.056.544.034.166-.024.503-.205.574-.403.072-.198.072-.367.05-.403-.022-.036-.081-.057-.17-.101zm-5.469 4.383c-1.206 0-2.388-.325-3.424-.94l-.246-.146-2.544.668.68-2.48-.16-.254a7.926 7.926 0 0 1-1.213-4.252c0-4.387 3.57-7.958 7.958-7.958 2.126 0 4.125.827 5.628 2.33s2.33 3.502 2.33 5.628c0 4.389-3.572 7.96-7.958 7.96zm7.957-17.758C17.935 1.006 15.011 0 12.003 0 5.432 0 .08 5.352.08 11.924c0 2.099.549 4.148 1.595 5.96L0 24l6.324-1.658c1.745.952 3.716 1.455 5.672 1.455 6.568 0 11.921-5.352 11.921-11.924 0-3.184-1.24-6.179-3.49-8.428z" />
+                      </svg>
+                      {t('order_via_whatsapp', 'Заказать через WhatsApp')}
+                    </a>
+                    <a
+                      href={`${footerSettings.telegram_url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 rounded-lg bg-[#0088cc] px-6 py-4 font-bold text-white transition-all hover:scale-[1.02] hover:bg-[#0077b5] active:scale-[0.98]"
+                    >
+                      <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1 .22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.93 1.25-5.45 3.63-.51.35-.98.53-1.39.52-.46-.01-1.33-.26-1.98-.48-.8-.27-1.43-.42-1.38-.89.03-.25.38-.51 1.07-.78 4.21-1.83 7.01-3.04 8.39-3.63 3.96-1.67 4.79-1.96 5.33-1.97.12 0 .38.03.55.17.14.12.18.28.2.4.02.1.03.29.02.4z" />
+                      </svg>
+                      {t('order_via_telegram', 'Заказать через Telegram')}
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <AddToCartButton
+                    productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
+                    productType={productType}
+                    productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+                    size={selectedSize}
+                    requireSize={!isBaseProduct && sizeRequired}
+                    quantity={quantity}
+                    showPrice={true}
+                    price={displayTotalPrice}
+                    className="w-full"
+                    label={t('add_to_cart', 'В корзину')}
+                  />
+                  <BuyNowButton
+                    productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
+                    productType={productType}
+                    productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+                    size={selectedSize}
+                    requireSize={!isBaseProduct && sizeRequired}
+                    quantity={quantity}
+                    className="w-full"
+                  />
+                </>
+              )}
               {product.id && (
                 <div className="flex justify-center">
                   <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
@@ -1024,7 +1102,7 @@ export default function ProductPage({
             </div>
 
             {/* Безопасность и сервис */}
-            <SecurityAndService />
+            {!isService && <SecurityAndService />}
           </div>
         </div>
 

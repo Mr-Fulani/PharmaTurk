@@ -21,7 +21,7 @@ from .models import (
     TablewareProduct, TablewareProductTranslation, TablewareProductImage,
     AccessoryProduct, AccessoryProductTranslation, AccessoryProductImage,
     IncenseProduct, IncenseProductTranslation, IncenseProductImage,
-    Service, ServiceTranslation, ServiceImage, ServicePrice,
+    Service, ServiceTranslation, ServiceImage, ServicePrice, ServiceAttribute,
     Banner, BannerMedia, Author, ProductAuthor, ProductGenre, BookVariant, BookVariantSize, BookVariantImage,
     SportsProduct, SportsProductTranslation, SportsProductImage, SportsVariant, SportsVariantImage,
     AutoPartProduct, AutoPartProductTranslation, AutoPartProductImage, AutoPartVariant, AutoPartVariantImage,
@@ -114,7 +114,7 @@ class ServiceTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ServiceTranslation
-        fields = ['locale', 'description']
+        fields = ['locale', 'name', 'description']
 
 
 class ClothingProductTranslationSerializer(serializers.ModelSerializer):
@@ -3295,6 +3295,15 @@ class ServicePriceSerializer(serializers.ModelSerializer):
             'usdt_price', 'usdt_price_with_margin',
         ]
 
+class ServiceAttributeSerializer(serializers.ModelSerializer):
+    """Сериализатор специфичных атрибутов услуги."""
+
+    key_display = serializers.CharField(source='get_key_display', read_only=True)
+
+    class Meta:
+        model = ServiceAttribute
+        fields = ['id', 'key', 'key_display', 'value', 'sort_order']
+
 
 class ServiceSerializer(serializers.ModelSerializer):
     """Сериализатор для услуг."""
@@ -3310,15 +3319,16 @@ class ServiceSerializer(serializers.ModelSerializer):
     images = ServiceImageSerializer(many=True, read_only=True)
     gallery = ServiceImageSerializer(source='images', many=True, read_only=True)
     prices_info = ServicePriceSerializer(source='price_info', read_only=True)
+    service_attributes = ServiceAttributeSerializer(many=True, read_only=True)
     
     class Meta:
         model = Service
         fields = [
             'id', 'name', 'slug', 'description', 'category',
             'price', 'price_formatted', 'currency', 'prices_info',
-            'duration', 'service_type',
             'main_image', 'main_image_url', 'video_url', 'main_video_url', 'main_gif_url',
             'gallery', 'images',
+            'service_attributes',
             'is_active', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']

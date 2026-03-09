@@ -19,7 +19,7 @@ from .models import (
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
-    Service, ServiceTranslation, ServiceImage,
+    Service, ServiceTranslation, ServiceImage, ServiceAttribute,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
     Author, ProductAuthor,
     # Валютные модели
@@ -202,7 +202,7 @@ class ServiceTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов услуг."""
     model = ServiceTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -214,6 +214,28 @@ class ServiceImageInline(admin.TabularInline):
     fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main')
     verbose_name = _("Изображение в галерее")
     verbose_name_plural = _("Галерея изображений")
+
+class ServiceAttributeInline(admin.TabularInline):
+    """Inline для атрибутов услуги (площадь, срок, формат и т.д.)."""
+    model = ServiceAttribute
+    extra = 0
+    fields = ('key', 'value', 'sort_order')
+    verbose_name = _("Attribute service")
+    verbose_name_plural = _("Attributes service")
+
+    def formfield_for_choice_field(self, db_field, request, **kwargs):
+        """Sort key choices by display name."""
+        field = super().formfield_for_choice_field(db_field, request, **kwargs)
+        if db_field.name == 'key' and hasattr(field, 'choices'):
+            # Sort alphabetically by label; keep empty choice first if present
+            choices = list(field.choices)
+            non_empty = sorted(
+                [(v, l) for v, l in choices if v],
+                key=lambda x: str(x[1])
+            )
+            empty = [(v, l) for v, l in choices if not v]
+            field.choices = empty + non_empty
+        return field
 
 
 class ServicePriceInline(admin.StackedInline):
@@ -678,6 +700,11 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     autocomplete_fields = ('category', 'brand')
     
     fieldsets = (
+        ('Спец. данные', {
+            'fields': (
+                'is_active', 'is_featured',
+            )
+        }),
         (_('Основное'), {
             'fields': (
                 'name', 'slug', 'slug_preview',
@@ -1915,22 +1942,20 @@ class JewelryProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Model
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
     """Админка для услуг."""
-    list_display = ('name', 'slug', 'category', 'service_type', 'price', 'currency', 'duration', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_featured', 'category', 'service_type', 'currency', 'created_at')
-    search_fields = ('name', 'slug', 'description', 'service_type')
+    list_display = ('name', 'slug', 'category', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_featured', 'category', 'currency', 'created_at')
+    search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Categorization'), {'fields': ('category',)}),
-        (_('Service'), {'fields': ('service_type', 'duration')}),
         (_('Pricing'), {'fields': ('price', 'currency')}),
         (_('Media Assets'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file', 'gif_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ServiceTranslationInline, ServiceImageInline, ServicePriceInline]
+    inlines = [ServiceTranslationInline, ServiceImageInline, ServiceAttributeInline, ServicePriceInline]
 
 
 class BannerMediaInline(admin.StackedInline):
