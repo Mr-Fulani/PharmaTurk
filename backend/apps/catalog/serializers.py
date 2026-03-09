@@ -3298,7 +3298,8 @@ class ServicePriceSerializer(serializers.ModelSerializer):
 class ServiceAttributeSerializer(serializers.ModelSerializer):
     """Сериализатор специфичных атрибутов услуги."""
 
-    key_display = serializers.CharField(source='get_key_display', read_only=True)
+    key = serializers.ReadOnlyField(source='attribute_key.slug')
+    key_display = serializers.ReadOnlyField(source='attribute_key.name')
 
     class Meta:
         model = ServiceAttribute

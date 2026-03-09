@@ -3074,54 +3074,87 @@ class Service(models.Model):
         return self.price
 
 
-class ServiceAttribute(models.Model):
-    """Специфичный атрибут услуги (площадь, срок, формат и т.д.)
-    
-    Каждая подкатегория имеет свой допустимый набор ключей (ALLOWED_KEYS_BY_SUBCATEGORY).
-    Фронтенд отображает только те атрибуты, которые были заполнены в админке.
+class ServiceAttributeKey(models.Model):
+    """Модель для хранения ключей атрибутов услуг (например, 'area_sqm').
+    Позволяет администратору создавать новые типы атрибутов через админку.
     """
+    slug = models.SlugField(
+        _("Slug"),
+        max_length=100,
+        unique=True,
+        help_text=_("Уникальный идентификатор (например, 'ceiling_height').")
+    )
+    categories = models.ManyToManyField(
+        Category,
+        related_name="service_attribute_keys",
+        verbose_name=_("Категории"),
+        blank=True,
+        limit_choices_to={'children__isnull': True},  # Только для конечных категорий
+        help_text=_("Категории услуг, для которых доступен этот атрибут.")
+    )
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
 
-    ATTRIBUTE_KEY_CHOICES = [
-        # Ремонт / покраска
-        ("area_sqm",        _("Площадь (м²)")),
-        ("duration_days",   _("Срок выполнения")),
-        ("work_type",       _("Вид работ")),
-        ("work_region",     _("Регион / район")),
-        # Перевозка / карго
-        ("weight_kg",       _("Вес груза (кг)")),
-        ("volume_m3",       _("Объём груза (м³)")),
-        ("cargo_type",      _("Тип груза")),
-        ("distance_km",     _("Расстояние (км)")),
-        # Консультации / диагностика
-        ("duration_hours",  _("Длительность (часов)")),
-        ("format",          _("Формат (онлайн/очно)")),
-        ("language",        _("Язык консультации")),
-        ("specialist",      _("Специалист")),
-        # Клининг
-        ("rooms_count",     _("Количество комнат")),
-        ("frequency",       _("Периодичность")),
-        # Общие
-        ("guarantee",       _("Гарантия")),
-        ("includes",        _("Что входит")),
-        ("excludes",        _("Что не входит")),
-        ("other",           _("Другое")),
+    class Meta:
+        verbose_name = _("Тип атрибута услуги")
+        verbose_name_plural = _("Типы атрибутов услуг")
+        ordering = ["sort_order", "slug"]
+
+    def __str__(self):
+        # Если есть перевод для текущего языка - используем его, иначе slug
+        return self.slug
+
+    @property
+    def name(self):
+        from django.utils import translation
+        lang = translation.get_language()
+        if not lang:
+            return self.slug
+            
+        # Пытаемся найти точное совпадение (например, 'ru')
+        trans = self.translations.filter(locale=lang).first()
+        
+        # Если не нашли, пытаемся найти по префиксу (например, для 'en-us' ищем 'en')
+        if not trans and '-' in lang:
+            base_lang = lang.split('-')[0]
+            trans = self.translations.filter(locale=base_lang).first()
+            
+        # Если все еще не нашли, берем английский или первый попавшийся
+        if not trans:
+            trans = self.translations.filter(locale='en').first() or self.translations.first()
+            
+        return trans.name if trans else self.slug
+
+
+class ServiceAttributeKeyTranslation(models.Model):
+    """Перевод для ServiceAttributeKey"""
+    LANGUAGE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+        ('tr', _('Турецкий')),
     ]
+    key_obj = models.ForeignKey(
+        ServiceAttributeKey,
+        on_delete=models.CASCADE,
+        related_name="translations",
+        verbose_name=_("Тип атрибута")
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        db_index=True,
+        choices=LANGUAGE_CHOICES,
+        default='ru'
+    )
+    name = models.CharField(_("Название"), max_length=200)
 
-    # Допустимые ключи по slug подкатегории.
-    # Используется в admin (ограничение queryset) и фронтенде (фильтрация отображения).
-    ALLOWED_KEYS_BY_SUBCATEGORY = {
-        "apartment-renovation": ["area_sqm", "duration_days", "work_type", "work_region", "guarantee", "includes", "excludes"],
-        "pokraska-pomeshenij":  ["area_sqm", "duration_days", "work_type", "work_region", "guarantee", "includes"],
-        "remont":               ["area_sqm", "duration_days", "work_type", "work_region", "guarantee", "includes", "excludes"],
-        "cleaning":             ["area_sqm", "rooms_count", "frequency", "includes", "guarantee"],
-        "cargo-transport":      ["weight_kg", "volume_m3", "cargo_type", "distance_km"],
-        "cargo":                ["weight_kg", "volume_m3", "cargo_type", "distance_km"],
-        "gruzoperevozki":       ["weight_kg", "volume_m3", "cargo_type", "distance_km"],
-        "consultations":        ["duration_hours", "format", "language", "specialist"],
-        "consultacii":          ["duration_hours", "format", "language", "specialist"],
-        "diagnostics":          ["duration_hours", "format", "specialist"],
-        "diagnostika":          ["duration_hours", "format", "specialist"],
-    }
+    class Meta:
+        verbose_name = _("Перевод типа атрибута")
+        verbose_name_plural = _("Переводы типов атрибутов")
+        unique_together = [["key_obj", "locale"]]
+
+
+class ServiceAttribute(models.Model):
+    """Специфичный атрибут услуги (площадь, срок, формат и т.д.)"""
 
     service = models.ForeignKey(
         Service,
@@ -3129,10 +3162,13 @@ class ServiceAttribute(models.Model):
         related_name="service_attributes",
         verbose_name=_("Услуга")
     )
-    key = models.CharField(
-        _("Ключ атрибута"),
-        max_length=50,
-        choices=ATTRIBUTE_KEY_CHOICES,
+    attribute_key = models.ForeignKey(
+        ServiceAttributeKey,
+        on_delete=models.CASCADE,
+        related_name="service_attributes",
+        verbose_name=_("Тип атрибута"),
+        null=True,
+        blank=False
     )
     value = models.CharField(
         _("Значение"),
@@ -3144,14 +3180,15 @@ class ServiceAttribute(models.Model):
     class Meta:
         verbose_name = _("Атрибут услуги")
         verbose_name_plural = _("Атрибуты услуг")
-        ordering = ["sort_order", "key"]
-        unique_together = [["service", "key"]]
+        ordering = ["sort_order", "attribute_key"]
+        unique_together = [["service", "attribute_key"]]
         indexes = [
             models.Index(fields=["service", "sort_order"]),
         ]
 
     def __str__(self):
-        return f"{self.service.name} — {self.get_key_display()}: {self.value}"
+        key_name = self.attribute_key.name if self.attribute_key else "Unknown"
+        return f"{self.service.name} — {key_name}: {self.value}"
 
 
 class ServiceImage(models.Model):

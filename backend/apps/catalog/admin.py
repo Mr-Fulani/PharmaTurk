@@ -19,7 +19,7 @@ from .models import (
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
-    Service, ServiceTranslation, ServiceImage, ServiceAttribute,
+    Service, ServiceTranslation, ServiceImage, ServiceAttribute, ServiceAttributeKey, ServiceAttributeKeyTranslation,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
     Author, ProductAuthor,
     # Валютные модели
@@ -207,6 +207,17 @@ class ServiceTranslationInline(admin.TabularInline):
     verbose_name_plural = _("Переводы")
 
 
+class ServiceAttributeKeyTranslationInline(admin.TabularInline):
+    model = ServiceAttributeKeyTranslation
+    extra = 1
+
+@admin.register(ServiceAttributeKey)
+class ServiceAttributeKeyAdmin(admin.ModelAdmin):
+    list_display = ('slug', 'sort_order')
+    search_fields = ('slug', 'translations__name')
+    inlines = [ServiceAttributeKeyTranslationInline]
+    filter_horizontal = ('categories',)
+
 class ServiceImageInline(admin.TabularInline):
     """Inline для галереи изображений услуги."""
     model = ServiceImage
@@ -219,23 +230,14 @@ class ServiceAttributeInline(admin.TabularInline):
     """Inline для атрибутов услуги (площадь, срок, формат и т.д.)."""
     model = ServiceAttribute
     extra = 0
-    fields = ('key', 'value', 'sort_order')
+    fields = ('attribute_key', 'value', 'sort_order')
     verbose_name = _("Attribute service")
     verbose_name_plural = _("Attributes service")
 
-    def formfield_for_choice_field(self, db_field, request, **kwargs):
-        """Sort key choices by display name."""
-        field = super().formfield_for_choice_field(db_field, request, **kwargs)
-        if db_field.name == 'key' and hasattr(field, 'choices'):
-            # Sort alphabetically by label; keep empty choice first if present
-            choices = list(field.choices)
-            non_empty = sorted(
-                [(v, l) for v, l in choices if v],
-                key=lambda x: str(x[1])
-            )
-            empty = [(v, l) for v, l in choices if not v]
-            field.choices = empty + non_empty
-        return field
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "attribute_key":
+            kwargs["queryset"] = ServiceAttributeKey.objects.all().order_by('sort_order', 'slug')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 class ServicePriceInline(admin.StackedInline):
