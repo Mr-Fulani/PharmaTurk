@@ -1823,46 +1823,6 @@ class ClothingVariantImage(models.Model):
         return f"Изображение варианта {self.variant}"
 
 
-class ProductAttribute(models.Model):
-    """Атрибут товара (состав, показания, противопоказания и т.д.)."""
-    
-    ATTRIBUTE_TYPES = [
-        ("composition", _("Состав")),
-        ("indications", _("Показания")),
-        ("contraindications", _("Противопоказания")),
-        ("side_effects", _("Побочные эффекты")),
-        ("dosage", _("Дозировка")),
-        ("storage", _("Условия хранения")),
-        ("expiry", _("Срок годности")),
-        ("manufacturer", _("Производитель")),
-        ("country", _("Страна производства")),
-        ("form", _("Форма выпуска")),
-        ("weight", _("Вес/объем")),
-        ("other", _("Другое")),
-    ]
-    
-    product = models.ForeignKey(
-        Product, 
-        on_delete=models.CASCADE, 
-        related_name="attributes",
-        verbose_name=_("Товар")
-    )
-    attribute_type = models.CharField(_("Тип атрибута"), max_length=50, choices=ATTRIBUTE_TYPES)
-    name = models.CharField(_("Название"), max_length=200)
-    value = models.TextField(_("Значение"))
-    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
-    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
-
-    class Meta:
-        verbose_name = _("Атрибут товара (статичный)")
-        verbose_name_plural = _("📦 Атрибуты товаров (статика)")
-        ordering = ["sort_order", "name"]
-        unique_together = ["product", "attribute_type", "name"]
-
-    def __str__(self):
-        return f"{self.product.name} - {self.get_attribute_type_display()}: {self.name}"
-
-
 class PriceHistory(models.Model):
     """История изменения цен товара."""
     

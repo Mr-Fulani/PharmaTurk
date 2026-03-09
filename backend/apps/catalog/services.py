@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q
 
-from .models import Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory
+from .models import Category, Brand, Product, ProductImage, PriceHistory
 from .scraper_category_mapping import resolve_category_and_product_type
 from apps.vapi.client import ProductData
 from apps.catalog.utils.storage_paths import detect_media_type
@@ -631,40 +631,6 @@ class CatalogNormalizer:
                     obj.main_image = main_image_url
                     obj.save(update_fields=['main_image'])
     
-    def normalize_product_attributes(self, product: Product, attributes_data: Dict[str, Any]):
-        """Нормализует атрибуты товара из API."""
-        if not attributes_data:
-            return
-        
-        # Маппинг типов атрибутов
-        attribute_mapping = {
-            "composition": "composition",
-            "indications": "indications", 
-            "contraindications": "contraindications",
-            "side_effects": "side_effects",
-            "dosage": "dosage",
-            "storage": "storage",
-            "expiry": "expiry",
-            "manufacturer": "manufacturer",
-            "country": "country",
-            "form": "form",
-            "weight": "weight",
-        }
-        
-        # Удаляем старые атрибуты
-        product.attributes.all().delete()
-        
-        # Создаем новые атрибуты
-        for attr_type, value in attributes_data.items():
-            if attr_type in attribute_mapping and value:
-                ProductAttribute.objects.create(
-                    product=product,
-                    attribute_type=attribute_mapping[attr_type],
-                    name=attr_type.title(),
-                    value=str(value),
-                    sort_order=len(product.attributes.all())
-                )
-    
     @transaction.atomic
     def sync_categories_and_brands(self, categories_data: List[Dict], brands_data: List[Dict]):
         """Синхронизирует категории и бренды из API."""
@@ -691,10 +657,6 @@ class CatalogNormalizer:
                 product = self.normalize_product(product_data)
                 synced_count += 1
                 
-                # Если есть дополнительные атрибуты, нормализуем их
-                if hasattr(product_data, 'attributes') and product_data.attributes:
-                    self.normalize_product_attributes(product, product_data.attributes)
-                    
             except Exception as e:
                 self.logger.error(f"Ошибка при синхронизации товара {product_data.id}: {e}")
         

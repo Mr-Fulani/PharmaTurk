@@ -7,7 +7,7 @@ from django.conf import settings
 from django.db.models import Count
 from rest_framework import serializers
 from .models import (
-    Category, CategoryTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
+    Category, CategoryTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, PriceHistory, Favorite,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
@@ -409,18 +409,6 @@ class ProductImageSerializer(serializers.ModelSerializer):
         if file_url:
             return file_url
         return None
-
-
-class ProductAttributeSerializer(serializers.ModelSerializer):
-    """Сериализатор для атрибутов товара."""
-    
-    attribute_type_display = serializers.CharField(source='get_attribute_type_display', read_only=True)
-    
-    class Meta:
-        model = ProductAttribute
-        fields = ['id', 'attribute_type', 'attribute_type_display', 'name', 'value', 'sort_order']
-
-
 class ProductDynamicAttributeSerializer(serializers.ModelSerializer):
     """Сериализатор для динамических атрибутов товара."""
     
@@ -1038,14 +1026,13 @@ class ProductDetailSerializer(ProductSerializer):
     """Сериализатор для товаров (детальная информация)."""
     
     images = serializers.SerializerMethodField()
-    attributes = ProductAttributeSerializer(many=True, read_only=True)
     price_history = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
     book_variants = serializers.SerializerMethodField()
     
     class Meta(ProductSerializer.Meta):
         fields = ProductSerializer.Meta.fields + [
-            'images', 'attributes', 'price_history', 'external_id',
+            'images', 'price_history', 'external_id',
             'external_url', 'sku', 'barcode', 'last_synced_at',
             'book_variants',
         ]

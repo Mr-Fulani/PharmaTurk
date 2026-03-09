@@ -14,7 +14,7 @@ from .models import (
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
     CategoryUnderwear, CategoryHeadwear, CategoryServices, CategoryPerfumery, CategoryIncense, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
-    Brand, BrandTranslation, MarketingBrand, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
+    Brand, BrandTranslation, MarketingBrand, Product, ProductTranslation, ProductImage, PriceHistory, Favorite,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
@@ -631,16 +631,6 @@ class ShoeVariantImageInline(admin.TabularInline):
         return "-"
     image_preview.short_description = _("Превью")
 
-
-class ProductAttributeInline(admin.TabularInline):
-    """Inline для (статичных) атрибутов товара."""
-    model = ProductAttribute
-    extra = 1
-    fields = ('attribute_type', 'name', 'value', 'sort_order')
-    verbose_name = _("📦 Статичный атрибут")
-    verbose_name_plural = _("📦 Статичные атрибуты товаров")
-
-
 class RunAIActionMixin:
     """Миксин: действия AI обработки для выбранных товаров."""
 
@@ -759,7 +749,7 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         (_('Синхронизация'), {'fields': ('last_synced_at',)}),
     )
     
-    inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeInline]
+    inlines = [ProductTranslationInline, ProductImageInline]
 
     def slug_preview(self, obj):
         """Предпросмотр slug."""
@@ -818,7 +808,7 @@ class BaseProductProxyAdmin(CategoryTypeFilterMixin, BaseProductAdmin):
     required_product_type: str | None = None
     exclude = ('product_type',)
     autocomplete_fields = ('brand',)  # убираем category из autocomplete, чтобы избежать admin.E039
-    inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeInline]
+    inlines = [ProductTranslationInline, ProductImageInline]
 
     def get_category_queryset(self):
         if not self.required_product_type:
@@ -909,20 +899,6 @@ class ProductImageAdmin(admin.ModelAdmin):
                 )
         return "-"
     image_preview.short_description = _("Превью")
-
-
-@admin.register(ProductAttribute)
-class ProductAttributeAdmin(admin.ModelAdmin):
-    """Админка для атрибутов товаров."""
-    list_display = ('product', 'attribute_type', 'name', 'value', 'sort_order')
-    list_filter = ('attribute_type', 'sort_order', 'created_at')
-    search_fields = ('product__name', 'name', 'value')
-    ordering = ('product', 'sort_order', 'name')
-
-    class Meta:
-        verbose_name_plural = _("📦 Атрибуты товаров (статика)")
-
-
 @admin.register(PriceHistory)
 class PriceHistoryAdmin(admin.ModelAdmin):
     """Админка для истории цен."""

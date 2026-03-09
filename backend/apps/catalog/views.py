@@ -26,7 +26,7 @@ import os
 logger = logging.getLogger(__name__)
 
 from .models import (
-    Category, Brand, Product, ProductAttribute, PriceHistory, Favorite, Author,
+    Category, Brand, Product, PriceHistory, Favorite, Author,
     ClothingProduct, ClothingVariant,
     ShoeProduct, ShoeVariant,
     ElectronicsProduct,
@@ -52,7 +52,6 @@ from .serializers import (
     ProductSerializer,
     ProductDetailSerializer,
     BookGenreSerializer,
-    ProductAttributeSerializer,
     PriceHistorySerializer,
     FavoriteSerializer,
     AddToFavoriteSerializer,
@@ -908,18 +907,6 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
             "publishers": normalize_list(publishers_raw),
             "languages": normalize_list(languages_raw),
         })
-    
-    @action(detail=True, methods=['get'])
-    @extend_schema(
-        summary="Получить атрибуты товара",
-        description="Возвращает список атрибутов товара (состав, показания и т.д.)"
-    )
-    def attributes(self, request, slug=None):
-        """Получить атрибуты товара."""
-        product = self.get_object()
-        attributes = ProductAttribute.objects.filter(product=product)
-        serializer = ProductAttributeSerializer(attributes, many=True)
-        return Response(serializer.data)
     
     @action(detail=True, methods=['get'])
     @extend_schema(
