@@ -188,7 +188,7 @@ export default function ProductCard({
                 iconOnly={true}
                 className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
               />
-              {productType !== 'services' && (
+              {productType !== 'services' && productType !== 'uslugi' && (
                 <AddToCartButton
                   productId={isBaseProduct ? (baseProductId ?? id) : undefined}
                   productType={productType}
@@ -330,7 +330,7 @@ export default function ProductCard({
             iconOnly={true}
             className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
           />
-          {productType !== 'services' && (
+          {productType !== 'services' && productType !== 'uslugi' && (
             <AddToCartButton
               productId={isBaseProduct ? (baseProductId ?? id) : undefined}
               productType={productType}
