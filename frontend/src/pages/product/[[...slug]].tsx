@@ -60,6 +60,22 @@ const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
       return `/api/catalog/perfumery/products/${slug}`
     case 'uslugi':
       return `/api/catalog/services/${slug}`
+    case 'medicines':
+      return `/api/catalog/medicines/products/${slug}`
+    case 'supplements':
+      return `/api/catalog/supplements/products/${slug}`
+    case 'medical-equipment':
+      return `/api/catalog/medical-equipment/products/${slug}`
+    case 'tableware':
+      return `/api/catalog/tableware/products/${slug}`
+    case 'accessories':
+      return `/api/catalog/accessories/products/${slug}`
+    case 'incense':
+      return `/api/catalog/incense/products/${slug}`
+    case 'sports':
+      return `/api/catalog/sports/products/${slug}`
+    case 'auto-parts':
+      return `/api/catalog/auto-parts/products/${slug}`
     default:
       // Для всех остальных категорий (включая новые динамические) используем общий эндпоинт
       return `/api/catalog/products/${slug}`
@@ -126,7 +142,9 @@ interface Product {
   name: string
   slug: string
   description: string
-  price: string
+  product_type?: string
+  price: number | string | null
+  price_formatted?: string | null
   old_price?: string | number | null
   old_price_formatted?: string | null
   currency: string
@@ -145,7 +163,6 @@ interface Product {
   active_variant_stock_quantity?: number | null
   active_variant_main_image_url?: string | null
   translations?: ProductTranslation[]
-  product_type?: string
   // SEO (с бэкенда — для книг и др.)
   meta_title?: string | null
   meta_description?: string | null
@@ -174,6 +191,17 @@ interface Product {
   main_gif_url?: string | null
   gallery?: { id: number; image_url: string; alt_text?: string; sort_order?: number }[]
   service_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
+  // Лекарства
+  volume?: string | null
+  origin_country?: string | null
+  dosage_form?: string | null
+  active_ingredient?: string | null
+  prescription_required?: boolean | null
+  brand?: { id: number; name: string; slug?: string } | null
+  usage_instructions?: string | null
+  side_effects?: string | null
+  contraindications?: string | null
+  storage_conditions?: string | null
 }
 
 interface FooterSettings {
@@ -541,16 +569,32 @@ export default function ProductPage({
 
   // Получаем числовое значение цены для расчетов
   const parsedActiveVariantPrice = parsePriceWithCurrency(product.active_variant_price ?? null)
+
+  // Для доменных товаров (лекарства и т.д.) без вариантов используем price_formatted
+  // который бэкенд уже сконвертировал в нужную валюту
+  const parsedPriceFormatted = parsePriceWithCurrency(
+    (!selectedVariant?.price && !product.active_variant_price && product.price_formatted)
+      ? String(product.price_formatted)
+      : null
+  )
+
   const priceValue = selectedVariant?.price
     ? parseFloat(String(selectedVariant.price))
-    : (product.active_variant_price ? parseFloat(String(product.active_variant_price)) : (product.price ? parseFloat(String(product.price)) : null))
+    : (product.active_variant_price
+      ? parseFloat(String(product.active_variant_price))
+      : (parsedPriceFormatted.price
+        ? parseFloat(String(parsedPriceFormatted.price))
+        : (product.price ? parseFloat(String(product.price)) : null)))
+
   const currency =
     (selectedVariant?.price != null ? selectedVariant?.currency : null) ||
     product.active_variant_currency ||
     parsedActiveVariantPrice.currency ||
+    parsedPriceFormatted.currency ||
     preferredCurrency ||
     product.currency ||
     'USD'
+
   const oldPriceSource =
     product.active_variant_old_price_formatted ||
     product.old_price_formatted ||
@@ -842,7 +886,77 @@ export default function ProductPage({
                 )}
               </div>
             )}
+            {/* Блок «Медикамент»: полная карточка характеристик */}
+            {(productType === 'medicines' || product.product_type === 'medicines') && (
+              <div
+                className="mt-3 space-y-1.5 text-sm"
+                style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+              >
+                {/* Бренд */}
+                {product.brand && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('brand', 'Бренд')}: </span>
+                    {product.brand.name}
+                  </p>
+                )}
+                {/* Лекарственная форма */}
+                {product.dosage_form && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('dosage_form', 'Лекарственная форма')}: </span>
+                    {(() => {
+                      const forms: Record<string, string> = {
+                        tablet: t('dosage_tablet', 'Таблетки'),
+                        capsule: t('dosage_capsule', 'Капсулы'),
+                        syrup: t('dosage_syrup', 'Сироп'),
+                        drops: t('dosage_drops', 'Капли'),
+                        ointment: t('dosage_ointment', 'Мазь'),
+                        cream: t('dosage_cream', 'Крем'),
+                        gel: t('dosage_gel', 'Гель'),
+                        injection: t('dosage_injection', 'Инъекция'),
+                        powder: t('dosage_powder', 'Порошок'),
+                        spray: t('dosage_spray', 'Спрей'),
+                        suppository: t('dosage_suppository', 'Суппозитории'),
+                        other: t('dosage_other', 'Прочее'),
+                      }
+                      return forms[product.dosage_form!] || product.dosage_form
+                    })()}
+                  </p>
+                )}
+                {/* Действующее вещество */}
+                {product.active_ingredient && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('active_ingredient', 'Действующее вещество')}: </span>
+                    {product.active_ingredient}
+                  </p>
+                )}
+                {/* Рецепт */}
+                {product.prescription_required && (
+                  <p className="flex items-center gap-1.5">
+                    <svg className="h-4 w-4 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="font-medium text-orange-600 dark:text-orange-400">{t('prescription_required', 'Отпускается по рецепту')}</span>
+                  </p>
+                )}
+                {/* Объем/Количество */}
+                {product.volume && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('volume', 'Объем/Количество')}: </span>
+                    {product.volume}
+                  </p>
+                )}
+                {/* Страна производства */}
+                {product.origin_country && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('origin_country', 'Страна производства')}: </span>
+                    {product.origin_country}
+                  </p>
+                )}
+              </div>
+            )}
+
             {(product.is_bestseller || product.is_new || product.is_featured) && (
+
               <div className="flex flex-wrap gap-2 mt-2">
                 {product.is_featured && (
                   <span className="rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">
@@ -1163,6 +1277,74 @@ export default function ProductPage({
           )}
         </div>
 
+        {/* Дополнительные секции для лекарств */}
+        {(productType === 'medicines' || product.product_type === 'medicines') && (
+          <div className="mt-4 flex flex-col gap-4">
+            {[
+              { id: 'usage', title: t('usage_instructions', 'Способ применения'), content: product.usage_instructions },
+              { id: 'side_effects', title: t('side_effects', 'Побочные действия'), content: product.side_effects },
+              { id: 'contraindications', title: t('contraindications', 'Противопоказания'), content: product.contraindications },
+              { id: 'storage', title: t('storage_conditions', 'Условия хранения'), content: product.storage_conditions }
+            ].map((section) => {
+              if (!section.content) return null
+              const isExpanded = (product as any)[`_is_${section.id}_expanded`] ?? false
+              return (
+                <div
+                  key={section.id}
+                  className="rounded-lg border dark:border-gray-700 overflow-hidden w-full"
+                  style={{
+                    borderColor: theme === 'dark' ? '#374151' : '#E5E7EB',
+                    backgroundColor: theme === 'dark' ? '#1F2937' : '#F9FAFB'
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setProduct(prev => {
+                        if (!prev) return prev
+                        return { ...prev, [`_is_${section.id}_expanded`]: !isExpanded } as any
+                      })
+                    }}
+                    className="w-full flex items-center justify-between p-4 text-left transition-colors"
+                  >
+                    <span
+                      className="font-medium"
+                      style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
+                    >
+                      {section.title}
+                    </span>
+                    <svg
+                      className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {isExpanded && (
+                    <div
+                      className="border-t dark:border-gray-700 p-6"
+                      style={{
+                        borderTopColor: theme === 'dark' ? '#374151' : '#E5E7EB',
+                        backgroundColor: theme === 'dark' ? '#111827' : '#FFF'
+                      }}
+                    >
+                      <div className="prose max-w-none dark:prose-invert">
+                        <div
+                          className="whitespace-pre-wrap leading-relaxed text-base"
+                          style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
+                          dangerouslySetInnerHTML={{ __html: getLocalizedProductDescription(section.content, t, product.translations, router.locale) }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         {/* Похожие товары (RecSys когда доступен) */}
         <SimilarProducts
           productType={productType}
@@ -1171,7 +1353,7 @@ export default function ProductPage({
           limit={8}
           useRecsys={true}
         />
-      </main>
+      </main >
     </>
   )
 }

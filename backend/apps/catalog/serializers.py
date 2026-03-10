@@ -1202,12 +1202,26 @@ class AddToFavoriteSerializer(serializers.Serializer):
         }.get(product_type, product_type)
         
         # Маппинг типов товаров на модели
-        from .models import Product, ClothingProduct, ShoeProduct, ElectronicsProduct, FurnitureProduct, JewelryProduct, Service
+        from .models import (
+            Product, ClothingProduct, ShoeProduct, ElectronicsProduct,
+            FurnitureProduct, JewelryProduct, Service,
+            MedicineProduct, SupplementProduct,
+        )
+        
+        # Пробуем импортировать другие доменные модели (могут отсутствовать)
+        try:
+            from .models import MedicalEquipmentProduct
+        except ImportError:
+            MedicalEquipmentProduct = None
+        
+        domain_maps = {}
+        if MedicalEquipmentProduct:
+            domain_maps['medical_equipment'] = MedicalEquipmentProduct
         
         PRODUCT_MODEL_MAP = {
-            'medicines': Product,
-            'supplements': Product,
-            'medical_equipment': Product,
+            'medicines': MedicineProduct,
+            'supplements': SupplementProduct if SupplementProduct else Product,
+            'medical_equipment': domain_maps.get('medical_equipment', Product),
             'tableware': Product,
             'accessories': Product,
             'jewelry': JewelryProduct,
@@ -1224,7 +1238,8 @@ class AddToFavoriteSerializer(serializers.Serializer):
         
         model_class = PRODUCT_MODEL_MAP.get(product_type)
         if not model_class:
-            raise serializers.ValidationError({"product_type": f"Неизвестный тип продукта: {product_type}"})
+            # Попробуем найти в Product как fallback
+            model_class = Product
         
         try:
             product = model_class.objects.get(id=product_id)
@@ -1232,10 +1247,10 @@ class AddToFavoriteSerializer(serializers.Serializer):
             if hasattr(product, 'is_active') and not product.is_active:
                 raise serializers.ValidationError({"product_id": "Товар неактивен"})
         except model_class.DoesNotExist:
-            # Для jewelry, clothing, shoes, electronics, furniture — не fallback на Product
+            # Для специализированных моделей пробуем fallback на базовый Product
             if model_class is not Product:
                 try:
-                    product = Product.objects.get(id=product_id, product_type=product_type)
+                    product = Product.objects.get(id=product_id)
                     if hasattr(product, 'is_active') and not product.is_active:
                         raise serializers.ValidationError({"product_id": "Товар неактивен"})
                 except Product.DoesNotExist:
@@ -1246,6 +1261,7 @@ class AddToFavoriteSerializer(serializers.Serializer):
         attrs['_product'] = product
         attrs['_product_type'] = product_type
         return attrs
+
 
 
 # ============================================================================
@@ -4157,13 +4173,21 @@ class _SimpleDomainMixin:
 
     def _get_preferred_currency(self, obj):
         request = self.context.get('request')
+        default_currency = 'RUB'
         if not request:
-            return 'RUB'
-        preferred = request.headers.get('X-Currency') or request.query_params.get('currency')
-        if preferred:
-            return preferred.upper()
+            return default_currency
+            
+        preferred_currency = request.headers.get('X-Currency') or request.query_params.get('currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+            
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            user_currency = getattr(request.user, 'currency', None)
+            if user_currency:
+                return user_currency.upper()
+
         language_code = getattr(request, 'LANGUAGE_CODE', None)
-        return {'en': 'USD', 'ru': 'RUB'}.get(language_code, 'RUB')
+        return {'en': 'USD', 'ru': 'RUB'}.get(language_code, default_currency)
 
     def get_main_image_url(self, obj):
         request = self.context.get('request')
@@ -4264,7 +4288,10 @@ class _SimpleDomainMixin:
 class MedicineProductTranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = MedicineProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = [
+            'locale', 'name', 'description', 'usage_instructions',
+            'side_effects', 'contraindications', 'storage_conditions'
+        ]
 
 
 class MedicineProductImageSerializer(serializers.ModelSerializer):
@@ -4299,18 +4326,54 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     og_title = serializers.SerializerMethodField()
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
+    product_type = serializers.CharField(source='_domain_product_type', read_only=True)
+    
+    usage_instructions = serializers.SerializerMethodField()
+    side_effects = serializers.SerializerMethodField()
+    contraindications = serializers.SerializerMethodField()
+    storage_conditions = serializers.SerializerMethodField()
+
+    def _get_translation_field(self, obj, field_name):
+        request = self.context.get('request')
+        lang = getattr(request, 'LANGUAGE_CODE', 'ru')
+        
+        # Prefetch optimizations should ideally be done in the queryset
+        for t in obj.translations.all():
+            if t.locale == lang:
+                return getattr(t, field_name, None)
+                
+        # Fallback to RU
+        for t in obj.translations.all():
+            if t.locale == 'ru':
+                return getattr(t, field_name, None)
+                
+        return None
+
+    def get_usage_instructions(self, obj):
+        return self._get_translation_field(obj, 'usage_instructions')
+
+    def get_side_effects(self, obj):
+        return self._get_translation_field(obj, 'side_effects')
+
+    def get_contraindications(self, obj):
+        return self._get_translation_field(obj, 'contraindications')
+
+    def get_storage_conditions(self, obj):
+        return self._get_translation_field(obj, 'storage_conditions')
+
 
     class Meta:
         model = MedicineProduct
         fields = [
-            'id', 'name', 'slug', 'description', 'category', 'brand',
+            'id', 'name', 'slug', 'description', 'category', 'brand', 'product_type',
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
             'dosage_form', 'active_ingredient', 'prescription_required',
+            'volume', 'origin_country',
+            'usage_instructions', 'side_effects', 'contraindications', 'storage_conditions',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
-            'base_product_id',
-            'meta_title', 'meta_description', 'meta_keywords',
-            'og_title', 'og_description', 'og_image_url',
+            'base_product_id', 'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
