@@ -120,21 +120,31 @@ def ensure_domain_product_for_base(product):
     _enrich_domain_kwargs_from_product(kwargs, product, DomainModel)
 
     if domain is None:
-        try:
-            DomainModel.objects.create(**kwargs)
-            logger.info(
-                "Created %s for base Product pk=%s slug=%s",
-                DomainModel.__name__,
-                product.pk,
-                product.slug,
-            )
-        except Exception as e:
-            logger.exception(
-                "Failed to create %s for Product pk=%s: %s",
-                DomainModel.__name__,
-                product.pk,
-                e,
-            )
+        # Проверяем, нет ли уже такого товара по слагу (чтобы избежать UniqueViolation)
+        existing_by_slug = DomainModel.objects.filter(slug=kwargs['slug']).first()
+        if existing_by_slug:
+            # Привязываем существующий доменный товар к базовому, если он еще не привязан
+            if not existing_by_slug.base_product_id:
+                existing_by_slug.base_product_id = product.pk
+                existing_by_slug.save()
+                logger.info("Linked existing %s (slug=%s) to base Product pk=%s", DomainModel.__name__, product.slug, product.pk)
+            domain = existing_by_slug
+        else:
+            try:
+                DomainModel.objects.create(**kwargs)
+                logger.info(
+                    "Created %s for base Product pk=%s slug=%s",
+                    DomainModel.__name__,
+                    product.pk,
+                    product.slug,
+                )
+            except Exception as e:
+                logger.exception(
+                    "Failed to create %s for Product pk=%s: %s",
+                    DomainModel.__name__,
+                    product.pk,
+                    e,
+                )
         return
 
     try:

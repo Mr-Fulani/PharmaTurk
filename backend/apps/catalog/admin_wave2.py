@@ -20,14 +20,19 @@ from .models import (
 #  Общие Inline-классы (генератор)
 # ─────────────────────────────────────────────────────────────
 
-def _make_translation_inline(model_class):
+def _make_translation_inline(model_class, extra_fields=None):
     """Фабрика для TabularInline переводов."""
+    inline_fields = ('locale', 'name', 'description')
+    if extra_fields:
+        inline_fields += tuple(extra_fields)
+
     class Inline(admin.TabularInline):
         model = model_class
         extra = 1
-        fields = ('locale', 'name', 'description')
+        fields = inline_fields
         verbose_name = _('Перевод')
         verbose_name_plural = _('Переводы')
+
     Inline.__name__ = f'{model_class.__name__}Inline'
     return Inline
 
@@ -196,7 +201,10 @@ class _SimpleDomainAdmin(admin.ModelAdmin):
 class MedicineProductAdmin(_SimpleDomainAdmin):
     _category_type_slug = "medicines"
     _domain_fieldset = (_('Специфика медикамента'), {
-        'fields': ('dosage_form', 'active_ingredient', 'prescription_required'),
+        'fields': (
+            'dosage_form', 'active_ingredient', 'prescription_required',
+            'volume', 'origin_country'
+        ),
     })
     list_display = [
         'name', 'category', 'dosage_form', 'active_ingredient',
@@ -208,7 +216,9 @@ class MedicineProductAdmin(_SimpleDomainAdmin):
         'dosage_form', 'is_new', 'created_at',
     ]
     inlines = [
-        _make_translation_inline(MedicineProductTranslation),
+        _make_translation_inline(MedicineProductTranslation, extra_fields=(
+            'usage_instructions', 'side_effects', 'contraindications', 'storage_conditions'
+        )),
         _make_image_inline(MedicineProductImage),
     ]
 

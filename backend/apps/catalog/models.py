@@ -827,6 +827,12 @@ class AbstractDomainProduct(models.Model):
                 seo_title=self.meta_title,
                 seo_description=self.meta_description,
                 keywords=[k.strip() for k in (self.meta_keywords or "").split(",") if k.strip()],
+                meta_title=self.meta_title,
+                meta_description=self.meta_description,
+                meta_keywords=self.meta_keywords,
+                og_title=self.og_title,
+                og_description=self.og_description,
+                og_image_url=self.og_image_url,
                 is_active=self.is_active,
                 is_new=self.is_new,
                 is_featured=self.is_featured,
@@ -865,9 +871,16 @@ class AbstractDomainProduct(models.Model):
         product.external_id = self.external_id
         product.external_url = self.external_url
         product.external_data = self.external_data
+        product.old_price = self.old_price
         product.seo_title = self.meta_title
         product.seo_description = self.meta_description
         product.keywords = [k.strip() for k in (self.meta_keywords or "").split(",") if k.strip()]
+        product.meta_title = self.meta_title
+        product.meta_description = self.meta_description
+        product.meta_keywords = self.meta_keywords
+        product.og_title = self.og_title
+        product.og_description = self.og_description
+        product.og_image_url = self.og_image_url
         product.is_active = self.is_active
         product.is_new = self.is_new
         product.is_featured = self.is_featured
@@ -920,8 +933,8 @@ class Product(models.Model):
     description = models.TextField(_("Описание"), blank=True)
     
     # SEO
-    seo_title = models.CharField(_("SEO заголовок"), max_length=70, blank=True, null=True)
-    seo_description = models.CharField(_("SEO описание"), max_length=160, blank=True, null=True)
+    seo_title = models.CharField(_("SEO заголовок"), max_length=255, blank=True, null=True)
+    seo_description = models.CharField(_("SEO описание"), max_length=500, blank=True, null=True)
     keywords = models.JSONField(_("Ключевые слова"), default=list, blank=True)
 
     product_type = models.CharField(
@@ -1175,14 +1188,18 @@ class Product(models.Model):
             # Если конвертер недоступен, пропускаем обновление
             return
         
+        from django.db import transaction
+        import traceback
+
         if self.price is None or not self.currency:
             return
         
         try:
-            # Конвертируем в целевые валюты
-            results = currency_converter.convert_to_multiple_currencies(
-                self.price, self.currency, target_currencies, apply_margin=True
-            )
+            with transaction.atomic():
+                # Конвертируем в целевые валюты
+                results = currency_converter.convert_to_multiple_currencies(
+                    self.price, self.currency, target_currencies, apply_margin=True
+                )
             
             # Обновляем поля в модели
             if 'RUB' in results and results['RUB']:
@@ -1239,7 +1256,7 @@ class Product(models.Model):
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
-            logger.error(f"Error updating currency prices for product {self.id}: {str(e)}")
+            logger.error(f"Error updating currency prices for product {self.id}: {str(e)}\n{traceback.format_exc()}")
     
     def _get_variant_price_info(self):
         ext = self.external_data or {}
@@ -3963,6 +3980,13 @@ class MedicineProduct(AbstractDomainProduct):
     prescription_required = models.BooleanField(
         _("Требуется рецепт"), default=False,
     )
+    volume = models.CharField(
+        _("Объем/Количество"), max_length=100, blank=True,
+        help_text=_("Например: 50 мл, 20 таб."),
+    )
+    origin_country = models.CharField(
+        _("Страна производства"), max_length=200, blank=True,
+    )
 
     class Meta:
         verbose_name = _("Товар — Медикамент")
@@ -3989,6 +4013,10 @@ class MedicineProductTranslation(models.Model):
     locale = models.CharField(_("Локаль"), max_length=10, choices=LOCALE_CHOICES, default="ru")
     name = models.CharField(_("Название"), max_length=500, blank=True)
     description = models.TextField(_("Описание"), blank=True)
+    usage_instructions = models.TextField(_("Способ применения"), blank=True)
+    side_effects = models.TextField(_("Побочные действия"), blank=True)
+    contraindications = models.TextField(_("Противопоказания"), blank=True)
+    storage_conditions = models.TextField(_("Условия хранения"), blank=True)
 
     class Meta:
         verbose_name = _("Перевод медикамента")

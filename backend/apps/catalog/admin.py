@@ -749,7 +749,7 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         (_('Синхронизация'), {'fields': ('last_synced_at',)}),
     )
     
-    inlines = [ProductTranslationInline, ProductImageInline]
+    inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeValueInline]
 
     def slug_preview(self, obj):
         """Предпросмотр slug."""
@@ -808,7 +808,7 @@ class BaseProductProxyAdmin(CategoryTypeFilterMixin, BaseProductAdmin):
     required_product_type: str | None = None
     exclude = ('product_type',)
     autocomplete_fields = ('brand',)  # убираем category из autocomplete, чтобы избежать admin.E039
-    inlines = [ProductTranslationInline, ProductImageInline]
+    inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeValueInline]
 
     def get_category_queryset(self):
         if not self.required_product_type:
