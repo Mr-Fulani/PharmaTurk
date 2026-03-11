@@ -329,9 +329,10 @@ export function getLocalizedProductDescription(
   fallbackDescription: string | null | undefined,
   t: TFunction,
   translations?: ProductTranslation[],
-  currentLocale?: string
+  currentLocale?: string,
+  fieldName: string = 'description'
 ): string {
-  if (!fallbackDescription) return ''
+  if (!fallbackDescription && !translations) return ''
 
   // Получаем текущий язык из роутера или из пути
   let locale = currentLocale
@@ -344,11 +345,12 @@ export function getLocalizedProductDescription(
   // Проверяем переводы из API
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
-    if (apiTranslation && apiTranslation.description) {
-      return apiTranslation.description
+    if (apiTranslation) {
+      const val = (apiTranslation as any)[fieldName]
+      if (val) return val
     }
   }
 
   // Fallback на описание с бэкенда
-  return fallbackDescription
+  return fallbackDescription || ''
 }

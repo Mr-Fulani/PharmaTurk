@@ -11,16 +11,17 @@ interface ServiceAttribute {
 
 interface ServiceAttributesProps {
     attributes: ServiceAttribute[];
+    title?: string;
 }
 
-const ServiceAttributes: React.FC<ServiceAttributesProps> = ({ attributes }) => {
+const ServiceAttributes: React.FC<ServiceAttributesProps> = ({ attributes, title }) => {
     const { t } = useTranslation('common');
     if (!attributes || attributes.length === 0) return null;
 
     return (
         <div className="mt-8 border-t border-gray-100 dark:border-gray-800 pt-8">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-6 px-1">
-                {t('service_specifications', 'Спецификации услуги')}
+                {title || t('service_specifications', 'Спецификации услуги')}
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
                 {attributes.sort((a, b) => a.sort_order - b.sort_order).map((attr) => (

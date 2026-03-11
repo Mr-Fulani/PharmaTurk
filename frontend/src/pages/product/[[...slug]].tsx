@@ -12,7 +12,7 @@ import FavoriteButton from '../../components/FavoriteButton'
 import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
-import { getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../../lib/i18n'
+import { getLocalizedBrandName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../../lib/media'
 import { getSiteOrigin } from '../../lib/urls'
 import { isBaseProductType } from '../../lib/product'
@@ -110,10 +110,10 @@ const formatPrice = (value: string | number | null | undefined): string | null =
   const num = parseNumber(value)
   if (num === null) return String(value)
 
-  // Убираем лишние нули после запятой
-  const str = num.toString()
+  // Округляем до 2 знаков после запятой, затем убираем лишние нули и саму точку, если она не нужна
+  let str = num.toFixed(2)
   if (str.includes('.')) {
-    return str.replace(/\.?0+$/, '')
+    str = str.replace(/0+$/, '').replace(/\.$/, '')
   }
   return str
 }
@@ -125,6 +125,23 @@ const normalizeMediaValue = (value?: string | null) => {
   const lower = trimmed.toLowerCase()
   if (lower === 'null' || lower === 'none' || lower === 'undefined') return null
   return trimmed
+}
+
+const getDosageFormLabel = (value: string | null | undefined, t: any) => {
+  if (!value) return null
+  const forms: Record<string, string> = {
+    tablet: t('dosage_tablet', 'Таблетки'),
+    capsule: t('dosage_capsule', 'Капсулы'),
+    syrup: t('dosage_syrup', 'Сироп'),
+    injection: t('dosage_injection', 'Инъекция'),
+    cream: t('dosage_cream', 'Крем'),
+    ointment: t('dosage_ointment', 'Мазь'),
+    gel: t('dosage_gel', 'Гель'),
+    drops: t('dosage_drops', 'Капли'),
+    spray: t('dosage_spray', 'Спрей'),
+    powder: t('dosage_powder', 'Порошок'),
+  }
+  return forms[value] || value
 }
 
 interface SizeItem {
@@ -163,45 +180,71 @@ interface Product {
   active_variant_stock_quantity?: number | null
   active_variant_main_image_url?: string | null
   translations?: ProductTranslation[]
-  // SEO (с бэкенда — для книг и др.)
+  // SEO
   meta_title?: string | null
   meta_description?: string | null
   meta_keywords?: string | null
   og_title?: string | null
   og_description?: string | null
   og_image_url?: string | null
-  // Книги
+  // Common Attributes
+  brand?: { id: number; name: string; slug?: string; translations?: BrandTranslation[] } | null
+  category?: { id: number; name: string; slug: string } | null
+  is_new?: boolean
+  is_featured?: boolean
+  is_bestseller?: boolean
+  rating?: number | string | null
+  reviews_count?: number | null
+  availability_status?: string | null
+  is_available?: boolean
+  min_order_quantity?: number | null
+  pack_quantity?: number | null
+  gtin?: string | null
+  mpn?: string | null
+  country_of_origin?: string | null
+  // Books
   isbn?: string | null
   publisher?: string | null
   publication_date?: string | null
   pages?: number | null
   language?: string | null
   cover_type?: string | null
-  rating?: number | string | null
-  reviews_count?: number | null
-  is_bestseller?: boolean
-  is_new?: boolean
-  is_featured?: boolean
   book_authors?: { id: number; author: { full_name: string; full_name_en?: string } }[]
-  weight_value?: number | string | null
-  weight_unit?: string | null
+  book_genres?: { id: number; genre: { name: string; name_en?: string } }[]
   book_attributes?: { format?: string; thickness_mm?: string }
-  // Услуги
-  main_video_url?: string | null
-  main_gif_url?: string | null
-  gallery?: { id: number; image_url: string; alt_text?: string; sort_order?: number }[]
-  service_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
-  // Лекарства
-  volume?: string | null
-  origin_country?: string | null
+  // Medicines & Supplements
   dosage_form?: string | null
   active_ingredient?: string | null
   prescription_required?: boolean | null
-  brand?: { id: number; name: string; slug?: string } | null
+  volume?: string | null
+  origin_country?: string | null
   usage_instructions?: string | null
   side_effects?: string | null
   contraindications?: string | null
   storage_conditions?: string | null
+  serving_size?: string | null
+  // Physical Attributes
+  weight_value?: number | string | null
+  weight_unit?: string | null
+  length?: number | string | null
+  width?: number | string | null
+  height?: number | string | null
+  dimensions_unit?: string | null
+  product_code?: string | null
+  release_form?: string | null
+  dosage?: string | null
+  package_count?: number | string | null
+  // Clothing & Shoes
+  color?: string | null
+  size?: string | null
+  material?: string | null
+  season?: string | null
+  // Services
+  main_video_url?: string | null
+  main_gif_url?: string | null
+  gallery?: { id: number; image_url: string; alt_text?: string; sort_order?: number }[]
+  service_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
+  dynamic_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
 }
 
 interface FooterSettings {
@@ -613,9 +656,9 @@ export default function ProductPage({
     : null
 
   // Вычисляем общую сумму с учетом количества
-  const totalPrice = priceValue !== null ? (priceValue * quantity).toFixed(2) : null
+  const totalPrice = priceValue !== null ? formatPrice(priceValue * quantity) : null
   const displayPrice = priceValue !== null
-    ? `${priceValue} ${currency}`
+    ? `${formatPrice(priceValue)} ${currency}`
     : t('price_on_request')
   const displayTotalPrice = totalPrice !== null
     ? `${totalPrice} ${currency}`
@@ -817,6 +860,29 @@ export default function ProductPage({
             >
               {displayProductName || product.name}
             </h1>
+            {/* Основные характеристики (Бренд и Артикул) */}
+            {productType !== 'uslugi' && product.product_type !== 'uslugi' && productType !== 'books' && (
+              <div
+                className="mt-3 space-y-1.5 text-sm"
+                style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+              >
+                {/* Бренд */}
+                {product.brand && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('brand', 'Бренд')}: </span>
+                    {getLocalizedBrandName(product.brand.slug || '', product.brand.name, t, product.brand.translations, router.locale)}
+                  </p>
+                )}
+                {/* Артикул / SKU */}
+                {(product.sku || product.product_code) && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('product_code', 'Код')}: </span>
+                    {product.sku || product.product_code}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Блок «Книга»: автор, издательство, страницы, ISBN, язык, обложка, рейтинг */}
             {productType === 'books' && (
               <div
@@ -892,34 +958,11 @@ export default function ProductPage({
                 className="mt-3 space-y-1.5 text-sm"
                 style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
               >
-                {/* Бренд */}
-                {product.brand && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('brand', 'Бренд')}: </span>
-                    {product.brand.name}
-                  </p>
-                )}
                 {/* Лекарственная форма */}
                 {product.dosage_form && (
                   <p>
                     <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('dosage_form', 'Лекарственная форма')}: </span>
-                    {(() => {
-                      const forms: Record<string, string> = {
-                        tablet: t('dosage_tablet', 'Таблетки'),
-                        capsule: t('dosage_capsule', 'Капсулы'),
-                        syrup: t('dosage_syrup', 'Сироп'),
-                        drops: t('dosage_drops', 'Капли'),
-                        ointment: t('dosage_ointment', 'Мазь'),
-                        cream: t('dosage_cream', 'Крем'),
-                        gel: t('dosage_gel', 'Гель'),
-                        injection: t('dosage_injection', 'Инъекция'),
-                        powder: t('dosage_powder', 'Порошок'),
-                        spray: t('dosage_spray', 'Спрей'),
-                        suppository: t('dosage_suppository', 'Суппозитории'),
-                        other: t('dosage_other', 'Прочее'),
-                      }
-                      return forms[product.dosage_form!] || product.dosage_form
-                    })()}
+                    {getDosageFormLabel(product.dosage_form, t)}
                   </p>
                 )}
                 {/* Действующее вещество */}
@@ -954,6 +997,29 @@ export default function ProductPage({
                 )}
               </div>
             )}
+            {/* Блок «БАД»: карточка характеристик */}
+            {(productType === 'supplements' || product.product_type === 'supplements') && (
+              <div
+                className="mt-3 space-y-1.5 text-sm"
+                style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+              >
+                {/* Действующее вещество */}
+                {product.active_ingredient && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('active_ingredient', 'Действующее вещество')}: </span>
+                    {product.active_ingredient}
+                  </p>
+                )}
+                {/* Размер порции */}
+                {product.serving_size && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('serving_size', 'Размер порции')}: </span>
+                    {product.serving_size}
+                  </p>
+                )}
+              </div>
+            )}
+
 
             {(product.is_bestseller || product.is_new || product.is_featured) && (
 
@@ -1090,10 +1156,13 @@ export default function ProductPage({
               </div>
             )}
 
-            {/* Атрибуты услуги (площадь, срок, формат и т.д.) */}
-            {isService && product.service_attributes && product.service_attributes.length > 0 && (
-              <div className="mt-4">
-                <ServiceAttributes attributes={product.service_attributes} />
+            {/* Динамические атрибуты (Техстек, характеристики, серийник и т.д.) */}
+            {(isService ? product.service_attributes : product.dynamic_attributes)?.length > 0 && (
+              <div className="mt-8">
+                <ServiceAttributes
+                  attributes={(isService ? product.service_attributes : (product.dynamic_attributes || []))}
+                  title={isService ? undefined : t('characteristics', 'Характеристики')}
+                />
               </div>
             )}
 
@@ -1281,11 +1350,11 @@ export default function ProductPage({
         {(productType === 'medicines' || product.product_type === 'medicines') && (
           <div className="mt-4 flex flex-col gap-4">
             {[
-              { id: 'usage', title: t('usage_instructions', 'Способ применения'), content: product.usage_instructions },
-              { id: 'side_effects', title: t('side_effects', 'Побочные действия'), content: product.side_effects },
-              { id: 'contraindications', title: t('contraindications', 'Противопоказания'), content: product.contraindications },
-              { id: 'storage', title: t('storage_conditions', 'Условия хранения'), content: product.storage_conditions }
-            ].map((section) => {
+              { id: 'usage', title: t('usage_instructions', 'Способ применения'), content: product.usage_instructions, fieldName: 'usage_instructions' },
+              { id: 'side_effects', title: t('side_effects', 'Побочные действия'), content: product.side_effects, fieldName: 'side_effects' },
+              { id: 'contraindications', title: t('contraindications', 'Противопоказания'), content: product.contraindications, fieldName: 'contraindications' },
+              { id: 'storage', title: t('storage_conditions', 'Условия хранения'), content: product.storage_conditions, fieldName: 'storage_conditions' }
+            ].map((section: any) => {
               if (!section.content) return null
               const isExpanded = (product as any)[`_is_${section.id}_expanded`] ?? false
               return (
@@ -1294,7 +1363,7 @@ export default function ProductPage({
                   className="rounded-lg border dark:border-gray-700 overflow-hidden w-full"
                   style={{
                     borderColor: theme === 'dark' ? '#374151' : '#E5E7EB',
-                    backgroundColor: theme === 'dark' ? '#1F2937' : '#F9FAFB'
+                    backgroundColor: theme === 'dark' ? '#1F2937' : '#FFF8E7'
                   }}
                 >
                   <button
@@ -1305,6 +1374,15 @@ export default function ProductPage({
                       })
                     }}
                     className="w-full flex items-center justify-between p-4 text-left transition-colors"
+                    style={{
+                      backgroundColor: 'transparent'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = theme === 'dark' ? '#374151' : '#FFF5DC'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent'
+                    }}
                   >
                     <span
                       className="font-medium"
@@ -1327,14 +1405,14 @@ export default function ProductPage({
                       className="border-t dark:border-gray-700 p-6"
                       style={{
                         borderTopColor: theme === 'dark' ? '#374151' : '#E5E7EB',
-                        backgroundColor: theme === 'dark' ? '#111827' : '#FFF'
+                        backgroundColor: theme === 'dark' ? '#111827' : '#FFFBF0'
                       }}
                     >
                       <div className="prose max-w-none dark:prose-invert">
                         <div
                           className="whitespace-pre-wrap leading-relaxed text-base"
                           style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
-                          dangerouslySetInnerHTML={{ __html: getLocalizedProductDescription(section.content, t, product.translations, router.locale) }}
+                          dangerouslySetInnerHTML={{ __html: getLocalizedProductDescription(section.content, t, product.translations, router.locale, section.fieldName) }}
                         />
                       </div>
                     </div>
@@ -1400,7 +1478,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   })
 
   if (slugParts.length === 1) {
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery']
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery', 'supplements', 'medical-equipment']
     for (const t of probeTypes) {
       try {
         const res = await fetchProduct(t, productSlug)

@@ -285,10 +285,10 @@ const formatPrice = (value: string | number | null | undefined): string | null =
   const num = parseNumber(value)
   if (num === null) return String(value)
 
-  // Убираем лишние нули после запятой
-  const str = num.toString()
+  // Округляем до 2 знаков после запятой, затем убираем лишние нули и саму точку, если она не нужна
+  let str = num.toFixed(2)
   if (str.includes('.')) {
-    return str.replace(/\.?0+$/, '')
+    str = str.replace(/0+$/, '').replace(/\.$/, '')
   }
   return str
 }

@@ -21,14 +21,14 @@ from .models import (
 # ─────────────────────────────────────────────────────────────
 
 def _make_translation_inline(model_class, extra_fields=None):
-    """Фабрика для TabularInline переводов."""
+    """Фабрика для StackedInline переводов (чтобы широкие текстовые поля нормально помещались)."""
     inline_fields = ('locale', 'name', 'description')
     if extra_fields:
         inline_fields += tuple(extra_fields)
 
-    class Inline(admin.TabularInline):
+    class Inline(admin.StackedInline):
         model = model_class
-        extra = 1
+        extra = 2
         fields = inline_fields
         verbose_name = _('Перевод')
         verbose_name_plural = _('Переводы')
@@ -217,7 +217,8 @@ class MedicineProductAdmin(_SimpleDomainAdmin):
     ]
     inlines = [
         _make_translation_inline(MedicineProductTranslation, extra_fields=(
-            'usage_instructions', 'side_effects', 'contraindications', 'storage_conditions'
+            'usage_instructions', 'side_effects', 'contraindications', 'storage_conditions',
+            'dosage_form', 'active_ingredient', 'volume', 'origin_country'
         )),
         _make_image_inline(MedicineProductImage),
     ]
@@ -241,7 +242,9 @@ class SupplementProductAdmin(_SimpleDomainAdmin):
         'category', 'is_available', 'dosage_form', 'is_new', 'created_at',
     ]
     inlines = [
-        _make_translation_inline(SupplementProductTranslation),
+        _make_translation_inline(SupplementProductTranslation, extra_fields=(
+            'dosage_form', 'active_ingredient', 'serving_size'
+        )),
         _make_image_inline(SupplementProductImage),
     ]
 

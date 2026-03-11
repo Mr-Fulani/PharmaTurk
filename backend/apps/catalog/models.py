@@ -753,6 +753,9 @@ class AbstractDomainProduct(models.Model):
         help_text=_("Ссылка на изображение для OpenGraph, если оно отличается от основного.")
     )
 
+    # Динамические атрибуты
+    dynamic_attributes = GenericRelation('ProductAttributeValue')
+
     # Статус
     is_active = models.BooleanField(_("Активен"), default=True)
     is_new = models.BooleanField(_("Новинка"), default=False)
@@ -1938,11 +1941,10 @@ class ClothingProduct(AbstractDomainProduct):
         verbose_name=_("Базовый товар (shadow)"),
     )
     
-    # Специфичные для одежды поля
+    # Специфичные для одежды поля (размер и цвет управляются через Варианты ниже)
     size = models.CharField(_("Размер"), max_length=20, blank=True)
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
-    material = models.CharField(_("Материал"), max_length=100, blank=True)
-    season = models.CharField(_("Сезон"), max_length=50, blank=True)  # лето, зима, демисезон
+    # material и season удалены — используйте Динамические атеры (ProductAttributeValue)
     
     # Изображения и видео (специфичные для одежды, которых нет в базовой)
     video_url = models.URLField(
@@ -2126,7 +2128,7 @@ class ShoeProduct(AbstractDomainProduct):
         verbose_name=_("Базовый товар (shadow)"),
     )
 
-    # Специфичные для обуви поля
+    # Специфичные для обуви поля (размер и цвет управляются через Варианты)
     size = models.CharField(
         _("Размер"),
         max_length=20,
@@ -2135,9 +2137,7 @@ class ShoeProduct(AbstractDomainProduct):
         help_text=_("Выберите размер в EU-формате; при необходимости можно оставить пустым.")
     )
     color = models.CharField(_("Цвет"), max_length=50, blank=True)
-    material = models.CharField(_("Материал"), max_length=100, blank=True)
-    heel_height = models.CharField(_("Высота каблука"), max_length=50, blank=True)
-    sole_type = models.CharField(_("Тип подошвы"), max_length=100, blank=True)
+    # material, heel_height, sole_type удалены — используйте Динамические атрибуты (ProductAttributeValue)
 
     class Meta:
         verbose_name = _("Товар обуви")
@@ -3140,8 +3140,14 @@ class ProductAttributeValue(models.Model):
         related_name="product_values",
         verbose_name=_("Тип атрибута")
     )
-    value = models.CharField(_("Значение"), max_length=500)
+    value = models.CharField(_("Значение (по умолчанию)"), max_length=500)
+    value_ru = models.CharField(_("Значение (RU)"), max_length=500, blank=True, null=True)
+    value_en = models.CharField(_("Значение (EN)"), max_length=500, blank=True, null=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+
+    def __str__(self):
+        val = self.value_ru or self.value_en or self.value
+        return f"{self.attribute_key.name}: {val}"
 
     class Meta:
         verbose_name = _("🛠️ Динамический атрибут товара")
@@ -4010,13 +4016,28 @@ class MedicineProductTranslation(models.Model):
     product = models.ForeignKey(
         MedicineProduct, on_delete=models.CASCADE, related_name="translations",
     )
-    locale = models.CharField(_("Локаль"), max_length=10, choices=LOCALE_CHOICES, default="ru")
+    locale = models.CharField(_("Локаль"), max_length=10, choices=LOCALE_CHOICES)
     name = models.CharField(_("Название"), max_length=500, blank=True)
     description = models.TextField(_("Описание"), blank=True)
     usage_instructions = models.TextField(_("Способ применения"), blank=True)
     side_effects = models.TextField(_("Побочные действия"), blank=True)
     contraindications = models.TextField(_("Противопоказания"), blank=True)
     storage_conditions = models.TextField(_("Условия хранения"), blank=True)
+
+    # Локализованные атрибуты препарата
+    dosage_form = models.CharField(
+        _("Лекарственная форма"), max_length=20,
+        choices=DOSAGE_FORM_CHOICES, blank=True,
+    )
+    active_ingredient = models.CharField(
+        _("Действующее вещество"), max_length=300, blank=True,
+    )
+    volume = models.CharField(
+        _("Объем/Количество"), max_length=100, blank=True,
+    )
+    origin_country = models.CharField(
+        _("Страна производства"), max_length=200, blank=True,
+    )
 
     class Meta:
         verbose_name = _("Перевод медикамента")
@@ -4101,9 +4122,18 @@ class SupplementProductTranslation(models.Model):
     product = models.ForeignKey(
         SupplementProduct, on_delete=models.CASCADE, related_name="translations",
     )
-    locale = models.CharField(_("Локаль"), max_length=10, choices=LOCALE_CHOICES, default="ru")
+    locale = models.CharField(_("Локаль"), max_length=10, choices=LOCALE_CHOICES)
     name = models.CharField(_("Название"), max_length=500, blank=True)
     description = models.TextField(_("Описание"), blank=True)
+    dosage_form = models.CharField(
+        _("Форма выпуска"), max_length=100, blank=True,
+    )
+    active_ingredient = models.CharField(
+        _("Активный ингредиент"), max_length=500, blank=True,
+    )
+    serving_size = models.CharField(
+        _("Размер порции"), max_length=200, blank=True,
+    )
 
     class Meta:
         verbose_name = _("Перевод БАДа")

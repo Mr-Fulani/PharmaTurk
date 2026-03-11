@@ -229,34 +229,10 @@ export async function getServerSideProps(ctx: any) {
         .trim()
         .toLowerCase()
         .replace(/_/g, '-')
-    const canonicalTypes = [
-      'medicines',
-      'supplements',
-      'clothing',
-      'shoes',
-      'electronics',
-      'furniture',
-      'jewelry',
-      'tableware',
-      'accessories',
-      'underwear',
-      'headwear',
-      'books',
-      'perfumery',
-      'medical-equipment',
-      'medical_equipment',
-      'uslugi'
-    ]
+    // Only exact slug matches for canonical types — no partial matching
+    // (partial matching caused e.g. "islamic-clothing" to merge with "clothing")
     const resolveCanonicalSlug = (slug: string) => {
-      const norm = normalizeSlug(slug)
-      for (const type of canonicalTypes) {
-        const typeNorm = normalizeSlug(type)
-        if (norm === typeNorm) return typeNorm
-        if (norm.startsWith(`${typeNorm}-`)) return typeNorm
-        if (norm.endsWith(`-${typeNorm}`)) return typeNorm
-        if (norm.includes(`-${typeNorm}-`)) return typeNorm
-      }
-      return norm
+      return normalizeSlug(slug)
     }
     const uniqueMap = new Map<string, Category>()
     all.forEach((c) => {

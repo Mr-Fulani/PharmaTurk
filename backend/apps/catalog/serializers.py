@@ -414,10 +414,24 @@ class ProductDynamicAttributeSerializer(serializers.ModelSerializer):
     
     key = serializers.ReadOnlyField(source='attribute_key.slug')
     key_display = serializers.ReadOnlyField(source='attribute_key.name')
+    value = serializers.SerializerMethodField()
     
     class Meta:
         model = ProductAttributeValue
         fields = ['id', 'key', 'key_display', 'value', 'sort_order']
+
+    def get_value(self, obj):
+        # Получаем язык из контекста (через i18n middleware обычно)
+        from django.utils import translation
+        lang = translation.get_language()
+        
+        if lang == 'ru' and obj.value_ru:
+            return obj.value_ru
+        if lang == 'en' and obj.value_en:
+            return obj.value_en
+        
+        # Fallback на основное значение
+        return obj.value
 
 
 class PriceHistorySerializer(serializers.ModelSerializer):
@@ -542,6 +556,7 @@ class ProductSerializer(serializers.ModelSerializer):
     book_authors = ProductAuthorSerializer(many=True, read_only=True)
     book_genres = ProductGenreSerializer(many=True, read_only=True)
     book_attributes = serializers.SerializerMethodField()
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     isbn = serializers.SerializerMethodField()
     pages = serializers.SerializerMethodField()
     meta_title = serializers.SerializerMethodField()
@@ -575,7 +590,7 @@ class ProductSerializer(serializers.ModelSerializer):
             # Поля специфичные для книг
             'isbn', 'publisher', 'publication_date', 'pages', 'language',
             'cover_type', 'rating', 'reviews_count', 'is_bestseller', 'is_new',
-            'book_authors', 'book_genres', 'book_attributes',
+            'book_authors', 'book_genres', 'book_attributes', 'dynamic_attributes',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
             'main_image_url', 'video_url',
@@ -1435,6 +1450,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     og_title = serializers.SerializerMethodField()
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
+    product_type = serializers.CharField(source='_domain_product_type', read_only=True)
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     
     class Meta:
@@ -1442,9 +1458,9 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
-            'currency', 'size', 'color', 'material', 'season',
+            'currency', 'size', 'color',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
-            'images', 'sizes', 'dynamic_attributes',
+            'images', 'sizes', 'dynamic_attributes', 'product_type',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
@@ -1789,6 +1805,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = ShoeProductTranslationSerializer(many=True, read_only=True)
+    product_type = serializers.CharField(source='_domain_product_type', read_only=True)
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
@@ -1802,9 +1819,9 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
-            'currency', 'size', 'color', 'material',
+            'currency', 'size', 'color',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
-            'images', 'sizes', 'dynamic_attributes',
+            'images', 'sizes', 'dynamic_attributes', 'product_type',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
@@ -2218,6 +2235,7 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
     translations = ElectronicsProductTranslationSerializer(many=True, read_only=True)
+    product_type = serializers.CharField(source='_domain_product_type', read_only=True)
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
@@ -2233,7 +2251,7 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'model', 'specifications', 'warranty', 'power_consumption',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
-            'images', 'dynamic_attributes',
+            'images', 'dynamic_attributes', 'product_type',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
@@ -3536,9 +3554,20 @@ class BookProductSerializer(serializers.ModelSerializer):
     meta_description = serializers.SerializerMethodField()
     meta_keywords = serializers.SerializerMethodField()
     og_title = serializers.SerializerMethodField()
-    og_description = serializers.SerializerMethodField()
-    og_image_url = serializers.SerializerMethodField()
     video_url = serializers.SerializerMethodField()
+    book_attributes = serializers.SerializerMethodField()
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
+
+    def get_book_attributes(self, obj):
+        data = getattr(obj.base_product, 'external_data', None) or {}
+        attrs = data.get('attributes') if isinstance(data, dict) else {}
+        attrs = attrs if isinstance(attrs, dict) else {}
+        out = {}
+        if attrs.get('format'):
+            out['format'] = str(attrs['format']).strip()
+        if attrs.get('thickness_mm') is not None and str(attrs.get('thickness_mm')).strip():
+            out['thickness_mm'] = str(attrs['thickness_mm']).strip()
+        return out
 
     class Meta:
         model = BookProduct
@@ -3554,7 +3583,7 @@ class BookProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'book_authors', 'book_genres',
+            'book_authors', 'book_genres', 'book_attributes', 'dynamic_attributes',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
@@ -4290,7 +4319,8 @@ class MedicineProductTranslationSerializer(serializers.ModelSerializer):
         model = MedicineProductTranslation
         fields = [
             'locale', 'name', 'description', 'usage_instructions',
-            'side_effects', 'contraindications', 'storage_conditions'
+            'side_effects', 'contraindications', 'storage_conditions',
+            'dosage_form', 'active_ingredient', 'volume', 'origin_country'
         ]
 
 
@@ -4333,21 +4363,44 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     contraindications = serializers.SerializerMethodField()
     storage_conditions = serializers.SerializerMethodField()
 
-    def _get_translation_field(self, obj, field_name):
+    dosage_form = serializers.SerializerMethodField()
+    active_ingredient = serializers.SerializerMethodField()
+    volume = serializers.SerializerMethodField()
+    origin_country = serializers.SerializerMethodField()
+
+    def _get_translation_field(self, obj, field_name, fallback_value=None):
         request = self.context.get('request')
-        lang = getattr(request, 'LANGUAGE_CODE', 'ru')
+        lang = 'ru'
+        if request:
+            lang = request.query_params.get('lang') or getattr(request, 'LANGUAGE_CODE', 'ru')
         
-        # Prefetch optimizations should ideally be done in the queryset
+        # 1. Сначала ищем в текущей локали
         for t in obj.translations.all():
             if t.locale == lang:
-                return getattr(t, field_name, None)
+                val = getattr(t, field_name, None)
+                if val: return val
                 
-        # Fallback to RU
-        for t in obj.translations.all():
-            if t.locale == 'ru':
-                return getattr(t, field_name, None)
-                
-        return None
+        # 2. Потом в RU (как дефолт)
+        if lang != 'ru':
+            for t in obj.translations.all():
+                if t.locale == 'ru':
+                    val = getattr(t, field_name, None)
+                    if val: return val
+                    
+        # 3. Возвращаем fallback (поле из основной модели)
+        return fallback_value
+
+    def get_dosage_form(self, obj):
+        return self._get_translation_field(obj, 'dosage_form', obj.dosage_form)
+
+    def get_active_ingredient(self, obj):
+        return self._get_translation_field(obj, 'active_ingredient', obj.active_ingredient)
+
+    def get_volume(self, obj):
+        return self._get_translation_field(obj, 'volume', obj.volume)
+
+    def get_origin_country(self, obj):
+        return self._get_translation_field(obj, 'origin_country', obj.origin_country)
 
     def get_usage_instructions(self, obj):
         return self._get_translation_field(obj, 'usage_instructions')
@@ -4418,6 +4471,39 @@ class SupplementProductSerializer(_SimpleDomainMixin, serializers.ModelSerialize
     og_title = serializers.SerializerMethodField()
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
+    product_type = serializers.CharField(source='_domain_product_type', read_only=True)
+
+    dosage_form = serializers.SerializerMethodField()
+    active_ingredient = serializers.SerializerMethodField()
+    serving_size = serializers.SerializerMethodField()
+
+    def _get_translation_field(self, obj, field_name, fallback_value=None):
+        request = self.context.get('request')
+        lang = 'ru'
+        if request:
+            lang = request.query_params.get('lang') or getattr(request, 'LANGUAGE_CODE', 'ru')
+        
+        for t in obj.translations.all():
+            if t.locale == lang:
+                val = getattr(t, field_name, None)
+                if val: return val
+                
+        if lang != 'ru':
+            for t in obj.translations.all():
+                if t.locale == 'ru':
+                    val = getattr(t, field_name, None)
+                    if val: return val
+                    
+        return fallback_value
+
+    def get_dosage_form(self, obj):
+        return self._get_translation_field(obj, 'dosage_form', obj.dosage_form)
+
+    def get_active_ingredient(self, obj):
+        return self._get_translation_field(obj, 'active_ingredient', obj.active_ingredient)
+
+    def get_serving_size(self, obj):
+        return self._get_translation_field(obj, 'serving_size', obj.serving_size)
 
     class Meta:
         model = SupplementProduct
@@ -4425,7 +4511,7 @@ class SupplementProductSerializer(_SimpleDomainMixin, serializers.ModelSerialize
             'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
             'dosage_form', 'active_ingredient', 'serving_size',
-            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images', 'product_type',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id',
             'meta_title', 'meta_description', 'meta_keywords',

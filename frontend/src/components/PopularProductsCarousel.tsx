@@ -67,10 +67,10 @@ const formatPrice = (value: string | number | null | undefined): string | null =
   const num = parseNumber(value)
   if (num === null) return String(value)
 
-  // Убираем лишние нули после запятой
-  const str = num.toString()
+  // Округляем до 2 знаков после запятой, затем убираем лишние нули и саму точку, если она не нужна
+  let str = num.toFixed(2)
   if (str.includes('.')) {
-    return str.replace(/\.?0+$/, '')
+    str = str.replace(/0+$/, '').replace(/\.$/, '')
   }
   return str
 }
@@ -112,7 +112,11 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
         allProducts.push(...processResponse(electronicsRes, 'electronics'))
         allProducts.push(...processResponse(jewelryRes, 'jewelry'))
 
-        if (allProducts.length < 8) {
+        const uniqueAllProducts = Array.from(
+          new Map(allProducts.map(item => [item.id, item])).values()
+        )
+
+        if (uniqueAllProducts.length < 8) {
           try {
             const response = await api.get('/catalog/products', {
               params: { ordering: '-created_at', limit: 20 },
@@ -121,18 +125,18 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
             const productsList = Array.isArray(data) ? data : data.results || []
 
             // Фильтруем дубликаты, если какие-то featured товары уже есть в списке последних
-            const existingIds = new Set(allProducts.map((p: any) => p.id))
+            const existingIds = new Set(uniqueAllProducts.map((p: any) => p.id))
             const newProducts = productsList
               .filter((p: any) => !existingIds.has(p.id))
               .map((p: any) => ({ ...p, product_type: p.product_type || 'medicines' }))
 
-            allProducts.push(...newProducts)
+            uniqueAllProducts.push(...newProducts)
           } catch (error) {
             console.error('Failed to fetch latest products:', error)
           }
         }
 
-        const shuffled = allProducts.sort(() => Math.random() - 0.5).slice(0, 20)
+        const shuffled = uniqueAllProducts.sort(() => Math.random() - 0.5).slice(0, 20)
         console.log('[PopularProducts] Sample product prices:', shuffled.slice(0, 3).map(p => ({ name: p.name, price: p.price, currency: p.currency })))
         setProducts(shuffled)
       } catch (error) {

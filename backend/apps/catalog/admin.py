@@ -245,7 +245,7 @@ class ProductAttributeValueInline(GenericTabularInline):
     """Inline для динамических атрибутов товара (через GenericForeignKey)."""
     model = ProductAttributeValue
     extra = 0
-    fields = ('attribute_key', 'value', 'sort_order')
+    fields = ('attribute_key', 'value', 'value_ru', 'value_en', 'sort_order')
     verbose_name = _("🛠️ Динамический атрибут")
     verbose_name_plural = _("🛠️ Динамические атрибуты товаров")
 
@@ -1084,9 +1084,17 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
     """Админка для товаров одежды."""
     category_field_name = "clothing_type"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
+
+    def get_category_queryset(self):
+        """Показываем все категории одежды: базовую 'Одежда', 'Исламская одежда' и с clothing_type."""
+        from .models import Category
+        return Category.objects.filter(
+            Q(slug='clothing') | Q(slug='islamic-clothing') | (Q(clothing_type__isnull=False) & ~Q(clothing_type='')),
+            is_active=True,
+        ).order_by('sort_order', 'name')
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'season', 'currency', 'created_at')
-    search_fields = ('name', 'slug', 'description', 'material')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'currency', 'created_at')
+    search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
     exclude = ('size', 'color')
@@ -1095,7 +1103,6 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {'fields': ('category', 'brand')}),
-        (_('Clothing'), {'fields': ('material', 'season')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('SEO (EN)'), {
@@ -1430,8 +1437,8 @@ class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAd
     category_field_name = "shoe_type"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'heel_height', 'currency', 'created_at')
-    search_fields = ('name', 'slug', 'description', 'material')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'currency', 'created_at')
+    search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
     exclude = ('size', 'color')
@@ -1440,7 +1447,6 @@ class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAd
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {'fields': ('category', 'brand')}),
-        (_('Shoes'), {'fields': ('material', 'heel_height', 'sole_type')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('SEO (EN)'), {

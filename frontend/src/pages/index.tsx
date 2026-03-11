@@ -208,7 +208,7 @@ export default function Home({ brands, categories }: HomePageProps) {
       if (countB !== countA) return countB - countA
       return (a.sort_order ?? 0) - (b.sort_order ?? 0)
     })
-    .slice(0, 12)
+    .slice(0, 24)
 
   const handleBrandClick = (brand: Brand) => {
     const slug = mapCategoryToRouteSlug(brand.primary_category_slug || brand.slug || '')

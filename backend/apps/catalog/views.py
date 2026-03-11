@@ -2138,11 +2138,23 @@ class FavoriteViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Определяем модель товара по типу
+        # Определяем модель товара по типу (должно совпадать с AddToFavoriteSerializer)
+        from .models import (
+            Product, ClothingProduct, ShoeProduct, ElectronicsProduct,
+            FurnitureProduct, JewelryProduct, Service,
+            MedicineProduct, SupplementProduct,
+        )
+        
+        # Пробуем импортировать другие доменные модели (могут отсутствовать)
+        try:
+            from .models import MedicalEquipmentProduct
+        except ImportError:
+            MedicalEquipmentProduct = None
+
         PRODUCT_MODEL_MAP = {
-            'medicines': Product,
-            'supplements': Product,
-            'medical_equipment': Product,
+            'medicines': MedicineProduct,
+            'supplements': SupplementProduct if SupplementProduct else Product,
+            'medical_equipment': MedicalEquipmentProduct if MedicalEquipmentProduct else Product,
             'tableware': Product,
             'accessories': Product,
             'jewelry': JewelryProduct,
