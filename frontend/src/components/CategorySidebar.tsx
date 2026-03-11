@@ -12,6 +12,7 @@ export interface SidebarTreeItem {
   count?: number
   type?: 'category' | 'brand' | 'subcategory'
   children?: SidebarTreeItem[]
+  translations?: CategoryTranslation[] | BrandTranslation[]
 }
 
 export interface SidebarTreeSection {
@@ -407,52 +408,80 @@ export default function CategorySidebar({
     items.map((item) => {
       const hasChildren = item.children && item.children.length > 0
       const isExpanded = expandedTreeItems[item.id]
+      
+      const isChecked = item.dataId 
+        ? (item.type === 'brand' 
+            ? filters.brands.includes(item.dataId) 
+            : item.type === 'subcategory'
+              ? filters.subcategories.includes(item.dataId)
+              : filters.categories.includes(item.dataId))
+        : false
+
+      const labelContent = (
+        <span className="flex-1 truncate">
+          {item.nameKey
+            ? t(item.nameKey)
+            : item.slug && item.type === 'category'
+              ? getLocalizedCategoryName(item.slug, item.name, t, item.translations as CategoryTranslation[], router.locale)
+              : item.type === 'brand' && item.slug
+                ? getLocalizedBrandName(item.slug, item.name, t, item.translations as BrandTranslation[], router.locale)
+                : item.name
+          }
+        </span>
+      )
+
       return (
-        <div key={item.id} className="space-y-1">
-          <button
-            type="button"
-            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm font-medium ${item.dataId ? 'text-gray-700 hover:text-violet-700 cursor-pointer' : 'text-gray-400 cursor-not-allowed'
-              }`}
-            onClick={() => {
-              if (hasChildren) {
-                toggleTreeItem(item.id)
-                return
-              }
-              // Не применяем фильтры для placeholder элементов без dataId
-              if (!item.dataId) {
-                return
-              }
-              if (item.type === 'brand') {
-                toggleBrandFilter(item.dataId, item.slug || undefined)
-                return
-              }
-              toggleCategoryFilter(item.dataId, item.slug || undefined)
-            }}
-            disabled={!item.dataId && !hasChildren}
-          >
-            <span className="flex-1 truncate">
-              {item.nameKey
-                ? t(item.nameKey)
-                : item.slug && item.type === 'category'
-                  ? getLocalizedCategoryName(item.slug, item.name, t, undefined, router.locale)
-                  : item.type === 'brand' && item.slug
-                    ? getLocalizedBrandName(item.slug, item.name, t, undefined, router.locale)
-                    : item.name
-              }
-            </span>
-            {item.count !== undefined && <span className="ml-3 text-xs text-gray-500">({item.count})</span>}
-            {hasChildren && (
-              <svg
-                className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+        <div key={item.id} className="space-y-2">
+          <div className="flex items-center group w-full">
+            {item.dataId && (
+              <input
+                type="checkbox"
+                checked={isChecked}
+                onChange={(e) => {
+                  e.stopPropagation()
+                  if (item.type === 'brand') {
+                    toggleBrandFilter(item.dataId!, item.slug || undefined)
+                  } else if (item.type === 'subcategory') {
+                    toggleSubcategoryFilter(item.dataId!, item.slug || undefined)
+                  } else {
+                    toggleCategoryFilter(item.dataId!, item.slug || undefined)
+                  }
+                }}
+                className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] mr-2 cursor-pointer transition-colors"
+                id={`filter-item-${item.id}`}
+              />
             )}
-          </button>
-          {hasChildren && isExpanded && <div className="pl-4">{renderTreeItems(item.children!)}</div>}
+            <label
+              htmlFor={`filter-item-${item.id}`}
+              className={`flex-1 flex items-center justify-between rounded-md px-1 py-1 text-left text-sm font-medium transition-all ${
+                item.dataId 
+                  ? 'text-main hover:text-[var(--accent)] cursor-pointer' 
+                  : 'text-gray-400 cursor-not-allowed'
+              }`}
+              onClick={(e) => {
+                if (hasChildren) {
+                  e.preventDefault()
+                  toggleTreeItem(item.id)
+                }
+              }}
+            >
+              {labelContent}
+              <div className="flex items-center space-x-2">
+                {item.count !== undefined && <span className="text-xs text-main/50 font-normal">({item.count})</span>}
+                {hasChildren && (
+                  <svg
+                    className={`w-4 h-4 text-main/40 group-hover:text-[var(--accent)]/60 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                )}
+              </div>
+            </label>
+          </div>
+          {hasChildren && isExpanded && <div className="pl-6 border-l border-[var(--border)]/50 ml-2 mt-2 space-y-2">{renderTreeItems(item.children!)}</div>}
         </div>
       )
     })
@@ -543,23 +572,26 @@ export default function CategorySidebar({
         className={`
           fixed lg:sticky top-16 lg:top-20 left-0 z-30
           h-full lg:h-auto lg:max-h-[calc(100vh-2rem)]
-          w-80 bg-white/95 backdrop-blur text-gray-900 border-r lg:border-r-0 lg:border border-gray-200 rounded-2xl
-          shadow-[0_20px_60px_-20px_rgba(255,255,255,0.65),0_20px_50px_-18px_rgba(109,40,217,0.45)] lg:shadow-sm
-          transform transition-transform duration-300 ease-in-out
-          overflow-y-auto
+          w-80 bg-[var(--bg)]/95 backdrop-blur-md text-main border-r lg:border-r-0 lg:border border-[var(--border)] rounded-2xl
+          shadow-[0_20px_60px_-20px_rgba(255,255,255,0.3),0_20px_50px_-18px_rgba(67,113,247,0.25)] lg:shadow-md
+          transform transition-all duration-300 ease-in-out
+          overflow-y-auto custom-scrollbar
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
       >
         <div className="p-6 space-y-6">
           <div className="flex items-center justify-between border-b border-[var(--border)] pb-4">
-            <h2 className="text-xl font-bold text-main dark:text-gray-900">{t('sidebar_filters', 'Фильтры')}</h2>
+            <h2 className="text-xl font-bold text-main">{t('sidebar_filters', 'Фильтры')}</h2>
             <div className="flex items-center gap-2">
               {hasActiveFilters && (
-                <button onClick={clearFilters} className="text-sm text-[var(--accent)] hover:text-[var(--accent-strong)] font-medium">
+                <button 
+                  onClick={clearFilters} 
+                  className="text-xs px-2 py-1 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white transition-all font-semibold"
+                >
                   {t('sidebar_reset', 'Сбросить')}
                 </button>
               )}
-              <button onClick={onToggle} className="lg:hidden text-main/70 hover:text-main dark:text-gray-500 dark:hover:text-gray-700">
+              <button onClick={onToggle} className="lg:hidden p-1 text-main/50 hover:text-main transition-colors">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -567,35 +599,48 @@ export default function CategorySidebar({
             </div>
           </div>
 
-          {categoryGroups.length > 0 && (
-            <div className="space-y-5 border-b pb-4">
-              {categoryGroups.map((group) => {
-                // Если первый элемент уже содержит название группы, не показываем заголовок отдельно
-                const firstItem = group.items[0]
-                const shouldHideTitle = firstItem && firstItem.name === group.title
-                const sectionTitle = group.titleKey ? t(group.titleKey) : group.title
-                return (
-                  <div key={group.title}>
-                    {!shouldHideTitle && (
-                      <h3 className="text-base font-semibold text-main mb-3 dark:text-gray-900">{sectionTitle}</h3>
-                    )}
-                    <div className="space-y-1">{renderTreeItems(group.items)}</div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          {categoryGroups.length > 0 && categoryGroups.map((group) => {
+            const firstItem = group.items[0]
+            const shouldHideTitle = firstItem && firstItem.name === group.title
+            const sectionTitle = group.titleKey ? t(group.titleKey) : group.title
+            
+            return (
+              <div key={group.title} className="border-b border-[var(--border)] pb-2">
+                {!shouldHideTitle ? (
+                  <button
+                    onClick={() => toggleTreeItem(`group-${group.title}`)}
+                    className="flex items-center justify-between w-full mb-3 group"
+                  >
+                    <h3 className="text-base font-bold text-main group-hover:text-[var(--accent)] transition-colors uppercase tracking-tight">
+                      {sectionTitle}
+                    </h3>
+                    <svg
+                      className={`w-4 h-4 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedTreeItems[`group-${group.title}`] !== false ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                ) : null}
+                {(!shouldHideTitle && expandedTreeItems[`group-${group.title}`] !== false) || shouldHideTitle ? (
+                  <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">{renderTreeItems(group.items)}</div>
+                ) : null}
+              </div>
+            )
+          })}
 
           {/* Спец-фильтры: обувь */}
           {categoryType === 'shoes' && (
             <div className="border-b pb-4">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
-                className="flex items-center justify-between w-full mb-3"
+                className="flex items-center justify-between w-full mb-3 group"
               >
-                <h3 className="text-base font-semibold text-main dark:text-gray-900">{t('sidebar_shoe_types', 'Тип обуви')}</h3>
+                <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_shoe_types', 'Тип обуви')}</h3>
                 <svg
-                  className={`w-5 h-5 text-main/60 dark:text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                  className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.filters ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -604,16 +649,16 @@ export default function CategorySidebar({
                 </svg>
               </button>
               {expandedSections.filters && (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                   {shoeTypeOptions.map((opt) => (
-                    <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                    <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={filters.shoeTypes?.includes(opt.value) || false}
                         onChange={() => toggleCustomFilter('shoeTypes', opt.value)}
-                        className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                       />
-                      <span className="text-sm text-main dark:text-gray-800 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
                     </label>
                   ))}
                 </div>
@@ -626,11 +671,11 @@ export default function CategorySidebar({
             <div className="border-b pb-4">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
-                className="flex items-center justify-between w-full mb-3"
+                className="flex items-center justify-between w-full mb-3 group"
               >
-                <h3 className="text-base font-semibold text-main dark:text-gray-900">{t('sidebar_clothing_items', 'Предметы одежды')}</h3>
+                <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_clothing_items', 'Предметы одежды')}</h3>
                 <svg
-                  className={`w-5 h-5 text-main/60 dark:text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                  className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.filters ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -639,16 +684,16 @@ export default function CategorySidebar({
                 </svg>
               </button>
               {expandedSections.filters && (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                   {clothingItemOptions.map((opt) => (
-                    <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                    <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={filters.clothingItems?.includes(opt.value) || false}
                         onChange={() => toggleCustomFilter('clothingItems', opt.value)}
-                        className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                       />
-                      <span className="text-sm text-main dark:text-gray-800 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
                     </label>
                   ))}
                 </div>
@@ -662,11 +707,11 @@ export default function CategorySidebar({
               <div>
                 <button
                   onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
-                  className="flex items-center justify-between w-full mb-3"
+                  className="flex items-center justify-between w-full mb-3 group"
                 >
-                  <h3 className="text-base font-semibold text-gray-900">{t('sidebar_jewelry_material', 'Материал')}</h3>
+                  <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_jewelry_material', 'Материал')}</h3>
                   <svg
-                    className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                    className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.filters ? 'rotate-180' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -675,16 +720,16 @@ export default function CategorySidebar({
                   </svg>
                 </button>
                 {expandedSections.filters && (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                  <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                     {jewelryMaterialOptions.map((opt) => (
-                      <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                      <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
                         <input
                           type="checkbox"
                           checked={filters.jewelryMaterials?.includes(opt.value) || false}
                           onChange={() => toggleCustomFilter('jewelryMaterials', opt.value)}
-                          className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                          className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                         />
-                        <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                        <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -694,11 +739,11 @@ export default function CategorySidebar({
               <div>
                 <button
                   onClick={() => setExpandedSections((prev) => ({ ...prev, brands: !prev.brands }))}
-                  className="flex items-center justify-between w-full mb-3"
+                  className="flex items-center justify-between w-full mb-3 group"
                 >
-                  <h3 className="text-base font-semibold text-gray-900">{t('sidebar_jewelry_gender', 'Для кого')}</h3>
+                  <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_jewelry_gender', 'Для кого')}</h3>
                   <svg
-                    className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.brands ? 'rotate-180' : ''}`}
+                    className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.brands ? 'rotate-180' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -707,16 +752,16 @@ export default function CategorySidebar({
                   </svg>
                 </button>
                 {expandedSections.brands && (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                  <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                     {jewelryGenderOptions.map((opt) => (
-                      <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                      <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
                         <input
                           type="checkbox"
                           checked={filters.jewelryGender?.includes(opt.value) || false}
                           onChange={() => toggleCustomFilter('jewelryGender', opt.value)}
-                          className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                          className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                         />
-                        <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                        <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -730,11 +775,11 @@ export default function CategorySidebar({
             <div className="border-b pb-4">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
-                className="flex items-center justify-between w-full mb-3"
+                className="flex items-center justify-between w-full mb-3 group"
               >
-                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_headwear_types', 'Тип головного убора')}</h3>
+                <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_headwear_types', 'Тип головного убора')}</h3>
                 <svg
-                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                  className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.filters ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -743,16 +788,16 @@ export default function CategorySidebar({
                 </svg>
               </button>
               {expandedSections.filters && (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                   {headwearTypeOptions.map((opt) => (
-                    <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                    <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={filters.headwearTypes?.includes(opt.value) || false}
                         onChange={() => toggleCustomFilter('headwearTypes', opt.value)}
-                        className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                       />
-                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
                     </label>
                   ))}
                 </div>
@@ -761,7 +806,7 @@ export default function CategorySidebar({
           )}
 
           {categoryType === 'furniture' && (
-            <div className="border-b pb-4">
+            <div className="border-b pb-2">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
                 className="flex items-center justify-between w-full mb-3"
@@ -777,16 +822,16 @@ export default function CategorySidebar({
                 </svg>
               </button>
               {expandedSections.filters && (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                   {furnitureTypeOptions.map((opt) => (
-                    <label key={opt.value} className="flex items-center space-x-2 cursor-pointer group">
+                    <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={filters.furnitureTypes?.includes(opt.value) || false}
                         onChange={() => toggleCustomFilter('furnitureTypes', opt.value)}
-                        className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                       />
-                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{opt.label}</span>
+                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
                     </label>
                   ))}
                 </div>
@@ -795,14 +840,14 @@ export default function CategorySidebar({
           )}
 
           {showCategories && categories.length > 0 && categoryGroups.length === 0 && subcategories.length === 0 && (
-            <div className="border-b pb-4">
+            <div className="border-b pb-2">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, categories: !prev.categories }))}
                 className="flex items-center justify-between w-full mb-3"
               >
-                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_categories', 'Категории')}</h3>
+                <h3 className="text-base font-bold text-main group-hover:text-[var(--accent)] transition-colors uppercase tracking-tight">{t('sidebar_categories', 'Категории')}</h3>
                 <svg
-                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.categories ? 'rotate-180' : ''}`}
+                  className={`w-4 h-4 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.categories ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -811,20 +856,21 @@ export default function CategorySidebar({
                 </svg>
               </button>
               {expandedSections.categories && (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                   {categories.map((category) => (
-                    <label key={category.id} className="flex items-center space-x-2 cursor-pointer group">
+                    <label key={category.id} className="flex items-center space-x-3 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={filters.categories.includes(category.id)}
                         onChange={() => toggleCategoryFilter(category.id, ensureSlug(category.slug))}
-                        className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
+                        id={`direct-cat-${category.id}`}
                       />
-                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">
+                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">
                         {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
                       </span>
                       {category.product_count !== undefined && (
-                        <span className="text-xs text-gray-500">({category.product_count})</span>
+                        <span className="text-xs text-main/50 font-normal">({category.product_count})</span>
                       )}
                     </label>
                   ))}
@@ -834,14 +880,14 @@ export default function CategorySidebar({
           )}
 
           {showSubcategories && uniqueSubcategories.length > 0 && categoryGroups.length === 0 && (
-            <div className="border-b pb-4">
+            <div className="border-b pb-2">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, subcategories: !prev.subcategories }))}
                 className="flex items-center justify-between w-full mb-3"
               >
-                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_subcategories', 'Подкатегории')}</h3>
+                <h3 className="text-base font-bold text-main group-hover:text-[var(--accent)] transition-colors uppercase tracking-tight">{t('sidebar_subcategories', 'Подкатегории')}</h3>
                 <svg
-                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.subcategories ? 'rotate-180' : ''}`}
+                  className={`w-4 h-4 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.subcategories ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -850,9 +896,9 @@ export default function CategorySidebar({
                 </svg>
               </button>
               {expandedSections.subcategories && (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                   {uniqueSubcategories.map((subcategory) => (
-                    <label key={subcategory.id} className="flex items-center space-x-2 cursor-pointer group">
+                    <label key={subcategory.id} className="flex items-center space-x-3 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={filters.subcategories.includes(subcategory.id)}
@@ -862,13 +908,14 @@ export default function CategorySidebar({
                             categoryType === 'jewelry' ? getJewelrySubcategoryKey(subcategory) : subcategory.slug
                           )
                         }
-                        className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
+                        id={`direct-sub-${subcategory.id}`}
                       />
-                      <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">
+                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">
                         {getSubcategoryLabel(subcategory)}
                       </span>
                       {subcategory.product_count !== undefined && (
-                        <span className="text-xs text-gray-500">({subcategory.product_count})</span>
+                        <span className="text-xs text-main/50 font-normal">({subcategory.product_count})</span>
                       )}
                     </label>
                   ))}
@@ -878,38 +925,38 @@ export default function CategorySidebar({
           )}
 
           {categoryType === 'books' && (bookAuthors.length > 0 || bookGenres.length > 0 || bookPublishers.length > 0 || bookLanguages.length > 0) && (
-            <div className="border-b pb-4 space-y-4">
+            <div className="border-b pb-2 space-y-4">
               {bookAuthors.length > 0 && (
                 <div>
-                  <button
-                    onClick={() => setExpandedSections((prev) => ({ ...prev, bookFilters: !prev.bookFilters }))}
-                    className="flex items-center justify-between w-full mb-3"
+                <button
+                  onClick={() => setExpandedSections((prev) => ({ ...prev, bookFilters: !prev.bookFilters }))}
+                  className="flex items-center justify-between w-full mb-3 group"
+                >
+                  <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_book_authors', 'Авторы')}</h3>
+                  <svg
+                    className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <h3 className="text-base font-semibold text-gray-900">{t('sidebar_book_authors', 'Авторы')}</h3>
-                    <svg
-                      className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {expandedSections.bookFilters && (
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                      {bookAuthors.map((author) => (
-                        <label key={author.id} className="flex items-center space-x-2 cursor-pointer group">
-                          <input
-                            type="checkbox"
-                            checked={filters.authorIds?.includes(author.id) || false}
-                            onChange={() => toggleAuthorFilter(author.id)}
-                            className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
-                          />
-                          <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{author.name}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {expandedSections.bookFilters && (
+                  <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                    {bookAuthors.map((author) => (
+                      <label key={author.id} className="flex items-center space-x-3 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={filters.authorIds?.includes(author.id) || false}
+                          onChange={() => toggleAuthorFilter(author.id)}
+                          className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
+                        />
+                        <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{author.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
                 </div>
               )}
 
@@ -917,11 +964,11 @@ export default function CategorySidebar({
                 <div>
                   <button
                     onClick={() => setExpandedSections((prev) => ({ ...prev, bookFilters: !prev.bookFilters }))}
-                    className="flex items-center justify-between w-full mb-3"
+                    className="flex items-center justify-between w-full mb-3 group"
                   >
-                    <h3 className="text-base font-semibold text-gray-900">{t('sidebar_book_genres', 'Жанры')}</h3>
+                    <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_book_genres', 'Жанры')}</h3>
                     <svg
-                      className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
+                      className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -930,16 +977,16 @@ export default function CategorySidebar({
                     </svg>
                   </button>
                   {expandedSections.bookFilters && (
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                    <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                       {bookGenres.map((genre) => (
-                        <label key={genre.id} className="flex items-center space-x-2 cursor-pointer group">
+                        <label key={genre.id} className="flex items-center space-x-3 cursor-pointer group">
                           <input
                             type="checkbox"
                             checked={filters.genreIds?.includes(genre.id) || false}
                             onChange={() => toggleGenreFilter(genre.id)}
-                            className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                            className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                           />
-                          <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">
+                          <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">
                             {getLocalizedCategoryName(genre.slug, genre.name, t, genre.translations, router.locale)}
                           </span>
                         </label>
@@ -953,11 +1000,11 @@ export default function CategorySidebar({
                 <div>
                   <button
                     onClick={() => setExpandedSections((prev) => ({ ...prev, bookFilters: !prev.bookFilters }))}
-                    className="flex items-center justify-between w-full mb-3"
+                    className="flex items-center justify-between w-full mb-3 group"
                   >
-                    <h3 className="text-base font-semibold text-gray-900">{t('sidebar_book_publishers', 'Издательства')}</h3>
+                    <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_book_publishers', 'Издательства')}</h3>
                     <svg
-                      className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
+                      className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -966,16 +1013,16 @@ export default function CategorySidebar({
                     </svg>
                   </button>
                   {expandedSections.bookFilters && (
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                    <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                       {bookPublishers.map((publisher) => (
-                        <label key={publisher} className="flex items-center space-x-2 cursor-pointer group">
+                        <label key={publisher} className="flex items-center space-x-3 cursor-pointer group">
                           <input
                             type="checkbox"
                             checked={filters.publishers?.includes(publisher) || false}
                             onChange={() => togglePublisherFilter(publisher)}
-                            className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                            className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                           />
-                          <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{publisher}</span>
+                          <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{publisher}</span>
                         </label>
                       ))}
                     </div>
@@ -987,11 +1034,11 @@ export default function CategorySidebar({
                 <div>
                   <button
                     onClick={() => setExpandedSections((prev) => ({ ...prev, bookFilters: !prev.bookFilters }))}
-                    className="flex items-center justify-between w-full mb-3"
+                    className="flex items-center justify-between w-full mb-3 group"
                   >
-                    <h3 className="text-base font-semibold text-gray-900">{t('sidebar_book_languages', 'Язык')}</h3>
+                    <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_book_languages', 'Язык')}</h3>
                     <svg
-                      className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
+                      className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.bookFilters ? 'rotate-180' : ''}`}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -1000,16 +1047,16 @@ export default function CategorySidebar({
                     </svg>
                   </button>
                   {expandedSections.bookFilters && (
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                    <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                       {bookLanguages.map((language) => (
-                        <label key={language} className="flex items-center space-x-2 cursor-pointer group">
+                        <label key={language} className="flex items-center space-x-3 cursor-pointer group">
                           <input
                             type="checkbox"
                             checked={filters.languages?.includes(language) || false}
                             onChange={() => toggleLanguageFilter(language)}
-                            className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                            className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                           />
-                          <span className="text-sm text-gray-700 group-hover:text-violet-700 flex-1">{language}</span>
+                          <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{language}</span>
                         </label>
                       ))}
                     </div>
@@ -1020,25 +1067,25 @@ export default function CategorySidebar({
           )}
 
           {brandGroups.length > 0 && categoryType !== 'books' && categoryType !== 'uslugi' && (
-            <div className="border-b pb-4">
+            <div className="border-b pb-2">
               {brandGroups.map((group) => (
                 <div key={group.title}>
-                  <h3 className="text-base font-semibold text-gray-900 mb-3">{group.title}</h3>
-                  <div className="space-y-1">{renderTreeItems(group.items)}</div>
+                  <h3 className="text-base font-bold text-main mb-3 uppercase tracking-tight">{group.title}</h3>
+                  <div className="space-y-2">{renderTreeItems(group.items)}</div>
                 </div>
               ))}
             </div>
           )}
 
           {brands.length > 0 && brandGroups.length === 0 && categoryType !== 'books' && categoryType !== 'uslugi' && (
-            <div className="border-b pb-4">
+            <div className="border-b pb-2">
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, brands: !prev.brands }))}
                 className="flex items-center justify-between w-full mb-3"
               >
-                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_brands', 'Бренды')}</h3>
+                <h3 className="text-base font-bold text-main group-hover:text-[var(--accent)] transition-colors uppercase tracking-tight">{t('sidebar_brands', 'Бренды')}</h3>
                 <svg
-                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.brands ? 'rotate-180' : ''}`}
+                  className={`w-4 h-4 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.brands ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -1047,23 +1094,22 @@ export default function CategorySidebar({
                 </svg>
               </button>
               {expandedSections.brands && (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                   {brands.map((brand) => (
                     <label key={brand.id} className="flex items-center space-x-2 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={filters.brands.includes(brand.id)}
                         onChange={() => toggleBrandFilter(brand.id, ensureSlug(brand.slug))}
-                        className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)]"
                       />
                       <div className="flex items-center space-x-2 flex-1">
-                        {/* Логотипы брендов временно скрыты по просьбе пользователя */}
-                        <span className="text-sm text-gray-700 group-hover:text-violet-700">
+                        <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors">
                           {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
                         </span>
                       </div>
                       {brand.product_count !== undefined && (
-                        <span className="text-xs text-gray-500">({brand.product_count})</span>
+                        <span className="text-xs text-main/50">({brand.product_count})</span>
                       )}
                     </label>
                   ))}
@@ -1075,11 +1121,11 @@ export default function CategorySidebar({
           <div className="border-b pb-4">
             <button
               onClick={() => setExpandedSections((prev) => ({ ...prev, price: !prev.price }))}
-              className="flex items-center justify-between w-full mb-3"
+              className="flex items-center justify-between w-full mb-3 group"
             >
-              <h3 className="text-base font-semibold text-gray-900">{t('sidebar_price', 'Цена')}</h3>
+              <h3 className="text-base font-bold text-main group-hover:text-[var(--accent)] transition-colors uppercase tracking-tight">{t('sidebar_price', 'Цена')}</h3>
               <svg
-                className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.price ? 'rotate-180' : ''}`}
+                className={`w-4 h-4 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.price ? 'rotate-180' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -1096,28 +1142,34 @@ export default function CategorySidebar({
                     value={priceRange.min}
                     onChange={(e) => handlePriceInputChange('min', e.target.value)}
                     onBlur={handlePriceChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-violet-500 focus:border-violet-500"
+                    className="w-full px-3 py-2 bg-transparent border border-[var(--border)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] outline-none transition-all placeholder:text-main/30"
                   />
-                  <span className="text-gray-500">—</span>
+                  <span className="text-main/30">—</span>
                   <input
                     type="number"
                     placeholder={t('sidebar_price_to', 'До')}
                     value={priceRange.max}
                     onChange={(e) => handlePriceInputChange('max', e.target.value)}
                     onBlur={handlePriceChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-violet-500 focus:border-violet-500"
+                    className="w-full px-3 py-2 bg-transparent border border-[var(--border)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] outline-none transition-all placeholder:text-main/30"
                   />
                 </div>
               </div>
             )}
           </div>
 
-          <div className="border-b pb-4">
-            <h3 className="text-base font-semibold text-gray-900 mb-3">{t('sidebar_sort', 'Сортировка')}</h3>
+          <div className="border-b pb-2">
+            <h3 className="text-base font-bold text-main mb-3 uppercase tracking-tight">{t('sidebar_sort', 'Сортировка')}</h3>
             <select
               value={filters.sortBy}
               onChange={(e) => updateFilters((prev) => ({ ...prev, sortBy: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-violet-500 focus:border-violet-500"
+              className="w-full px-3 py-2 bg-transparent border border-[var(--border)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] outline-none transition-all appearance-none cursor-pointer"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='${encodeURIComponent('rgba(59, 42, 28, 0.4)')}'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0.75rem center',
+                backgroundSize: '1rem'
+              }}
             >
               <option value="name_asc">{t('sidebar_sort_name_asc_short', 'По названию (А-Я)')}</option>
               <option value="name_desc">{t('sidebar_sort_name_desc_short', 'По названию (Я-А)')}</option>
@@ -1132,11 +1184,11 @@ export default function CategorySidebar({
             <div>
               <button
                 onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
-                className="flex items-center justify-between w-full mb-3"
+                className="flex items-center justify-between w-full mb-3 group"
               >
-                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_additional', 'Дополнительно')}</h3>
+                <h3 className="text-base font-bold text-main group-hover:text-[var(--accent)] transition-colors uppercase tracking-tight">{t('sidebar_additional', 'Дополнительно')}</h3>
                 <svg
-                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+                  className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.filters ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -1145,8 +1197,8 @@ export default function CategorySidebar({
                 </svg>
               </button>
               {expandedSections.filters && (
-                <div className="space-y-3">
-                  <label className="flex items-center space-x-2 cursor-pointer">
+                <div className="space-y-4">
+                  <label className="flex items-center space-x-3 cursor-pointer group">
                     <input
                       type="checkbox"
                       checked={filters.inStock}
@@ -1156,11 +1208,11 @@ export default function CategorySidebar({
                           inStock: e.target.checked
                         }))
                       }
-                      className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                      className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                     />
-                    <span className="text-sm text-gray-700">{t('sidebar_in_stock')}</span>
+                    <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_in_stock')}</span>
                   </label>
-                  <label className="flex items-center space-x-2 cursor-pointer">
+                  <label className="flex items-center space-x-3 cursor-pointer group">
                     <input
                       type="checkbox"
                       checked={filters.isNew}
@@ -1170,9 +1222,9 @@ export default function CategorySidebar({
                           isNew: e.target.checked
                         }))
                       }
-                      className="w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500"
+                      className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                     />
-                    <span className="text-sm text-gray-700">{t('sidebar_new', 'Новинки')}</span>
+                    <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_new', 'Новинки')}</span>
                   </label>
                 </div>
               )}

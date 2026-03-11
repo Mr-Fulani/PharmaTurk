@@ -144,10 +144,11 @@ class _SimpleDomainAdmin(admin.ModelAdmin):
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'category' and self._category_type_slug:
+            type_slug = str(self._category_type_slug).replace('_', '-')
             kwargs['queryset'] = Category.objects.filter(
-                django_models.Q(slug=self._category_type_slug) |
-                django_models.Q(parent__slug=self._category_type_slug)
-            ).order_by('name')
+                category_type__slug=type_slug,
+                is_active=True,
+            ).order_by('sort_order', 'name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def run_ai(self, request, queryset):

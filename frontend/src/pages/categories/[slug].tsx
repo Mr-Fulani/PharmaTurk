@@ -318,14 +318,22 @@ const areFiltersEqual = (left: FilterState, right: FilterState) =>
   left.priceMin === right.priceMin &&
   left.priceMax === right.priceMax
 
-const createTreeItem = (category: Category): SidebarTreeItem => ({
-  id: `cat-${category.id}`,
-  name: category.name,
-  slug: category.slug,
-  dataId: category.id,
-  count: category.product_count,
-  type: 'category'
-})
+const createTreeItem = (category: Category, allCategories: Category[]): SidebarTreeItem => {
+  const children = allCategories
+    .filter((c) => c.parent === category.id)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+  
+  return {
+    id: `cat-${category.id}`,
+    name: category.name,
+    slug: category.slug,
+    dataId: category.id,
+    count: category.product_count,
+    type: 'category',
+    translations: category.translations,
+    children: children.length > 0 ? children.map(c => createTreeItem(c, allCategories)) : undefined
+  }
+}
 
 // =============================================================================
 // Динамическое построение разделов сайдбара на основе иерархии из БД
@@ -378,12 +386,13 @@ const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => 
             dataId: cat.id,
             count: cat.product_count,
             type: 'category' as const,
+            translations: cat.translations,
             children: children
               .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
-              .map(createTreeItem),
+              .map(c => createTreeItem(c, categories)),
           }
         }
-        return createTreeItem(cat)
+        return createTreeItem(cat, categories)
       })
 
     sections.push({
@@ -403,40 +412,50 @@ const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => 
 /**
  * Динамически строит разделы сайдбара для медикаментов.
  * Категории 2-го уровня (дети «Медицины») → группы,
- * их дети (3-й уровень) → вложенные пункты фильтра.
+ * их потомки → вложенные пункты фильтра (рекурсивно).
  */
 const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] => {
-  // Находим корневые категории (без parent) — это сама «Медицина» и аналоги
   const roots = categories.filter((c) => !c.parent)
-
-  // Категории 2-го уровня — прямые дети корней
   const rootIds = new Set(roots.map((r) => r.id))
+  
+  // Категории 2-го уровня (напр. "Антибиотики", "Витамины")
   const level2 = categories
     .filter((c) => c.parent != null && rootIds.has(c.parent as number))
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
 
   if (level2.length === 0) return []
 
-  return level2.map((group) => {
-    // Дети данной группы (3-й уровень)
-    const children = categories
-      .filter((c) => c.parent === group.id)
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
-      .map(createTreeItem)
+  const dosageKeywords = [
+    'tablet', 'capsule', 'syrup', 'drops', 'ointment', 'cream', 'gel', 'injection', 'powder', 'spray',
+    'таблет', 'капсул', 'сироп', 'капл', 'мазь', 'крем', 'гель', 'инъекц', 'порошок', 'спрей', 'суппозитор'
+  ]
 
-    return {
-      title: group.name,
-      items: [{
-        id: `section-med-${group.id}`,
-        name: group.name,
-        slug: group.slug,
-        dataId: group.id,
-        count: group.product_count,
-        type: 'category' as const,
-        children,
-      }],
-    } as SidebarTreeSection
-  })
+  const isDosageForm = (cat: Category) => {
+    const s = normalizeSlug(cat.slug)
+    const n = cat.name.toLowerCase()
+    return dosageKeywords.some(kw => s.includes(kw) || n.includes(kw))
+  }
+
+  const therapeutic = level2.filter(c => !isDosageForm(c))
+  const dosageForms = level2.filter(c => isDosageForm(c))
+
+  const sections: SidebarTreeSection[] = []
+
+  if (therapeutic.length > 0) {
+    sections.push({
+      title: 'Категории',
+      items: therapeutic.map(cat => createTreeItem(cat, categories))
+    })
+  }
+
+  if (dosageForms.length > 0) {
+    sections.push({
+      title: 'Вид препарата',
+      items: dosageForms.map(cat => createTreeItem(cat, categories))
+    })
+  }
+
+  return sections
 }
 
 // Парфюмерия: две группы — по аудитории (жен/муж/унисекс) и по типу (нишевая, дом, EDP, EDT)
@@ -460,13 +479,13 @@ const buildPerfumerySections = (categories: Category[]): SidebarTreeSection[] =>
   if (byAudience.length > 0) {
     sections.push({
       title: 'По аудитории',
-      items: byAudience.map((c) => createTreeItem(c))
+      items: byAudience.map((c) => createTreeItem(c, categories))
     } as SidebarTreeSection)
   }
   if (byType.length > 0) {
     sections.push({
       title: 'По типу',
-      items: byType.map((c) => createTreeItem(c))
+      items: byType.map((c) => createTreeItem(c, categories))
     } as SidebarTreeSection)
   }
   return sections
@@ -1496,8 +1515,11 @@ export default function CategoryPage({
     const main = base.find((c) => (c.slug || '').toLowerCase().replace(/_/g, '-') === normSlug)
 
     if (main) {
-      const children = base.filter((c) => c.parent === main.id)
-      return [main, ...children]
+      // Возвращаем саму категорию и ВСЕХ её потомков из base
+      return base.filter((c) => 
+        c.id === main.id || 
+        (c.parent !== null && c.parent !== undefined)
+      )
     }
 
     // Если не нашли категорию по slug — как fallback берём только корневые
@@ -2019,12 +2041,16 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
     let sidebarCategories: any[] = categories
     if (mainCat) {
-      let childCats = categories.filter((c: any) => c.parent === mainCat.id)
+      // Включаем ВСЕ категории, которые были возвращены и являются потомками
+      const descendants = categories.filter((c: any) => c.id !== mainCat.id && c.parent !== null)
       if (categoryType === 'jewelry') {
-        childCats = childCats.filter((c: any) => !isGenderCategoryForJewelry(c))
+        const therapeuticDescendants = descendants.filter((c: any) => !isGenderCategoryForJewelry(c))
+        sidebarCategories = [mainCat, ...therapeuticDescendants]
+        subcategories = therapeuticDescendants.filter((c: any) => c.parent === mainCat.id)
+      } else {
+        sidebarCategories = [mainCat, ...descendants]
+        subcategories = descendants.filter((c: any) => c.parent === mainCat.id)
       }
-      sidebarCategories = [mainCat, ...childCats]
-      subcategories = childCats
     } else if (routeNorm) {
       sidebarCategories = categories.filter((c: any) => (c.slug || '').toLowerCase().replace(/_/g, '-') === routeNorm)
     }

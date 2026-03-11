@@ -60,7 +60,7 @@ coverage/
 *.tsbuildinfo
 
 # Cursor
-.cursor/
+# .cursor/
 .cursorrules
 
 # Pyright

@@ -344,14 +344,18 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
         if include_children is None:
             include_children = True  # по умолчанию берём детей, если указан slug
 
-        # Если задан slug — возвращаем саму категорию и (опционально) её детей
+        # Если задан slug — возвращаем саму категорию и её потомков
         if slug_list:
-            main_qs = base_qs.filter(slug__in=slug_list)
+            include_children = self._parse_bool(self.request.query_params.get('include_children'))
+            if include_children is None:
+                include_children = True
+            
             if not include_children:
-                return main_qs
-            parent_ids_set = list(main_qs.values_list('id', flat=True))
-            children_qs = base_qs.filter(parent_id__in=parent_ids_set)
-            return main_qs.union(children_qs).order_by('sort_order', 'name')
+                return base_qs.filter(slug__in=slug_list)
+            
+            # Используем рекурсивный поиск ID
+            all_ids = _get_category_ids_with_descendants(slug_list)
+            return base_qs.filter(id__in=all_ids).order_by('sort_order', 'name')
 
         # Если задан parent — возвращаем только детей
         if parent_ids or parent_slugs:

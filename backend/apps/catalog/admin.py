@@ -322,7 +322,6 @@ class BaseCategoryAdmin(admin.ModelAdmin):
             from .models import Category
             kwargs['queryset'] = Category.objects.filter(
                 category_type__slug=self.required_category_type_slug,
-                parent__isnull=True,
                 is_active=True,
             ).order_by('sort_order', 'name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
@@ -376,7 +375,6 @@ class AllCategoriesAdmin(admin.ModelAdmin):
         if db_field.name == 'parent':
             from .models import Category
             kwargs['queryset'] = Category.objects.filter(
-                parent__isnull=True,
                 is_active=True,
             ).order_by('sort_order', 'name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
