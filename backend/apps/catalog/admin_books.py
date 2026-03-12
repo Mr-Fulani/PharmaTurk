@@ -4,6 +4,8 @@ from django.contrib import admin, messages
 from django.utils.translation import gettext_lazy as _
 from django.utils.html import format_html
 from django.db import models as django_models
+
+from .forms import PRODUCT_CATEGORY_HELP
 from .models import (
     Author, ProductAuthor, BookProduct,
     BookProductTranslation, BookProductImage,
@@ -152,7 +154,8 @@ class BookProductAdmin(admin.ModelAdmin):
             'fields': ('name', 'slug', 'slug_preview', 'description')
         }),
         (_('Категоризация'), {
-            'fields': ('category', 'brand')
+            'fields': ('category', 'brand'),
+            'description': PRODUCT_CATEGORY_HELP,
         }),
         (_('Информация о книге'), {
             'fields': ('isbn', 'publisher', 'publication_date', 'pages', 'language', 'cover_type')
@@ -208,10 +211,16 @@ class BookProductAdmin(admin.ModelAdmin):
         return super().get_queryset(request)
     
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        """Фильтруем категории только для книг."""
+        """Показываем все категории книг (L1, L2, L3) для выбора при привязке товара."""
         if db_field.name == 'category':
             kwargs['queryset'] = Category.objects.filter(
-                django_models.Q(slug='books') | 
+                category_type__slug='books',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+            kwargs['help_text'] = PRODUCT_CATEGORY_HELP
+        elif db_field.name == 'genre':
+            kwargs['queryset'] = Category.objects.filter(
+                django_models.Q(slug='books') |
                 django_models.Q(parent__slug='books')
             ).order_by('name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)

@@ -292,6 +292,15 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
+    def get_breadcrumb_path(self, separator: str = ' › ') -> str:
+        """Возвращает путь категории по иерархии: L1 › L2 › L3."""
+        parts = []
+        obj = self
+        while obj:
+            parts.insert(0, obj.name)
+            obj = obj.parent
+        return separator.join(parts) if parts else self.name
+
     def get_translated_name(self, locale: str = 'ru') -> str:
         """Получает переведенное название категории."""
         translation = self.translations.filter(locale=locale).first()

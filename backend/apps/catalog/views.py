@@ -5,6 +5,7 @@ from decimal import Decimal
 from datetime import timedelta
 
 from django.shortcuts import get_object_or_404
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import F
 from django.db.models.functions import Coalesce, Least
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 from .models import (
     Category, Brand, Product, PriceHistory, Favorite, Author,
+    ProductAttributeValue,
     ClothingProduct, ClothingVariant,
     ShoeProduct, ShoeVariant,
     ElectronicsProduct,
@@ -276,6 +278,101 @@ def _apply_brand_filter(queryset, request):
     if wants_other:
         return queryset.filter(brand__isnull=True)
     return queryset.filter(brand_id__in=brand_ids)
+
+
+def _apply_attr_filters(queryset, request):
+    """Фильтрация по динамическим атрибутам (attr_{slug}=value1,value2)."""
+    params = request.query_params
+    attr_params = {k: v for k, v in params.items() if k.startswith('attr_') and v}
+    if not attr_params:
+        return queryset
+    model = queryset.model
+    if not hasattr(model, 'dynamic_attributes'):
+        return queryset
+    ct = ContentType.objects.get_for_model(model)
+    product_ids = list(queryset.values_list('id', flat=True))
+    if not product_ids:
+        return queryset
+    for param_key, param_val in attr_params.items():
+        slug = param_key[5:]  # убираем "attr_"
+        if not slug:
+            continue
+        values = [s.strip() for s in param_val.split(',') if s.strip()]
+        if not values:
+            continue
+        matching_ids = set(
+            ProductAttributeValue.objects.filter(
+                content_type=ct,
+                object_id__in=product_ids,
+                attribute_key__slug=slug,
+            ).filter(
+                models.Q(value__in=values) |
+                models.Q(value_ru__in=values) |
+                models.Q(value_en__in=values)
+            ).values_list('object_id', flat=True).distinct()
+        )
+        product_ids = [pid for pid in product_ids if pid in matching_ids]
+        if not product_ids:
+            return queryset.none()
+    return queryset.filter(id__in=product_ids)
+
+
+class FacetedModelViewSetMixin:
+    """Миксин для ViewSet'ов товаров: вычисление available_attributes и фильтр attr_*.
+    ViewSet должен вызывать _apply_facet_filters(queryset) в конце своего get_queryset."""
+
+    def _apply_facet_filters(self, queryset):
+        """Применяет фильтр по attr_* к queryset. Вызывать в конце get_queryset."""
+        return _apply_attr_filters(queryset, self.request)
+
+    def _calculate_available_attributes(self, queryset):
+        """Вычисляет доступные атрибуты для текущего отфильтрованного queryset."""
+        model = queryset.model
+        if not hasattr(model, 'dynamic_attributes'):
+            return []
+        ct = ContentType.objects.get_for_model(model)
+        product_ids = list(queryset.values_list('id', flat=True)[:5000])
+        if not product_ids:
+            return []
+        from django.utils import translation
+        lang = translation.get_language() or 'ru'
+        if '-' in lang:
+            lang = lang.split('-')[0]
+        use_ru = lang.startswith('ru')
+        qs = ProductAttributeValue.objects.filter(
+            content_type=ct,
+            object_id__in=product_ids,
+        ).select_related('attribute_key').order_by('attribute_key__sort_order', 'attribute_key__slug')
+        grouped: dict[str, set[str]] = {}
+        key_names: dict[str, str] = {}
+        for pav in qs:
+            key_slug = pav.attribute_key.slug if pav.attribute_key else ''
+            if not key_slug:
+                continue
+            if key_slug not in grouped:
+                grouped[key_slug] = set()
+                key_names[key_slug] = pav.attribute_key.name if pav.attribute_key else key_slug
+            val = (pav.value_ru or pav.value) if use_ru else (pav.value_en or pav.value)
+            if val:
+                grouped[key_slug].add(val)
+        return [
+            {'key': k, 'name': key_names.get(k, k), 'values': sorted(grouped[k])}
+            for k in sorted(grouped.keys())
+        ]
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            data = self.get_paginated_response(serializer.data).data
+            data['available_attributes'] = self._calculate_available_attributes(queryset)
+            return Response(data)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'results': serializer.data,
+            'available_attributes': self._calculate_available_attributes(queryset),
+        })
 
 
 class StandardPagination(PageNumberPagination):
@@ -615,7 +712,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         return super().retrieve(request, *args, **kwargs)
 
 
-class ProductViewSet(viewsets.ReadOnlyModelViewSet):
+class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами."""
     
     queryset = Product.objects.filter(is_active=True)
@@ -761,8 +858,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
 
-        
-        return queryset
+        return self._apply_facet_filters(queryset)
     
     def get_serializer_class(self):
         """Выбираем сериализатор в зависимости от действия."""
@@ -1122,7 +1218,7 @@ class ClothingCategoryViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
+class ClothingProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами одежды."""
     
     queryset = ClothingProduct.objects.filter(is_active=True)
@@ -1214,7 +1310,7 @@ class ClothingProductViewSet(viewsets.ReadOnlyModelViewSet):
         ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
         
-        return queryset
+        return self._apply_facet_filters(queryset)
     
     @extend_schema(
         summary="Получить список товаров одежды",
@@ -1318,7 +1414,7 @@ class ShoeCategoryViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
+class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами обуви."""
     
     queryset = ShoeProduct.objects.filter(is_active=True)
@@ -1422,7 +1518,7 @@ class ShoeProductViewSet(viewsets.ReadOnlyModelViewSet):
         ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
         
-        return queryset
+        return self._apply_facet_filters(queryset)
     
     @extend_schema(
         summary="Получить список товаров обуви",
@@ -1521,7 +1617,7 @@ class ElectronicsCategoryViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
+class ElectronicsProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами электроники."""
     
     queryset = ElectronicsProduct.objects.filter(is_active=True)
@@ -1587,7 +1683,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
         ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
         
-        return queryset
+        return self._apply_facet_filters(queryset)
     
     @extend_schema(
         summary="Получить список товаров электроники",
@@ -1622,7 +1718,7 @@ class ElectronicsProductViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
+class JewelryProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для товаров украшений (с вариантами и размерами)."""
     queryset = JewelryProduct.objects.filter(is_active=True)
     serializer_class = JewelryProductSerializer
@@ -1696,7 +1792,7 @@ class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
         ordering = self.request.query_params.get('ordering', '-created_at')
         queryset = queryset.order_by(self._normalize_ordering(ordering))
-        return queryset
+        return self._apply_facet_filters(queryset)
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -1714,7 +1810,7 @@ class JewelryProductViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
+class FurnitureProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами мебели."""
     
     queryset = FurnitureProduct.objects.filter(is_active=True)
@@ -1812,7 +1908,7 @@ class FurnitureProductViewSet(viewsets.ReadOnlyModelViewSet):
         ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
         
-        return queryset
+        return self._apply_facet_filters(queryset)
     
     @extend_schema(
         summary="Получить список товаров мебели",

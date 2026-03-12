@@ -118,12 +118,49 @@ class ProductForm(forms.ModelForm):
         return value
 
 
+# Подсказки по уровням иерархии категорий (L1=корневая, L2=подкатегория, L3+=глубже)
+CATEGORY_NAME_PLACEHOLDER = _("L1: Одежда | L2: Пальто | L3: Пальто женское")
+CATEGORY_PARENT_HELP = _(
+    "Уровень: пусто = L1 (корневая). Выберите L1 для L2. Выберите L2 для L3."
+)
+# Описание блока «Иерархия» в fieldset
+CATEGORY_HIERARCHY_DESCRIPTION = _(
+    "L1 (корневая) — родитель пусто. L2 — выберите L1. L3 — выберите L2. "
+    "Товары привязываются к категории нижнего уровня."
+)
+# Подсказка для поля «Категория» в форме товара
+PRODUCT_CATEGORY_HELP = _(
+    "Выберите категорию L1, L2 или L3. Товары привязываются к категории нижнего уровня (например, Пальто, а не Одежда)."
+)
+
+
+class CategoryFormCatalogHints(forms.ModelForm):
+    """Форма для категорий каталога с подсказками по иерархии (поддержка L3+)."""
+    class Meta:
+        model = Category
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "name" in self.fields:
+            self.fields["name"].widget.attrs.setdefault("placeholder", CATEGORY_NAME_PLACEHOLDER)
+        if "parent" in self.fields:
+            self.fields["parent"].help_text = CATEGORY_PARENT_HELP
+
+
 class CategoryForm(forms.ModelForm):
-    """Форма для категории с валидацией типа."""
+    """Форма для категории с валидацией типа и подсказками по иерархии."""
     
     class Meta:
         model = Category
         fields = "__all__"
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "name" in self.fields:
+            self.fields["name"].widget.attrs.setdefault("placeholder", CATEGORY_NAME_PLACEHOLDER)
+        if "parent" in self.fields:
+            self.fields["parent"].help_text = CATEGORY_PARENT_HELP
     
     def clean_category_type(self):
         category_type = self.cleaned_data.get("category_type")

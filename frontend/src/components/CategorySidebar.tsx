@@ -21,6 +21,12 @@ export interface SidebarTreeSection {
   items: SidebarTreeItem[]
 }
 
+export interface AvailableAttribute {
+  key: string
+  name: string
+  values: string[]
+}
+
 export interface FilterState {
   categories: number[]
   categorySlugs: string[]
@@ -39,12 +45,7 @@ export interface FilterState {
   sortBy: string
   colors?: string[]
   sizes?: string[]
-  shoeTypes?: string[]
-  clothingItems?: string[]
-  jewelryMaterials?: string[]
-  jewelryGender?: string[]
-  headwearTypes?: string[]
-  furnitureTypes?: string[]
+  attributes?: Record<string, string[]>
 }
 
 interface Category {
@@ -80,6 +81,7 @@ interface CategorySidebarProps {
   bookLanguages?: string[]
   categoryGroups?: SidebarTreeSection[]
   brandGroups?: SidebarTreeSection[]
+  availableAttributes?: AvailableAttribute[]
   onFilterChange?: (filters: FilterState) => void
   isOpen?: boolean
   onToggle?: () => void
@@ -130,6 +132,7 @@ export default function CategorySidebar({
   bookLanguages = [],
   categoryGroups = [],
   brandGroups = [],
+  availableAttributes = [],
   onFilterChange,
   isOpen = true,
   onToggle,
@@ -156,12 +159,7 @@ export default function CategorySidebar({
     inStock: false,
     isNew: false,
     sortBy: 'name_asc',
-    shoeTypes: [],
-    clothingItems: [],
-    jewelryMaterials: [],
-    jewelryGender: [],
-    headwearTypes: [],
-    furnitureTypes: [],
+    attributes: {},
   }
   const [filters, setFilters] = useState<FilterState>(initialFilters || defaultFilters)
 
@@ -184,7 +182,7 @@ export default function CategorySidebar({
     initialFilters?.genreIds?.join(','),
     initialFilters?.publishers?.join(','),
     initialFilters?.languages?.join(','),
-    initialFilters?.furnitureTypes?.join(','),
+    JSON.stringify(initialFilters?.attributes || {}),
     initialFilters?.inStock,
     initialFilters?.isNew,
     initialFilters?.sortBy,
@@ -227,12 +225,7 @@ export default function CategorySidebar({
     filters.inStock,
     filters.isNew,
     filters.sortBy,
-    filters.shoeTypes?.join(','),
-    filters.clothingItems?.join(','),
-    filters.jewelryMaterials?.join(','),
-    filters.jewelryGender?.join(','),
-    filters.headwearTypes?.join(','),
-    filters.furnitureTypes?.join(',')
+    JSON.stringify(filters.attributes || {})
   ])
 
   const updateFilters = (updater: (prev: FilterState) => FilterState) => {
@@ -370,6 +363,20 @@ export default function CategorySidebar({
     })
   }
 
+  const toggleAttributeFilter = (key: string, value: string) => {
+    updateFilters((prev) => {
+      const current = prev.attributes?.[key] || []
+      const exists = current.includes(value)
+      const nextArr = exists ? current.filter((v) => v !== value) : [...current, value]
+      const nextAttrs = { ...(prev.attributes || {}), [key]: nextArr }
+      if (nextArr.length === 0) {
+        const { [key]: _, ...rest } = nextAttrs
+        return { ...prev, attributes: rest }
+      }
+      return { ...prev, attributes: nextAttrs }
+    })
+  }
+
   const clearFilters = () => {
     setFilters({
       categories: [],
@@ -387,12 +394,7 @@ export default function CategorySidebar({
       inStock: false,
       isNew: false,
       sortBy: 'name_asc',
-      shoeTypes: [],
-      clothingItems: [],
-      jewelryMaterials: [],
-      jewelryGender: [],
-      headwearTypes: [],
-      furnitureTypes: []
+      attributes: {}
     })
     setPriceRange({ min: '', max: '' })
   }
@@ -494,76 +496,11 @@ export default function CategorySidebar({
     filters.priceMax !== undefined ||
     filters.inStock ||
     filters.isNew ||
-    (filters.shoeTypes && filters.shoeTypes.length > 0) ||
-    (filters.clothingItems && filters.clothingItems.length > 0) ||
-    (filters.jewelryMaterials && filters.jewelryMaterials.length > 0) ||
-    (filters.jewelryGender && filters.jewelryGender.length > 0) ||
-    (filters.headwearTypes && filters.headwearTypes.length > 0) ||
-    (filters.furnitureTypes && filters.furnitureTypes.length > 0) ||
+    (filters.attributes && Object.keys(filters.attributes).some((k) => (filters.attributes![k]?.length ?? 0) > 0)) ||
     (filters.authorIds && filters.authorIds.length > 0) ||
     (filters.genreIds && filters.genreIds.length > 0) ||
     (filters.publishers && filters.publishers.length > 0) ||
     (filters.languages && filters.languages.length > 0)
-
-  const toggleCustomFilter = (field: 'shoeTypes' | 'clothingItems' | 'jewelryMaterials' | 'jewelryGender' | 'headwearTypes' | 'furnitureTypes', value: string) => {
-    setFilters((prev) => {
-      const current = prev[field] || []
-      const exists = current.includes(value)
-      const nextArr = exists ? current.filter((v) => v !== value) : [...current, value]
-      return { ...prev, [field]: nextArr }
-    })
-  }
-
-  const shoeTypeOptions = [
-    { value: 'sneakers', label: t('filter_sneakers', 'Кроссовки') },
-    { value: 'boots', label: t('filter_boots', 'Ботинки/Ботильоны') },
-    { value: 'sandals', label: t('filter_sandals', 'Сандалии/Шлёпанцы') },
-    { value: 'shoes', label: t('filter_shoes', 'Туфли') },
-    { value: 'home-shoes', label: t('filter_home_shoes', 'Домашняя обувь/Тапки') },
-    { value: 'loafers', label: t('filter_loafers', 'Лоферы/Мокасины') },
-  ]
-
-  const clothingItemOptions = [
-    { value: 'jeans', label: t('filter_jeans', 'Джинсы') },
-    { value: 'tshirts', label: t('filter_tshirts', 'Футболки') },
-    { value: 'hoodies', label: t('filter_hoodies', 'Худи') },
-    { value: 'sweaters', label: t('filter_sweaters', 'Джемперы/Свитеры') },
-    { value: 'shirts', label: t('filter_shirts', 'Рубашки') },
-    { value: 'blouses', label: t('filter_blouses', 'Блузки') },
-    { value: 'jackets', label: t('filter_jackets', 'Куртки') },
-    { value: 'coats', label: t('filter_coats', 'Пальто') },
-    { value: 'trousers', label: t('filter_trousers', 'Брюки') },
-    { value: 'shorts', label: t('filter_shorts', 'Шорты') },
-    { value: 'socks', label: t('filter_socks', 'Носки') },
-    { value: 'dresses', label: t('filter_dresses', 'Платья') },
-    { value: 'skirts', label: t('filter_skirts', 'Юбки') },
-  ]
-
-  const jewelryMaterialOptions = [
-    { value: 'gold', label: t('filter_gold', 'Золото') },
-    { value: 'silver', label: t('filter_silver', 'Серебро') },
-    { value: 'bijouterie', label: t('filter_bijouterie', 'Бижутерия') },
-  ]
-
-  const jewelryGenderOptions = [
-    { value: 'women', label: t('filter_women', 'Женские') },
-    { value: 'men', label: t('filter_men', 'Мужские') },
-    { value: 'unisex', label: t('filter_unisex', 'Унисекс') },
-    { value: 'kids', label: t('filter_kids', 'Детские') },
-  ]
-
-  const headwearTypeOptions = [
-    { value: 'caps', label: t('filter_caps', 'Кепки') },
-    { value: 'hats', label: t('filter_hats', 'Шапки') },
-    { value: 'panama', label: t('filter_panama', 'Панамки') },
-  ]
-
-  const furnitureTypeOptions = [
-    { value: 'chairs', label: t('filter_chairs', 'Стулья') },
-    { value: 'tables', label: t('filter_tables', 'Столы') },
-    { value: 'wardrobes', label: t('filter_wardrobes', 'Шкафы') },
-    { value: 'sofas', label: t('filter_sofas', 'Диваны') },
-  ]
 
   return (
     <>
@@ -631,211 +568,27 @@ export default function CategorySidebar({
             )
           })}
 
-          {/* Спец-фильтры: обувь */}
-          {categoryType === 'shoes' && (
-            <div className="border-b pb-4">
-              <button
-                onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
-                className="flex items-center justify-between w-full mb-3 group"
-              >
-                <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_shoe_types', 'Тип обуви')}</h3>
-                <svg
-                  className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.filters ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {expandedSections.filters && (
-                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                  {shoeTypeOptions.map((opt) => (
-                    <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={filters.shoeTypes?.includes(opt.value) || false}
-                        onChange={() => toggleCustomFilter('shoeTypes', opt.value)}
-                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
-                      />
-                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Спец-фильтры: одежда */}
-          {categoryType === 'clothing' && (
-            <div className="border-b pb-4">
-              <button
-                onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
-                className="flex items-center justify-between w-full mb-3 group"
-              >
-                <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_clothing_items', 'Предметы одежды')}</h3>
-                <svg
-                  className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.filters ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {expandedSections.filters && (
-                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                  {clothingItemOptions.map((opt) => (
-                    <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={filters.clothingItems?.includes(opt.value) || false}
-                        onChange={() => toggleCustomFilter('clothingItems', opt.value)}
-                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
-                      />
-                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Спец-фильтры: украшения */}
-          {categoryType === 'jewelry' && (
+          {/* Динамические атрибуты (фасетный поиск) */}
+          {availableAttributes.length > 0 && (
             <div className="border-b pb-4 space-y-4">
-              <div>
-                <button
-                  onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
-                  className="flex items-center justify-between w-full mb-3 group"
-                >
-                  <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_jewelry_material', 'Материал')}</h3>
-                  <svg
-                    className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.filters ? 'rotate-180' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {expandedSections.filters && (
+              {availableAttributes.map((attr) => (
+                <div key={attr.key}>
+                  <h3 className="text-base font-semibold text-main mb-3">{attr.name}</h3>
                   <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                    {jewelryMaterialOptions.map((opt) => (
-                      <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
+                    {attr.values.map((val) => (
+                      <label key={val} className="flex items-center space-x-3 cursor-pointer group">
                         <input
                           type="checkbox"
-                          checked={filters.jewelryMaterials?.includes(opt.value) || false}
-                          onChange={() => toggleCustomFilter('jewelryMaterials', opt.value)}
+                          checked={filters.attributes?.[attr.key]?.includes(val) || false}
+                          onChange={() => toggleAttributeFilter(attr.key, val)}
                           className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                         />
-                        <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
+                        <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{val}</span>
                       </label>
                     ))}
                   </div>
-                )}
-              </div>
-
-              <div>
-                <button
-                  onClick={() => setExpandedSections((prev) => ({ ...prev, brands: !prev.brands }))}
-                  className="flex items-center justify-between w-full mb-3 group"
-                >
-                  <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_jewelry_gender', 'Для кого')}</h3>
-                  <svg
-                    className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.brands ? 'rotate-180' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {expandedSections.brands && (
-                  <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                    {jewelryGenderOptions.map((opt) => (
-                      <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
-                        <input
-                          type="checkbox"
-                          checked={filters.jewelryGender?.includes(opt.value) || false}
-                          onChange={() => toggleCustomFilter('jewelryGender', opt.value)}
-                          className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
-                        />
-                        <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Спец-фильтры: головные уборы */}
-          {categoryType === 'headwear' && (
-            <div className="border-b pb-4">
-              <button
-                onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
-                className="flex items-center justify-between w-full mb-3 group"
-              >
-                <h3 className="text-base font-semibold text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_headwear_types', 'Тип головного убора')}</h3>
-                <svg
-                  className={`w-5 h-5 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.filters ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {expandedSections.filters && (
-                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                  {headwearTypeOptions.map((opt) => (
-                    <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={filters.headwearTypes?.includes(opt.value) || false}
-                        onChange={() => toggleCustomFilter('headwearTypes', opt.value)}
-                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
-                      />
-                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
-                    </label>
-                  ))}
                 </div>
-              )}
-            </div>
-          )}
-
-          {categoryType === 'furniture' && (
-            <div className="border-b pb-2">
-              <button
-                onClick={() => setExpandedSections((prev) => ({ ...prev, filters: !prev.filters }))}
-                className="flex items-center justify-between w-full mb-3"
-              >
-                <h3 className="text-base font-semibold text-gray-900">{t('sidebar_furniture_type', 'Тип мебели')}</h3>
-                <svg
-                  className={`w-5 h-5 text-gray-500 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {expandedSections.filters && (
-                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                  {furnitureTypeOptions.map((opt) => (
-                    <label key={opt.value} className="flex items-center space-x-3 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={filters.furnitureTypes?.includes(opt.value) || false}
-                        onChange={() => toggleCustomFilter('furnitureTypes', opt.value)}
-                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
-                      />
-                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{opt.label}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
+              ))}
             </div>
           )}
 

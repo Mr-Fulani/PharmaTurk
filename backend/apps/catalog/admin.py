@@ -8,7 +8,15 @@ from django.db.models import Case, When, Value, IntegerField, Q
 from django.utils.html import format_html, format_html_join
 from django.utils.translation import gettext_lazy as _
 
-from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFormSet
+from .forms import (
+    ProductForm,
+    ProductImageInlineFormSet,
+    VariantImageInlineFormSet,
+    CategoryFormCatalogHints,
+    CATEGORY_HIERARCHY_DESCRIPTION,
+    CATEGORY_PARENT_HELP,
+    PRODUCT_CATEGORY_HELP,
+)
 from .models import (
     CategoryType, Category, CategoryTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
@@ -283,25 +291,39 @@ class ServicePriceInline(admin.StackedInline):
         return False
 
 
+def _category_level_display(obj):
+    """Показывает уровень: L1 (корневая), L2, L3+."""
+    if not obj.parent_id:
+        return "L1"
+    if not obj.parent or not obj.parent.parent_id:
+        return "L2"
+    return "L3+"
+
+
 class BaseCategoryAdmin(admin.ModelAdmin):
     """Базовый админ для прокси категорий с фильтром по типу."""
+    form = CategoryFormCatalogHints
     required_category_type_slug: str | None = None
-    list_display = ('name', 'slug', 'category_type', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent', 'is_active', 'sort_order', 'created_at')
     list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'parent', 'gender', 'clothing_type', 'shoe_type', 'device_type', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
     autocomplete_fields = ('category_type',)
     inlines = [CategoryTranslationInline]
+    list_select_related = ('category_type', 'parent', 'parent__parent')
     fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
+        (None, {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
+        }),
         (_('Тип категории'), {
             'fields': ('category_type',),
             'description': _('Выберите тип категории. Если нужного типа нет, создайте его в разделе "Типы категорий".'),
         }),
-        (_('Hierarchy'), {
+        (_('Иерархия (L1/L2/L3)'), {
             'fields': ('parent',),
-            'description': _('Корневая категория: оставьте parent пустым. Подкатегория: выберите родителя того же типа.'),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
         }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url'),
@@ -310,6 +332,10 @@ class BaseCategoryAdmin(admin.ModelAdmin):
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
+
+    def level_display(self, obj):
+        return _category_level_display(obj)
+    level_display.short_description = _("Уровень")
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -341,24 +367,28 @@ class BaseCategoryAdmin(admin.ModelAdmin):
 @admin.register(Category)
 class AllCategoriesAdmin(admin.ModelAdmin):
     """Единый список всех категорий (корневые и подкатегории)."""
-    list_display = ('name', 'slug', 'category_type', 'parent_display', 'is_active', 'sort_order', 'created_at')
+    form = CategoryFormCatalogHints
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent_display', 'is_active', 'sort_order', 'created_at')
     list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
     autocomplete_fields = ('category_type', 'parent')
     inlines = [CategoryTranslationInline]
-    list_select_related = ('category_type', 'parent')
+    list_select_related = ('category_type', 'parent', 'parent__parent')
 
     fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
+        (None, {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
+        }),
         (_('Тип категории'), {
             'fields': ('category_type',),
             'description': _('Выберите тип категории. Если нужного типа нет, создайте его в разделе "Типы категорий".'),
         }),
-        (_('Hierarchy'), {
+        (_('Иерархия (L1/L2/L3)'), {
             'fields': ('parent',),
-            'description': _('Корневая категория: оставьте parent пустым. Подкатегория: выберите родителя.'),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
         }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url'),
@@ -366,6 +396,10 @@ class AllCategoriesAdmin(admin.ModelAdmin):
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
+
+    def level_display(self, obj):
+        return _category_level_display(obj)
+    level_display.short_description = _("Уровень")
 
     def parent_display(self, obj):
         return obj.parent.name if obj.parent else "—"
@@ -718,7 +752,10 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
                 'description'
             )
         }),
-        (_('Категоризация'), {'fields': ('product_type', 'category', 'brand')}),
+        (_('Категоризация'), {
+            'fields': ('product_type', 'category', 'brand'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
         (_('Цены и наличие'), {
             'fields': (
                 'price', 'currency', 'old_price', 'margin_percent_applied',
@@ -775,6 +812,7 @@ class CategoryTypeFilterMixin:
             qs = self.get_category_queryset()
             if qs is not None:
                 kwargs['queryset'] = qs
+                kwargs['help_text'] = PRODUCT_CATEGORY_HELP
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -798,6 +836,7 @@ class CategoryFieldFilterMixin:
             qs = self.get_category_queryset()
             if qs is not None:
                 kwargs['queryset'] = qs
+                kwargs['help_text'] = PRODUCT_CATEGORY_HELP
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -932,24 +971,51 @@ class FavoriteAdmin(admin.ModelAdmin):
 @admin.register(CategoryClothing)
 class ClothingCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий одежды."""
-    list_display = ('name', 'slug', 'gender', 'clothing_type', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'gender', 'clothing_type', 'parent', 'created_at')
+    form = CategoryFormCatalogHints
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'gender', 'clothing_type', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'category_type', 'gender', 'clothing_type', 'parent', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
+    autocomplete_fields = ('category_type',)
     inlines = [CategoryTranslationInline]
     
     fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
+        (None, {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
+        }),
+        (_('Тип категории'), {
+            'fields': ('category_type',),
+            'description': _('Выберите тип "Одежда". Исламская одежда — отдельная категория.'),
+        }),
         (_('Clothing'), {'fields': ('gender', 'clothing_type')}),
-        (_('Hierarchy'), {'fields': ('parent',)}),
+        (_('Иерархия (L1/L2/L3)'), {
+            'fields': ('parent',),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
+        }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
-    
+    list_select_related = ('category_type', 'parent', 'parent__parent')
+
+    def level_display(self, obj):
+        return _category_level_display(obj)
+    level_display.short_description = _("Уровень")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'parent':
+            from .models import Category
+            kwargs['queryset'] = Category.objects.filter(
+                category_type__slug='clothing',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+            kwargs['help_text'] = CATEGORY_PARENT_HELP
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def get_queryset(self, request):
-        """Фильтруем только корневые категории одежды (где clothing_type не пустое)."""
-        return super().get_queryset(request).filter(clothing_type__isnull=False).exclude(clothing_type='').filter(parent__isnull=True)
+        """Показываем категории одежды (clothing) и подкатегории. Исламская одежда — отдельный тип."""
+        return super().get_queryset(request).filter(category_type__slug='clothing')
 
 
 class ClothingVariantInline(admin.TabularInline):
@@ -1077,6 +1143,13 @@ class ClothingVariantAdmin(admin.ModelAdmin):
     try_price_with_margin.short_description = _('TRY*')
 
 
+def _product_category_path(obj):
+    """Путь категории для отображения в списке товаров: L1 › L2 › L3."""
+    if obj.category:
+        return obj.category.get_breadcrumb_path()
+    return "—"
+
+
 @admin.register(ClothingProduct)
 class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров одежды."""
@@ -1084,14 +1157,20 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
 
     def get_category_queryset(self):
-        """Показываем все категории одежды: базовую 'Одежда', 'Исламская одежда' и с clothing_type."""
+        """Показываем все категории одежды (L1, L2, L3) для выбора при привязке товара."""
         from .models import Category
         return Category.objects.filter(
-            Q(slug='clothing') | Q(slug='islamic-clothing') | (Q(clothing_type__isnull=False) & ~Q(clothing_type='')),
+            category_type__slug='clothing',
             is_active=True,
         ).order_by('sort_order', 'name')
-    list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
+
+    def category_path(self, obj):
+        return _product_category_path(obj)
+    category_path.short_description = _("Категория")
+
+    list_display = ('name', 'slug', 'category_path', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'currency', 'created_at')
+    list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
     search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
@@ -1100,7 +1179,10 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Categorization'), {'fields': ('category', 'brand')}),
+        (_('Categorization'), {
+            'fields': ('category', 'brand'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('SEO (EN)'), {
@@ -1252,7 +1334,8 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
 @admin.register(CategoryShoes)
 class ShoeCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий обуви."""
-    list_display = ('name', 'slug', 'gender', 'shoe_type', 'parent', 'is_active', 'sort_order', 'created_at')
+    form = CategoryFormCatalogHints
+    list_display = ('name', 'slug', 'level_display', 'gender', 'shoe_type', 'parent', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'gender', 'shoe_type', 'parent', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
@@ -1260,9 +1343,15 @@ class ShoeCategoryAdmin(admin.ModelAdmin):
     inlines = [CategoryTranslationInline]
     
     fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
+        (None, {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
+        }),
         (_('Shoes'), {'fields': ('gender', 'shoe_type')}),
-        (_('Hierarchy'), {'fields': ('parent',)}),
+        (_('Иерархия (L1/L2/L3)'), {
+            'fields': ('parent',),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
+        }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
         (_('Подсказка'), {
@@ -1274,26 +1363,24 @@ class ShoeCategoryAdmin(admin.ModelAdmin):
             )
         }),
     )
-    
+    list_select_related = ('parent', 'parent__parent')
+
+    def level_display(self, obj):
+        return _category_level_display(obj)
+    level_display.short_description = _("Уровень")
+
     def get_queryset(self, request):
-        return super().get_queryset(request).filter(
-            Q(shoe_type__isnull=False) & ~Q(shoe_type='')
-            | (
-                Q(parent__isnull=True)
-                & Q(gender__isnull=False)
-                & Q(clothing_type__isnull=True)
-                & Q(device_type__isnull=True)
-            )
-        )
+        """Показываем все категории обуви (shoes) — корневые и подкатегории."""
+        return super().get_queryset(request).filter(category_type__slug='shoes')
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'parent':
+            # Показываем все категории обуви (L1, L2) для выбора родителя — можно создать L3
             kwargs['queryset'] = Category.objects.filter(
-                Q(parent__isnull=True)
-                & Q(gender__isnull=False)
-                & Q(clothing_type__isnull=True)
-                & Q(device_type__isnull=True)
-            )
+                category_type__slug='shoes',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+            kwargs['help_text'] = CATEGORY_PARENT_HELP
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -1434,8 +1521,22 @@ class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAd
     """Админка для товаров обуви."""
     category_field_name = "shoe_type"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
-    list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
+
+    def get_category_queryset(self):
+        """Показываем все категории обуви (L1, L2, L3) для выбора при привязке товара."""
+        from .models import Category
+        return Category.objects.filter(
+            category_type__slug='shoes',
+            is_active=True,
+        ).order_by('sort_order', 'name')
+
+    def category_path(self, obj):
+        return _product_category_path(obj)
+    category_path.short_description = _("Категория")
+
+    list_display = ('name', 'slug', 'category_path', 'brand', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'currency', 'created_at')
+    list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
     search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
@@ -1444,7 +1545,10 @@ class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAd
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Categorization'), {'fields': ('category', 'brand')}),
+        (_('Categorization'), {
+            'fields': ('category', 'brand'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
         (_('SEO (EN)'), {
@@ -1600,24 +1704,46 @@ class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAd
 @admin.register(CategoryElectronics)
 class ElectronicsCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий электроники."""
-    list_display = ('name', 'slug', 'device_type', 'parent', 'is_active', 'sort_order', 'created_at')
+    form = CategoryFormCatalogHints
+    list_display = ('name', 'slug', 'level_display', 'device_type', 'parent', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'device_type', 'parent', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
     inlines = [CategoryTranslationInline]
+    list_select_related = ('parent', 'parent__parent')
+    
+    def level_display(self, obj):
+        return _category_level_display(obj)
+    level_display.short_description = _("Уровень")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'parent':
+            from .models import Category
+            kwargs['queryset'] = Category.objects.filter(
+                category_type__slug='electronics',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+            kwargs['help_text'] = CATEGORY_PARENT_HELP
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
+        (None, {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
+        }),
         (_('Electronics'), {'fields': ('device_type',)}),
-        (_('Hierarchy'), {'fields': ('parent',)}),
+        (_('Иерархия (L1/L2/L3)'), {
+            'fields': ('parent',),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
+        }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
     
     def get_queryset(self, request):
-        """Фильтруем только корневые категории электроники (где device_type не пустое)."""
-        return super().get_queryset(request).filter(device_type__isnull=False).exclude(device_type='').filter(parent__isnull=True)
+        """Показываем все категории электроники (electronics) — корневые и подкатегории."""
+        return super().get_queryset(request).filter(category_type__slug='electronics')
 
 
 @admin.register(ElectronicsProduct)
@@ -1625,15 +1751,32 @@ class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.
     """Админка для товаров электроники."""
     category_field_name = "device_type"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
-    list_display = ('name', 'slug', 'category', 'brand', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
+
+    def get_category_queryset(self):
+        """Показываем все категории электроники (L1, L2, L3) для выбора при привязке товара."""
+        from .models import Category
+        return Category.objects.filter(
+            category_type__slug='electronics',
+            is_active=True,
+        ).order_by('sort_order', 'name')
+
+    def category_path(self, obj):
+        return _product_category_path(obj)
+    category_path.short_description = _("Категория")
+
+    list_display = ('name', 'slug', 'category_path', 'brand', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_available', 'is_new', 'is_featured', 'category', 'brand', 'currency', 'created_at')
+    list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
     search_fields = ('name', 'slug', 'description', 'model')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Categorization'), {'fields': ('category', 'brand')}),
+        (_('Categorization'), {
+            'fields': ('category', 'brand'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
         (_('Electronics'), {'fields': ('model', 'specifications', 'warranty', 'power_consumption')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
@@ -1687,7 +1830,10 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Mod
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Categorization'), {'fields': ('category', 'brand')}),
+        (_('Categorization'), {
+            'fields': ('category', 'brand'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
         (_('Furniture'), {'fields': ('material', 'furniture_type', 'dimensions')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
@@ -1786,7 +1932,10 @@ class JewelryProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Model
     readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Категоризация'), {'fields': ('category', 'brand')}),
+        (_('Категоризация'), {
+            'fields': ('category', 'brand'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
         (_('Украшение'), {'fields': ('jewelry_type', 'gender', 'material', 'metal_purity', 'stone_type', 'carat_weight')}),
         (_('Цены'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Наличие'), {'fields': ('is_available', 'stock_quantity')}),
@@ -2217,7 +2366,7 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
     fieldsets = (
         (_('Основная информация'), {
             'fields': ('name', 'slug', 'description'),
-            'description': _('Введите название категории. Slug будет автоматически сгенерирован из названия.'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется автоматически.'),
         }),
         (_('Тип категории (обязательно)'), {
             'fields': ('category_type',),
@@ -2226,9 +2375,9 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
                 'Это определяет, к какому разделу товаров относится категория.'
             ),
         }),
-        (_('Иерархия'), {
+        (_('Иерархия (L1/L2/L3)'), {
             'fields': ('parent',),
-            'description': _('Оставьте пустым для создания корневой категории, или выберите родительскую категорию для создания подкатегории.'),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
         }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),

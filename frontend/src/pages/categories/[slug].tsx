@@ -11,7 +11,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios from 'axios'
 import api, { getApiForCategory } from '../../lib/api'
 import ProductCard from '../../components/ProductCard'
-import CategorySidebar, { FilterState, SidebarTreeItem, SidebarTreeSection } from '../../components/CategorySidebar'
+import CategorySidebar, { FilterState, SidebarTreeItem, SidebarTreeSection, AvailableAttribute } from '../../components/CategorySidebar'
 import Pagination from '../../components/Pagination'
 
 interface Product {
@@ -111,6 +111,7 @@ interface CategoryPageProps {
   bookPublishers?: string[]
   bookLanguages?: string[]
   subcategories?: Category[]
+  availableAttributes?: AvailableAttribute[]
   categoryName: string
   categoryDescription?: string
   totalCount: number
@@ -296,6 +297,13 @@ const formatPrice = (value: string | number | null | undefined): string | null =
 const areFilterArraysEqual = (left: Array<string | number>, right: Array<string | number>) =>
   left.length === right.length && left.every((value, index) => value === right[index])
 
+const areAttributesEqual = (a?: Record<string, string[]>, b?: Record<string, string[]>) => {
+  const keysA = Object.keys(a || {})
+  const keysB = Object.keys(b || {})
+  if (keysA.length !== keysB.length) return false
+  return keysA.every((k) => areFilterArraysEqual(a![k] || [], b?.[k] || []))
+}
+
 const areFiltersEqual = (left: FilterState, right: FilterState) =>
   areFilterArraysEqual(left.categories, right.categories) &&
   areFilterArraysEqual(left.categorySlugs, right.categorySlugs) &&
@@ -307,11 +315,7 @@ const areFiltersEqual = (left: FilterState, right: FilterState) =>
   areFilterArraysEqual(left.genreIds || [], right.genreIds || []) &&
   areFilterArraysEqual(left.publishers || [], right.publishers || []) &&
   areFilterArraysEqual(left.languages || [], right.languages || []) &&
-  areFilterArraysEqual(left.shoeTypes || [], right.shoeTypes || []) &&
-  areFilterArraysEqual(left.clothingItems || [], right.clothingItems || []) &&
-  areFilterArraysEqual(left.jewelryMaterials || [], right.jewelryMaterials || []) &&
-  areFilterArraysEqual(left.jewelryGender || [], right.jewelryGender || []) &&
-  areFilterArraysEqual(left.headwearTypes || [], right.headwearTypes || []) &&
+  areAttributesEqual(left.attributes, right.attributes) &&
   left.inStock === right.inStock &&
   left.isNew === right.isNew &&
   left.sortBy === right.sortBy &&
@@ -347,66 +351,23 @@ const createTreeItem = (category: Category, allCategories: Category[]): SidebarT
  * а их детей показывает как вложенные пункты.
  */
 const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => {
-  const genderGroups = [
-    { key: 'men', title: 'Мужская одежда' },
-    { key: 'women', title: 'Женская одежда' },
-    { key: 'kids', title: 'Детская одежда' },
-  ]
+  const roots = categories.filter((c) => !c.parent)
+  const rootIds = new Set(roots.map((r) => r.id))
+  // Прямые дети корня (L2: Куртка, Платья и т.д.)
+  const level2 = categories
+    .filter((c) => c.parent != null && rootIds.has(c.parent as number))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
 
-  // Запасные ключевые слова, если поле gender не заполнено
-  const genderKeywordsFallback: Record<string, string[]> = {
-    men: ['male', 'men', 'муж'],
-    women: ['female', 'women', 'жен'],
-    kids: ['kids', 'children', 'дет'],
-  }
+  if (level2.length === 0) return []
 
-  const sections: SidebarTreeSection[] = []
+  // Строим полное дерево: L2 → L3 → L4... (рекурсивно через createTreeItem)
+  const treeItems: SidebarTreeItem[] = level2.map((cat) => createTreeItem(cat, categories))
 
-  genderGroups.forEach(({ key, title }) => {
-    // Категории 2-го уровня данного гендера (т.е. имеют родителя)
-    const level2 = categories.filter((cat) => {
-      if (!cat.parent) return false
-      if (cat.gender) return cat.gender === key
-      const kws = genderKeywordsFallback[key] || []
-      return kws.some((kw) => cat.slug.includes(kw) || cat.name.toLowerCase().includes(kw))
-    })
-
-    if (level2.length === 0) return
-
-    // Дети каждой level2-категории — пункты подфильтра
-    const subcategories: SidebarTreeItem[] = level2
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
-      .map((cat) => {
-        const children = categories.filter((c) => c.parent === cat.id)
-        if (children.length > 0) {
-          return {
-            id: `cat-${cat.id}`,
-            name: cat.name,
-            slug: cat.slug,
-            dataId: cat.id,
-            count: cat.product_count,
-            type: 'category' as const,
-            translations: cat.translations,
-            children: children
-              .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
-              .map(c => createTreeItem(c, categories)),
-          }
-        }
-        return createTreeItem(cat, categories)
-      })
-
-    sections.push({
-      title,
-      items: [{
-        id: `section-clothing-${key}`,
-        name: title,
-        type: 'category' as const,
-        children: subcategories,
-      }],
-    } as SidebarTreeSection)
-  })
-
-  return sections
+  return [{
+    title: 'Предметы одежды',
+    titleKey: 'sidebar_clothing_items',
+    items: treeItems,
+  } as SidebarTreeSection]
 }
 
 /**
@@ -491,15 +452,69 @@ const buildPerfumerySections = (categories: Category[]): SidebarTreeSection[] =>
   return sections
 }
 
+/**
+ * Строит разделы сайдбара для обуви: полное дерево L2 → L3 → ...
+ */
+const buildShoesSections = (categories: Category[]): SidebarTreeSection[] => {
+  return buildGenericTreeSections(categories, 'Типы обуви', 'sidebar_shoe_types')
+}
+
+/**
+ * Универсальное построение дерева категорий: L2 → L3 → ...
+ * Используется для electronics, furniture, jewelry, accessories и др.
+ */
+const buildGenericTreeSections = (
+  categories: Category[],
+  defaultTitle: string,
+  titleKey?: string
+): SidebarTreeSection[] => {
+  const roots = categories.filter((c) => !c.parent)
+  const rootIds = new Set(roots.map((r) => r.id))
+  const level2 = categories
+    .filter((c) => c.parent != null && rootIds.has(c.parent as number))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+
+  if (level2.length === 0) return []
+
+  const treeItems: SidebarTreeItem[] = level2.map((cat) => createTreeItem(cat, categories))
+
+  return [{
+    title: defaultTitle,
+    titleKey: titleKey || undefined,
+    items: treeItems,
+  } as SidebarTreeSection]
+}
+
 const getCategorySections = (type: CategoryPageProps['categoryType'], categories: Category[]): SidebarTreeSection[] => {
   if (type === 'clothing') {
     return buildClothingSections(categories)
+  }
+  if (type === 'shoes') {
+    return buildShoesSections(categories)
   }
   if (type === 'medicines') {
     return buildMedicineSections(categories)
   }
   if (type === 'perfumery') {
     return buildPerfumerySections(categories)
+  }
+  // Электроника, мебель, украшения, аксессуары, посуда, БАДы, медтехника, нижнее бельё, головные уборы
+  const genericTypes: Record<string, { title: string; key?: string }> = {
+    electronics: { title: 'Категории', key: 'sidebar_electronics_categories' },
+    furniture: { title: 'Категории', key: 'sidebar_furniture_categories' },
+    jewelry: { title: 'Категории', key: 'sidebar_jewelry_categories' },
+    accessories: { title: 'Категории', key: 'sidebar_accessories_categories' },
+    tableware: { title: 'Категории', key: 'sidebar_tableware_categories' },
+    supplements: { title: 'Категории', key: 'sidebar_supplements_categories' },
+    'medical-equipment': { title: 'Категории', key: 'sidebar_medical_equipment_categories' },
+    underwear: { title: 'Категории', key: 'sidebar_underwear_categories' },
+    headwear: { title: 'Категории', key: 'sidebar_headwear_categories' },
+    incense: { title: 'Категории', key: 'sidebar_incense_categories' },
+  }
+  const normalizedType = (type || '').toString().replace(/_/g, '-')
+  const config = genericTypes[normalizedType]
+  if (config) {
+    return buildGenericTreeSections(categories, config.title, config.key)
   }
   return []
 }
@@ -514,26 +529,6 @@ const normalizePageParam = (value: string | string[] | undefined): number => {
     return 1
   }
   return parsed
-}
-
-const JEWELRY_MATERIAL_MAP: Record<string, string[]> = {
-  gold: ['gold', 'золото', 'золот'],
-  silver: ['silver', 'серебро', 'серебр'],
-  bijouterie: ['bijouterie', 'бижут']
-}
-
-const expandJewelryMaterials = (values: string[]): string[] => {
-  const out = new Set<string>()
-  values.forEach((value) => {
-    const key = normalizeSlug(value)
-    const mapped = JEWELRY_MATERIAL_MAP[key]
-    if (mapped && mapped.length > 0) {
-      mapped.forEach((m) => out.add(m))
-    } else if (key) {
-      out.add(key)
-    }
-  })
-  return Array.from(out)
 }
 
 const mapJewelryTypeFromSlug = (slug: string): string | null => {
@@ -556,19 +551,8 @@ const mapJewelryTypesFromSlugs = (slugs: string[]): string[] => {
   return Array.from(out)
 }
 
-// Фронтовая фильтрация по дополнительным фильтрам (без нагрузки на бэкенд)
-const filterProductsByExtraFilters = (products: Product[], filters: FilterState, categoryType: CategoryTypeKey) => {
-  console.log(`filterProductsByExtraFilters: ${products.length} products, categoryType: ${categoryType}`)
-
-  const norm = (v: any) => normalizeSlug(v)
-  const getCatSlug = (p: any) => norm(p?.category?.slug || (p as any).category_slug || '')
-  const tokenize = (value: any) =>
-    (value || '')
-      .toString()
-      .toLowerCase()
-      .replace(/[^a-zа-яё0-9]+/gi, ' ')
-      .split(' ')
-      .filter(Boolean)
+// Фронтовая фильтрация по цене и isNew (attr_* и категории обрабатываются на бэкенде)
+const filterProductsByExtraFilters = (products: Product[], filters: FilterState, _categoryType: CategoryTypeKey) => {
   const getDisplayPriceNumber = (product: Product) => {
     const candidate = product.active_variant_price ?? product.price_formatted ?? product.price
     const parsed = parsePriceWithCurrency(candidate)
@@ -637,137 +621,6 @@ const filterProductsByExtraFilters = (products: Product[], filters: FilterState,
     })
   }
 
-  if (categoryType === 'shoes' && filters.shoeTypes && filters.shoeTypes.length) {
-    const wanted = new Set(filters.shoeTypes.map(norm))
-    result = result.filter((p) => {
-      const cat = getCatSlug(p)
-      return Array.from(wanted).some((w) => cat.includes(w) || norm(p.slug).includes(w))
-    })
-  }
-
-  if (categoryType === 'shoes' && filters.subcategorySlugs && filters.subcategorySlugs.length) {
-    const genderSlugs = filters.subcategorySlugs.map(norm).filter((s) => ['women', 'men', 'kids', 'unisex'].includes(s))
-    if (genderSlugs.length > 0) {
-      const wantedG = new Set(genderSlugs)
-      const keywordMap: Record<string, string[]> = {
-        women: ['women', 'woman', 'female', 'lady', 'ladies', 'womens', 'жен', 'женск', 'женская', 'женские'],
-        men: ['men', 'man', 'male', 'mens', 'gent', 'муж', 'мужск', 'мужская', 'мужские'],
-        kids: ['kids', 'kid', 'child', 'children', 'дет', 'детск', 'детская', 'детские'],
-        unisex: ['unisex', 'uniseks', 'унисекс']
-      }
-      result = result.filter((p) => {
-        const variantGenders = Array.isArray((p as any).variants)
-          ? (p as any).variants.map((v: any) => v?.gender)
-          : []
-        const tokens = [
-          ...tokenize((p as any)?.gender),
-          ...tokenize((p as any)?.category?.gender),
-          ...tokenize((p as any)?.category?.slug),
-          ...tokenize((p as any)?.category?.name),
-          ...tokenize((p as any)?.name),
-          ...tokenize((p as any)?.slug),
-          ...variantGenders.flatMap(tokenize),
-        ]
-        const detected = new Set<string>()
-        tokens.forEach((token) => {
-          Object.entries(keywordMap).forEach(([genderKey, keys]) => {
-            if (keys.includes(token)) detected.add(genderKey)
-          })
-        })
-        return Array.from(wantedG).some((w) => detected.has(w))
-      })
-    }
-  }
-
-  if (categoryType === 'clothing' && filters.clothingItems && filters.clothingItems.length) {
-    const wanted = new Set(filters.clothingItems.map(norm))
-    result = result.filter((p) => {
-      const cat = getCatSlug(p)
-      return Array.from(wanted).some((w) => cat.includes(w) || norm(p.slug).includes(w))
-    })
-  }
-
-  if (categoryType === 'furniture' && filters.furnitureTypes && filters.furnitureTypes.length) {
-    const wanted = new Set(filters.furnitureTypes.map(norm))
-    result = result.filter((p) => {
-      const furnitureType = norm(p.furniture_type)
-      const cat = getCatSlug(p)
-      return Array.from(wanted).some((w) => (furnitureType && furnitureType.includes(w)) || cat.includes(w))
-    })
-  }
-  if (categoryType === 'furniture' && filters.subcategorySlugs && filters.subcategorySlugs.length) {
-    const wanted = new Set(filters.subcategorySlugs.map(norm))
-    result = result.filter((p) => {
-      const cat = getCatSlug(p)
-      const slug = norm(p.slug)
-      return Array.from(wanted).some((w) => (cat && cat.includes(w)) || (slug && slug.includes(w)))
-    })
-  }
-
-  if (categoryType === 'jewelry') {
-    if (filters.jewelryMaterials && filters.jewelryMaterials.length) {
-      const wanted = new Set(expandJewelryMaterials(filters.jewelryMaterials).map(norm))
-      result = result.filter((p) => {
-        const material = norm((p as any).material)
-        const variantMaterials = Array.isArray((p as any).variants)
-          ? (p as any).variants.map((v: any) => norm(v?.material))
-          : []
-        const cat = getCatSlug(p)
-        return Array.from(wanted).some((w) => (material && material.includes(w)) || variantMaterials.some((m: string) => m.includes(w)) || cat.includes(w))
-      })
-    }
-    if (filters.jewelryGender && filters.jewelryGender.length) {
-      const wantedG = new Set(filters.jewelryGender.map(norm))
-      const keywordMap: Record<string, string[]> = {
-        women: ['women', 'female', 'жен', 'женск', 'lady', 'women-s'],
-        men: ['men', 'male', 'муж', 'мужск', 'gent', 'mens'],
-        kids: ['kids', 'kid', 'child', 'children', 'дет', 'детск'],
-        unisex: ['unisex', 'унисекс', 'uniseks']
-      }
-      result = result.filter((p) => {
-        const cat = getCatSlug(p)
-        const catName = norm((p as any)?.category?.name || '')
-        const productName = norm((p as any)?.name || '')
-        const productGender = norm((p as any)?.gender || (p as any)?.category?.gender || '')
-        const variantGenders = Array.isArray((p as any).variants)
-          ? (p as any).variants.map((v: any) => norm(v?.gender))
-          : []
-        return Array.from(wantedG).some((w) => {
-          const keywords = keywordMap[w] || [w]
-          return keywords.some((kw) =>
-            cat.includes(kw) ||
-            catName.includes(kw) ||
-            productName.includes(kw) ||
-            productGender.includes(kw) ||
-            variantGenders.some((vg: string) => vg.includes(kw))
-          )
-        })
-      })
-    }
-    if (filters.subcategorySlugs && filters.subcategorySlugs.length > 0) {
-      const wantedTypes = new Set(mapJewelryTypesFromSlugs(filters.subcategorySlugs))
-      if (wantedTypes.size > 0) {
-        result = result.filter((p) => {
-          const productType = norm((p as any).jewelry_type)
-          const cat = getCatSlug(p)
-          return Array.from(wantedTypes).some((w) => (productType && productType.includes(w)) || cat.includes(w))
-        })
-      }
-    }
-  }
-
-  if (categoryType === 'headwear' && filters.headwearTypes && filters.headwearTypes.length) {
-    const wanted = new Set(filters.headwearTypes.map(norm))
-    result = result.filter((p) => {
-      const cat = getCatSlug(p)
-      return Array.from(wanted).some((w) => cat.includes(w) || norm(p.slug).includes(w))
-    })
-  }
-
-  // Для книг не применяем фильтрацию - показываем все книги
-
-  console.log(`filterProductsByExtraFilters result: ${result.length} products`)
-
   return result
 }
 
@@ -781,6 +634,7 @@ export default function CategoryPage({
   bookPublishers = [],
   bookLanguages = [],
   subcategories = [],
+  availableAttributes: initialAvailableAttributes = [],
   categoryName,
   categoryDescription,
   totalCount: initialTotalCount,
@@ -941,6 +795,7 @@ export default function CategoryPage({
   const [currentPage, setCurrentPage] = useState(initialCurrentPage)
   const [totalPages, setTotalPages] = useState(initialTotalPages)
   const [loading, setLoading] = useState(false)
+  const [availableAttributes, setAvailableAttributes] = useState<AvailableAttribute[]>(initialAvailableAttributes)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [brandOptions, setBrandOptions] = useState<Brand[]>(brands || [])
@@ -965,11 +820,7 @@ export default function CategoryPage({
     inStock: false,
     isNew: false,
     sortBy: 'name_asc',
-    shoeTypes: [],
-    clothingItems: [],
-    jewelryMaterials: [],
-    jewelryGender: [],
-    headwearTypes: []
+    attributes: {}
   }), [])
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
   const extraFiltersInitialized = useRef<string>('')
@@ -1083,11 +934,9 @@ export default function CategoryPage({
     if (extraFiltersInitialized.current === initKey) return
     const genderParam = router.query.gender
     const subcategoryParam = router.query.subcategory_slug
-    const shoeTypeParam = router.query.shoe_type
     const gender = Array.isArray(genderParam) ? genderParam[0] : genderParam
     const subcategorySlug = Array.isArray(subcategoryParam) ? subcategoryParam[0] : subcategoryParam
-    const shoeType = Array.isArray(shoeTypeParam) ? shoeTypeParam[0] : shoeTypeParam
-    if (!gender && !subcategorySlug && !shoeType) {
+    if (!gender && !subcategorySlug) {
       extraFiltersInitialized.current = initKey
       return
     }
@@ -1096,22 +945,17 @@ export default function CategoryPage({
         ...(gender ? [String(gender)] : []),
         ...(subcategorySlug ? [String(subcategorySlug)] : [])
       ]
-      const nextShoeTypes = shoeType ? String(shoeType).split(',').map((v) => v.trim()).filter(Boolean) : []
-      if (
-        prev.subcategorySlugs.join(',') === nextSubcategorySlugs.join(',') &&
-        prev.shoeTypes?.join(',') === nextShoeTypes.join(',')
-      ) {
+      if (prev.subcategorySlugs.join(',') === nextSubcategorySlugs.join(',')) {
         extraFiltersInitialized.current = initKey
         return prev
       }
       extraFiltersInitialized.current = initKey
       return {
         ...prev,
-        subcategorySlugs: nextSubcategorySlugs,
-        shoeTypes: nextShoeTypes
+        subcategorySlugs: nextSubcategorySlugs
       }
     })
-  }, [router.isReady, router.asPath, router.query.gender, router.query.subcategory_slug, router.query.shoe_type])
+  }, [router.isReady, router.asPath, router.query.gender, router.query.subcategory_slug])
 
   useEffect(() => {
     const loadBrands = async () => {
@@ -1222,10 +1066,11 @@ export default function CategoryPage({
           // Для книг используем product_type чтобы показать все книги из всех жанров
           if (categoryType === 'books') {
             params.product_type = 'books'
-          } else if (categoryType === 'shoes' && normalizeSlug(routeSlug) === 'shoes') {
-          } else {
-            params.category_slug = routeSlug
-          }
+      } else if (categoryType === 'shoes' && normalizeSlug(routeSlug) === 'shoes') {
+        params.category_slug = 'shoes'
+      } else {
+        params.category_slug = routeSlug
+      }
         }
 
         if (filters.categories.length > 0) {
@@ -1267,16 +1112,11 @@ export default function CategoryPage({
             params.subcategory_slug = nonGenderSubSlugs.join(',')
           }
         }
-        if (categoryType === 'shoes' && filters.shoeTypes && filters.shoeTypes.length === 1) {
-          params.shoe_type = filters.shoeTypes[0]
-        }
-        if (categoryType === 'jewelry') {
-          const jewelryGenderSlugs = filters.jewelryGender.map((s) => normalizeSlug(s)).filter(Boolean)
-          if (jewelryGenderSlugs.length > 0) {
-            params.gender = jewelryGenderSlugs.join(',')
-          }
-          if (filters.jewelryMaterials.length > 0) {
-            params.material = expandJewelryMaterials(filters.jewelryMaterials).join(',')
+        if (filters.attributes && Object.keys(filters.attributes).length > 0) {
+          for (const [key, values] of Object.entries(filters.attributes)) {
+            if (values && values.length > 0) {
+              params[`attr_${key}`] = values.join(',')
+            }
           }
         }
         if (filters.priceMin !== undefined) {
@@ -1304,9 +1144,6 @@ export default function CategoryPage({
         if (filters.isNew && (!filters.sortBy || filters.sortBy === 'name_asc')) {
           params.ordering = '-created_at'
         }
-        if (categoryType === 'furniture' && filters.furnitureTypes && filters.furnitureTypes.length > 0) {
-          params.furniture_type = filters.furnitureTypes
-        }
         if (categoryType === 'books') {
           if (filters.authorIds && filters.authorIds.length > 0) {
             params.author_id = filters.authorIds
@@ -1330,30 +1167,18 @@ export default function CategoryPage({
         const response = await api.get(productsEndpoint, { params })
         const data = response.data
         const productsList = Array.isArray(data) ? data : (data.results || [])
-        let filteredList = filterProductsByExtraFilters(productsList, filters, categoryType)
-        // Используем count из API для правильной пагинации
-        let count = data.count || filteredList.length
+        const filteredList = filterProductsByExtraFilters(productsList, filters, categoryType)
+        const count = data.count ?? filteredList.length
+        const attrs = data.available_attributes as AvailableAttribute[] | undefined
 
-        if (
-          categoryType === 'jewelry' &&
-          (filters.jewelryMaterials.length > 0 || filters.jewelryGender.length > 0) &&
-          filteredList.length === 0 &&
-          (params.material || params.gender)
-        ) {
-          const retryParams = { ...params }
-          delete retryParams.material
-          delete retryParams.gender
-          const retryResponse = await api.get(productsEndpoint, { params: retryParams })
-          const retryData = retryResponse.data
-          const retryProductsList = Array.isArray(retryData) ? retryData : (retryData.results || [])
-          filteredList = filterProductsByExtraFilters(retryProductsList, filters, categoryType)
-          count = filteredList.length
+        if (isCancelled) return
+        if (attrs && Array.isArray(attrs)) {
+          setAvailableAttributes(attrs)
         }
 
         console.log(`Loaded ${productsList.length} products (after filters: ${filteredList.length}), total count: ${count}`)
         console.log('Category type:', categoryType)
         console.log('Sample product:', productsList[0])
-        if (isCancelled) return
         setProducts(filteredList)
         setTotalCount(count)
         setTotalPages(Math.ceil(count / 12))
@@ -1392,12 +1217,7 @@ export default function CategoryPage({
     filters.inStock,
     filters.isNew,
     filters.sortBy,
-    filters.shoeTypes,
-    filters.clothingItems,
-    filters.furnitureTypes,
-    filters.jewelryMaterials,
-    filters.jewelryGender,
-    filters.headwearTypes,
+    JSON.stringify(filters.attributes || {}),
     currentPage,
     categoryType
   ])
@@ -1648,6 +1468,7 @@ export default function CategoryPage({
               brands={categoryType === 'books' ? [] : brandOptions}
               subcategories={categoryType === 'books' ? [] : displaySubcategories}
               categoryGroups={categoryGroups}
+              availableAttributes={availableAttributes}
               onFilterChange={handleFilterChange}
               isOpen={sidebarOpen}
               onToggle={() => setSidebarOpen(!sidebarOpen)}
@@ -1931,6 +1752,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       if (categoryType === 'books') {
         productParams.product_type = 'books'
       } else if (categoryType === 'shoes' && normalizeSlug(routeSlug) === 'shoes') {
+        productParams.category_slug = 'shoes'
       } else {
         productParams.category_slug = routeSlug
       }
@@ -1965,6 +1787,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     const products = Array.isArray(productsData) ? productsData : (productsData.results || [])
     const totalCount = productsData.count || products.length
+    const availableAttributes: AvailableAttribute[] = Array.isArray(productsData?.available_attributes)
+      ? productsData.available_attributes
+      : []
 
     // --- Фильтры книг ---
     let bookAuthors: Array<{ id: number; name: string }> = []
@@ -2159,6 +1984,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         bookPublishers,
         bookLanguages,
         subcategories,
+        availableAttributes,
         categoryName: categoryInfo.name,
         categoryDescription: categoryInfo.description,
         totalCount,
@@ -2180,6 +2006,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         sidebarCategories: [],
         brands: [],
         subcategories: [],
+        availableAttributes: [],
         categoryName: context.locale === 'en' ? 'Products' : 'Товары',
         categoryDescription: '',
         totalCount: 0,
