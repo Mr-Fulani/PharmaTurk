@@ -4802,6 +4802,8 @@ class SportsVariantSerializer(serializers.ModelSerializer):
 class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     """Списковый сериализатор для спорттоваров."""
     variants = SportsVariantSerializer(many=True, read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     meta_title = serializers.SerializerMethodField()
@@ -4815,7 +4817,7 @@ class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
         model = SportsProduct
         fields = [
             'id', 'slug', 'name', 'price', 'old_price', 'currency', 
-            'is_available', 'is_new', 'is_featured', 'main_image', 
+            'is_available', 'is_new', 'is_featured', 'main_image', 'main_image_url',
             'sport_type', 'equipment_type',
             'price_formatted', 'old_price_formatted',
             'variants',
@@ -4832,6 +4834,17 @@ class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeriali
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
+
+    
     similar_products = serializers.SerializerMethodField()
 
     class Meta:
@@ -4842,7 +4855,7 @@ class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeriali
             'is_available', 'stock_quantity', 
             'is_new', 'is_featured', 
             'created_at', 'updated_at',
-            'category', 'brand', 'main_image', 
+            'category', 'brand', 'main_image', 'main_image_url',
             'translations', 'images', 'variants',
             'sport_type', 'equipment_type', 'material', 
             'price_formatted', 'old_price_formatted', 
@@ -4903,6 +4916,7 @@ class AutoPartVariantSerializer(serializers.ModelSerializer):
 class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     """Списковый сериализатор для автозапчастей."""
     variants = AutoPartVariantSerializer(many=True, read_only=True)
+    main_image_url = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     meta_title = serializers.SerializerMethodField()
@@ -4916,7 +4930,7 @@ class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
         model = AutoPartProduct
         fields = [
             'id', 'slug', 'name', 'price', 'old_price', 'currency', 
-            'is_available', 'is_new', 'is_featured', 'main_image', 
+            'is_available', 'is_new', 'is_featured', 'main_image', 'main_image_url',
             'part_number', 'car_brand', 'car_model',
             'price_formatted', 'old_price_formatted',
             'variants',
@@ -4933,6 +4947,17 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     
+    main_image_url = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
+
+    
     similar_products = serializers.SerializerMethodField()
 
     class Meta:
@@ -4943,7 +4968,7 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
             'is_available', 'stock_quantity', 
             'is_new', 'is_featured', 
             'created_at', 'updated_at',
-            'category', 'brand', 'main_image', 
+            'category', 'brand', 'main_image', 'main_image_url',
             'translations', 'images', 'variants',
             'part_number', 'car_brand', 'car_model', 'compatibility_years',
             'price_formatted', 'old_price_formatted', 
