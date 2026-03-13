@@ -143,6 +143,29 @@ def _parse_decimal(value):
         return None
 
 
+def _apply_gender_filter(queryset, request, multi_param: bool = True):
+    """Фильтр по полу: product.gender ИЛИ category.gender (e-commerce best practice)."""
+    if multi_param:
+        slugs = _parse_multi_param(request, 'gender')
+    else:
+        raw = request.query_params.get('gender')
+        slugs = [raw] if raw and str(raw).strip() else []
+    if not slugs:
+        return queryset
+    return queryset.filter(
+        models.Q(gender__in=slugs) | models.Q(category__gender__in=slugs)
+    )
+
+
+def _parse_multi_param(request, param_name: str) -> list[str]:
+    """Парсит query-параметр: поддерживает gender=women,men и gender[]=women&gender[]=men."""
+    raw_list = request.query_params.getlist(param_name) or []
+    if not raw_list:
+        raw = request.query_params.get(param_name)
+        if raw:
+            raw_list = raw.split(',')
+    return [v.strip().lower().replace('_', '-') for v in raw_list if v and str(v).strip()]
+
 
 from django.db.models import Q
 
@@ -325,6 +348,23 @@ class FacetedModelViewSetMixin:
         """Применяет фильтр по attr_* к queryset. Вызывать в конце get_queryset."""
         return _apply_attr_filters(queryset, self.request)
 
+    def _calculate_available_genders(self, queryset):
+        """Вычисляет доступные значения пола в текущем queryset (product.gender | category.gender)."""
+        model = queryset.model
+        if not hasattr(model, 'gender') and 'category' not in [f.name for f in model._meta.get_fields()]:
+            return []
+        valid = {'men', 'women', 'unisex', 'kids'}
+        seen = set()
+        if hasattr(model, 'gender'):
+            for v in queryset.exclude(gender__in=[None, '']).values_list('gender', flat=True).distinct():
+                if v and str(v).strip().lower() in valid:
+                    seen.add(str(v).strip().lower())
+        if hasattr(model, 'category'):
+            for v in queryset.exclude(category__gender__in=[None, '']).values_list('category__gender', flat=True).distinct():
+                if v and str(v).strip().lower() in valid:
+                    seen.add(str(v).strip().lower())
+        return sorted(seen)
+
     def _calculate_available_attributes(self, queryset):
         """Вычисляет доступные атрибуты для текущего отфильтрованного queryset."""
         model = queryset.model
@@ -367,11 +407,13 @@ class FacetedModelViewSetMixin:
             serializer = self.get_serializer(page, many=True)
             data = self.get_paginated_response(serializer.data).data
             data['available_attributes'] = self._calculate_available_attributes(queryset)
+            data['available_genders'] = self._calculate_available_genders(queryset)
             return Response(data)
         serializer = self.get_serializer(queryset, many=True)
         return Response({
             'results': serializer.data,
             'available_attributes': self._calculate_available_attributes(queryset),
+            'available_genders': self._calculate_available_genders(queryset),
         })
 
 
@@ -587,10 +629,12 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
             return queryset.none()
 
         if primary_slugs:
-            result = queryset.filter(primary_category_slug__in=normalized_primary_slugs).distinct()
+            # Бренд подходит, если: slug в category_slugs ИЛИ (для обратной совместимости) primary_category_slug
+            slugs_canonical = [s.strip().lower().replace('_', '-') for s in primary_slugs if s]
+            q = models.Q(category_slugs__overlap=slugs_canonical) | models.Q(primary_category_slug__in=slugs_canonical)
+            result = queryset.filter(q).distinct()
             if result.exists():
                 return result.order_by('name')
-            # Fallback: если брендов с primary_category_slug нет — ищем по product_type
             if not product_type:
                 return result.order_by('name')
 
@@ -794,6 +838,9 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
         
         # Фильтр по бренду (поддержка массивов)
         queryset = _apply_brand_filter(queryset, self.request)
+        
+        # Фильтр по полу (product.gender | category.gender)
+        queryset = _apply_gender_filter(queryset, self.request)
         
         # Фильтр по поиску
         search = self.request.query_params.get('search')
@@ -1268,10 +1315,8 @@ class ClothingProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelVie
         # Фильтр по бренду (поддержка массивов)
         queryset = _apply_brand_filter(queryset, self.request)
         
-        # Фильтр по полу
-        gender = self.request.query_params.get('gender')
-        if gender:
-            queryset = queryset.filter(category__gender=gender)
+        # Фильтр по полу (product.gender | category.gender)
+        queryset = _apply_gender_filter(queryset, self.request)
         
         # Фильтр по размеру
         size = self.request.query_params.get('size')
@@ -1476,10 +1521,8 @@ class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet
         # Фильтр по бренду (поддержка массивов)
         queryset = _apply_brand_filter(queryset, self.request)
         
-        # Фильтр по полу
-        gender = self.request.query_params.get('gender')
-        if gender:
-            queryset = queryset.filter(category__gender=gender)
+        # Фильтр по полу (product.gender | category.gender)
+        queryset = _apply_gender_filter(queryset, self.request)
         
         # Фильтр по размеру
         size = self.request.query_params.get('size')
@@ -1761,9 +1804,9 @@ class JewelryProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelView
                 cat_ids = _get_category_ids_with_descendants(slugs)
                 if cat_ids:
                     queryset = queryset.filter(category_id__in=cat_ids)
-        gender_slugs = parse_multi_param('gender') or parse_multi_param('jewelry_gender')
+        gender_slugs = _parse_multi_param(self.request, 'gender') or _parse_multi_param(self.request, 'jewelry_gender')
         if gender_slugs:
-            normalized_genders = [g.strip().lower().replace('_', '-') for g in gender_slugs if g]
+            normalized_genders = gender_slugs
             if normalized_genders:
                 q = (
                     models.Q(gender__in=normalized_genders) |
@@ -2722,10 +2765,8 @@ class PerfumeryProductViewSet(viewsets.ReadOnlyModelViewSet):
         if fragrance_families:
             queryset = queryset.filter(fragrance_family__in=fragrance_families)
 
-        # Фильтр по полу
-        gender = self.request.query_params.get('gender')
-        if gender:
-            queryset = queryset.filter(gender=gender)
+        # Фильтр по полу (product.gender | category.gender)
+        queryset = _apply_gender_filter(queryset, self.request)
 
         # Фильтр по объёму
         volume = self.request.query_params.get('volume')
@@ -3077,6 +3118,7 @@ class SportsProductViewSet(_SimpleDomainViewSet):
         equipment_type = self.request.query_params.get('equipment_type')
         if equipment_type:
             queryset = queryset.filter(equipment_type__icontains=equipment_type)
+        queryset = _apply_gender_filter(queryset, self.request)
         return queryset
 
     @extend_schema(

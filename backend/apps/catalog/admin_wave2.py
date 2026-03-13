@@ -75,10 +75,10 @@ class _SimpleDomainAdmin(admin.ModelAdmin):
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
 
     list_display = [
-        'name', 'category', 'price', 'old_price',
+        'name', 'category', 'gender', 'price', 'old_price',
         'is_available', 'is_new', 'is_featured', 'created_at',
     ]
-    list_filter = ['category', 'is_available', 'is_new', 'is_featured', 'created_at']
+    list_filter = ['category', 'gender', 'is_available', 'is_new', 'is_featured', 'created_at']
     list_editable = ['price', 'old_price', 'is_available']
     search_fields = ['name', 'description', 'slug']
     prepopulated_fields = {'slug': ('name',)}
@@ -90,7 +90,7 @@ class _SimpleDomainAdmin(admin.ModelAdmin):
             'fields': ('name', 'slug', 'slug_preview', 'description'),
         }),
         (_('Категоризация'), {
-            'fields': ('category', 'brand'),
+            'fields': ('category', 'brand', 'gender'),
         }),
     )
     _price_fieldsets = (

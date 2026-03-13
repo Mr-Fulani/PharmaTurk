@@ -112,6 +112,7 @@ interface CategoryPageProps {
   bookLanguages?: string[]
   subcategories?: Category[]
   availableAttributes?: AvailableAttribute[]
+  availableGenders?: string[]
   categoryName: string
   categoryDescription?: string
   totalCount: number
@@ -181,20 +182,12 @@ const ensureOtherBrand = (items: Brand[]) => {
   ]
 }
 
-const SHOE_GENDER_FALLBACKS = [
-  { id: -1, slug: 'women', key: 'filter_women', fallback: 'Женская' },
-  { id: -2, slug: 'men', key: 'filter_men', fallback: 'Мужская' },
-  { id: -3, slug: 'kids', key: 'filter_kids', fallback: 'Детская' },
-  { id: -4, slug: 'unisex', key: 'filter_unisex', fallback: 'Унисекс' }
-]
-
 const filterBrandsByProducts = (
   brands: any[],
   categoryType: CategoryTypeKey,
   routeSlug?: string
 ) => {
   const allowedForMedicines = ['medicines', 'supplements', 'medical-equipment']
-  // Для парфюмерии (корень и подкатегории) используем perfumery для сопоставления брендов
   const normalizedCategoryType = normalizeSlug(categoryType)
   const normalizedRouteSlug = normalizeSlug(routeSlug || '')
   const categorySlug = (categoryType === 'perfumery' ? 'perfumery' : normalizeSlug(routeSlug || categoryType))
@@ -211,11 +204,17 @@ const filterBrandsByProducts = (
     return v === categorySlug
   }
 
+  const allowedSlugs = [categorySlug, normalizedCategoryType, normalizedRouteSlug].filter(Boolean)
+
   return brands.filter((b: any) => {
     const bPrim = normalizeSlug(b.primary_category_slug)
     const bType = normalizeSlug((b as any).product_type)
     const bSlug = normalizeSlug(b.slug || b.name)
-    return matchesCategory(bPrim) || matchesCategory(bType) || matchesCategory(bSlug)
+    if (matchesCategory(bPrim) || matchesCategory(bType) || matchesCategory(bSlug)) return true
+    // Бренд в нескольких категориях: category_slugs (Puma: clothing, shoes, sports)
+    const bCategorySlugs = Array.isArray(b.category_slugs) ? b.category_slugs : []
+    if (bCategorySlugs.some((s: string) => allowedSlugs.includes(normalizeSlug(s)))) return true
+    return false
   })
 }
 
@@ -311,6 +310,7 @@ const areFiltersEqual = (left: FilterState, right: FilterState) =>
   areFilterArraysEqual(left.brandSlugs, right.brandSlugs) &&
   areFilterArraysEqual(left.subcategories, right.subcategories) &&
   areFilterArraysEqual(left.subcategorySlugs, right.subcategorySlugs) &&
+  areFilterArraysEqual(left.genders || [], right.genders || []) &&
   areFilterArraysEqual(left.authorIds || [], right.authorIds || []) &&
   areFilterArraysEqual(left.genreIds || [], right.genreIds || []) &&
   areFilterArraysEqual(left.publishers || [], right.publishers || []) &&
@@ -635,6 +635,7 @@ export default function CategoryPage({
   bookLanguages = [],
   subcategories = [],
   availableAttributes: initialAvailableAttributes = [],
+  availableGenders: initialAvailableGenders = [],
   categoryName,
   categoryDescription,
   totalCount: initialTotalCount,
@@ -647,15 +648,7 @@ export default function CategoryPage({
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const { slug } = router.query
-  const shoeGenderOptions = useMemo<Category[]>(() => (
-    SHOE_GENDER_FALLBACKS.map((opt) => ({
-      id: opt.id,
-      slug: opt.slug,
-      name: t(opt.key, opt.fallback),
-      description: '',
-      children_count: 0
-    }))
-  ), [t])
+  const normalizedCategoryType = (categoryType || '').toString().replace(/_/g, '-')
 
   // Сохранение и восстановление позиции скролла при возврате на страницу
   useEffect(() => {
@@ -796,6 +789,8 @@ export default function CategoryPage({
   const [totalPages, setTotalPages] = useState(initialTotalPages)
   const [loading, setLoading] = useState(false)
   const [availableAttributes, setAvailableAttributes] = useState<AvailableAttribute[]>(initialAvailableAttributes)
+  const [availableGenders, setAvailableGenders] = useState<string[]>(initialAvailableGenders)
+  const showGenderFilter = (availableGenders || []).length > 0
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [brandOptions, setBrandOptions] = useState<Brand[]>(brands || [])
@@ -811,6 +806,7 @@ export default function CategoryPage({
     brandSlugs: [],
     subcategories: [],
     subcategorySlugs: [],
+    genders: [],
     authorIds: [],
     genreIds: [],
     publishers: [],
@@ -864,6 +860,8 @@ export default function CategoryPage({
     const nextQuery: Record<string, string | string[] | undefined> = { ...router.query }
     delete nextQuery.page
     delete nextQuery.brand_id
+    delete nextQuery.gender
+    delete nextQuery.subcategory_slug
     router.replace(
       {
         pathname: router.pathname,
@@ -934,24 +932,32 @@ export default function CategoryPage({
     if (extraFiltersInitialized.current === initKey) return
     const genderParam = router.query.gender
     const subcategoryParam = router.query.subcategory_slug
-    const gender = Array.isArray(genderParam) ? genderParam[0] : genderParam
+    const genderRaw = Array.isArray(genderParam) ? genderParam[0] : genderParam
     const subcategorySlug = Array.isArray(subcategoryParam) ? subcategoryParam[0] : subcategoryParam
-    if (!gender && !subcategorySlug) {
+    const genderSlugs = genderRaw
+      ? String(genderRaw).split(',').map((s) => normalizeSlug(s)).filter(Boolean)
+      : []
+    const genderSet = new Set(['women', 'men', 'kids', 'unisex'])
+    const validGenders = genderSlugs.filter((g) => genderSet.has(g))
+    const subcategorySlugs = subcategorySlug ? [String(subcategorySlug)] : []
+    if (validGenders.length === 0 && subcategorySlugs.length === 0) {
       extraFiltersInitialized.current = initKey
       return
     }
     setFilters((prev) => {
-      const nextSubcategorySlugs = [
-        ...(gender ? [String(gender)] : []),
-        ...(subcategorySlug ? [String(subcategorySlug)] : [])
-      ]
-      if (prev.subcategorySlugs.join(',') === nextSubcategorySlugs.join(',')) {
+      const nextGenders = validGenders.length > 0 ? validGenders : prev.genders
+      const nextSubcategorySlugs = subcategorySlugs.length > 0 ? subcategorySlugs : prev.subcategorySlugs
+      if (
+        (prev.genders || []).join(',') === (nextGenders || []).join(',') &&
+        prev.subcategorySlugs.join(',') === nextSubcategorySlugs.join(',')
+      ) {
         extraFiltersInitialized.current = initKey
         return prev
       }
       extraFiltersInitialized.current = initKey
       return {
         ...prev,
+        genders: nextGenders,
         subcategorySlugs: nextSubcategorySlugs
       }
     })
@@ -1085,25 +1091,19 @@ export default function CategoryPage({
         if (filters.brandSlugs.length > 0) {
           params.brand_slug = filters.brandSlugs.join(',')
         }
-        const normalizedRoute = normalizeSlug(routeSlug || '')
+        if ((filters.genders || []).length > 0) {
+          params.gender = filters.genders!.join(',')
+        }
+        if (filters.subcategories.length > 0) {
+          params.subcategory_id = filters.subcategories
+        }
         const normalizedSubSlugs = filters.subcategorySlugs.map((s) => normalizeSlug(s))
         const jewelryTypeFilters = categoryType === 'jewelry'
           ? mapJewelryTypesFromSlugs(filters.subcategorySlugs)
           : []
-        const shoeGenderSet = new Set(['women', 'men', 'kids', 'unisex'])
-        const shoeGenderSlugs = categoryType === 'shoes' && normalizedRoute === 'shoes'
-          ? normalizedSubSlugs.filter((s) => shoeGenderSet.has(s))
-          : []
-        const nonGenderSubSlugs = categoryType === 'shoes' && normalizedRoute === 'shoes'
-          ? normalizedSubSlugs.filter((s) => !shoeGenderSet.has(s))
-          : normalizedSubSlugs
-        if (shoeGenderSlugs.length === 0 && filters.subcategories.length > 0) {
-          params.subcategory_id = filters.subcategories
-        }
-        if (shoeGenderSlugs.length === 1) {
-          params.gender = shoeGenderSlugs[0]
-        } else if (nonGenderSubSlugs.length > 0) {
-          // Для книг и мебели используем category_slug вместо subcategory_slug
+        const genderSet = new Set(['women', 'men', 'kids', 'unisex'])
+        const nonGenderSubSlugs = normalizedSubSlugs.filter((s) => !genderSet.has(s))
+        if (nonGenderSubSlugs.length > 0) {
           if (categoryType === 'jewelry' && jewelryTypeFilters.length > 0) {
             params.jewelry_type = jewelryTypeFilters.join(',')
           } else if (categoryType === 'books' || categoryType === 'furniture' || categoryType === 'uslugi') {
@@ -1175,6 +1175,10 @@ export default function CategoryPage({
         if (attrs && Array.isArray(attrs)) {
           setAvailableAttributes(attrs)
         }
+        const genders = data.available_genders as string[] | undefined
+        if (genders && Array.isArray(genders)) {
+          setAvailableGenders(genders)
+        }
 
         console.log(`Loaded ${productsList.length} products (after filters: ${filteredList.length}), total count: ${count}`)
         console.log('Category type:', categoryType)
@@ -1208,6 +1212,7 @@ export default function CategoryPage({
     filters.brandSlugs,
     filters.subcategories,
     filters.subcategorySlugs,
+    filters.genders?.join(','),
     filters.authorIds,
     filters.genreIds,
     filters.publishers,
@@ -1316,9 +1321,8 @@ export default function CategoryPage({
   const displaySubcategories = useMemo(() => {
     if (categoryType === 'books') return []
     if (resolvedSubcategories.length > 0) return resolvedSubcategories
-    if (isRootCategoryPage && categoryType === 'shoes') return shoeGenderOptions
     return []
-  }, [resolvedSubcategories, isRootCategoryPage, categoryType, shoeGenderOptions])
+  }, [resolvedSubcategories, categoryType])
 
   // Фиксируем список категорий для сайтбара на первом рендере, чтобы он не затирался гидрацией
   const initialSidebarCategoriesRef = useRef<Category[]>(Array.isArray(sidebarCategories) && sidebarCategories.length > 0 ? sidebarCategories : categories)
@@ -1479,6 +1483,7 @@ export default function CategoryPage({
               bookLanguages={bookLanguages}
               showSubcategories={categoryType !== 'books' && displaySubcategories.length > 0}
               showCategories={!isRootCategoryPage}
+              showGenderFilter={showGenderFilter}
               categoryType={categoryType}
             />
           </div>
@@ -1790,6 +1795,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const availableAttributes: AvailableAttribute[] = Array.isArray(productsData?.available_attributes)
       ? productsData.available_attributes
       : []
+    const availableGenders: string[] = Array.isArray(productsData?.available_genders)
+      ? productsData.available_genders
+      : []
 
     // --- Фильтры книг ---
     let bookAuthors: Array<{ id: number; name: string }> = []
@@ -1985,6 +1993,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         bookLanguages,
         subcategories,
         availableAttributes,
+        availableGenders,
         categoryName: categoryInfo.name,
         categoryDescription: categoryInfo.description,
         totalCount,
@@ -2007,6 +2016,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         brands: [],
         subcategories: [],
         availableAttributes: [],
+        availableGenders: [],
         categoryName: context.locale === 'en' ? 'Products' : 'Товары',
         categoryDescription: '',
         totalCount: 0,

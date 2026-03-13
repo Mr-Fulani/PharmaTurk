@@ -9,7 +9,7 @@ from .models import (
     PerfumeryProductTranslation, PerfumeryProductImage,
     PerfumeryVariant, PerfumeryVariantImage,
     Category,
-    FRAGRANCE_TYPE_CHOICES, FRAGRANCE_FAMILY_CHOICES, PERFUMERY_GENDER_CHOICES,
+    FRAGRANCE_TYPE_CHOICES, FRAGRANCE_FAMILY_CHOICES,
 )
 
 

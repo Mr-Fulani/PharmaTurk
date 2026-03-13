@@ -9,6 +9,8 @@ from .models import (
     ClothingVariantImage,
     ShoeVariantImage,
     Category,
+    Brand,
+    CategoryType,
     validate_card_media_file_size,
 )
 
@@ -177,3 +179,38 @@ class CategoryForm(forms.ModelForm):
         if parent and parent.parent_id:
             raise ValidationError(_("Родитель должен быть корневой категорией."))
         return cleaned_data
+
+
+def _get_brand_category_choices():
+    """Динамический список категорий из CategoryType (добавляются через админку)."""
+    return list(
+        CategoryType.objects.filter(is_active=True)
+        .order_by("sort_order", "name")
+        .values_list("slug", "name")
+    )
+
+
+class BrandAdminForm(forms.ModelForm):
+    """Форма бренда с чекбоксами для выбора категорий (список из CategoryType)."""
+
+    category_slugs = forms.MultipleChoiceField(
+        choices=[],  # заполняется в __init__ из CategoryType
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        label=_("Категории бренда"),
+        help_text=_("Отметьте категории, в которых представлен бренд. Список берётся из «Типы категорий»."),
+    )
+
+    class Meta:
+        model = Brand
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["category_slugs"].choices = _get_brand_category_choices()
+        if self.instance and self.instance.pk:
+            self.fields["category_slugs"].initial = self.instance.category_slugs or []
+
+    def clean_category_slugs(self):
+        value = self.cleaned_data.get("category_slugs")
+        return list(value) if value else []

@@ -13,6 +13,7 @@ from .forms import (
     ProductImageInlineFormSet,
     VariantImageInlineFormSet,
     CategoryFormCatalogHints,
+    BrandAdminForm,
     CATEGORY_HIERARCHY_DESCRIPTION,
     CATEGORY_PARENT_HELP,
     PRODUCT_CATEGORY_HELP,
@@ -305,7 +306,7 @@ class BaseCategoryAdmin(admin.ModelAdmin):
     form = CategoryFormCatalogHints
     required_category_type_slug: str | None = None
     list_display = ('name', 'slug', 'category_type', 'level_display', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'parent', 'gender', 'clothing_type', 'shoe_type', 'device_type', 'created_at')
+    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'parent', 'clothing_type', 'shoe_type', 'device_type', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
@@ -510,6 +511,7 @@ class CategoryIncenseAdmin(BaseCategoryAdmin):
 @admin.register(Brand)
 class BrandAdmin(admin.ModelAdmin):
     """Админка для брендов."""
+    form = BrandAdminForm
     list_display = ('name', 'slug', 'primary_category_slug', 'is_active', 'created_at')
     list_filter = ('is_active', 'primary_category_slug', 'created_at')
     search_fields = ('name', 'slug', 'description')
@@ -525,8 +527,8 @@ class BrandAdmin(admin.ModelAdmin):
         }),
         (_('Settings'), {'fields': ('is_active',)}),
         (_('Категория'), {
-            'fields': ('primary_category_slug',),
-            'description': _('Основная категория бренда для фильтров на сайте (medicines, clothing, shoes и т.д.).'),
+            'fields': ('primary_category_slug', 'category_slugs'),
+            'description': _('Основная категория — для отображения. Категории бренда — отметьте чекбоксами все категории, в которых представлен бренд (Puma: одежда, обувь, спорт).'),
         }),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
@@ -724,12 +726,12 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     form = ProductForm
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = (
-        'name', 'slug', 'product_type', 'category', 'brand', 'price', 'currency',
+        'name', 'slug', 'product_type', 'category', 'brand', 'gender', 'price', 'currency',
         'availability_status', 'country_of_origin', 'is_active', 'created_at'
     )
     list_filter = (
         'product_type', 'availability_status', 'country_of_origin',
-        'is_active', 'is_new', 'is_featured', 'is_available', 'category', 'brand', 'currency', 'created_at'
+        'is_active', 'is_new', 'is_featured', 'is_available', 'category', 'brand', 'gender', 'currency', 'created_at'
     )
     search_fields = (
         'name', 'slug', 'description',
@@ -753,7 +755,7 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
             )
         }),
         (_('Категоризация'), {
-            'fields': ('product_type', 'category', 'brand'),
+            'fields': ('product_type', 'category', 'brand', 'gender'),
             'description': PRODUCT_CATEGORY_HELP,
         }),
         (_('Цены и наличие'), {
@@ -972,8 +974,8 @@ class FavoriteAdmin(admin.ModelAdmin):
 class ClothingCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий одежды."""
     form = CategoryFormCatalogHints
-    list_display = ('name', 'slug', 'category_type', 'level_display', 'gender', 'clothing_type', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'category_type', 'gender', 'clothing_type', 'parent', 'created_at')
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'clothing_type', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'category_type', 'clothing_type', 'parent', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
@@ -989,7 +991,7 @@ class ClothingCategoryAdmin(admin.ModelAdmin):
             'fields': ('category_type',),
             'description': _('Выберите тип "Одежда". Исламская одежда — отдельная категория.'),
         }),
-        (_('Clothing'), {'fields': ('gender', 'clothing_type')}),
+        (_('Clothing'), {'fields': ('clothing_type',)}),
         (_('Иерархия (L1/L2/L3)'), {
             'fields': ('parent',),
             'description': CATEGORY_HIERARCHY_DESCRIPTION,
@@ -1168,8 +1170,8 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
         return _product_category_path(obj)
     category_path.short_description = _("Категория")
 
-    list_display = ('name', 'slug', 'category_path', 'brand', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'currency', 'created_at')
+    list_display = ('name', 'slug', 'category_path', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
     list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
     search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
@@ -1180,7 +1182,7 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {
-            'fields': ('category', 'brand'),
+            'fields': ('category', 'brand', 'gender'),
             'description': PRODUCT_CATEGORY_HELP,
         }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
@@ -1335,8 +1337,8 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
 class ShoeCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий обуви."""
     form = CategoryFormCatalogHints
-    list_display = ('name', 'slug', 'level_display', 'gender', 'shoe_type', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'gender', 'shoe_type', 'parent', 'created_at')
+    list_display = ('name', 'slug', 'level_display', 'shoe_type', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'shoe_type', 'parent', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
@@ -1347,7 +1349,7 @@ class ShoeCategoryAdmin(admin.ModelAdmin):
             'fields': ('name', 'slug', 'description'),
             'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
         }),
-        (_('Shoes'), {'fields': ('gender', 'shoe_type')}),
+        (_('Shoes'), {'fields': ('shoe_type',)}),
         (_('Иерархия (L1/L2/L3)'), {
             'fields': ('parent',),
             'description': CATEGORY_HIERARCHY_DESCRIPTION,
@@ -1534,8 +1536,8 @@ class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAd
         return _product_category_path(obj)
     category_path.short_description = _("Категория")
 
-    list_display = ('name', 'slug', 'category_path', 'brand', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'currency', 'created_at')
+    list_display = ('name', 'slug', 'category_path', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
     list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
     search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
@@ -1546,7 +1548,7 @@ class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAd
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {
-            'fields': ('category', 'brand'),
+            'fields': ('category', 'brand', 'gender'),
             'description': PRODUCT_CATEGORY_HELP,
         }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
@@ -1764,8 +1766,8 @@ class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.
         return _product_category_path(obj)
     category_path.short_description = _("Категория")
 
-    list_display = ('name', 'slug', 'category_path', 'brand', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_available', 'is_new', 'is_featured', 'category', 'brand', 'currency', 'created_at')
+    list_display = ('name', 'slug', 'category_path', 'brand', 'gender', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_available', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
     list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
     search_fields = ('name', 'slug', 'description', 'model')
     ordering = ('-created_at',)
@@ -1774,7 +1776,7 @@ class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {
-            'fields': ('category', 'brand'),
+            'fields': ('category', 'brand', 'gender'),
             'description': PRODUCT_CATEGORY_HELP,
         }),
         (_('Electronics'), {'fields': ('model', 'specifications', 'warranty', 'power_consumption')}),
@@ -1822,8 +1824,8 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Mod
     """Админка для товаров мебели."""
     category_type_slug = "furniture"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
-    list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'furniture_type', 'currency', 'created_at')
+    list_display = ('name', 'slug', 'category', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'furniture_type', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'furniture_type')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
@@ -1831,7 +1833,7 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Mod
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Categorization'), {
-            'fields': ('category', 'brand'),
+            'fields': ('category', 'brand', 'gender'),
             'description': PRODUCT_CATEGORY_HELP,
         }),
         (_('Furniture'), {'fields': ('material', 'furniture_type', 'dimensions')}),
@@ -2283,6 +2285,7 @@ class MarketingBrandAdmin(admin.ModelAdmin):
     Редактирует те же записи, что и «Бренды» (proxy-модель). Ориентирована на
     медиа карточки. Используйте list_filter «С медиа» для фокуса на брендах с карточками.
     """
+    form = BrandAdminForm
     list_display = ('name', 'primary_category_slug', 'card_media_preview', 'has_card_media', 'is_active', 'created_at')
     list_filter = ('is_active', 'primary_category_slug', 'created_at')
     search_fields = ('name', 'slug', 'description')
@@ -2301,7 +2304,7 @@ class MarketingBrandAdmin(admin.ModelAdmin):
             'fields': ('card_media', 'card_media_external_url', 'card_media_preview', 'logo'),
             'description': _('Изображение, GIF или видео для карточки бренда или внешняя ссылка (CDN/S3). Внешняя ссылка приоритетнее.'),
         }),
-        (_('Категория'), {'fields': ('primary_category_slug',)}),
+        (_('Категория'), {'fields': ('primary_category_slug', 'category_slugs')}),
         (_('Ссылки'), {'fields': ('website',)}),
         (_('Settings'), {'fields': ('is_active',)}),
         (_('External'), {'fields': ('external_id', 'external_data')}),

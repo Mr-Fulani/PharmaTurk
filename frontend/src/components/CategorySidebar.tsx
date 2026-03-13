@@ -34,6 +34,7 @@ export interface FilterState {
   brandSlugs: string[]
   subcategories: number[]
   subcategorySlugs: string[]
+  genders?: string[]
   authorIds?: number[]
   genreIds?: number[]
   publishers?: string[]
@@ -88,8 +89,16 @@ interface CategorySidebarProps {
   initialFilters?: FilterState
   showSubcategories?: boolean
   showCategories?: boolean
+  showGenderFilter?: boolean
   categoryType?: string
 }
+
+const GENDER_OPTIONS = [
+  { slug: 'women', key: 'filter_women', fallback: 'Женская' },
+  { slug: 'men', key: 'filter_men', fallback: 'Мужская' },
+  { slug: 'kids', key: 'filter_kids', fallback: 'Детская' },
+  { slug: 'unisex', key: 'filter_unisex', fallback: 'Унисекс' },
+]
 
 const toggleArrayValue = <T,>(arr: T[], value: T): T[] =>
   arr.includes(value) ? arr.filter((item) => item !== value) : [...arr, value]
@@ -139,6 +148,7 @@ export default function CategorySidebar({
   initialFilters,
   showSubcategories = false,
   showCategories = true,
+  showGenderFilter = false,
   categoryType
 }: CategorySidebarProps) {
   const { t } = useTranslation('common')
@@ -150,6 +160,7 @@ export default function CategorySidebar({
     brandSlugs: [],
     subcategories: [],
     subcategorySlugs: [],
+    genders: [],
     authorIds: [],
     genreIds: [],
     publishers: [],
@@ -178,6 +189,7 @@ export default function CategorySidebar({
     initialFilters?.brands?.join(','),
     initialFilters?.categories?.join(','),
     initialFilters?.subcategories?.join(','),
+    initialFilters?.genders?.join(','),
     initialFilters?.authorIds?.join(','),
     initialFilters?.genreIds?.join(','),
     initialFilters?.publishers?.join(','),
@@ -198,6 +210,7 @@ export default function CategorySidebar({
     categories: true,
     brands: true,
     subcategories: true,
+    gender: true,
     price: true,
     filters: true,
     bookFilters: true
@@ -213,6 +226,7 @@ export default function CategorySidebar({
     filters.brands.join(','),
     filters.categories.join(','),
     filters.subcategories.join(','),
+    filters.genders?.join(','),
     filters.brandSlugs.join(','),
     filters.categorySlugs.join(','),
     filters.subcategorySlugs.join(','),
@@ -253,6 +267,13 @@ export default function CategorySidebar({
       ...prev,
       subcategories: toggleArrayValue(prev.subcategories, subcategoryId),
       subcategorySlugs: slug ? toggleArrayValue(prev.subcategorySlugs, slug) : prev.subcategorySlugs
+    }))
+  }
+
+  const toggleGenderFilter = (slug: string) => {
+    updateFilters((prev) => ({
+      ...prev,
+      genders: toggleArrayValue(prev.genders || [], slug)
     }))
   }
 
@@ -385,6 +406,7 @@ export default function CategorySidebar({
       brandSlugs: [],
       subcategories: [],
       subcategorySlugs: [],
+      genders: [],
       authorIds: [],
       genreIds: [],
       publishers: [],
@@ -492,6 +514,7 @@ export default function CategorySidebar({
     filters.categories.length > 0 ||
     filters.brands.length > 0 ||
     filters.subcategories.length > 0 ||
+    (filters.genders && filters.genders.length > 0) ||
     filters.priceMin !== undefined ||
     filters.priceMax !== undefined ||
     filters.inStock ||
@@ -567,6 +590,46 @@ export default function CategorySidebar({
               </div>
             )
           })}
+
+          {/* Универсальный фильтр по полу */}
+          {showGenderFilter && (
+            <div className="border-b border-[var(--border)] pb-4">
+              <button
+                onClick={() => setExpandedSections((prev) => ({ ...prev, gender: !prev.gender }))}
+                className="flex items-center justify-between w-full mb-3 group"
+              >
+                <h3 className="text-base font-bold text-main group-hover:text-[var(--accent)] transition-colors uppercase tracking-tight">
+                  {t('sidebar_gender', 'Пол')}
+                </h3>
+                <svg
+                  className={`w-4 h-4 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.gender ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {expandedSections.gender && (
+                <div className="space-y-2">
+                  {GENDER_OPTIONS.map((opt) => (
+                    <label key={opt.slug} className="flex items-center space-x-3 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={(filters.genders || []).includes(opt.slug)}
+                        onChange={() => toggleGenderFilter(opt.slug)}
+                        className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
+                        id={`gender-${opt.slug}`}
+                      />
+                      <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">
+                        {t(opt.key, opt.fallback)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Динамические атрибуты (фасетный поиск) */}
           {availableAttributes.length > 0 && (

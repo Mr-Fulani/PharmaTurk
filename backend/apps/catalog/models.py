@@ -12,6 +12,7 @@ from django.core.validators import MinValueValidator, FileExtensionValidator
 from django.utils.text import slugify
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.postgres.fields import ArrayField
 from .currency_models import CurrencyRate, MarginSettings, ProductPrice, ServicePrice, CurrencyUpdateLog
 from .utils.storage_paths import (
     detect_media_type,
@@ -585,7 +586,14 @@ class Brand(models.Model):
         max_length=64,
         blank=True,
         choices=TOP_CATEGORY_SLUG_CHOICES,
-        help_text=_("Явно укажите ключевой slug для бренда (clothing, shoes, electronics и т.д.)."),
+        help_text=_("Основная категория для отображения (например, при переходе на страницу бренда)."),
+    )
+    category_slugs = ArrayField(
+        models.CharField(max_length=64, blank=True),
+        default=list,
+        blank=True,
+        verbose_name=_("Категории бренда"),
+        help_text=_("Список slug категорий, в которых представлен бренд (clothing, shoes, sports и т.д.). Puma — clothing, shoes, sports."),
     )
     card_media = models.FileField(
         _("Медиа для карточки"),
@@ -615,6 +623,15 @@ class Brand(models.Model):
 
     def __str__(self):
         return self.name
+
+    def has_category(self, slug: str) -> bool:
+        """Проверяет, представлен ли бренд в категории. slug в category_slugs или (если пусто) primary_category_slug."""
+        if not slug:
+            return False
+        slug = str(slug).strip().lower().replace("_", "-")
+        if self.category_slugs:
+            return slug in [s.strip().lower().replace("_", "-") for s in self.category_slugs if s]
+        return self.primary_category_slug and str(self.primary_category_slug).strip().lower().replace("_", "-") == slug
 
     def get_card_media_url(self) -> str:
         """Возвращает URL медиа-файла карточки (или пустую строку)."""
@@ -658,6 +675,23 @@ class AbstractDomainProduct(models.Model):
     name = models.CharField(_("Название"), max_length=500)
     slug = models.SlugField(_("Slug"), max_length=500, unique=True)
     description = models.TextField(_("Описание"), blank=True)
+
+    # Пол (e-commerce best practice: единое поле на базовой модели, без дублирования в подклассах)
+    GENDER_CHOICES = [
+        ("men", _("Мужская")),
+        ("women", _("Женская")),
+        ("unisex", _("Унисекс")),
+        ("kids", _("Детская")),
+    ]
+    gender = models.CharField(
+        _("Пол"),
+        max_length=10,
+        choices=GENDER_CHOICES,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text=_("Мужская, женская, унисекс, детская. При пустом — используется пол категории."),
+    )
 
     # Категоризация
     category = models.ForeignKey(
@@ -826,6 +860,7 @@ class AbstractDomainProduct(models.Model):
                 slug=slug,
                 description=self.description,
                 category=self.category,
+                gender=getattr(self, 'gender', None) or None,
                 brand=self.brand,
                 price=self.price,
                 currency=self.currency,
@@ -872,6 +907,7 @@ class AbstractDomainProduct(models.Model):
         product.slug = slug
         product.description = self.description
         product.category = self.category
+        product.gender = getattr(self, 'gender', None) or None
         product.brand = self.brand
         product.price = self.price
         product.currency = self.currency
@@ -965,6 +1001,15 @@ class Product(models.Model):
         blank=True,
         related_name="products",
         verbose_name=_("Категория")
+    )
+    gender = models.CharField(
+        _("Пол"),
+        max_length=10,
+        choices=Category.GENDER_CHOICES,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text=_("Синхронизируется из доменного товара или берётся из категории."),
     )
     brand = models.ForeignKey(
         Brand, 
@@ -2452,15 +2497,7 @@ class JewelryProduct(AbstractDomainProduct):
         verbose_name=_("Базовый товар (shadow)"),
     )
 
-    # Специфичные поля для украшений
-    gender = models.CharField(
-        _("Пол"),
-        max_length=10,
-        choices=Category.GENDER_CHOICES,
-        blank=True,
-        null=True,
-        help_text=_("Для украшений: мужская, женская, унисекс, детская")
-    )
+    # Специфичные поля для украшений (gender наследуется из AbstractDomainProduct)
     jewelry_type = models.CharField(
         _("Тип украшения"),
         max_length=32,
@@ -3740,10 +3777,7 @@ class PerfumeryProduct(AbstractDomainProduct):
         _("Семейство аромата"), max_length=20,
         choices=FRAGRANCE_FAMILY_CHOICES, blank=True,
     )
-    gender = models.CharField(
-        _("Пол"), max_length=10,
-        choices=PERFUMERY_GENDER_CHOICES, blank=True,
-    )
+    # gender наследуется из AbstractDomainProduct (men, women, unisex, kids)
     top_notes = models.CharField(
         _("Верхние ноты"), max_length=500, blank=True,
     )
@@ -3764,7 +3798,6 @@ class PerfumeryProduct(AbstractDomainProduct):
             models.Index(fields=["category", "brand"]),
             models.Index(fields=["price"]),
             models.Index(fields=["fragrance_type"]),
-            models.Index(fields=["gender"]),
         ]
 
     def save(self, *args, **kwargs):

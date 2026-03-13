@@ -237,7 +237,7 @@ class BrandSerializer(serializers.ModelSerializer):
         model = Brand
         fields = [
             'id', 'name', 'slug', 'description', 'logo', 'website', 'card_media_url',
-            'primary_category_slug',
+            'primary_category_slug', 'category_slugs',
             'external_id', 'is_active', 'products_count', 
             'translations',
             'created_at', 'updated_at'
