@@ -78,6 +78,23 @@ services:
     entrypoint: ["bash", "/app/docker-entrypoint.sh"]
     mem_limit: 1.5g
 
+  # Mobile (Flutter web). На Mac M1/M2 Docker может падать с segfault — запускайте локально: cd mobile && flutter run
+  mobile:
+    build:
+      context: ./mobile
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./mobile:/app
+      - /app/build
+    environment:
+      - API_BASE_URL=http://backend:8000
+    depends_on:
+      - backend
+    profiles:
+      - mobile
+
   frontend:
     build:
       context: ./frontend
@@ -168,8 +185,26 @@ services:
       - .env
     command: bash -c "poetry run celery -A config beat --loglevel=info"
 
+  # Сборка APK: docker compose --profile build run mobile-build
+  mobile-build:
+    build:
+      context: ./mobile
+      dockerfile: Dockerfile
+    volumes:
+      - ./mobile:/app
+      - mobile-build-output:/app/build
+    environment:
+      - API_BASE_URL=${MOBILE_API_BASE_URL:-https://api.pharmaturk.com}
+    command: >
+      sh -c "flutter build apk --release --dart-define=API_BASE_URL=$${API_BASE_URL}"
+    depends_on:
+      - backend
+    profiles:
+      - build
+
 volumes:
   postgres_data:
   redis_data:
   opensearch_data:
   qdrant_data:
+  mobile-build-output:

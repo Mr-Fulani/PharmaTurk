@@ -69,6 +69,10 @@ curl http://localhost:8000/api/health/
 open http://localhost:8000/api/docs/
 ```
 
+### 5. Мобильное приложение (Flutter)
+
+См. [docs/MOBILE_INTEGRATION.md](docs/MOBILE_INTEGRATION.md) для настройки и запуска.
+
 ## 📋 Структура проекта
 
 ```
@@ -82,9 +86,13 @@ PharmaTurk/
 │   │   └── vapi/           # Интеграция с Vapi API
 │   ├── config/             # Настройки Django
 │   └── api/                # Основные API эндпоинты
+├── frontend/               # Next.js веб-приложение
+├── mobile/                 # Flutter мобильное приложение (iOS/Android)
+├── docs/                   # Документация
+│   └── MOBILE_INTEGRATION.md
 ├── docker-compose.yml      # Конфигурация Docker
 ├── env.example             # Пример переменных окружения
-└── README.md              # Документация
+└── README.md               # Документация
 ```
 
 ## 🔧 Технологический стек

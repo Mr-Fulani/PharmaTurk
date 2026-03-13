@@ -78,3 +78,8 @@ skills-lock.json
 
 # Backup/scratch scripts
 backend/check_book.py
+
+# Flutter / Mobile
+mobile/build/
+mobile/.dart_tool/
+mobile/**/*.g.dart
