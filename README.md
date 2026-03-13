@@ -211,15 +211,23 @@ docker compose exec backend poetry run python manage.py createsuperuser
 
 ### Восстановление каталога (seed)
 
+Команда `seed_catalog_data` создаёт полную структуру каталога: 18 корневых категорий (медицина, БАДы, медтехника, одежда, обувь, электроника, мебель, посуда, аксессуары, украшения, нижнее бельё, головные уборы, парфюмерия, книги, услуги, спорттовары, автозапчасти, исламская одежда, благовония), подкатегории с иерархией L2–L5, типы динамических атрибутов и бренды. **При первом запуске backend seed выполняется автоматически** (см. `docker-entrypoint.sh`).
+
 ```bash
-# Полное восстановление категорий и брендов
+# Полное восстановление (категории + атрибуты + бренды)
 docker compose run --rm backend poetry run python manage.py seed_catalog_data
 
 # Только категории (без брендов)
 docker compose run --rm backend poetry run python manage.py seed_catalog_data --categories-only
 
+# Только бренды
+docker compose run --rm backend poetry run python manage.py seed_catalog_data --brands-only
+
 # Только типы динамических атрибутов (GlobalAttributeKey)
 docker compose run --rm backend poetry run python manage.py seed_catalog_data --attributes-only
+
+# Исправить parent у подкатегорий (после миграций)
+docker compose run --rm backend poetry run python manage.py seed_catalog_data --fix-hierarchy
 ```
 
 Если backend уже запущен:

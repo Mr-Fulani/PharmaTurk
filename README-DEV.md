@@ -173,14 +173,20 @@ docker compose exec backend poetry run python manage.py collectstatic
 # Сбросить пароль пользователя
 docker compose exec backend poetry run python manage.py shell -c "from django.contrib.auth import get_user_model; User = get_user_model(); user = User.objects.get(username='admin'); user.set_password('newpassword'); user.save()"
 
-# Восстановление каталога (seed категорий и брендов)
+# Восстановление каталога (seed: категории, атрибуты, бренды)
 docker compose run --rm backend poetry run python manage.py seed_catalog_data
 
 # Только категории (без брендов)
 docker compose run --rm backend poetry run python manage.py seed_catalog_data --categories-only
 
+# Только бренды
+docker compose run --rm backend poetry run python manage.py seed_catalog_data --brands-only
+
 # Только типы динамических атрибутов
 docker compose run --rm backend poetry run python manage.py seed_catalog_data --attributes-only
+
+# Исправить parent у подкатегорий
+docker compose run --rm backend poetry run python manage.py seed_catalog_data --fix-hierarchy
 
 # Если backend уже запущен
 docker compose exec backend poetry run python manage.py seed_catalog_data --categories-only

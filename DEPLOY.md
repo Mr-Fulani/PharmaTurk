@@ -60,7 +60,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend frontend
 ```
 
-Миграции и `collectstatic` выполняются при старте backend (см. `docker-entrypoint.sh`).
+Миграции, `collectstatic` и **seed каталога** выполняются при старте backend (см. `docker-entrypoint.sh`). Seed создаёт полную структуру: корневые категории, подкатегории (включая иерархию услуг L2–L5), типы атрибутов и бренды.
 
 ## 4. Первый запуск: индексация рекомендаций
 
@@ -155,12 +155,30 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backend fr
 |----------|---------|
 | Логи всех сервисов | `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f` |
 | Логи backend | `docker compose ... logs -f backend` |
+| Seed каталога (категории, бренды) | `docker compose ... exec backend poetry run python manage.py seed_catalog_data` |
 | Статистика рекомендаций | `docker compose ... exec backend poetry run python manage.py recsys_stats` |
 | Синхронизация векторов | `docker compose ... exec backend poetry run python manage.py sync_product_vectors [--full]` |
 | Django shell | `docker compose ... exec backend poetry run python manage.py shell` |
 | Остановка | `docker compose -f docker-compose.yml -f docker-compose.prod.yml down` |
 
-## 9. Чек-лист перед продакшеном
+## 9. Первый запуск на продакшене
+
+При первом деплое backend автоматически:
+1. Применяет миграции
+2. Запускает `seed_catalog_data` (категории, подкатегории, атрибуты, бренды)
+3. Собирает статику
+
+Дополнительно выполните вручную:
+
+```bash
+# Создать суперпользователя для доступа в админку
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend poetry run python manage.py createsuperuser
+
+# (Опционально) Индексация векторов для блока «Похожие товары»
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend poetry run python manage.py sync_product_vectors --full
+```
+
+## 10. Чек-лист перед продакшеном
 
 - [ ] В `.env`: `DJANGO_DEBUG=0`, уникальный `DJANGO_SECRET_KEY`
 - [ ] Криптоплатежи: при необходимости настройте CoinRemitter (см. **CRYPTO_PAYMENTS.md**)
