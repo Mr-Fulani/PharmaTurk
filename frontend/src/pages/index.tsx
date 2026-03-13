@@ -42,7 +42,6 @@ interface CategoryCard {
   sort_order?: number | null
   products_count?: number
   gender?: string | null
-  shoe_type?: string | null
   clothing_type?: string | null
   device_type?: string | null
   translations?: CategoryTranslation[]
@@ -457,7 +456,6 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const isRoot = category.parent === null || typeof category.parent === 'undefined'
       if (!isRoot) return false
       if (category.gender) return false
-      if (category.shoe_type) return false
       if (category.clothing_type) return false
       if (category.device_type) return false
       return true

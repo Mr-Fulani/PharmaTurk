@@ -1,10 +1,11 @@
 """
-Создаёт категории, подкатегории и бренды с правильной иерархией и переводами ru/en.
+Создаёт категории, подкатегории, атрибуты и бренды с правильной иерархией и переводами ru/en.
 Используется для восстановления каталога после потери БД.
 
 Использование:
     python manage.py seed_catalog_data
     python manage.py seed_catalog_data --categories-only
+    python manage.py seed_catalog_data --attributes-only
     python manage.py seed_catalog_data --brands-only
     python manage.py seed_catalog_data --fix-hierarchy
 """
@@ -14,8 +15,39 @@ from django.utils.text import slugify
 from django.db import transaction
 from django.db.utils import IntegrityError
 
-from apps.catalog.constants import ROOT_CATEGORIES, SUB_CATEGORIES, BRANDS_DATA
-from apps.catalog.models import Category, CategoryType, CategoryTranslation, Brand, BrandTranslation
+from apps.catalog.constants import (
+    ROOT_CATEGORIES,
+    SUB_CATEGORIES,
+    MEDICAL_EQUIPMENT_SUBCATEGORIES,
+    ACCESSORIES_SUBCATEGORIES,
+    PERFUMERY_SUBCATEGORIES,
+    INCENSE_SUBCATEGORIES,
+    HEADWEAR_SUBCATEGORIES,
+    UNDERWEAR_SUBCATEGORIES,
+    SHOE_SUBCATEGORIES,
+    CLOTHING_SUBCATEGORIES,
+    JEWELRY_SUBCATEGORIES,
+    SUPPLEMENTS_SUBCATEGORIES,
+    MEDICINES_SUBCATEGORIES,
+    FURNITURE_SUBCATEGORIES,
+    AUTO_PARTS_SUBCATEGORIES,
+    TABLEWARE_SUBCATEGORIES,
+    ELECTRONICS_SUBCATEGORIES,
+    SPORTS_SUBCATEGORIES,
+    ISLAMIC_CLOTHING_SUBCATEGORIES,
+    SERVICES_SUBCATEGORIES,
+    ECOMMERCE_ATTRIBUTES,
+    BRANDS_DATA,
+)
+from apps.catalog.models import (
+    Category,
+    CategoryType,
+    CategoryTranslation,
+    Brand,
+    BrandTranslation,
+    GlobalAttributeKey,
+    GlobalAttributeKeyTranslation,
+)
 
 
 # Маппинг slug подкатегории из миграции 0024 -> slug корневой категории
@@ -44,25 +76,186 @@ SUBCAT_TO_ROOT = {
     "consumables": "medical-equipment",
     "dentistry-tools": "medical-equipment",
     "dentistry-consumables": "medical-equipment",
-    "kitchen-cookware": "tableware",
-    "serving": "tableware",
-    "storage": "tableware",
-    "copper": "tableware",
-    "porcelain": "tableware",
-    "glass-ceramic": "tableware",
+    # Медтехника L2 (под medical-equipment)
+    "diagnostic-equipment": "medical-equipment",
+    "rehabilitation-equipment": "medical-equipment",
+    "orthopedic-products": "medical-equipment",
+    "respiratory-equipment": "medical-equipment",
+    "physiotherapy-equipment": "medical-equipment",
+    "wound-care-consumables": "medical-equipment",
+    "ophthalmology-equipment": "medical-equipment",
+    "hearing-aids": "medical-equipment",
+    "disinfection-hygiene": "medical-equipment",
+    # Аксессуары L2 (под accessories)
+    "bags-wallets": "accessories",
+    "acc-jewelry": "accessories",
+    "fashion-jewelry": "accessories",
+    "watches": "accessories",
+    "belts": "accessories",
+    "acc-headwear": "accessories",
+    "scarves-shawls": "accessories",
+    "acc-gloves": "accessories",
+    "eyewear": "accessories",
+    "hair-accessories": "accessories",
+    "umbrellas": "accessories",
+    "ties-pocket-squares": "accessories",
+    "acc-phone-accessories": "accessories",
+    # Парфюмерия L2 (под perfumery)
+    "fragrances": "perfumery",
+    "oil-perfumes": "perfumery",
+    "scented-products": "perfumery",
+    "miniatures-samples": "perfumery",
+    "perfumery-gift-sets": "perfumery",
+    # Благовония L2 (под incense)
+    "scented-candles": "incense",
+    "incense-sticks": "incense",
+    "incense-cones": "incense",
+    "resins-loose-incense": "incense",
+    "essential-oils": "incense",
+    "aroma-diffusers": "incense",
+    "sachets-sprays": "incense",
+    "incense-accessories": "incense",
+    "cookware": "tableware",
+    "tableware-serving": "tableware",
+    "drinkware": "tableware",
+    "tea-coffee-ware": "tableware",
+    "bakeware": "tableware",
+    "food-storage": "tableware",
+    "kitchen-accessories": "tableware",
+    "tableware-sets": "tableware",
     "living-room": "furniture",
     "bedroom": "furniture",
-    "office": "furniture",
     "kitchen-dining": "furniture",
+    "office": "furniture",
+    "kids-furniture": "furniture",
+    "storage-furniture": "furniture",
+    "outdoor-furniture": "furniture",
+    # Автозапчасти L2 (под auto-parts)
+    "engine-parts": "auto-parts",
+    "brake-system": "auto-parts",
+    "suspension": "auto-parts",
+    "steering-system": "auto-parts",
+    "transmission": "auto-parts",
+    "electrical-system": "auto-parts",
+    "cooling-system": "auto-parts",
+    "body-parts": "auto-parts",
+    "lighting": "auto-parts",
+    "filters": "auto-parts",
+    # Обувь L2 (под shoes)
+    "boots": "shoes",
+    "dress-shoes": "shoes",
+    "casual-shoes": "shoes",
+    "sneakers": "shoes",
+    "sandals": "shoes",
+    "home-shoes": "shoes",
+    # Одежда L2 (под clothing; sportswear и underwear — отдельные корни)
+    "outerwear": "clothing",
+    "tops": "clothing",
+    "knitwear": "clothing",
+    "bottoms": "clothing",
+    "dresses": "clothing",
+    "suits": "clothing",
+    "loungewear": "clothing",
+    "sleepwear": "clothing",
+    "workwear": "clothing",
+    # Украшения L2 (под jewelry)
     "rings": "jewelry",
-    "chains": "jewelry",
-    "bracelets": "jewelry",
     "earrings": "jewelry",
-    "pendants": "jewelry",
-    "wedding": "jewelry",
-    "women": "jewelry",
-    "men": "jewelry",
+    "necklaces": "jewelry",
+    "bracelets": "jewelry",
+    "brooches": "jewelry",
+    "pendants-charms": "jewelry",
+    "body-jewelry": "jewelry",
+    "hair-jewelry": "jewelry",
+    "mens-jewelry": "jewelry",
+    "jewelry-sets": "jewelry",
+    # БАДы L2 (под supplements)
+    "vitamins": "supplements",
+    "minerals": "supplements",
+    "immunity": "supplements",
+    "digestive-health": "supplements",
+    "energy-vitality": "supplements",
+    "sports-nutrition": "supplements",
+    "omega-fatty-acids": "supplements",
+    "herbal-supplements": "supplements",
+    "kids-supplements": "supplements",
+    # Медикаменты L2 (под medicines)
+    "antibiotics": "medicines",
+    "painkillers": "medicines",
+    "cold-flu": "medicines",
+    "allergy": "medicines",
+    "heart-cardiovascular": "medicines",
+    "sleep-stress": "medicines",
+    "cardio": "medicines",
+    "dermatology": "medicines",
+    "gastro": "medicines",
+    "endocrinology-diabetes": "medicines",
+    "ophthalmology": "medicines",
+    "ent": "medicines",
+    "orthopedics": "medicines",
+    # Исламская одежда L2 (под islamic-clothing)
+    "hijabs": "islamic-clothing",
+    "abayas": "islamic-clothing",
+    "jilbabs": "islamic-clothing",
+    "niqabs": "islamic-clothing",
+    "islamic-dresses": "islamic-clothing",
+    "islamic-outerwear-women": "islamic-clothing",
+    "islamic-sets": "islamic-clothing",
+    "thobes": "islamic-clothing",
+    "kurthas": "islamic-clothing",
+    "shalwar": "islamic-clothing",
+    "islamic-headwear": "islamic-clothing",
+    "islamic-outerwear-men": "islamic-clothing",
+    "prayer-clothing": "islamic-clothing",
+    "festive-occasion-wear": "islamic-clothing",
+    # Электроника L2 (под electronics)
+    "smartphones-phones": "electronics",
+    "laptops-computers": "electronics",
+    "tablets": "electronics",
+    "tvs-displays": "electronics",
+    "audio": "electronics",
+    "photo-video": "electronics",
+    "gaming": "electronics",
+    "smart-home": "electronics",
+    "wearables": "electronics",
+    "pc-components": "electronics",
+    "networking": "electronics",
+    "office-equipment": "electronics",
+    "accessories-peripherals": "electronics",
+    # Спорттовары L2 (под sports)
+    "fitness-gym": "sports",
+    "team-sports": "sports",
+    "racket-sports": "sports",
+    "martial-arts": "sports",
+    "water-sports": "sports",
+    "winter-sports": "sports",
+    "cycling": "sports",
+    "running-walking": "sports",
+    "outdoor-hiking": "sports",
+    "sportswear-footwear": "sports",
+    "sports-sports-nutrition": "sports",
+    # Головные уборы L2 (под headwear)
+    "hw-winter-headwear": "headwear",
+    "hw-summer-headwear": "headwear",
+    "hw-caps": "headwear",
+    "hw-hats": "headwear",
+    "hw-berets": "headwear",
+    "hw-turbans": "headwear",
+    "hw-sport-headwear": "headwear",
+    "hw-children-headwear": "headwear",
+    # Нижнее бельё L2 (под underwear)
+    "uw-womens-underwear": "underwear",
+    "uw-mens-underwear": "underwear",
+    "uw-children-underwear": "underwear",
+    "uw-thermal-underwear": "underwear",
+    "uw-sleepwear": "underwear",
+    "uw-socks-hosiery": "underwear",
 }
+
+
+# Услуги: svc-* создаются с правильным parent в _seed_services_subcategories.
+# НЕ добавляем их в SUBCAT_TO_ROOT — _fix_hierarchy перезаписал бы parent на uslugi
+# и сломал бы иерархию (L2 под uslugi, L3 под L2 и т.д.).
 
 
 class Command(BaseCommand):
@@ -84,10 +277,20 @@ class Command(BaseCommand):
             action="store_true",
             help="Только исправить parent у существующих подкатегорий",
         )
+        parser.add_argument(
+            "--attributes-only",
+            action="store_true",
+            help="Создать только типы динамических атрибутов (GlobalAttributeKey)",
+        )
 
     def handle(self, *args, **options):
         if options["fix_hierarchy"]:
             self._fix_hierarchy()
+            return
+
+        if options["attributes_only"]:
+            self._seed_attribute_keys()
+            self.stdout.write(self.style.SUCCESS("Готово."))
             return
 
         with transaction.atomic():
@@ -95,6 +298,25 @@ class Command(BaseCommand):
                 self._seed_category_types()
                 self._seed_root_categories()
                 self._seed_subcategories()
+                self._seed_medical_equipment_subcategories()
+                self._seed_accessories_subcategories()
+                self._seed_perfumery_subcategories()
+                self._seed_incense_subcategories()
+                self._seed_headwear_subcategories()
+                self._seed_underwear_subcategories()
+                self._seed_shoes_subcategories()
+                self._seed_clothing_subcategories()
+                self._seed_jewelry_subcategories()
+                self._seed_supplements_subcategories()
+                self._seed_medicines_subcategories()
+                self._seed_furniture_subcategories()
+                self._seed_auto_parts_subcategories()
+                self._seed_tableware_subcategories()
+                self._seed_electronics_subcategories()
+                self._seed_sports_subcategories()
+                self._seed_islamic_clothing_subcategories()
+                self._seed_services_subcategories()
+                self._seed_attribute_keys()
                 self._fix_hierarchy()
 
             if not options["categories_only"]:
@@ -177,6 +399,968 @@ class Command(BaseCommand):
                     cat.save()
                     self.stdout.write(f"  ↻ Исправлен parent: {sub_slug} -> {parent_slug}")
                 _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+
+    def _seed_medical_equipment_subcategories(self):
+        """Создание подкатегорий медтехники (L2–L4) по MEDICAL_EQUIPMENT_SUBCATEGORIES. Рекурсивно."""
+        def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
+            cat, created = Category.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": parent,
+                    "is_active": True,
+                    "sort_order": sort_order,
+                },
+            )
+            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            return cat, created
+
+        def process_children(parent_cat, items, level: int, parent_slug: str):
+            for sort_i, item in enumerate(items):
+                if len(item) == 6:
+                    name_ru, name_en, slug, desc_ru, desc_en, children = item
+                else:
+                    name_ru, name_en, slug, desc_ru, desc_en = item
+                    children = []
+                cat, created = create_category(
+                    parent_cat, name_ru, name_en, slug, desc_ru, desc_en, sort_i, cat_type
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L{level}: {slug} -> {parent_slug}")
+                if children:
+                    process_children(cat, children, level + 1, slug)
+
+        self.stdout.write("Создание подкатегорий медтехники...")
+        root = Category.objects.filter(slug="medical-equipment", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория medical-equipment не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(MEDICAL_EQUIPMENT_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> medical-equipment")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            process_children(cat_l2, children, 3, slug_l2)
+
+    def _seed_accessories_subcategories(self):
+        """Создание подкатегорий аксессуаров (L2–L4) по ACCESSORIES_SUBCATEGORIES. Рекурсивно."""
+        def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
+            cat, created = Category.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": parent,
+                    "is_active": True,
+                    "sort_order": sort_order,
+                },
+            )
+            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            return cat, created
+
+        def process_children(parent_cat, items, level: int, parent_slug: str):
+            for sort_i, item in enumerate(items):
+                if len(item) == 6:
+                    name_ru, name_en, slug, desc_ru, desc_en, children = item
+                else:
+                    name_ru, name_en, slug, desc_ru, desc_en = item
+                    children = []
+                cat, created = create_category(
+                    parent_cat, name_ru, name_en, slug, desc_ru, desc_en, sort_i, cat_type
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L{level}: {slug} -> {parent_slug}")
+                if children:
+                    process_children(cat, children, level + 1, slug)
+
+        self.stdout.write("Создание подкатегорий аксессуаров...")
+        root = Category.objects.filter(slug="accessories", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория accessories не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(ACCESSORIES_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> accessories")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            process_children(cat_l2, children, 3, slug_l2)
+
+    def _seed_perfumery_subcategories(self):
+        """Создание подкатегорий парфюмерии (L2–L4) по PERFUMERY_SUBCATEGORIES. Рекурсивно."""
+        def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
+            cat, created = Category.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": parent,
+                    "is_active": True,
+                    "sort_order": sort_order,
+                },
+            )
+            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            return cat, created
+
+        def process_children(parent_cat, items, level: int, parent_slug: str):
+            for sort_i, item in enumerate(items):
+                if len(item) == 6:
+                    name_ru, name_en, slug, desc_ru, desc_en, children = item
+                else:
+                    name_ru, name_en, slug, desc_ru, desc_en = item
+                    children = []
+                cat, created = create_category(
+                    parent_cat, name_ru, name_en, slug, desc_ru, desc_en, sort_i, cat_type
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L{level}: {slug} -> {parent_slug}")
+                if children:
+                    process_children(cat, children, level + 1, slug)
+
+        self.stdout.write("Создание подкатегорий парфюмерии...")
+        root = Category.objects.filter(slug="perfumery", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория perfumery не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(PERFUMERY_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> perfumery")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            process_children(cat_l2, children, 3, slug_l2)
+
+    def _seed_incense_subcategories(self):
+        """Создание подкатегорий благовоний (L2–L4) по INCENSE_SUBCATEGORIES. Рекурсивно."""
+        def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
+            cat, created = Category.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": parent,
+                    "is_active": True,
+                    "sort_order": sort_order,
+                },
+            )
+            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            return cat, created
+
+        def process_children(parent_cat, items, level: int, parent_slug: str):
+            for sort_i, item in enumerate(items):
+                if len(item) == 6:
+                    name_ru, name_en, slug, desc_ru, desc_en, children = item
+                else:
+                    name_ru, name_en, slug, desc_ru, desc_en = item
+                    children = []
+                cat, created = create_category(
+                    parent_cat, name_ru, name_en, slug, desc_ru, desc_en, sort_i, cat_type
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L{level}: {slug} -> {parent_slug}")
+                if children:
+                    process_children(cat, children, level + 1, slug)
+
+        self.stdout.write("Создание подкатегорий благовоний...")
+        root = Category.objects.filter(slug="incense", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория incense не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(INCENSE_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> incense")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            process_children(cat_l2, children, 3, slug_l2)
+
+    def _seed_headwear_subcategories(self):
+        """Создание подкатегорий головных уборов (L2–L4) по HEADWEAR_SUBCATEGORIES. Рекурсивно."""
+        def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
+            cat, created = Category.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": parent,
+                    "is_active": True,
+                    "sort_order": sort_order,
+                },
+            )
+            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            return cat, created
+
+        def process_children(parent_cat, items, level: int, parent_slug: str):
+            for sort_i, item in enumerate(items):
+                if len(item) == 6:
+                    name_ru, name_en, slug, desc_ru, desc_en, children = item
+                else:
+                    name_ru, name_en, slug, desc_ru, desc_en = item
+                    children = []
+                cat, created = create_category(
+                    parent_cat, name_ru, name_en, slug, desc_ru, desc_en, sort_i, cat_type
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L{level}: {slug} -> {parent_slug}")
+                if children:
+                    process_children(cat, children, level + 1, slug)
+
+        self.stdout.write("Создание подкатегорий головных уборов...")
+        root = Category.objects.filter(slug="headwear", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория headwear не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(HEADWEAR_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> headwear")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            process_children(cat_l2, children, 3, slug_l2)
+
+    def _seed_underwear_subcategories(self):
+        """Создание подкатегорий нижнего белья (L2–L4) по UNDERWEAR_SUBCATEGORIES. Рекурсивно."""
+        def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
+            cat, created = Category.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": parent,
+                    "is_active": True,
+                    "sort_order": sort_order,
+                },
+            )
+            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            return cat, created
+
+        def process_children(parent_cat, items, level: int, parent_slug: str):
+            for sort_i, item in enumerate(items):
+                if len(item) == 6:
+                    name_ru, name_en, slug, desc_ru, desc_en, children = item
+                else:
+                    name_ru, name_en, slug, desc_ru, desc_en = item
+                    children = []
+                cat, created = create_category(
+                    parent_cat, name_ru, name_en, slug, desc_ru, desc_en, sort_i, cat_type
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L{level}: {slug} -> {parent_slug}")
+                if children:
+                    process_children(cat, children, level + 1, slug)
+
+        self.stdout.write("Создание подкатегорий нижнего белья...")
+        root = Category.objects.filter(slug="underwear", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория underwear не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(UNDERWEAR_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> underwear")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            process_children(cat_l2, children, 3, slug_l2)
+
+    def _seed_shoes_subcategories(self):
+        """Создание подкатегорий обуви (L2 и L3) по схеме из SHOE_SUBCATEGORIES."""
+        self.stdout.write("Создание подкатегорий обуви...")
+        shoes_root = Category.objects.filter(slug="shoes", parent__isnull=True).first()
+        if not shoes_root:
+            self.stdout.write(self.style.WARNING("  Корневая категория shoes не найдена, пропуск"))
+            return
+        cat_type = shoes_root.category_type
+        for sort_l2, item in enumerate(SHOE_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": shoes_root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> shoes")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            for sort_l3, child in enumerate(children):
+                c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
+                cat_l3, created = Category.objects.get_or_create(
+                    slug=c_slug,
+                    defaults={
+                        "name": c_ru,
+                        "description": c_desc_ru or c_ru,
+                        "category_type": cat_type,
+                        "parent": cat_l2,
+                        "is_active": True,
+                        "sort_order": sort_l3,
+                    },
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
+                _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
+
+    def _seed_clothing_subcategories(self):
+        """Создание подкатегорий одежды (L2–L4) по схеме из CLOTHING_SUBCATEGORIES. Рекурсивно."""
+
+        def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
+            cat, created = Category.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": parent,
+                    "is_active": True,
+                    "sort_order": sort_order,
+                },
+            )
+            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            return cat, created
+
+        def process_children(parent_cat, items, level: int, parent_slug: str):
+            for sort_i, item in enumerate(items):
+                if len(item) == 6:
+                    name_ru, name_en, slug, desc_ru, desc_en, children = item
+                else:
+                    name_ru, name_en, slug, desc_ru, desc_en = item
+                    children = []
+                cat, created = create_category(
+                    parent_cat, name_ru, name_en, slug, desc_ru, desc_en, sort_i, cat_type
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L{level}: {slug} -> {parent_slug}")
+                if children:
+                    process_children(cat, children, level + 1, slug)
+
+        self.stdout.write("Создание подкатегорий одежды...")
+        clothing_root = Category.objects.filter(slug="clothing", parent__isnull=True).first()
+        if not clothing_root:
+            self.stdout.write(self.style.WARNING("  Корневая категория clothing не найдена, пропуск"))
+            return
+        cat_type = clothing_root.category_type
+        for sort_l2, item in enumerate(CLOTHING_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": clothing_root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> clothing")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            process_children(cat_l2, children, 3, slug_l2)
+
+    def _seed_jewelry_subcategories(self):
+        """Создание подкатегорий украшений (L2 и L3) по схеме из JEWELRY_SUBCATEGORIES."""
+        self.stdout.write("Создание подкатегорий украшений...")
+        jewelry_root = Category.objects.filter(slug="jewelry", parent__isnull=True).first()
+        if not jewelry_root:
+            self.stdout.write(self.style.WARNING("  Корневая категория jewelry не найдена, пропуск"))
+            return
+        cat_type = jewelry_root.category_type
+        for sort_l2, item in enumerate(JEWELRY_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": jewelry_root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> jewelry")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            for sort_l3, child in enumerate(children):
+                c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
+                cat_l3, created = Category.objects.get_or_create(
+                    slug=c_slug,
+                    defaults={
+                        "name": c_ru,
+                        "description": c_desc_ru or c_ru,
+                        "category_type": cat_type,
+                        "parent": cat_l2,
+                        "is_active": True,
+                        "sort_order": sort_l3,
+                    },
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
+                elif cat_l3.parent_id != cat_l2.id:
+                    cat_l3.parent = cat_l2
+                    cat_l3.save()
+                    self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
+                _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
+
+    def _seed_supplements_subcategories(self):
+        """Создание подкатегорий БАДов (L2 и L3) по SUPPLEMENTS_SUBCATEGORIES."""
+        self.stdout.write("Создание подкатегорий БАДов...")
+        root = Category.objects.filter(slug="supplements", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория supplements не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(SUPPLEMENTS_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> supplements")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            for sort_l3, child in enumerate(children):
+                c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
+                cat_l3, created = Category.objects.get_or_create(
+                    slug=c_slug,
+                    defaults={
+                        "name": c_ru,
+                        "description": c_desc_ru or c_ru,
+                        "category_type": cat_type,
+                        "parent": cat_l2,
+                        "is_active": True,
+                        "sort_order": sort_l3,
+                    },
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
+                elif cat_l3.parent_id != cat_l2.id:
+                    cat_l3.parent = cat_l2
+                    cat_l3.save()
+                    self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
+                _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
+
+    def _seed_medicines_subcategories(self):
+        """Создание подкатегорий медикаментов (L2 и L3) по MEDICINES_SUBCATEGORIES."""
+        self.stdout.write("Создание подкатегорий медикаментов...")
+        root = Category.objects.filter(slug="medicines", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория medicines не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(MEDICINES_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> medicines")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            for sort_l3, child in enumerate(children):
+                c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
+                cat_l3, created = Category.objects.get_or_create(
+                    slug=c_slug,
+                    defaults={
+                        "name": c_ru,
+                        "description": c_desc_ru or c_ru,
+                        "category_type": cat_type,
+                        "parent": cat_l2,
+                        "is_active": True,
+                        "sort_order": sort_l3,
+                    },
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
+                elif cat_l3.parent_id != cat_l2.id:
+                    cat_l3.parent = cat_l2
+                    cat_l3.save()
+                    self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
+                _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
+
+    def _seed_furniture_subcategories(self):
+        """Создание подкатегорий мебели (L2 и L3) по FURNITURE_SUBCATEGORIES."""
+        self.stdout.write("Создание подкатегорий мебели...")
+        root = Category.objects.filter(slug="furniture", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория furniture не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(FURNITURE_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> furniture")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            for sort_l3, child in enumerate(children):
+                c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
+                cat_l3, created = Category.objects.get_or_create(
+                    slug=c_slug,
+                    defaults={
+                        "name": c_ru,
+                        "description": c_desc_ru or c_ru,
+                        "category_type": cat_type,
+                        "parent": cat_l2,
+                        "is_active": True,
+                        "sort_order": sort_l3,
+                    },
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
+                elif cat_l3.parent_id != cat_l2.id:
+                    cat_l3.parent = cat_l2
+                    cat_l3.save()
+                    self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
+                _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
+
+    def _seed_auto_parts_subcategories(self):
+        """Создание подкатегорий автозапчастей (L2 и L3) по AUTO_PARTS_SUBCATEGORIES."""
+        self.stdout.write("Создание подкатегорий автозапчастей...")
+        root = Category.objects.filter(slug="auto-parts", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория auto-parts не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(AUTO_PARTS_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> auto-parts")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            for sort_l3, child in enumerate(children):
+                c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
+                cat_l3, created = Category.objects.get_or_create(
+                    slug=c_slug,
+                    defaults={
+                        "name": c_ru,
+                        "description": c_desc_ru or c_ru,
+                        "category_type": cat_type,
+                        "parent": cat_l2,
+                        "is_active": True,
+                        "sort_order": sort_l3,
+                    },
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
+                elif cat_l3.parent_id != cat_l2.id:
+                    cat_l3.parent = cat_l2
+                    cat_l3.save()
+                    self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
+                _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
+
+    def _seed_tableware_subcategories(self):
+        """Создание подкатегорий посуды (L2–L4) по TABLEWARE_SUBCATEGORIES. Рекурсивно."""
+        def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
+            cat, created = Category.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": parent,
+                    "is_active": True,
+                    "sort_order": sort_order,
+                },
+            )
+            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            return cat, created
+
+        def process_children(parent_cat, items, level: int, parent_slug: str):
+            for sort_i, item in enumerate(items):
+                if len(item) == 6:
+                    name_ru, name_en, slug, desc_ru, desc_en, children = item
+                else:
+                    name_ru, name_en, slug, desc_ru, desc_en = item
+                    children = []
+                cat, created = create_category(
+                    parent_cat, name_ru, name_en, slug, desc_ru, desc_en, sort_i, cat_type
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L{level}: {slug} -> {parent_slug}")
+                if children:
+                    process_children(cat, children, level + 1, slug)
+
+        self.stdout.write("Создание подкатегорий посуды...")
+        root = Category.objects.filter(slug="tableware", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория tableware не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(TABLEWARE_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> tableware")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            process_children(cat_l2, children, 3, slug_l2)
+
+    def _seed_electronics_subcategories(self):
+        """Создание подкатегорий электроники (L2–L4) по ELECTRONICS_SUBCATEGORIES. Рекурсивно."""
+        def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
+            cat, created = Category.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": parent,
+                    "is_active": True,
+                    "sort_order": sort_order,
+                },
+            )
+            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            return cat, created
+
+        def process_children(parent_cat, items, level: int, parent_slug: str):
+            for sort_i, item in enumerate(items):
+                if len(item) == 6:
+                    name_ru, name_en, slug, desc_ru, desc_en, children = item
+                else:
+                    name_ru, name_en, slug, desc_ru, desc_en = item
+                    children = []
+                cat, created = create_category(
+                    parent_cat, name_ru, name_en, slug, desc_ru, desc_en, sort_i, cat_type
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L{level}: {slug} -> {parent_slug}")
+                if children:
+                    process_children(cat, children, level + 1, slug)
+
+        self.stdout.write("Создание подкатегорий электроники...")
+        root = Category.objects.filter(slug="electronics", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория electronics не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(ELECTRONICS_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> electronics")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            process_children(cat_l2, children, 3, slug_l2)
+
+    def _seed_sports_subcategories(self):
+        """Создание подкатегорий спорттоваров (L2–L4) по SPORTS_SUBCATEGORIES. Рекурсивно."""
+        def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
+            cat, created = Category.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": parent,
+                    "is_active": True,
+                    "sort_order": sort_order,
+                },
+            )
+            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            return cat, created
+
+        def process_children(parent_cat, items, level: int, parent_slug: str):
+            for sort_i, item in enumerate(items):
+                if len(item) == 6:
+                    name_ru, name_en, slug, desc_ru, desc_en, children = item
+                else:
+                    name_ru, name_en, slug, desc_ru, desc_en = item
+                    children = []
+                cat, created = create_category(
+                    parent_cat, name_ru, name_en, slug, desc_ru, desc_en, sort_i, cat_type
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L{level}: {slug} -> {parent_slug}")
+                if children:
+                    process_children(cat, children, level + 1, slug)
+
+        self.stdout.write("Создание подкатегорий спорттоваров...")
+        root = Category.objects.filter(slug="sports", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория sports не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(SPORTS_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> sports")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            process_children(cat_l2, children, 3, slug_l2)
+
+    def _seed_islamic_clothing_subcategories(self):
+        """Создание подкатегорий исламской одежды (L2 и L3) по ISLAMIC_CLOTHING_SUBCATEGORIES."""
+        self.stdout.write("Создание подкатегорий исламской одежды...")
+        root = Category.objects.filter(slug="islamic-clothing", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория islamic-clothing не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(ISLAMIC_CLOTHING_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> islamic-clothing")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            for sort_l3, child in enumerate(children):
+                c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
+                cat_l3, created = Category.objects.get_or_create(
+                    slug=c_slug,
+                    defaults={
+                        "name": c_ru,
+                        "description": c_desc_ru or c_ru,
+                        "category_type": cat_type,
+                        "parent": cat_l2,
+                        "is_active": True,
+                        "sort_order": sort_l3,
+                    },
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
+                elif cat_l3.parent_id != cat_l2.id:
+                    cat_l3.parent = cat_l2
+                    cat_l3.save()
+                    self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
+                _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
+
+    def _seed_services_subcategories(self):
+        """Создание подкатегорий услуг (L2–L5) по SERVICES_SUBCATEGORIES. Рекурсивно."""
+        def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
+            cat, created = Category.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": parent,
+                    "is_active": True,
+                    "sort_order": sort_order,
+                },
+            )
+            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            return cat, created
+
+        def process_children(parent_cat, items, level: int, parent_slug: str):
+            for sort_i, item in enumerate(items):
+                if len(item) == 6:
+                    name_ru, name_en, slug, desc_ru, desc_en, children = item
+                else:
+                    name_ru, name_en, slug, desc_ru, desc_en = item
+                    children = []
+                cat, created = create_category(
+                    parent_cat, name_ru, name_en, slug, desc_ru, desc_en, sort_i, cat_type
+                )
+                if created:
+                    self.stdout.write(f"  ✓ L{level}: {slug} -> {parent_slug}")
+                if children:
+                    process_children(cat, children, level + 1, slug)
+
+        self.stdout.write("Создание подкатегорий услуг...")
+        root = Category.objects.filter(slug="uslugi", parent__isnull=True).first()
+        if not root:
+            self.stdout.write(self.style.WARNING("  Корневая категория uslugi не найдена, пропуск"))
+            return
+        cat_type = root.category_type
+        for sort_l2, item in enumerate(SERVICES_SUBCATEGORIES):
+            name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
+            cat_l2, created = Category.objects.get_or_create(
+                slug=slug_l2,
+                defaults={
+                    "name": name_ru,
+                    "description": desc_ru or name_ru,
+                    "category_type": cat_type,
+                    "parent": root,
+                    "is_active": True,
+                    "sort_order": sort_l2,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ L2: {slug_l2} -> uslugi")
+            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            process_children(cat_l2, children, 3, slug_l2)
+
+    def _seed_attribute_keys(self):
+        """Создание типов динамических атрибутов (GlobalAttributeKey) по ECOMMERCE_ATTRIBUTES."""
+        self.stdout.write("Создание типов динамических атрибутов...")
+        for sort_order, item in enumerate(ECOMMERCE_ATTRIBUTES):
+            slug, name_ru, name_en, attr_sort, category_slugs = item
+            key, created = GlobalAttributeKey.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "sort_order": attr_sort,
+                },
+            )
+            if created:
+                self.stdout.write(f"  ✓ {slug}")
+            key.sort_order = attr_sort
+            key.save()
+            # Переводы
+            for locale, name in [("ru", name_ru), ("en", name_en)]:
+                trans, _ = GlobalAttributeKeyTranslation.objects.get_or_create(
+                    key_obj=key,
+                    locale=locale,
+                    defaults={"name": name},
+                )
+                if trans.name != name:
+                    trans.name = name
+                    trans.save()
+            # Категории (M2M)
+            categories = list(
+                Category.objects.filter(slug__in=category_slugs).values_list("id", flat=True)
+            )
+            existing = set(key.categories.values_list("id", flat=True))
+            to_add = [c for c in categories if c not in existing]
+            if to_add:
+                key.categories.add(*to_add)
 
     def _fix_hierarchy(self):
         self.stdout.write("Исправление иерархии подкатегорий...")

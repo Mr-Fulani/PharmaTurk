@@ -251,16 +251,10 @@ class Category(models.Model):
         help_text=_("Для категорий одежды и обуви: мужская, женская, унисекс, детская")
     )
     clothing_type = models.CharField(
-        _("Тип одежды"), 
-        max_length=100, 
+        _("Тип одежды"),
+        max_length=100,
         blank=True,
         help_text=_("Для категорий одежды: платья, блузки, джинсы и т.д.")
-    )
-    shoe_type = models.CharField(
-        _("Тип обуви"), 
-        max_length=100, 
-        blank=True,
-        help_text=_("Для категорий обуви: туфли, кроссовки, сапоги и т.д.")
     )
     device_type = models.CharField(
         _("Тип устройства"), 

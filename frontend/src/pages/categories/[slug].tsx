@@ -87,7 +87,6 @@ interface Category {
   gender_display?: string
   clothing_type?: string
   translations?: CategoryTranslation[]
-  shoe_type?: string
   device_type?: string
 }
 
@@ -405,6 +404,7 @@ const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] => 
   if (therapeutic.length > 0) {
     sections.push({
       title: 'Категории',
+      titleKey: 'sidebar_categories',
       items: therapeutic.map(cat => createTreeItem(cat, categories))
     })
   }
@@ -412,6 +412,7 @@ const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] => 
   if (dosageForms.length > 0) {
     sections.push({
       title: 'Вид препарата',
+      titleKey: 'sidebar_medicine_dosage_form',
       items: dosageForms.map(cat => createTreeItem(cat, categories))
     })
   }
@@ -510,6 +511,7 @@ const getCategorySections = (type: CategoryPageProps['categoryType'], categories
     underwear: { title: 'Категории', key: 'sidebar_underwear_categories' },
     headwear: { title: 'Категории', key: 'sidebar_headwear_categories' },
     incense: { title: 'Категории', key: 'sidebar_incense_categories' },
+    uslugi: { title: 'Категории', key: 'sidebar_services_categories' },
   }
   const normalizedType = (type || '').toString().replace(/_/g, '-')
   const config = genericTypes[normalizedType]
@@ -1381,10 +1383,17 @@ export default function CategoryPage({
 
   const siteUrl = useMemo(() => getSiteOrigin(), [])
   const canonicalUrl = useMemo(() => `${siteUrl}/categories/${routeSlug || categoryType}`, [siteUrl, routeSlug, categoryType])
-  const ogTitle = useMemo(() => `${localizedCategoryName} — PharmaTurk`, [localizedCategoryName])
+  // title принимает только текст; t() иногда возвращает массив/React-ноды
+  const titleText = useMemo(() => {
+    const v = localizedCategoryName
+    if (typeof v === 'string') return v
+    if (Array.isArray(v)) return v.map((x) => (typeof x === 'string' ? x : '')).join('')
+    return v != null ? String(v) : ''
+  }, [localizedCategoryName])
+  const ogTitle = useMemo(() => `${titleText} — PharmaTurk`, [titleText])
   const ogDescription = useMemo(
-    () => categoryDescription || t('catalog_of_category', 'Каталог {{category}} в PharmaTurk', { category: localizedCategoryName.toLowerCase() }),
-    [categoryDescription, localizedCategoryName, t]
+    () => categoryDescription || t('catalog_of_category', 'Каталог {{category}} в PharmaTurk', { category: (titleText || '').toLowerCase() }),
+    [categoryDescription, titleText, t]
   )
   const breadcrumbSchema = useMemo(() => {
     const items = breadcrumbs.map((item, idx) => ({
@@ -1403,7 +1412,7 @@ export default function CategoryPage({
   return (
     <>
       <Head>
-        <title>{localizedCategoryName} - PharmaTurk</title>
+        <title>{titleText ? `${titleText} - PharmaTurk` : 'Категория - PharmaTurk'}</title>
         <meta name="description" content={ogDescription} />
         <link rel="canonical" href={canonicalUrl} />
         <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
@@ -1674,18 +1683,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const isShoeCategory =
       normalizeSlug(categoryTypeFromApi || '') === 'shoes' ||
       categoryType === 'shoes' ||
-      Boolean(catData?.gender || catData?.shoe_type)
+      Boolean(catData?.gender)
     if (routeSlug && normalizedRoute !== 'shoes' && isShoeCategory) {
       const query = new URLSearchParams()
       if (catData?.gender) {
         query.set('gender', normalizeSlug(catData.gender))
       }
-      if (catData?.shoe_type) {
-        query.set('shoe_type', normalizeSlug(catData.shoe_type))
-      }
-      if (!query.toString()) {
-        query.set('subcategory_slug', normalizedRoute)
-      }
+      query.set('subcategory_slug', normalizedRoute)
       const brandIdValue = Array.isArray(brand_id) ? brand_id[0] : brand_id
       if (brandIdValue) {
         query.set('brand_id', String(brandIdValue))
@@ -1834,7 +1838,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       } else {
         catParams.top_level = true
       }
-      catParams.page_size = 200
+      catParams.page_size = routeSlug ? 500 : 200
       const catRes = await axios.get(getInternalApiUrl('catalog/categories'), { params: catParams })
       categories = extractResults(catRes.data)
     } catch {
@@ -1847,7 +1851,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       if (!hasChildren) {
         try {
           const childRes = await axios.get(getInternalApiUrl('catalog/categories'), {
-            params: { parent_slug: routeSlug, page_size: 200 }
+            params: { parent_slug: routeSlug, page_size: 500 }
           })
           const childList = extractResults(childRes.data)
           if (childList.length) {

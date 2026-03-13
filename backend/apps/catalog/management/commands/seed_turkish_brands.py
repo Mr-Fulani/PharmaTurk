@@ -422,28 +422,28 @@ class Command(BaseCommand):
         )
         women, _ = Category.objects.get_or_create(
             slug="women-shoes",
-            defaults={"name": "Женская обувь", "gender": "women", "shoe_type": "general", "is_active": True, "sort_order": 1, "parent": root_category},
+            defaults={"name": "Женская обувь", "gender": "women", "is_active": True, "sort_order": 1, "parent": root_category},
         )
         if women.parent_id != root_category.id:
             women.parent = root_category
             women.save(update_fields=["parent"])
         men, _ = Category.objects.get_or_create(
             slug="men-shoes",
-            defaults={"name": "Мужская обувь", "gender": "men", "shoe_type": "general", "is_active": True, "sort_order": 2, "parent": root_category},
+            defaults={"name": "Мужская обувь", "gender": "men", "is_active": True, "sort_order": 2, "parent": root_category},
         )
         if men.parent_id != root_category.id:
             men.parent = root_category
             men.save(update_fields=["parent"])
         kids, _ = Category.objects.get_or_create(
             slug="kids-shoes",
-            defaults={"name": "Детская обувь", "gender": "kids", "shoe_type": "general", "is_active": True, "sort_order": 3, "parent": root_category},
+            defaults={"name": "Детская обувь", "gender": "kids", "is_active": True, "sort_order": 3, "parent": root_category},
         )
         if kids.parent_id != root_category.id:
             kids.parent = root_category
             kids.save(update_fields=["parent"])
         root, _ = Category.objects.get_or_create(
             slug="unisex-shoes",
-            defaults={"name": "Обувь", "gender": "unisex", "shoe_type": "general", "is_active": True, "sort_order": 1, "parent": root_category},
+            defaults={"name": "Обувь", "gender": "unisex", "is_active": True, "sort_order": 1, "parent": root_category},
         )
         if root.parent_id != root_category.id:
             root.parent = root_category
@@ -453,7 +453,6 @@ class Command(BaseCommand):
             defaults={
                 "name": "Кроссовки",
                 "gender": "unisex",
-                "shoe_type": "sneakers",
                 "parent": root,
                 "is_active": True,
                 "sort_order": 2,

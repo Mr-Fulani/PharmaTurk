@@ -57,6 +57,55 @@ class TopLevelCategoryFilter(SimpleListFilter):
         return queryset
 
 
+class CategoryLevelFilter(SimpleListFilter):
+    """Фильтр по уровню иерархии: L1, L2, L3+."""
+    title = _("Уровень иерархии")
+    parameter_name = "hierarchy_level"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("l1", _("L1 (корневые)")),
+            ("l2", _("L2 (подкатегории)")),
+            ("l3", _("L3+ (глубокие)")),
+        )
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "l1":
+            return queryset.filter(parent__isnull=True)
+        if value == "l2":
+            return queryset.filter(parent__isnull=False, parent__parent__isnull=True)
+        if value == "l3":
+            return queryset.filter(parent__isnull=False, parent__parent__isnull=False)
+        return queryset
+
+
+class CategoryRootFilter(SimpleListFilter):
+    """Фильтр по корневой категории: показывает только категории из выбранного дерева."""
+    title = _("Дерево категории")
+    parameter_name = "root_id"
+
+    def lookups(self, request, model_admin):
+        from .models import Category
+        roots = Category.objects.filter(parent__isnull=True, is_active=True).order_by('sort_order', 'name')
+        return [(str(r.pk), r.name) for r in roots]
+
+    def queryset(self, request, queryset):
+        root_id = self.value()
+        if not root_id:
+            return queryset
+        from .models import Category
+        root = Category.objects.filter(pk=root_id).first()
+        if not root:
+            return queryset
+        ids = {root.id}
+        current = set(Category.objects.filter(parent_id=root.id).values_list('id', flat=True))
+        while current:
+            ids.update(current)
+            current = set(Category.objects.filter(parent_id__in=current).values_list('id', flat=True))
+        return queryset.filter(id__in=ids)
+
+
 class ActiveRootFilter(SimpleListFilter):
     """Быстрый фильтр по активности и уровню (активные/активные корневые/неактивные)."""
     title = _("Активность")
@@ -306,7 +355,17 @@ class BaseCategoryAdmin(admin.ModelAdmin):
     form = CategoryFormCatalogHints
     required_category_type_slug: str | None = None
     list_display = ('name', 'slug', 'category_type', 'level_display', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'parent', 'clothing_type', 'shoe_type', 'device_type', 'created_at')
+    list_filter = (
+        ActiveRootFilter,
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'category_type',
+        'clothing_type',
+        'device_type',
+        'created_at',
+    )
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
@@ -370,7 +429,15 @@ class AllCategoriesAdmin(admin.ModelAdmin):
     """Единый список всех категорий (корневые и подкатегории)."""
     form = CategoryFormCatalogHints
     list_display = ('name', 'slug', 'category_type', 'level_display', 'parent_display', 'is_active', 'sort_order', 'created_at')
-    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'created_at')
+    list_filter = (
+        ActiveRootFilter,
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'category_type',
+        'created_at',
+    )
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
@@ -975,7 +1042,14 @@ class ClothingCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий одежды."""
     form = CategoryFormCatalogHints
     list_display = ('name', 'slug', 'category_type', 'level_display', 'clothing_type', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'category_type', 'clothing_type', 'parent', 'created_at')
+    list_filter = (
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        'clothing_type',
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'created_at',
+    )
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
@@ -1337,8 +1411,14 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
 class ShoeCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий обуви."""
     form = CategoryFormCatalogHints
-    list_display = ('name', 'slug', 'level_display', 'shoe_type', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'shoe_type', 'parent', 'created_at')
+    list_display = ('name', 'slug', 'level_display', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_filter = (
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'created_at',
+    )
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
@@ -1349,7 +1429,6 @@ class ShoeCategoryAdmin(admin.ModelAdmin):
             'fields': ('name', 'slug', 'description'),
             'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
         }),
-        (_('Shoes'), {'fields': ('shoe_type',)}),
         (_('Иерархия (L1/L2/L3)'), {
             'fields': ('parent',),
             'description': CATEGORY_HIERARCHY_DESCRIPTION,
@@ -1519,18 +1598,20 @@ class ShoeVariantAdmin(admin.ModelAdmin):
 
 
 @admin.register(ShoeProduct)
-class ShoeProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
+class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров обуви."""
-    category_field_name = "shoe_type"
+
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
 
-    def get_category_queryset(self):
-        """Показываем все категории обуви (L1, L2, L3) для выбора при привязке товара."""
-        from .models import Category
-        return Category.objects.filter(
-            category_type__slug='shoes',
-            is_active=True,
-        ).order_by('sort_order', 'name')
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'category':
+            from .models import Category
+            kwargs['queryset'] = Category.objects.filter(
+                category_type__slug='shoes',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+            kwargs['help_text'] = PRODUCT_CATEGORY_HELP
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def category_path(self, obj):
         return _product_category_path(obj)
@@ -1708,7 +1789,14 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий электроники."""
     form = CategoryFormCatalogHints
     list_display = ('name', 'slug', 'level_display', 'device_type', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'device_type', 'parent', 'created_at')
+    list_filter = (
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        'device_type',
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'created_at',
+    )
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
@@ -2100,15 +2188,29 @@ class ServiceAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
-    
+    autocomplete_fields = ('category',)
+
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Категория'), {
+            'fields': ('category',),
+            'description': _('Выберите категорию услуги (ремонт, отделка, сантехника и т.д.).'),
+        }),
         (_('Pricing'), {'fields': ('price', 'currency')}),
         (_('Media Assets'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file', 'gif_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     inlines = [ServiceTranslationInline, ServiceImageInline, ServiceAttributeInline, ServicePriceInline]
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Ограничиваем выбор категории только категориями типа «Услуги»."""
+        if db_field.name == 'category':
+            kwargs['queryset'] = Category.objects.filter(
+                category_type__slug='uslugi',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 class BannerMediaInline(admin.StackedInline):
@@ -2353,7 +2455,14 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
     from .forms import CategoryForm
     form = CategoryForm
     list_display = ('name', 'slug', 'category_type', 'parent', 'card_media_preview', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'category_type', 'parent', 'created_at')
+    list_filter = (
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        'category_type',
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'created_at',
+    )
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}

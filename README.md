@@ -209,6 +209,25 @@ docker compose exec backend poetry run python manage.py migrate
 docker compose exec backend poetry run python manage.py createsuperuser
 ```
 
+### Восстановление каталога (seed)
+
+```bash
+# Полное восстановление категорий и брендов
+docker compose run --rm backend poetry run python manage.py seed_catalog_data
+
+# Только категории (без брендов)
+docker compose run --rm backend poetry run python manage.py seed_catalog_data --categories-only
+
+# Только типы динамических атрибутов (GlobalAttributeKey)
+docker compose run --rm backend poetry run python manage.py seed_catalog_data --attributes-only
+```
+
+Если backend уже запущен:
+
+```bash
+docker compose exec backend poetry run python manage.py seed_catalog_data --categories-only
+```
+
 ## 🔒 Безопасность
 
 ### Продакшен настройки

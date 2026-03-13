@@ -424,12 +424,19 @@ class StandardPagination(PageNumberPagination):
     max_page_size = 100
 
 
+class CategoryPagination(PageNumberPagination):
+    """Пагинация для категорий: допускает больший page_size для полного дерева (услуги и др.)."""
+    page_size = 100
+    page_size_query_param = 'page_size'
+    max_page_size = 500
+
+
 class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями."""
     
     queryset = Category.objects.filter(is_active=True).select_related('category_type').prefetch_related('translations')
     serializer_class = CategorySerializer
-    pagination_class = StandardPagination
+    pagination_class = CategoryPagination
 
     def _parse_bool(self, value: str | None) -> bool | None:
         """Безопасно парсит булево из query-параметра."""
@@ -1413,39 +1420,35 @@ class ClothingProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelVie
 
 
 class ShoeCategoryViewSet(viewsets.ReadOnlyModelViewSet):
-    """API для работы с категориями обуви."""
-    
-    queryset = Category.objects.filter(shoe_type__isnull=False).exclude(shoe_type='').filter(is_active=True)
+    """API для работы с категориями обуви. Использует иерархию (category_type), не shoe_type."""
+
+    queryset = Category.objects.none()
     serializer_class = ShoeCategorySerializer
     pagination_class = StandardPagination
-    
+
     def get_queryset(self):
-        """Фильтрация категорий обуви."""
-        queryset = Category.objects.filter(shoe_type__isnull=False).exclude(shoe_type='').filter(is_active=True)
-        
-        # Фильтр по полу
+        """Категории обуви по иерархии (category_type__slug='shoes')."""
+        queryset = Category.objects.filter(
+            category_type__slug='shoes',
+            is_active=True,
+        ).select_related('category_type').prefetch_related('translations').order_by('sort_order', 'name')
+
         gender = self.request.query_params.get('gender')
         if gender:
             queryset = queryset.filter(gender=gender)
-        
-        # Фильтр по типу обуви
-        shoe_type = self.request.query_params.get('shoe_type')
-        if shoe_type:
-            queryset = queryset.filter(shoe_type=shoe_type)
-        
-        return queryset.order_by('sort_order', 'name')
-    
+
+        return queryset
+
     @extend_schema(
         summary="Получить список категорий обуви",
         description="Возвращает список активных категорий обуви",
         parameters=[
             OpenApiParameter(name="gender", type=str, required=False, description="Пол (men, women, unisex, kids)"),
-            OpenApiParameter(name="shoe_type", type=str, required=False, description="Тип обуви"),
         ]
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
-    
+
     @action(detail=True, methods=['get'])
     @extend_schema(
         summary="Получить подкатегории обуви",
@@ -1454,7 +1457,7 @@ class ShoeCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     def children(self, request, pk=None):
         """Получить подкатегории."""
         category = self.get_object()
-        children = Category.objects.filter(parent=category, shoe_type__isnull=False).exclude(shoe_type='').filter(is_active=True)
+        children = Category.objects.filter(parent=category, is_active=True).order_by('sort_order', 'name')
         serializer = self.get_serializer(children, many=True)
         return Response(serializer.data)
 
@@ -1487,14 +1490,6 @@ class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet
             'variants__images',
         )
 
-        def parse_multi_param(param_name: str) -> list[str]:
-            raw_list = self.request.query_params.getlist(param_name) or []
-            if not raw_list:
-                raw = self.request.query_params.get(param_name)
-                if raw:
-                    raw_list = raw.split(',')
-            return [v.strip() for v in raw_list if v and str(v).strip()]
-        
         # Фильтр по категории (поддержка массивов)
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
         if category_ids:
@@ -1514,10 +1509,6 @@ class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet
                 if cat_ids:
                     queryset = queryset.filter(category_id__in=cat_ids)
 
-        shoe_types = parse_multi_param('shoe_type')
-        if shoe_types:
-            queryset = queryset.filter(category__shoe_type__in=shoe_types)
-        
         # Фильтр по бренду (поддержка массивов)
         queryset = _apply_brand_filter(queryset, self.request)
         
@@ -1571,7 +1562,6 @@ class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet
             OpenApiParameter(name="category_slug", type=str, required=False, description="Slug категории (включая подкатегории)"),
             OpenApiParameter(name="brand_id", type=int, required=False, description="ID бренда"),
             OpenApiParameter(name="gender", type=str, required=False, description="Пол"),
-            OpenApiParameter(name="shoe_type", type=str, required=False, description="Тип обуви"),
             OpenApiParameter(name="size", type=str, required=False, description="Размер"),
             OpenApiParameter(name="color", type=str, required=False, description="Цвет"),
             OpenApiParameter(name="material", type=str, required=False, description="Материал"),

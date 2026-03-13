@@ -179,7 +179,7 @@ class CategorySerializer(serializers.ModelSerializer):
             'external_id', 'is_active', 'sort_order',
             'children_count', 'products_count', 'created_at', 'updated_at',
             'category_type', 'category_type_slug', 'translations',
-            'gender', 'gender_display', 'clothing_type', 'shoe_type', 'device_type',
+            'gender', 'gender_display', 'clothing_type', 'device_type',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
@@ -1753,9 +1753,9 @@ class ShoeCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = [
-            'id', 'name', 'slug', 'description', 'parent', 
-            'gender', 'gender_display', 'shoe_type',
-            'external_id', 'is_active', 'sort_order', 
+            'id', 'name', 'slug', 'description', 'parent',
+            'gender', 'gender_display',
+            'external_id', 'is_active', 'sort_order',
             'children_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
