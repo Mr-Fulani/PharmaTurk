@@ -71,7 +71,7 @@ open http://localhost:8000/api/docs/
 
 ### 5. Мобильное приложение (Flutter)
 
-Мобильное приложение вынесено в отдельный репозиторий **pharmaturk-mobile** (Flutter, iOS/Android). Локальная копия: `/Users/user/pharmaturk-mobile`. После создания удалённого репозитория добавьте ссылку сюда.
+Мобильное приложение вынесено в отдельный репозиторий: [pharmaturk-mobile](https://github.com/Mr-Fulani/pharmaturk-mobile) (Flutter, iOS/Android).
 
 ## 📋 Структура проекта
 
