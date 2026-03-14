@@ -645,6 +645,50 @@ class UserEmailVerificationView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class UserRequestVerificationCodeView(APIView):
+    """
+    Запрос кода подтверждения email. Генерирует 6-значный код и отправляет на email.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="Запросить код подтверждения email",
+        description="Генерирует код и отправляет на email текущего пользователя",
+        responses={
+            200: {"type": "object", "properties": {"message": {"type": "string"}}},
+            400: "Ошибка (email уже подтверждён или недавно запрашивали)"
+        }
+    )
+    def post(self, request):
+        user = request.user
+        if user.is_verified:
+            return Response(
+                {'detail': _('Email уже подтверждён')},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        code = ''.join(random.choices(string.digits, k=6))
+        user.verification_code = code
+        user.verification_code_expires = timezone.now() + timedelta(minutes=15)
+        user.save()
+        try:
+            from django.core.mail import send_mail
+            from django.conf import settings
+            send_mail(
+                subject=_('Код подтверждения email — PharmaTurk'),
+                message=_(
+                    'Ваш код подтверждения: %(code)s\n\n'
+                    'Код действителен 15 минут.\n'
+                    'Если вы не запрашивали подтверждение, проигнорируйте это письмо.'
+                ) % {'code': code},
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                fail_silently=True,
+            )
+        except Exception as e:
+            logger.warning('Failed to send verification email: %s', e)
+        return Response({'message': _('Код отправлен на ваш email')})
+
+
 class UserStatsView(APIView):
     """
     Статистика пользователя

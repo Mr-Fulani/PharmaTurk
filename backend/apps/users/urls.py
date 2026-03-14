@@ -14,6 +14,7 @@ from .views import (
     UserAddressViewSet,
     UserPasswordChangeView,
     UserEmailVerificationView,
+    UserRequestVerificationCodeView,
     UserStatsView,
     UserSessionsView,
     AppConfigView,
@@ -55,6 +56,7 @@ urlpatterns = [
     # Подтверждение email
     path('verify-email/', UserEmailVerificationView.as_view(), name='user-verify-email'),
     re_path(r'^verify-email$', UserEmailVerificationView.as_view(), name='user-verify-email-noslash'),
+    path('request-verification-code/', UserRequestVerificationCodeView.as_view(), name='user-request-verification-code'),
     
     # Смена пароля
     path('change-password/', UserPasswordChangeView.as_view(), name='user-change-password'),
