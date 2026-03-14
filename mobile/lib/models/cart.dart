@@ -6,8 +6,18 @@ String _cartSafeStr(dynamic v) => v?.toString() ?? '';
 /// Для полей, которые API может вернуть как Map/List/num — всегда строка
 String _cartSafeDynamicStr(dynamic v) {
   if (v == null) return '';
-  if (v is Map || v is List) return ''; // product_translations, prices_in_currencies, shipping_options
+  if (v is Map || v is List) return ''; // product_translations, prices_in_currencies
   return v.toString();
+}
+/// Парсинг shipping_options: { air, sea, ground } — стоимость доставки в USD
+Map<String, double> _shippingOptionsFromJson(dynamic v) {
+  if (v == null || v is! Map) return {};
+  final m = Map<String, dynamic>.from(v);
+  return {
+    'air': (m['air'] as num?)?.toDouble() ?? 0,
+    'sea': (m['sea'] as num?)?.toDouble() ?? 0,
+    'ground': (m['ground'] as num?)?.toDouble() ?? 0,
+  };
 }
 int _cartSafeInt(dynamic v) => (v as num?)?.toInt() ?? 0;
 DateTime _cartSafeDateTime(dynamic v) {
@@ -42,8 +52,8 @@ class Cart {
   final String discountAmount;
   @JsonKey(name: 'final_amount', fromJson: _cartSafeStr)
   final String finalAmount;
-  @JsonKey(name: 'shipping_options', fromJson: _cartSafeDynamicStr)
-  final String? shippingOptions;
+  @JsonKey(name: 'shipping_options', fromJson: _shippingOptionsFromJson)
+  final Map<String, double> shippingOptions;
   @JsonKey(name: 'promo_code')
   final PromoCode? promoCode;
   @JsonKey(name: 'created_at', fromJson: _cartSafeDateTime)
@@ -61,7 +71,7 @@ class Cart {
     required this.totalAmount,
     required this.discountAmount,
     required this.finalAmount,
-    this.shippingOptions,
+    this.shippingOptions = const <String, double>{},
     this.promoCode,
     required this.createdAt,
     required this.updatedAt,

@@ -308,6 +308,13 @@ RECEIPT_LABELS = {
 
 
 # TODO: Функционал чеков временно отключен. Будет доработан позже.
+def get_receipt_filename(order: Order) -> str:
+    """Имя файла чека с данными клиента для ясности: receipt_ДАТА_НОМЕР_ИМЯ.pdf"""
+    date_str = (order.created_at or timezone.now()).strftime('%Y%m%d')
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in (order.contact_name or "client"))[:20]
+    return f"receipt_{date_str}_{order.number}_{safe_name}.pdf"
+
+
 def render_receipt_html(
     order: Order, receipt: Dict[str, Any] | None = None, locale: str = "ru"
 ) -> str:
@@ -355,7 +362,7 @@ def generate_and_save_receipt(order: Order, locale: str = "ru") -> tuple[str | N
             Key=file_key,
             Body=pdf_file,
             ContentType='application/pdf',
-            ContentDisposition=f'inline; filename="receipt_{order.number}.pdf"',
+            ContentDisposition=f'inline; filename="{get_receipt_filename(order)}"',
         )
 
         cdn_url = settings.AI_R2_SETTINGS.get('cdn_url', '').rstrip('/')

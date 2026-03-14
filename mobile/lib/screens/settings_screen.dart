@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 
 const _currencies = [
   ('RUB', 'Рубли (₽)'),
@@ -11,6 +12,11 @@ const _currencies = [
   ('USDT', 'USDT'),
 ];
 
+const _languages = [
+  ('ru', 'Русский'),
+  ('en', 'English'),
+];
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
@@ -18,75 +24,75 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Настройки'),
+        title: Text(context.tr('settings')),
       ),
       body: ListView(
         children: [
-          _buildSectionTitle('Общие'),
-          _buildSettingsTile(
-            icon: Icons.language_outlined,
-            title: 'Язык',
-            subtitle: 'Русский',
-            onTap: () {
-              // TODO: Change language
-            },
+          _buildSectionTitle(context.tr('general')),
+          Consumer<AuthProvider>(
+            builder: (context, auth, _) => _buildSettingsTile(
+              icon: Icons.language_outlined,
+              title: context.tr('language'),
+              subtitle: _getLanguageLabel(auth.user?.preferredLanguage ?? 'ru'),
+              onTap: () => _showLanguagePicker(context, auth),
+            ),
           ),
           Consumer<AuthProvider>(
             builder: (context, auth, _) => _buildSettingsTile(
               icon: Icons.currency_exchange_outlined,
-              title: 'Валюта',
+              title: context.tr('currency'),
               subtitle: auth.user?.preferredCurrency ?? 'RUB',
               onTap: () => _showCurrencyPicker(context, auth),
             ),
           ),
           _buildSettingsTile(
             icon: Icons.notifications_outlined,
-            title: 'Уведомления',
-            subtitle: 'Включены',
+            title: context.tr('notifications'),
+            subtitle: context.tr('notifications_on'),
             onTap: () {
               // TODO: Notification settings
             },
           ),
-          _buildSectionTitle('Безопасность'),
+          _buildSectionTitle(context.tr('security')),
           _buildSettingsTile(
             icon: Icons.lock_outlined,
-            title: 'Изменить пароль',
+            title: context.tr('change_password'),
             onTap: () {
               _showChangePasswordDialog(context);
             },
           ),
           _buildSettingsTile(
             icon: Icons.verified_user_outlined,
-            title: 'Двухфакторная аутентификация',
-            subtitle: 'Отключена',
+            title: context.tr('2fa'),
+            subtitle: context.tr('2fa_off'),
             onTap: () {
               // TODO: 2FA settings
             },
           ),
-          _buildSectionTitle('О приложении'),
+          _buildSectionTitle(context.tr('about')),
           _buildSettingsTile(
             icon: Icons.info_outlined,
-            title: 'Версия приложения',
+            title: context.tr('version'),
             subtitle: '1.0.0',
             onTap: () {},
           ),
           _buildSettingsTile(
             icon: Icons.policy_outlined,
-            title: 'Политика конфиденциальности',
+            title: context.tr('privacy'),
             onTap: () {
               // TODO: Open privacy policy
             },
           ),
           _buildSettingsTile(
             icon: Icons.description_outlined,
-            title: 'Условия использования',
+            title: context.tr('terms'),
             onTap: () {
               // TODO: Open terms
             },
           ),
           _buildSettingsTile(
             icon: Icons.support_agent_outlined,
-            title: 'Поддержка',
+            title: context.tr('support'),
             onTap: () {
               // TODO: Contact support
             },
@@ -105,6 +111,56 @@ class SettingsScreen extends StatelessWidget {
           fontSize: 14,
           fontWeight: FontWeight.bold,
           color: Colors.grey[600],
+        ),
+      ),
+    );
+  }
+
+  String _getLanguageLabel(String code) {
+    return _languages.firstWhere(
+      (e) => e.$1 == code,
+      orElse: () => ('ru', 'Русский'),
+    ).$2;
+  }
+
+  void _showLanguagePicker(BuildContext context, AuthProvider auth) {
+    final current = auth.user?.preferredLanguage ?? 'ru';
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                ctx.tr('select_language'),
+                style: Theme.of(ctx).textTheme.titleLarge,
+              ),
+            ),
+            ..._languages.map((e) {
+              final code = e.$1;
+              final label = e.$2;
+              return ListTile(
+                title: Text(label),
+                trailing: current == code ? const Icon(Icons.check, color: Colors.teal) : null,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final localeProvider = ctx.read<LocaleProvider>();
+                  await localeProvider.setLocale(code);
+                  final ok = await auth.updateProfile({'language': code});
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(
+                        content: Text(ok ? '${ctx.tr('language_changed')} $label' : (auth.error ?? ctx.tr('error'))),
+                        backgroundColor: ok ? null : Colors.red,
+                      ),
+                    );
+                  }
+                },
+              );
+            }),
+          ],
         ),
       ),
     );
@@ -136,7 +192,7 @@ class SettingsScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                'Выберите валюту',
+                context.tr('select_currency'),
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
@@ -151,12 +207,24 @@ class SettingsScreen extends StatelessWidget {
                   Navigator.pop(context);
                   final ok = await auth.updateProfile({'currency': code});
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    if (ok) {
+                      await context.read<CartProvider>().getCart();
+                      final catalog = context.read<CatalogProvider>();
+                      await catalog.getProducts(refresh: true);
+                      await catalog.getFeaturedProducts();
+                      final slug = catalog.selectedProduct?.slug;
+                      if (slug != null) {
+                        await catalog.getProductDetail(slug);
+                      }
+                    }
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(ok ? 'Валюта изменена на $code' : (auth.error ?? 'Ошибка')),
-                        backgroundColor: ok ? null : Colors.red,
-                      ),
-                    );
+                        content: Text(ok ? '${context.tr('currency_changed')} $code' : (auth.error ?? context.tr('error'))),
+                          backgroundColor: ok ? null : Colors.red,
+                        ),
+                      );
+                    }
                   }
                 },
               );
@@ -177,7 +245,7 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Изменить пароль'),
+          title: Text(context.tr('change_password')),
           content: Form(
             key: formKey,
             child: Column(
@@ -185,13 +253,13 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 TextFormField(
                   controller: oldPasswordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Текущий пароль',
+                  decoration: InputDecoration(
+                    labelText: context.tr('old_password'),
                   ),
                   obscureText: true,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Введите текущий пароль';
+                      return context.tr('enter_old_password');
                     }
                     return null;
                   },
@@ -199,16 +267,16 @@ class SettingsScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: newPasswordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Новый пароль',
+                  decoration: InputDecoration(
+                    labelText: context.tr('new_password'),
                   ),
                   obscureText: true,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Введите новый пароль';
+                      return context.tr('enter_new_password');
                     }
                     if (value.length < 6) {
-                      return 'Пароль должен быть не менее 6 символов';
+                      return context.tr('password_min_length');
                     }
                     return null;
                   },
@@ -216,16 +284,16 @@ class SettingsScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: confirmPasswordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Подтвердите новый пароль',
+                  decoration: InputDecoration(
+                    labelText: context.tr('confirm_password'),
                   ),
                   obscureText: true,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Подтвердите пароль';
+                      return context.tr('confirm_password_required');
                     }
                     if (value != newPasswordController.text) {
-                      return 'Пароли не совпадают';
+                      return context.tr('passwords_mismatch');
                     }
                     return null;
                   },
@@ -236,7 +304,7 @@ class SettingsScreen extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Отмена'),
+              child: Text(context.tr('cancel')),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -251,22 +319,22 @@ class SettingsScreen extends StatelessWidget {
                 if (success && context.mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Пароль успешно изменен'),
-                    ),
+                  SnackBar(
+                    content: Text(context.tr('password_changed')),
+                  ),
                   );
                 } else if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        context.read<AuthProvider>().error ?? 'Ошибка',
+                        context.read<AuthProvider>().error ?? context.tr('error'),
                       ),
                       backgroundColor: Colors.red,
                     ),
                   );
                 }
               },
-              child: const Text('Сохранить'),
+              child: Text(context.tr('save')),
             ),
           ],
         );

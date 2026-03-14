@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/providers.dart';
+import '../utils/image_url.dart';
+import '../l10n/app_localizations.dart';
 import 'login_screen.dart';
 import 'orders_screen.dart';
 import 'favorites_screen.dart';
@@ -31,7 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Профиль'),
+        title: Text(context.tr('profile')),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -88,7 +90,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'Вы не авторизованы',
+            context.tr('not_authenticated'),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -97,7 +99,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Войдите, чтобы получить доступ к профилю',
+            context.tr('login_to_access'),
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey[500],
@@ -116,7 +118,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             ),
-            child: const Text('Войти'),
+            child: Text(context.tr('login')),
           ),
         ],
       ),
@@ -129,15 +131,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 40,
-              backgroundColor: Colors.grey[200],
-              backgroundImage: user.avatar != null
-                  ? CachedNetworkImageProvider(user.avatar!)
-                  : null,
-              child: user.avatar == null
-                  ? const Icon(Icons.person, size: 40, color: Colors.grey)
-                  : null,
+            ClipOval(
+              child: user.avatar != null
+                  ? CachedNetworkImage(
+                      imageUrl: resolveImageUrl(user.avatar),
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Container(
+                        color: Colors.grey[200],
+                        child: const Icon(Icons.person, size: 40, color: Colors.grey),
+                      ),
+                    )
+                  : Container(
+                      width: 80,
+                      height: 80,
+                      color: Colors.grey[200],
+                      child: const Icon(Icons.person, size: 40, color: Colors.grey),
+                    ),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -169,8 +180,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: Colors.orange.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: const Text(
-                        'Email не подтвержден',
+                      child: Text(
+                        context.tr('email_not_verified'),
                         style: TextStyle(
                           color: Colors.orange,
                           fontSize: 12,
@@ -202,17 +213,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildStatItem(
               icon: Icons.shopping_bag_outlined,
               value: stats.ordersCount.toString(),
-              label: 'Заказов',
+              label: context.tr('orders_count'),
             ),
             _buildStatItem(
               icon: Icons.favorite_outline,
               value: stats.favoritesCount.toString(),
-              label: 'Избранное',
+              label: context.tr('favorites'),
             ),
             _buildStatItem(
               icon: Icons.star_outline,
               value: stats.reviewsCount.toString(),
-              label: 'Отзывы',
+              label: context.tr('reviews'),
             ),
           ],
         ),
@@ -253,8 +264,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           _buildMenuItem(
             icon: Icons.shopping_bag_outlined,
-            title: 'Мои заказы',
-            subtitle: 'История покупок',
+            title: context.tr('orders'),
+            subtitle: context.tr('orders_history'),
             onTap: () {
               Navigator.push(
                 context,
@@ -267,8 +278,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const Divider(height: 1),
           _buildMenuItem(
             icon: Icons.favorite_outline,
-            title: 'Избранное',
-            subtitle: 'Сохраненные товары',
+            title: context.tr('favorites'),
+            subtitle: context.tr('favorites_saved'),
             onTap: () {
               Navigator.push(
                 context,
@@ -281,8 +292,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const Divider(height: 1),
           _buildMenuItem(
             icon: Icons.location_on_outlined,
-            title: 'Адреса доставки',
-            subtitle: 'Управление адресами',
+            title: context.tr('addresses'),
+            subtitle: context.tr('addresses_manage'),
             onTap: () {
               Navigator.push(
                 context,
@@ -295,8 +306,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const Divider(height: 1),
           _buildMenuItem(
             icon: Icons.notifications_outlined,
-            title: 'Уведомления',
-            subtitle: 'Настройки уведомлений',
+            title: context.tr('notifications'),
+            subtitle: context.tr('notifications_subtitle'),
             onTap: () {
               // TODO: Notifications settings
             },
@@ -304,8 +315,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const Divider(height: 1),
           _buildMenuItem(
             icon: Icons.help_outline,
-            title: 'Помощь',
-            subtitle: 'Поддержка и FAQ',
+            title: context.tr('help'),
+            subtitle: context.tr('help_subtitle'),
             onTap: () {
               // TODO: Help
             },
@@ -313,8 +324,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const Divider(height: 1),
           _buildMenuItem(
             icon: Icons.logout,
-            title: 'Выйти',
-            subtitle: 'Выход из аккаунта',
+            title: context.tr('logout'),
+            subtitle: context.tr('logout_subtitle'),
             isDestructive: true,
             onTap: () => _showLogoutDialog(),
           ),
@@ -343,33 +354,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showLogoutDialog() {
+    final navigator = Navigator.of(context);
+    final authProvider = context.read<AuthProvider>();
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Выйти из аккаунта?'),
-          content: const Text('Вы уверены, что хотите выйти?'),
+          title: Text(context.tr('logout_confirm')),
+          content: Text(context.tr('logout_confirm_text')),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Отмена'),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(context.tr('cancel')),
             ),
             ElevatedButton(
               onPressed: () async {
-                Navigator.pop(context);
-                await context.read<AuthProvider>().logout();
-                if (mounted) {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const LoginScreen(),
-                    ),
-                    (route) => false,
-                  );
-                }
+                Navigator.pop(dialogContext);
+                await authProvider.logout();
+                if (!mounted) return;
+                navigator.pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (_) => const LoginScreen(),
+                  ),
+                  (route) => false,
+                );
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Выйти'),
+              child: Text(context.tr('logout')),
             ),
           ],
         );

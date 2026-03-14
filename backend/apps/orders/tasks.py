@@ -19,7 +19,7 @@ from config.celery import app
 logger = logging.getLogger(__name__)
 
 from .models import Order
-from .services import build_order_receipt_payload, render_receipt_html, generate_and_save_receipt
+from .services import build_order_receipt_payload, render_receipt_html, generate_and_save_receipt, get_receipt_filename
 
 
 # TODO: Функционал чеков временно отключен. Будет доработан позже.
@@ -55,7 +55,7 @@ def send_order_receipt_task(
 
     if pdf_content:
         try:
-            message.attach(f"receipt_{order.number}.pdf", pdf_content, "application/pdf")
+            message.attach(get_receipt_filename(order), pdf_content, "application/pdf")
         except Exception:
             pass
 
@@ -125,10 +125,7 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
 
     from .services import translate_method, PAYMENT_METHOD_TRANSLATIONS, SHIPPING_METHOD_TRANSLATIONS
 
-    # Имя файла: receipt_ДАТА_НОМЕРЗАКАЗА_ИМЯ.pdf
-    from datetime import date as _date
-    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in (order.contact_name or "client"))[:20]
-    filename = f"receipt_{_date.today().strftime('%Y%m%d')}_{order.number}_{safe_name}.pdf"
+    filename = get_receipt_filename(order)
 
     # Уведомление админу
     if admin_chat_id:

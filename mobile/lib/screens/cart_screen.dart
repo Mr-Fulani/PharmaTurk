@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/image_url.dart';
+import '../utils/price_format.dart';
 import '../providers/providers.dart';
 import '../models/models.dart';
+import '../l10n/app_localizations.dart';
 import 'checkout_screen.dart';
 import 'product_detail_screen.dart';
 
@@ -31,18 +33,52 @@ class _CartScreenState extends State<CartScreen> {
     super.dispose();
   }
 
+  Future<void> _applyPromoCode(CartProvider provider) async {
+    final code = _promoController.text.trim();
+    if (code.isEmpty) return;
+
+    provider.clearError();
+    final success = await provider.applyPromoCode(code);
+    if (!mounted) return;
+
+    if (success) {
+      final promo = provider.appliedPromoCode;
+      String msg = context.tr('promo_applied');
+      if (promo != null) {
+        msg += ' ${_formatPromoDescription(context, promo)}';
+        final discount = provider.discountAmount;
+        if (discount != '0' && discount != '0.00') {
+          msg += ' (−${formatPriceWithCurrency(discount, provider.cart?.currency)})';
+        }
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(provider.error ?? context.tr('promo_not_found')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Корзина'),
+        title: Text(context.tr('cart')),
         actions: [
           Consumer<CartProvider>(
             builder: (context, provider, child) {
               if (!provider.hasItems) return const SizedBox.shrink();
               return TextButton(
                 onPressed: () => _showClearCartDialog(),
-                child: const Text('Очистить'),
+                child: Text(context.tr('clear')),
               );
             },
           ),
@@ -63,7 +99,7 @@ class _CartScreenState extends State<CartScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () => provider.getCart(),
-                    child: const Text('Повторить'),
+                    child: Text(context.tr('retry')),
                   ),
                 ],
               ),
@@ -120,7 +156,7 @@ class _CartScreenState extends State<CartScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'Корзина пуста',
+            context.tr('cart_empty'),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -129,7 +165,7 @@ class _CartScreenState extends State<CartScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Добавьте товары в корзину',
+            context.tr('add_to_cart_first'),
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey[500],
@@ -143,15 +179,30 @@ class _CartScreenState extends State<CartScreen> {
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             ),
-            child: const Text('Перейти к покупкам'),
+            child: Text(context.tr('go_shopping')),
           ),
         ],
       ),
     );
   }
 
+  String _formatPromoDescription(BuildContext context, PromoCode promo) {
+    final type = promo.discountType.toLowerCase();
+    final value = promo.discountValue;
+    if (type == 'percent') {
+      final p = double.tryParse(value) ?? 0;
+      return '${context.tr('discount')} ${p == p.truncateToDouble() ? p.toInt() : p}%';
+    }
+    if (type == 'fixed') {
+      final v = double.tryParse(value) ?? 0;
+      return '${context.tr('discount')} ${v == v.truncateToDouble() ? v.toInt() : v} ₽';
+    }
+    return context.tr('discount_promo');
+  }
+
   Widget _buildPromoCodeSection(CartProvider provider) {
     if (provider.appliedPromoCode != null) {
+      final promo = provider.appliedPromoCode!;
       return Container(
         margin: const EdgeInsets.only(top: 16),
         padding: const EdgeInsets.all(16),
@@ -169,14 +220,14 @@ class _CartScreenState extends State<CartScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Промокод применен',
+                    context.tr('promo_applied').replaceFirst('!', ''),
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Colors.green[700],
                     ),
                   ),
                   Text(
-                    provider.appliedPromoCode!.code,
+                    '${promo.code} — ${_formatPromoDescription(context, promo)}',
                     style: TextStyle(color: Colors.green[700]),
                   ),
                 ],
@@ -199,7 +250,7 @@ class _CartScreenState extends State<CartScreen> {
             child: TextField(
               controller: _promoController,
               decoration: InputDecoration(
-                hintText: 'Промокод',
+                hintText: context.tr('promo_code'),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -209,15 +260,11 @@ class _CartScreenState extends State<CartScreen> {
           ),
           const SizedBox(width: 12),
           ElevatedButton(
-            onPressed: () {
-              if (_promoController.text.isNotEmpty) {
-                provider.applyPromoCode(_promoController.text);
-              }
-            },
+            onPressed: () => _applyPromoCode(provider),
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
             ),
-            child: const Text('Применить'),
+            child: Text(context.tr('apply')),
           ),
         ],
       ),
@@ -241,15 +288,15 @@ class _CartScreenState extends State<CartScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (provider.discount != '0.00')
+            if (provider.discount > 0)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Скидка:'),
+                    Text(context.tr('discount') + ':'),
                     Text(
-                      '-${provider.discountAmount}',
+                      '-${formatPriceWithCurrency(provider.discountAmount, provider.cart?.currency)}',
                       style: const TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.bold,
@@ -264,15 +311,15 @@ class _CartScreenState extends State<CartScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Итого:',
+                    Text(
+                      context.tr('total') + ':',
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey,
                       ),
                     ),
                     Text(
-                      '${provider.finalAmount} ₽',
+                      formatPriceWithCurrency(provider.finalAmount, provider.cart?.currency),
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -297,8 +344,8 @@ class _CartScreenState extends State<CartScreen> {
                     ),
                     backgroundColor: Colors.teal,
                   ),
-                  child: const Text(
-                    'Оформить заказ',
+                  child: Text(
+                    context.tr('place_order'),
                     style: TextStyle(fontSize: 16),
                   ),
                 ),
@@ -315,12 +362,12 @@ class _CartScreenState extends State<CartScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Очистить корзину?'),
-          content: const Text('Все товары будут удалены из корзины'),
+          title: Text(context.tr('clear_cart')),
+          content: Text(context.tr('clear_cart_confirm')),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Отмена'),
+              child: Text(context.tr('cancel')),
             ),
             ElevatedButton(
               onPressed: () {
@@ -328,7 +375,7 @@ class _CartScreenState extends State<CartScreen> {
                 context.read<CartProvider>().clearCart();
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Очистить'),
+              child: Text(context.tr('clear')),
             ),
           ],
         );
@@ -422,7 +469,7 @@ class _CartItemCard extends StatelessWidget {
                     ),
                     if (item.chosenSize != null)
                       Text(
-                        'Размер: ${item.chosenSize}',
+                        '${context.tr('size')}: ${item.chosenSize}',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey[600],
@@ -430,7 +477,7 @@ class _CartItemCard extends StatelessWidget {
                       ),
                     const SizedBox(height: 8),
                     Text(
-                      '${item.price} ${item.currency}',
+                      formatPriceWithCurrency(item.price, item.currency),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.teal,
@@ -440,7 +487,14 @@ class _CartItemCard extends StatelessWidget {
                 ),
               ),
               Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: onRemove,
+                    color: Colors.grey[600],
+                    tooltip: context.tr('remove'),
+                  ),
                   Row(
                     children: [
                       _QuantityButton(
@@ -467,7 +521,7 @@ class _CartItemCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '${item.total} ${item.currency}',
+                    formatPriceWithCurrency(item.total, item.currency),
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                     ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 import '../models/models.dart';
 
 class OrderDetailScreen extends StatefulWidget {
@@ -28,7 +29,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Детали заказа'),
+        title: Text(context.tr('order_details')),
       ),
       body: Consumer<OrderProvider>(
         builder: (context, provider, child) {
@@ -45,7 +46,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () => provider.getOrder(widget.orderId),
-                    child: const Text('Повторить'),
+                    child: Text(context.tr('retry')),
                   ),
                 ],
               ),
@@ -54,7 +55,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
           final order = provider.selectedOrder;
           if (order == null) {
-            return const Center(child: Text('Заказ не найден'));
+            return Center(child: Text(context.tr('order_not_found')));
           }
 
           return SingleChildScrollView(
@@ -62,17 +63,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildOrderHeader(order),
+                _buildOrderHeader(context, order),
                 const SizedBox(height: 24),
-                _buildStatusSection(order),
+                _buildStatusSection(context, order),
                 const SizedBox(height: 24),
-                _buildItemsSection(order),
+                _buildItemsSection(context, order),
                 const SizedBox(height: 24),
-                _buildDeliverySection(order),
+                _buildDeliverySection(context, order),
                 const SizedBox(height: 24),
-                _buildPaymentSection(order),
+                _buildPaymentSection(context, order),
                 const SizedBox(height: 24),
-                _buildTotalSection(order),
+                _buildTotalSection(context, order),
               ],
             ),
           );
@@ -81,7 +82,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  Widget _buildOrderHeader(Order order) {
+  Widget _buildOrderHeader(BuildContext context, Order order) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -92,18 +93,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Заказ #${order.number}',
+                  '${context.tr('order_number')}${order.number}',
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                _buildStatusBadge(order.status),
+                _buildStatusBadge(context, order.status),
               ],
             ),
             const SizedBox(height: 12),
             Text(
-              'Дата создания: ${order.createdAt.day}.${order.createdAt.month}.${order.createdAt.year}',
+              '${context.tr('created')}: ${order.createdAt.day}.${order.createdAt.month}.${order.createdAt.year}',
               style: TextStyle(color: Colors.grey[600]),
             ),
           ],
@@ -112,34 +113,34 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  Widget _buildStatusSection(Order order) {
+  Widget _buildStatusSection(BuildContext context, Order order) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Статус заказа',
+            Text(
+              context.tr('order_status'),
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 16),
-            _buildStatusTimeline(order.status),
+            _buildStatusTimeline(context, order.status),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatusTimeline(String currentStatus) {
+  Widget _buildStatusTimeline(BuildContext context, String currentStatus) {
     final statuses = [
-      {'key': 'new', 'label': 'Создан'},
-      {'key': 'processing', 'label': 'В обработке'},
-      {'key': 'shipped', 'label': 'Отправлен'},
-      {'key': 'delivered', 'label': 'Доставлен'},
+      {'key': 'new', 'label': context.tr('status_new')},
+      {'key': 'processing', 'label': context.tr('status_processing')},
+      {'key': 'shipped', 'label': context.tr('status_shipped')},
+      {'key': 'delivered', 'label': context.tr('status_delivered')},
     ];
 
     final currentIndex = statuses.indexWhere((s) => s['key'] == currentStatus);
@@ -188,15 +189,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  Widget _buildItemsSection(Order order) {
+  Widget _buildItemsSection(BuildContext context, Order order) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Товары',
+            Text(
+              context.tr('items'),
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -240,34 +241,45 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  Widget _buildDeliverySection(Order order) {
+  Widget _buildDeliverySection(BuildContext context, Order order) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Доставка',
+            Text(
+              context.tr('delivery'),
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 16),
+            if (order.shippingMethod != null && order.shippingMethod!.isNotEmpty)
+              _buildInfoRow(context.tr('shipping_method'), _getShippingMethodText(context, order.shippingMethod!)),
             if (order.contactName != null)
-              _buildInfoRow('Получатель', order.contactName!),
+              _buildInfoRow(context.tr('recipient'), order.contactName!),
             if (order.contactPhone != null)
-              _buildInfoRow('Телефон', order.contactPhone!),
-            if (order.shippingAddressText != null)
-              _buildInfoRow('Адрес', order.shippingAddressText!),
+              _buildInfoRow(context.tr('phone'), order.contactPhone!),
+            if (order.shippingAddressText != null && order.shippingAddressText!.isNotEmpty)
+              _buildInfoRow(context.tr('address'), order.shippingAddressText!),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildPaymentSection(Order order) {
+  String _getShippingMethodText(BuildContext context, String method) {
+    final m = method.toLowerCase();
+    if (m.contains('air') || m.contains('авиа')) return context.tr('shipping_air');
+    if (m.contains('sea') || m.contains('мор')) return context.tr('shipping_sea');
+    if (m.contains('ground') || m.contains('назем')) return context.tr('shipping_ground');
+    if (m.contains('pickup') || m.contains('самовывоз')) return context.tr('shipping_pickup');
+    return method;
+  }
+
+  Widget _buildPaymentSection(BuildContext context, Order order) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -283,38 +295,38 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             ),
             const SizedBox(height: 16),
             _buildInfoRow(
-              'Способ оплаты',
-              _getPaymentMethodText(order.paymentMethod),
+              context.tr('payment_method'),
+              _getPaymentMethodText(context, order.paymentMethod),
             ),
-            _buildInfoRow('Статус', 'Оплачено'),
+            _buildInfoRow(context.tr('status'), context.tr('paid')),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTotalSection(Order order) {
+  Widget _buildTotalSection(BuildContext context, Order order) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            _buildTotalRow('Товары', '${order.subtotalAmount} ${order.currency}'),
+            _buildTotalRow(context.tr('items'), '${order.subtotalAmount} ${order.currency}'),
             if (order.discountAmount != '0.00')
               _buildTotalRow(
-                'Скидка',
+                context.tr('discount'),
                 '-${order.discountAmount} ${order.currency}',
                 valueColor: Colors.green,
               ),
             _buildTotalRow(
-              'Доставка',
+              context.tr('delivery'),
               order.shippingAmount == '0.00'
-                  ? 'Бесплатно'
+                  ? context.tr('free')
                   : '${order.shippingAmount} ${order.currency}',
             ),
             const Divider(height: 24),
             _buildTotalRow(
-              'Итого',
+              context.tr('total'),
               '${order.totalAmount} ${order.currency}',
               isBold: true,
               valueSize: 20,
@@ -381,7 +393,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  Widget _buildStatusBadge(String status) {
+  Widget _buildStatusBadge(BuildContext context, String status) {
     Color color;
     switch (status) {
       case 'new':
@@ -410,7 +422,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        _getStatusText(status),
+        _getStatusText(context, status),
         style: TextStyle(
           color: color,
           fontSize: 12,
@@ -420,35 +432,38 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     );
   }
 
-  String _getStatusText(String status) {
+  String _getStatusText(BuildContext context, String status) {
     switch (status) {
       case 'new':
-        return 'Новый';
+        return context.tr('status_new');
       case 'processing':
-        return 'В обработке';
+        return context.tr('status_processing');
       case 'shipped':
-        return 'Отправлен';
+        return context.tr('status_shipped');
       case 'delivered':
-        return 'Доставлен';
+        return context.tr('status_delivered');
       case 'cancelled':
-        return 'Отменен';
+        return context.tr('status_cancelled');
       case 'refunded':
-        return 'Возвращен';
+        return context.tr('status_refunded');
       default:
         return status;
     }
   }
 
-  String _getPaymentMethodText(String? method) {
-    switch (method) {
+  String _getPaymentMethodText(BuildContext context, String? method) {
+    if (method == null || method.isEmpty) return context.tr('payment_not_specified');
+    switch (method.toLowerCase()) {
+      case 'cod':
+        return context.tr('payment_cod');
       case 'card':
-        return 'Банковская карта';
+        return context.tr('payment_card');
       case 'cash':
-        return 'Наличные при получении';
+        return context.tr('payment_cod'); // fallback
       case 'crypto':
-        return 'Криптовалюта';
+        return context.tr('payment_crypto');
       default:
-        return method ?? 'Не указан';
+        return method;
     }
   }
 }

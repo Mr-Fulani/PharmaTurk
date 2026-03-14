@@ -20,8 +20,27 @@ class BusinessReranker:
         if not candidates:
             return []
         product_ids = [c["product_id"] for c in candidates]
-        products = Product.objects.filter(id__in=product_ids).select_related(
-            "category", "brand"
+        products = (
+            Product.objects.filter(id__in=product_ids)
+            .select_related("category", "brand")
+            .prefetch_related(
+                "images",
+                "medicine_item__gallery_images",
+                "supplement_item__gallery_images",
+                "medical_equipment_item__gallery_images",
+                "tableware_item__gallery_images",
+                "accessory_item__gallery_images",
+                "incense_item__gallery_images",
+                "book_item__images",
+                "clothing_item__images",
+                "shoe_item__images",
+                "jewelry_item__images",
+                "electronics_item__images",
+                "furniture_item__images",
+                "perfumery_item__images",
+                "sports_item__images",
+                "auto_part_item__images",
+            )
         )
         product_map = {p.id: p for p in products}
         enriched = []

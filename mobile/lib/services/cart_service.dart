@@ -93,7 +93,7 @@ class CartService {
   Cart _emptyCart() {
     return Cart(
       id: 0,
-      currency: 'USD',
+      currency: _apiClient.currency ?? 'RUB',
       items: [],
       itemsCount: 0,
       totalAmount: '0.00',

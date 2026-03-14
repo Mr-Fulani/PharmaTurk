@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
+import '../l10n/app_localizations.dart';
 import 'main_screen.dart';
 
 class OrderSuccessScreen extends StatelessWidget {
@@ -36,8 +37,8 @@ class OrderSuccessScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 32),
-                const Text(
-                  'Заказ оформлен!',
+                Text(
+                  context.tr('order_placed'),
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -45,15 +46,15 @@ class OrderSuccessScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Номер заказа: ${order.number}',
-                  style: TextStyle(
+                  '${context.tr('order_receipt')}${order.number}',
+                  style: const TextStyle(
                     fontSize: 18,
-                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Сумма заказа: ${order.totalAmount} ${order.currency}',
+                  '${context.tr('order_amount')}: ${order.totalAmount} ${order.currency}',
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -68,15 +69,40 @@ class OrderSuccessScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _buildInfoRow('Статус', order.statusDisplay),
+                      _buildInfoRow(context.tr('status'), order.statusDisplay),
                       const SizedBox(height: 8),
                       _buildInfoRow(
-                        'Дата',
+                        context.tr('date'),
                         '${order.createdAt.day}.${order.createdAt.month}.${order.createdAt.year}',
                       ),
                       const SizedBox(height: 8),
-                      _buildInfoRow('Товаров', '${order.items.length}'),
+                      _buildInfoRow(context.tr('items_count'), '${order.items.length}'),
+                      if (order.shippingMethod != null && order.shippingMethod!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _buildInfoRow(context.tr('delivery'), _shippingDisplay(context, order.shippingMethod!)),
+                      ],
+                      if (order.shippingAmount != '0' && order.shippingAmount != '0.00') ...[
+                        const SizedBox(height: 8),
+                        _buildInfoRow(context.tr('shipping_cost'), '${order.shippingAmount} ${order.currency}'),
+                      ],
+                      if (order.shippingAddressText != null && order.shippingAddressText!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _buildInfoRow(context.tr('delivery_address'), order.shippingAddressText!),
+                      ],
+                      if (order.paymentMethod != null && order.paymentMethod!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _buildInfoRow(context.tr('payment_method'), _paymentDisplay(context, order.paymentMethod!)),
+                      ],
+                      if (order.subtotalAmount != '0' && order.subtotalAmount != '0.00') ...[
+                        const SizedBox(height: 8),
+                        _buildInfoRow(context.tr('subtotal'), '${order.subtotalAmount} ${order.currency}'),
+                      ],
+                      if (order.discountAmount != '0' && order.discountAmount != '0.00') ...[
+                        const SizedBox(height: 8),
+                        _buildInfoRow(context.tr('discount'), '-${order.discountAmount} ${order.currency}'),
+                      ],
                     ],
                   ),
                 ),
@@ -97,8 +123,8 @@ class OrderSuccessScreen extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       backgroundColor: Colors.teal,
                     ),
-                    child: const Text(
-                      'Мои заказы',
+                    child: Text(
+                      context.tr('orders'),
                       style: TextStyle(fontSize: 16),
                     ),
                   ),
@@ -119,8 +145,8 @@ class OrderSuccessScreen extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Text(
-                      'На главную',
+                    child: Text(
+                      context.tr('go_home'),
                       style: TextStyle(fontSize: 16),
                     ),
                   ),
@@ -131,6 +157,22 @@ class OrderSuccessScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _shippingDisplay(BuildContext context, String method) {
+    final m = method.toLowerCase();
+    if (m.contains('air') || m.contains('авиа')) return context.tr('shipping_air');
+    if (m.contains('sea') || m.contains('мор')) return context.tr('shipping_sea');
+    if (m.contains('ground') || m.contains('назем')) return context.tr('shipping_ground');
+    return method;
+  }
+
+  String _paymentDisplay(BuildContext context, String method) {
+    final m = method.toLowerCase();
+    if (m == 'cod') return context.tr('payment_cod');
+    if (m == 'card') return context.tr('payment_card');
+    if (m == 'crypto') return context.tr('payment_crypto');
+    return method;
   }
 
   Widget _buildInfoRow(String label, String value) {

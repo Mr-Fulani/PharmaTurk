@@ -398,6 +398,23 @@ def _decrement_stock_for_cart_item(product: Product, chosen_size: Optional[str],
     locked_product.save(update_fields=["stock_quantity", "is_available", "updated_at"])
 
 
+def _get_cart_with_prefetch(cart: Cart):
+    """Корзина с prefetch для позиций, товаров и изображений (в т.ч. domain_item)."""
+    from django.db.models import Prefetch
+    from apps.catalog.models import ProductImage
+    return Cart.objects.filter(pk=cart.pk).prefetch_related(
+        'items',
+        'items__product__translations',
+        Prefetch('items__product__images', queryset=ProductImage.objects.all().order_by('is_main', 'sort_order')),
+        'items__product__medicine_item__gallery_images',
+        'items__product__supplement_item__gallery_images',
+        'items__product__medical_equipment_item__gallery_images',
+        'items__product__tableware_item__gallery_images',
+        'items__product__accessory_item__gallery_images',
+        'items__product__incense_item__gallery_images',
+    ).get()
+
+
 def _get_or_create_cart(request) -> Cart:
     """Получить или создать корзину для пользователя или сессии.
     Для анонимных клиентов поддерживаем пользовательский ключ из заголовка X-Cart-Session
@@ -523,14 +540,7 @@ class CartViewSet(viewsets.ViewSet):
     )
     def list(self, request):
         cart = _get_or_create_cart(request)
-        # Возвращаем корзину с предзагрузкой позиций, товаров и изображений
-        from django.db.models import Prefetch
-        from apps.catalog.models import ProductImage
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related(
-            'items',
-            'items__product__translations',
-            Prefetch('items__product__images', queryset=ProductImage.objects.all().order_by('is_main', 'sort_order'))
-        ).get()
+        cart = _get_cart_with_prefetch(cart)
         return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
@@ -641,8 +651,7 @@ class CartViewSet(viewsets.ViewSet):
         if cart.currency != preferred_currency:
             cart.currency = preferred_currency
             cart.save(update_fields=['currency', 'updated_at'])
-        # Возвращаем свежую корзину с позициями
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
+        cart = _get_cart_with_prefetch(cart)
         return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
@@ -696,7 +705,7 @@ class CartViewSet(viewsets.ViewSet):
 
         item.quantity = desired_qty
         item.save()
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
+        cart = _get_cart_with_prefetch(cart)
         return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
@@ -726,8 +735,8 @@ class CartViewSet(viewsets.ViewSet):
         except CartItem.DoesNotExist:
             return Response({"detail": _("Позиция не найдена")}, status=404)
         item.delete()
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
-        return Response(CartSerializer(cart).data)
+        cart = _get_cart_with_prefetch(cart)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description="Очистить корзину",
@@ -752,8 +761,8 @@ class CartViewSet(viewsets.ViewSet):
     def clear(self, request):
         cart = _get_or_create_cart(request)
         cart.items.all().delete()
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
-        return Response(CartSerializer(cart).data)
+        cart = _get_cart_with_prefetch(cart)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description="Применить промокод к корзине",
@@ -827,7 +836,7 @@ class CartViewSet(viewsets.ViewSet):
         cart.save()
         
         # Возвращаем обновленную корзину
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
+        cart = _get_cart_with_prefetch(cart)
         return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
@@ -860,8 +869,8 @@ class CartViewSet(viewsets.ViewSet):
         cart.save()
         
         # Возвращаем обновленную корзину
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product', 'items__product__translations').get()
-        return Response(CartSerializer(cart).data)
+        cart = _get_cart_with_prefetch(cart)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
 
 class OrderViewSet(viewsets.ViewSet):
@@ -1074,7 +1083,7 @@ class OrderViewSet(viewsets.ViewSet):
         serialized_items = cart_serializer.data.get('items', [])
         converted_prices = {item['id']: item['price'] for item in serialized_items}
         
-        shipping_method = serializer.validated_data.get('shipping_method', '').lower()
+        shipping_method = (serializer.validated_data.get('shipping_method') or '').lower()
         if 'air' in shipping_method or 'авиа' in shipping_method:
             shipping = shipping_options.get('air', 0)
         elif 'sea' in shipping_method or 'мор' in shipping_method:
@@ -1135,10 +1144,10 @@ class OrderViewSet(viewsets.ViewSet):
             promo_code=promo_code,
             contact_name=serializer.validated_data.get('contact_name'),
             contact_phone=serializer.validated_data.get('contact_phone'),
-            contact_email=serializer.validated_data.get('contact_email', ''),
-            shipping_method=serializer.validated_data.get('shipping_method', ''),
-            payment_method=serializer.validated_data.get('payment_method', ''),
-            comment=serializer.validated_data.get('comment', ''),
+            contact_email=serializer.validated_data.get('contact_email') or '',
+            shipping_method=serializer.validated_data.get('shipping_method') or '',
+            payment_method=serializer.validated_data.get('payment_method') or '',
+            comment=serializer.validated_data.get('comment') or '',
             status=Order.OrderStatus.PENDING_PAYMENT if is_crypto else Order.OrderStatus.NEW,
         )
 

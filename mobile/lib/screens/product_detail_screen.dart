@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/image_url.dart';
+import '../utils/price_format.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 import '../models/models.dart';
 
 class ProductDetailScreen extends StatefulWidget {
@@ -20,20 +22,30 @@ class ProductDetailScreen extends StatefulWidget {
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _currentImageIndex = 0;
   int _quantity = 1;
+  late PageController _pageController;
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadProduct();
     });
   }
 
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadProduct() async {
     await context.read<CatalogProvider>().getProductDetail(widget.slug);
+    if (!mounted) return;
     final product = context.read<CatalogProvider>().selectedProduct;
     if (product != null) {
       await context.read<FavoriteProvider>().checkIsFavorite(product.id);
+      if (!mounted) return;
     }
   }
 
@@ -55,7 +67,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: _loadProduct,
-                    child: const Text('Повторить'),
+                    child: Text(context.tr('retry')),
                   ),
                 ],
               ),
@@ -64,7 +76,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
           final product = provider.selectedProduct;
           if (product == null) {
-            return const Center(child: Text('Товар не найден'));
+            return Center(child: Text(context.tr('product_not_found')));
           }
 
           return CustomScrollView(
@@ -115,30 +127,48 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Widget _buildImageGallery(ProductDetail product) {
     final images = product.images ?? [];
-    if (images.isEmpty && product.mainImageUrl == null) {
+    final mainImage = product.mainImageUrl ?? product.videoUrl;
+    if (images.isEmpty && mainImage == null) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
 
-    final allImages = images.isNotEmpty
-        ? images.map((i) => i.image).toList()
-        : [product.mainImageUrl!];
+    // Собираем все медиа: изображения и видео (image_url или video_url)
+    final allMedia = images.isNotEmpty
+        ? images
+            .map((i) => _MediaItem(
+                  imageUrl: i.image.isNotEmpty ? i.image : null,
+                  videoUrl: i.videoUrl,
+                ))
+            .where((m) => m.imageUrl != null || m.videoUrl != null)
+            .toList()
+        : [_MediaItem(imageUrl: product.mainImageUrl, videoUrl: product.videoUrl)];
+
+    if (allMedia.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
 
     return SliverToBoxAdapter(
       child: Column(
         children: [
-          SizedBox(
+          Container(
             height: 350,
+            color: Colors.grey[100],
             child: PageView.builder(
-              itemCount: allImages.length,
+              controller: _pageController,
+              itemCount: allMedia.length,
               onPageChanged: (index) {
                 setState(() {
                   _currentImageIndex = index;
                 });
               },
               itemBuilder: (context, index) {
+                final m = allMedia[index];
+                if (m.videoUrl != null && m.imageUrl == null) {
+                  return _VideoPlaceholder(videoUrl: m.videoUrl!);
+                }
                 return CachedNetworkImage(
-                  imageUrl: resolveImageUrl(allImages[index]),
-                  fit: BoxFit.cover,
+                  imageUrl: resolveImageUrl(m.imageUrl),
+                  fit: BoxFit.contain,
                   placeholder: (_, __) => Container(
                     color: Colors.grey[200],
                     child: const Center(child: CircularProgressIndicator()),
@@ -151,21 +181,32 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               },
             ),
           ),
-          if (allImages.length > 1)
+          if (allMedia.length > 1)
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: allImages.asMap().entries.map((entry) {
-                  return Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _currentImageIndex == entry.key
-                          ? Colors.teal
-                          : Colors.grey[300],
+                children: allMedia.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final isActive = _currentImageIndex == index;
+                  return GestureDetector(
+                    onTap: () {
+                      _pageController.animateToPage(
+                        index,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                    behavior: HitTestBehavior.opaque,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: isActive ? 10 : 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isActive ? Colors.teal : Colors.grey[300],
+                      ),
                     ),
                   );
                 }).toList(),
@@ -203,7 +244,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             Row(
               children: [
                 Text(
-                  product.priceFormatted ?? '${product.price} ${product.currency}',
+                  formatPriceWithCurrency(product.price, product.currency),
                   style: const TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -213,8 +254,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 if (product.oldPrice != null) ...[
                   const SizedBox(width: 12),
                   Text(
-                    product.oldPriceFormatted ??
-                        '${product.oldPrice} ${product.currency}',
+                    formatPriceWithCurrency(product.oldPrice, product.currency),
                     style: TextStyle(
                       fontSize: 20,
                       decoration: TextDecoration.lineThrough,
@@ -237,8 +277,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
-                    'В наличии',
+                  Text(
+                    context.tr('in_stock'),
                     style: TextStyle(color: Colors.green),
                   ),
                   if (product.stockQuantity != null) ...[
@@ -262,15 +302,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Text(
-                    'Нет в наличии',
+                  Text(
+                    context.tr('out_of_stock'),
                     style: TextStyle(color: Colors.red),
                   ),
                 ],
               ),
             const SizedBox(height: 24),
-            const Text(
-              'Количество',
+            Text(
+              context.tr('quantity'),
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
@@ -319,8 +359,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Описание',
+            Text(
+              context.tr('description'),
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -439,7 +479,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                       ),
                       Text(
-                        '${(double.tryParse(product.price ?? '0') ?? 0) * _quantity} ${product.currency}',
+                        formatPriceWithCurrency(
+                          ((double.tryParse(product.price ?? '0') ?? 0) * _quantity).toString(),
+                          product.currency,
+                        ),
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -481,15 +524,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
     if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Товар добавлен в корзину'),
+        SnackBar(
+          content: Text(context.tr('product_added')),
           duration: Duration(seconds: 2),
         ),
       );
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(context.read<CartProvider>().error ?? 'Ошибка'),
+          content: Text(context.read<CartProvider>().error ?? context.tr('error')),
           backgroundColor: Colors.red,
         ),
       );
@@ -595,12 +638,23 @@ class _SimilarProductCard extends StatelessWidget {
             Expanded(
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
-                child: product.mainImageUrl != null
-                    ? CachedNetworkImage(
-                        imageUrl: resolveImageUrl(product.mainImageUrl),
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                      )
+                child: (product.mainImageUrl != null || product.videoUrl != null)
+                    ? (product.mainImageUrl != null && product.mainImageUrl!.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: resolveImageUrl(product.mainImageUrl),
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            errorWidget: (_, __, ___) => Container(
+                              color: Colors.grey[200],
+                              child: const Icon(Icons.image_not_supported),
+                            ),
+                          )
+                        : Container(
+                            color: Colors.grey[200],
+                            child: Center(
+                              child: Icon(Icons.play_circle_fill, size: 48, color: Colors.teal[300]),
+                            ),
+                          ))
                     : Container(
                         color: Colors.grey[200],
                         child: const Icon(Icons.image_not_supported),
@@ -620,8 +674,7 @@ class _SimilarProductCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    product.priceFormatted ??
-                        '${product.price} ${product.currency}',
+                    formatPriceWithCurrency(product.price, product.currency),
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -630,6 +683,38 @@ class _SimilarProductCard extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MediaItem {
+  final String? imageUrl;
+  final String? videoUrl;
+  _MediaItem({this.imageUrl, this.videoUrl});
+}
+
+class _VideoPlaceholder extends StatelessWidget {
+  final String videoUrl;
+
+  const _VideoPlaceholder({required this.videoUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.grey[200],
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.play_circle_fill, size: 80, color: Colors.teal[300]),
+            const SizedBox(height: 8),
+            Text(
+              'Видео',
+              style: TextStyle(color: Colors.grey[600], fontSize: 16),
             ),
           ],
         ),

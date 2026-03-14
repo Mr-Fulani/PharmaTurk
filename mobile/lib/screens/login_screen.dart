@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 import 'main_screen.dart';
 import 'register_screen.dart';
 
@@ -13,13 +14,13 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _loginController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _loginController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -36,8 +37,8 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 48),
-                const Text(
-                  'Добро пожаловать',
+                Text(
+                  context.tr('welcome'),
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
@@ -45,7 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Войдите в свой аккаунт',
+                  context.tr('login_subtitle'),
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.grey[600],
@@ -53,21 +54,20 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 48),
                 TextFormField(
-                  controller: _emailController,
+                  controller: _loginController,
                   decoration: InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: const Icon(Icons.email_outlined),
+                    labelText: context.tr('email_or_username'),
+                    hintText: context.tr('email_placeholder'),
+                    prefixIcon: const Icon(Icons.person_outline),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Введите email';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Введите корректный email';
+                      return context.tr('enter_email_or_username');
                     }
                     return null;
                   },
@@ -76,7 +76,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextFormField(
                   controller: _passwordController,
                   decoration: InputDecoration(
-                    labelText: 'Пароль',
+                    labelText: context.tr('password'),
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -97,7 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   obscureText: _obscurePassword,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Введите пароль';
+                      return context.tr('enter_password');
                     }
                     if (value.length < 6) {
                       return 'Пароль должен быть не менее 6 символов';
@@ -112,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: () {
                       // TODO: Forgot password
                     },
-                    child: const Text('Забыли пароль?'),
+                    child: Text(context.tr('forgot_password')),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -137,8 +137,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                               )
-                            : const Text(
-                                'Войти',
+                            : Text(
+                                context.tr('login'),
                                 style: TextStyle(fontSize: 16),
                               ),
                       ),
@@ -174,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Text(
-                        'или',
+                        context.tr('or'),
                         style: TextStyle(color: Colors.grey[600]),
                       ),
                     ),
@@ -207,7 +207,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'Нет аккаунта? ',
+                      context.tr('no_account'),
                       style: TextStyle(color: Colors.grey[600]),
                     ),
                     TextButton(
@@ -219,7 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         );
                       },
-                      child: const Text('Зарегистрироваться'),
+                      child: Text(context.tr('register')),
                     ),
                   ],
                 ),
@@ -255,7 +255,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final success = await context.read<AuthProvider>().login(
-      _emailController.text,
+      _loginController.text.trim(),
       _passwordController.text,
     );
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 import '../models/models.dart';
 
 class AddressesScreen extends StatefulWidget {
@@ -23,7 +24,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Адреса доставки'),
+        title: Text(context.tr('addresses')),
       ),
       body: Consumer<AuthProvider>(
         builder: (context, provider, child) {
@@ -80,7 +81,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'Нет сохраненных адресов',
+            context.tr('no_addresses'),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -89,7 +90,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Добавьте адрес для быстрого оформления заказа',
+            context.tr('add_address_hint'),
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey[500],
@@ -129,12 +130,12 @@ class _AddressesScreenState extends State<AddressesScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Удалить адрес?'),
-          content: const Text('Это действие нельзя отменить'),
+          title: Text(context.tr('delete_address')),
+          content: Text(context.tr('delete_address_confirm')),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Отмена'),
+              child: Text(context.tr('cancel')),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -145,7 +146,7 @@ class _AddressesScreenState extends State<AddressesScreen> {
                 }
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Удалить'),
+              child: Text(context.tr('remove')),
             ),
           ],
         );
@@ -202,9 +203,9 @@ class _AddressCard extends StatelessWidget {
                           color: Colors.teal.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text(
-                          'По умолчанию',
-                          style: TextStyle(
+                        child: Text(
+                          context.tr('default_address_label'),
+                          style: const TextStyle(
                             fontSize: 10,
                             color: Colors.teal,
                           ),
@@ -221,24 +222,24 @@ class _AddressCard extends StatelessWidget {
                       onDelete();
                     }
                   },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
+                  itemBuilder: (ctx) => [
+                    PopupMenuItem(
                       value: 'edit',
                       child: Row(
                         children: [
-                          Icon(Icons.edit_outlined),
-                          SizedBox(width: 8),
-                          Text('Редактировать'),
+                          const Icon(Icons.edit_outlined),
+                          const SizedBox(width: 8),
+                          Text(ctx.tr('edit')),
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'delete',
                       child: Row(
                         children: [
-                          Icon(Icons.delete_outline, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('Удалить', style: TextStyle(color: Colors.red)),
+                          const Icon(Icons.delete_outline, color: Colors.red),
+                          const SizedBox(width: 8),
+                          Text(ctx.tr('remove'), style: const TextStyle(color: Colors.red)),
                         ],
                       ),
                     ),
@@ -251,14 +252,14 @@ class _AddressCard extends StatelessWidget {
             if (address.recipientName != null) ...[
               const SizedBox(height: 8),
               Text(
-                'Получатель: ${address.recipientName}',
+                '${context.tr('recipient')}: ${address.recipientName}',
                 style: TextStyle(color: Colors.grey[600]),
               ),
             ],
             if (address.phone != null) ...[
               const SizedBox(height: 4),
               Text(
-                'Телефон: ${address.phone}',
+                '${context.tr('phone')}: ${address.phone}',
                 style: TextStyle(color: Colors.grey[600]),
               ),
             ],
@@ -331,7 +332,7 @@ class _AddressFormState extends State<_AddressForm> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.address == null ? 'Новый адрес' : 'Редактировать адрес',
+              widget.address == null ? context.tr('new_address') : context.tr('edit_address'),
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -341,14 +342,14 @@ class _AddressFormState extends State<_AddressForm> {
             TextFormField(
               controller: _nameController,
               decoration: InputDecoration(
-                labelText: 'Название адреса *',
+                labelText: context.tr('address_name'),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
-                  return 'Введите название';
+                  return context.tr('enter_address_name');
                 }
                 return null;
               },
@@ -357,7 +358,7 @@ class _AddressFormState extends State<_AddressForm> {
             TextFormField(
               controller: _addressController,
               decoration: InputDecoration(
-                labelText: 'Адрес *',
+                labelText: context.tr('address_required'),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -365,7 +366,7 @@ class _AddressFormState extends State<_AddressForm> {
               maxLines: 3,
               validator: (value) {
                 if (value == null || value.isEmpty) {
-                  return 'Введите адрес';
+                  return context.tr('enter_address_value');
                 }
                 return null;
               },
@@ -374,7 +375,7 @@ class _AddressFormState extends State<_AddressForm> {
             TextFormField(
               controller: _recipientController,
               decoration: InputDecoration(
-                labelText: 'Получатель',
+                labelText: context.tr('recipient'),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -384,7 +385,7 @@ class _AddressFormState extends State<_AddressForm> {
             TextFormField(
               controller: _phoneController,
               decoration: InputDecoration(
-                labelText: 'Телефон',
+                labelText: context.tr('phone'),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -392,24 +393,24 @@ class _AddressFormState extends State<_AddressForm> {
               keyboardType: TextInputType.phone,
             ),
             const SizedBox(height: 16),
-            const Text('Тип адреса'),
+            Text(context.tr('address_type')),
             const SizedBox(height: 8),
             SegmentedButton<String>(
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: 'home',
-                  label: Text('Дом'),
-                  icon: Icon(Icons.home_outlined),
+                  label: Text(context.tr('address_type_home')),
+                  icon: const Icon(Icons.home_outlined),
                 ),
                 ButtonSegment(
                   value: 'work',
-                  label: Text('Работа'),
-                  icon: Icon(Icons.work_outline),
+                  label: Text(context.tr('address_type_work')),
+                  icon: const Icon(Icons.work_outline),
                 ),
                 ButtonSegment(
                   value: 'other',
-                  label: Text('Другое'),
-                  icon: Icon(Icons.location_on_outlined),
+                  label: Text(context.tr('address_type_other')),
+                  icon: const Icon(Icons.location_on_outlined),
                 ),
               ],
               selected: {_addressType},
@@ -439,7 +440,7 @@ class _AddressFormState extends State<_AddressForm> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   backgroundColor: Colors.teal,
                 ),
-                child: const Text('Сохранить'),
+                child: Text(context.tr('save')),
               ),
             ),
             const SizedBox(height: 24),

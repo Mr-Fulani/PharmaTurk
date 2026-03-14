@@ -54,10 +54,16 @@ def _r2_proxy_url(absolute_url, request):
 def _resolve_media_url(value, request):
     if not value:
         return None
+    # Уже прокси-URL — не добавлять /media/
+    if value.startswith('/api/'):
+        return value
     if 'instagram.f' in value or 'cdninstagram.com' in value:
         return f"/api/catalog/proxy-image/?url={quote(value)}"
+    # Прокси для внешних CDN (устраняет CORS/EncodingError на Flutter Web)
+    if value.startswith('http') and ('cdn.it-dev.space' in value or 'r2.dev' in value):
+        return f"/api/catalog/proxy-image/?url={quote(value)}"
     if not value.startswith('http'):
-        return f"/media/{value}"
+        return f"/media/{value.lstrip('/')}"
     proxy = _r2_proxy_url(value, request)
     if proxy:
         return proxy
@@ -164,6 +170,7 @@ def _get_category_ids_with_descendants(slugs: list) -> set:
 class CategorySerializer(serializers.ModelSerializer):
     """Сериализатор для категорий."""
     
+    name = serializers.SerializerMethodField()
     children_count = serializers.SerializerMethodField()
     products_count = serializers.SerializerMethodField()
     card_media_url = serializers.SerializerMethodField()
@@ -182,6 +189,23 @@ class CategorySerializer(serializers.ModelSerializer):
             'gender', 'gender_display', 'clothing_type', 'device_type',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_name(self, obj):
+        """Возвращает название категории на языке запроса (X-Language / Accept-Language)."""
+        from django.utils import translation
+        request = self.context.get('request')
+        lang = getattr(request, 'LANGUAGE_CODE', None) if request else None
+        if not lang:
+            lang = translation.get_language() or 'ru'
+        # Ищем перевод для текущего языка
+        if hasattr(obj, '_prefetched_objects_cache') and 'translations' in obj._prefetched_objects_cache:
+            trans_list = obj._prefetched_objects_cache['translations']
+        else:
+            trans_list = list(obj.translations.all())
+        for t in trans_list:
+            if t.locale == lang:
+                return t.name or obj.name
+        return obj.name
     
     def get_children_count(self, obj):
         """Количество подкатегорий."""
@@ -629,7 +653,7 @@ class ProductSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
         if file_url:
-            return file_url
+            return _resolve_media_url(file_url, request) or file_url
         
         # Сначала проверяем main_image
         if obj.main_image:
@@ -655,45 +679,47 @@ class ProductSerializer(serializers.ModelSerializer):
                         base_url = f"{scheme}://{host}"
                     return f"{base_url}/media/{obj.main_image}"
                 return f"http://localhost:8000/media/{obj.main_image}"
-            return obj.main_image
+            return _resolve_media_url(obj.main_image, request)
         
         # Затем ищем главное изображение в связанных изображениях
         main_img = obj.images.filter(is_main=True).first()
         if main_img:
             file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
             if file_url:
-                return file_url
-            if 'instagram.f' in main_img.image_url or 'cdninstagram.com' in main_img.image_url:
-                if request:
-                    scheme = request.scheme
-                    host = request.get_host()
-                    if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                        base_url = f"{scheme}://localhost:8000"
-                    else:
-                        base_url = f"{scheme}://{host}"
-                    return f"{base_url}/api/catalog/proxy-image/?url={quote(main_img.image_url)}"
-                return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(main_img.image_url)}"
-            return main_img.image_url
+                return _resolve_media_url(file_url, request) or file_url
+            return _resolve_media_url(main_img.image_url, request) or main_img.image_url
         
         # Если нет главного, берем первое изображение
         first_img = obj.images.first()
         if first_img:
             file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
             if file_url:
-                return file_url
-            if 'instagram.f' in first_img.image_url or 'cdninstagram.com' in first_img.image_url:
-                if request:
-                    scheme = request.scheme
-                    host = request.get_host()
-                    if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
-                        base_url = f"{scheme}://localhost:8000"
-                    else:
-                        base_url = f"{scheme}://{host}"
-                    return f"{base_url}/api/catalog/proxy-image/?url={quote(first_img.image_url)}"
-                return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(first_img.image_url)}"
-            return first_img.image_url
+                return _resolve_media_url(file_url, request) or file_url
+            return _resolve_media_url(first_img.image_url, request) or first_img.image_url
         
-        # Если изображений нет, возвращаем None
+        # Фолбэк: medicine, supplement и др. — domain_item с main_image/gallery_images
+        try:
+            domain = getattr(obj, "domain_item", None)
+            if domain and callable(domain):
+                domain = domain()
+            if domain and domain != obj:
+                file_url = _resolve_file_url(getattr(domain, "main_image_file", None), request)
+                if file_url:
+                    return file_url
+                if getattr(domain, "main_image", None):
+                    return _resolve_media_url(domain.main_image, request)
+                gallery = getattr(domain, "gallery_images", None)
+                if gallery:
+                    first = gallery.first()
+                    if first:
+                        file_url = _resolve_file_url(getattr(first, "image_file", None), request)
+                        if file_url:
+                            return file_url
+                        if getattr(first, "image_url", None):
+                            return _resolve_media_url(first.image_url, request)
+        except Exception:
+            pass
+
         return None
 
     def get_video_url(self, obj):
@@ -1059,27 +1085,79 @@ class ProductDetailSerializer(ProductSerializer):
 
     def get_images(self, obj):
         gallery = getattr(obj, "images", None)
-        if not gallery:
-            return []
         request = self.context.get("request")
-        qs = gallery.all().order_by("sort_order", "id")
-        has_video = bool(getattr(obj, "video_url", None))
-        has_video_in_gallery = qs.filter(video_url__isnull=False).exclude(video_url="").exists()
         context = {"request": request}
-        filtered = []
-        for img in qs:
-            raw_image_url = getattr(img, "image_url", "") or ""
-            raw_video_url = getattr(img, "video_url", "") or ""
-            image_is_video = raw_image_url and detect_media_type(raw_image_url) == "video"
-            if image_is_video and (has_video or has_video_in_gallery):
-                continue
-            data = ProductImageSerializer(img, context=context).data
-            if image_is_video and not raw_video_url:
-                data["video_url"] = _resolve_media_url(raw_image_url, request)
-                data["image_url"] = None
-            if data.get("image_url") or data.get("video_url"):
-                filtered.append(data)
-        return filtered
+
+        def _serialize_gallery(qs):
+            if not qs:
+                return []
+            qs = qs.all().order_by("sort_order", "id")
+            has_video = bool(getattr(obj, "video_url", None))
+            has_video_in_gallery = qs.filter(
+                **{"video_url__isnull": False}
+            ).exclude(video_url="").exists() if hasattr(qs.model, "video_url") else False
+            filtered = []
+            for img in qs:
+                raw_image_url = getattr(img, "image_url", "") or ""
+                raw_video_url = getattr(img, "video_url", "") or ""
+                image_is_video = raw_image_url and detect_media_type(raw_image_url) == "video"
+                if image_is_video and (has_video or has_video_in_gallery):
+                    continue
+                try:
+                    data = ProductImageSerializer(img, context=context).data
+                except Exception:
+                    data = {
+                        "id": getattr(img, "id", 0),
+                        "image_url": _resolve_file_url(getattr(img, "image_file", None), request)
+                        or _resolve_media_url(raw_image_url, request),
+                        "video_url": None,
+                        "alt_text": getattr(img, "alt_text", "") or "",
+                        "sort_order": getattr(img, "sort_order", 0) or 0,
+                        "is_main": getattr(img, "is_main", False) or False,
+                    }
+                if image_is_video and not raw_video_url:
+                    data["video_url"] = _resolve_media_url(raw_image_url, request)
+                    data["image_url"] = None
+                if data.get("image_url") or data.get("video_url"):
+                    filtered.append(data)
+            return filtered
+
+        result = _serialize_gallery(gallery)
+        if result:
+            return result
+
+        domain = getattr(obj, "domain_item", None)
+        if domain and domain != obj:
+            gallery_domain = getattr(domain, "gallery_images", None) or getattr(domain, "images", None)
+            if gallery_domain:
+                main_first = []
+                rest = []
+                for img in gallery_domain.all().order_by("sort_order", "id"):
+                    url = _resolve_file_url(getattr(img, "image_file", None), request)
+                    if not url:
+                        url = _resolve_media_url(getattr(img, "image_url", "") or "", request)
+                    else:
+                        url = _resolve_media_url(url, request) or url
+                    raw_video = getattr(img, "video_url", "") or ""
+                    vid_url = _resolve_media_url(raw_video, request) if raw_video else None
+                    if not vid_url and getattr(img, "video_file", None):
+                        vid_url = _resolve_file_url(img.video_file, request)
+                    if url or vid_url:
+                        item = {
+                            "id": getattr(img, "id", 0),
+                            "image_url": url,
+                            "video_url": vid_url,
+                            "alt_text": getattr(img, "alt_text", "") or "",
+                            "sort_order": getattr(img, "sort_order", 0) or 0,
+                            "is_main": getattr(img, "is_main", False) or False,
+                        }
+                        if item.get("is_main"):
+                            main_first.insert(0, item)
+                        else:
+                            rest.append(item)
+                return main_first + rest
+
+        return []
 
     def get_book_variants(self, obj):
         if (obj.product_type or "").lower() != "books":

@@ -38,7 +38,23 @@ VARIANT_MODEL_MAP = {
 def _resolve_media_url(value, request):
     if not value:
         return None
+    # Уже прокси-URL — не добавлять /media/
+    if value.startswith('/api/'):
+        if request:
+            return request.build_absolute_uri(value)
+        return f"http://localhost:8000{value}" if value.startswith('/') else f"http://localhost:8000/{value}"
     if 'instagram.f' in value or 'cdninstagram.com' in value:
+        if request:
+            scheme = request.scheme
+            host = request.get_host()
+            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                base_url = f"{scheme}://localhost:8000"
+            else:
+                base_url = f"{scheme}://{host}"
+            return f"{base_url}/api/catalog/proxy-image/?url={quote(value)}"
+        return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(value)}"
+    # Прокси для внешних CDN (устраняет CORS/EncodingError на Flutter Web)
+    if value.startswith('http') and ('cdn.it-dev.space' in value or 'r2.dev' in value):
         if request:
             scheme = request.scheme
             host = request.get_host()
@@ -485,7 +501,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         # Сначала проверяем main_image
         file_url = _resolve_file_url(getattr(product, "main_image_file", None), request)
         if file_url:
-            return file_url
+            return _resolve_media_url(file_url, request) or file_url
         if product.main_image:
             return _resolve_media_url(product.main_image, request)
 
@@ -494,14 +510,14 @@ class CartItemSerializer(serializers.ModelSerializer):
         if main_img:
             file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
             if file_url:
-                return file_url
+                return _resolve_media_url(file_url, request) or file_url
             return _resolve_media_url(main_img.image_url, request)
 
         first_img = product.images.first()
         if first_img:
             file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
             if file_url:
-                return file_url
+                return _resolve_media_url(file_url, request) or file_url
             return _resolve_media_url(first_img.image_url, request)
 
         # Для отдельных типов пробуем базовую модель по slug (если Product пустой)
@@ -523,40 +539,40 @@ class CartItemSerializer(serializers.ModelSerializer):
                 if base_obj:
                     file_url = _resolve_file_url(getattr(base_obj, "main_image_file", None), request)
                     if file_url:
-                        return file_url
+                        return _resolve_media_url(file_url, request) or file_url
                     if getattr(base_obj, "main_image", ""):
                         return _resolve_media_url(base_obj.main_image, request)
                     base_main = base_obj.images.filter(is_main=True).first()
                     if base_main:
                         file_url = _resolve_file_url(getattr(base_main, "image_file", None), request)
                         if file_url:
-                            return file_url
+                            return _resolve_media_url(file_url, request) or file_url
                         return _resolve_media_url(base_main.image_url, request)
                     base_first = base_obj.images.first()
                     if base_first:
                         file_url = _resolve_file_url(getattr(base_first, "image_file", None), request)
                         if file_url:
-                            return file_url
+                            return _resolve_media_url(file_url, request) or file_url
                         return _resolve_media_url(base_first.image_url, request)
                     # Фолбэк к первому варианту базового товара
                     first_variant = base_obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
                     if first_variant:
                         file_url = _resolve_file_url(getattr(first_variant, "main_image_file", None), request)
                         if file_url:
-                            return file_url
+                            return _resolve_media_url(file_url, request) or file_url
                         if first_variant.main_image:
                             return _resolve_media_url(first_variant.main_image, request)
                         v_main = first_variant.images.filter(is_main=True).first()
                         if v_main:
                             file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
                             if file_url:
-                                return file_url
+                                return _resolve_media_url(file_url, request) or file_url
                             return _resolve_media_url(v_main.image_url, request)
                         v_first = first_variant.images.first()
                         if v_first:
                             file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
                             if file_url:
-                                return file_url
+                                return _resolve_media_url(file_url, request) or file_url
                             return _resolve_media_url(v_first.image_url, request)
         except Exception:
             pass
@@ -583,20 +599,20 @@ class CartItemSerializer(serializers.ModelSerializer):
             if variant:
                 file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
                 if file_url:
-                    return file_url
+                    return _resolve_media_url(file_url, request) or file_url
                 if variant.main_image:
                     return _resolve_media_url(variant.main_image, request)
                 v_main = variant.images.filter(is_main=True).first()
                 if v_main:
                     file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
                     if file_url:
-                        return file_url
+                        return _resolve_media_url(file_url, request) or file_url
                     return _resolve_media_url(v_main.image_url, request)
                 v_first = variant.images.first()
                 if v_first:
                     file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
                     if file_url:
-                        return file_url
+                        return _resolve_media_url(file_url, request) or file_url
                     return _resolve_media_url(v_first.image_url, request)
 
         # Дополнительный фолбэк: пробуем найти базовую карточку обуви/одежды и взять первую активную вариацию
@@ -608,20 +624,20 @@ class CartItemSerializer(serializers.ModelSerializer):
                     if v:
                         file_url = _resolve_file_url(getattr(v, "main_image_file", None), request)
                         if file_url:
-                            return file_url
+                            return _resolve_media_url(file_url, request) or file_url
                         if v.main_image:
                             return _resolve_media_url(v.main_image, request)
                         v_main = v.images.filter(is_main=True).first()
                         if v_main:
                             file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
                             if file_url:
-                                return file_url
+                                return _resolve_media_url(file_url, request) or file_url
                             return _resolve_media_url(v_main.image_url, request)
                         v_first = v.images.first()
                         if v_first:
                             file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
                             if file_url:
-                                return file_url
+                                return _resolve_media_url(file_url, request) or file_url
                             return _resolve_media_url(v_first.image_url, request)
             if product.product_type == 'clothing':
                 base_cloth = ClothingProduct.objects.filter(slug=product.slug, is_active=True).prefetch_related('variants__images').first()
@@ -645,6 +661,29 @@ class CartItemSerializer(serializers.ModelSerializer):
                             if file_url:
                                 return file_url
                             return _resolve_media_url(v_first.image_url, request)
+        except Exception:
+            pass
+
+        # Фолбэк: medicine, supplement, medical_equipment, books — domain_item с gallery_images
+        try:
+            domain = getattr(product, "domain_item", None)
+            if domain and callable(domain):
+                domain = domain()
+            if domain and domain != product:
+                file_url = _resolve_file_url(getattr(domain, "main_image_file", None), request)
+                if file_url:
+                    return _resolve_media_url(file_url, request) or file_url
+                if getattr(domain, "main_image", None):
+                    return _resolve_media_url(domain.main_image, request)
+                gallery = getattr(domain, "gallery_images", None)
+                if gallery:
+                    first = gallery.first()
+                    if first:
+                        file_url = _resolve_file_url(getattr(first, "image_file", None), request)
+                        if file_url:
+                            return _resolve_media_url(file_url, request) or file_url
+                        if getattr(first, "image_url", None):
+                            return _resolve_media_url(first.image_url, request)
         except Exception:
             pass
 
@@ -814,44 +853,52 @@ class CartItemSerializer(serializers.ModelSerializer):
             if prices and preferred_currency in prices:
                 return prices[preferred_currency].get('price_with_margin')
             elif prices:
-                # Если предпочитаемой валюты нет, вернем базовую
+                # Предпочитаемой валюты нет в кэше — конвертируем из базовой
+                base_price_val = None
+                base_curr = None
                 for currency, data in prices.items():
                     if data.get('is_base_price'):
-                        return data.get('price_with_margin')
-                # Или просто первую
-                first_currency = list(prices.keys())[0]
-                return prices[first_currency].get('price_with_margin')
+                        base_price_val = data.get('price_with_margin') or data.get('converted_price')
+                        base_curr = currency
+                        break
+                if not base_curr and prices:
+                    first_key = list(prices.keys())[0]
+                    base_price_val = prices[first_key].get('price_with_margin')
+                    base_curr = first_key
+                if base_curr and base_price_val and base_curr.upper() != preferred_currency.upper():
+                    try:
+                        _, _, price = currency_converter.convert_price(
+                            Decimal(str(base_price_val)),
+                            base_curr,
+                            preferred_currency,
+                            apply_margin=True,
+                        )
+                        return price
+                    except Exception:
+                        pass
+                if base_price_val is not None:
+                    return base_price_val
         except Exception:
             pass
-        
-        # Fallback к старому полю
+
+        # Fallback: конвертируем из obj.price (валюта позиции или продукта)
+        from_currency = (obj.currency or getattr(obj.product, 'currency', None) or 'RUB').upper()
+        try:
+            _, _, price = currency_converter.convert_price(
+                Decimal(str(obj.price)),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return price
+        except Exception:
+            pass
         return obj.price
     
     def get_currency(self, obj):
-        """Получает валюту товара из новой системы."""
+        """Всегда возвращает предпочитаемую валюту — цены конвертируются в get_price."""
         request = self.context.get('request')
-        preferred_currency = self._get_preferred_currency(request)
-        product = obj.product
-        if product and product.product_type == "jewelry":
-            return preferred_currency
-        
-        # Получаем валюту из новой системы
-        try:
-            prices = obj.product.get_all_prices()
-            if prices and preferred_currency in prices:
-                return preferred_currency
-            elif prices:
-                # Если предпочитаемой валюты нет, вернем базовую
-                for currency, data in prices.items():
-                    if data.get('is_base_price'):
-                        return currency
-                # Или просто первую
-                return list(prices.keys())[0]
-        except Exception:
-            pass
-        
-        # Fallback к старому полю
-        return obj.currency if obj.currency else 'RUB'
+        return self._get_preferred_currency(request)
 
     def get_old_price(self, obj):
         product = obj.product
@@ -1171,14 +1218,15 @@ class CartSerializer(serializers.ModelSerializer):
                     else:
                         price = base_price_val
                 else:
-                    # Fallback к старому полю — конвертируем если валюта другая
+                    # Fallback к полю item — конвертируем из валюты позиции
                     raw_price = item.price
+                    from_currency = (item.currency or getattr(item.product, 'currency', None) or 'RUB').upper()
                     try:
                         _, _, price = currency_converter.convert_price(
                             Decimal(str(raw_price)),
-                            'RUB',
+                            from_currency,
                             preferred_currency,
-                            apply_margin=False,
+                            apply_margin=True,
                         )
                     except Exception:
                         price = raw_price
@@ -1725,14 +1773,14 @@ class CreateOrderSerializer(serializers.Serializer):
     """
     contact_name = serializers.CharField(max_length=150)
     contact_phone = serializers.CharField(max_length=32)
-    contact_email = serializers.EmailField(required=False, allow_blank=True)
-    shipping_address = serializers.IntegerField(required=False)
-    shipping_address_text = serializers.CharField(required=False, allow_blank=True)
-    shipping_method = serializers.CharField(required=False, allow_blank=True)
-    payment_method = serializers.CharField(required=False, allow_blank=True)
-    comment = serializers.CharField(required=False, allow_blank=True)
-    promo_code = serializers.CharField(required=False, allow_blank=True, max_length=50)
-    locale = serializers.CharField(required=False, allow_blank=True, max_length=10)
+    contact_email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    shipping_address = serializers.IntegerField(required=False, allow_null=True)
+    shipping_address_text = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    shipping_method = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    payment_method = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    comment = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    promo_code = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=50)
+    locale = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=10)
 
     def validate_shipping_address(self, value):
         # Валидация адреса доставки будет реализована при наличии пользователя

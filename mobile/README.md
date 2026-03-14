@@ -168,6 +168,31 @@ flutter build ios --release
 - `POST /api/catalog/favorites/add/` - Добавить в избранное
 - `DELETE /api/catalog/favorites/remove/` - Удалить из избранного
 
+## Устранение неполадок
+
+### DioException: connection error / XMLHttpRequest onError (Flutter Web)
+
+При оплате корзины в браузере может возникать ошибка соединения. Возможные причины:
+
+1. **CORS** — бэкенд должен разрешать запросы с origin Flutter (например, `http://localhost:XXXXX`). Убедитесь, что в `backend/config/settings.py` при `DEBUG=True` установлено `CORS_ALLOW_ALL_ORIGINS = True`.
+
+2. **Бэкенд не запущен** — проверьте, что Django-сервер доступен по `API_BASE_URL` (по умолчанию `http://localhost:8000`).
+
+3. **Временный обход CORS для разработки** — запуск Chrome с отключённой проверкой безопасности:
+   ```bash
+   flutter run -d chrome --web-browser-flag "--disable-web-security" --dart-define=API_BASE_URL=http://localhost:8000
+   ```
+
+4. **Проверка API** — откройте в браузере `http://localhost:8000/api/docs/` и проверьте `POST /api/orders/orders/create-from-cart/` в Swagger.
+
+### Assertion failed: PointerDeviceKind.trackpad (Flutter Web)
+
+Известная ошибка Flutter Web при скролле тачпадом в Chrome (`!identical(kind, PointerDeviceKind.trackpad)`). Варианты решения:
+
+1. **Обновить Flutter** — `flutter upgrade` (в новых версиях может быть исправлено).
+2. **Использовать мышь** вместо тачпада при тестировании в браузере.
+3. **Запуск с HTML-рендерером** — `flutter run -d chrome --web-renderer html` (иногда помогает).
+
 ## Зависимости
 
 - `provider` - State management

@@ -109,6 +109,56 @@ class CatalogService {
     }
   }
 
+  /// Загрузка временного изображения для поиска по фото.
+  /// POST /api/upload/temp/ — multipart/form-data с полем file.
+  Future<String> uploadTempImage(String filePath) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(filePath),
+      });
+      final response = await _apiClient.dio.post(
+        '/upload/temp/',
+        data: formData,
+        options: Options(
+          contentType: 'multipart/form-data',
+          headers: {'Content-Type': 'multipart/form-data'},
+        ),
+      );
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        final url = data['url'] as String? ?? data['image_url'] as String?;
+        if (url != null && url.isNotEmpty) return url;
+      }
+      throw _handleError(Exception('Нет URL в ответе'));
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  /// Поиск по фото: POST /api/recommendations/search_by_image/
+  /// image_url — URL изображения (после загрузки или прямая ссылка).
+  Future<List<Product>> searchByImage(String imageUrl, {int limit = 12}) async {
+    try {
+      final response = await _apiClient.dio.post(
+        '/recommendations/search_by_image/',
+        data: {'image_url': imageUrl, 'limit': limit},
+      );
+      final data = response.data;
+      if (data is! Map<String, dynamic>) return [];
+      final results = data['results'] as List?;
+      if (results == null || results.isEmpty) return [];
+      final products = <Product>[];
+      for (final r in results) {
+        if (r is Map<String, dynamic> && r.containsKey('product')) {
+          products.add(Product.fromJson(r['product'] as Map<String, dynamic>));
+        }
+      }
+      return products;
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   // Categories
   Future<PaginatedResponse<Category>> getCategories({
     int? page,

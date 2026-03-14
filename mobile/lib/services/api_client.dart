@@ -13,6 +13,7 @@ class ApiClient {
   String? _refreshToken;
   String? _sessionKey;
   String? _currency;
+  String? _language;
 
   static const String apiPrefix = '/api';
 
@@ -44,6 +45,9 @@ class ApiClient {
         }
         if (_currency != null) {
           options.headers['X-Currency'] = _currency!;
+        }
+        if (_language != null) {
+          options.headers['X-Language'] = _language!;
         }
         if (kDebugMode) {
           final safeHeaders = Map<String, dynamic>.from(options.headers);
@@ -88,7 +92,15 @@ class ApiClient {
     _accessToken = prefs.getString('access_token');
     _refreshToken = prefs.getString('refresh_token');
     _sessionKey = prefs.getString('session_key');
-    _currency = prefs.getString('currency');
+    _currency = prefs.getString('currency') ?? 'RUB';
+    _language = prefs.getString('app_locale');
+    if (prefs.getString('currency') == null) {
+      await prefs.setString('currency', _currency!);
+    }
+  }
+
+  void setLanguage(String? languageCode) {
+    _language = (languageCode == 'ru' || languageCode == 'en') ? languageCode : null;
   }
 
   Future<void> saveTokens(String access, String refresh) async {

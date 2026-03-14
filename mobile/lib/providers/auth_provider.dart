@@ -32,9 +32,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       final response = await _authService.login(email, password);
       _user = response.user;
-      if (_user?.preferredCurrency != null) {
-        await _apiClient.setCurrency(_user!.preferredCurrency);
-      }
+      await _apiClient.setCurrency(_user?.preferredCurrency ?? 'RUB');
       _isLoading = false;
       notifyListeners();
       return true;
@@ -54,9 +52,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       final response = await _authService.register(registration);
       _user = response.user;
-      if (_user?.preferredCurrency != null) {
-        await _apiClient.setCurrency(_user!.preferredCurrency);
-      }
+      await _apiClient.setCurrency(_user?.preferredCurrency ?? 'RUB');
       _isLoading = false;
       notifyListeners();
       return true;
@@ -88,9 +84,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> getCurrentUser() async {
     try {
       _user = await _authService.getCurrentUser();
-      if (_user?.preferredCurrency != null) {
-        await _apiClient.setCurrency(_user!.preferredCurrency);
-      }
+      await _apiClient.setCurrency(_user?.preferredCurrency ?? 'RUB');
       notifyListeners();
     } catch (e) {
       _error = e.toString();

@@ -153,9 +153,10 @@ urlpatterns = [
     # Маршруты для услуг
     path('', include(services_router.urls)),
     
-    # Прокси для Instagram изображений
+    # Прокси для Instagram/CDN изображений (с/без slash — APPEND_SLASH=False)
     path('proxy-image/', proxy_image, name='proxy_image'),
+    path('proxy-image', proxy_image, name='proxy_image_no_slash'),
     # Прокси для R2-медиа (видео/картинки) — устраняет ERR_SSL_PROTOCOL_ERROR
     path('proxy-media/', proxy_media, name='proxy_media'),
-    path('proxy-media', proxy_media, name='proxy_media_no_slash'),  # без slash для fetch/ngrok
+    path('proxy-media', proxy_media, name='proxy_media_no_slash'),
 ]

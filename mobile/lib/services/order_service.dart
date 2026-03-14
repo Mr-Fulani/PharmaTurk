@@ -8,8 +8,14 @@ class OrderService {
   Future<List<Order>> getOrders() async {
     try {
       final response = await _apiClient.dio.get('/orders/orders');
-      return (response.data as List)
-          .map((json) => Order.fromJson(json))
+      final list = response.data;
+      if (list is! List) return [];
+      return list
+          .map((json) => Order.fromJson(
+                json is Map<String, dynamic>
+                    ? json
+                    : Map<String, dynamic>.from(json as Map),
+              ))
           .toList();
     } catch (e) {
       throw _handleError(e);
@@ -19,7 +25,12 @@ class OrderService {
   Future<Order> getOrder(String id) async {
     try {
       final response = await _apiClient.dio.get('/orders/orders/$id');
-      return Order.fromJson(response.data);
+      final data = response.data;
+      return Order.fromJson(
+        data is Map<String, dynamic>
+            ? data
+            : Map<String, dynamic>.from(data as Map),
+      );
     } catch (e) {
       throw _handleError(e);
     }
@@ -28,7 +39,12 @@ class OrderService {
   Future<Order> getOrderByNumber(String number) async {
     try {
       final response = await _apiClient.dio.get('/orders/orders/by-number/$number');
-      return Order.fromJson(response.data);
+      final data = response.data;
+      return Order.fromJson(
+        data is Map<String, dynamic>
+            ? data
+            : Map<String, dynamic>.from(data as Map),
+      );
     } catch (e) {
       throw _handleError(e);
     }

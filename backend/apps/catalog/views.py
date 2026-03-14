@@ -912,7 +912,27 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
         ordering = self._normalize_ordering(ordering)
         queryset = queryset.order_by(ordering)
 
-        return self._apply_facet_filters(queryset)
+        queryset = self._apply_facet_filters(queryset)
+        # Prefetch для main_image_url и images (medicine, supplement, books, clothing и др.)
+        queryset = queryset.prefetch_related(
+            'images',
+            'medicine_item__gallery_images',
+            'supplement_item__gallery_images',
+            'medical_equipment_item__gallery_images',
+            'tableware_item__gallery_images',
+            'accessory_item__gallery_images',
+            'incense_item__gallery_images',
+            'book_item__images',
+            'clothing_item__images',
+            'shoe_item__images',
+            'jewelry_item__images',
+            'electronics_item__images',
+            'furniture_item__images',
+            'perfumery_item__images',
+            'sports_item__images',
+            'auto_part_item__images',
+        )
+        return queryset
     
     def get_serializer_class(self):
         """Выбираем сериализатор в зависимости от действия."""
@@ -2419,9 +2439,10 @@ def proxy_image(request):
     logger.info(f"Contains instagram.f: {'instagram.f' in image_url}")
     logger.info(f"Contains cdninstagram: {'cdninstagram.com' in image_url}")
     
-    # Проверяем, что это Instagram домен
-    if not ('instagram.f' in image_url or 'cdninstagram.com' in image_url):
-        logger.error(f"Invalid domain check failed for URL: {image_url}")
+    # Разрешённые домены для прокси (Instagram, CDN проекта)
+    _ALLOWED_PROXY_DOMAINS = ('instagram.f', 'cdninstagram.com', 'cdn.it-dev.space', 'r2.dev')
+    if not any(d in image_url for d in _ALLOWED_PROXY_DOMAINS):
+        logger.error(f"Invalid domain check failed for URL: {image_url[:100]}")
         return JsonResponse({'error': f'Invalid domain: {image_url[:100]}...'}, status=400)
     
     # Создаем ключ кеша
@@ -2443,11 +2464,15 @@ def proxy_image(request):
         response = requests.get(image_url, headers=headers, timeout=10)
         
         if response.status_code == 200:
-            # Кешируем на 24 часа
+            # Content-Type из ответа или по расширению
+            ct = response.headers.get('Content-Type', '').split(';')[0].strip()
+            if not ct or ct == 'application/octet-stream':
+                path_lower = (image_url.split('?')[0] or '').lower()
+                ext_map = {'.webp': 'image/webp', '.png': 'image/png', '.gif': 'image/gif',
+                           '.jpeg': 'image/jpeg', '.jpg': 'image/jpeg'}
+                ct = next((ext_map[e] for e in ['.webp', '.png', '.gif', '.jpeg', '.jpg'] if path_lower.endswith(e)), 'image/jpeg')
             cache.set(cache_key, response.content, 86400)
-            
-            # Возвращаем изображение с правильными headers
-            django_response = HttpResponse(response.content, content_type='image/jpeg')
+            django_response = HttpResponse(response.content, content_type=ct)
             django_response['Cache-Control'] = 'public, max-age=86400'
             django_response['Access-Control-Allow-Origin'] = '*'
             return django_response

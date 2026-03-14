@@ -59,6 +59,8 @@ class Product {
   final String? metaDescription;
   @JsonKey(name: 'meta_keywords')
   final String? metaKeywords;
+  @JsonKey(name: 'video_url')
+  final String? videoUrl;
 
   Product({
     required this.id,
@@ -84,6 +86,7 @@ class Product {
     this.metaTitle,
     this.metaDescription,
     this.metaKeywords,
+    this.videoUrl,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) => _$ProductFromJson(json);
@@ -96,8 +99,6 @@ class ProductDetail extends Product {
   final List<ProductVariant>? variants;
   @JsonKey(name: 'dynamic_attributes')
   final List<ProductAttribute>? dynamicAttributes;
-  @JsonKey(name: 'video_url')
-  final String? videoUrl;
   @JsonKey(name: 'similar_products')
   final List<Product>? similarProducts;
 
@@ -117,6 +118,7 @@ class ProductDetail extends Product {
     super.stockQuantity,
     super.mainImage,
     super.mainImageUrl,
+    super.videoUrl,
     required super.isNew,
     required super.isFeatured,
     required super.createdAt,
@@ -128,7 +130,6 @@ class ProductDetail extends Product {
     this.images,
     this.variants,
     this.dynamicAttributes,
-    this.videoUrl,
     this.similarProducts,
   });
 
@@ -142,6 +143,8 @@ class ProductImage {
   final int id;
   @JsonKey(name: 'image_url', fromJson: _safeStr)
   final String image;
+  @JsonKey(name: 'video_url', fromJson: _safeStr)
+  final String? videoUrl;
   @JsonKey(name: 'is_main', defaultValue: false)
   final bool isMain;
   @JsonKey(name: 'created_at', fromJson: _safeDateTime)
@@ -150,9 +153,13 @@ class ProductImage {
   ProductImage({
     required this.id,
     required this.image,
+    this.videoUrl,
     required this.isMain,
     required this.createdAt,
   });
+
+  /// URL для отображения: изображение или видео (для видео image часто пустое)
+  String? get displayUrl => (image.isNotEmpty ? image : null) ?? videoUrl;
 
   factory ProductImage.fromJson(Map<String, dynamic> json) => _$ProductImageFromJson(json);
   Map<String, dynamic> toJson() => _$ProductImageToJson(this);

@@ -2,24 +2,52 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'order.g.dart';
 
+/// Безопасное преобразование num/String в String (API может вернуть число или строку).
+String _stringFromJson(dynamic v) => v?.toString() ?? '0';
+
+/// Безопасный парсинг списка items (может быть null).
+List<OrderItem> _itemsFromJson(dynamic v) {
+  if (v == null) return [];
+  if (v is! List) return [];
+  return v
+      .map((e) => e is Map<String, dynamic>
+          ? OrderItem.fromJson(e)
+          : OrderItem.fromJson(Map<String, dynamic>.from(e as Map)))
+      .toList();
+}
+
 @JsonSerializable()
 class Order {
   final int id;
   final String number;
   final String status;
+  @JsonKey(name: 'subtotal_amount', fromJson: _stringFromJson)
   final String subtotalAmount;
+  @JsonKey(name: 'shipping_amount', fromJson: _stringFromJson)
   final String shippingAmount;
+  @JsonKey(name: 'discount_amount', fromJson: _stringFromJson)
   final String discountAmount;
+  @JsonKey(name: 'total_amount', fromJson: _stringFromJson)
   final String totalAmount;
   final String currency;
+  @JsonKey(fromJson: _itemsFromJson)
   final List<OrderItem> items;
+  @JsonKey(name: 'created_at')
   final DateTime createdAt;
+  @JsonKey(name: 'updated_at')
   final DateTime? updatedAt;
+  @JsonKey(name: 'contact_name')
   final String? contactName;
+  @JsonKey(name: 'contact_phone')
   final String? contactPhone;
+  @JsonKey(name: 'contact_email')
   final String? contactEmail;
+  @JsonKey(name: 'shipping_address_text')
   final String? shippingAddressText;
+  @JsonKey(name: 'payment_method')
   final String? paymentMethod;
+  @JsonKey(name: 'shipping_method')
+  final String? shippingMethod;
   final String? comment;
 
   Order({
@@ -39,6 +67,7 @@ class Order {
     this.contactEmail,
     this.shippingAddressText,
     this.paymentMethod,
+    this.shippingMethod,
     this.comment,
   });
 
@@ -49,6 +78,8 @@ class Order {
     switch (status) {
       case 'new':
         return 'Новый';
+      case 'pending_payment':
+        return 'Ожидает оплаты';
       case 'processing':
         return 'В обработке';
       case 'shipped':
@@ -69,9 +100,12 @@ class Order {
 class OrderItem {
   final int id;
   final int product;
+  @JsonKey(name: 'product_name')
   final String productName;
+  @JsonKey(fromJson: _stringFromJson)
   final String price;
   final int quantity;
+  @JsonKey(fromJson: _stringFromJson)
   final String total;
 
   OrderItem({
@@ -89,11 +123,18 @@ class OrderItem {
 
 @JsonSerializable()
 class CreateOrderRequest {
+  @JsonKey(name: 'contact_name')
   final String contactName;
+  @JsonKey(name: 'contact_phone')
   final String contactPhone;
+  @JsonKey(name: 'contact_email')
   final String? contactEmail;
+  @JsonKey(name: 'shipping_address_text')
   final String shippingAddressText;
+  @JsonKey(name: 'payment_method')
   final String paymentMethod;
+  @JsonKey(name: 'shipping_method')
+  final String? shippingMethod;
   final String? comment;
 
   CreateOrderRequest({
@@ -102,6 +143,7 @@ class CreateOrderRequest {
     this.contactEmail,
     required this.shippingAddressText,
     required this.paymentMethod,
+    this.shippingMethod,
     this.comment,
   });
 
@@ -114,9 +156,12 @@ class OrderReceipt {
   final int id;
   final String number;
   final String status;
+  @JsonKey(name: 'total_amount', fromJson: _stringFromJson)
   final String totalAmount;
   final String currency;
+  @JsonKey(name: 'created_at')
   final DateTime createdAt;
+  @JsonKey(name: 'receipt_url')
   final String receiptUrl;
 
   OrderReceipt({

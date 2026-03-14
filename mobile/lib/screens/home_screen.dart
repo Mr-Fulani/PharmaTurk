@@ -2,10 +2,14 @@ import 'package:flutter/material.dart' hide Banner;
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/image_url.dart';
+import '../utils/price_format.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 import '../models/models.dart';
 import 'product_detail_screen.dart';
 import 'catalog_screen.dart';
+import 'search_screen.dart';
+import 'visual_search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,12 +19,26 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  String? _lastLocale;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadData();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final locale = context.read<LocaleProvider>().locale.languageCode;
+    if (_lastLocale != null && _lastLocale != locale) {
+      _lastLocale = locale;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+    } else if (_lastLocale == null) {
+      _lastLocale = locale;
+    }
   }
 
   Future<void> _loadData() async {
@@ -90,27 +108,58 @@ class _HomeScreenState extends State<HomeScreen> {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: GestureDetector(
-          onTap: () {
-            // TODO: Navigate to search
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.search, color: Colors.grey[600]),
-                const SizedBox(width: 12),
-                Text(
-                  'Поиск товаров...',
-                  style: TextStyle(color: Colors.grey[600]),
+        child: Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  showSearch(
+                    context: context,
+                    delegate: ProductSearchScreen(
+                      searchHint: context.tr('search_placeholder'),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.search, color: Colors.grey[600]),
+                      const SizedBox(width: 12),
+                      Text(
+                        context.tr('search_placeholder'),
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            Material(
+              color: Colors.teal,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const VisualSearchScreen(),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Icon(Icons.camera_alt, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -168,10 +217,10 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.all(16.0),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
                 child: Text(
-                  'Категории',
+                  context.tr('categories'),
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -213,8 +262,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Рекомендуем',
+                    Text(
+                      context.tr('recommended'),
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -229,7 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         );
                       },
-                      child: const Text('Все'),
+                      child: Text(context.tr('all')),
                     ),
                   ],
                 ),
@@ -268,10 +317,10 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.all(16.0),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
                 child: Text(
-                  'Популярные бренды',
+                  context.tr('popular_brands'),
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -315,25 +364,39 @@ class _BannerCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          image: banner.mainImageUrl != null
-              ? DecorationImage(
-                  image: CachedNetworkImageProvider(resolveImageUrl(banner.mainImageUrl)),
-                  fit: BoxFit.cover,
-                )
-              : null,
           color: Colors.grey[300],
         ),
-        child: banner.mainImageUrl == null
-            ? Center(
-                child: Text(
-                  banner.title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: banner.mainImageUrl != null
+              ? CachedNetworkImage(
+                  imageUrl: resolveImageUrl(banner.mainImageUrl),
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: double.infinity,
+                  errorWidget: (_, __, ___) => Container(
+                    color: Colors.grey[300],
+                    child: Center(
+                      child: Text(
+                        banner.title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : Center(
+                  child: Text(
+                    banner.title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              )
-            : null,
+        ),
       ),
     );
   }
@@ -364,22 +427,26 @@ class _CategoryCard extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                image: category.cardMediaUrl != null
-                    ? DecorationImage(
-                        image: CachedNetworkImageProvider(resolveImageUrl(category.cardMediaUrl)),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-                color: Colors.grey[200],
-              ),
-              child: category.cardMediaUrl == null
-                  ? const Icon(Icons.category, color: Colors.grey)
-                  : null,
+            ClipOval(
+              child: category.cardMediaUrl != null
+                  ? CachedNetworkImage(
+                      imageUrl: resolveImageUrl(category.cardMediaUrl),
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Container(
+                        width: 56,
+                        height: 56,
+                        color: Colors.grey[200],
+                        child: const Icon(Icons.category, color: Colors.grey),
+                      ),
+                    )
+                  : Container(
+                      width: 56,
+                      height: 56,
+                      color: Colors.grey[200],
+                      child: const Icon(Icons.category, color: Colors.grey),
+                    ),
             ),
             const SizedBox(height: 6),
             Flexible(
@@ -435,19 +502,26 @@ class _ProductCard extends StatelessWidget {
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               child: AspectRatio(
                 aspectRatio: 1,
-                child: product.mainImageUrl != null
-                    ? CachedNetworkImage(
-                        imageUrl: resolveImageUrl(product.mainImageUrl),
-                        fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(
-                          color: Colors.grey[200],
-                          child: const Center(child: CircularProgressIndicator()),
-                        ),
-                        errorWidget: (_, __, ___) => Container(
-                          color: Colors.grey[200],
-                          child: const Icon(Icons.image_not_supported),
-                        ),
-                      )
+                child: (product.mainImageUrl != null || product.videoUrl != null)
+                    ? (product.mainImageUrl != null && product.mainImageUrl!.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: resolveImageUrl(product.mainImageUrl),
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) => Container(
+                              color: Colors.grey[200],
+                              child: const Center(child: CircularProgressIndicator()),
+                            ),
+                            errorWidget: (_, __, ___) => Container(
+                              color: Colors.grey[200],
+                              child: const Icon(Icons.image_not_supported),
+                            ),
+                          )
+                        : Container(
+                            color: Colors.grey[200],
+                            child: Center(
+                              child: Icon(Icons.play_circle_fill, size: 48, color: Colors.teal[300]),
+                            ),
+                          ))
                     : Container(
                         color: Colors.grey[200],
                         child: const Icon(Icons.image_not_supported),
@@ -470,7 +544,7 @@ class _ProductCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    product.priceFormatted ?? '${product.price} ${product.currency}',
+                    formatPriceWithCurrency(product.price, product.currency),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,

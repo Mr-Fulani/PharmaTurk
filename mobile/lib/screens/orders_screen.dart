@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 import '../models/models.dart';
 import 'order_detail_screen.dart';
 
@@ -28,7 +29,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Мои заказы'),
+        title: Text(context.tr('orders')),
       ),
       body: Consumer<OrderProvider>(
         builder: (context, provider, child) {
@@ -45,7 +46,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: _refresh,
-                    child: const Text('Повторить'),
+                    child: Text(context.tr('retry')),
                   ),
                 ],
               ),
@@ -84,7 +85,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'У вас пока нет заказов',
+            context.tr('no_orders'),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -93,7 +94,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Сделайте свой первый заказ',
+            context.tr('first_order'),
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey[500],
@@ -107,7 +108,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             ),
-            child: const Text('Перейти к покупкам'),
+            child: Text(context.tr('go_shopping')),
           ),
         ],
       ),
@@ -145,13 +146,13 @@ class _OrderCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Заказ #${order.number}',
+                    '${context.tr('order_number')}${order.number}',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  _buildStatusBadge(order.status),
+                  _buildStatusBadge(context, order.status),
                 ],
               ),
               const SizedBox(height: 12),
@@ -189,7 +190,7 @@ class _OrderCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Итого:',
+                    context.tr('total') + ':',
                     style: TextStyle(
                       color: Colors.grey[600],
                     ),
@@ -211,7 +212,7 @@ class _OrderCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusBadge(String status) {
+  Widget _buildStatusBadge(BuildContext context, String status) {
     Color color;
     switch (status) {
       case 'new':
@@ -240,7 +241,7 @@ class _OrderCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        _getStatusText(status),
+        _getStatusText(context, status),
         style: TextStyle(
           color: color,
           fontSize: 12,
@@ -250,20 +251,20 @@ class _OrderCard extends StatelessWidget {
     );
   }
 
-  String _getStatusText(String status) {
+  String _getStatusText(BuildContext context, String status) {
     switch (status) {
       case 'new':
-        return 'Новый';
+        return context.tr('status_new');
       case 'processing':
-        return 'В обработке';
+        return context.tr('status_processing');
       case 'shipped':
-        return 'Отправлен';
+        return context.tr('status_shipped');
       case 'delivered':
-        return 'Доставлен';
+        return context.tr('status_delivered');
       case 'cancelled':
-        return 'Отменен';
+        return context.tr('status_cancelled');
       case 'refunded':
-        return 'Возвращен';
+        return context.tr('status_refunded');
       default:
         return status;
     }

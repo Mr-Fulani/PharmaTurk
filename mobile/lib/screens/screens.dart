@@ -2,6 +2,8 @@ export 'main_screen.dart';
 export 'home_screen.dart';
 export 'catalog_screen.dart';
 export 'product_detail_screen.dart';
+export 'search_screen.dart';
+export 'visual_search_screen.dart';
 export 'cart_screen.dart';
 export 'checkout_screen.dart';
 export 'order_success_screen.dart';

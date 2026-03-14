@@ -6,6 +6,7 @@ part 'favorite.g.dart';
 class Favorite {
   final int id;
   final FavoriteProduct product;
+  @JsonKey(name: 'created_at')
   final DateTime createdAt;
 
   Favorite({
@@ -18,13 +19,28 @@ class Favorite {
   Map<String, dynamic> toJson() => _$FavoriteToJson(this);
 }
 
+String _favoriteSafeStr(dynamic v) {
+  if (v == null) return '0';
+  if (v is String) return v;
+  return v.toString();
+}
+
+String? _favoriteOptStr(dynamic v) {
+  if (v == null) return null;
+  if (v is String) return v.isEmpty ? null : v;
+  return v.toString();
+}
+
 @JsonSerializable()
 class FavoriteProduct {
   final int id;
   final String name;
   final String slug;
+  @JsonKey(fromJson: _favoriteSafeStr)
   final String price;
+  @JsonKey(fromJson: _favoriteSafeStr)
   final String currency;
+  @JsonKey(name: 'main_image_url')
   final String? mainImageUrl;
 
   FavoriteProduct({

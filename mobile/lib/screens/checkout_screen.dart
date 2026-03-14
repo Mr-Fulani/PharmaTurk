@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 import 'order_success_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -18,13 +19,52 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _addressController = TextEditingController();
   final _commentController = TextEditingController();
 
-  String _paymentMethod = 'card';
+  String _paymentMethod = 'cod';
+  String _shippingMethod = 'ground';
 
-  final List<Map<String, dynamic>> _paymentMethods = [
-    {'value': 'card', 'label': 'Банковская карта', 'icon': Icons.credit_card},
-    {'value': 'cash', 'label': 'Наличные при получении', 'icon': Icons.money},
-    {'value': 'crypto', 'label': 'Криптовалюта', 'icon': Icons.currency_bitcoin},
+  List<Map<String, dynamic>> _getPaymentMethods(BuildContext context) => [
+    {'value': 'cod', 'label': context.tr('payment_cod'), 'icon': Icons.money},
+    {'value': 'card', 'label': context.tr('payment_card'), 'icon': Icons.credit_card},
+    {'value': 'crypto', 'label': context.tr('payment_crypto'), 'icon': Icons.currency_bitcoin},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fillFromUserProfile());
+  }
+
+  Future<void> _fillFromUserProfile() async {
+    final authProvider = context.read<AuthProvider>();
+    if (!authProvider.isAuthenticated || authProvider.user == null) return;
+
+    final user = authProvider.user!;
+    if (_nameController.text.isEmpty && user.fullName.isNotEmpty) {
+      _nameController.text = user.fullName;
+    }
+    if (_emailController.text.isEmpty && (user.email.isNotEmpty)) {
+      _emailController.text = user.email;
+    }
+    if (_phoneController.text.isEmpty && (user.phoneNumber ?? '').isNotEmpty) {
+      _phoneController.text = user.phoneNumber!;
+    }
+
+    final addresses = await authProvider.getAddresses();
+    if (_addressController.text.isEmpty && addresses.isNotEmpty) {
+      final defaultAddrs = addresses.where((a) => a.isDefault).toList();
+      final defaultAddr = defaultAddrs.isNotEmpty ? defaultAddrs.first : addresses.first;
+      if (defaultAddr.addressText.isNotEmpty) {
+        _addressController.text = defaultAddr.addressText;
+      }
+      if (_nameController.text.isEmpty && (defaultAddr.name.isNotEmpty || defaultAddr.recipientName != null)) {
+        _nameController.text = defaultAddr.recipientName ?? defaultAddr.name;
+      }
+      if (_phoneController.text.isEmpty && (defaultAddr.phone ?? '').isNotEmpty) {
+        _phoneController.text = defaultAddr.phone!;
+      }
+    }
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
@@ -40,19 +80,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Оформление заказа'),
+        title: Text(context.tr('checkout')),
       ),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _buildSectionTitle('Контактная информация'),
+            _buildSectionTitle(context.tr('contact_info')),
             const SizedBox(height: 16),
             TextFormField(
               controller: _nameController,
               decoration: InputDecoration(
-                labelText: 'Имя и фамилия *',
+                labelText: context.tr('name_required'),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -60,7 +100,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
-                  return 'Введите имя и фамилию';
+                  return context.tr('enter_name');
                 }
                 return null;
               },
@@ -69,7 +109,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             TextFormField(
               controller: _phoneController,
               decoration: InputDecoration(
-                labelText: 'Телефон *',
+                labelText: context.tr('phone_required'),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -78,7 +118,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               keyboardType: TextInputType.phone,
               validator: (value) {
                 if (value == null || value.isEmpty) {
-                  return 'Введите номер телефона';
+                  return context.tr('enter_phone');
                 }
                 return null;
               },
@@ -96,12 +136,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               keyboardType: TextInputType.emailAddress,
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Адрес доставки'),
+            _buildSectionTitle(context.tr('delivery_address')),
             const SizedBox(height: 16),
             TextFormField(
               controller: _addressController,
               decoration: InputDecoration(
-                labelText: 'Адрес *',
+                labelText: context.tr('address_required'),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -110,15 +150,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               maxLines: 3,
               validator: (value) {
                 if (value == null || value.isEmpty) {
-                  return 'Введите адрес доставки';
+                  return context.tr('enter_address');
                 }
                 return null;
               },
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Способ оплаты'),
+            _buildSectionTitle(context.tr('shipping_method')),
             const SizedBox(height: 16),
-            ..._paymentMethods.map((method) {
+            _buildShippingMethodSection(),
+            const SizedBox(height: 24),
+            _buildSectionTitle(context.tr('payment_method')),
+            const SizedBox(height: 16),
+            ..._getPaymentMethods(context).map((method) {
               return RadioListTile<String>(
                 value: method['value'],
                 groupValue: _paymentMethod,
@@ -136,12 +180,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               );
             }),
             const SizedBox(height: 24),
-            _buildSectionTitle('Комментарий'),
+            _buildSectionTitle(context.tr('comment')),
             const SizedBox(height: 16),
             TextFormField(
               controller: _commentController,
               decoration: InputDecoration(
-                labelText: 'Комментарий к заказу',
+                labelText: context.tr('comment_placeholder'),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -156,6 +200,43 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
       ),
       bottomNavigationBar: _buildBottomBar(),
+    );
+  }
+
+  Widget _buildShippingMethodSection() {
+    return Consumer<CartProvider>(
+      builder: (context, cartProvider, _) {
+        final opts = cartProvider.shippingOptions;
+        final currency = cartProvider.cart?.currency ?? 'USD';
+        final options = [
+          ('ground', context.tr('shipping_ground'), context.tr('shipping_ground_desc'), opts['ground'] ?? 0),
+          ('air', context.tr('shipping_air'), context.tr('shipping_air_desc'), opts['air'] ?? 0),
+          ('sea', context.tr('shipping_sea'), context.tr('shipping_sea_desc'), opts['sea'] ?? 0),
+        ];
+        return Column(
+          children: options.map((opt) {
+            final (key, label, desc, cost) = opt;
+            return RadioListTile<String>(
+              value: key,
+              groupValue: _shippingMethod,
+              onChanged: (v) => setState(() => _shippingMethod = v!),
+              title: Text(label),
+              subtitle: Text(
+                desc,
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+              secondary: Text(
+                cost > 0 ? '+${cost.toStringAsFixed(2)} $currency' : 'Бесплатно',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: Colors.grey[300]!),
+              ),
+            );
+          }).toList(),
+        );
+      },
     );
   }
 
@@ -181,8 +262,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Ваш заказ',
+              Text(
+                context.tr('your_order'),
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -192,8 +273,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Товары (${provider.cartItemCount}):'),
-                  Text('${provider.totalAmount} ₽'),
+                  Text('${context.tr('items')} (${provider.cartItemCount}):'),
+                  Text('${provider.totalAmount} ${provider.cart?.currency ?? 'RUB'}'),
                 ],
               ),
               if (provider.discountAmount != '0.00') ...[
@@ -201,42 +282,58 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Скидка:'),
+                    Text(context.tr('discount') + ':'),
                     Text(
-                      '-${provider.discountAmount} ₽',
+                      '-${provider.discountAmount} ${provider.cart?.currency ?? 'RUB'}',
                       style: const TextStyle(color: Colors.green),
                     ),
                   ],
                 ),
               ],
               const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Доставка:'),
-                  const Text('Бесплатно'),
-                ],
+              Builder(
+                builder: (_) {
+                  final opts = provider.shippingOptions;
+                  final cost = opts[_shippingMethod] ?? 0.0;
+                  final currency = provider.cart?.currency ?? 'USD';
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(context.tr('delivery') + ':'),
+                      Text(cost > 0 ? '+${cost.toStringAsFixed(2)} $currency' : context.tr('free')),
+                    ],
+                  );
+                },
               ),
               const Divider(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Итого:',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    '${provider.finalAmount} ₽',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.teal,
-                    ),
-                  ),
-                ],
+              Builder(
+                builder: (_) {
+                  final opts = provider.shippingOptions;
+                  final shippingCost = opts[_shippingMethod] ?? 0.0;
+                  final finalVal = double.tryParse(provider.finalAmount) ?? 0.0;
+                  final total = finalVal + shippingCost;
+                  final currency = provider.cart?.currency ?? 'RUB';
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        context.tr('total') + ':',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        '${total.toStringAsFixed(2)} $currency',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -278,8 +375,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
-                    : const Text(
-                        'Подтвердить заказ',
+                    : Text(
+                        context.tr('confirm_order'),
                         style: TextStyle(fontSize: 16),
                       ),
               ),
@@ -302,6 +399,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       contactEmail: _emailController.text.isEmpty ? null : _emailController.text,
       shippingAddressText: _addressController.text,
       paymentMethod: _paymentMethod,
+      shippingMethod: _shippingMethod,
       comment: _commentController.text.isEmpty ? null : _commentController.text,
     );
 
@@ -316,7 +414,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(orderProvider.error ?? 'Ошибка при создании заказа'),
+          content: Text(orderProvider.error ?? context.tr('order_error')),
           backgroundColor: Colors.red,
         ),
       );

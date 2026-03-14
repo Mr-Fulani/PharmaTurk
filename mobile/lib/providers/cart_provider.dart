@@ -18,6 +18,7 @@ class CartProvider extends ChangeNotifier {
   String get totalAmount => _cart?.totalAmount ?? '0.00';
   String get finalAmount => _cart?.finalAmount ?? '0.00';
   String get discountAmount => _cart?.discountAmount ?? '0.00';
+  Map<String, double> get shippingOptions => _cart?.shippingOptions ?? const {};
   bool get hasItems => _cart != null && _cart!.items.isNotEmpty;
   PromoCode? get appliedPromoCode => _cart?.promoCode;
 

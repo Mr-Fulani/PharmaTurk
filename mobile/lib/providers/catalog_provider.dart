@@ -11,7 +11,10 @@ class CatalogProvider extends ChangeNotifier {
   List<Product> _featuredProducts = [];
   List<Product> _similarProducts = [];
   List<Product> _searchResults = [];
+  List<Product> _visualSearchResults = [];
   bool _isLoadingProducts = false;
+  bool _isLoadingVisualSearch = false;
+  String? _visualSearchError;
   bool _isLoadingProductDetail = false;
   bool _hasMoreProducts = true;
   int _currentPage = 1;
@@ -50,7 +53,10 @@ class CatalogProvider extends ChangeNotifier {
   List<Product> get featuredProducts => _featuredProducts;
   List<Product> get similarProducts => _similarProducts;
   List<Product> get searchResults => _searchResults;
+  List<Product> get visualSearchResults => _visualSearchResults;
   bool get isLoadingProducts => _isLoadingProducts;
+  bool get isLoadingVisualSearch => _isLoadingVisualSearch;
+  String? get visualSearchError => _visualSearchError;
   bool get isLoadingProductDetail => _isLoadingProductDetail;
   bool get hasMoreProducts => _hasMoreProducts;
   String? get productsError => _productsError;
@@ -193,6 +199,49 @@ class CatalogProvider extends ChangeNotifier {
       _isLoadingProducts = false;
       notifyListeners();
     }
+  }
+
+  /// Поиск по фото: загрузка файла + search_by_image или только по URL.
+  Future<void> searchByImage(String imageUrl) async {
+    _visualSearchResults = [];
+    _visualSearchError = null;
+    _isLoadingVisualSearch = true;
+    notifyListeners();
+
+    try {
+      _visualSearchResults = await _catalogService.searchByImage(imageUrl, limit: 12);
+      _isLoadingVisualSearch = false;
+      notifyListeners();
+    } catch (e) {
+      _visualSearchError = e.toString();
+      _visualSearchResults = [];
+      _isLoadingVisualSearch = false;
+      notifyListeners();
+    }
+  }
+
+  /// Загрузка фото и поиск по нему.
+  Future<void> searchByImageFile(String filePath) async {
+    _visualSearchResults = [];
+    _visualSearchError = null;
+    _isLoadingVisualSearch = true;
+    notifyListeners();
+
+    try {
+      final url = await _catalogService.uploadTempImage(filePath);
+      await searchByImage(url);
+    } catch (e) {
+      _visualSearchError = e.toString();
+      _visualSearchResults = [];
+      _isLoadingVisualSearch = false;
+      notifyListeners();
+    }
+  }
+
+  void clearVisualSearch() {
+    _visualSearchResults = [];
+    _visualSearchError = null;
+    notifyListeners();
   }
 
   // Categories

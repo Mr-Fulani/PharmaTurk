@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/image_url.dart';
+import '../utils/price_format.dart';
+import '../models/models.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 import 'product_detail_screen.dart';
 
 class FavoritesScreen extends StatefulWidget {
@@ -29,7 +32,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Избранное'),
+        title: Text(context.tr('favorites')),
       ),
       body: Consumer<FavoriteProvider>(
         builder: (context, provider, child) {
@@ -46,7 +49,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: _refresh,
-                    child: const Text('Повторить'),
+                    child: Text(context.tr('retry')),
                   ),
                 ],
               ),
@@ -96,7 +99,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'Нет избранных товаров',
+            context.tr('no_favorites'),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -105,7 +108,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Добавьте товары в избранное',
+            context.tr('add_favorites'),
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey[500],
@@ -119,7 +122,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             ),
-            child: const Text('Перейти к покупкам'),
+            child: Text(context.tr('go_shopping')),
           ),
         ],
       ),
@@ -128,7 +131,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 }
 
 class _FavoriteProductCard extends StatelessWidget {
-  final favorite;
+  final Favorite favorite;
   final VoidCallback onRemove;
 
   const _FavoriteProductCard({
@@ -175,6 +178,10 @@ class _FavoriteProductCard extends StatelessWidget {
                           ? CachedNetworkImage(
                               imageUrl: resolveImageUrl(product.mainImageUrl),
                               fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) => Container(
+                                color: Colors.grey[200],
+                                child: const Icon(Icons.image_not_supported),
+                              ),
                             )
                           : Container(
                               color: Colors.grey[200],
@@ -222,7 +229,7 @@ class _FavoriteProductCard extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      '${product.price} ${product.currency}',
+                      formatPriceWithCurrency(product.price, product.currency),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,

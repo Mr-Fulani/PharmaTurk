@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 import '../models/models.dart';
 import 'main_screen.dart';
 
@@ -40,7 +41,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Регистрация'),
+        title: Text(context.tr('registration')),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -51,7 +52,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Создайте аккаунт',
+                  context.tr('create_account'),
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -60,7 +61,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Заполните данные для регистрации',
+                  context.tr('fill_registration'),
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.grey[600],
@@ -70,7 +71,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextFormField(
                   controller: _emailController,
                   decoration: InputDecoration(
-                    labelText: 'Email *',
+                    labelText: context.tr('email') + ' *',
                     prefixIcon: const Icon(Icons.email_outlined),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -79,10 +80,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Введите email';
+                      return context.tr('enter_email');
                     }
                     if (!value.contains('@')) {
-                      return 'Введите корректный email';
+                      return context.tr('enter_valid_email');
                     }
                     return null;
                   },
@@ -91,7 +92,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextFormField(
                   controller: _usernameController,
                   decoration: InputDecoration(
-                    labelText: 'Имя пользователя *',
+                    labelText: context.tr('username_required'),
                     prefixIcon: const Icon(Icons.person_outline),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -99,10 +100,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Введите имя пользователя';
+                      return context.tr('enter_username');
                     }
                     if (value.length < 3) {
-                      return 'Имя пользователя должно быть не менее 3 символов';
+                      return context.tr('username_min_length');
                     }
                     return null;
                   },
@@ -114,7 +115,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       child: TextFormField(
                         controller: _firstNameController,
                         decoration: InputDecoration(
-                          labelText: 'Имя',
+                          labelText: context.tr('first_name'),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -126,7 +127,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       child: TextFormField(
                         controller: _lastNameController,
                         decoration: InputDecoration(
-                          labelText: 'Фамилия',
+                          labelText: context.tr('last_name'),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -139,7 +140,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextFormField(
                   controller: _phoneController,
                   decoration: InputDecoration(
-                    labelText: 'Телефон',
+                    labelText: context.tr('phone'),
                     prefixIcon: const Icon(Icons.phone_outlined),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -172,13 +173,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   obscureText: _obscurePassword,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Введите пароль';
+                      return context.tr('enter_password');
                     }
                     if (value.length < 8) {
-                      return 'Пароль должен быть не менее 8 символов';
+                      return context.tr('password_min_8');
                     }
                     if (!value.contains(RegExp(r'[a-zA-Z]')) || !value.contains(RegExp(r'[0-9]'))) {
-                      return 'Пароль должен содержать буквы и цифры';
+                      return context.tr('password_letters_numbers');
                     }
                     return null;
                   },
@@ -187,7 +188,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 TextFormField(
                   controller: _confirmPasswordController,
                   decoration: InputDecoration(
-                    labelText: 'Подтвердите пароль *',
+                    labelText: context.tr('confirm_password') + ' *',
                     prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -208,10 +209,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   obscureText: _obscureConfirmPassword,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Подтвердите пароль';
+                      return context.tr('confirm_password_required');
                     }
                     if (value != _passwordController.text) {
-                      return 'Пароли не совпадают';
+                      return context.tr('passwords_mismatch');
                     }
                     return null;
                   },
@@ -224,7 +225,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       _agreeToTerms = value ?? false;
                     });
                   },
-                  title: const Text('Я согласен с условиями использования'),
+                  title: Text(context.tr('agree_terms')),
                   controlAffinity: ListTileControlAffinity.leading,
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -250,8 +251,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   ),
                                 ),
                               )
-                            : const Text(
-                                'Зарегистрироваться',
+                            : Text(
+                                context.tr('register'),
                                 style: TextStyle(fontSize: 16),
                               ),
                       ),
@@ -291,8 +292,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _register() async {
     if (!_agreeToTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Примите условия использования'),
+        SnackBar(
+          content: Text(context.tr('accept_terms')),
           backgroundColor: Colors.red,
         ),
       );

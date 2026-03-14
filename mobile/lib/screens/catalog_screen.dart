@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../utils/image_url.dart';
+import '../utils/price_format.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 import '../models/models.dart';
 import 'product_detail_screen.dart';
+import 'search_screen.dart';
+import 'visual_search_screen.dart';
 
 class CatalogScreen extends StatefulWidget {
   final String? categorySlug;
@@ -73,22 +77,38 @@ class _CatalogScreenState extends State<CatalogScreen> {
     final title = widget.categoryName ??
         widget.brandName ??
         widget.searchQuery ??
-        'Каталог';
+        context.tr('catalog');
 
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_list),
+            icon: const Icon(Icons.camera_alt),
             onPressed: () {
-              _showFilterBottomSheet();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const VisualSearchScreen(),
+                ),
+              );
             },
           ),
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () {
-              // TODO: Show search
+              showSearch(
+                context: context,
+                delegate: ProductSearchScreen(
+                  searchHint: context.tr('search_placeholder'),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: () {
+              _showFilterBottomSheet();
             },
           ),
         ],
@@ -108,7 +128,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: _refresh,
-                    child: const Text('Повторить'),
+                    child: Text(context.tr('retry')),
                   ),
                 ],
               ),
@@ -116,8 +136,8 @@ class _CatalogScreenState extends State<CatalogScreen> {
           }
 
           if (provider.products.isEmpty) {
-            return const Center(
-              child: Text('Товары не найдены'),
+            return Center(
+              child: Text(context.tr('products_not_found')),
             );
           }
 
@@ -158,9 +178,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) {
-        return const _FilterBottomSheet();
-      },
+      builder: (context) => const _FilterBottomSheet(),
     );
   }
 }
@@ -169,6 +187,38 @@ class _ProductGridCard extends StatelessWidget {
   final Product product;
 
   const _ProductGridCard({required this.product});
+
+  Widget _buildProductMedia(Product product) {
+    final imageUrl = product.mainImageUrl;
+    final videoUrl = product.videoUrl;
+    if ((imageUrl == null || imageUrl.isEmpty) &&
+        (videoUrl == null || videoUrl.isEmpty)) {
+      return Container(
+        color: Colors.grey[200],
+        child: const Icon(Icons.image_not_supported),
+      );
+    }
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Container(
+        color: Colors.grey[200],
+        child: Center(
+          child: Icon(Icons.play_circle_fill, size: 48, color: Colors.teal[300]),
+        ),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: resolveImageUrl(imageUrl),
+      fit: BoxFit.cover,
+      placeholder: (_, __) => Container(
+        color: Colors.grey[200],
+        child: const Center(child: CircularProgressIndicator()),
+      ),
+      errorWidget: (_, __, ___) => Container(
+        color: Colors.grey[200],
+        child: const Icon(Icons.image_not_supported),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -203,24 +253,7 @@ class _ProductGridCard extends StatelessWidget {
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: product.mainImageUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: resolveImageUrl(product.mainImageUrl),
-                              fit: BoxFit.cover,
-                              placeholder: (_, __) => Container(
-                                color: Colors.grey[200],
-                                child: const Center(
-                                    child: CircularProgressIndicator()),
-                              ),
-                              errorWidget: (_, __, ___) => Container(
-                                color: Colors.grey[200],
-                                child: const Icon(Icons.image_not_supported),
-                              ),
-                            )
-                          : Container(
-                              color: Colors.grey[200],
-                              child: const Icon(Icons.image_not_supported),
-                            ),
+                      child: _buildProductMedia(product),
                     ),
                     if (product.isNew)
                       Positioned(
@@ -290,8 +323,7 @@ class _ProductGridCard extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      product.priceFormatted ??
-                          '${product.price} ${product.currency}',
+                      formatPriceWithCurrency(product.price, product.currency),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -331,13 +363,13 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
   double _maxPrice = 100000;
   String? _selectedOrdering;
 
-  final List<Map<String, String>> _orderingOptions = [
-    {'value': 'price', 'label': 'Цена: по возрастанию'},
-    {'value': '-price', 'label': 'Цена: по убыванию'},
-    {'value': 'name', 'label': 'Название: А-Я'},
-    {'value': '-name', 'label': 'Название: Я-А'},
-    {'value': 'created_at', 'label': 'Сначала новые'},
-    {'value': '-created_at', 'label': 'Сначала старые'},
+  List<Map<String, String>> _getOrderingOptions(BuildContext context) => [
+    {'value': 'price', 'label': context.tr('sort_price_asc')},
+    {'value': '-price', 'label': context.tr('sort_price_desc')},
+    {'value': 'name', 'label': context.tr('sort_name_asc')},
+    {'value': '-name', 'label': context.tr('sort_name_desc')},
+    {'value': 'created_at', 'label': context.tr('sort_newest')},
+    {'value': '-created_at', 'label': context.tr('sort_oldest')},
   ];
 
   @override
@@ -351,8 +383,8 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Фильтры',
+              Text(
+                context.tr('filters'),
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -363,13 +395,13 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
                   context.read<CatalogProvider>().clearFilters();
                   Navigator.pop(context);
                 },
-                child: const Text('Сбросить'),
+                child: Text(context.tr('reset')),
               ),
             ],
           ),
           const SizedBox(height: 24),
-          const Text(
-            'Цена',
+          Text(
+            context.tr('price'),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
@@ -400,8 +432,8 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
             ],
           ),
           const SizedBox(height: 24),
-          const Text(
-            'Сортировка',
+          Text(
+            context.tr('sort'),
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
@@ -411,7 +443,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _orderingOptions.map((option) {
+            children: _getOrderingOptions(context).map((option) {
               final isSelected = _selectedOrdering == option['value'];
               return ChoiceChip(
                 label: Text(option['label']!),
@@ -438,7 +470,7 @@ class _FilterBottomSheetState extends State<_FilterBottomSheet> {
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              child: const Text('Применить'),
+              child: Text(context.tr('apply')),
             ),
           ),
         ],

@@ -73,6 +73,7 @@ class OrderProvider extends ChangeNotifier {
     String? contactEmail,
     required String shippingAddressText,
     required String paymentMethod,
+    String? shippingMethod,
     String? comment,
   }) async {
     _isCreatingOrder = true;
@@ -86,6 +87,7 @@ class OrderProvider extends ChangeNotifier {
         contactEmail: contactEmail,
         shippingAddressText: shippingAddressText,
         paymentMethod: paymentMethod,
+        shippingMethod: shippingMethod,
         comment: comment,
       ));
       _orders.insert(0, order);

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'services/services.dart';
 import 'providers/providers.dart';
@@ -59,59 +60,72 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => LocaleProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => CatalogProvider()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => FavoriteProvider()),
         ChangeNotifierProvider(create: (_) => OrderProvider()),
       ],
-      child: MaterialApp(
-        navigatorKey: _navigatorKey,
-        title: 'PharmaTurk',
-        debugShowCheckedModeBanner: false,
-        builder: (context, child) => DebugErrorOverlay(
+      child: Consumer<LocaleProvider>(
+        builder: (context, localeProvider, _) => MaterialApp(
           navigatorKey: _navigatorKey,
-          child: child ?? const SizedBox.shrink(),
-        ),
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.teal,
-            brightness: Brightness.light,
+          title: 'PharmaTurk',
+          debugShowCheckedModeBanner: false,
+          locale: localeProvider.locale,
+          supportedLocales: const [
+            Locale('ru'),
+            Locale('en'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          builder: (context, child) => DebugErrorOverlay(
+            navigatorKey: _navigatorKey,
+            child: child ?? const SizedBox.shrink(),
           ),
-          useMaterial3: true,
-          appBarTheme: const AppBarTheme(
-            centerTitle: true,
-            elevation: 0,
-          ),
-          cardTheme: CardThemeData(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.teal,
+              brightness: Brightness.light,
             ),
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
+            useMaterial3: true,
+            appBarTheme: const AppBarTheme(
+              centerTitle: true,
+              elevation: 0,
+            ),
+            cardTheme: CardThemeData(
+              elevation: 2,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-          ),
-          inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+            elevatedButtonTheme: ElevatedButtonThemeData(
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
             ),
-            filled: true,
-            fillColor: Colors.grey[50],
+            inputDecorationTheme: InputDecorationTheme(
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              filled: true,
+              fillColor: Colors.grey[50],
+            ),
           ),
-        ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.teal,
-            brightness: Brightness.dark,
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.teal,
+              brightness: Brightness.dark,
+            ),
+            useMaterial3: true,
           ),
-          useMaterial3: true,
+          home: const AppInitializer(),
         ),
-        home: const AppInitializer(),
       ),
     );
   }
@@ -134,10 +148,14 @@ class _AppInitializerState extends State<AppInitializer> {
   }
 
   Future<void> _initialize() async {
+    final localeProvider = context.read<LocaleProvider>();
+    await localeProvider.loadSavedLocale();
+
     final authProvider = context.read<AuthProvider>();
     await authProvider.checkAuthStatus();
-    
+
     if (mounted) {
+      localeProvider.syncWithUserLanguage(authProvider.user?.preferredLanguage);
       setState(() {
         _isLoading = false;
       });
@@ -146,6 +164,15 @@ class _AppInitializerState extends State<AppInitializer> {
 
   @override
   Widget build(BuildContext context) {
+    final authProvider = context.watch<AuthProvider>();
+    if (authProvider.isAuthenticated && !_isLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.read<LocaleProvider>().syncWithUserLanguage(authProvider.user?.preferredLanguage);
+        }
+      });
+    }
+
     if (_isLoading) {
       return const MaterialApp(
         home: Scaffold(
@@ -156,8 +183,6 @@ class _AppInitializerState extends State<AppInitializer> {
       );
     }
 
-    final authProvider = context.watch<AuthProvider>();
-    
     if (authProvider.isAuthenticated) {
       return const MainScreen();
     } else {

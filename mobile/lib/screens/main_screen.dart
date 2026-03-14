@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/providers.dart';
+import '../l10n/app_localizations.dart';
 import 'home_screen.dart';
 import 'catalog_screen.dart';
 import 'cart_screen.dart';
@@ -58,15 +59,15 @@ class _MainScreenState extends State<MainScreen> {
             selectedItemColor: Colors.teal,
             unselectedItemColor: Colors.grey,
             items: [
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.home_outlined),
-                activeIcon: Icon(Icons.home),
-                label: 'Главная',
+              BottomNavigationBarItem(
+                icon: const Icon(Icons.home_outlined),
+                activeIcon: const Icon(Icons.home),
+                label: context.tr('home'),
               ),
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.category_outlined),
-                activeIcon: Icon(Icons.category),
-                label: 'Каталог',
+              BottomNavigationBarItem(
+                icon: const Icon(Icons.category_outlined),
+                activeIcon: const Icon(Icons.category),
+                label: context.tr('catalog'),
               ),
               BottomNavigationBarItem(
                 icon: Badge(
@@ -79,12 +80,12 @@ class _MainScreenState extends State<MainScreen> {
                   label: Text('${cartProvider.cartItemCount}'),
                   child: const Icon(Icons.shopping_cart),
                 ),
-                label: 'Корзина',
+                label: context.tr('cart'),
               ),
-              const BottomNavigationBarItem(
-                icon: Icon(Icons.person_outline),
-                activeIcon: Icon(Icons.person),
-                label: 'Профиль',
+              BottomNavigationBarItem(
+                icon: const Icon(Icons.person_outline),
+                activeIcon: const Icon(Icons.person),
+                label: context.tr('profile'),
               ),
             ],
           );
