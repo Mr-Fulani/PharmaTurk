@@ -5,3 +5,5 @@ export 'cart_service.dart';
 export 'order_service.dart';
 export 'favorite_service.dart';
 export 'testimonial_service.dart';
+export 'footer_service.dart';
+export 'page_service.dart';

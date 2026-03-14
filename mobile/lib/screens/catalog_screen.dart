@@ -191,14 +191,14 @@ class _ProductGridCard extends StatelessWidget {
   Widget _buildProductMedia(Product product) {
     final imageUrl = product.mainImageUrl;
     final videoUrl = product.videoUrl;
-    if ((imageUrl == null || imageUrl.isEmpty) &&
-        (videoUrl == null || videoUrl.isEmpty)) {
+    final resolvedUrl = resolveImageUrlOrNull(imageUrl);
+    if (resolvedUrl == null && !isValidImageUrl(videoUrl)) {
       return Container(
         color: Colors.grey[200],
         child: const Icon(Icons.image_not_supported),
       );
     }
-    if (imageUrl == null || imageUrl.isEmpty) {
+    if (resolvedUrl == null) {
       return Container(
         color: Colors.grey[200],
         child: Center(
@@ -207,7 +207,7 @@ class _ProductGridCard extends StatelessWidget {
       );
     }
     return CachedNetworkImage(
-      imageUrl: resolveImageUrl(imageUrl),
+      imageUrl: resolvedUrl,
       fit: BoxFit.cover,
       placeholder: (_, __) => Container(
         color: Colors.grey[200],
@@ -278,7 +278,7 @@ class _ProductGridCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    if (product.oldPrice != null)
+                    if (hasValidOldPrice(product.oldPrice))
                       Positioned(
                         top: 8,
                         right: 8,
@@ -330,10 +330,9 @@ class _ProductGridCard extends StatelessWidget {
                         color: Colors.teal,
                       ),
                     ),
-                    if (product.oldPrice != null)
+                    if (hasValidOldPrice(product.oldPrice))
                       Text(
-                        product.oldPriceFormatted ??
-                            '${product.oldPrice} ${product.currency}',
+                        formatPriceWithCurrency(product.oldPrice, product.currency),
                         style: TextStyle(
                           fontSize: 12,
                           decoration: TextDecoration.lineThrough,

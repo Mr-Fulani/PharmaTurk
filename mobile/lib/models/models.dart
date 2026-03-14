@@ -5,3 +5,4 @@ export 'user.dart';
 export 'favorite.dart';
 export 'banner.dart';
 export 'testimonial.dart';
+export 'footer_settings.dart';

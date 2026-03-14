@@ -146,28 +146,31 @@ class _SearchResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: product.mainImageUrl != null && product.mainImageUrl!.isNotEmpty
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: resolveImageUrl(product.mainImageUrl),
-                width: 56,
-                height: 56,
-                fit: BoxFit.cover,
-                errorWidget: (_, __, ___) => Container(
+      leading: () {
+          final url = resolveImageUrlOrNull(product.mainImageUrl);
+          return url != null
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: CachedNetworkImage(
+                    imageUrl: url,
+                    width: 56,
+                    height: 56,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => Container(
+                      width: 56,
+                      height: 56,
+                      color: Colors.grey[200],
+                      child: const Icon(Icons.image_not_supported),
+                    ),
+                  ),
+                )
+              : Container(
                   width: 56,
                   height: 56,
                   color: Colors.grey[200],
                   child: const Icon(Icons.image_not_supported),
-                ),
-              ),
-            )
-          : Container(
-              width: 56,
-              height: 56,
-              color: Colors.grey[200],
-              child: const Icon(Icons.image_not_supported),
-            ),
+                );
+        }(),
       title: Text(
         product.name,
         maxLines: 2,

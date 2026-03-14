@@ -2381,7 +2381,13 @@ class FavoriteViewSet(viewsets.ViewSet):
 class BannerViewSet(viewsets.ReadOnlyModelViewSet):
     """API для работы с баннерами."""
     
-    queryset = Banner.objects.filter(is_active=True).prefetch_related(
+    queryset = Banner.objects.filter(
+        is_active=True
+    ).annotate(
+        media_count=models.Count('media_files')
+    ).filter(
+        media_count__gt=0
+    ).prefetch_related(
         # Важно: порядок media_files здесь должен совпадать с Meta.ordering у BannerMedia,
         # чтобы API и админка показывали медиа в одном и том же порядке.
         models.Prefetch('media_files', queryset=BannerMedia.objects.all())
@@ -2425,17 +2431,30 @@ def proxy_image(request):
     Прокси для Instagram изображений с кешированием.
     Принимает URL изображения напрямую через параметр url.
     """
-    # Получаем URL напрямую
-    image_url = request.GET.get('url')
-    
-    if not image_url:
+    from urllib.parse import unquote
+
+    # Получаем URL и убираем лишнее кодирование (quote в сериализаторе мог закодировать уже закодированный %)
+    raw_url = request.GET.get('url')
+    if not raw_url:
         return JsonResponse({'error': 'url parameter required'}, status=400)
-    
+
+    # Нормализуем URL: убираем двойное/тройное кодирование (%2525 -> %25 -> %)
+    image_url = raw_url
+    for _ in range(5):
+        prev = image_url
+        image_url = unquote(image_url)
+        if image_url == prev:
+            break
+
+    urls_to_try = [image_url]
+    mid = unquote(raw_url)
+    if mid not in urls_to_try:
+        urls_to_try.append(mid)
+    if raw_url not in urls_to_try:
+        urls_to_try.append(raw_url)
+
     # Логирование для отладки
-    import logging
-    logger = logging.getLogger(__name__)
-    logger.info(f"Raw URL: {image_url}")
-    logger.info(f"URL length: {len(image_url)}")
+    logger.info(f"Resolved URL: {image_url[:120]}...")
     logger.info(f"Contains instagram.f: {'instagram.f' in image_url}")
     logger.info(f"Contains cdninstagram: {'cdninstagram.com' in image_url}")
     
@@ -2454,16 +2473,28 @@ def proxy_image(request):
         return HttpResponse(cached_response, content_type='image/jpeg')
     
     try:
-        # Загружаем изображение с правильными headers
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Referer': 'https://www.instagram.com/',
             'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
         }
-        
-        response = requests.get(image_url, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
+        response = None
+        for candidate in urls_to_try:
+            try:
+                r = requests.get(candidate, headers=headers, timeout=10)
+                if r.status_code == 200:
+                    response = r
+                    image_url = candidate
+                    break
+            except Exception:
+                continue
+        if response is None:
+            try:
+                response = requests.get(image_url, headers=headers, timeout=10)
+            except Exception:
+                response = None
+
+        if response is not None and response.status_code == 200:
             # Content-Type из ответа или по расширению
             ct = response.headers.get('Content-Type', '').split(';')[0].strip()
             if not ct or ct == 'application/octet-stream':
@@ -2476,8 +2507,10 @@ def proxy_image(request):
             django_response['Cache-Control'] = 'public, max-age=86400'
             django_response['Access-Control-Allow-Origin'] = '*'
             return django_response
-        else:
-            return JsonResponse({'error': f'Failed to fetch image: {response.status_code}'}, status=400)
+
+        # При любой ошибке CDN (404, 400, 403, 500 и т.д.) возвращаем placeholder
+        gif_1x1 = b'GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
+        return HttpResponse(gif_1x1, content_type='image/gif')
             
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)

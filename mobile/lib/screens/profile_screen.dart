@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/providers.dart';
 import '../utils/image_url.dart';
 import '../l10n/app_localizations.dart';
+import '../utils/support_sheet.dart';
 import 'login_screen.dart';
 import 'orders_screen.dart';
 import 'favorites_screen.dart';
@@ -132,23 +133,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Row(
           children: [
             ClipOval(
-              child: user.avatar != null
-                  ? CachedNetworkImage(
-                      imageUrl: resolveImageUrl(user.avatar),
-                      width: 80,
-                      height: 80,
-                      fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Container(
-                        color: Colors.grey[200],
-                        child: const Icon(Icons.person, size: 40, color: Colors.grey),
-                      ),
-                    )
-                  : Container(
-                      width: 80,
-                      height: 80,
-                      color: Colors.grey[200],
-                      child: const Icon(Icons.person, size: 40, color: Colors.grey),
-                    ),
+              child: () {
+                  final url = resolveImageUrlOrNull(user.avatar);
+                  return url != null
+                      ? CachedNetworkImage(
+                          imageUrl: url,
+                          width: 80,
+                          height: 80,
+                          fit: BoxFit.cover,
+                          errorWidget: (_, __, ___) => Container(
+                            color: Colors.grey[200],
+                            child: const Icon(Icons.person, size: 40, color: Colors.grey),
+                          ),
+                        )
+                      : Container(
+                          width: 80,
+                          height: 80,
+                          color: Colors.grey[200],
+                          child: const Icon(Icons.person, size: 40, color: Colors.grey),
+                        );
+                }(),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -319,6 +323,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             subtitle: context.tr('help_subtitle'),
             onTap: () {
               // TODO: Help
+            },
+          ),
+          const Divider(height: 1),
+          _buildMenuItem(
+            icon: Icons.share_outlined,
+            title: context.tr('social_networks'),
+            subtitle: context.tr('social_networks_subtitle'),
+            onTap: () async {
+              final ctx = context;
+              final footer = ctx.read<FooterProvider>();
+              await footer.load();
+              if (ctx.mounted) {
+                showSupportSheet(ctx, footer.settings);
+              }
             },
           ),
           const Divider(height: 1),

@@ -31,6 +31,10 @@ poetry run python manage.py migrate --noinput
 echo "Восстанавливаем категории и бренды (seed_catalog_data)..."
 poetry run python manage.py seed_catalog_data 2>/dev/null || true
 
+# Статические страницы (privacy, delivery, returns) — создаём только если ещё нет
+echo "Загружаем статические страницы (load_initial_pages)..."
+poetry run python manage.py load_initial_pages 2>/dev/null || true
+
 # Если передана команда — выполняем её (например: python manage.py seed_perfumery_brands)
 if [ $# -gt 0 ]; then
     exec poetry run "$@"

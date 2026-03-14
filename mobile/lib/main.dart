@@ -66,9 +66,11 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CartProvider()),
         ChangeNotifierProvider(create: (_) => FavoriteProvider()),
         ChangeNotifierProvider(create: (_) => OrderProvider()),
+        ChangeNotifierProvider(create: (_) => FooterProvider()),
       ],
       child: Consumer<LocaleProvider>(
         builder: (context, localeProvider, _) => MaterialApp(
+          key: ValueKey(localeProvider.locale.toString()),
           navigatorKey: _navigatorKey,
           title: 'PharmaTurk',
           debugShowCheckedModeBanner: false,
@@ -149,13 +151,15 @@ class _AppInitializerState extends State<AppInitializer> {
 
   Future<void> _initialize() async {
     final localeProvider = context.read<LocaleProvider>();
-    await localeProvider.loadSavedLocale();
-
     final authProvider = context.read<AuthProvider>();
+    final footerProvider = context.read<FooterProvider>();
+
+    await localeProvider.loadSavedLocale();
     await authProvider.checkAuthStatus();
 
     if (mounted) {
       localeProvider.syncWithUserLanguage(authProvider.user?.preferredLanguage);
+      footerProvider.load();
       setState(() {
         _isLoading = false;
       });

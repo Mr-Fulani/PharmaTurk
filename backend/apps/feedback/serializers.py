@@ -34,16 +34,31 @@ class TestimonialMediaSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     video_file_url = serializers.SerializerMethodField()
 
+    file = serializers.SerializerMethodField()
+
     class Meta:
         model = TestimonialMedia
         fields = (
             'id',
             'media_type',
+            'file',
             'image_url',
             'video_url',
             'video_file_url',
             'order',
+            'created_at',
         )
+
+    def get_file(self, obj):
+        """Единый URL для мобильного приложения: image_url или video_url или video_file_url."""
+        request = self.context.get('request')
+        if getattr(obj, 'image', None):
+            return _resolve_file_url(obj.image, request) or ''
+        if obj.video_url:
+            return obj.video_url
+        if getattr(obj, 'video_file', None):
+            return _resolve_file_url(obj.video_file, request) or ''
+        return ''
 
     def get_image_url(self, obj):
         """Возвращает URL изображения."""

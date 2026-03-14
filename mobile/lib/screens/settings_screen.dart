@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/providers.dart';
 import '../l10n/app_localizations.dart';
+import '../utils/support_sheet.dart';
+import 'static_page_screen.dart';
 
 const _currencies = [
   ('RUB', 'Рубли (₽)'),
@@ -17,8 +19,21 @@ const _languages = [
   ('en', 'English'),
 ];
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<FooterProvider>().load();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,8 +41,11 @@ class SettingsScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text(context.tr('settings')),
       ),
-      body: ListView(
+      body: Column(
         children: [
+          Expanded(
+            child: ListView(
+              children: [
           _buildSectionTitle(context.tr('general')),
           Consumer<AuthProvider>(
             builder: (context, auth, _) => _buildSettingsTile(
@@ -79,25 +97,50 @@ class SettingsScreen extends StatelessWidget {
           _buildSettingsTile(
             icon: Icons.policy_outlined,
             title: context.tr('privacy'),
-            onTap: () {
-              // TODO: Open privacy policy
-            },
+            onTap: () => _openPage(context, 'privacy', context.tr('privacy')),
           ),
           _buildSettingsTile(
             icon: Icons.description_outlined,
             title: context.tr('terms'),
-            onTap: () {
-              // TODO: Open terms
-            },
+            onTap: () => _openPage(context, 'privacy', context.tr('terms')),
           ),
           _buildSettingsTile(
-            icon: Icons.support_agent_outlined,
-            title: context.tr('support'),
-            onTap: () {
-              // TODO: Contact support
-            },
+            icon: Icons.local_shipping_outlined,
+            title: context.tr('delivery_payment'),
+            onTap: () => _openPage(context, 'delivery', context.tr('delivery_payment')),
           ),
+          _buildSettingsTile(
+            icon: Icons.assignment_return_outlined,
+            title: context.tr('returns_policy'),
+            onTap: () => _openPage(context, 'returns', context.tr('returns_policy')),
+          ),
+          Consumer<FooterProvider>(
+            builder: (context, footer, _) => _buildSettingsTile(
+              icon: Icons.support_agent_outlined,
+              title: context.tr('support'),
+              onTap: () => showSupportSheet(context, footer.settings),
+            ),
+          ),
+              ],
+            ),
+          ),
+          _buildFooter(context),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFooter(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      alignment: Alignment.center,
+      child: Text(
+        '© ${DateTime.now().year} Turk-Export',
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.grey[600],
+        ),
       ),
     );
   }
@@ -185,52 +228,78 @@ class SettingsScreen extends StatelessWidget {
     final current = auth.user?.preferredCurrency ?? 'RUB';
     showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                context.tr('select_currency'),
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
-            ..._currencies.map((e) {
-              final code = e.$1;
-              final label = e.$2;
-              return ListTile(
-                title: Text(label),
-                subtitle: Text(code),
-                trailing: current == code ? const Icon(Icons.check, color: Colors.teal) : null,
-                onTap: () async {
-                  Navigator.pop(context);
-                  final ok = await auth.updateProfile({'currency': code});
-                  if (context.mounted) {
-                    if (ok) {
-                      await context.read<CartProvider>().getCart();
-                      final catalog = context.read<CatalogProvider>();
-                      await catalog.getProducts(refresh: true);
-                      await catalog.getFeaturedProducts();
-                      final slug = catalog.selectedProduct?.slug;
-                      if (slug != null) {
-                        await catalog.getProductDetail(slug);
-                      }
-                    }
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(ok ? '${context.tr('currency_changed')} $code' : (auth.error ?? context.tr('error'))),
-                          backgroundColor: ok ? null : Colors.red,
-                        ),
-                      );
-                    }
-                  }
-                },
-              );
-            }),
-          ],
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
+        child: SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.5,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    context.tr('select_currency'),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: _currencies.map((e) {
+                    final code = e.$1;
+                    final label = e.$2;
+                    return ListTile(
+                      title: Text(label),
+                      subtitle: Text(code),
+                      trailing: current == code ? const Icon(Icons.check, color: Colors.teal) : null,
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final cart = context.read<CartProvider>();
+                        final catalog = context.read<CatalogProvider>();
+                        final ok = await auth.updateProfile({'currency': code});
+                        if (context.mounted) {
+                          if (ok) {
+                            await cart.getCart();
+                            await catalog.getProducts(refresh: true);
+                            await catalog.getFeaturedProducts();
+                            final slug = catalog.selectedProduct?.slug;
+                            if (slug != null && context.mounted) {
+                              await catalog.getProductDetail(slug);
+                            }
+                          }
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(ok ? '${context.tr('currency_changed')} $code' : (auth.error ?? context.tr('error'))),
+                                backgroundColor: ok ? null : Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                    );
+                  }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openPage(BuildContext context, String slug, String title) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => StaticPageScreen(slug: slug, titleOverride: title),
       ),
     );
   }

@@ -1,6 +1,13 @@
-# Turk Export Mobile App
+# PharmaTurk Mobile App
 
-Flutter мобильное приложение для интернет-магазина Turk Export.
+Flutter мобильное приложение для интернет-магазина PharmaTurk (Turk Export).
+
+## Последние обновления
+
+- **Поиск по тексту** — полнотекстовый поиск товаров с debounce
+- **Поиск по фото** — загрузка изображения или вставка URL для визуального поиска похожих товаров (RecSys)
+- **Локализация** — русский и английский интерфейс (ru/en)
+- **Избранное** — исправлена работа с API и отображение
 
 ## Структура проекта
 
@@ -29,6 +36,7 @@ lib/
 │   ├── cart_provider.dart
 │   ├── catalog_provider.dart
 │   ├── favorite_provider.dart
+│   ├── locale_provider.dart
 │   ├── order_provider.dart
 │   └── providers.dart
 ├── screens/         # UI экраны
@@ -36,6 +44,8 @@ lib/
 │   ├── home_screen.dart
 │   ├── catalog_screen.dart
 │   ├── product_detail_screen.dart
+│   ├── search_screen.dart
+│   ├── visual_search_screen.dart
 │   ├── cart_screen.dart
 │   ├── checkout_screen.dart
 │   ├── order_success_screen.dart
@@ -48,6 +58,11 @@ lib/
 │   ├── addresses_screen.dart
 │   ├── settings_screen.dart
 │   └── screens.dart
+├── l10n/            # Локализация
+│   └── app_localizations.dart
+├── utils/           # Утилиты
+│   ├── image_url.dart
+│   └── price_format.dart
 └── main.dart
 ```
 
@@ -55,10 +70,9 @@ lib/
 
 1. Убедитесь, что у вас установлен Flutter SDK (версия 3.0.0 или выше)
 
-2. Клонируйте репозиторий:
+2. Перейдите в папку mobile:
 ```bash
-git clone <repository-url>
-cd turk_export_mobile
+cd mobile
 ```
 
 3. Установите зависимости:
@@ -68,33 +82,35 @@ flutter pub get
 
 4. Сгенерируйте код для JSON сериализации:
 ```bash
-dart run build_runner build
+dart run build_runner build --delete-conflicting-outputs
 ```
 
-5. Настройте URL API:
-   - Откройте `lib/services/api_client.dart`
-   - Измените `baseUrl` на ваш URL:
-```dart
-static const String baseUrl = 'https://your-api-domain.com';
-```
+5. URL API задаётся через `--dart-define=API_BASE_URL=...` при запуске и сборке (см. [COMMANDS.md](COMMANDS.md))
 
 ## Запуск
 
-### Разработка
+Подробная шпаргалка команд — [COMMANDS.md](COMMANDS.md).
+
+### Разработка (Web)
 ```bash
-flutter run
+flutter run -d chrome --web-browser-flag "--disable-web-security" --dart-define=API_BASE_URL=http://localhost:8000
 ```
 
 ### Продакшн сборка
 
+**Web:**
+```bash
+flutter build web --dart-define=API_BASE_URL=https://api.pharmaturk.com
+```
+
 **Android:**
 ```bash
-flutter build apk --release
+flutter build apk --dart-define=API_BASE_URL=https://api.pharmaturk.com
 ```
 
 **iOS:**
 ```bash
-flutter build ios --release
+flutter build ios --release --dart-define=API_BASE_URL=https://api.pharmaturk.com
 ```
 
 ## Функциональность
@@ -109,7 +125,8 @@ flutter build ios --release
 ### Каталог
 - Просмотр категорий товаров
 - Фильтрация по брендам, цене, наличию
-- Поиск товаров
+- **Поиск по тексту** — с главной и из каталога
+- **Поиск по фото** — загрузка изображения (галерея/камера) или вставка URL
 - Просмотр деталей товара
 - Похожие товары
 
@@ -130,7 +147,7 @@ flutter build ios --release
 - История заказов
 - Избранные товары
 - Управление адресами доставки
-- Настройки приложения
+- Настройки приложения (язык ru/en, валюта)
 
 ## API Endpoints
 
@@ -138,10 +155,15 @@ flutter build ios --release
 
 ### Каталог
 - `GET /api/catalog/products/` - Список товаров
+- `GET /api/catalog/products/search?q=` - Поиск по тексту
 - `GET /api/catalog/products/{slug}/` - Детали товара
 - `GET /api/catalog/categories/` - Список категорий
 - `GET /api/catalog/brands/` - Список брендов
 - `GET /api/catalog/banners/` - Баннеры
+
+### Поиск по фото (RecSys)
+- `POST /api/upload/temp/` - Загрузка временного изображения
+- `POST /api/recommendations/search_by_image/` - Поиск похожих товаров по изображению
 
 ### Корзина
 - `GET /api/orders/cart/` - Получить корзину
@@ -193,6 +215,14 @@ flutter build ios --release
 2. **Использовать мышь** вместо тачпада при тестировании в браузере.
 3. **Запуск с HTML-рендерером** — `flutter run -d chrome --web-renderer html` (иногда помогает).
 
+### Ошибки сборки / странное поведение
+
+Выполните полную пересборку:
+```bash
+flutter clean && flutter pub get && dart run build_runner build --delete-conflicting-outputs
+```
+Подробнее — [COMMANDS.md](COMMANDS.md).
+
 ## Зависимости
 
 - `provider` - State management
@@ -203,6 +233,7 @@ flutter build ios --release
 - `intl` - Интернационализация
 - `url_launcher` - Открытие ссылок
 - `share_plus` - Поделиться
+- `image_picker` - Выбор фото из галереи и камеры (поиск по фото)
 
 ## Лицензия
 

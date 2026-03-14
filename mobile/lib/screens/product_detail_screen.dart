@@ -163,11 +163,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               },
               itemBuilder: (context, index) {
                 final m = allMedia[index];
-                if (m.videoUrl != null && m.imageUrl == null) {
+                final imageUrl = resolveImageUrlOrNull(m.imageUrl);
+                if (m.videoUrl != null && imageUrl == null) {
                   return _VideoPlaceholder(videoUrl: m.videoUrl!);
                 }
+                if (imageUrl == null) {
+                  return Container(
+                    color: Colors.grey[200],
+                    child: const Center(child: Icon(Icons.image_not_supported, size: 64)),
+                  );
+                }
                 return CachedNetworkImage(
-                  imageUrl: resolveImageUrl(m.imageUrl),
+                  imageUrl: imageUrl,
                   fit: BoxFit.contain,
                   placeholder: (_, __) => Container(
                     color: Colors.grey[200],
@@ -251,7 +258,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     color: Colors.teal,
                   ),
                 ),
-                if (product.oldPrice != null) ...[
+                if (hasValidOldPrice(product.oldPrice)) ...[
                   const SizedBox(width: 12),
                   Text(
                     formatPriceWithCurrency(product.oldPrice, product.currency),
@@ -639,22 +646,25 @@ class _SimilarProductCard extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
                 child: (product.mainImageUrl != null || product.videoUrl != null)
-                    ? (product.mainImageUrl != null && product.mainImageUrl!.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: resolveImageUrl(product.mainImageUrl),
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            errorWidget: (_, __, ___) => Container(
-                              color: Colors.grey[200],
-                              child: const Icon(Icons.image_not_supported),
-                            ),
-                          )
-                        : Container(
-                            color: Colors.grey[200],
-                            child: Center(
-                              child: Icon(Icons.play_circle_fill, size: 48, color: Colors.teal[300]),
-                            ),
-                          ))
+                    ? (() {
+                        final url = resolveImageUrlOrNull(product.mainImageUrl);
+                        return url != null
+                            ? CachedNetworkImage(
+                                imageUrl: url,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                errorWidget: (_, __, ___) => Container(
+                                  color: Colors.grey[200],
+                                  child: const Icon(Icons.image_not_supported),
+                                ),
+                              )
+                            : Container(
+                                color: Colors.grey[200],
+                                child: Center(
+                                  child: Icon(Icons.play_circle_fill, size: 48, color: Colors.teal[300]),
+                                ),
+                              );
+                      }())
                     : Container(
                         color: Colors.grey[200],
                         child: const Icon(Icons.image_not_supported),

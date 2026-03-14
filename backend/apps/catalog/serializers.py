@@ -219,10 +219,16 @@ class CategorySerializer(serializers.ModelSerializer):
         return Product.objects.filter(category_id__in=cat_ids, is_active=True).count()
 
     def get_card_media_url(self, obj):
-        """URL медиа-файла карточки категории. Относительный — браузер подставит origin."""
+        """URL медиа-файла карточки категории. Прокси для R2 — устраняет CORS/SSL на мобильном."""
         url = obj.get_card_media_url()
         if not url:
             return None
+        resolved = _resolve_media_url(url, self.context.get('request'))
+        if resolved:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(resolved)
+            return resolved
         if url.startswith('/'):
             return url
         request = self.context.get('request')
@@ -253,6 +259,7 @@ class BrandSerializer(serializers.ModelSerializer):
     """Сериализатор для брендов."""
     
     products_count = serializers.SerializerMethodField()
+    logo = serializers.SerializerMethodField()
     card_media_url = serializers.SerializerMethodField()
     primary_category_slug = serializers.SerializerMethodField()
     translations = BrandTranslationSerializer(many=True, read_only=True)
@@ -306,11 +313,29 @@ class BrandSerializer(serializers.ModelSerializer):
         
         return count
 
+    def get_logo(self, obj):
+        """URL логотипа. Прокси для R2/cdn — устраняет CORS/SSL на мобильном."""
+        if not obj.logo:
+            return None
+        resolved = _resolve_media_url(obj.logo, self.context.get('request'))
+        if resolved:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(resolved)
+            return resolved
+        return obj.logo
+
     def get_card_media_url(self, obj):
-        """URL медиа-файла карточки бренда. Относительный — браузер подставит origin."""
+        """URL медиа-файла карточки бренда. Прокси для R2 — устраняет CORS/SSL на мобильном."""
         url = obj.get_card_media_url()
         if not url:
             return None
+        resolved = _resolve_media_url(url, self.context.get('request'))
+        if resolved:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(resolved)
+            return resolved
         if url.startswith('/'):
             return url
         request = self.context.get('request')
@@ -3513,14 +3538,15 @@ class BannerMediaSerializer(serializers.ModelSerializer):
     
     content_url = serializers.SerializerMethodField()
     content_mime_type = serializers.SerializerMethodField()
+    file = serializers.SerializerMethodField()  # Алиас для content_url (мобильное приложение)
     
     class Meta:
         model = BannerMedia
         fields = [
-            'id', 'content_type', 'content_url', 'content_mime_type', 'sort_order', 
-            'link_url', 'title', 'description', 'link_text'
+            'id', 'content_type', 'content_url', 'content_mime_type', 'file', 'sort_order',
+            'link_url', 'title', 'description', 'link_text', 'created_at'
         ]
-        read_only_fields = ['id', 'content_url', 'content_mime_type']
+        read_only_fields = ['id', 'content_url', 'content_mime_type', 'file']
     
     def get_content_url(self, obj):
         """Получить URL контента медиа-файла."""
@@ -3547,6 +3573,10 @@ class BannerMediaSerializer(serializers.ModelSerializer):
             return absolute_url
         
         return content_url
+    
+    def get_file(self, obj):
+        """URL контента (алиас для мобильного приложения)."""
+        return self.get_content_url(obj)
     
     def get_content_mime_type(self, obj):
         """Получить MIME-тип контента."""

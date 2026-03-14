@@ -238,6 +238,15 @@ docker compose run --rm backend poetry run python manage.py seed_catalog_data --
 docker compose run --rm backend poetry run python manage.py seed_catalog_data --fix-hierarchy
 ```
 
+### Статические страницы (privacy, delivery, returns)
+
+Команда `load_initial_pages` создаёт страницы «Политика конфиденциальности», «Доставка и оплата», «Возврат товара» с контентом на ru/en. **Создаёт только отсутствующие страницы, не перезаписывает существующий контент.** Выполняется автоматически при старте backend (см. `docker-entrypoint.sh`).
+
+```bash
+# Ручной запуск (если нужно)
+docker compose exec backend poetry run python manage.py load_initial_pages
+```
+
 Если backend уже запущен:
 
 ```bash

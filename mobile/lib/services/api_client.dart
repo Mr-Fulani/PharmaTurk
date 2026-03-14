@@ -14,6 +14,7 @@ class ApiClient {
   String? _sessionKey;
   String? _currency;
   String? _language;
+  Future<bool>? _refreshFuture;
 
   static const String apiPrefix = '/api';
 
@@ -21,7 +22,7 @@ class ApiClient {
 
   Future<void> initialize() async {
     _dio = Dio(BaseOptions(
-      baseUrl: Env.apiBaseUrl + apiPrefix,
+      baseUrl: '${Env.apiBaseUrl}$apiPrefix/',
       connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 30),
       headers: {
@@ -72,7 +73,15 @@ class ApiClient {
         }
 
         if (error.response?.statusCode == 401) {
-          final refreshed = await _refreshAccessToken();
+          final path = error.requestOptions.path;
+          if (path.contains('token/refresh')) {
+            _refreshFuture = null;
+            await clearTokens();
+            return handler.next(error);
+          }
+          _refreshFuture ??= _refreshAccessToken();
+          final refreshed = await _refreshFuture!;
+          if (!refreshed) _refreshFuture = null;
           if (refreshed) {
             final opts = error.requestOptions;
             opts.headers['Authorization'] = 'Bearer $_accessToken';
@@ -127,7 +136,6 @@ class ApiClient {
 
   Future<bool> _refreshAccessToken() async {
     if (_refreshToken == null) return false;
-
     try {
       final response = await _dio.post(
         '/users/token/refresh/',

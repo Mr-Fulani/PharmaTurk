@@ -32,7 +32,12 @@ class _DebugErrorOverlayState extends State<DebugErrorOverlay> {
   }
 
   void _onErrorChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // Откладываем setState, чтобы не вызывать его во время build — иначе
+    // получаем бесконечный цикл: ошибка → notifyListeners → setState во время build → новая ошибка.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   void _showErrorDialog() {

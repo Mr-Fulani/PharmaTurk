@@ -174,19 +174,22 @@ class _FavoriteProductCard extends StatelessWidget {
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: product.mainImageUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: resolveImageUrl(product.mainImageUrl),
-                              fit: BoxFit.cover,
-                              errorWidget: (_, __, ___) => Container(
-                                color: Colors.grey[200],
-                                child: const Icon(Icons.image_not_supported),
-                              ),
-                            )
-                          : Container(
-                              color: Colors.grey[200],
-                              child: const Icon(Icons.image_not_supported),
-                            ),
+                      child: () {
+                              final url = resolveImageUrlOrNull(product.mainImageUrl);
+                              return url != null
+                                  ? CachedNetworkImage(
+                                      imageUrl: url,
+                                      fit: BoxFit.cover,
+                                      errorWidget: (_, __, ___) => Container(
+                                        color: Colors.grey[200],
+                                        child: const Icon(Icons.image_not_supported),
+                                      ),
+                                    )
+                                  : Container(
+                                      color: Colors.grey[200],
+                                      child: const Icon(Icons.image_not_supported),
+                                    );
+                            }(),
                     ),
                     Positioned(
                       top: 8,

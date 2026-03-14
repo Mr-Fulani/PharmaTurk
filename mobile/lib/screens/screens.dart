@@ -15,3 +15,4 @@ export 'register_screen.dart';
 export 'favorites_screen.dart';
 export 'addresses_screen.dart';
 export 'settings_screen.dart';
+export 'static_page_screen.dart';

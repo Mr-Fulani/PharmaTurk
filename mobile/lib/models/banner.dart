@@ -34,11 +34,20 @@ class Banner {
   factory Banner.fromJson(Map<String, dynamic> json) => _$BannerFromJson(json);
   Map<String, dynamic> toJson() => _$BannerToJson(this);
 
+  /// Первое изображение (не видео). CachedNetworkImage не поддерживает .mp4.
+  static bool _isVideoUrl(String? url) {
+    if (url == null || url.isEmpty) return false;
+    final path = url.split('?').first.toLowerCase();
+    return path.endsWith('.mp4') || path.endsWith('.webm') || path.endsWith('.mov') ||
+        path.endsWith('.m4v') || path.endsWith('.mkv');
+  }
+
   String? get mainImageUrl {
-    if (mediaFiles != null && mediaFiles!.isNotEmpty) {
-      return mediaFiles!.first.file;
+    if (mediaFiles == null || mediaFiles!.isEmpty) return null;
+    for (final m in mediaFiles!) {
+      if (!_isVideoUrl(m.file)) return m.file;
     }
-    return null;
+    return mediaFiles!.first.file;
   }
 }
 

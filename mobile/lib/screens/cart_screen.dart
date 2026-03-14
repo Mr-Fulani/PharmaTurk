@@ -433,25 +433,28 @@ class _CartItemCard extends StatelessWidget {
                 },
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: item.productImageUrl != null
-                      ? CachedNetworkImage(
-                          imageUrl: resolveImageUrl(item.productImageUrl),
+                  child: () {
+                          final url = resolveImageUrlOrNull(item.productImageUrl);
+                          return url != null
+                              ? CachedNetworkImage(
+                                  imageUrl: url,
                           width: 80,
                           height: 80,
                           fit: BoxFit.cover,
                           errorWidget: (_, __, ___) => Container(
-                            width: 80,
-                            height: 80,
-                            color: Colors.grey[200],
-                            child: const Icon(Icons.image_not_supported),
-                          ),
-                        )
-                      : Container(
+                                    width: 80,
+                                    height: 80,
+                                    color: Colors.grey[200],
+                                    child: const Icon(Icons.image_not_supported),
+                                  ),
+                                )
+                              : Container(
                           width: 80,
-                          height: 80,
-                          color: Colors.grey[200],
-                          child: const Icon(Icons.image_not_supported),
-                        ),
+                                  height: 80,
+                                  color: Colors.grey[200],
+                                  child: const Icon(Icons.image_not_supported),
+                                );
+                        }(),
                 ),
               ),
               const SizedBox(width: 12),

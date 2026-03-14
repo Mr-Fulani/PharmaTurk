@@ -1,3 +1,10 @@
+/// Проверяет, что старая цена задана и больше нуля (не показывать "0 ₽").
+bool hasValidOldPrice(String? oldPrice) {
+  if (oldPrice == null || oldPrice.isEmpty) return false;
+  final v = double.tryParse(oldPrice.replaceAll(',', '.'));
+  return v != null && v > 0;
+}
+
 /// Форматирует цену: убирает лишние нули после запятой.
 /// Примеры: "690.0000" → "690", "12.50" → "12.50", "0.00" → "0"
 String formatPrice(String? price) {

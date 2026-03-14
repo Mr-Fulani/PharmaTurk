@@ -5,12 +5,17 @@ part 'testimonial.g.dart';
 @JsonSerializable()
 class Testimonial {
   final int id;
+  @JsonKey(name: 'author_name')
   final String authorName;
   final String? authorEmail;
+  @JsonKey(name: 'author_avatar_url')
   final String? authorAvatar;
+  @JsonKey(name: 'text')
   final String content;
   final int rating;
+  @JsonKey(name: 'is_active', defaultValue: true)
   final bool isActive;
+  @JsonKey(name: 'created_at')
   final DateTime createdAt;
   final List<TestimonialMedia>? media;
 
@@ -21,7 +26,7 @@ class Testimonial {
     this.authorAvatar,
     required this.content,
     required this.rating,
-    required this.isActive,
+    this.isActive = true,
     required this.createdAt,
     this.media,
   });
