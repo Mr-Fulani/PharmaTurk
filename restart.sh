@@ -158,16 +158,6 @@ find backend -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 find backend -type f -name "*.pyc" -delete 2>/dev/null || true
 find backend -type f -name "*.pyo" -delete 2>/dev/null || true
 success "Кэш Python очищен"
-# Очистка кэша Flutter (mobile)
-if [ -d "mobile/build" ]; then
-    rm -rf mobile/build 2>/dev/null || true
-    success "Кэш Flutter (mobile/build) очищен"
-fi
-if [ -d "mobile/.dart_tool" ]; then
-    rm -rf mobile/.dart_tool 2>/dev/null || true
-    success "Кэш Flutter (.dart_tool) очищен"
-fi
-
 # Остановка контейнеров (всегда выполняем down — идемпотентно, если контейнеры не запущены)
 info "Останавливаем контейнеры..."
 if [ "$CLEAN_VOLUMES" = true ]; then
@@ -282,9 +272,6 @@ info "  - Frontend:       http://localhost:3001"
 info "  - Admin Panel:    http://localhost:8000/admin/"
 info "  - Swagger Docs:   http://localhost:8000/api/docs/"
 info ""
-info "Mobile (Flutter): по умолчанию не запускается (на Mac M1/M2 Docker даёт segfault)."
-info "  Вариант 1 — локально: cd mobile && flutter run --dart-define=API_BASE_URL=http://localhost:8000"
-info "  Вариант 2 — Docker:    docker compose --profile mobile up -d"
 info "  - PostgreSQL:     localhost:5433"
 info "  - Redis:          localhost:6379"
 info "  - OpenSearch:     localhost:9200"
@@ -303,5 +290,3 @@ info ""
 info "Hot-reload включен:"
 info "  - Backend: runserver (автоперезагрузка при изменении .py)"
 info "  - Frontend: Next.js dev server (hot-reload для React)"
-info ""
-info "Mobile: cd mobile && flutter run (локально на Mac)"

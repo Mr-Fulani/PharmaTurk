@@ -71,7 +71,7 @@ open http://localhost:8000/api/docs/
 
 ### 5. Мобильное приложение (Flutter)
 
-См. [docs/MOBILE_INTEGRATION.md](docs/MOBILE_INTEGRATION.md) для настройки и запуска.
+Мобильное приложение вынесено в отдельный репозиторий **pharmaturk-mobile** (Flutter, iOS/Android). Локальная копия: `/Users/user/pharmaturk-mobile`. После создания удалённого репозитория добавьте ссылку сюда.
 
 ## 📋 Структура проекта
 
@@ -87,9 +87,7 @@ PharmaTurk/
 │   ├── config/             # Настройки Django
 │   └── api/                # Основные API эндпоинты
 ├── frontend/               # Next.js веб-приложение
-├── mobile/                 # Flutter мобильное приложение (iOS/Android)
 ├── docs/                   # Документация
-│   └── MOBILE_INTEGRATION.md
 ├── docker-compose.yml      # Конфигурация Docker
 ├── env.example             # Пример переменных окружения
 └── README.md               # Документация
