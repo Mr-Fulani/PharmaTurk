@@ -276,7 +276,7 @@ class BrandSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
     
     def get_products_count(self, obj):
-        """Количество товаров бренда (точное с учетом доменов)."""
+        """Количество товаров бренда в наличии (точное с учетом доменов)."""
         model_map = {
             'jewelry': JewelryProduct,
             'clothing': ClothingProduct,
@@ -286,31 +286,34 @@ class BrandSerializer(serializers.ModelSerializer):
             'underwear': ClothingProduct,
             'headwear': ClothingProduct,
         }
-        
+        # Фильтр по наличию
+        available_filter = {'is_active': True, 'is_available': True}
+
         primary_slug = obj.primary_category_slug
         if primary_slug:
             # 1. Если задана специализация бренда, считаем только её
             normalized_type = primary_slug.replace('-', '_')
             if primary_slug in model_map:
-                return model_map[primary_slug].objects.filter(brand=obj, is_active=True).count()
+                return model_map[primary_slug].objects.filter(brand=obj, **available_filter).count()
             if normalized_type in model_map:
-                return model_map[normalized_type].objects.filter(brand=obj, is_active=True).count()
-            
-            # Если для типа нет доменной модели (например, medicines), считаем в базе
-            return obj.products.filter(is_active=True, product_type=normalized_type).count()
+                return model_map[normalized_type].objects.filter(brand=obj, **available_filter).count()
 
-        # 2. Если специализация не задана, суммируем все легитимные товары
-        # Считаем уникальные доменные записи
-        count = JewelryProduct.objects.filter(brand=obj, is_active=True).count()
-        count += ClothingProduct.objects.filter(brand=obj, is_active=True).count()
-        count += ShoeProduct.objects.filter(brand=obj, is_active=True).count()
-        count += ElectronicsProduct.objects.filter(brand=obj, is_active=True).count()
-        count += FurnitureProduct.objects.filter(brand=obj, is_active=True).count()
-        
+            # Если для типа нет доменной модели (например, medicines), считаем в базе
+            return obj.products.filter(is_active=True, is_available=True, product_type=normalized_type).count()
+
+        # 2. Если специализация не задана, суммируем все легитимные товары в наличии
+        count = JewelryProduct.objects.filter(brand=obj, **available_filter).count()
+        count += ClothingProduct.objects.filter(brand=obj, **available_filter).count()
+        count += ShoeProduct.objects.filter(brand=obj, **available_filter).count()
+        count += ElectronicsProduct.objects.filter(brand=obj, **available_filter).count()
+        count += FurnitureProduct.objects.filter(brand=obj, **available_filter).count()
+
         # Добавляем легаси-типы, исключая те, что уже должны быть в доменах
         refactored_types = ['jewelry', 'clothing', 'shoes', 'electronics', 'furniture', 'underwear', 'headwear']
-        count += obj.products.filter(is_active=True).exclude(product_type__in=refactored_types).count()
-        
+        count += obj.products.filter(is_active=True, is_available=True).exclude(
+            product_type__in=refactored_types
+        ).count()
+
         return count
 
     def get_logo(self, obj):

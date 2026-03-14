@@ -7,7 +7,7 @@ from datetime import timedelta
 from django.shortcuts import get_object_or_404
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
-from django.db.models import F
+from django.db.models import F, Exists, OuterRef, Subquery, Count, Q
 from django.db.models.functions import Coalesce, Least
 from django.db.models import Case, When
 from django.http import HttpResponse, JsonResponse, Http404
@@ -651,7 +651,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         product_model = self.PRODUCT_MODEL_MAP.get(product_type)
         if not product_model:
             return queryset
-        
+
         product_qs = product_model.objects.filter(is_active=True, brand__isnull=False)
         if product_model is Product:
             product_qs = product_qs.filter(product_type=product_type)
@@ -698,7 +698,9 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         product_model = self.PRODUCT_MODEL_MAP.get(product_type) if product_type else None
         if not product_model:
             return response
-        product_qs = product_model.objects.filter(is_active=True, brand__isnull=True)
+        product_qs = product_model.objects.filter(
+            is_active=True, brand__isnull=True, is_available=True
+        )
         if product_model is Product and product_type:
             product_qs = product_qs.filter(product_type=product_type)
         category_slugs_filter = self.PRODUCT_TYPE_CATEGORY_SLUGS.get(product_type)
@@ -712,9 +714,6 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
             cat_ids = _get_category_ids_with_descendants(category_slugs)
             if cat_ids:
                 product_qs = product_qs.filter(category_id__in=cat_ids)
-        in_stock = self.request.query_params.get('in_stock')
-        if in_stock and in_stock.lower() in ('true', '1', 'yes'):
-            product_qs = product_qs.filter(is_available=True)
         other_count = product_qs.count()
         if other_count <= 0:
             return response
