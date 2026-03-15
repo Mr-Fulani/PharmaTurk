@@ -78,7 +78,7 @@ function App({ Component, pageProps }: AppProps) {
             <div className="flex-1">
               <Component {...pageProps} />
             </div>
-            <Footer />
+            <Footer initialSettings={(pageProps as any)?.footerSettings} />
           </div>
         )}
       </ThemeProvider>

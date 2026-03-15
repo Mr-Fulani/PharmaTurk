@@ -24,6 +24,11 @@ export function getInternalApiUrl(path: string = ''): string {
  */
 export function getClientApiBase(): string {
   if (typeof window === 'undefined') return '/api'
+  const envBase = process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_API_URL
+  if (envBase) {
+    const trimmed = envBase.replace(/\/+$/, '')
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`
+  }
   const origin = window.location.origin
   if (!origin.match(/:\d+$/)) return '/api'
   if (origin.includes(':3001')) return origin.replace(':3001', ':8000') + '/api'

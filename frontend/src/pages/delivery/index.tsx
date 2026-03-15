@@ -6,8 +6,10 @@ import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
 import { Plane, Truck, Ship, CreditCard, ShieldCheck } from 'lucide-react'
 
-export default function DeliveryPage({ pageData }: { pageData: any }) {
+export default function DeliveryPage({ pageData, footerSettings }: { pageData: any; footerSettings: { phone?: string | null; email?: string | null; location?: string | null; telegram_url?: string | null; whatsapp_url?: string | null; vk_url?: string | null; instagram_url?: string | null; crypto_payment_text?: string | null } }) {
     const { t } = useTranslation('common')
+    const hasTelegram = Boolean((footerSettings.telegram_url || '').trim())
+    const hasWhatsapp = Boolean((footerSettings.whatsapp_url || '').trim())
 
     return (
         <>
@@ -106,6 +108,38 @@ export default function DeliveryPage({ pageData }: { pageData: any }) {
                             </div>
                         </div>
                     </div>
+                    {(hasWhatsapp || hasTelegram) && (
+                        <div className="mt-10 rounded-xl border border-gray-200 bg-white/70 p-6 text-center">
+                            <h3 className="text-xl font-semibold text-main">{t('customer_service', 'Служба поддержки')}</h3>
+                            <p className="mt-2 text-sm text-main/70">
+                                {t('customer_service_description', 'Наша служба поддержки готова помочь вам с любыми вопросами. Свяжитесь с нами в любое время.')}
+                            </p>
+                            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                                {hasWhatsapp && (
+                                    <a
+                                        href={footerSettings.whatsapp_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-900 transition-all hover:bg-gray-50"
+                                    >
+                                        <img src="/whatsapp-icon.png" alt="WhatsApp" width="18" height="18" />
+                                        {t('order_via_whatsapp', 'Заказать через WhatsApp')}
+                                    </a>
+                                )}
+                                {hasTelegram && (
+                                    <a
+                                        href={footerSettings.telegram_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-900 transition-all hover:bg-gray-50"
+                                    >
+                                        <img src="/telegram-icon.png" alt="Telegram" width="18" height="18" />
+                                        {t('order_via_telegram', 'Заказать через Telegram')}
+                                    </a>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                 </div>
             </main>
@@ -115,6 +149,7 @@ export default function DeliveryPage({ pageData }: { pageData: any }) {
 
 export const getServerSideProps: GetServerSideProps = async (ctx) => {
     let pageData = null
+    let footerSettings = { phone: '', email: '', location: '', telegram_url: '', whatsapp_url: '', vk_url: '', instagram_url: '', crypto_payment_text: '' }
     try {
         const lang = ctx.locale || 'ru'
         const res = await axios.get(getInternalApiUrl('pages/delivery/') + `?lang=${lang}`)
@@ -123,10 +158,25 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         // Если страница в админке не создана, pageData останется null
         console.error('Failed to fetch static page: delivery')
     }
+    try {
+        const res = await axios.get(getInternalApiUrl('settings/footer-settings/'))
+        const data = res.data || {}
+        footerSettings = {
+            phone: data.phone || '',
+            email: data.email || '',
+            location: data.location || '',
+            telegram_url: data.telegram_url || '',
+            whatsapp_url: data.whatsapp_url || '',
+            vk_url: data.vk_url || '',
+            instagram_url: data.instagram_url || '',
+            crypto_payment_text: data.crypto_payment_text || '',
+        }
+    } catch {}
 
     return {
         props: {
             pageData,
+            footerSettings,
             ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
         },
     }

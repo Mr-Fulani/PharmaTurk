@@ -1,5 +1,6 @@
 import { GetServerSideProps } from 'next'
 import Head from 'next/head'
+import Link from 'next/link'
 import axios from 'axios'
 import api from '../../lib/api'
 import { useState, useEffect, useCallback, useMemo } from 'react'
@@ -230,6 +231,7 @@ interface Product {
   width?: number | string | null
   height?: number | string | null
   dimensions_unit?: string | null
+  sku?: string | null
   product_code?: string | null
   release_form?: string | null
   dosage?: string | null
@@ -337,7 +339,7 @@ export default function ProductPage({
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      api.get('/settings/footer-settings')
+      api.get('/settings/footer-settings/')
         .then(response => {
           if (response.data) {
             setFooterSettings({
@@ -1056,6 +1058,18 @@ export default function ProductPage({
                 )}
               </div>
             )}
+            {(productType === 'medicines' || product.product_type === 'medicines') && (
+              <div
+                className="mt-2 text-xs leading-relaxed"
+                style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}
+              >
+                <p>{t('medicine_disclaimer_line1', 'Наш сайт не продает лекарства.')}</p>
+                <p>{t('medicine_disclaimer_line2', 'Указанные цены призваны способствовать рациональному использованию лекарственных средств.')}</p>
+                <p>{t('medicine_disclaimer_line3', 'Цены на лекарства взяты из еженедельных списков, публикуемых Министерством здравоохранения Турции и Турецким агентством по лекарственным средствам и медицинским изделиям (TİTCK).')}</p>
+                <p>{t('medicine_disclaimer_line4', 'Указанные цены являются рекомендованными розничными ценами для аптек и могут меняться.')}</p>
+                <p>{t('medicine_disclaimer_line5', 'Цены могут быть неактуальными.')}</p>
+              </div>
+            )}
             {(colors.length > 0 || sizesForColor.length > 0) && (
               <div className="mt-4 flex flex-col gap-4">
                 {colors.length > 0 && (
@@ -1253,29 +1267,47 @@ export default function ProductPage({
                   </div>
                 </>
               ) : (
-                <>
-                  <AddToCartButton
-                    productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
-                    productType={productType}
-                    productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
-                    size={selectedSize}
-                    requireSize={!isBaseProduct && sizeRequired}
-                    quantity={quantity}
-                    showPrice={true}
-                    price={displayTotalPrice}
-                    className="w-full"
-                    label={t('add_to_cart', 'В корзину')}
-                  />
-                  <BuyNowButton
-                    productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
-                    productType={productType}
-                    productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
-                    size={selectedSize}
-                    requireSize={!isBaseProduct && sizeRequired}
-                    quantity={quantity}
-                    className="w-full"
-                  />
-                </>
+                (productType === 'medicines' || product.product_type === 'medicines') ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={true}
+                      className="w-full inline-flex items-center justify-center rounded-md border border-gray-300 bg-gray-100 px-4 py-2 text-sm font-medium text-gray-500 cursor-not-allowed"
+                    >
+                      {t('medicine_consult_button', 'Узнать актуальную цену - получить консультацию')}
+                    </button>
+                    <Link
+                      href="/how-to-order-medicines"
+                      className="w-full inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-all duration-200"
+                    >
+                      {t('medicine_how_to_order_button', 'Как заказать из Турции')}
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <AddToCartButton
+                      productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
+                      productType={productType}
+                      productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+                      size={selectedSize}
+                      requireSize={!isBaseProduct && sizeRequired}
+                      quantity={quantity}
+                      showPrice={true}
+                      price={displayTotalPrice}
+                      className="w-full"
+                      label={t('add_to_cart', 'В корзину')}
+                    />
+                    <BuyNowButton
+                      productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
+                      productType={productType}
+                      productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+                      size={selectedSize}
+                      requireSize={!isBaseProduct && sizeRequired}
+                      quantity={quantity}
+                      className="w-full"
+                    />
+                  </>
+                )
               )}
               {product.id && (
                 <div className="flex justify-center">

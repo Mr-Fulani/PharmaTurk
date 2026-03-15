@@ -15,27 +15,41 @@ interface FooterSettings {
   crypto_payment_text: string
 }
 
-export default function Footer() {
+export default function Footer({ initialSettings }: { initialSettings?: Partial<FooterSettings> }) {
   const { t, i18n } = useTranslation('common')
   const theme = useTheme()
   const defaultLocation = t('footer_location', 'Стамбул, Турция')
   const defaultCryptoText = t('footer_crypto_payment', 'Возможна оплата криптовалютой')
   // Инициализируем с дефолтными значениями, чтобы избежать проблем при SSR
   const [settings, setSettings] = useState<FooterSettings>({
-    phone: '+90 552 582 14 97',
-    email: 'fulani.dev@gmail.com',
-    location: defaultLocation,
-    telegram_url: '',
-    whatsapp_url: '',
-    vk_url: '',
-    instagram_url: '',
-    crypto_payment_text: defaultCryptoText
+    phone: initialSettings?.phone || '+90 552 582 14 97',
+    email: initialSettings?.email || 'fulani.dev@gmail.com',
+    location: initialSettings?.location || defaultLocation,
+    telegram_url: initialSettings?.telegram_url || '',
+    whatsapp_url: initialSettings?.whatsapp_url || '',
+    vk_url: initialSettings?.vk_url || '',
+    instagram_url: initialSettings?.instagram_url || '',
+    crypto_payment_text: initialSettings?.crypto_payment_text || defaultCryptoText
   })
+
+  useEffect(() => {
+    if (!initialSettings) return
+    setSettings((prev) => ({
+      phone: initialSettings.phone || prev.phone || '+90 552 582 14 97',
+      email: initialSettings.email || prev.email || 'fulani.dev@gmail.com',
+      location: initialSettings.location || prev.location || defaultLocation,
+      telegram_url: initialSettings.telegram_url || prev.telegram_url || '',
+      whatsapp_url: initialSettings.whatsapp_url || prev.whatsapp_url || '',
+      vk_url: initialSettings.vk_url || prev.vk_url || '',
+      instagram_url: initialSettings.instagram_url || prev.instagram_url || '',
+      crypto_payment_text: initialSettings.crypto_payment_text || prev.crypto_payment_text || defaultCryptoText
+    }))
+  }, [initialSettings, defaultLocation, defaultCryptoText])
 
   useEffect(() => {
     // Загружаем настройки футера из API только на клиенте
     if (typeof window !== 'undefined') {
-      api.get('/settings/footer-settings')
+      api.get('/settings/footer-settings/')
         .then(response => {
           const data = response.data || {}
           const rawLocation = (data.location || '').trim()
@@ -47,30 +61,20 @@ export default function Footer() {
           const resolvedCrypto = rawCrypto
             ? (isNonRu && rawCrypto === 'Возможна оплата криптовалютой' ? defaultCryptoText : rawCrypto)
             : defaultCryptoText
-          setSettings({
-            phone: data.phone || '+90 552 582 14 97',
-            email: data.email || 'fulani.dev@gmail.com',
-            location: resolvedLocation,
-            telegram_url: data.telegram_url || '',
-            whatsapp_url: data.whatsapp_url || '',
-            vk_url: data.vk_url || '',
-            instagram_url: data.instagram_url || '',
-            crypto_payment_text: resolvedCrypto
-          })
+          setSettings((prev) => ({
+            phone: data.phone || prev.phone || '+90 552 582 14 97',
+            email: data.email || prev.email || 'fulani.dev@gmail.com',
+            location: resolvedLocation || prev.location || defaultLocation,
+            telegram_url: data.telegram_url || prev.telegram_url || '',
+            whatsapp_url: data.whatsapp_url || prev.whatsapp_url || '',
+            vk_url: data.vk_url || prev.vk_url || '',
+            instagram_url: data.instagram_url || prev.instagram_url || '',
+            crypto_payment_text: resolvedCrypto || prev.crypto_payment_text || defaultCryptoText
+          }))
         })
         .catch(error => {
           console.error('Ошибка загрузки настроек футера:', error)
-          // Используем значения по умолчанию при ошибке
-          setSettings({
-            phone: '+90 552 582 14 97',
-            email: 'fulani.dev@gmail.com',
-            location: defaultLocation,
-            telegram_url: '',
-            whatsapp_url: '',
-            vk_url: '',
-            instagram_url: '',
-            crypto_payment_text: defaultCryptoText
-          })
+          setSettings((prev) => prev)
         })
     } else {
       // На сервере используем значения по умолчанию
