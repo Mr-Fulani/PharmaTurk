@@ -14,12 +14,19 @@ fi
 export COMPOSE_PROJECT_NAME=pharmaturk
 # Если COMPOSE_FILE не задан в .env или окружении, используем базу + локальный override (стандартное поведение Docker Compose)
 if [ -z "$COMPOSE_FILE" ]; then
-    COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+    COMPOSE_FILE="docker-compose.yml"
     # Добавляем override только если он существует (стандарт Docker)
-    if [ -f "${SCRIPT_DIR}/docker-compose.override.yml" ]; then
-        COMPOSE_FILE="${COMPOSE_FILE}:${SCRIPT_DIR}/docker-compose.override.yml"
+    if [ -f "docker-compose.override.yml" ]; then
+        COMPOSE_FILE="${COMPOSE_FILE}:docker-compose.override.yml"
     fi
 fi
+
+# Превращаем строку с двоеточиями в массив флагов -f для командной строки
+COMPOSE_FLAGS=""
+IFS=':' read -ra ADDR <<< "$COMPOSE_FILE"
+for i in "${ADDR[@]}"; do
+    COMPOSE_FLAGS="$COMPOSE_FLAGS -f $i"
+done
 
 # Скрипт для перезапуска проекта PharmaTurk
 # Использование: ./restart.sh [опции]
@@ -178,14 +185,14 @@ if [ "$CLEAN_VOLUMES" = true ]; then
     read -p "Вы уверены? (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        docker compose -p pharmaturk -f "$COMPOSE_FILE" down -v --remove-orphans || true
+        docker compose -p pharmaturk $COMPOSE_FLAGS down -v --remove-orphans || true
         success "Контейнеры остановлены и volumes удалены"
     else
         info "Отменено пользователем"
         exit 0
     fi
 else
-    docker compose -p pharmaturk -f "$COMPOSE_FILE" down -t 1 --remove-orphans || true
+    docker compose -p pharmaturk $COMPOSE_FLAGS down -t 1 --remove-orphans || true
         success "Контейнеры остановлены"
 fi
 
@@ -234,11 +241,11 @@ if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
     info "FAST режим: пропускаем пересборку образов"
 elif [ "$FAST_REBUILD" = true ]; then
     info "FAST-REBUILD: пересобираем backend и frontend"
-    docker compose -p pharmaturk -f "$COMPOSE_FILE" build backend frontend || warning "Ошибка при быстрой пересборке backend/frontend"
+    docker compose -p pharmaturk $COMPOSE_FLAGS build backend frontend || warning "Ошибка при быстрой пересборке backend/frontend"
 elif [ "$NO_CACHE" = true ]; then
-    docker compose -p pharmaturk -f "$COMPOSE_FILE" build --no-cache || warning "Ошибка при сборке образов без кэша"
+    docker compose -p pharmaturk $COMPOSE_FLAGS build --no-cache || warning "Ошибка при сборке образов без кэша"
 else
-    docker compose -p pharmaturk -f "$COMPOSE_FILE" build || warning "Ошибка при сборке образов"
+    docker compose -p pharmaturk $COMPOSE_FLAGS build || warning "Ошибка при сборке образов"
 fi
 
 if [ "$FAST" = false ]; then
@@ -253,13 +260,13 @@ UP_OPTS="-d"
 if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
     UP_OPTS="-d --no-build"
 fi
-docker compose -p pharmaturk -f "$COMPOSE_FILE" up $UP_OPTS
+docker compose -p pharmaturk $COMPOSE_FLAGS up $UP_OPTS
 success "Контейнеры запущены"
 
 # Краткая пауза: backend уже ждёт postgres (healthcheck), миграции выполняет entrypoint
 info "Проверяем статус контейнеров..."
 sleep 2
-docker compose -p pharmaturk -f "$COMPOSE_FILE" ps
+docker compose -p pharmaturk $COMPOSE_FLAGS ps
 
 # AI RAG: подготовка Qdrant (опционально, при первом запуске или после добавления категорий/шаблонов)
 # Раскомментируйте следующую строку, чтобы один раз заполнить RAG после старта:
@@ -268,7 +275,7 @@ docker compose -p pharmaturk -f "$COMPOSE_FILE" ps
 # Показ логов (если указано)
 if [ "$SHOW_LOGS" = true ]; then
     info "Показываем логи (Ctrl+C для выхода)..."
-    docker compose -p pharmaturk -f "$COMPOSE_FILE" logs -f
+    docker compose -p pharmaturk $COMPOSE_FLAGS logs -f
 else
     info "Для просмотра логов используйте: docker compose logs -f"
     info ""
