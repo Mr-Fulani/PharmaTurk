@@ -5,8 +5,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Явное имя проекта — чтобы restart.sh и docker compose up/logs в другом терминале работали с одними контейнерами
+# Подгружаем .env чтобы скрипт видел переменные (например COMPOSE_FILE)
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
+# Имя проекта
 export COMPOSE_PROJECT_NAME=pharmaturk
-COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+# Если COMPOSE_FILE не задан в .env или окружении, используем базу + локальный override (стандартное поведение Docker Compose)
+if [ -z "$COMPOSE_FILE" ]; then
+    COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
+    # Добавляем override только если он существует (стандарт Docker)
+    if [ -f "${SCRIPT_DIR}/docker-compose.override.yml" ]; then
+        COMPOSE_FILE="${COMPOSE_FILE}:${SCRIPT_DIR}/docker-compose.override.yml"
+    fi
+fi
 
 # Скрипт для перезапуска проекта PharmaTurk
 # Использование: ./restart.sh [опции]
@@ -267,8 +280,8 @@ fi
 success "Проект успешно перезапущен!"
 info ""
 info "Доступные сервисы:"
-info "  - Backend API:    http://localhost:8000"
-info "  - Frontend:       http://localhost:3001"
+info "  - Backend API:    http://localhost:8000 (или ваш домен)"
+info "  - Frontend:       $(if [[ "$COMPOSE_FILE" == *"prod"* ]]; then echo "http://localhost:80 (или ваш домен)"; else echo "http://localhost:3001"; fi)"
 info "  - Admin Panel:    http://localhost:8000/admin/"
 info "  - Swagger Docs:   http://localhost:8000/api/docs/"
 info ""
