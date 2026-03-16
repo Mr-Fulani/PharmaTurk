@@ -10,6 +10,7 @@ import BuyNowButton from '../../components/BuyNowButton'
 import SecurityAndService from '../../components/SecurityAndService'
 import ServiceAttributes from '../../components/ServiceAttributes'
 import FavoriteButton from '../../components/FavoriteButton'
+import ShareButton from '../../components/ShareButton'
 import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
@@ -669,9 +670,29 @@ export default function ProductPage({
   const sizeRequired = normalizedSizes.length > 0
   const siteUrl = getSiteOrigin()
   const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
-  const canonicalUrl = `${siteUrl}${productPath}`
-  const metaTitle = (product.meta_title || product.og_title || '').trim() || `${displayProductName || product.name} — PharmaTurk`
-  const metaDescription = (product.meta_description || product.og_description || '').trim() || product.description?.slice(0, 200) || `${displayProductName || product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
+  const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
+  const canonicalUrl = `${siteUrl}${localePrefix}${productPath}`
+  // Извлекаем переводы для текущего языка (или используем fallback)
+  const apiTranslation = product.translations?.find(
+    (tr) => tr.locale === router.locale || tr.locale === router.locale?.split('-')[0]
+  )
+  const localizedDescription = apiTranslation?.description || product.description
+
+  const metaTitle = (
+    apiTranslation?.meta_title || 
+    apiTranslation?.og_title || 
+    (product.translations && product.translations.length > 0 ? '' : product.meta_title) || 
+    (product.translations && product.translations.length > 0 ? '' : product.og_title) || 
+    ''
+  ).trim() || `${displayProductName || product.name} — PharmaTurk`
+
+  const metaDescription = (
+    apiTranslation?.meta_description ||
+    apiTranslation?.og_description ||
+    (product.translations && product.translations.length > 0 ? '' : product.meta_description) ||
+    (product.translations && product.translations.length > 0 ? '' : product.og_description) ||
+    ''
+  ).trim() || localizedDescription?.slice(0, 200) || `${displayProductName || product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
   const ogImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
   const availability =
     selectedVariant?.is_available === false || selectedVariant?.stock_quantity === 0
@@ -798,7 +819,7 @@ export default function ProductPage({
               </div>
             )}
             {/* Главная область: видео или выбранное фото */}
-            <div className="flex-1 h-full flex items-start justify-start rounded-xl">
+            <div className="flex-1 h-full flex items-start justify-start rounded-xl relative">
               {activeMediaType === 'video' && activeVideoUrl && isVideoUrl(activeVideoUrl) ? (
                 <video
                   key="product-video"
@@ -836,22 +857,64 @@ export default function ProductPage({
                       })
                     }}
                   />
+                  {/* Иконки в углу главного изображения: избранное + шаринг */}
+                  <div
+                    className="absolute top-3 right-3 z-20 flex flex-col gap-1.5"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                  >
+                    <FavoriteButton
+                      productId={product.id}
+                      productType={productType}
+                      cornerIcon={true}
+                    />
+                    <ShareButton
+                      title={metaTitle}
+                      description={metaDescription}
+                      imageUrl={ogImage}
+                      slug={product.slug}
+                      productType={productType}
+                      pageUrl={canonicalUrl}
+                      cornerIcon={true}
+                    />
+                  </div>
                 </div>
               ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={require('../../lib/media').getPlaceholderImageUrl({
-                    type: 'product',
-                    id: product.id,
-                    width: 800,
-                    height: 800,
-                  })}
-                  alt="No image"
-                  className="max-w-full max-h-full rounded-xl object-contain"
-                  onError={(e) => {
-                    e.currentTarget.src = '/product-placeholder.svg'
-                  }}
-                />
+                <div className="relative w-full h-full min-h-[200px]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={require('../../lib/media').getPlaceholderImageUrl({
+                      type: 'product',
+                      id: product.id,
+                      width: 800,
+                      height: 800,
+                    })}
+                    alt="No image"
+                    className="max-w-full max-h-full rounded-xl object-contain"
+                    onError={(e) => {
+                      e.currentTarget.src = '/product-placeholder.svg'
+                    }}
+                  />
+                  {/* Иконки в углу плейсхолдера: избранное + шаринг */}
+                  <div
+                    className="absolute top-3 right-3 z-20 flex flex-col gap-1.5"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                  >
+                    <FavoriteButton
+                      productId={product.id}
+                      productType={productType}
+                      cornerIcon={true}
+                    />
+                    <ShareButton
+                      title={metaTitle}
+                      description={metaDescription}
+                      imageUrl={ogImage}
+                      slug={product.slug}
+                      productType={productType}
+                      pageUrl={canonicalUrl}
+                      cornerIcon={true}
+                    />
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -1309,11 +1372,7 @@ export default function ProductPage({
                   </>
                 )
               )}
-              {product.id && (
-                <div className="flex justify-center">
-                  <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
-                </div>
-              )}
+
             </div>
 
             {/* Безопасность и сервис */}

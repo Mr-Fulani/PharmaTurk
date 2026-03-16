@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { useTranslation } from 'next-i18next'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
+import ShareButton from './ShareButton'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
@@ -143,6 +144,25 @@ export default function ProductCard({
               {badge}
             </span>
           )}
+          {/* Иконки в правом верхнем углу: избранное + шаринг */}
+          <div
+            className="absolute top-2 right-2 z-10 flex flex-col gap-1.5"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+          >
+            <FavoriteButton
+              productId={id}
+              productType={productType}
+              cornerIcon={true}
+            />
+            <ShareButton
+              title={localizedName}
+              description={localizedDescription || undefined}
+              imageUrl={resolvedImage}
+              slug={slug}
+              productType={productType}
+              cornerIcon={true}
+            />
+          </div>
         </div>
         <div className="flex-1 flex flex-col justify-between">
           <div>
@@ -182,12 +202,6 @@ export default function ProductCard({
               {t('product_details', 'Подробнее')}
             </Link>
             <div className="flex items-center gap-2 ml-auto">
-              <FavoriteButton
-                productId={id}
-                productType={productType}
-                iconOnly={true}
-                className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
-              />
               {productType !== 'services' && productType !== 'uslugi' && (
                 <AddToCartButton
                   productId={isBaseProduct ? (baseProductId ?? id) : undefined}
@@ -263,6 +277,25 @@ export default function ProductCard({
             )}
           </div>
         )}
+        {/* Иконки в правом верхнем углу: избранное + шаринг */}
+        <div
+          className="absolute top-2 right-2 z-10 flex flex-col gap-1.5"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+        >
+          <FavoriteButton
+            productId={id}
+            productType={productType}
+            cornerIcon={true}
+          />
+          <ShareButton
+            title={localizedName}
+            description={localizedDescription || undefined}
+            imageUrl={resolvedImage}
+            slug={slug}
+            productType={productType}
+            cornerIcon={true}
+          />
+        </div>
       </div>
       <h3 className="mt-3 line-clamp-2 text-base font-semibold text-gray-900 hover-text-warm transition-colors">
         {localizedName}
@@ -324,12 +357,6 @@ export default function ProductCard({
           {t('product_details', 'Подробнее')}
         </Link>
         <div className="flex gap-2 ml-auto">
-          <FavoriteButton
-            productId={id}
-            productType={productType}
-            iconOnly={true}
-            className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
-          />
           {productType !== 'services' && productType !== 'uslugi' && (
             <AddToCartButton
               productId={isBaseProduct ? (baseProductId ?? id) : undefined}

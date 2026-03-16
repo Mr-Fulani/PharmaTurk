@@ -25,6 +25,10 @@ export interface ProductTranslation {
   locale: string
   name?: string
   description?: string
+  meta_title?: string
+  meta_description?: string
+  og_title?: string
+  og_description?: string
 }
 
 /**

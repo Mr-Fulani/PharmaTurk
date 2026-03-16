@@ -4,6 +4,7 @@ import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
+import ShareButton from './ShareButton'
 import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
@@ -369,7 +370,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                       </span>
                     )}
                     <div
-                      className="absolute top-2 right-2 z-20"
+                      className="absolute top-2 right-2 z-20 flex flex-col gap-1.5"
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
@@ -378,8 +379,18 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                       <FavoriteButton
                         productId={product.id}
                         productType={product.product_type || 'medicines'}
-                        iconOnly={true}
-                        className="!p-2 !rounded-full w-10 h-10 bg-white/90 hover:bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform"
+                        cornerIcon={true}
+                      />
+                      <ShareButton
+                        title={localizedName}
+                        imageUrl={
+                          product.main_image_url
+                            ? resolveMediaUrl(product.main_image_url)
+                            : null
+                        }
+                        slug={product.slug}
+                        productType={product.product_type || 'medicines'}
+                        cornerIcon={true}
                       />
                     </div>
                   </Link>

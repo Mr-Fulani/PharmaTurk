@@ -1,4 +1,7 @@
 {
+  "share": "Share",
+  "copy_link": "Copy link",
+  "link_copied": "Link copied!",
   "search_placeholder": "Search vitamins, magnesium, joints...",
   "login_or_username": "Email or username",
   "password_placeholder": "Password (min 8 chars, letters and digits)",
