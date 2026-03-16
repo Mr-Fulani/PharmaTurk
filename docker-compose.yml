@@ -67,6 +67,9 @@ services:
     mem_limit: 1.5g
 
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     working_dir: /app
     tty: true
     stdin_open: true
