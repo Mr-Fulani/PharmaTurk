@@ -328,11 +328,11 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
               return (
                 <div
                   key={product.id}
-                  className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden group"
+                  className="flex-shrink-0 w-44 md:w-60 group flex flex-col gap-2 relative transition-all duration-300 hover:-translate-y-1 snap-start"
                 >
                   <Link
                     href={buildProductUrl(product.product_type || 'medicines', product.slug)}
-                    className="relative block w-full h-80 overflow-hidden bg-gray-100"
+                    className="relative block w-full aspect-[4/5] overflow-hidden bg-gray-100/50 rounded-xl"
                   >
                     {product.video_url && isVideoUrl(product.video_url) ? (
                       <video
@@ -346,7 +346,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                         loop
                         autoPlay
                         preload="metadata"
-                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />
                     ) : (
                       <img
@@ -355,7 +355,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                           getPlaceholderImageUrl({ type: 'product', id: product.id })
                         }
                         alt={localizedName}
-                        className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                         onError={(e) => {
                           e.currentTarget.src = getPlaceholderImageUrl({
                             type: 'product',
@@ -364,11 +364,22 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                         }}
                       />
                     )}
+
+                    {/* Индикация фото (точки) */}
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10 opacity-70">
+                      <div className="w-1.5 h-1.5 rounded-full bg-white scale-125 shadow-sm"></div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-white/60 shadow-sm"></div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-white/60 shadow-sm"></div>
+                    </div>
+
                     {product.is_new && (
-                      <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
-                        {t('product_new', 'Новинка')}
-                      </span>
+                      <div className="absolute left-2 top-2 flex flex-col gap-1 z-10">
+                        <span className="rounded-md bg-green-100/90 backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-200">
+                          {t('product_new', 'Новинка')}
+                        </span>
+                      </div>
                     )}
+                    
                     <div
                       className="absolute top-2 right-2 z-20 flex flex-col gap-1.5"
                       onClick={(e) => {
@@ -394,47 +405,39 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                       />
                     </div>
                   </Link>
-                  <div className="p-4">
-                    {product.brand && (
-                      <div className="text-xs text-gray-500 mb-1">{product.brand.name}</div>
-                    )}
-                    <Link
-                      href={buildProductUrl(product.product_type || 'medicines', product.slug)}
-                      className="block mb-2"
-                    >
-                      <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 hover-text-warm transition-colors">
-                        {localizedName}
-                      </h3>
-                    </Link>
-                    <div className="mb-3">
-                      <div className="flex items-baseline gap-2">
-                        <div className="text-lg font-bold text-[var(--text-strong)]">
-                          {displayPriceLabel
-                            ? displayCurrencyLabel
-                              ? `${displayPriceLabel} ${displayCurrencyLabel}`
-                              : displayPriceLabel
-                            : t('price_on_request', 'Цена по запросу')}
-                        </div>
-                        {displayOldPriceLabel && (
-                          <div className="text-sm text-gray-400 line-through">
-                            {displayOldCurrencyLabel
-                              ? `${displayOldPriceLabel} ${displayOldCurrencyLabel}`
-                              : displayOldPriceLabel}
-                          </div>
-                        )}
-                        {displayOldPriceLabel && discountPercent !== null && (
-                          <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
-                        )}
-                      </div>
+
+                  <Link 
+                    href={buildProductUrl(product.product_type || 'medicines', product.slug)}
+                    className="flex flex-col px-1"
+                  >
+                    <div className="flex items-baseline gap-2 mb-1">
+                      <span className="text-base md:text-lg font-bold text-[var(--text-strong)] leading-tight tracking-tight">
+                        {displayPriceLabel
+                          ? displayCurrencyLabel
+                            ? `${displayPriceLabel} ${displayCurrencyLabel}`
+                            : displayPriceLabel
+                          : t('price_on_request', 'Цена по запросу')}
+                      </span>
+                      {displayOldPriceLabel && (
+                        <span className="text-xs md:text-sm text-gray-400 line-through">
+                          {displayOldCurrencyLabel
+                            ? `${displayOldPriceLabel} ${displayOldCurrencyLabel}`
+                            : displayOldPriceLabel}
+                        </span>
+                      )}
+                      {displayOldPriceLabel && discountPercent !== null && (
+                        <span className="text-xs font-semibold !text-red-500">-{discountPercent}%</span>
+                      )}
                     </div>
-                    <AddToCartButton
-                      productId={product.product_type === 'furniture' ? (product.base_product_id ?? product.id) : product.id}
-                      productType={product.product_type || 'medicines'}
-                      productSlug={product.slug}
-                      className="w-full"
-                      label={t('add_to_cart', 'В корзину')}
-                    />
-                  </div>
+                    {product.brand && (
+                      <div className="text-[10px] md:text-xs text-gray-400 uppercase tracking-widest leading-none mb-1">
+                        {product.brand.name}
+                      </div>
+                    )}
+                    <h3 className="uppercase text-sm font-semibold text-[var(--text-strong)] line-clamp-2 leading-tight tracking-wide">
+                      {localizedName}
+                    </h3>
+                  </Link>
                 </div>
               )
             })}

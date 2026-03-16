@@ -252,13 +252,11 @@ export default function Home({ brands, categories }: HomePageProps) {
           <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
             {t('popular_brands', 'Популярные бренды')}
           </h2>
-          <Masonry
-            breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
-            className="flex w-full gap-6"
-            columnClassName="flex flex-col gap-6"
+          <div
+            className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 md:scroll-p-4 hide-scrollbar -mx-6 px-6 md:mx-0 md:px-0"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {brands.map((brand, idx) => {
-              const cardHeight = tileHeights[idx % tileHeights.length]
               const mediaUrl =
                 brand.card_media_url ||
                 brand.logo ||
@@ -267,33 +265,29 @@ export default function Home({ brands, categories }: HomePageProps) {
                 <div
                   key={brand.id}
                   onClick={() => handleBrandClick(brand)}
-                  style={{ height: cardHeight }}
-                  className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
+                  className="relative shrink-0 w-36 h-36 md:w-56 md:h-56 snap-start rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
                 >
                   {renderMedia(mediaUrl, brand.name)}
                   <div className="absolute inset-0 bg-black/35" />
-                  <div className="absolute inset-0 flex items-center justify-center p-6 z-10">
+                  <div className="absolute inset-0 flex items-center justify-center p-4 md:p-6 z-10">
                     <div className="text-center text-white drop-shadow">
                       {brand.logo && (
-                        <div className="mb-3 flex justify-center">
+                        <div className="mb-2 md:mb-3 flex justify-center">
                           <img 
                             src={resolveMediaUrl(brand.logo)} 
                             alt={brand.name}
-                            className="h-12 w-auto object-contain filter brightness-0 invert"
+                            className="h-8 md:h-12 w-auto object-contain filter brightness-0 invert"
                             onError={(e) => {
                               e.currentTarget.style.display = 'none'
                             }}
                           />
                         </div>
                       )}
-                      <h3 className="text-2xl md:text-3xl font-bold mb-2">
+                      <h3 className="text-lg md:text-3xl font-bold mb-1 md:mb-2 line-clamp-1">
                         {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
                       </h3>
-                      <p className="text-sm opacity-90 mb-2">
-                        {getLocalizedBrandDescription(brand.slug, brand.description, t, brand.translations, router.locale)}
-                      </p>
                       {brand.products_count && (
-                        <p className="text-xs opacity-75">
+                        <p className="text-[10px] md:text-xs opacity-75">
                           {brand.products_count} товаров
                         </p>
                       )}
@@ -302,7 +296,7 @@ export default function Home({ brands, categories }: HomePageProps) {
                 </div>
               )
             })}
-          </Masonry>
+          </div>
           <div className="mt-6 flex justify-center">
             <Link
               href="/brands"
@@ -324,9 +318,9 @@ export default function Home({ brands, categories }: HomePageProps) {
             {t('categories_section_title', 'Категории товаров')}
           </h2>
           <Masonry
-            breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
-            className="flex w-full gap-6"
-            columnClassName="flex flex-col gap-6"
+            breakpointCols={{ default: 4, 1024: 3, 768: 3, 640: 2, 0: 2 }}
+            className="flex w-full gap-4 md:gap-6"
+            columnClassName="flex flex-col gap-4 md:gap-6"
           >
             {preparedCategories.map((category, idx) => {
               const cardHeight = tileHeights[idx % tileHeights.length]

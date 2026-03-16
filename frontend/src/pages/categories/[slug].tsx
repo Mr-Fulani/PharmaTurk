@@ -1383,11 +1383,11 @@ export default function CategoryPage({
 
   const siteUrl = useMemo(() => getSiteOrigin(), [])
   const canonicalUrl = useMemo(() => `${siteUrl}/categories/${routeSlug || categoryType}`, [siteUrl, routeSlug, categoryType])
-  // title принимает только текст; t() иногда возвращает массив/React-ноды
+  // title принимает только текст
   const titleText = useMemo(() => {
-    const v = localizedCategoryName
+    const v = localizedCategoryName as unknown
     if (typeof v === 'string') return v
-    if (Array.isArray(v)) return v.map((x) => (typeof x === 'string' ? x : '')).join('')
+    if (Array.isArray(v)) return (v as any[]).map((x) => (typeof x === 'string' ? x : '')).join('')
     return v != null ? String(v) : ''
   }, [localizedCategoryName])
   const ogTitle = useMemo(() => `${titleText} — PharmaTurk`, [titleText])

@@ -748,10 +748,67 @@ export default function ProductPage({
       </Head>
       <main className="mx-auto max-w-6xl p-6">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1.3fr_1fr] md:items-start">
-          <div className="flex gap-4 md:h-[calc(100vh-22rem)] md:sticky md:top-6 md:self-start">
-            {/* Миниатюры слева: видео (если есть) + фото */}
+          <div className="flex flex-col md:flex-row gap-4 md:h-[calc(100vh-22rem)] md:sticky md:top-6 md:self-start">
+            
+            {/* --- МOБИЛЬНАЯ КАРУСЕЛЬ (Скрыта на десктопе) --- */}
+            <div className="flex md:hidden overflow-x-auto snap-x snap-mandatory gap-4 pb-2 -mx-6 px-6 hide-scrollbar flex-shrink-0">
+              {gallerySource.length > 0 ? gallerySource.map((img) => {
+                const isVideoItem = (img as GalleryItem).isVideo === true
+                const resolvedUrl = resolveMediaUrl(img.image_url)
+                const thumbKey = `mobile-${String(img.id)}`
+                return (
+                  <div key={thumbKey} className="relative shrink-0 w-full aspect-[4/5] snap-center rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
+                    {isVideoItem && img.video_url ? (
+                      <video
+                        src={resolveMediaUrl(img.video_url)}
+                        controls
+                        playsInline
+                        muted
+                        preload="metadata"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={resolvedUrl || getPlaceholderImageUrl({ type: 'product', id: product.id })}
+                        alt={img.alt_text || displayProductName || product.name}
+                        className="w-full h-full object-contain"
+                        onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
+                      />
+                    )}
+                    {/* Индикация фото (точки) как в kiton */}
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1 z-10 opacity-70">
+                      {gallerySource.map((_, i) => (
+                        <div key={i} className={`w-1.5 h-1.5 rounded-full shadow-sm ${i === 0 ? 'bg-white scale-125' : 'bg-white/60'}`} />
+                      ))}
+                    </div>
+                    
+                    <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
+                      <FavoriteButton productId={product.id} productType={productType} cornerIcon={true} />
+                      <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
+                    </div>
+                  </div>
+                )
+              }) : (
+                <div className="relative shrink-0 w-full aspect-[4/5] snap-center rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={getPlaceholderImageUrl({ type: 'product', id: product.id, width: 800, height: 800 })}
+                    alt="No image"
+                    className="w-full h-full object-contain"
+                    onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
+                  />
+                  <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
+                    <FavoriteButton productId={product.id} productType={productType} cornerIcon={true} />
+                    <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* --- ДЕСКТОПНЫЕ МИНИАТЮРЫ СЛЕВА (Скрыты на мобильных) --- */}
             {gallerySource.length > 0 && (
-              <div className="flex flex-col gap-3 overflow-y-auto flex-shrink-0">
+              <div className="hidden md:flex flex-col gap-3 overflow-y-auto flex-shrink-0">
                 {gallerySource.map((img) => {
                   const resolvedThumbnail = resolveMediaUrl(img.image_url)
                   const thumbKey = String(img.id)
@@ -818,8 +875,8 @@ export default function ProductPage({
                 })}
               </div>
             )}
-            {/* Главная область: видео или выбранное фото */}
-            <div className="flex-1 h-full flex items-start justify-start rounded-xl relative">
+            {/* Главная область (Десктоп): видео или выбранное фото */}
+            <div className="hidden md:flex flex-1 h-full items-start justify-start rounded-xl relative">
               {activeMediaType === 'video' && activeVideoUrl && isVideoUrl(activeVideoUrl) ? (
                 <video
                   key="product-video"
