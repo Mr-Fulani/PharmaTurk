@@ -1,62 +1,42 @@
-# Переопределения для продакшена.
-# Запуск: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-# Перед первым запуском: скопируйте .env.production.example в .env и заполните значения.
-
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    image: pharmaturk-backend:prod
-    volumes: []
+    restart: always
     environment:
-      DJANGO_DEBUG: "0"
-      USE_RUNSERVER: "0"
-      GUNICORN_WORKERS: "4"
-    restart: unless-stopped
+      USE_RUNSERVER: 0
+    # In production, we don't expose ports globally here if using Nginx/ReverseProxy,
+    # or expose minimal ports in cloudflare. But currently, the user doesn't use reverse proxy inside Docker.
+    ports:
+      - "8000:8000"
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       target: production
-    image: pharmaturk-frontend:prod
-    volumes: []
-    command: ["npm", "run", "start"]
+    command: npm run start
+    restart: always
+    ports:
+      - "80:3000"
     environment:
-      NODE_ENV: production
-      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-}
-      INTERNAL_API_BASE: http://backend:8000
-    restart: unless-stopped
-    depends_on:
-      - backend
-
-  celeryworker:
-    volumes: []
-    restart: unless-stopped
-    environment:
-      DJANGO_DEBUG: "0"
-
-  celery_ai:
-    volumes: []
-    restart: unless-stopped
-    environment:
-      DJANGO_DEBUG: "0"
-
-  celerybeat:
-    volumes: []
-    restart: unless-stopped
-    environment:
-      DJANGO_DEBUG: "0"
+      - NODE_ENV=production
 
   postgres:
-    restart: unless-stopped
+    restart: always
 
   redis:
-    restart: unless-stopped
+    restart: always
 
   opensearch:
-    restart: unless-stopped
+    restart: always
 
   qdrant:
-    restart: unless-stopped
+    restart: always
+
+  celeryworker:
+    restart: always
+
+  celery_ai:
+    restart: always
+
+  celerybeat:
+    restart: always

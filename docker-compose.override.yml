@@ -1,0 +1,65 @@
+services:
+  postgres:
+    ports:
+      - "5433:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  opensearch:
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+
+  qdrant:
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+
+  backend:
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+      - /app/*/__pycache__
+    environment:
+      USE_RUNSERVER: 1
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    command: npm run dev
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
+
+  celeryworker:
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+      - /app/*/__pycache__
+
+  celery_ai:
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+      - /app/*/__pycache__
+
+  celerybeat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+      - /app/*/__pycache__
