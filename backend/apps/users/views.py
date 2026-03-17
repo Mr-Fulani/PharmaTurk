@@ -257,6 +257,7 @@ class TelegramWebhookView(APIView):
     Обработчик вебхуков от Telegram.
     CSRF отключён: Telegram отправляет POST без CSRF-токена.
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
     
     @extend_schema(
@@ -286,6 +287,7 @@ class TelegramAuthView(APIView):
     Авторизация через Telegram Widget.
     CSRF отключён: данные валидируются криптографически (HMAC с bot token).
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
     
     @extend_schema(
