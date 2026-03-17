@@ -547,6 +547,13 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
         summary="Получить подкатегории",
         description="Возвращает список подкатегорий для указанной категории"
     )
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        main_page = self.request.query_params.get('main_page') == 'true'
+        if main_page:
+            context['hide_description'] = True
+        return context
+
     def children(self, request, pk=None):
         """Получить подкатегории."""
         category = self.get_object()

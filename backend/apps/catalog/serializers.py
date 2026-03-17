@@ -32,27 +32,31 @@ from .utils.storage_paths import detect_media_type
 
 
 def _r2_proxy_url(absolute_url, request):
-    """Если URL ведёт на R2 (pub-*.r2.dev), вернуть URL прокси через бэкенд (устраняет ERR_SSL_PROTOCOL_ERROR)."""
+    """Если URL ведёт на R2 или CDN проекта, вернуть URL прокси через /api/catalog/proxy-media/."""
     if not absolute_url or not absolute_url.startswith('http'):
         return None
     
     r2_config = getattr(settings, 'R2_CONFIG', {})
     r2_public = (r2_config.get('public_url', None) or '').rstrip('/')
+    project_cdn = 'https://cdn.it-dev.space' # CNAME для R2
     
-    if not r2_public or not absolute_url.startswith(r2_public):
+    is_r2 = r2_public and absolute_url.startswith(r2_public)
+    is_project_cdn = absolute_url.startswith(project_cdn)
+    
+    if not (is_r2 or is_project_cdn):
         return None
+
     try:
         from apps.catalog.utils.media_path import normalize_duplicated_media_path
-        from apps.catalog.utils.r2_utils import get_r2_path
 
         # Извлекаем путь относительно публичного URL
-        path = absolute_url[len(r2_public):].lstrip('/')
+        prefix = r2_public if is_r2 else project_cdn
+        path = absolute_url[len(prefix):].lstrip('/')
         if not path:
             return None
             
         path = normalize_duplicated_media_path(path)
-        # Относительный URL — браузер подставит свой origin (localhost/ngrok/production)
-        return f"/api/catalog/proxy-media/?path={quote(path)}"
+        return f"/api/catalog/proxy-media/?path={quote(path, safe='')}"
     except Exception:
         return None
 
@@ -63,13 +67,33 @@ def _resolve_media_url(value, request):
     # Уже прокси-URL — не добавлять /media/
     if value.startswith('/api/'):
         return value
+
+    # Проверка на видео — для них ОБЯЗАТЕЛЬНО используем proxy-media (поддерживает Range)
+    path_lower = value.lower().split('?')[0]
+    is_video = any(path_lower.endswith(ext) for ext in ['.mp4', '.webm', '.mov', '.m4v'])
+
+    if is_video:
+        proxy = _r2_proxy_url(value, request)
+        if proxy:
+            return proxy
+        # Если это внешнее видео не из R2, но требует проксирования (маловероятно для видео, но на всякий случай)
+        if value.startswith('http'):
+             return value
+
     if 'instagram.f' in value or 'cdninstagram.com' in value:
         return f"/api/catalog/proxy-image/?url={quote(value)}"
+    
     # Прокси для внешних CDN (устраняет CORS/EncodingError на Flutter Web)
+    # ВАЖНО: Если это видео с cdn.it-dev.space, оно уже должно было уйти выше в proxy-media
     if value.startswith('http') and ('cdn.it-dev.space' in value or 'r2.dev' in value):
+        proxy = _r2_proxy_url(value, request)
+        if proxy:
+            return proxy
         return f"/api/catalog/proxy-image/?url={quote(value)}"
+
     if not value.startswith('http'):
         return f"/media/{value.lstrip('/')}"
+    
     proxy = _r2_proxy_url(value, request)
     if proxy:
         return proxy
@@ -196,6 +220,13 @@ class CategorySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def to_representation(self, instance):
+        """Скрытие описания для главной страницы."""
+        ret = super().to_representation(instance)
+        if self.context.get('hide_description'):
+            ret['description'] = None
+        return ret
+
     def get_name(self, obj):
         """Возвращает название категории на языке запроса (X-Language / Accept-Language)."""
         from django.utils import translation
@@ -280,6 +311,13 @@ class BrandSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def to_representation(self, instance):
+        """Скрытие счетчика товаров для главной страницы."""
+        ret = super().to_representation(instance)
+        if self.context.get('hide_counts'):
+            ret['products_count'] = 0
+        return ret
     
     def get_products_count(self, obj):
         """Количество товаров бренда в наличии (точное с учетом доменов)."""
