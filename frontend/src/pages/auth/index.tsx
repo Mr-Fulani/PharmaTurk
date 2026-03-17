@@ -58,6 +58,7 @@ function TelegramLoginWidget() {
   const router = useRouter()
   const redirect = usePostLoginRedirect()
   const containerRef = useRef<HTMLDivElement>(null)
+  const { t } = useTranslation('common')
 
   useEffect(() => {
     ; (window as any).onTelegramAuth = async (user: any) => {
@@ -65,7 +66,11 @@ function TelegramLoginWidget() {
         await loginWithTelegram(user)
         redirect()
       } catch (e: any) {
-        alert('Ошибка авторизации через Telegram: ' + (e?.response?.data?.detail || e?.message || 'Неизвестная ошибка'))
+        const raw = e?.response?.data?.detail || e?.message || ''
+        const msg = String(raw).toLowerCase().includes('csrf')
+          ? t('auth_csrf_error')
+          : (raw || t('auth_social_error', 'Ошибка входа через Telegram'))
+        alert(msg)
       }
     }
 
@@ -82,7 +87,7 @@ function TelegramLoginWidget() {
       script.async = true
       containerRef.current.appendChild(script)
     }
-  }, [loginWithTelegram, router])
+  }, [loginWithTelegram, router, t])
 
   return <div ref={containerRef} className="flex justify-center my-4" />
 }
@@ -112,7 +117,10 @@ function GoogleLoginButton() {
       await loginWithSocial('google', credential)
       redirect()
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || e?.message || t('auth_social_error', 'Ошибка входа через Google')
+      const raw = e?.response?.data?.detail || e?.message || ''
+      const msg = String(raw).toLowerCase().includes('csrf')
+        ? t('auth_csrf_error')
+        : (raw || t('auth_social_error', 'Ошибка входа через Google'))
       setError(String(msg))
     } finally {
       setLoading(false)
@@ -266,7 +274,11 @@ function VKLoginButton() {
           // Принудительный reload для обновления AuthContext
           window.location.reload()
         } catch (e2: any) {
-          setError(e2?.response?.data?.detail || t('auth_social_error', 'Ошибка входа через ВКонтакте'))
+          const raw = e2?.response?.data?.detail || ''
+          const msg = String(raw).toLowerCase().includes('csrf')
+            ? t('auth_csrf_error')
+            : (raw || t('auth_social_error', 'Ошибка входа через ВКонтакте'))
+          setError(msg)
           setLoading(false)
         }
       }

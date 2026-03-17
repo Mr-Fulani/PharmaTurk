@@ -142,10 +142,10 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
               </div>
             </div>
           </div>
-          <div className="flex justify-center sm:justify-start">
+          <div className="flex flex-col items-center">
             <div>
-              <div className="mb-2 text-sm font-medium text-main">{t('footer_social_networks')}</div>
-              <div className="flex items-center gap-3">
+              <div className="mb-2 text-center text-sm font-medium text-main">{t('footer_social_networks')}</div>
+              <div className="flex items-center justify-center gap-3">
                 <a
                   href={settings.telegram_url || '#'}
                   target={settings.telegram_url ? '_blank' : undefined}

@@ -418,7 +418,22 @@ export default function ProfilePage() {
       setAvatarPreview(null)
     } catch (error: any) {
       console.error('Failed to save profile:', error)
-      alert(error?.response?.data?.error || t('profile_error'))
+      const data = error?.response?.data
+      let msg = t('profile_error')
+      if (data) {
+        if (data.email && Array.isArray(data.email)) {
+          const emailErr = data.email[0] || ''
+          msg = /уже существует|already exists|уже используется|already used/i.test(emailErr)
+            ? t('profile_email_taken')
+            : emailErr
+        } else if (data.detail) {
+          msg = typeof data.detail === 'string' ? data.detail : t('profile_validation_error')
+        } else {
+          const firstField = Object.keys(data).find(k => Array.isArray(data[k]) && data[k].length)
+          if (firstField) msg = data[firstField][0] || t('profile_validation_error')
+        }
+      }
+      alert(msg)
     } finally {
       setSaving(false)
     }

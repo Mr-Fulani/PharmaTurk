@@ -199,6 +199,15 @@ class UserSerializer(serializers.ModelSerializer):
             'user_email', 'user_username'
         ]
     
+    def validate_email(self, value):
+        """Проверка уникальности email при обновлении (исключаем текущего пользователя)"""
+        user = self.instance
+        if user and User.objects.filter(email=value).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError(_("Пользователь с таким email уже существует"))
+        if not user and User.objects.filter(email=value).exists():
+            raise serializers.ValidationError(_("Пользователь с таким email уже существует"))
+        return value
+
     def get_telegram_bound(self, obj):
         """Telegram привязан, если задан telegram_id"""
         return bool(obj.telegram_id)
