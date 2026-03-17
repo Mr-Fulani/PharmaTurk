@@ -300,6 +300,7 @@ SPECTACULAR_SETTINGS = {
 
 # Настройки SSL/Proxy
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
 
 # CORS и CSRF для продакшена (задать в .env)
 CSRF_TRUSTED_ORIGINS = env.list(
