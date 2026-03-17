@@ -1012,7 +1012,9 @@ class SocialAuthView(APIView):
     Авторизация через социальные сети (Google, VK).
     Принимает access_token / id_token от провайдера, верифицирует его
     через соответствующий API и возвращает JWT токены.
+    CSRF отключён: OAuth callback приходит без CSRF-токена.
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
 
     @extend_schema(

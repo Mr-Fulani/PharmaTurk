@@ -50,9 +50,9 @@ urlpatterns = [
     path('sms/send-code/', SMSSendCodeView.as_view(), name='sms-send-code'),
     path('sms/verify/', SMSVerifyCodeView.as_view(), name='sms-verify'),
     
-    # Социальные сети (Google, VK)
-    path('social-auth/', SocialAuthView.as_view(), name='social-auth'),
-    re_path(r'^social-auth$', SocialAuthView.as_view(), name='social-auth-noslash'),
+    # Социальные сети (Google, VK) — csrf_exempt: OAuth callback без CSRF
+    path('social-auth/', csrf_exempt(SocialAuthView.as_view()), name='social-auth'),
+    re_path(r'^social-auth$', csrf_exempt(SocialAuthView.as_view()), name='social-auth-noslash'),
     
     # Подтверждение email
     path('verify-email/', UserEmailVerificationView.as_view(), name='user-verify-email'),
