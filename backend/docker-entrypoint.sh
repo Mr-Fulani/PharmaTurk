@@ -27,6 +27,9 @@ poetry run python manage.py makemigrations || true
 echo "Применяем миграции..."
 poetry run python manage.py migrate --noinput
 
+echo "Сборка статических файлов (collectstatic)..."
+poetry run python manage.py collectstatic --noinput
+
 # Восстанавливаем категории и бренды после пересоздания БД (идемпотентно)
 echo "Восстанавливаем категории и бренды (seed_catalog_data)..."
 poetry run python manage.py seed_catalog_data 2>/dev/null || true
