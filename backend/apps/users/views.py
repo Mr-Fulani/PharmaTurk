@@ -1,3 +1,5 @@
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status, generics, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -270,9 +272,11 @@ class TelegramWebhookView(APIView):
         return Response({"status": "error"})
 
 
+@method_decorator(csrf_exempt, name="dispatch")
 class TelegramAuthView(APIView):
     """
-    Авторизация через Telegram Widget
+    Авторизация через Telegram Widget.
+    CSRF отключён: данные валидируются криптографически (HMAC с bot token).
     """
     permission_classes = [AllowAny]
     
