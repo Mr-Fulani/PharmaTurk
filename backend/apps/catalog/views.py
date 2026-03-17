@@ -2545,11 +2545,35 @@ def proxy_media(request):
     """
     Прокси для медиафайлов из R2 (видео/изображения).
     Устраняет ERR_SSL_PROTOCOL_ERROR при загрузке с pub-*.r2.dev.
-    Параметр: path — путь к файлу в бакете (например products/clothing/main/file.MP4).
-    Поддерживает дублированные пути (старые записи): пробует нормализованный path.
+    Поддерживает Range-запросы (206 Partial Content) для стриминга видео.
     """
     from django.conf import settings
     from django.core.files.storage import default_storage
+    from django.http import FileResponse
+    import re
+
+    class PartialFileWrapper:
+        """Обертка для чтения только части файла (для Range-запросов)."""
+        def __init__(self, file_obj, start, length):
+            self.file_obj = file_obj
+            self.start = start
+            self.remaining = length
+            if hasattr(self.file_obj, 'seek'):
+                self.file_obj.seek(start)
+
+        def __iter__(self):
+            chunk_size = 8192
+            while self.remaining > 0:
+                to_read = min(chunk_size, self.remaining)
+                data = self.file_obj.read(to_read)
+                if not data:
+                    break
+                self.remaining -= len(data)
+                yield data
+        
+        def close(self):
+            if hasattr(self.file_obj, 'close'):
+                self.file_obj.close()
 
     path = request.GET.get('path')
     if not path or '..' in path or path.startswith('/'):
@@ -2577,54 +2601,53 @@ def proxy_media(request):
             resolved_path = candidate
             break
 
-    try:
-        if not resolved_path:
-            media_root = str(settings.MEDIA_ROOT)
-            resolved_local_path = None
-            for candidate in candidates:
-                local_path = os.path.normpath(os.path.join(media_root, candidate))
-                if not local_path.startswith(media_root):
-                    continue
-                if os.path.exists(local_path):
-                    resolved_local_path = local_path
-                    break
-            if resolved_local_path:
-                ext = resolved_local_path.rsplit('.', 1)[-1].lower() if '.' in resolved_local_path else ''
-                content_type = _PROXY_MEDIA_TYPES.get(f'.{ext}', 'application/octet-stream')
-                with open(resolved_local_path, 'rb') as fh:
-                    content = fh.read()
-                response = HttpResponse(content, content_type=content_type)
-                response['Cache-Control'] = 'public, max-age=86400'
-                response['Access-Control-Allow-Origin'] = '*'
-                return response
-            for candidate in candidates:
-                remote_url = f"{r2_public.rstrip('/')}/{candidate}"
-                try:
-                    remote_response = requests.get(remote_url, timeout=10)
-                except Exception:
-                    continue
-                if remote_response.status_code == 200:
-                    ext = candidate.rsplit('.', 1)[-1].lower() if '.' in candidate else ''
-                    content_type = _PROXY_MEDIA_TYPES.get(f'.{ext}', 'application/octet-stream')
-                    response = HttpResponse(remote_response.content, content_type=content_type)
-                    response['Cache-Control'] = 'public, max-age=86400'
-                    response['Access-Control-Allow-Origin'] = '*'
-                    return response
-            return JsonResponse({'error': 'Not found'}, status=404)
+    if not resolved_path:
+        # Пытаемся найти в локальной медиа-папке (fallback)
+        media_root = str(settings.MEDIA_ROOT)
+        for candidate in candidates:
+            local_path = os.path.normpath(os.path.join(media_root, candidate))
+            if local_path.startswith(media_root) and os.path.exists(local_path):
+                resolved_path = candidate
+                break
 
+    if not resolved_path:
+        return JsonResponse({'error': 'Not found'}, status=404)
+
+    try:
         ext = resolved_path.rsplit('.', 1)[-1].lower() if '.' in resolved_path else ''
         content_type = _PROXY_MEDIA_TYPES.get(f'.{ext}', 'application/octet-stream')
 
-        with default_storage.open(resolved_path, 'rb') as fh:
-            content = fh.read()
+        file_obj = default_storage.open(resolved_path, 'rb')
+        size = file_obj.size
+        
+        range_header = request.META.get('HTTP_RANGE', '').strip()
+        range_match = re.match(r'bytes=(\d+)-(\d*)', range_header)
+        
+        if range_match:
+            first_byte, last_byte = range_match.groups()
+            first_byte = int(first_byte) if first_byte else 0
+            last_byte = int(last_byte) if last_byte else size - 1
+            if last_byte >= size:
+                last_byte = size - 1
+            length = last_byte - first_byte + 1
+            
+            # Используем обертку для ограничения стриминга
+            stream_obj = PartialFileWrapper(file_obj, first_byte, length)
+            response = FileResponse(stream_obj, content_type=content_type)
+            response.status_code = 206
+            response['Content-Range'] = f'bytes {first_byte}-{last_byte}/{size}'
+            response['Content-Length'] = str(length)
+        else:
+            response = FileResponse(file_obj, content_type=content_type)
+            response['Content-Length'] = str(size)
 
-        response = HttpResponse(content, content_type=content_type)
+        response['Accept-Ranges'] = 'bytes'
         response['Cache-Control'] = 'public, max-age=86400'
         response['Access-Control-Allow-Origin'] = '*'
         return response
+
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).exception('proxy_media error')
+        logger.exception('proxy_media error for path %s', path)
         return JsonResponse({'error': str(e)}, status=500)
 
 
