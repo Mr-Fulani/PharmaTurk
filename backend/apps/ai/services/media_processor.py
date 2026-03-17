@@ -5,6 +5,7 @@ from io import BytesIO
 from typing import List, Dict, Optional
 from django.conf import settings
 import logging
+from apps.catalog.utils.r2_utils import get_r2_client, get_r2_path
 
 logger = logging.getLogger(__name__)
 
@@ -14,13 +15,7 @@ class R2MediaProcessor:
     Оптимизация изображений перед отправкой в Vision API.
     """
     def __init__(self):
-        self.s3 = boto3.client(
-            's3',
-            endpoint_url=settings.R2_CONFIG['endpoint_url'],
-            aws_access_key_id=settings.R2_CONFIG['aws_access_key_id'],
-            aws_secret_access_key=settings.R2_CONFIG['aws_secret_access_key'],
-            region_name=settings.R2_CONFIG['region_name']
-        )
+        self.s3 = get_r2_client()
         self.bucket = settings.R2_CONFIG['bucket_name']
         self.cdn_url = settings.AI_R2_SETTINGS['cdn_url']
 
@@ -53,6 +48,8 @@ class R2MediaProcessor:
             if image_url.startswith(self.cdn_url):
                 # Из R2 - прямой доступ
                 key = image_url.replace(f"{self.cdn_url}/", "")
+                # Убеждаемся, что ключ включает префикс, если мы его получили из полной ссылки без него
+                # Хотя обычно ссылки уже включают префикс.
                 response = self.s3.get_object(Bucket=self.bucket, Key=key)
                 image_data = response['Body'].read()
             else:
@@ -112,7 +109,8 @@ class R2MediaProcessor:
         Returns:
             Public URL сохраненного файла
         """
-        key = f"{settings.AI_R2_SETTINGS['processed_images_path']}{product_id}/{image_type}.jpg"
+        raw_key = f"{settings.AI_R2_SETTINGS['processed_images_path']}{product_id}/{image_type}.jpg"
+        key = get_r2_path(raw_key)
         
         self.s3.put_object(
             Bucket=self.bucket,

@@ -61,35 +61,59 @@ def delete_url_from_storage(url):
     if not url:
         return
     try:
-        from urllib.parse import urlparse
         from django.core.files.storage import default_storage
 
-        parsed = urlparse(url)
-        path = parsed.path or ""
-        if not path:
-            return
-        if not (path.startswith("/products/") or path.startswith("/media/")):
-            return
-        storage_path = path.lstrip("/")
-        if default_storage.exists(storage_path):
+        storage_path = _get_path_from_storage_url(url)
+        if storage_path and default_storage.exists(storage_path):
             default_storage.delete(storage_path)
+            logger.info("Deleted file by URL: %s", storage_path)
     except Exception as e:
         logger.warning("Failed to delete file by url %s: %s", url, e)
+
+
+def _get_path_from_storage_url(url: str) -> str | None:
+    """Извлечь путь к файлу из URL хранилища (с учетом префикса)."""
+    if not url:
+        return None
+    try:
+        from urllib.parse import urlparse
+        from django.conf import settings
+        from .utils.r2_utils import get_r2_path
+
+        r2_public = (getattr(settings, "R2_CONFIG", {}).get("public_url", "") or "").rstrip("/")
+        
+        # Если URL начинается с публичного R2 URL
+        if r2_public and url.startswith(r2_public):
+            path = url[len(r2_public):].lstrip("/")
+            return path
+            
+        parsed = urlparse(url)
+        path = parsed.path or ""
+        if path.startswith("/media/"):
+            return path[len("/media/"):].lstrip("/")
+        if path.startswith("/products/"):
+             return path.lstrip("/")
+        return None
+    except Exception:
+        return None
 
 
 def is_internal_storage_url(url):
     if not url:
         return False
     try:
-        from urllib.parse import urlparse
         from django.conf import settings
-
-        r2_public = getattr(settings, "R2_PUBLIC_URL", "")
-        r2_bucket = getattr(settings, "R2_BUCKET_NAME", "")
+        
+        r2_config = getattr(settings, "R2_CONFIG", {})
+        r2_public = r2_config.get("public_url", "")
+        r2_bucket = r2_config.get("bucket_name", "")
+        
         if r2_public and url.startswith(r2_public):
             return True
         if r2_bucket and (f"{r2_bucket}.r2.dev" in url or "r2.cloudflarestorage.com" in url):
             return True
+            
+        from urllib.parse import urlparse
         parsed = urlparse(url)
         if parsed.path.startswith("/media/") or parsed.path.startswith("/products/"):
             return True

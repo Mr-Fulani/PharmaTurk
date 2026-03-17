@@ -15,6 +15,7 @@ from django.utils import timezone
 from django.core.files.base import ContentFile  # noqa: F401 – kept for potential future use
 
 import boto3
+from apps.catalog.utils.r2_utils import get_r2_client, get_r2_path
 
 from apps.catalog.models import (
     ClothingVariant,
@@ -346,14 +347,8 @@ def generate_and_save_receipt(order: Order, locale: str = "ru") -> tuple[str | N
         pdf_file = HTML(string=html_string).write_pdf()
 
         # Настраиваем boto3 клиент для работы с R2
-        file_key = f"receipts/{order.number}.pdf"
-        s3 = boto3.client(
-            's3',
-            endpoint_url=settings.R2_CONFIG['endpoint_url'],
-            aws_access_key_id=settings.R2_CONFIG['aws_access_key_id'],
-            aws_secret_access_key=settings.R2_CONFIG['aws_secret_access_key'],
-            region_name=settings.R2_CONFIG.get('region_name', 'auto')
-        )
+        file_key = get_r2_path(f"receipts/{order.number}.pdf")
+        s3 = get_r2_client()
         bucket_name = settings.R2_CONFIG['bucket_name']
 
         # Загружаем PDF в бакет

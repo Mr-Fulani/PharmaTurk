@@ -35,16 +35,22 @@ def _r2_proxy_url(absolute_url, request):
     """Если URL ведёт на R2 (pub-*.r2.dev), вернуть URL прокси через бэкенд (устраняет ERR_SSL_PROTOCOL_ERROR)."""
     if not absolute_url or not absolute_url.startswith('http'):
         return None
-    r2_public = (getattr(settings, 'R2_PUBLIC_URL', None) or '').rstrip('/')
+    
+    r2_config = getattr(settings, 'R2_CONFIG', {})
+    r2_public = (r2_config.get('public_url', None) or '').rstrip('/')
+    
     if not r2_public or not absolute_url.startswith(r2_public):
         return None
     try:
         from apps.catalog.utils.media_path import normalize_duplicated_media_path
+        from apps.catalog.utils.r2_utils import get_r2_path
 
-        path = urlparse(absolute_url).path.lstrip('/')
+        # Извлекаем путь относительно публичного URL
+        path = absolute_url[len(r2_public):].lstrip('/')
         if not path:
             return None
-        path = normalize_duplicated_media_path(path)  # старые записи с дублированным путём — отдаём чистый URL
+            
+        path = normalize_duplicated_media_path(path)
         # Относительный URL — браузер подставит свой origin (localhost/ngrok/production)
         return f"/api/catalog/proxy-media/?path={quote(path)}"
     except Exception:

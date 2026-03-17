@@ -237,10 +237,11 @@ R2_PUBLIC_URL = env(
 )
 R2_USE_SSL = env.bool("R2_USE_SSL", default=True)
 
-# Storage backends: R2 для медиа при наличии учётных данных, иначе локальный диск
-_USE_R2 = bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME)
+# Storage configuration
+USE_R2 = env.bool("USE_R2", default=bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME))
+R2_PREFIX = env("R2_PREFIX", default="dev/" if DEBUG else "").strip("/")
 
-if _USE_R2:
+if USE_R2:
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
@@ -255,6 +256,7 @@ if _USE_R2:
                     R2_PUBLIC_URL.replace("https://", "").replace("http://", "") if R2_PUBLIC_URL else None
                 ),
                 "querystring_auth": False,
+                "location": R2_PREFIX,
             },
         },
         "staticfiles": {
@@ -431,6 +433,7 @@ R2_CONFIG = {
     'aws_secret_access_key': R2_SECRET_ACCESS_KEY,
     'region_name': 'auto',
     'bucket_name': R2_BUCKET_NAME,
+    'prefix': R2_PREFIX,
 }
 
 AI_R2_SETTINGS = {

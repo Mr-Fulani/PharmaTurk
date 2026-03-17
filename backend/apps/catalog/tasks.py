@@ -95,10 +95,24 @@ def cleanup_old_currency_logs(days_to_keep=30):
 
 
 def _normalize_media_path(path: str) -> str:
-    """Нормализация пути для сравнения: убрать лишние слэши, привести к единому виду."""
+    """Нормализация пути для сравнения: убрать лишние слэши, префиксы dev/prod, привести к единому виду."""
     if not path or not isinstance(path, str):
         return ""
+    
+    # Убираем /media/ если есть (из URL)
+    if path.startswith("/media/"):
+        path = path[len("/media/"):]
+        
     p = path.strip("/").replace("//", "/")
+    
+    # Убираем префикс R2 если он там есть
+    from django.conf import settings
+    prefix = (getattr(settings, "R2_CONFIG", {}).get("prefix", "") or "").strip("/")
+    if prefix and p.startswith(prefix + "/"):
+        p = p[len(prefix) + 1:]
+    elif prefix and p == prefix:
+        return ""
+        
     return p
 
 
@@ -223,6 +237,8 @@ def cleanup_orphaned_media():
         deleted = 0
         for path in to_delete:
             try:
+                # default_storage уже настроен на R2_PREFIX через location
+                # поэтому удаление path удалит именно то, что нужно.
                 default_storage.delete(path)
                 deleted += 1
             except Exception as e:
