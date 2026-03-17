@@ -421,16 +421,28 @@ export default function ProfilePage() {
       const data = error?.response?.data
       let msg = t('profile_error')
       if (data) {
-        if (data.email && Array.isArray(data.email)) {
-          const emailErr = data.email[0] || ''
-          msg = /уже существует|already exists|уже используется|already used/i.test(emailErr)
-            ? t('profile_email_taken')
-            : emailErr
-        } else if (data.detail) {
-          msg = typeof data.detail === 'string' ? data.detail : t('profile_validation_error')
+        if (data.detail && typeof data.detail === 'string') {
+          msg = data.detail
         } else {
-          const firstField = Object.keys(data).find(k => Array.isArray(data[k]) && data[k].length)
-          if (firstField) msg = data[firstField][0] || t('profile_validation_error')
+          const fieldToKey: Record<string, string> = {
+            email: 'profile_email_taken',
+            phone_number: 'profile_phone_taken',
+            whatsapp_phone: 'profile_whatsapp_taken',
+            telegram_username: 'profile_telegram_taken',
+          }
+          const isTaken = (text: string) =>
+            /уже существует|already exists|уже используется|already used|уже зарегистрирован|already registered|уже привязан|already linked/i.test(text)
+          const errors: string[] = []
+          for (const key of Object.keys(data)) {
+            const arr = Array.isArray(data[key]) ? data[key] : null
+            if (arr && arr.length) {
+              const raw = String(arr[0] || '')
+              const tKey = fieldToKey[key]
+              if (tKey && isTaken(raw)) errors.push(t(tKey))
+              else if (raw) errors.push(raw)
+            }
+          }
+          msg = errors.length ? errors.join('\n') : t('profile_validation_error')
         }
       }
       alert(msg)

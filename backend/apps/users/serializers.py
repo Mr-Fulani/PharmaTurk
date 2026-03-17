@@ -208,6 +208,82 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(_("Пользователь с таким email уже существует"))
         return value
 
+    def _normalize_phone(self, value):
+        """Нормализация номера для сравнения (только цифры)"""
+        if not value:
+            return ''
+        return ''.join(c for c in str(value) if c.isdigit())
+
+    def validate_phone_number(self, value):
+        """Проверка формата и уникальности номера телефона"""
+        if not value:
+            return value
+        from django.core.validators import RegexValidator
+        from django.core.exceptions import ValidationError
+        phone_regex = RegexValidator(
+            regex=r'^\+?1?\d{9,15}$',
+            message=_("Номер телефона должен быть в формате: '+999999999'. До 15 цифр.")
+        )
+        try:
+            phone_regex(value)
+        except ValidationError as e:
+            msg = e.messages[0] if getattr(e, 'messages', None) else str(e)
+            raise serializers.ValidationError(msg)
+        user = self.instance
+        norm = self._normalize_phone(value)
+        if norm:
+            qs = User.objects.exclude(phone_number='')
+            if user:
+                qs = qs.exclude(pk=user.pk)
+            for u in qs:
+                if u.phone_number and self._normalize_phone(u.phone_number) == norm:
+                    raise serializers.ValidationError(_("Этот номер телефона уже используется другим аккаунтом"))
+        return value
+
+    def validate_whatsapp_phone(self, value):
+        """Проверка формата и уникальности WhatsApp номера"""
+        if not value:
+            return value
+        from django.core.validators import RegexValidator
+        from django.core.exceptions import ValidationError
+        phone_regex = RegexValidator(
+            regex=r'^\+?1?\d{9,15}$',
+            message=_("Номер должен быть в формате: '+999999999'. До 15 цифр.")
+        )
+        try:
+            phone_regex(value)
+        except ValidationError as e:
+            msg = e.messages[0] if getattr(e, 'messages', None) else str(e)
+            raise serializers.ValidationError(msg)
+        user = self.instance
+        norm = self._normalize_phone(value)
+        if norm:
+            qs = User.objects.exclude(whatsapp_phone='')
+            if user:
+                qs = qs.exclude(pk=user.pk)
+            for u in qs:
+                if u.whatsapp_phone and self._normalize_phone(u.whatsapp_phone) == norm:
+                    raise serializers.ValidationError(_("Этот WhatsApp номер уже используется другим аккаунтом"))
+        return value
+
+    def validate_telegram_username(self, value):
+        """Проверка уникальности Telegram username (нормализуем: без @, lowercase)"""
+        if not value:
+            return value
+        norm = str(value).strip().lstrip('@').lower()
+        if not norm:
+            return value
+        user = self.instance
+        qs = User.objects.exclude(telegram_username='')
+        if user:
+            qs = qs.exclude(pk=user.pk)
+        for u in qs:
+            if u.telegram_username:
+                u_norm = u.telegram_username.strip().lstrip('@').lower()
+                if u_norm == norm:
+                    raise serializers.ValidationError(_("Этот Telegram уже привязан к другому аккаунту"))
+        return value
+
     def get_telegram_bound(self, obj):
         """Telegram привязан, если задан telegram_id"""
         return bool(obj.telegram_id)
