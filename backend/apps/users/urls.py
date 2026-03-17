@@ -1,4 +1,5 @@
 from django.urls import path, include, re_path
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -62,11 +63,11 @@ urlpatterns = [
     path('change-password/', UserPasswordChangeView.as_view(), name='user-change-password'),
     re_path(r'^change-password$', UserPasswordChangeView.as_view(), name='user-change-password-noslash'),
     
-    # Telegram Вебхук и Авторизация
-    path('telegram/webhook/', TelegramWebhookView.as_view(), name='telegram-webhook'),
-    re_path(r'^telegram/webhook$', TelegramWebhookView.as_view(), name='telegram-webhook-noslash'),
-    path('telegram/login/', TelegramAuthView.as_view(), name='telegram-login'),
-    re_path(r'^telegram/login$', TelegramAuthView.as_view(), name='telegram-login-noslash'),
+    # Telegram Вебхук и Авторизация (csrf_exempt: виджет/Telegram отправляют POST без CSRF)
+    path('telegram/webhook/', csrf_exempt(TelegramWebhookView.as_view()), name='telegram-webhook'),
+    re_path(r'^telegram/webhook$', csrf_exempt(TelegramWebhookView.as_view()), name='telegram-webhook-noslash'),
+    path('telegram/login/', csrf_exempt(TelegramAuthView.as_view()), name='telegram-login'),
+    re_path(r'^telegram/login$', csrf_exempt(TelegramAuthView.as_view()), name='telegram-login-noslash'),
     
     # Статистика
     path('stats/', UserStatsView.as_view(), name='user-stats'),
