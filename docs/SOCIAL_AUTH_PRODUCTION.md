@@ -15,10 +15,24 @@
 3. Bot Settings → Domain
 4. Укажите домен **без протокола**: `it-dev.space` (или ваш продакшен-домен)
 
+### Webhook для привязки в профиле
+
+Привязка Telegram в личном кабинете работает через webhook. Telegram отправляет сообщения бота на ваш сервер.
+
+**Регистрация webhook** (выполнить один раз после деплоя):
+```bash
+docker compose exec backend poetry run python manage.py set_telegram_webhook
+```
+
+Или webhook регистрируется автоматически при старте backend, если заданы `TELEGRAM_BOT_TOKEN` и `SITE_URL`.
+
+**URL webhook:** `https://ваш-домен/api/users/telegram/webhook/`
+
 ### Переменные окружения
 
 - `TELEGRAM_BOT_TOKEN` — токен бота (обязательно на бэкенде)
 - `TELEGRAM_BOT_USERNAME` или `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` — username бота (например `Turk_ExportBot`). Нужен для привязки Telegram в профиле и для виджета входа.
+- `SITE_URL` — базовый URL сайта (например `https://it-dev.space`) для регистрации webhook
 
 ---
 

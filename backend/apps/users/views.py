@@ -251,9 +251,11 @@ class UserLogoutView(APIView):
                 'message': _('Ошибка при выходе из системы')
             }, status=status.HTTP_400_BAD_REQUEST)
 
+@method_decorator(csrf_exempt, name="dispatch")
 class TelegramWebhookView(APIView):
     """
-    Обработчик вебхуков от Telegram
+    Обработчик вебхуков от Telegram.
+    CSRF отключён: Telegram отправляет POST без CSRF-токена.
     """
     permission_classes = [AllowAny]
     
@@ -264,10 +266,16 @@ class TelegramWebhookView(APIView):
     )
     def post(self, request):
         # Telegram отправляет JSON
-        success = process_telegram_webhook(request.data)
+        payload = request.data or {}
+        logger.info(
+            "Telegram webhook received: update_id=%s, has_message=%s",
+            payload.get("update_id"),
+            "message" in payload,
+        )
+        success = process_telegram_webhook(payload)
         if success:
             return Response({"status": "ok"})
-        # Всегда возвращаем 200, чтобы Telegram не переотправлял апдейты, 
+        # Всегда возвращаем 200, чтобы Telegram не переотправлял апдейты,
         # но логируем ошибку внутри process_telegram_webhook
         return Response({"status": "error"})
 

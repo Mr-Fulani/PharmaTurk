@@ -71,6 +71,11 @@ def process_telegram_webhook(payload: dict) -> bool:
     try:
         message = payload.get('message', {})
         text = message.get('text', '').strip()
+        logger.info(
+            "Telegram webhook process: text=%r, from_id=%s",
+            text[:50] if text else None,
+            message.get('from', {}).get('id'),
+        )
         from_user = message.get('from', {})
         
         telegram_id = str(from_user.get('id', ''))

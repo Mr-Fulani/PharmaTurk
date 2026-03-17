@@ -38,6 +38,12 @@ poetry run python manage.py seed_catalog_data 2>/dev/null || true
 echo "Загружаем статические страницы (load_initial_pages)..."
 poetry run python manage.py load_initial_pages 2>/dev/null || true
 
+# Регистрируем Telegram webhook (если заданы TELEGRAM_BOT_TOKEN и SITE_URL)
+if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$SITE_URL" ]; then
+  echo "Регистрируем Telegram webhook..."
+  poetry run python manage.py set_telegram_webhook 2>/dev/null || true
+fi
+
 # Если передана команда — выполняем её (например: python manage.py seed_perfumery_brands)
 if [ $# -gt 0 ]; then
     exec poetry run "$@"

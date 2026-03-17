@@ -237,6 +237,7 @@
   "profile_whatsapp": "WhatsApp",
   "profile_telegram": "Telegram",
   "telegram_bind_button": "Привязать Telegram",
+  "telegram_bind_hint": "Нажмите кнопку → откройте Telegram → нажмите Start. Вернитесь сюда — страница обновится.",
   "telegram_bound": "Telegram привязан",
   "telegram_binding": "Привязка...",
   "profile_messengers": "Мессенджеры",

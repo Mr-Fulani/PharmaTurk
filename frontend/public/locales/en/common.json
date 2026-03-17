@@ -237,6 +237,7 @@
   "profile_whatsapp": "WhatsApp",
   "profile_telegram": "Telegram",
   "telegram_bind_button": "Bind Telegram",
+  "telegram_bind_hint": "Click the button → open Telegram → press Start. Return here — the page will refresh.",
   "telegram_bound": "Linked to Telegram",
   "telegram_binding": "Binding...",
   "profile_messengers": "Messengers",

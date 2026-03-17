@@ -176,6 +176,7 @@ class UserSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     total_orders = serializers.SerializerMethodField()
     total_spent = serializers.SerializerMethodField()
+    telegram_bound = serializers.SerializerMethodField()
     
     class Meta:
         model = User
@@ -185,7 +186,7 @@ class UserSerializer(serializers.ModelSerializer):
             'phone_number', 'birth_date', 'is_verified',
             'language', 'currency',
             'email_notifications', 'telegram_notifications', 'push_notifications',
-            'telegram_username', 'whatsapp_phone',
+            'telegram_username', 'telegram_bound', 'whatsapp_phone',
             'country', 'city', 'postal_code', 'address',
             'avatar', 'avatar_url', 'bio',
             'is_public_profile', 'show_email', 'show_phone',
@@ -197,6 +198,10 @@ class UserSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at', 'total_orders', 'total_spent',
             'user_email', 'user_username'
         ]
+    
+    def get_telegram_bound(self, obj):
+        """Telegram привязан, если задан telegram_id"""
+        return bool(obj.telegram_id)
     
     def get_avatar_url(self, obj):
         """Получение URL аватара"""
