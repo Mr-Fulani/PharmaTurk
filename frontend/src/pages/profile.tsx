@@ -96,6 +96,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [currency, setCurrency] = useState<string>('RUB')
@@ -360,10 +361,12 @@ export default function ProfilePage() {
   }
 
   const handleEdit = () => {
+    setSaveError(null)
     setEditing(true)
   }
 
   const handleCancel = () => {
+    setSaveError(null)
     setEditing(false)
     setAvatarFile(null)
     setAvatarPreview(null)
@@ -381,6 +384,7 @@ export default function ProfilePage() {
   }
 
   const handleSave = async () => {
+    setSaveError(null)
     setSaving(true)
     try {
       // Загружаем аватар, если выбран
@@ -416,35 +420,63 @@ export default function ProfilePage() {
       setEditing(false)
       setAvatarFile(null)
       setAvatarPreview(null)
+      setSaveError(null)
     } catch (error: any) {
-      console.error('Failed to save profile:', error)
-      const data = error?.response?.data
+      console.error('Failed to save profile:', error, 'response:', error?.response)
+      let data = error?.response?.data
+      if (typeof data === 'string' && data.trim().startsWith('{')) {
+        try {
+          data = JSON.parse(data)
+        } catch {
+          data = null
+        }
+      }
+      const fieldToKey: Record<string, string> = {
+        email: 'profile_email_taken',
+        phone_number: 'profile_phone_taken',
+        whatsapp_phone: 'profile_whatsapp_taken',
+        telegram_username: 'profile_telegram_taken',
+        non_field_errors: '',
+      }
+      const isTaken = (text: string) =>
+        /уже существует|already exists|уже используется|already used|уже зарегистрирован|already registered|уже привязан|already linked|уже занят|already taken/i.test(text)
+      const extractFromObj = (obj: Record<string, unknown>): string[] => {
+        const out: string[] = []
+        for (const key of Object.keys(obj)) {
+          const val = obj[key]
+          const arr = Array.isArray(val) ? val : (typeof val === 'string' ? [val] : null)
+          if (arr && arr.length) {
+            const raw = String(arr[0] || '').trim()
+            if (raw) {
+              const tKey = fieldToKey[key]
+              out.push((tKey && key !== 'non_field_errors' && isTaken(raw)) ? t(tKey) : raw)
+            }
+          }
+        }
+        return out
+      }
       let msg = t('profile_error')
-      if (data) {
+      if (data && typeof data === 'object') {
         if (data.detail && typeof data.detail === 'string') {
           msg = data.detail
+        } else if (typeof data.error === 'string') {
+          msg = data.error
         } else {
-          const fieldToKey: Record<string, string> = {
-            email: 'profile_email_taken',
-            phone_number: 'profile_phone_taken',
-            whatsapp_phone: 'profile_whatsapp_taken',
-            telegram_username: 'profile_telegram_taken',
-          }
-          const isTaken = (text: string) =>
-            /уже существует|already exists|уже используется|already used|уже зарегистрирован|already registered|уже привязан|already linked/i.test(text)
-          const errors: string[] = []
-          for (const key of Object.keys(data)) {
-            const arr = Array.isArray(data[key]) ? data[key] : null
-            if (arr && arr.length) {
-              const raw = String(arr[0] || '')
-              const tKey = fieldToKey[key]
-              if (tKey && isTaken(raw)) errors.push(t(tKey))
-              else if (raw) errors.push(raw)
-            }
+          const errors = extractFromObj(data as Record<string, unknown>)
+          const nested = (data as Record<string, unknown>).errors
+          if (errors.length === 0 && nested && typeof nested === 'object') {
+            errors.push(...extractFromObj(nested as Record<string, unknown>))
           }
           msg = errors.length ? errors.join('\n') : t('profile_validation_error')
         }
+      } else if (typeof data === 'string' && data.trim()) {
+        msg = data.trim()
+      } else if (error?.message && typeof error.message === 'string') {
+        msg = error.message
+      } else if (error?.response?.status === 400) {
+        msg = t('profile_validation_error')
       }
+      setSaveError(msg)
       alert(msg)
     } finally {
       setSaving(false)
@@ -617,6 +649,11 @@ export default function ProfilePage() {
 
                 {editing ? (
                   <>
+                    {saveError && (
+                      <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm whitespace-pre-line">
+                        {saveError}
+                      </div>
+                    )}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         {t('profile_first_name')}
