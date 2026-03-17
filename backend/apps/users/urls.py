@@ -87,4 +87,6 @@ urlpatterns = [
 
     # Дублируем list-эндпоинт профиля без завершающего слэша, т.к. APPEND_SLASH=False
     re_path(r'^profile$', UserProfileViewSet.as_view({'get': 'list'}), name='user-profile-list-noslash'),
+    # Дублируем telegram-bind-link с trailing slash для совместимости с фронтендом
+    path('profile/telegram-bind-link/', UserProfileViewSet.as_view({'get': 'telegram_bind_link'}), name='user-profile-telegram-bind-link-slash'),
 ]

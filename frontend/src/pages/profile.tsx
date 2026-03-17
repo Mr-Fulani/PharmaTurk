@@ -414,7 +414,7 @@ export default function ProfilePage() {
   const handleBindTelegram = async () => {
     setIsBindingTelegram(true)
     try {
-      const response = await api.get('/users/profile/telegram-bind-link/')
+      const response = await api.get('/users/profile/telegram-bind-link')
       if (response.data && response.data.link) {
         window.location.href = response.data.link
         // Дополнительно можно обновить профиль, чтобы проверить статус

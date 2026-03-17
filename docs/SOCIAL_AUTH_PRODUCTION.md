@@ -18,7 +18,7 @@
 ### Переменные окружения
 
 - `TELEGRAM_BOT_TOKEN` — токен бота (обязательно на бэкенде)
-- `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` — username бота (например `Turk_ExportBot`)
+- `TELEGRAM_BOT_USERNAME` или `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` — username бота (например `Turk_ExportBot`). Нужен для привязки Telegram в профиле и для виджета входа.
 
 ---
 

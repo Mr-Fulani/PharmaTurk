@@ -319,9 +319,31 @@ class TelegramAuthView(APIView):
         
         if not telegram_id:
             return Response({"detail": _("Не удалось получить ID из Telegram")}, status=status.HTTP_400_BAD_REQUEST)
-            
-        # Ищем пользователя по telegram_id
-        user = User.objects.filter(telegram_id=telegram_id).first()
+
+        # Если пользователь уже авторизован (например, через Google) — привязываем Telegram к текущему аккаунту
+        if request.user and request.user.is_authenticated:
+            existing_by_telegram = User.objects.filter(telegram_id=telegram_id).exclude(pk=request.user.pk).first()
+            if existing_by_telegram:
+                return Response(
+                    {"detail": _("Этот Telegram уже привязан к другому аккаунту.")},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user = request.user
+            user.telegram_id = telegram_id
+            user.telegram_username = username or user.telegram_username
+            user.telegram_notifications = True
+            update_fields = ['telegram_id', 'telegram_username', 'telegram_notifications']
+            if first_name and not user.first_name:
+                user.first_name = first_name
+                update_fields.append('first_name')
+            if last_name and not user.last_name:
+                user.last_name = last_name
+                update_fields.append('last_name')
+            user.save(update_fields=update_fields)
+            logger.info(f"Telegram привязан к существующему пользователю id={user.id}")
+        else:
+            # Ищем пользователя по telegram_id
+            user = User.objects.filter(telegram_id=telegram_id).first()
         
         if not user:
             from django.utils.crypto import get_random_string
@@ -516,9 +538,6 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', '')
         
         if not bot_username:
-            # Предупреждаем, если имя бота не задано
-            import logging
-            logger = logging.getLogger(__name__)
             logger.warning("TELEGRAM_BOT_USERNAME is not set in settings")
             
         link = f"tg://resolve?domain={bot_username}&start={token}"
@@ -1042,7 +1061,33 @@ class SocialAuthView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        user = get_or_create_social_user(provider, user_info)
+        provider_id = user_info["provider_id"]
+        id_field = provider.id_field  # 'google_id' | 'vk_id'
+
+        # Если пользователь уже авторизован (например, через Telegram) — привязываем соцсеть к текущему аккаунту
+        if request.user and request.user.is_authenticated:
+            existing_by_provider = User.objects.filter(**{id_field: provider_id}).exclude(pk=request.user.pk).first()
+            if existing_by_provider:
+                return Response(
+                    {"detail": _("Этот аккаунт уже привязан к другому пользователю.")},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user = request.user
+            setattr(user, id_field, provider_id)
+            update_fields = [id_field]
+            if user_info.get('first_name') and not user.first_name:
+                user.first_name = user_info['first_name']
+                update_fields.append('first_name')
+            if user_info.get('last_name') and not user.last_name:
+                user.last_name = user_info['last_name']
+                update_fields.append('last_name')
+            if user_info.get('email') and user.email.endswith('@pharmaturk.local'):
+                user.email = user_info['email']
+                update_fields.append('email')
+            user.save(update_fields=update_fields)
+            logger.info(f"Social [{provider_name}] привязан к существующему пользователю id={user.id}")
+        else:
+            user = get_or_create_social_user(provider, user_info)
 
         # Обновляем метаданные входа
         user.last_login = timezone.now()
