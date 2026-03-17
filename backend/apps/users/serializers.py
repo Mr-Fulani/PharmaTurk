@@ -214,8 +214,22 @@ class UserSerializer(serializers.ModelSerializer):
             return ''
         return ''.join(c for c in str(value) if c.isdigit())
 
+    def _phone_exists_in_system(self, norm: str, exclude_user=None) -> bool:
+        """Проверка: номер уже есть в phone_number или whatsapp_phone у любого пользователя"""
+        if not norm or len(norm) < 9:
+            return False
+        qs = User.objects.all()
+        if exclude_user:
+            qs = qs.exclude(pk=exclude_user.pk)
+        for u in qs:
+            if u.phone_number and self._normalize_phone(u.phone_number) == norm:
+                return True
+            if u.whatsapp_phone and self._normalize_phone(u.whatsapp_phone) == norm:
+                return True
+        return False
+
     def validate_phone_number(self, value):
-        """Проверка формата и уникальности номера телефона"""
+        """Проверка формата и уникальности номера (в т.ч. среди WhatsApp)"""
         if not value:
             return value
         from django.core.validators import RegexValidator
@@ -229,19 +243,13 @@ class UserSerializer(serializers.ModelSerializer):
         except ValidationError as e:
             msg = e.messages[0] if getattr(e, 'messages', None) else str(e)
             raise serializers.ValidationError(msg)
-        user = self.instance
         norm = self._normalize_phone(value)
-        if norm:
-            qs = User.objects.exclude(phone_number='')
-            if user:
-                qs = qs.exclude(pk=user.pk)
-            for u in qs:
-                if u.phone_number and self._normalize_phone(u.phone_number) == norm:
-                    raise serializers.ValidationError(_("Этот номер телефона уже используется другим аккаунтом"))
+        if norm and self._phone_exists_in_system(norm, self.instance):
+            raise serializers.ValidationError(_("Этот номер телефона уже используется другим аккаунтом"))
         return value
 
     def validate_whatsapp_phone(self, value):
-        """Проверка формата и уникальности WhatsApp номера"""
+        """Проверка формата и уникальности WhatsApp (в т.ч. среди phone_number)"""
         if not value:
             return value
         from django.core.validators import RegexValidator
@@ -255,15 +263,9 @@ class UserSerializer(serializers.ModelSerializer):
         except ValidationError as e:
             msg = e.messages[0] if getattr(e, 'messages', None) else str(e)
             raise serializers.ValidationError(msg)
-        user = self.instance
         norm = self._normalize_phone(value)
-        if norm:
-            qs = User.objects.exclude(whatsapp_phone='')
-            if user:
-                qs = qs.exclude(pk=user.pk)
-            for u in qs:
-                if u.whatsapp_phone and self._normalize_phone(u.whatsapp_phone) == norm:
-                    raise serializers.ValidationError(_("Этот WhatsApp номер уже используется другим аккаунтом"))
+        if norm and self._phone_exists_in_system(norm, self.instance):
+            raise serializers.ValidationError(_("Этот WhatsApp номер уже используется другим аккаунтом"))
         return value
 
     def validate_telegram_username(self, value):

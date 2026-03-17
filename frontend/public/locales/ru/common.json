@@ -199,6 +199,7 @@
   "profile_whatsapp_taken": "Этот WhatsApp номер уже используется другим аккаунтом.",
   "profile_telegram_taken": "Этот Telegram уже привязан к другому аккаунту.",
   "profile_validation_error": "Проверьте введённые данные.",
+  "profile_field_required": "Поле «{{field}}» не может быть пустым.",
   "profile_not_public": "Профиль не является публичным",
   "back_to_home": "Вернуться на главную",
   "pagination_back": "Назад",

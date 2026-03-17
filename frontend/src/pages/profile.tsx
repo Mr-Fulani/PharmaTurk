@@ -1,5 +1,5 @@
 import Head from 'next/head'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
@@ -97,6 +97,8 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Set<string>>(new Set())
+  const firstErrorRef = useRef<HTMLDivElement>(null)
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [currency, setCurrency] = useState<string>('RUB')
@@ -362,11 +364,13 @@ export default function ProfilePage() {
 
   const handleEdit = () => {
     setSaveError(null)
+    setFieldErrors(new Set())
     setEditing(true)
   }
 
   const handleCancel = () => {
     setSaveError(null)
+    setFieldErrors(new Set())
     setEditing(false)
     setAvatarFile(null)
     setAvatarPreview(null)
@@ -385,6 +389,7 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     setSaveError(null)
+    setFieldErrors(new Set())
     setSaving(true)
     try {
       // Загружаем аватар, если выбран
@@ -438,36 +443,58 @@ export default function ProfilePage() {
         telegram_username: 'profile_telegram_taken',
         non_field_errors: '',
       }
+      const fieldToLabel: Record<string, string> = {
+        first_name: t('profile_first_name'),
+        last_name: t('profile_last_name'),
+        email: t('profile_email'),
+        phone_number: t('profile_phone'),
+        whatsapp_phone: t('profile_whatsapp'),
+        telegram_username: t('profile_telegram'),
+      }
       const isTaken = (text: string) =>
         /уже существует|already exists|уже используется|already used|уже зарегистрирован|already registered|уже привязан|already linked|уже занят|already taken/i.test(text)
-      const extractFromObj = (obj: Record<string, unknown>): string[] => {
-        const out: string[] = []
+      const isRequiredError = (text: string) =>
+        /не может быть пустым|cannot be blank|обязательное|required|may not be blank/i.test(text)
+      const extractFromObj = (obj: Record<string, unknown>): { msgs: string[]; fields: string[] } => {
+        const msgs: string[] = []
+        const fields: string[] = []
         for (const key of Object.keys(obj)) {
           const val = obj[key]
           const arr = Array.isArray(val) ? val : (typeof val === 'string' ? [val] : null)
           if (arr && arr.length) {
             const raw = String(arr[0] || '').trim()
             if (raw) {
-              const tKey = fieldToKey[key]
-              out.push((tKey && key !== 'non_field_errors' && isTaken(raw)) ? t(tKey) : raw)
+              fields.push(key)
+              const label = fieldToLabel[key] || key
+              if (fieldToKey[key] && key !== 'non_field_errors' && isTaken(raw)) {
+                msgs.push(t(fieldToKey[key]))
+              } else if (isRequiredError(raw)) {
+                msgs.push(t('profile_field_required', { field: label }))
+              } else {
+                msgs.push(raw)
+              }
             }
           }
         }
-        return out
+        return { msgs, fields }
       }
       let msg = t('profile_error')
+      let errorFields = new Set<string>()
       if (data && typeof data === 'object') {
         if (data.detail && typeof data.detail === 'string') {
           msg = data.detail
         } else if (typeof data.error === 'string') {
           msg = data.error
         } else {
-          const errors = extractFromObj(data as Record<string, unknown>)
+          const { msgs, fields } = extractFromObj(data as Record<string, unknown>)
           const nested = (data as Record<string, unknown>).errors
-          if (errors.length === 0 && nested && typeof nested === 'object') {
-            errors.push(...extractFromObj(nested as Record<string, unknown>))
+          if (msgs.length === 0 && nested && typeof nested === 'object') {
+            const n = extractFromObj(nested as Record<string, unknown>)
+            msgs.push(...n.msgs)
+            fields.push(...n.fields)
           }
-          msg = errors.length ? errors.join('\n') : t('profile_validation_error')
+          errorFields = new Set(fields)
+          msg = msgs.length ? msgs.join('\n') : t('profile_validation_error')
         }
       } else if (typeof data === 'string' && data.trim()) {
         msg = data.trim()
@@ -476,7 +503,9 @@ export default function ProfilePage() {
       } else if (error?.response?.status === 400) {
         msg = t('profile_validation_error')
       }
+      setFieldErrors(errorFields)
       setSaveError(msg)
+      setTimeout(() => firstErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
       alert(msg)
     } finally {
       setSaving(false)
@@ -650,66 +679,33 @@ export default function ProfilePage() {
                 {editing ? (
                   <>
                     {saveError && (
-                      <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm whitespace-pre-line">
+                      <div ref={firstErrorRef} className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 text-red-700 text-sm whitespace-pre-line">
                         {saveError}
                       </div>
                     )}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_first_name')}
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.first_name}
-                        onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_last_name')}
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.last_name}
-                        onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_email')}
-                      </label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_phone')}
-                      </label>
-                      <input
-                        type="tel"
-                        value={formData.phone_number}
-                        onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('profile_whatsapp')}
-                      </label>
-                      <input
-                        type="tel"
-                        value={formData.whatsapp_phone}
-                        onChange={(e) => setFormData({ ...formData, whatsapp_phone: e.target.value })}
-                        placeholder="+1234567890"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                      />
-                    </div>
+                    {(['first_name', 'last_name', 'email', 'phone_number', 'whatsapp_phone'] as const).map((field) => {
+                      const hasError = fieldErrors.has(field)
+                      const labels = { first_name: t('profile_first_name'), last_name: t('profile_last_name'), email: t('profile_email'), phone_number: t('profile_phone'), whatsapp_phone: t('profile_whatsapp') }
+                      const values = { first_name: formData.first_name, last_name: formData.last_name, email: formData.email, phone_number: formData.phone_number, whatsapp_phone: formData.whatsapp_phone }
+                      const setVal = (v: string) => setFormData({ ...formData, [field]: v })
+                      return (
+                        <div
+                          key={field}
+                          className={`${hasError ? 'profile-field-error' : ''}`}
+                        >
+                          <label className={`block text-sm font-medium mb-1 ${hasError ? 'text-red-600' : 'text-gray-700'}`}>
+                            {labels[field]}
+                          </label>
+                          <input
+                            type={field === 'email' ? 'email' : field.includes('phone') ? 'tel' : 'text'}
+                            value={values[field]}
+                            onChange={(e) => { setVal(e.target.value); if (hasError) setFieldErrors((prev) => { const n = new Set(prev); n.delete(field); return n }) }}
+                            placeholder={field === 'whatsapp_phone' ? '+1234567890' : undefined}
+                            className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${hasError ? 'border-red-500 bg-red-50 focus:ring-red-400' : 'border-gray-300'}`}
+                          />
+                        </div>
+                      )
+                    })}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         {t('profile_telegram')}
