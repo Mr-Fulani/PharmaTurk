@@ -76,6 +76,7 @@ class UserRegistrationView(APIView):
     """
     Регистрация нового пользователя
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
     
     @extend_schema(
@@ -141,6 +142,7 @@ class UserLoginView(APIView):
     """
     Вход пользователя
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
     
     @extend_schema(
