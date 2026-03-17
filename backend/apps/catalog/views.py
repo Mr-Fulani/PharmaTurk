@@ -542,11 +542,6 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @action(detail=True, methods=['get'])
-    @extend_schema(
-        summary="Получить подкатегории",
-        description="Возвращает список подкатегорий для указанной категории"
-    )
     def get_serializer_context(self):
         context = super().get_serializer_context()
         # Скрываем описание, если явно передан параметр или если это малый список (обычно для главной)
