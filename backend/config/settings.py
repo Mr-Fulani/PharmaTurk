@@ -298,10 +298,13 @@ SPECTACULAR_SETTINGS = {
 }
 
 
+# Настройки SSL/Proxy
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # CORS и CSRF для продакшена (задать в .env)
 CSRF_TRUSTED_ORIGINS = env.list(
     "CSRF_TRUSTED_ORIGINS",
-    default=["https://localhost", "http://localhost"] if DEBUG else [],
+    default=["https://it-dev.space", "https://www.it-dev.space", "https://localhost", "http://localhost"] if DEBUG else ["https://it-dev.space", "https://www.it-dev.space"],
 )
 CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
