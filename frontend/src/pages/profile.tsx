@@ -447,6 +447,7 @@ export default function ProfilePage() {
         first_name: t('profile_first_name'),
         last_name: t('profile_last_name'),
         email: t('profile_email'),
+        user_email: t('profile_email'),
         phone_number: t('profile_phone'),
         whatsapp_phone: t('profile_whatsapp'),
         telegram_username: t('profile_telegram'),
@@ -454,7 +455,7 @@ export default function ProfilePage() {
       const isTaken = (text: string) =>
         /уже существует|already exists|уже используется|already used|уже зарегистрирован|already registered|уже привязан|already linked|уже занят|already taken/i.test(text)
       const isRequiredError = (text: string) =>
-        /не может быть пустым|cannot be blank|обязательное|required|may not be blank/i.test(text)
+        /не может быть пустым|поле не может|cannot be blank|may not be blank|обязательное|required|field may not be blank|this field is required/i.test(text)
       const extractFromObj = (obj: Record<string, unknown>): { msgs: string[]; fields: string[] } => {
         const msgs: string[] = []
         const fields: string[] = []
@@ -465,11 +466,11 @@ export default function ProfilePage() {
             const raw = String(arr[0] || '').trim()
             if (raw) {
               fields.push(key)
-              const label = fieldToLabel[key] || key
+              const label = fieldToLabel[key] || key.replace(/_/g, ' ')
               if (fieldToKey[key] && key !== 'non_field_errors' && isTaken(raw)) {
                 msgs.push(t(fieldToKey[key]))
               } else if (isRequiredError(raw)) {
-                msgs.push(t('profile_field_required', { field: label }))
+                msgs.push(fieldToLabel[key] ? t('profile_field_required', { field: label }) : t('profile_fill_required'))
               } else {
                 msgs.push(raw)
               }
@@ -482,9 +483,9 @@ export default function ProfilePage() {
       let errorFields = new Set<string>()
       if (data && typeof data === 'object') {
         if (data.detail && typeof data.detail === 'string') {
-          msg = data.detail
+          msg = isRequiredError(data.detail) ? t('profile_fill_required') : data.detail
         } else if (typeof data.error === 'string') {
-          msg = data.error
+          msg = isRequiredError(data.error) ? t('profile_fill_required') : data.error
         } else {
           const { msgs, fields } = extractFromObj(data as Record<string, unknown>)
           const nested = (data as Record<string, unknown>).errors
@@ -497,7 +498,8 @@ export default function ProfilePage() {
           msg = msgs.length ? msgs.join('\n') : t('profile_validation_error')
         }
       } else if (typeof data === 'string' && data.trim()) {
-        msg = data.trim()
+        const s = data.trim()
+        msg = isRequiredError(s) ? t('profile_fill_required') : s
       } else if (error?.message && typeof error.message === 'string') {
         msg = error.message
       } else if (error?.response?.status === 400) {
@@ -506,7 +508,6 @@ export default function ProfilePage() {
       setFieldErrors(errorFields)
       setSaveError(msg)
       setTimeout(() => firstErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
-      alert(msg)
     } finally {
       setSaving(false)
     }

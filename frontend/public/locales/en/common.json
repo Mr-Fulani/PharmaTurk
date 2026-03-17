@@ -200,6 +200,7 @@
   "profile_telegram_taken": "This Telegram is already linked to another account.",
   "profile_validation_error": "Please check the entered data.",
   "profile_field_required": "The field \"{{field}}\" cannot be empty.",
+  "profile_fill_required": "Please fill in all required fields.",
   "profile_not_public": "Profile is not public",
   "back_to_home": "Back to home",
   "pagination_back": "Back",
