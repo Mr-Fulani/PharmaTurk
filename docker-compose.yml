@@ -63,6 +63,11 @@ services:
     environment:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+    volumes:
+      - ./backend:/app
+      - staticfiles:/app/staticfiles
+      - /app/__pycache__
+      - /app/*/__pycache__
     entrypoint: ["bash", "/app/docker-entrypoint.sh"]
     mem_limit: 1.5g
 
@@ -133,8 +138,15 @@ services:
       - .env
     command: bash -c "poetry run celery -A config beat --loglevel=info"
 
+  nginx:
+    image: nginx:alpine
+    depends_on:
+      - frontend
+      - backend
+
 volumes:
   postgres_data:
   redis_data:
   opensearch_data:
   qdrant_data:
+  staticfiles:

@@ -3,20 +3,27 @@ services:
     restart: always
     environment:
       USE_RUNSERVER: 0
-    # In production, we don't expose ports globally here if using Nginx/ReverseProxy,
-    # or expose minimal ports in cloudflare. But currently, the user doesn't use reverse proxy inside Docker.
     ports:
       - "8000:8000"
+    volumes:
+      - staticfiles:/app/staticfiles
 
   frontend:
     build:
       target: production
     command: npm run start
     restart: always
-    ports:
-      - "80:3000"
+    # Remove direct port 80 mapping, let Nginx handle it
     environment:
       - NODE_ENV=production
+
+  nginx:
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - staticfiles:/app/staticfiles:ro
 
   postgres:
     restart: always
