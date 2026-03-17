@@ -549,8 +549,9 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     )
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        main_page = self.request.query_params.get('main_page') == 'true'
-        if main_page:
+        # Скрываем описание, если явно передан параметр или если это малый список (обычно для главной)
+        is_main = self.request.query_params.get('main_page') == 'true'
+        if is_main or not self.request.query_params.get('page'):
             context['hide_description'] = True
         return context
 
@@ -684,6 +685,14 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         brand_ids = product_qs.values_list('brand_id', flat=True).distinct()
         return queryset.filter(id__in=brand_ids).distinct()
     
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # Скрываем счетчики, если явно передан параметр или если это малый список (обычно для главной)
+        is_main = self.request.query_params.get('main_page') == 'true'
+        if is_main or not self.request.query_params.get('page'):
+            context['hide_counts'] = True
+        return context
+
     @extend_schema(
         summary="Получить список брендов",
         description="Возвращает список активных брендов (можно фильтровать по типу товара или основной категории)",
