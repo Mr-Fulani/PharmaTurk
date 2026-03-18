@@ -114,6 +114,27 @@ def _resolve_file_url(file_field, request):
     return None
 
 
+def serialize_product_for_card(product, request):
+    """
+    Сериализует товар для карточки с учётом типа (shoes, clothing и т.д.).
+    Используется в recommendations API, чтобы возвращать active_variant_price,
+    main_image_url и другие поля, которые ProductSerializer не предоставляет
+    для товаров с вариантами.
+    """
+    ctx = {'request': request}
+    if isinstance(product, ClothingProduct):
+        return ClothingProductSerializer(product, context=ctx).data
+    if isinstance(product, ShoeProduct):
+        return ShoeProductSerializer(product, context=ctx).data
+    if isinstance(product, ElectronicsProduct):
+        return ElectronicsProductSerializer(product, context=ctx).data
+    if isinstance(product, FurnitureProduct):
+        return FurnitureProductSerializer(product, context=ctx).data
+    if isinstance(product, JewelryProduct):
+        return JewelryProductSerializer(product, context=ctx).data
+    return ProductSerializer(product, context=ctx).data
+
+
 class CategoryTranslationSerializer(serializers.ModelSerializer):
     """Сериализатор для переводов категорий."""
     

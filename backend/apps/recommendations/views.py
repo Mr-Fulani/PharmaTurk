@@ -46,9 +46,14 @@ class RecommendationViewSet(viewsets.ViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         from apps.catalog.models import Product
-        from apps.catalog.serializers import ProductSerializer
+        from apps.catalog.serializers import serialize_product_for_card
         product_ids = [r["product_id"] for r in results]
-        products = Product.objects.filter(id__in=product_ids)
+        products = Product.objects.filter(id__in=product_ids).prefetch_related(
+            'images', 'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
+            'shoe_item__images', 'shoe_item__variants', 'shoe_item__variants__images',
+            'jewelry_item__images', 'electronics_item__images', 'furniture_item__images',
+            'medicine_item__gallery_images', 'supplement_item__gallery_images',
+        )
         product_map = {p.id: p for p in products}
         enriched = []
         for r in results:
@@ -57,9 +62,7 @@ class RecommendationViewSet(viewsets.ViewSet):
                 enriched.append({
                     "product_id": r["product_id"],
                     "similarity": r["score"],
-                    "product": ProductSerializer(
-                        product, context={"request": request}
-                    ).data,
+                    "product": serialize_product_for_card(product, request),
                 })
         return Response({"results": enriched})
 
@@ -90,18 +93,21 @@ class RecommendationViewSet(viewsets.ViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         from apps.catalog.models import Product
-        from apps.catalog.serializers import ProductSerializer
+        from apps.catalog.serializers import serialize_product_for_card
         product_ids = [r["product_id"] for r in recs]
-        products = Product.objects.filter(id__in=product_ids)
+        products = Product.objects.filter(id__in=product_ids).prefetch_related(
+            'images', 'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
+            'shoe_item__images', 'shoe_item__variants', 'shoe_item__variants__images',
+            'jewelry_item__images', 'electronics_item__images', 'furniture_item__images',
+            'medicine_item__gallery_images', 'supplement_item__gallery_images',
+        )
         product_map = {p.id: p for p in products}
         results = []
         for r in recs:
             product = product_map.get(r["product_id"])
             if product:
                 results.append({
-                    "product": ProductSerializer(
-                        product, context={"request": request}
-                    ).data,
+                    "product": serialize_product_for_card(product, request),
                     "similarity_score": r.get("score"),
                 })
         return Response({
@@ -148,17 +154,21 @@ class RecommendationViewSet(viewsets.ViewSet):
     def _get_trending(self, request):
         """Fallback: recent/trending products."""
         from apps.catalog.models import Product
-        from apps.catalog.serializers import ProductSerializer
+        from apps.catalog.serializers import serialize_product_for_card
         trending = (
             Product.objects.filter(is_available=True)
             .exclude(product_type="jewelry")
-            .order_by("-created_at")[:12]
-        )
+            .order_by("-created_at")
+            .prefetch_related(
+                'images', 'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
+                'shoe_item__images', 'shoe_item__variants', 'shoe_item__variants__images',
+                'jewelry_item__images', 'electronics_item__images', 'furniture_item__images',
+                'medicine_item__gallery_images', 'supplement_item__gallery_images',
+            )
+        )[:12]
         return Response({
             "based_on": "trending",
-            "results": ProductSerializer(
-                trending, many=True, context={"request": request}
-            ).data,
+            "results": [serialize_product_for_card(p, request) for p in trending],
         })
 
     def _get_complementary_categories(self, product):
