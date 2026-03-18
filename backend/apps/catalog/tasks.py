@@ -188,6 +188,11 @@ _PROTECTED_STORAGE_PREFIXES = (
     "testimonials/",  # аватарки авторов отзывов (feedback.Testimonial.author_avatar)
 )
 
+# Префиксы других окружений — не удалять при очистке.
+# На проде (R2_PREFIX="") listdir возвращает весь бакет, включая dev/.
+# Без этой защиты prod-задача удаляла бы медиа из dev/.
+_OTHER_ENV_PREFIXES = ("dev/", "staging/", "test/", "local/")
+
 
 def _is_protected_path(path: str) -> bool:
     """Проверить, что путь защищён от удаления."""
@@ -197,6 +202,10 @@ def _is_protected_path(path: str) -> bool:
     for prefix in _PROTECTED_STORAGE_PREFIXES:
         if normalized.startswith(prefix) or path.startswith(prefix):
             return True
+    # Не удалять файлы из других окружений (dev/, staging/ и т.д.)
+    for prefix in _OTHER_ENV_PREFIXES:
+        if normalized.startswith(prefix) or path.startswith(prefix):
+            return True
     return False
 
 
@@ -204,7 +213,8 @@ def _is_protected_path(path: str) -> bool:
 def cleanup_orphaned_media():
     """
     Удаление файлов из R2/локального хранилища, которых нет в БД.
-    Не удаляет: защищённые префиксы (AI, temp), нормализует пути для сравнения.
+    Не удаляет: защищённые префиксы (AI, temp), пути других окружений (dev/, staging/).
+    На проде (R2_PREFIX="") listdir возвращает весь бакет — без защиты dev/ файлы удалялись бы.
     """
     from django.core.files.storage import default_storage
 
@@ -218,7 +228,7 @@ def cleanup_orphaned_media():
 
         # Только те файлы в storage, которых нет в БД
         orphaned = storage_paths - db_paths
-        # Исключаем защищённые пути
+        # Исключаем защищённые пути (AI, temp, avatars) и пути других окружений (dev/, staging/)
         to_delete = [p for p in orphaned if not _is_protected_path(p)]
 
         logger.info(
