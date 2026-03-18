@@ -544,9 +544,8 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        # Скрываем описание, если явно передан параметр или если это малый список (обычно для главной)
-        is_main = self.request.query_params.get('main_page') == 'true'
-        if is_main or not self.request.query_params.get('page'):
+        # Скрываем описание ТОЛЬКО для главной страницы
+        if self.request.query_params.get('main_page') == 'true':
             context['hide_description'] = True
         return context
 
@@ -682,9 +681,8 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        # Скрываем счетчики, если явно передан параметр или если это малый список (обычно для главной)
-        is_main = self.request.query_params.get('main_page') == 'true'
-        if is_main or not self.request.query_params.get('page'):
+        # Скрываем счетчики ТОЛЬКО для главной страницы
+        if self.request.query_params.get('main_page') == 'true':
             context['hide_counts'] = True
         return context
 
@@ -731,10 +729,12 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         primary_slug_value = primary_slugs[0] if primary_slugs else (product_type or '')
         if primary_slug_value:
             primary_slug_value = primary_slug_value.replace('_', '-')
+        
+        context = self.get_serializer_context()
         other_brand_obj = Brand.objects.filter(slug='other', is_active=True).prefetch_related('translations').first()
         if other_brand_obj:
-            other_brand = BrandSerializer(other_brand_obj, context=self.get_serializer_context()).data
-            other_brand['products_count'] = other_count
+            other_brand = BrandSerializer(other_brand_obj, context=context).data
+            other_brand['products_count'] = other_count if not context.get('hide_counts') else None
             other_brand['primary_category_slug'] = primary_slug_value
         else:
             other_brand = {
@@ -748,7 +748,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
                 "primary_category_slug": primary_slug_value,
                 "external_id": "",
                 "is_active": True,
-                "products_count": other_count,
+                "products_count": other_count if not context.get('hide_counts') else None,
                 "translations": [
                     {"locale": "ru", "name": "Другое", "description": ""},
                     {"locale": "en", "name": "Other", "description": ""},
@@ -2605,6 +2605,12 @@ def proxy_media(request):
         candidates.append(path[len('media/'):])
     else:
         candidates.append(f"media/{path}")
+    # R2_PREFIX: путь может быть с префиксом (dev/...) или без
+    r2_prefix = (getattr(settings, 'R2_PREFIX', '') or '').strip('/')
+    if r2_prefix and path.startswith(f"{r2_prefix}/"):
+        candidates.append(path[len(r2_prefix) + 1:])
+    elif r2_prefix and not path.startswith(r2_prefix):
+        candidates.append(f"{r2_prefix}/{path}")
 
     resolved_path = None
     for candidate in candidates:

@@ -37,8 +37,8 @@ def _r2_proxy_url(absolute_url, request):
         return None
     
     r2_config = getattr(settings, 'R2_CONFIG', {})
-    r2_public = (r2_config.get('public_url', None) or '').rstrip('/')
-    project_cdn = 'https://cdn.it-dev.space' # CNAME для R2
+    r2_public = (r2_config.get('public_url', None) or getattr(settings, 'R2_PUBLIC_URL', '') or '').rstrip('/')
+    project_cdn = 'https://cdn.it-dev.space'  # CNAME для R2
     
     is_r2 = r2_public and absolute_url.startswith(r2_public)
     is_project_cdn = absolute_url.startswith(project_cdn)
@@ -316,7 +316,7 @@ class BrandSerializer(serializers.ModelSerializer):
         """Скрытие счетчика товаров для главной страницы."""
         ret = super().to_representation(instance)
         if self.context.get('hide_counts'):
-            ret['products_count'] = 0
+            ret['products_count'] = None
         return ret
     
     def get_products_count(self, obj):

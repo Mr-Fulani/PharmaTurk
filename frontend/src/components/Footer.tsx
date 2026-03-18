@@ -47,8 +47,12 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
   }, [initialSettings, defaultLocation, defaultCryptoText])
 
   useEffect(() => {
-    // Загружаем настройки футера из API только на клиенте
+    // Загружаем настройки футера из API только на клиенте, если SSR не передал соцсети
     if (typeof window !== 'undefined') {
+      const hasSocialFromSSR = initialSettings?.telegram_url || initialSettings?.whatsapp_url ||
+        initialSettings?.vk_url || initialSettings?.instagram_url
+      if (hasSocialFromSSR) return // Не перезаписываем — SSR уже передал данные (работает локально без CORS)
+
       api.get('/settings/footer-settings/')
         .then(response => {
           const data = response.data || {}
@@ -62,14 +66,14 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
             ? (isNonRu && rawCrypto === 'Возможна оплата криптовалютой' ? defaultCryptoText : rawCrypto)
             : defaultCryptoText
           setSettings((prev) => ({
-            phone: data.phone || prev.phone || '+90 552 582 14 97',
-            email: data.email || prev.email || 'fulani.dev@gmail.com',
-            location: resolvedLocation || prev.location || defaultLocation,
-            telegram_url: data.telegram_url || prev.telegram_url || '',
-            whatsapp_url: data.whatsapp_url || prev.whatsapp_url || '',
-            vk_url: data.vk_url || prev.vk_url || '',
-            instagram_url: data.instagram_url || prev.instagram_url || '',
-            crypto_payment_text: resolvedCrypto || prev.crypto_payment_text || defaultCryptoText
+            phone: data.phone || initialSettings?.phone || prev.phone || '+90 552 582 14 97',
+            email: data.email || initialSettings?.email || prev.email || 'fulani.dev@gmail.com',
+            location: resolvedLocation || initialSettings?.location || prev.location || defaultLocation,
+            telegram_url: data.telegram_url || initialSettings?.telegram_url || prev.telegram_url || '',
+            whatsapp_url: data.whatsapp_url || initialSettings?.whatsapp_url || prev.whatsapp_url || '',
+            vk_url: data.vk_url || initialSettings?.vk_url || prev.vk_url || '',
+            instagram_url: data.instagram_url || initialSettings?.instagram_url || prev.instagram_url || '',
+            crypto_payment_text: resolvedCrypto || initialSettings?.crypto_payment_text || prev.crypto_payment_text || defaultCryptoText
           }))
         })
         .catch(error => {
@@ -89,7 +93,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
         crypto_payment_text: defaultCryptoText
       })
     }
-  }, [defaultLocation, defaultCryptoText, i18n.language])
+  }, [defaultLocation, defaultCryptoText, i18n.language, initialSettings])
 
   // Используем значения из API или значения по умолчанию
   const phone = settings.phone

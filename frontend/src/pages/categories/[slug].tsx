@@ -1658,6 +1658,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const routeSlug = Array.isArray(slug) ? slug[0] : (slug as string | undefined)
 
     const { getInternalApiUrl } = await import('../../lib/urls')
+    const { fetchFooterSettings } = await import('../../lib/footerSettings')
 
     // Получаем категорию из API чтобы узнать её реальный тип
     let categoryTypeFromApi: string | null = null
@@ -1985,11 +1986,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     // чтобы на клиенте не пришёл полный набор и не затёр отображение.
     categories = sidebarCategories
 
+    const footerSettings = await fetchFooterSettings()
     return {
       props: {
         products,
         categories,
         sidebarCategories,
+        footerSettings,
         brands,
         bookAuthors,
         bookGenres,
@@ -2011,12 +2014,14 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
   } catch (error) {
     console.error('Error fetching data:', error)
-
+    const { fetchFooterSettings } = await import('../../lib/footerSettings')
+    const footerSettings = await fetchFooterSettings()
     return {
       props: {
         products: [],
         categories: [],
         sidebarCategories: [],
+        footerSettings,
         brands: [],
         subcategories: [],
         availableAttributes: [],

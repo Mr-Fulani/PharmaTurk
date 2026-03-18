@@ -58,7 +58,8 @@ import Masonry from 'react-masonry-css'
 export default function Home({ brands, categories }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
-  const tileHeights = [224, 256, 288]
+  const tileHeights = [280, 320, 360]
+  const brandTileHeights = [280, 320, 360]
 
   // Функция для получения цветов баннера по бренду
   const getBrandColors = (brandName: string) => {
@@ -110,10 +111,10 @@ export default function Home({ brands, categories }: HomePageProps) {
     return youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : null
   }
 
-  const renderMedia = (mediaUrl?: string | null, alt?: string) => {
-    if (!mediaUrl) return null
+  const renderMedia = (mediaUrl?: string | null, alt?: string, fallbackSrc?: string) => {
+    if (!mediaUrl && !fallbackSrc) return null
 
-    const youtubeId = extractYouTubeId(mediaUrl)
+    const youtubeId = extractYouTubeId(mediaUrl || '')
     if (youtubeId) {
       const youtubeThumb = getYouTubeThumbnail(mediaUrl)
       const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
@@ -164,11 +165,20 @@ export default function Home({ brands, categories }: HomePageProps) {
     }
 
     // Если YouTube не обнаружен — обычная обработка файла/изображения
-    const src = resolveMediaUrl(mediaUrl)
+    const src = mediaUrl ? resolveMediaUrl(mediaUrl) : fallbackSrc || ''
     if (!src) return null
 
-    const normalized = src.split('?')[0].toLowerCase()
-    const isVideo = /\.(mp4|mov|webm|m4v)$/i.test(normalized)
+    // Определяем видео: по расширению в mediaUrl или в path= (proxy-media)
+    const pathFromQuery = (() => {
+      try {
+        const u = src.includes('?') ? new URL(src, 'http://_') : null
+        return u?.searchParams.get('path') || ''
+      } catch {
+        return ''
+      }
+    })()
+    const pathToCheck = pathFromQuery || mediaUrl || src
+    const isVideo = /\.(mp4|mov|webm|m4v)(\?|$)/i.test(pathToCheck)
 
     if (isVideo) {
       return (
@@ -178,6 +188,19 @@ export default function Home({ brands, categories }: HomePageProps) {
           muted
           loop
           playsInline
+          preload="metadata"
+          onError={(e) => {
+            if (fallbackSrc) {
+              const wrapper = e.currentTarget.parentElement
+              if (wrapper) {
+                const img = document.createElement('img')
+                img.src = fallbackSrc
+                img.alt = alt || ''
+                img.className = 'absolute inset-0 h-full w-full object-cover'
+                wrapper.replaceChildren(img)
+              }
+            }
+          }}
         >
           <source src={src} />
         </video>
@@ -189,6 +212,11 @@ export default function Home({ brands, categories }: HomePageProps) {
         src={src}
         alt={alt || ''}
         className="absolute inset-0 h-full w-full object-cover"
+        onError={(e) => {
+          if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
+            e.currentTarget.src = fallbackSrc
+          }
+        }}
       />
     )
   }
@@ -207,7 +235,7 @@ export default function Home({ brands, categories }: HomePageProps) {
       if (countB !== countA) return countB - countA
       return (a.sort_order ?? 0) - (b.sort_order ?? 0)
     })
-    .slice(0, 24)
+    .slice(0, 14)
 
   const handleBrandClick = (brand: Brand) => {
     const slug = mapCategoryToRouteSlug(brand.primary_category_slug || brand.slug || '')
@@ -247,27 +275,68 @@ export default function Home({ brands, categories }: HomePageProps) {
             <BannerCarousel position="main" />
         </div>
 
-        {/* Brands Section */}
+        {/* Brands Section — горизонтальный скролл на мобильных, сетка на десктопе */}
         <section className="mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
             {t('popular_brands', 'Популярные бренды')}
           </h2>
+          {/* Мобильные: горизонтальный скролл */}
           <div
-            className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 md:scroll-p-4 hide-scrollbar -mx-6 px-6 md:mx-0 md:px-0"
+            className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 hide-scrollbar -mx-6 px-6 md:hidden"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
-            {brands.map((brand, idx) => {
-              const mediaUrl =
-                brand.card_media_url ||
-                brand.logo ||
-                getPlaceholderImageUrl({ type: 'brand', id: brand.id })
+            {brands.map((brand) => {
+              const mediaUrl = brand.card_media_url || brand.logo
+              const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
               return (
                 <div
                   key={brand.id}
                   onClick={() => handleBrandClick(brand)}
-                  className="relative shrink-0 w-36 h-36 md:w-56 md:h-56 snap-start rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
+                  className="relative shrink-0 w-44 h-44 sm:w-52 sm:h-52 snap-start rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
                 >
-                  {renderMedia(mediaUrl, brand.name)}
+                  {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
+                  <div className="absolute inset-0 bg-black/35" />
+                  <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
+                    <div className="text-center text-white drop-shadow">
+                      {brand.logo && (
+                        <div className="mb-2 flex justify-center">
+                          <img 
+                            src={resolveMediaUrl(brand.logo)} 
+                            alt={brand.name}
+                            className="h-8 w-auto object-contain filter brightness-0 invert"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none'
+                            }}
+                          />
+                        </div>
+                      )}
+                      <h3 className="text-lg font-bold mb-1 line-clamp-1">
+                        {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
+                      </h3>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {/* Десктоп: сетка как у категорий */}
+          <Masonry
+            breakpointCols={{ default: 3, 1024: 3, 768: 3 }}
+            className="hidden md:flex w-full gap-4 md:gap-6"
+            columnClassName="flex flex-col gap-4 md:gap-6"
+          >
+            {brands.map((brand, idx) => {
+              const mediaUrl = brand.card_media_url || brand.logo
+              const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
+              const cardHeight = brandTileHeights[idx % brandTileHeights.length]
+              return (
+                <div
+                  key={brand.id}
+                  onClick={() => handleBrandClick(brand)}
+                  style={{ height: cardHeight }}
+                  className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
+                >
+                  {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
                   <div className="absolute inset-0 bg-black/35" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 md:p-6 z-10">
                     <div className="text-center text-white drop-shadow">
@@ -283,20 +352,15 @@ export default function Home({ brands, categories }: HomePageProps) {
                           />
                         </div>
                       )}
-                      <h3 className="text-lg md:text-3xl font-bold mb-1 md:mb-2 line-clamp-1">
+                      <h3 className="text-xl md:text-3xl font-bold mb-1 md:mb-2 line-clamp-1">
                         {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
                       </h3>
-                      {brand.products_count && (
-                        <p className="text-[10px] md:text-xs opacity-75">
-                          {brand.products_count} товаров
-                        </p>
-                      )}
                     </div>
                   </div>
                 </div>
               )
             })}
-          </div>
+          </Masonry>
           <div className="mt-6 flex justify-center">
             <Link
               href="/brands"
@@ -318,15 +382,14 @@ export default function Home({ brands, categories }: HomePageProps) {
             {t('categories_section_title', 'Категории товаров')}
           </h2>
           <Masonry
-            breakpointCols={{ default: 4, 1024: 3, 768: 3, 640: 2, 0: 2 }}
+            breakpointCols={{ default: 3, 1024: 3, 768: 3, 640: 2, 0: 2 }}
             className="flex w-full gap-4 md:gap-6"
             columnClassName="flex flex-col gap-4 md:gap-6"
           >
             {preparedCategories.map((category, idx) => {
               const cardHeight = tileHeights[idx % tileHeights.length]
-              const mediaUrl =
-                category.card_media_url ||
-                getPlaceholderImageUrl({ type: 'category', id: category.id })
+              const mediaUrl = category.card_media_url
+              const placeholderUrl = getPlaceholderImageUrl({ type: 'category', id: category.id })
               return (
               <div
                 key={category.id}
@@ -335,8 +398,9 @@ export default function Home({ brands, categories }: HomePageProps) {
                 className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
               >
                   {renderMedia(
-                    mediaUrl,
-                    getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)
+                    mediaUrl || placeholderUrl,
+                    getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale),
+                    placeholderUrl
                   )}
                   <div className="absolute inset-0 bg-black/35" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
@@ -345,7 +409,7 @@ export default function Home({ brands, categories }: HomePageProps) {
                       {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
                     </h3>
                     {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale) && (
-                      <p className="text-sm opacity-90">
+                      <p className="hidden md:block text-sm opacity-90">
                         {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale)}
                       </p>
                     )}
@@ -392,6 +456,7 @@ export default function Home({ brands, categories }: HomePageProps) {
 export const getServerSideProps: GetServerSideProps = async (context) => {
   try {
     const { getInternalApiUrl } = await import('../lib/urls')
+    const { fetchFooterSettings } = await import('../lib/footerSettings')
     
     // Загружаем все бренды из API с пагинацией
     let allBrands: Brand[] = []
@@ -424,8 +489,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       return (a.name || '').localeCompare(b.name || '')
     })
 
-    // Показываем 9 брендов (все, но с приоритетом у тех, у кого есть товары)
-    const brands = sortedBrands.slice(0, 9)
+    // Показываем 11 брендов (с приоритетом у тех, у кого есть товары)
+    const brands = sortedBrands.slice(0, 11)
 
     console.log('Loaded popular brands for homepage:', brands.map((b: Brand) => `${b.name} (${b.products_count ?? 0} товаров, медиа: ${!!b.card_media_url})`))
 
@@ -447,7 +512,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     }
 
     const categories = allCategories.filter((category) => {
-      const isRoot = category.parent === null || typeof category.parent === 'undefined'
+      // Только корневые: parent и parent_id должны быть null/undefined
+      const parentVal = (category as any).parent ?? (category as any).parent_id
+      const isRoot = parentVal === null || parentVal === undefined
       if (!isRoot) return false
       if (category.gender) return false
       if (category.clothing_type) return false
@@ -475,22 +542,31 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         uniqueMap.set(key, category)
       }
     })
-    const uniqueCategories = Array.from(uniqueMap.values()).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    
+    const uniqueCategories = Array.from(uniqueMap.values()).sort((a, b) => {
+      const countA = a.products_count ?? 0
+      const countB = b.products_count ?? 0
+      if (countB !== countA) return countB - countA
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    })
+    const footerSettings = await fetchFooterSettings()
+
     return {
       props: {
         brands,
         categories: uniqueCategories,
+        footerSettings,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }
   } catch (error) {
     console.error('Error loading brands for homepage:', error)
-    
+    const { fetchFooterSettings } = await import('../lib/footerSettings')
+    const footerSettings = await fetchFooterSettings()
     return {
       props: {
         brands: [],
         categories: [],
+        footerSettings,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }

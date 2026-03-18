@@ -216,6 +216,7 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
 export async function getServerSideProps(ctx: any) {
   try {
     const { getInternalApiUrl } = await import('../../lib/urls')
+    const { fetchFooterSettings } = await import('../../lib/footerSettings')
     const res = await axios.get(getInternalApiUrl('catalog/categories'), {
       params: { top_level: true, page_size: 200 }
     })
@@ -265,8 +266,11 @@ export async function getServerSideProps(ctx: any) {
         return sa - sb
       })
 
-    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories, locale: ctx.locale ?? 'ru' } }
+    const footerSettings = await fetchFooterSettings()
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories, footerSettings, locale: ctx.locale ?? 'ru' } }
   } catch (e) {
-    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories: [], locale: ctx.locale ?? 'ru' } }
+    const { fetchFooterSettings } = await import('../../lib/footerSettings')
+    const footerSettings = await fetchFooterSettings()
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories: [], footerSettings, locale: ctx.locale ?? 'ru' } }
   }
 }

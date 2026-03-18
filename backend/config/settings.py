@@ -426,7 +426,7 @@ AI_CONFIG = {
     'EMBEDDING_MODEL': env("AI_EMBEDDING_MODEL", default="text-embedding-3-small"),
 }
 
-# R2 Configuration (Used for AI processing)
+# R2 Configuration (Used for AI processing and media proxy)
 R2_CONFIG = {
     'endpoint_url': f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
     'aws_access_key_id': R2_ACCESS_KEY_ID,
@@ -434,6 +434,7 @@ R2_CONFIG = {
     'region_name': 'auto',
     'bucket_name': R2_BUCKET_NAME,
     'prefix': R2_PREFIX,
+    'public_url': (R2_PUBLIC_URL or '').rstrip('/'),
 }
 
 AI_R2_SETTINGS = {

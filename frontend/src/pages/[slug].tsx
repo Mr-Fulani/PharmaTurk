@@ -50,17 +50,16 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     // ignore
   }
 
+  const { fetchFooterSettings } = await import('../lib/footerSettings')
+  const footerSettings = await fetchFooterSettings()
+
   if (!page) {
-    // подстраховка: если ничего не нашлось, возвращаем props с page=null
-    // это сохранит поведение текущего приложения и покажет Page not found.
     const i18nProps = await serverSideTranslations(lang, ['common'])
-    return { props: { page: null, ...i18nProps } }
+    return { props: { page: null, footerSettings, ...i18nProps } }
   }
 
-  // Подгружаем переводы на сервере для namespace 'common' (Header/Footer и т.д.)
   const i18nProps = await serverSideTranslations(lang, ['common'])
-
-  return { props: { page, ...i18nProps } }
+  return { props: { page, footerSettings, ...i18nProps } }
 }
 
 export default Page
