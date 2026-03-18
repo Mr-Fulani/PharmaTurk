@@ -6,7 +6,7 @@ import Masonry from 'react-masonry-css'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import BannerCarousel from '../../components/BannerCarouselMedia'
-import { getPlaceholderImageUrl, resolveMediaUrl } from '../../lib/media'
+import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../../lib/media'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
 
 interface CategoryTranslation {
@@ -106,10 +106,7 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
     const src = resolveMediaUrl(effectiveUrl)
     if (!src) return null
 
-    const normalized = src.split('?')[0].toLowerCase()
-    const isVideo = /\.(mp4|mov|webm|m4v)$/i.test(normalized)
-
-    if (isVideo) {
+    if (isVideoUrl(mediaUrl || src)) {
       return (
         <video
           className="absolute inset-0 h-full w-full object-cover"
@@ -117,6 +114,20 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
           muted
           loop
           playsInline
+          preload="metadata"
+          onError={(e) => {
+            const placeholder = id ? getPlaceholderImageUrl({ type: 'category', id }) : null
+            if (placeholder) {
+              const wrapper = e.currentTarget.parentElement
+              if (wrapper) {
+                const img = document.createElement('img')
+                img.src = placeholder
+                img.alt = alt || ''
+                img.className = 'absolute inset-0 h-full w-full object-cover'
+                wrapper.replaceChildren(img)
+              }
+            }
+          }}
         >
           <source src={src} />
         </video>
@@ -128,6 +139,12 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
         src={src}
         alt={alt || ''}
         className="absolute inset-0 h-full w-full object-cover"
+        onError={(e) => {
+          const placeholder = id ? getPlaceholderImageUrl({ type: 'category', id }) : null
+          if (placeholder && e.currentTarget.src !== placeholder) {
+            e.currentTarget.src = placeholder
+          }
+        }}
       />
     )
   }

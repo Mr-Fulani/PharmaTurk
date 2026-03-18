@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { getPlaceholderImageUrl, resolveMediaUrl } from '../lib/media'
+import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../lib/media'
 import { getSiteOrigin } from '../lib/urls'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
@@ -168,19 +168,7 @@ export default function Home({ brands, categories }: HomePageProps) {
     const src = mediaUrl ? resolveMediaUrl(mediaUrl) : fallbackSrc || ''
     if (!src) return null
 
-    // Определяем видео: по расширению в mediaUrl или в path= (proxy-media)
-    const pathFromQuery = (() => {
-      try {
-        const u = src.includes('?') ? new URL(src, 'http://_') : null
-        return u?.searchParams.get('path') || ''
-      } catch {
-        return ''
-      }
-    })()
-    const pathToCheck = pathFromQuery || mediaUrl || src
-    const isVideo = /\.(mp4|mov|webm|m4v)(\?|$)/i.test(pathToCheck)
-
-    if (isVideo) {
+    if (isVideoUrl(mediaUrl || src)) {
       return (
         <video
           className="absolute inset-0 h-full w-full object-cover"

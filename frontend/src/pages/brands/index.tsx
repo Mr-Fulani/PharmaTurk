@@ -6,7 +6,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Masonry from 'react-masonry-css'
 import BannerCarousel from '../../components/BannerCarouselMedia'
-import { resolveMediaUrl, getPlaceholderImageUrl } from '../../lib/media'
+import { resolveMediaUrl, getPlaceholderImageUrl, isVideoUrl } from '../../lib/media'
 import { getSiteOrigin } from '../../lib/urls'
 import { getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../../lib/i18n'
 
@@ -97,10 +97,7 @@ const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
   const src = resolveMediaUrl(effectiveUrl)
   if (!src) return null
 
-  const normalized = src.split('?')[0].toLowerCase()
-  const isVideo = /\.(mp4|mov|webm|m4v)$/i.test(normalized)
-
-  if (isVideo) {
+  if (isVideoUrl(mediaUrl || src)) {
     return (
       <video
         className="absolute inset-0 h-full w-full object-cover"
@@ -108,6 +105,20 @@ const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
         muted
         loop
         playsInline
+        preload="metadata"
+        onError={(e) => {
+          const placeholder = id ? getPlaceholderImageUrl({ type: 'brand', id }) : null
+          if (placeholder) {
+            const wrapper = e.currentTarget.parentElement
+            if (wrapper) {
+              const img = document.createElement('img')
+              img.src = placeholder
+              img.alt = alt || ''
+              img.className = 'absolute inset-0 h-full w-full object-cover'
+              wrapper.replaceChildren(img)
+            }
+          }
+        }}
       >
         <source src={src} />
       </video>
@@ -120,6 +131,12 @@ const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
       src={src}
       alt={alt || ''}
       className="absolute inset-0 h-full w-full object-cover"
+      onError={(e) => {
+        const placeholder = id ? getPlaceholderImageUrl({ type: 'brand', id }) : null
+        if (placeholder && e.currentTarget.src !== placeholder) {
+          e.currentTarget.src = placeholder
+        }
+      }}
     />
   )
 }
