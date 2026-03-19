@@ -59,8 +59,12 @@ def send_order_receipt_task(
         if pdf_content:
             message.attach(get_receipt_filename(order), pdf_content, "application/pdf")
             logger.info("PDF receipt attached to email for order %s", order.number)
+        else:
+            # Если по какой-то причине контент PDF пустой, но ошибки не было, логируем это
+            logger.warning("PDF content is empty for order %s. Email will be sent without attachment.", order.number)
     except Exception as e:
-        logger.error("Failed to generate/attach PDF receipt for order %s: %s", order.number, e)
+        logger.critical("Failed to generate/attach PDF receipt for order %s: %s. The task will fail and retry.", order.number, e)
+        raise  # Перевыбрасываем исключение, чтобы задача провалилась и была перезапущена
 
     try:
         message.send()
@@ -99,23 +103,39 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
 
     is_ru = locale != "en"
 
-    # Получаем PDF-чек (если он уже был сгенерирован email-задачей или генерируем сейчас)
+    # Получаем PDF-чек. Логика устойчива к race-condition с удалением старых файлов.
     pdf_bytes: bytes | None = None
     receipt_url = getattr(order, "receipt_url", None)
     
-    if not receipt_url:
-        # Если URL еще нет (задачи запущены параллельно), попробуем сгенерировать сами
-        receipt_url, pdf_bytes = generate_and_save_receipt(order, locale=locale)
-    
-    if receipt_url and not pdf_bytes:
+    # 1. Сначала пытаемся скачать по существующему URL
+    if receipt_url:
         try:
             r = requests.get(receipt_url, timeout=15)
             if r.ok:
                 pdf_bytes = r.content
             else:
-                logger.warning("Could not download receipt PDF for order %s: %s", order.number, r.status_code)
+                logger.warning(
+                    "Could not download receipt PDF for order %s (status: %s). It might have been deleted. Will try to regenerate.",
+                    order.number, r.status_code
+                )
+                # Если файл не найден (404) или доступ запрещен (403), сбрасываем pdf_bytes, чтобы сгенерировать заново
+                if r.status_code in [404, 403]:
+                    pdf_bytes = None
         except Exception as dl_err:
-            logger.warning("Error downloading receipt PDF for order %s: %s", order.number, dl_err)
+            logger.warning("Error downloading receipt PDF for order %s: %s. Will try to regenerate.", order.number, dl_err)
+            pdf_bytes = None
+
+    # 2. Если скачать не удалось (или URL не было), генерируем PDF заново.
+    if not pdf_bytes:
+        logger.info("Generating PDF receipt on-the-fly for Telegram task (order: %s)", order.number)
+        try:
+            # Эта функция сама сохранит новый URL в заказ
+            _url, pdf_bytes = generate_and_save_receipt(order, locale=locale)
+            if not pdf_bytes:
+                logger.error("Failed to regenerate PDF for order %s. Telegram notification will be sent without attachment.", order.number)
+        except Exception as gen_err:
+            logger.error("Critical error during PDF regeneration for order %s: %s", order.number, gen_err)
+            pdf_bytes = None
 
     def _send_tg(chat_id: str, text: str, document: bytes | None = None, filename: str = "receipt.pdf"):
         if not bot_token:
