@@ -1153,15 +1153,51 @@ class OrderViewSet(viewsets.ViewSet):
         )
 
         # Адрес доставки
+        shipping_address_text = (serializer.validated_data.get('shipping_address_text') or '').strip()
         shipping_address_id = serializer.validated_data.get('shipping_address')
         if shipping_address_id:
             try:
                 addr = UserAddress.objects.get(id=shipping_address_id, user=request.user)
                 order.shipping_address = addr
-                order.shipping_address_text = f"{addr.country}, {addr.city}, {addr.street} {addr.house}"
+                if not shipping_address_text:
+                    address_parts = [addr.country, addr.city, f"{addr.street} {addr.house}"]
+                    if addr.region:
+                        address_parts.insert(1, addr.region)
+                    if addr.postal_code:
+                        address_parts.append(addr.postal_code)
+                    if addr.apartment:
+                        address_parts.append(f"кв. {addr.apartment}")
+                    if addr.entrance:
+                        address_parts.append(f"подъезд {addr.entrance}")
+                    if addr.floor:
+                        address_parts.append(f"этаж {addr.floor}")
+                    shipping_address_text = ", ".join(filter(None, address_parts))
                 order.save()
             except UserAddress.DoesNotExist:
                 pass
+        elif not shipping_address_text and request.user and request.user.is_authenticated:
+            default_addr = (
+                UserAddress.objects.filter(user=request.user, is_default=True, is_active=True).first()
+                or UserAddress.objects.filter(user=request.user, is_active=True).order_by("-created_at").first()
+            )
+            if default_addr:
+                order.shipping_address = default_addr
+                address_parts = [default_addr.country, default_addr.city, f"{default_addr.street} {default_addr.house}"]
+                if default_addr.region:
+                    address_parts.insert(1, default_addr.region)
+                if default_addr.postal_code:
+                    address_parts.append(default_addr.postal_code)
+                if default_addr.apartment:
+                    address_parts.append(f"кв. {default_addr.apartment}")
+                if default_addr.entrance:
+                    address_parts.append(f"подъезд {default_addr.entrance}")
+                if default_addr.floor:
+                    address_parts.append(f"этаж {default_addr.floor}")
+                shipping_address_text = ", ".join(filter(None, address_parts))
+                order.save()
+        if shipping_address_text:
+            order.shipping_address_text = shipping_address_text
+            order.save(update_fields=['shipping_address_text'])
 
         if is_crypto:
             # Крипто: сохраняем CryptoPayment, позиции заказа без списания остатка
