@@ -6,21 +6,72 @@ TODO: Функционал чеков временно отключен. Буд�
 """
 from __future__ import annotations
 
+import logging
+import socket
+
+import requests
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
+from django.core.mail.backends.smtp import EmailBackend
 from django.utils.html import strip_tags
 from django.utils.translation import gettext_lazy as _
 
-import requests
-import logging
-
-import socket
 from config.celery import app
 
 logger = logging.getLogger(__name__)
 
 from .models import Order
 from .services import build_order_receipt_payload, render_receipt_html, generate_and_save_receipt, get_receipt_filename
+
+
+class IPv4EmailBackend(EmailBackend):
+    # Используем IPv4-адрес напрямую, если окружение не умеет в IPv6
+    def open(self):
+        if self.connection:
+            return False
+        try:
+            # Разрешаем хост только в IPv4, чтобы обойти проблемы IPv6 в контейнере
+            addrinfo = socket.getaddrinfo(self.host, self.port, socket.AF_INET, socket.SOCK_STREAM)
+            if not addrinfo:
+                raise socket.error(f"Could not resolve IPv4 for {self.host}")
+            ipv4_addr = addrinfo[0][4][0]
+
+            logger.info(f"Connecting to {self.host} via IPv4: {ipv4_addr}")
+            self.connection = self.connection_class(ipv4_addr, self.port, timeout=self.timeout)
+
+            if self.use_tls and not self.use_ssl:
+                # Важно передать исходный hostname для корректной TLS-валидации сертификата
+                self.connection.starttls(server_hostname=self.host)
+
+            if self.username and self.password:
+                self.connection.login(self.username, self.password)
+            return True
+        except Exception:
+            if not self.fail_silently:
+                raise
+            return False
+
+
+def _send_email_with_ipv4_fallback(message) -> None:
+    # Сначала используем стандартную отправку Django
+    try:
+        message.send()
+        return
+    except (socket.gaierror, socket.error, OSError) as net_err:
+        # При сетевой ошибке переключаемся на IPv4
+        logger.warning(f"Network error detected ({str(net_err)}). Forcing IPv4 fallback...")
+
+    connection = IPv4EmailBackend(
+        host=settings.EMAIL_HOST,
+        port=settings.EMAIL_PORT,
+        username=settings.EMAIL_HOST_USER,
+        password=settings.EMAIL_HOST_PASSWORD,
+        use_tls=settings.EMAIL_USE_TLS,
+        use_ssl=settings.EMAIL_USE_SSL,
+        timeout=settings.EMAIL_TIMEOUT,
+    )
+    message.connection = connection
+    message.send()
 
 
 # TODO: Функционал чеков временно отключен. Будет доработан позже.
@@ -53,8 +104,7 @@ def send_order_receipt_task(
     )
     message.attach_alternative(html_body, "text/html")
 
-    # Call the service to generate the PDF and upload to R2
-    # It will also update the order.receipt_url
+    # Генерируем PDF и сохраняем в R2, а также обновляем order.receipt_url
     try:
         receipt_url, pdf_content = generate_and_save_receipt(order, locale=loc)
         if pdf_content:
@@ -72,55 +122,9 @@ def send_order_receipt_task(
     # --- SMTP SENDING ---
     logger.info("--- SMTP START ---")
     try:
-        # Пытаемся отправить через Django. Если падает с ошибкой сети (IPv6), 
-        # принудительно переключаемся на IPv4.
+        # Пытаемся отправить через Django. При сетевой ошибке делаем IPv4-фоллбек.
         logger.info(f"Sending email via Django to {recipient} (HOST: {settings.EMAIL_HOST})")
-        try:
-            message.send()
-        except (socket.gaierror, socket.error, OSError) as net_err:
-            logger.warning(f"Network error detected ({str(net_err)}). Forcing IPv4 fallback...")
-            
-            # Чистый способ форсировать IPv4 без monkeypatch: 
-            # переопределяем способ создания сокета в бэкенде
-            from django.core.mail.backends.smtp import EmailBackend
-
-            class IPv4EmailBackend(EmailBackend):
-                def open(self):
-                    if self.connection:
-                        return False
-                    try:
-                        # Resolve host to IPv4 only
-                        addrinfo = socket.getaddrinfo(self.host, self.port, socket.AF_INET, socket.SOCK_STREAM)
-                        if not addrinfo:
-                            raise socket.error(f"Could not resolve IPv4 for {self.host}")
-                        ipv4_addr = addrinfo[0][4][0]
-                        
-                        logger.info(f"Connecting to {self.host} via IPv4: {ipv4_addr}")
-                        self.connection = self.connection_class(ipv4_addr, self.port, timeout=self.timeout)
-                        
-                        if self.use_tls:
-                            # THIS IS THE KEY: pass the original hostname for SSL verification
-                            self.connection.starttls(server_hostname=self.host)
-                        
-                        if self.username and self.password:
-                            self.connection.login(self.username, self.password)
-                        return True
-                    except Exception as e:
-                        if not self.fail_silently:
-                            raise
-                        return False
-
-            connection = IPv4EmailBackend(
-                host=settings.EMAIL_HOST,
-                port=settings.EMAIL_PORT,
-                username=settings.EMAIL_HOST_USER,
-                password=settings.EMAIL_HOST_PASSWORD,
-                use_tls=settings.EMAIL_USE_TLS,
-                use_ssl=settings.EMAIL_USE_SSL,
-                timeout=settings.EMAIL_TIMEOUT,
-            )
-            message.connection = connection
-            message.send()
+        _send_email_with_ipv4_fallback(message)
 
         logger.info("SUCCESS: Email sent successfully!")
     except Exception as e:
