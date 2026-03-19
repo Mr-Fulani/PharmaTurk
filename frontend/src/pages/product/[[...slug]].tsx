@@ -330,9 +330,10 @@ export default function ProductPage({
   const localeKey = (router.locale || '').toLowerCase()
   const isEnglishLocale = localeKey.startsWith('en')
 
+  const envSupportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || ''
   const [footerSettings, setFooterSettings] = useState<FooterSettings>({
     phone: '+90 552 582 14 97',
-    email: 'fulani.dev@gmail.com',
+    email: envSupportEmail,
     location: '',
     telegram_url: 'https://t.me/fulani_admin',
     whatsapp_url: 'https://wa.me/905525821497'
@@ -345,7 +346,7 @@ export default function ProductPage({
           if (response.data) {
             setFooterSettings({
               phone: response.data.phone || '+90 552 582 14 97',
-              email: response.data.email || 'fulani.dev@gmail.com',
+              email: response.data.email || envSupportEmail,
               location: response.data.location || '',
               telegram_url: response.data.telegram_url || 'https://t.me/fulani_admin',
               whatsapp_url: response.data.whatsapp_url || 'https://wa.me/905525821497'

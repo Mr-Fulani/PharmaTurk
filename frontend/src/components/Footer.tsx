@@ -20,10 +20,11 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
   const theme = useTheme()
   const defaultLocation = t('footer_location', 'Стамбул, Турция')
   const defaultCryptoText = t('footer_crypto_payment', 'Возможна оплата криптовалютой')
+  const envSupportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || ''
   // Инициализируем с дефолтными значениями, чтобы избежать проблем при SSR
   const [settings, setSettings] = useState<FooterSettings>({
     phone: initialSettings?.phone || '+90 552 582 14 97',
-    email: initialSettings?.email || 'fulani.dev@gmail.com',
+    email: initialSettings?.email || envSupportEmail,
     location: initialSettings?.location || defaultLocation,
     telegram_url: initialSettings?.telegram_url || '',
     whatsapp_url: initialSettings?.whatsapp_url || '',
@@ -36,7 +37,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
     if (!initialSettings) return
     setSettings((prev) => ({
       phone: initialSettings.phone || prev.phone || '+90 552 582 14 97',
-      email: initialSettings.email || prev.email || 'fulani.dev@gmail.com',
+      email: initialSettings.email || prev.email || envSupportEmail,
       location: initialSettings.location || prev.location || defaultLocation,
       telegram_url: initialSettings.telegram_url || prev.telegram_url || '',
       whatsapp_url: initialSettings.whatsapp_url || prev.whatsapp_url || '',
@@ -67,7 +68,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
             : defaultCryptoText
           setSettings((prev) => ({
             phone: data.phone || initialSettings?.phone || prev.phone || '+90 552 582 14 97',
-            email: data.email || initialSettings?.email || prev.email || 'fulani.dev@gmail.com',
+            email: data.email || initialSettings?.email || prev.email || envSupportEmail,
             location: resolvedLocation || initialSettings?.location || prev.location || defaultLocation,
             telegram_url: data.telegram_url || initialSettings?.telegram_url || prev.telegram_url || '',
             whatsapp_url: data.whatsapp_url || initialSettings?.whatsapp_url || prev.whatsapp_url || '',
@@ -84,7 +85,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
       // На сервере используем значения по умолчанию
       setSettings({
         phone: '+90 552 582 14 97',
-        email: 'fulani.dev@gmail.com',
+        email: envSupportEmail,
         location: defaultLocation,
         telegram_url: '',
         whatsapp_url: '',

@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
                 ("phone", models.CharField(blank=True, default="+90 552 582 14 97", max_length=50, verbose_name="Телефон")),
-                ("email", models.EmailField(blank=True, default="fulani.dev@gmail.com", max_length=254, verbose_name="Email")),
+                ("email", models.EmailField(blank=True, default="", max_length=254, verbose_name="Email")),
                 ("location", models.CharField(blank=True, default="Стамбул, Турция", max_length=200, verbose_name="Адрес")),
                 ("telegram_url", models.URLField(blank=True, verbose_name="Ссылка на Telegram")),
                 ("whatsapp_url", models.URLField(blank=True, verbose_name="Ссылка на WhatsApp")),
@@ -31,4 +31,3 @@ class Migration(migrations.Migration):
             },
         ),
     ]
-
