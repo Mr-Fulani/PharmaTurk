@@ -23,18 +23,42 @@
       page-break-inside: avoid;
     }
 
+    .print-spacer {
+      display: none;
+    }
+
     @media print {
+      html,
+      body {
+        height: 100%;
+      }
+
       body {
         background-color: #ffffff !important;
+      }
+
+      .page-padding {
+        height: 100%;
+        padding: 0 !important;
       }
 
       .receipt-container {
         width: 100% !important;
         max-width: 100% !important;
+        min-height: 100%;
       }
 
-      .page-padding {
-        padding: 0 !important;
+      .receipt-container > tbody > tr:last-child > td {
+        padding-bottom: 0 !important;
+      }
+
+      .print-spacer {
+        display: table-row;
+        height: 100%;
+      }
+
+      .print-spacer td {
+        height: 100%;
       }
     }
   </style>
@@ -235,6 +259,10 @@
               </table>
 
             </td>
+          </tr>
+
+          <tr class="print-spacer">
+            <td></td>
           </tr>
 
           <!-- SOCIAL + FOOTER -->
