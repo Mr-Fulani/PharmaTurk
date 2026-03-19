@@ -76,12 +76,30 @@ PAYMENT_STATUS_TRANSLATIONS = {
     }
 }
 
+
+def get_order_customer_email(order: Order) -> str | None:
+    # Основной источник email покупателя — contact_email из формы
+    email = (getattr(order, "contact_email", "") or "").strip()
+    if email:
+        return email
+
+    # Если контактный email не указан, берём email пользователя, но не для админов/сотрудников
+    user = getattr(order, "user", None)
+    if not user:
+        return None
+    if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        return None
+
+    return (getattr(user, "email", "") or "").strip() or None
+
+
 def translate_method(method: str | None, dict_map: Dict[str, Dict[str, str]], locale: str) -> str:
     if not method:
         return "-"
     m = method.strip().lower()
     loc = "en" if locale == "en" else "ru"
     return dict_map.get(loc, {}).get(m, method)
+
 
 def _decimal(value: Decimal | None) -> Decimal:
     return value if isinstance(value, Decimal) else Decimal(value or 0)

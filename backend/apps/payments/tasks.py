@@ -107,7 +107,9 @@ def notify_crypto_payment_confirmed(self, order_id: int) -> None:
 
     # Отправляем чек на почту (и генерируем PDF)
     try:
-        user_email = getattr(order, 'contact_email', None) or (order.user.email if order.user else None)
+        # Берём email покупателя и не отправляем на админские адреса
+        from apps.orders.services import get_order_customer_email
+        user_email = get_order_customer_email(order)
         if user_email:
             # Отправка чека по email
             send_order_receipt_task.delay(order_id=order.id, email=user_email)

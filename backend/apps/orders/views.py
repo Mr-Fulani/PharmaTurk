@@ -140,7 +140,7 @@ from .serializers import (
     PromoCodeSerializer,
     UpdateCartItemSerializer,
 )
-from .services import build_order_receipt_payload, render_receipt_html  # TODO: Функционал чеков временно отключен. Будет доработан позже.
+from .services import build_order_receipt_payload, render_receipt_html, get_order_customer_email  # TODO: Функционал чеков временно отключен. Будет доработан позже.
 from .tasks import send_order_receipt_task, notify_new_order_telegram  # TODO: Функционал чеков временно отключен. Будет доработан позже.
 
 logger = logging.getLogger(__name__)
@@ -983,7 +983,8 @@ class OrderViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'], url_path=r'send-receipt/(?P<number>[^/]+)')
     def send_receipt(self, request, number: str):
         order = self._get_order_for_user(request.user, number)
-        email = request.data.get('email') or order.contact_email or (order.user.email if order.user else None)
+        # Если email не указан в запросе, используем контактный email заказа или email покупателя
+        email = request.data.get('email') or get_order_customer_email(order)
         if not email:
             return Response({"detail": _("Не указан email для отправки чека")}, status=400)
         try:
@@ -1200,7 +1201,8 @@ class OrderViewSet(viewsets.ViewSet):
 
             # Отправляем задачи только после успешного коммита транзакции,
             # чтобы избежать race condition, когда Celery ищет еще не созданный заказ.
-            receipt_email = order.contact_email or (order.user.email if order.user else None)
+            # Берём email покупателя и не отправляем на админские адреса
+            receipt_email = get_order_customer_email(order)
             if receipt_email:
                 transaction.on_commit(
                     lambda: send_order_receipt_task.delay(order.id, receipt_email, locale=locale)

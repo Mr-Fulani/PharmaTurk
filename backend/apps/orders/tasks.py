@@ -22,7 +22,13 @@ from config.celery import app
 logger = logging.getLogger(__name__)
 
 from .models import Order
-from .services import build_order_receipt_payload, render_receipt_html, generate_and_save_receipt, get_receipt_filename
+from .services import (
+    build_order_receipt_payload,
+    render_receipt_html,
+    generate_and_save_receipt,
+    get_receipt_filename,
+    get_order_customer_email,
+)
 
 
 class IPv4EmailBackend(EmailBackend):
@@ -286,7 +292,8 @@ def send_order_receipt_task(
     """Отправляет чек по заказу на указанный email на языке locale (ru/en)."""
     order = Order.objects.select_related("user").prefetch_related("items").get(id=order_id)
 
-    recipient = email or order.contact_email or (order.user.email if order.user else None)
+    # Выбираем email покупателя, избегая отправки на админские адреса
+    recipient = email or get_order_customer_email(order)
     if not recipient:
         logger.warning("No recipient email found for order %s", order.number)
         return False
