@@ -66,7 +66,11 @@ def notify_crypto_payment_confirmed(self, order_id: int) -> None:
         pass
 
     def _send_tg(chat_id: str, text: str):
-        if not bot_token or not chat_id:
+        if not bot_token:
+            logger.error("TELEGRAM_BOT_TOKEN is not set!")
+            return
+        if not chat_id:
+            logger.warning("Telegram chat_id is missing, skipping notification")
             return
         try:
             resp = requests.post(
@@ -128,12 +132,17 @@ def notify_crypto_payment_expired(self, order_id: int) -> None:
     user = order.user
     user_chat_id = ""
     if user:
-        utg = getattr(user, "telegram_chat_id", None) or getattr(user, "tg_chat_id", None)
+        # В модели User поле называется telegram_id
+        utg = getattr(user, "telegram_id", None) or ""
         if utg:
-            user_chat_id = str(utg)
+            user_chat_id = str(utg).strip()
 
     def _send_tg(chat_id: str, text: str):
-        if not bot_token or not chat_id:
+        if not bot_token:
+            logger.error("TELEGRAM_BOT_TOKEN is not set!")
+            return
+        if not chat_id:
+            logger.warning("Telegram chat_id is missing, skipping notification")
             return
         try:
             resp = requests.post(

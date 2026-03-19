@@ -1197,16 +1197,14 @@ class OrderViewSet(viewsets.ViewSet):
             cart.items.all().delete()
 
             # Отправляем чек по email и уведомление в Telegram
-            # send_order_receipt_task генерирует PDF (сохраняет в R2),
-            # после чего Telegram-задача использует уже готовый чек
+            # Мы запускаем их раздельно, чтобы ошибка в email (напр. SMTP) не блокировала Telegram-уведомление
             receipt_email = order.contact_email or (order.user.email if order.user else None)
+            
+            # 1. Задача на email (с генерацией PDF)
             if receipt_email:
-                send_order_receipt_task.apply_async(
-                    (order.id, receipt_email),
-                    {"locale": locale},
-                    link=notify_new_order_telegram.signature((order.id,), {"locale": locale})
-                )
-            else:
-                notify_new_order_telegram.delay(order.id, locale=locale)
+                send_order_receipt_task.delay(order.id, receipt_email, locale=locale)
+            
+            # 2. Задача на Telegram (админу и пользователю)
+            notify_new_order_telegram.delay(order_id=order.id, locale=locale)
 
             return Response(OrderSerializer(order).data, status=201)

@@ -32,8 +32,11 @@ def send_order_receipt_task(
 
     recipient = email or order.contact_email or (order.user.email if order.user else None)
     if not recipient:
+        logger.warning("No recipient email found for order %s", order.number)
         return False
 
+    logger.info("Sending receipt email for order %s to %s", order.number, recipient)
+    
     loc = "en" if (locale or "").strip().lower() == "en" else "ru"
     receipt = build_order_receipt_payload(order, locale=loc)
     html_body = render_receipt_html(order, receipt, locale=loc)
@@ -51,15 +54,21 @@ def send_order_receipt_task(
 
     # Call the service to generate the PDF and upload to R2
     # It will also update the order.receipt_url
-    receipt_url, pdf_content = generate_and_save_receipt(order, locale=loc)
-
-    if pdf_content:
-        try:
+    try:
+        receipt_url, pdf_content = generate_and_save_receipt(order, locale=loc)
+        if pdf_content:
             message.attach(get_receipt_filename(order), pdf_content, "application/pdf")
-        except Exception:
-            pass
+            logger.info("PDF receipt attached to email for order %s", order.number)
+    except Exception as e:
+        logger.error("Failed to generate/attach PDF receipt for order %s: %s", order.number, e)
 
-    message.send()
+    try:
+        message.send()
+        logger.info("Receipt email successfully sent for order %s to %s", order.number, recipient)
+    except Exception as e:
+        logger.error("SMTP error sending receipt for order %s to %s: %s", order.number, recipient, e)
+        raise  # Retry via Celery
+
     return True
 
 @app.task(bind=True, autoretry_for=(Exception,), retry_backoff=30, max_retries=3)
@@ -90,10 +99,15 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
 
     is_ru = locale != "en"
 
-    # Скачиваем PDF-чек из R2 (если он уже был сгенерирован email-задачей)
+    # Получаем PDF-чек (если он уже был сгенерирован email-задачей или генерируем сейчас)
     pdf_bytes: bytes | None = None
     receipt_url = getattr(order, "receipt_url", None)
-    if receipt_url:
+    
+    if not receipt_url:
+        # Если URL еще нет (задачи запущены параллельно), попробуем сгенерировать сами
+        receipt_url, pdf_bytes = generate_and_save_receipt(order, locale=locale)
+    
+    if receipt_url and not pdf_bytes:
         try:
             r = requests.get(receipt_url, timeout=15)
             if r.ok:
@@ -104,7 +118,11 @@ def notify_new_order_telegram(self, _email_result=None, order_id: int = None, lo
             logger.warning("Error downloading receipt PDF for order %s: %s", order.number, dl_err)
 
     def _send_tg(chat_id: str, text: str, document: bytes | None = None, filename: str = "receipt.pdf"):
-        if not bot_token or not chat_id:
+        if not bot_token:
+            logger.error("TELEGRAM_BOT_TOKEN is not set!")
+            return
+        if not chat_id:
+            logger.warning("Telegram chat_id is missing, skipping notification")
             return
         try:
             base_url = f"https://api.telegram.org/bot{bot_token}/"
