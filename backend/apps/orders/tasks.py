@@ -25,7 +25,7 @@ from .services import build_order_receipt_payload, render_receipt_html, generate
 
 
 class IPv4EmailBackend(EmailBackend):
-    # Используем IPv4-адрес напрямую, если окружение не умеет в IPv6
+    # Используем IPv4-адреса, если окружение не умеет в IPv6
     def open(self):
         if self.connection:
             return False
@@ -34,18 +34,27 @@ class IPv4EmailBackend(EmailBackend):
             addrinfo = socket.getaddrinfo(self.host, self.port, socket.AF_INET, socket.SOCK_STREAM)
             if not addrinfo:
                 raise socket.error(f"Could not resolve IPv4 for {self.host}")
-            ipv4_addr = addrinfo[0][4][0]
-
-            logger.info(f"Connecting to {self.host} via IPv4: {ipv4_addr}")
-            self.connection = self.connection_class(ipv4_addr, self.port, timeout=self.timeout)
-
-            if self.use_tls and not self.use_ssl:
-                # Важно передать исходный hostname для корректной TLS-валидации сертификата
-                self.connection.starttls(server_hostname=self.host)
-
-            if self.username and self.password:
-                self.connection.login(self.username, self.password)
-            return True
+            # Пробуем несколько IPv4-адресов, если один из них не отвечает
+            last_error = None
+            per_attempt_timeout = min(self.timeout or 30, 8)
+            for entry in addrinfo:
+                ipv4_addr = entry[4][0]
+                try:
+                    logger.info(f"Connecting to {self.host} via IPv4: {ipv4_addr}")
+                    self.connection = self.connection_class(ipv4_addr, self.port, timeout=per_attempt_timeout)
+                    if self.use_tls and not self.use_ssl:
+                        # Передаем исходный hostname для корректной TLS-валидации сертификата
+                        self.connection.starttls(server_hostname=self.host)
+                    if self.username and self.password:
+                        self.connection.login(self.username, self.password)
+                    return True
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"IPv4 адрес недоступен: {ipv4_addr} ({str(e)})")
+                    self.connection = None
+            if last_error:
+                raise last_error
+            return False
         except Exception:
             if not self.fail_silently:
                 raise
