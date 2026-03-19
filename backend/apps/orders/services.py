@@ -215,7 +215,7 @@ def build_order_receipt_payload(order: Order, locale: str = 'ru') -> Dict[str, A
 
     seller = {
         "name": getattr(settings, "COMPANY_NAME", "PharmaTurk"),
-        "email": getattr(settings, "COMPANY_SUPPORT_EMAIL", settings.DEFAULT_FROM_EMAIL),
+        "email": getattr(settings, "EMAIL_API_FROM", "") or getattr(settings, "COMPANY_SUPPORT_EMAIL", settings.DEFAULT_FROM_EMAIL),
         "phone": getattr(settings, "COMPANY_SUPPORT_PHONE", ""),
         "address": getattr(settings, "COMPANY_ADDRESS", ""),
         "site": getattr(settings, "COMPANY_SITE_URL", "https://pharmaturk.ru"),

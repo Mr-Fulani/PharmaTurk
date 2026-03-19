@@ -9,7 +9,7 @@
   <style>
     @page {
       size: A4 portrait;
-      margin: 8mm;
+      margin: 12mm;
     }
 
     table,
@@ -22,14 +22,29 @@
     .avoid-break {
       page-break-inside: avoid;
     }
+
+    @media print {
+      body {
+        background-color: #ffffff !important;
+      }
+
+      .receipt-container {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+
+      .page-padding {
+        padding: 0 !important;
+      }
+    }
   </style>
 </head>
 
 <body style="margin:0;padding:0;background-color:#f0f2f8;font-family:'Segoe UI',Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f2f8;padding:8px 0;">
+  <table width="100%" cellpadding="0" cellspacing="0" class="page-padding" style="background-color:#f0f2f8;padding:8px 0;">
     <tr>
       <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+        <table width="600" cellpadding="0" cellspacing="0" class="receipt-container" style="max-width:600px;width:100%;">
 
           <!-- HEADER BANNER -->
           <tr>
