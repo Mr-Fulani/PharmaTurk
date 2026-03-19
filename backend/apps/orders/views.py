@@ -1196,15 +1196,18 @@ class OrderViewSet(viewsets.ViewSet):
                 )
             cart.items.all().delete()
 
-            # Отправляем чек по email и уведомление в Telegram
-            # Мы запускаем их раздельно, чтобы ошибка в email (напр. SMTP) не блокировала Telegram-уведомление
+            from django.db import transaction
+
+            # Отправляем задачи только после успешного коммита транзакции,
+            # чтобы избежать race condition, когда Celery ищет еще не созданный заказ.
             receipt_email = order.contact_email or (order.user.email if order.user else None)
-            
-            # 1. Задача на email (с генерацией PDF)
             if receipt_email:
-                send_order_receipt_task.delay(order.id, receipt_email, locale=locale)
+                transaction.on_commit(
+                    lambda: send_order_receipt_task.delay(order.id, receipt_email, locale=locale)
+                )
             
-            # 2. Задача на Telegram (админу и пользователю)
-            notify_new_order_telegram.delay(order_id=order.id, locale=locale)
+            transaction.on_commit(
+                lambda: notify_new_order_telegram.delay(order_id=order.id, locale=locale)
+            )
 
             return Response(OrderSerializer(order).data, status=201)
