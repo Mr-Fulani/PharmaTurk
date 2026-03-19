@@ -66,13 +66,39 @@ def send_order_receipt_task(
         logger.critical("Failed to generate/attach PDF receipt for order %s: %s. The task will fail and retry.", order.number, e)
         raise  # Перевыбрасываем исключение, чтобы задача провалилась и была перезапущена
 
-    try:
-        message.send()
-        logger.info("Receipt email successfully sent for order %s to %s", order.number, recipient)
-    except Exception as e:
-        logger.error("SMTP error sending receipt for order %s to %s: %s", order.number, recipient, e)
-        raise  # Retry via Celery
+    # --- ТОТАЛЬНАЯ ОТЛАДКА SMTP ---
+    import smtplib
+    from django.conf import settings
+    
+    logger.info("--- SMTP DEBUG START ---")
+    logger.info(f"HOST: {settings.EMAIL_HOST}")
+    logger.info(f"PORT: {settings.EMAIL_PORT}")
+    logger.info(f"USER: {settings.EMAIL_HOST_USER}")
+    logger.info(f"TLS: {settings.EMAIL_USE_TLS}")
+    logger.info(f"SSL: {settings.EMAIL_USE_SSL}")
+    logger.info(f"FROM: {settings.DEFAULT_FROM_EMAIL}")
+    logger.info(f"RECIPIENT: {recipient}")
 
+    try:
+        logger.info("Attempting to send email via Django message.send()...")
+        message.send()
+        logger.info("SUCCESS: Django reports email sent!")
+    except Exception as e:
+        logger.error(f"FAILED: Django could not send email: {str(e)}")
+        # Если упало, пробуем через чистый smtplib, чтобы увидеть ответ сервера
+        try:
+            logger.info("Trying raw smtplib for deeper diagnostics...")
+            with smtplib.SMTP(settings.EMAIL_HOST, settings.EMAIL_PORT, timeout=15) as server:
+                server.set_debuglevel(1)
+                if settings.EMAIL_USE_TLS:
+                    server.starttls()
+                server.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
+                server.sendmail(settings.DEFAULT_FROM_EMAIL, [recipient], message.message().as_string())
+            logger.info("SUCCESS: Raw smtplib sent the email!")
+        except Exception as raw_e:
+            logger.critical(f"CRITICAL: Raw smtplib also failed: {str(raw_e)}")
+            raise
+    logger.info("--- SMTP DEBUG END ---")
     return True
 
 @app.task(bind=True, autoretry_for=(Exception,), retry_backoff=30, max_retries=3)
