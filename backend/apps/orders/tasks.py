@@ -267,6 +267,8 @@ def _send_email_via_resend(message) -> bool:
 def _send_email_via_api(message) -> bool:
     # Выбор провайдера API отправки
     provider = (getattr(settings, "EMAIL_API_PROVIDER", "") or "").strip().lower()
+    if provider:
+        logger.info("Email API provider enabled: %s", provider)
     if provider == "sendgrid":
         return _send_email_via_sendgrid(message)
     if provider == "smtp2go":
@@ -326,6 +328,7 @@ def send_order_receipt_task(
     try:
         # Пытаемся отправить через Django. При сетевой ошибке делаем IPv4-фоллбек.
         logger.info(f"Sending email via Django to {recipient} (HOST: {settings.EMAIL_HOST})")
+        logger.info("Configured EMAIL_API_PROVIDER: %s", getattr(settings, "EMAIL_API_PROVIDER", ""))
         _send_email_with_ipv4_fallback(message)
 
         logger.info("SUCCESS: Email sent successfully!")
