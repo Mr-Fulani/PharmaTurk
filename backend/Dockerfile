@@ -26,6 +26,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
   && rm -rf /var/lib/apt/lists/*
 
+# Force IPv4 priority over IPv6 to fix "Network is unreachable" issues with SMTP/APIs
+RUN sed -i 's/#precedence ::ffff:0:0\/96  100/precedence ::ffff:0:0\/96  100/' /etc/gai.conf || echo "precedence ::ffff:0:0/96  100" >> /etc/gai.conf
+
 # Install Poetry (через pip, чтобы избежать отсутствия бинаря)
 RUN pip install --no-cache-dir "poetry==${POETRY_VERSION}"
 ENV PATH="/usr/local/bin:$PATH"
