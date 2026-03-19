@@ -10,6 +10,8 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
 
   frontend:
     build:
@@ -22,6 +24,8 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
 
   nginx:
     restart: always
@@ -48,15 +52,21 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
 
   celery_ai:
     restart: always
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
 
   celerybeat:
     restart: always
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1

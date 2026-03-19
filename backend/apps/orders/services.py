@@ -373,5 +373,7 @@ def generate_and_save_receipt(order: Order, locale: str = "ru") -> tuple[str | N
         return receipt_url, pdf_file
 
     except Exception as e:
-        logger.error(f"Error generating and saving receipt for order {order.number}: {e}")
+        import traceback
+        logger.error(f"CRITICAL ERROR generating/saving receipt for order {order.number}: {str(e)}")
+        logger.error(traceback.format_exc())
         return None, None

@@ -60,45 +60,27 @@ def send_order_receipt_task(
             message.attach(get_receipt_filename(order), pdf_content, "application/pdf")
             logger.info("PDF receipt attached to email for order %s", order.number)
         else:
-            # Если по какой-то причине контент PDF пустой, но ошибки не было, логируем это
-            logger.warning("PDF content is empty for order %s. Email will be sent without attachment.", order.number)
+            # Если PDF не сгенерирован, считаем это ошибкой задачи, чтобы она ушла в ретрай
+            error_msg = f"PDF content is empty for order {order.number}. This is critical, retrying task."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
     except Exception as e:
-        logger.critical("Failed to generate/attach PDF receipt for order %s: %s. The task will fail and retry.", order.number, e)
+        logger.critical("Failed to generate/attach PDF receipt for order %s: %s. The task will retry.", order.number, str(e))
         raise  # Перевыбрасываем исключение, чтобы задача провалилась и была перезапущена
 
-    # --- ТОТАЛЬНАЯ ОТЛАДКА SMTP ---
-    import smtplib
-    from django.conf import settings
-    
-    logger.info("--- SMTP DEBUG START ---")
-    logger.info(f"HOST: {settings.EMAIL_HOST}")
-    logger.info(f"PORT: {settings.EMAIL_PORT}")
-    logger.info(f"USER: {settings.EMAIL_HOST_USER}")
-    logger.info(f"TLS: {settings.EMAIL_USE_TLS}")
-    logger.info(f"SSL: {settings.EMAIL_USE_SSL}")
-    logger.info(f"FROM: {settings.DEFAULT_FROM_EMAIL}")
-    logger.info(f"RECIPIENT: {recipient}")
-
+    # --- SMTP SENDING ---
+    logger.info("--- SMTP START ---")
     try:
-        logger.info("Attempting to send email via Django message.send()...")
+        logger.info(f"Sending email via Django to {recipient} (HOST: {settings.EMAIL_HOST})")
         message.send()
-        logger.info("SUCCESS: Django reports email sent!")
+        logger.info("SUCCESS: Email sent successfully!")
     except Exception as e:
         logger.error(f"FAILED: Django could not send email: {str(e)}")
-        # Если упало, пробуем через чистый smtplib, чтобы увидеть ответ сервера
-        try:
-            logger.info("Trying raw smtplib for deeper diagnostics...")
-            with smtplib.SMTP(settings.EMAIL_HOST, settings.EMAIL_PORT, timeout=15) as server:
-                server.set_debuglevel(1)
-                if settings.EMAIL_USE_TLS:
-                    server.starttls()
-                server.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
-                server.sendmail(settings.DEFAULT_FROM_EMAIL, [recipient], message.message().as_string())
-            logger.info("SUCCESS: Raw smtplib sent the email!")
-        except Exception as raw_e:
-            logger.critical(f"CRITICAL: Raw smtplib also failed: {str(raw_e)}")
-            raise
-    logger.info("--- SMTP DEBUG END ---")
+        # Если упало, выводим подробности для диагностики (IPv6, Auth и т.д.)
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
+    logger.info("--- SMTP END ---")
     return True
 
 @app.task(bind=True, autoretry_for=(Exception,), retry_backoff=30, max_retries=3)
