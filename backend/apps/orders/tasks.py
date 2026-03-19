@@ -14,6 +14,7 @@ from django.utils.translation import gettext_lazy as _
 import requests
 import logging
 
+import socket
 from config.celery import app
 
 logger = logging.getLogger(__name__)
@@ -81,44 +82,43 @@ def send_order_receipt_task(
             
             # Чистый способ форсировать IPv4 без monkeypatch: 
             # переопределяем способ создания сокета в бэкенде
-            from django.core.mail import get_connection
             from django.core.mail.backends.smtp import EmailBackend
 
             class IPv4EmailBackend(EmailBackend):
-                 def open(self):
-                     if self.connection:
-                         return False
-                     try:
-                         # Resolve host to IPv4 only
-                         addrinfo = socket.getaddrinfo(self.host, self.port, socket.AF_INET, socket.SOCK_STREAM)
-                         if not addrinfo:
-                             raise socket.error(f"Could not resolve IPv4 for {self.host}")
-                         ipv4_addr = addrinfo[0][4][0]
-                         
-                         logger.info(f"Connecting to {self.host} via IPv4: {ipv4_addr}")
-                         self.connection = self.connection_class(ipv4_addr, self.port, timeout=self.timeout)
-                         
-                         if self.use_tls:
-                             # THIS IS THE KEY: pass the original hostname for SSL verification
-                             self.connection.starttls(server_hostname=self.host)
-                         
-                         if self.username and self.password:
-                             self.connection.login(self.username, self.password)
-                         return True
-                     except Exception as e:
-                         if not self.fail_silently:
-                             raise
-                         return False
+                def open(self):
+                    if self.connection:
+                        return False
+                    try:
+                        # Resolve host to IPv4 only
+                        addrinfo = socket.getaddrinfo(self.host, self.port, socket.AF_INET, socket.SOCK_STREAM)
+                        if not addrinfo:
+                            raise socket.error(f"Could not resolve IPv4 for {self.host}")
+                        ipv4_addr = addrinfo[0][4][0]
+                        
+                        logger.info(f"Connecting to {self.host} via IPv4: {ipv4_addr}")
+                        self.connection = self.connection_class(ipv4_addr, self.port, timeout=self.timeout)
+                        
+                        if self.use_tls:
+                            # THIS IS THE KEY: pass the original hostname for SSL verification
+                            self.connection.starttls(server_hostname=self.host)
+                        
+                        if self.username and self.password:
+                            self.connection.login(self.username, self.password)
+                        return True
+                    except Exception as e:
+                        if not self.fail_silently:
+                            raise
+                        return False
 
-             connection = IPv4EmailBackend(
-                 host=settings.EMAIL_HOST,
-                 port=settings.EMAIL_PORT,
-                 username=settings.EMAIL_HOST_USER,
-                 password=settings.EMAIL_HOST_PASSWORD,
-                 use_tls=settings.EMAIL_USE_TLS,
-                 use_ssl=settings.EMAIL_USE_SSL,
-                 timeout=settings.EMAIL_TIMEOUT,
-             )
+            connection = IPv4EmailBackend(
+                host=settings.EMAIL_HOST,
+                port=settings.EMAIL_PORT,
+                username=settings.EMAIL_HOST_USER,
+                password=settings.EMAIL_HOST_PASSWORD,
+                use_tls=settings.EMAIL_USE_TLS,
+                use_ssl=settings.EMAIL_USE_SSL,
+                timeout=settings.EMAIL_TIMEOUT,
+            )
             message.connection = connection
             message.send()
 
