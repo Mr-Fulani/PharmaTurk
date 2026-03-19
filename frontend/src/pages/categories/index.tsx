@@ -1,10 +1,12 @@
 import Head from 'next/head'
 import axios from 'axios'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import Masonry from 'react-masonry-css'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import BannerCarousel from '../../components/BannerCarouselMedia'
+import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../../lib/media'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
 
 interface CategoryTranslation {
@@ -20,88 +22,19 @@ interface Category {
   description?: string
   products_count?: number
   parent?: number | null
+  gender?: string | null
+  clothing_type?: string | null
+  device_type?: string | null
   card_media_url?: string | null
   translations?: CategoryTranslation[]
+  displaySlug?: string
 }
 
 // @ts-ignore: нет типов для @egjs/react-grid
-export default function CategoriesPage({ categories }: { categories: Category[] }) {
+export default function CategoriesPage({ categories, locale: propLocale }: { categories: Category[]; locale?: string }) {
   const { t } = useTranslation('common')
-
-  // Такая же функция, как на главной, чтобы не было расхождений при перезагрузке
-  const resolveMediaUrl = (url?: string | null) => {
-    if (!url) return ''
-
-    // Абсолютный URL, но мог прийти с хостом backend:8000 — переписываем на публичный
-    const clientApi = process.env.NEXT_PUBLIC_API_BASE
-    const serverApi = process.env.INTERNAL_API_BASE
-
-    const stripApiSuffix = (value?: string) => {
-      if (!value) return ''
-      return value.endsWith('/api') ? value.slice(0, -4) : value
-    }
-
-    const fallbackMediaBase =
-      process.env.NEXT_PUBLIC_MEDIA_BASE ||
-      'http://localhost:8000'
-
-    const replaceBackendHost = (base: string) => {
-      if (!base) return ''
-      try {
-        const u = new URL(base)
-        if (u.hostname === 'backend') {
-          if (typeof window !== 'undefined') {
-            u.hostname = window.location.hostname
-          } else {
-            u.hostname = 'localhost'
-            u.port = u.port || '8000'
-          }
-        }
-        return u.toString().replace(/\/$/, '')
-      } catch {
-        return base
-      }
-    }
-
-    const serverMediaBase = replaceBackendHost(stripApiSuffix(serverApi) || 'http://backend:8000')
-    const clientMediaBase =
-      typeof window === 'undefined'
-        ? replaceBackendHost(stripApiSuffix(serverApi) || stripApiSuffix(clientApi) || fallbackMediaBase)
-        : replaceBackendHost(stripApiSuffix(clientApi) || '') ||
-          `${window.location.protocol}//${window.location.hostname}:8000`
-
-    // Если абсолютный и указывает на backend/внутренний хост — заменяем на публичный
-    if (/^https?:\/\//i.test(url)) {
-      try {
-        const u = new URL(url)
-        if (serverMediaBase && url.startsWith(serverMediaBase)) {
-          return url.replace(serverMediaBase, clientMediaBase || u.origin)
-        }
-        // если хост "backend" или "backend:8000", заменим на доступный
-        if (u.hostname === 'backend') {
-          const origin8000 =
-            typeof window !== 'undefined'
-              ? `${window.location.protocol}//${window.location.hostname}:8000`
-              : fallbackMediaBase
-          return `${origin8000}${u.pathname}${u.search}`
-        }
-        return url
-      } catch {
-        return url
-      }
-    }
-
-    // Относительный путь
-    if (clientMediaBase) {
-      return url.startsWith('/') ? `${clientMediaBase}${url}` : `${clientMediaBase}/${url}`
-    }
-
-    if (typeof window !== 'undefined') {
-      const origin = window.location.origin
-      return url.startsWith('/') ? `${origin}${url}` : `${origin}/${url}`
-    }
-    return url
-  }
+  const router = useRouter()
+  const locale = router.locale || propLocale || 'ru'
 
   const extractYouTubeId = (url?: string | null) => {
     if (!url) return null
@@ -116,12 +49,12 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
     return youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : null
   }
 
-  const renderMedia = (mediaUrl?: string | null, alt?: string) => {
-    if (!mediaUrl) return null
+  const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
+    const effectiveUrl = mediaUrl || getPlaceholderImageUrl({ type: 'category', id })
 
-    const youtubeId = extractYouTubeId(mediaUrl)
+    const youtubeId = extractYouTubeId(effectiveUrl)
     if (youtubeId) {
-      const youtubeThumb = getYouTubeThumbnail(mediaUrl)
+      const youtubeThumb = getYouTubeThumbnail(effectiveUrl)
       const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
       const params = [
         'autoplay=1',
@@ -170,13 +103,10 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
     }
 
     // Обычная обработка файла/изображения
-    const src = resolveMediaUrl(mediaUrl)
+    const src = resolveMediaUrl(effectiveUrl)
     if (!src) return null
 
-    const normalized = src.split('?')[0].toLowerCase()
-    const isVideo = /\.(mp4|mov|webm|m4v)$/i.test(normalized)
-
-    if (isVideo) {
+    if (isVideoUrl(mediaUrl || src)) {
       return (
         <video
           className="absolute inset-0 h-full w-full object-cover"
@@ -184,6 +114,20 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
           muted
           loop
           playsInline
+          preload="metadata"
+          onError={(e) => {
+            const placeholder = id ? getPlaceholderImageUrl({ type: 'category', id }) : null
+            if (placeholder) {
+              const wrapper = e.currentTarget.parentElement
+              if (wrapper) {
+                const img = document.createElement('img')
+                img.src = placeholder
+                img.alt = alt || ''
+                img.className = 'absolute inset-0 h-full w-full object-cover'
+                wrapper.replaceChildren(img)
+              }
+            }
+          }}
         >
           <source src={src} />
         </video>
@@ -195,6 +139,12 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
         src={src}
         alt={alt || ''}
         className="absolute inset-0 h-full w-full object-cover"
+        onError={(e) => {
+          const placeholder = id ? getPlaceholderImageUrl({ type: 'category', id }) : null
+          if (placeholder && e.currentTarget.src !== placeholder) {
+            e.currentTarget.src = placeholder
+          }
+        }}
       />
     )
   }
@@ -233,20 +183,25 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
             {categories.map((c, idx) => {
               const heights = [224, 256, 288]
               const cardHeight = heights[idx % heights.length]
+              const hrefSlug = c.displaySlug || c.slug
               return (
                 <Link
                   key={c.id}
-                  href={`/categories/${c.slug}`}
+                  href={`/categories/${hrefSlug}`}
                   style={{ height: cardHeight }}
                   className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-[var(--surface)]"
                 >
-                  {renderMedia(c.card_media_url, getLocalizedCategoryName(c.slug, c.name, t, c.translations))}
+                  {renderMedia(
+                    c.card_media_url,
+                    getLocalizedCategoryName(c.slug, c.name, t, c.translations, locale),
+                    c.id
+                  )}
                   <div className="absolute inset-0 bg-[var(--text-strong)]/20" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
                     <div className="text-center text-white drop-shadow">
-                      <h3 className="text-xl font-bold mb-1">{getLocalizedCategoryName(c.slug, c.name, t, c.translations)}</h3>
-                      {getLocalizedCategoryDescription(c.slug, c.description, t, c.translations) ? (
-                        <p className="text-sm opacity-90 line-clamp-2">{getLocalizedCategoryDescription(c.slug, c.description, t, c.translations)}</p>
+                      <h3 className="text-xl font-bold mb-1">{getLocalizedCategoryName(c.slug, c.name, t, c.translations, locale)}</h3>
+                      {getLocalizedCategoryDescription(c.slug, c.description, t, c.translations, locale) ? (
+                        <p className="text-sm opacity-90 line-clamp-2">{getLocalizedCategoryDescription(c.slug, c.description, t, c.translations, locale)}</p>
                       ) : null}
                       {c.products_count ? (
                         <p className="text-xs opacity-80 mt-2">{c.products_count} {t('products_count', 'товаров')}</p>
@@ -277,33 +232,62 @@ export default function CategoriesPage({ categories }: { categories: Category[] 
 
 export async function getServerSideProps(ctx: any) {
   try {
-    // Используем относительный путь, который работает через Next.js rewrites
-    const base = process.env.INTERNAL_API_BASE || ''
-
-    // Берём только корневые с бэкенда (top_level), чтобы не тянуть весь список
-    const res = await axios.get(`${base}/api/catalog/categories`, {
+    const { getInternalApiUrl } = await import('../../lib/urls')
+    const { fetchFooterSettings } = await import('../../lib/footerSettings')
+    const res = await axios.get(getInternalApiUrl('catalog/categories'), {
       params: { top_level: true, page_size: 200 }
     })
     const all: Category[] = Array.isArray(res.data) ? res.data : (res.data.results || [])
 
-    // Нормализуем слуги (underscores -> dash) и устраняем дубли
+    // Нормализуем слуги и устраняем дубли
+    const normalizeSlug = (value: any) =>
+      (value || '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, '-')
+    // Only exact slug matches for canonical types — no partial matching
+    // (partial matching caused e.g. "islamic-clothing" to merge with "clothing")
+    const resolveCanonicalSlug = (slug: string) => {
+      return normalizeSlug(slug)
+    }
     const uniqueMap = new Map<string, Category>()
     all.forEach((c) => {
-      const normSlug = (c.slug || '').replace(/_/g, '-')
-      if (!uniqueMap.has(normSlug)) {
-        uniqueMap.set(normSlug, { ...c, slug: normSlug })
+      const normSlug = normalizeSlug(c.slug)
+      const canonicalSlug = resolveCanonicalSlug(normSlug)
+      const next = { ...c, slug: normSlug, displaySlug: canonicalSlug }
+      const existing = uniqueMap.get(canonicalSlug)
+      if (!existing) {
+        uniqueMap.set(canonicalSlug, next)
+        return
+      }
+      const existingCount = (existing as any).products_count ?? 0
+      const nextCount = (next as any).products_count ?? 0
+      if (nextCount > existingCount) {
+        uniqueMap.set(canonicalSlug, next)
       }
     })
 
     const categories = Array.from(uniqueMap.values())
+      .filter((c) => {
+        const isRoot = c.parent === null || typeof c.parent === 'undefined'
+        if (!isRoot) return false
+        if (c.gender) return false
+        if (c.clothing_type) return false
+        if (c.device_type) return false
+        return true
+      })
       .sort((a, b) => {
         const sa = (a as any).sort_order ?? 0
         const sb = (b as any).sort_order ?? 0
         return sa - sb
       })
 
-    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories } }
+    const footerSettings = await fetchFooterSettings()
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories, footerSettings, locale: ctx.locale ?? 'ru' } }
   } catch (e) {
-    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories: [] } }
+    const { fetchFooterSettings } = await import('../../lib/footerSettings')
+    const footerSettings = await fetchFooterSettings()
+    return { props: { ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), categories: [], footerSettings, locale: ctx.locale ?? 'ru' } }
   }
 }

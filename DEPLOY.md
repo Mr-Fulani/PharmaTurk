@@ -1,0 +1,190 @@
+# Деплой PharmaTurk на удалённый сервер
+
+## Требования к серверу
+
+- **ОС:** Linux (Ubuntu 22.04 / Debian 12 рекомендуется)
+- **Docker** и **Docker Compose** v2+
+- **Память:** минимум 4 GB RAM (рекомендуется 8 GB при OpenSearch + Qdrant)
+- **Диск:** 20+ GB для образов, данных и логов
+
+## 1. Подготовка сервера
+
+```bash
+# Установка Docker (Ubuntu/Debian)
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+# Выйдите и зайдите снова, чтобы применить группу docker
+
+# Установка Docker Compose plugin
+sudo apt-get update && sudo apt-get install -y docker-compose-plugin
+```
+
+## 2. Клонирование и настройка окружения
+
+```bash
+git clone https://github.com/Mr-Fulani/PharmaTurk.git
+cd PharmaTurk
+```
+
+Создайте файл `.env` на основе продакшен-примера:
+
+```bash
+cp .env.production.example .env
+nano .env   # или vim / другой редактор
+```
+
+**Обязательно задайте:**
+
+| Переменная | Описание |
+|------------|----------|
+| `DJANGO_SECRET_KEY` | Уникальный длинный ключ (например: `openssl rand -base64 48`) |
+| `DJANGO_ALLOWED_HOSTS` | Домены через запятую: `pharmaturk.ru,www.pharmaturk.ru` |
+| `CSRF_TRUSTED_ORIGINS` | То же с протоколом: `https://pharmaturk.ru,https://www.pharmaturk.ru` |
+| `CORS_ALLOWED_ORIGINS` | Те же URL для CORS |
+| `DATABASE_URL` | Строка подключения к PostgreSQL (внутри Docker: `postgres://pharmaturk:ПАРОЛЬ@postgres:5432/pharmaturk`) |
+| `NEXT_PUBLIC_SITE_URL` | Публичный URL сайта (canonical, медиа). Для ngrok: `https://xxx.ngrok-free.dev` |
+| `INTERNAL_API_BASE` | Внутренний URL бэкенда для SSR. Docker: `http://backend:8000`, локально: `http://localhost:8000` |
+
+Пароль PostgreSQL задаётся в `docker-compose.yml` (переменные `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) или через `DATABASE_URL` в `.env`.
+
+## 3. Запуск в режиме продакшена
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+Проверка логов:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f backend frontend
+```
+
+Миграции, `collectstatic` и **seed каталога** выполняются при старте backend (см. `docker-entrypoint.sh`). Seed создаёт полную структуру: корневые категории, подкатегории (включая иерархию услуг L2–L5), типы атрибутов и бренды.
+
+## 4. Первый запуск: индексация рекомендаций
+
+После первого деплоя проиндексируйте векторы товаров в Qdrant (для блока «Похожие товары»):
+
+```bash
+# Один батч (100 товаров) в foreground
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend poetry run python manage.py sync_product_vectors
+
+# Или полная синхронизация в фоне через Celery
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend poetry run python manage.py sync_product_vectors --full
+```
+
+## 5. Reverse proxy и SSL (Nginx)
+
+На сервере перед контейнерами обычно ставят Nginx (или Caddy) для HTTPS и проксирования на backend (порт 8000) и frontend (порт 3001 в dev; в prod frontend слушает 3000 внутри контейнера).
+
+Пример фрагмента конфига Nginx:
+
+```nginx
+# Frontend (Next.js)
+server {
+    listen 443 ssl http2;
+    server_name pharmaturk.ru www.pharmaturk.ru;
+    ssl_certificate /etc/letsencrypt/live/pharmaturk.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pharmaturk.ru/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Backend API
+server {
+    listen 443 ssl http2;
+    server_name api.pharmaturk.ru;
+    ssl_certificate /etc/letsencrypt/live/pharmaturk.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pharmaturk.ru/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+В `docker-compose.prod.yml` порты backend и frontend можно пробросить на localhost (например `8000:8000` и `3001:3000`), чтобы Nginx проксировал на них.
+
+## 6. Разработка с ngrok
+
+Для доступа к локальному стенду через ngrok (мобильные, тестирование):
+
+1. Запустите туннель на **frontend** (порт 3001):
+   ```bash
+   ngrok http 3001
+   ```
+
+2. В `.env` или при запуске Docker задайте:
+   ```bash
+   NEXT_PUBLIC_SITE_URL=https://xxx.ngrok-free.dev
+   SITE_URL=https://xxx.ngrok-free.dev
+   ```
+
+3. Перезапустите frontend, чтобы подхватить переменные.
+
+Все URL (API, медиа, canonical) строятся динамически и работают на localhost, ngrok и production.
+
+## 7. Обновление деплоя
+
+```bash
+cd PharmaTurk
+git pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build backend frontend
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backend frontend celeryworker celery_ai celerybeat
+```
+
+Миграции применяются при старте backend автоматически.
+
+## 8. Полезные команды
+
+| Действие | Команда |
+|----------|---------|
+| Логи всех сервисов | `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f` |
+| Логи backend | `docker compose ... logs -f backend` |
+| Seed каталога (категории, бренды) | `docker compose ... exec backend poetry run python manage.py seed_catalog_data` |
+| Статистика рекомендаций | `docker compose ... exec backend poetry run python manage.py recsys_stats` |
+| Синхронизация векторов | `docker compose ... exec backend poetry run python manage.py sync_product_vectors [--full]` |
+| Django shell | `docker compose ... exec backend poetry run python manage.py shell` |
+| Остановка | `docker compose -f docker-compose.yml -f docker-compose.prod.yml down` |
+
+## 9. Первый запуск на продакшене
+
+При первом деплое backend автоматически:
+1. Применяет миграции
+2. Запускает `seed_catalog_data` (категории, подкатегории, атрибуты, бренды)
+3. Собирает статику
+
+Дополнительно выполните вручную:
+
+```bash
+# Создать суперпользователя для доступа в админку
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend poetry run python manage.py createsuperuser
+
+# (Опционально) Индексация векторов для блока «Похожие товары»
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend poetry run python manage.py sync_product_vectors --full
+```
+
+## 10. Чек-лист перед продакшеном
+
+- [ ] В `.env`: `DJANGO_DEBUG=0`, уникальный `DJANGO_SECRET_KEY`
+- [ ] Криптоплатежи: при необходимости настройте CoinRemitter (см. **CRYPTO_PAYMENTS.md**)
+- [ ] Заданы `DJANGO_ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`, `CORS_ALLOWED_ORIGINS`
+- [ ] `DATABASE_URL` и `REDIS_URL` указывают на сервисы в Docker (или внешние)
+- [ ] `NEXT_PUBLIC_SITE_URL` — публичный URL (для ngrok: `https://xxx.ngrok-free.dev`)
+- [ ] R2 (или другое хранилище медиа) настроено при необходимости
+- [ ] Nginx (или иной reverse proxy) настроен, SSL включён
+- [ ] После первого запуска выполнен `sync_product_vectors` при необходимости

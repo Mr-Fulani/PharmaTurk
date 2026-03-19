@@ -1,4 +1,5 @@
 from django.urls import path, include, re_path
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -14,13 +15,16 @@ from .views import (
     UserAddressViewSet,
     UserPasswordChangeView,
     UserEmailVerificationView,
+    UserRequestVerificationCodeView,
     UserStatsView,
     UserSessionsView,
     AppConfigView,
     SMSSendCodeView,
     SMSVerifyCodeView,
     SocialAuthView,
-    PublicUserProfileView
+    PublicUserProfileView,
+    TelegramWebhookView,
+    TelegramAuthView
 )
 
 # Роутер для ViewSets
@@ -46,16 +50,24 @@ urlpatterns = [
     path('sms/send-code/', SMSSendCodeView.as_view(), name='sms-send-code'),
     path('sms/verify/', SMSVerifyCodeView.as_view(), name='sms-verify'),
     
-    # Социальные сети (в разработке)
-    path('social-auth/', SocialAuthView.as_view(), name='social-auth'),
+    # Социальные сети (Google, VK) — csrf_exempt: OAuth callback без CSRF
+    path('social-auth/', csrf_exempt(SocialAuthView.as_view()), name='social-auth'),
+    re_path(r'^social-auth$', csrf_exempt(SocialAuthView.as_view()), name='social-auth-noslash'),
     
     # Подтверждение email
     path('verify-email/', UserEmailVerificationView.as_view(), name='user-verify-email'),
     re_path(r'^verify-email$', UserEmailVerificationView.as_view(), name='user-verify-email-noslash'),
+    path('request-verification-code/', UserRequestVerificationCodeView.as_view(), name='user-request-verification-code'),
     
     # Смена пароля
     path('change-password/', UserPasswordChangeView.as_view(), name='user-change-password'),
     re_path(r'^change-password$', UserPasswordChangeView.as_view(), name='user-change-password-noslash'),
+    
+    # Telegram Вебхук и Авторизация (csrf_exempt: виджет/Telegram отправляют POST без CSRF)
+    path('telegram/webhook/', csrf_exempt(TelegramWebhookView.as_view()), name='telegram-webhook'),
+    re_path(r'^telegram/webhook$', csrf_exempt(TelegramWebhookView.as_view()), name='telegram-webhook-noslash'),
+    path('telegram/login/', csrf_exempt(TelegramAuthView.as_view()), name='telegram-login'),
+    re_path(r'^telegram/login$', csrf_exempt(TelegramAuthView.as_view()), name='telegram-login-noslash'),
     
     # Статистика
     path('stats/', UserStatsView.as_view(), name='user-stats'),
@@ -69,10 +81,13 @@ urlpatterns = [
     
     # Публичный профиль пользователя
     path('public-profile/', PublicUserProfileView.as_view(), name='public-user-profile'),
+    path('public-profile', PublicUserProfileView.as_view(), name='public-user-profile-noslash'),  # без slash для fetch/ngrok
     
     # ViewSets
     path('', include(router.urls)),
 
     # Дублируем list-эндпоинт профиля без завершающего слэша, т.к. APPEND_SLASH=False
     re_path(r'^profile$', UserProfileViewSet.as_view({'get': 'list'}), name='user-profile-list-noslash'),
+    # Дублируем telegram-bind-link с trailing slash для совместимости с фронтендом
+    path('profile/telegram-bind-link/', UserProfileViewSet.as_view({'get': 'telegram_bind_link'}), name='user-profile-telegram-bind-link-slash'),
 ]

@@ -57,4 +57,24 @@ node_modules/
 dist/
 .next/
 coverage/
+*.tsbuildinfo
 
+# Cursor
+# .cursor/
+.cursorrules
+
+# Pyright
+pyrightconfig.json
+
+# Local scripts & dev files
+check_ai_logs.py
+requirements-mac.txt
+requirements-nomarker.txt
+
+# Agent logs, workflows, and temporary skills files
+.agent/
+.agents/
+skills-lock.json
+
+# Backup/scratch scripts
+backend/check_book.py

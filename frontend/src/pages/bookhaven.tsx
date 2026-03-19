@@ -6,6 +6,7 @@ import { Search, Filter, Grid, List } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ProductCard from '../components/ProductCard';
 import api from '../lib/api';
+import { ProductTranslation } from '../lib/i18n';
 
 interface Product {
   id: number;
@@ -14,11 +15,22 @@ interface Product {
   description: string;
   price: number;
   old_price?: number;
+  old_price_formatted?: string | null;
   main_image?: string;
   main_image_url?: string;
   currency: string;
   is_featured: boolean;
   is_available: boolean;
+  isbn?: string | null;
+  publisher?: string | null;
+  pages?: number | null;
+  language?: string | null;
+  rating?: number | string | null;
+  reviews_count?: number | null;
+  is_bestseller?: boolean;
+  is_new?: boolean;
+  book_authors?: { id: number; author: { full_name: string } }[];
+  translations?: ProductTranslation[];
 }
 
 interface Category {
@@ -29,8 +41,23 @@ interface Category {
   product_count?: number;
 }
 
+const parsePriceWithCurrency = (value?: string | number | null) => {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null };
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null };
+  }
+  const trimmed = value.trim();
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/);
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() };
+  }
+  return { price: trimmed, currency: null as string | null };
+};
+
 const BookHavenPage: React.FC = () => {
-  const { t } = useTranslation('common');
+  const { t, i18n } = useTranslation('common');
   const [books, setBooks] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,10 +69,12 @@ const BookHavenPage: React.FC = () => {
   useEffect(() => {
     loadCategories();
     loadBooks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     loadBooks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, selectedCategory, sortBy]);
 
   const loadCategories = async () => {
@@ -69,7 +98,7 @@ const BookHavenPage: React.FC = () => {
         product_type: 'books',
         page_size: 100
       };
-      
+
       if (searchTerm) params.search = searchTerm;
       if (selectedCategory) params.category_slug = selectedCategory;
       if (sortBy) params.ordering = sortBy;
@@ -96,21 +125,19 @@ const BookHavenPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-4">
               <button
-                className={`p-2 rounded-lg transition-colors ${
-                  viewMode === 'grid'
+                className={`p-2 rounded-lg transition-colors ${viewMode === 'grid'
                     ? 'bg-[#ff8c42] text-white'
                     : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
+                  }`}
                 onClick={() => setViewMode('grid')}
               >
                 <Grid className="w-4 h-4" />
               </button>
               <button
-                className={`p-2 rounded-lg transition-colors ${
-                  viewMode === 'list'
+                className={`p-2 rounded-lg transition-colors ${viewMode === 'list'
                     ? 'bg-[#ff8c42] text-white'
                     : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
+                  }`}
                 onClick={() => setViewMode('list')}
               >
                 <List className="w-4 h-4" />
@@ -191,8 +218,20 @@ const BookHavenPage: React.FC = () => {
           >
             {books.map((book) => {
               const displayPrice = book.price ? String(book.price) : null;
-              const displayOldPrice = book.old_price ? String(book.old_price) : null;
-              
+              const oldPriceSource = book.old_price_formatted ?? book.old_price ?? null;
+              const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(oldPriceSource);
+              const displayCurrency = book.currency || 'RUB';
+              const displayOldCurrency = parsedOldCurrency || displayCurrency;
+              const displayOldPriceValue = displayOldCurrency === displayCurrency ? (parsedOldPrice ?? oldPriceSource) : null;
+              const displayOldPrice = displayOldPriceValue ? String(displayOldPriceValue) : null;
+              const ratingNum =
+                book.rating != null
+                  ? typeof book.rating === 'number'
+                    ? book.rating
+                    : Number(book.rating)
+                  : undefined;
+              const rating = ratingNum !== undefined && !Number.isNaN(ratingNum) ? ratingNum : undefined;
+
               return (
                 <ProductCard
                   key={book.id}
@@ -203,12 +242,24 @@ const BookHavenPage: React.FC = () => {
                   currency={book.currency || 'RUB'}
                   oldPrice={displayOldPrice}
                   imageUrl={book.main_image_url || book.main_image}
-                  badge={book.is_featured ? 'Хит' : null}
+                  badge={book.is_featured ? t('product_featured', 'Хит') : null}
                   viewMode={viewMode}
                   description={book.description}
                   href={`/product/books/${book.slug}`}
                   productType="books"
                   isBaseProduct={true}
+                  translations={book.translations}
+                  locale={i18n.language}
+                  isbn={book.isbn}
+                  publisher={book.publisher}
+                  pages={book.pages}
+                  language={book.language}
+                  authors={book.book_authors}
+                  reviewsCount={book.reviews_count}
+                  isBestseller={book.is_bestseller}
+                  isNew={book.is_new}
+                  isFeatured={book.is_featured}
+                  rating={rating}
                 />
               );
             })}

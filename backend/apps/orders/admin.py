@@ -55,14 +55,14 @@ class OrderAdmin(admin.ModelAdmin):
     list_filter = ('status', 'currency', 'payment_method', 'payment_status', 'promo_code', 'created_at')
     search_fields = ('number', 'user__email', 'contact_name', 'contact_phone', 'promo_code__code')
     ordering = ('-created_at',)
-    readonly_fields = ('number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at')
+    readonly_fields = ('number', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at', 'receipt_url')
     
     fieldsets = (
         (None, {'fields': ('number', 'user', 'status')}),
         (_('Amounts'), {'fields': ('subtotal_amount', 'shipping_amount', 'discount_amount', 'total_amount', 'currency', 'promo_code')}),
         (_('Contact'), {'fields': ('contact_name', 'contact_phone', 'contact_email')}),
         (_('Shipping'), {'fields': ('shipping_address', 'shipping_address_text', 'shipping_method')}),
-        (_('Payment'), {'fields': ('payment_method', 'payment_status')}),
+        (_('Payment & Documents'), {'fields': ('payment_method', 'payment_status', 'receipt_url')}),
         (_('Additional'), {'fields': ('comment',)}),
         (_('Timestamps'), {'fields': ('created_at', 'updated_at')}),
     )
@@ -86,18 +86,41 @@ class PromoCodeAdmin(admin.ModelAdmin):
     list_filter = ('discount_type', 'is_active', 'valid_from', 'valid_to')
     search_fields = ('code', 'description')
     ordering = ('-created_at',)
-    readonly_fields = ('used_count', 'created_at', 'updated_at')
+    readonly_fields = ('used_count', 'created_at', 'updated_at', 'money_overview')
     
     fieldsets = (
         (None, {'fields': ('code', 'description', 'is_active')}),
-        (_('Discount'), {'fields': ('discount_type', 'discount_value', 'max_discount', 'min_amount')}),
+        (_('Discount'), {'fields': ('discount_type', 'discount_value', 'max_discount', 'min_amount', 'money_overview')}),
         (_('Usage'), {'fields': ('max_uses', 'used_count')}),
         (_('Validity'), {'fields': ('valid_from', 'valid_to')}),
         (_('Timestamps'), {'fields': ('created_at', 'updated_at')}),
     )
+
+    def money_overview(self, obj: PromoCode):
+        currencies = ['RUB', 'USD', 'EUR', 'TRY', 'KZT']
+        lines = []
+
+        for cur in currencies:
+            try:
+                min_amount = obj.get_min_amount(cur)
+                max_discount = obj.get_max_discount(cur)
+                fixed_value = obj.get_fixed_discount_value(cur)
+
+                parts = [f"min: {min_amount:.2f} {cur}"]
+                if obj.discount_type == PromoCode.DiscountType.FIXED and fixed_value is not None:
+                    parts.append(f"fixed: {fixed_value:.2f} {cur}")
+                if max_discount is not None:
+                    parts.append(f"max: {max_discount:.2f} {cur}")
+                lines.append(' / '.join(parts))
+            except Exception:
+                continue
+
+        return "\n".join(lines) if lines else ""
+
+    money_overview.short_description = _('Amounts (converted)')
     
     def get_readonly_fields(self, request, obj=None):
         """Сделать used_count редактируемым только при создании."""
         if obj:
             return self.readonly_fields
-        return ('used_count', 'created_at', 'updated_at')
+        return ('used_count', 'created_at', 'updated_at', 'money_overview')

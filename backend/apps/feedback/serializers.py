@@ -1,5 +1,30 @@
+from urllib.parse import quote, urlparse
+from django.conf import settings
 from rest_framework import serializers
 from .models import Testimonial, TestimonialMedia
+
+
+def _build_proxy_media_url(file_field, request):
+    if not file_field:
+        return None
+    path = getattr(file_field, "name", None)
+    if not path:
+        url = getattr(file_field, "url", None)
+        if not url:
+            return None
+        parsed = urlparse(url)
+        path = parsed.path.lstrip('/')
+        media_prefix = (settings.MEDIA_URL or '').lstrip('/')
+        if media_prefix and path.startswith(media_prefix):
+            path = path[len(media_prefix):]
+    if path.startswith('media/'):
+        path = path[len('media/'):]
+    # Относительный URL — браузер подставит свой origin (localhost/ngrok/production)
+    return f"/api/catalog/proxy-media/?path={quote(path)}"
+
+
+def _resolve_file_url(file_field, request):
+    return _build_proxy_media_url(file_field, request)
 
 
 class TestimonialMediaSerializer(serializers.ModelSerializer):
@@ -9,34 +34,41 @@ class TestimonialMediaSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     video_file_url = serializers.SerializerMethodField()
 
+    file = serializers.SerializerMethodField()
+
     class Meta:
         model = TestimonialMedia
         fields = (
             'id',
             'media_type',
+            'file',
             'image_url',
             'video_url',
             'video_file_url',
             'order',
+            'created_at',
         )
+
+    def get_file(self, obj):
+        """Единый URL для мобильного приложения: image_url или video_url или video_file_url."""
+        request = self.context.get('request')
+        if getattr(obj, 'image', None):
+            return _resolve_file_url(obj.image, request) or ''
+        if obj.video_url:
+            return obj.video_url
+        if getattr(obj, 'video_file', None):
+            return _resolve_file_url(obj.video_file, request) or ''
+        return ''
 
     def get_image_url(self, obj):
         """Возвращает URL изображения."""
-        if obj.image and hasattr(obj.image, 'url'):
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
-        return None
+        request = self.context.get('request')
+        return _resolve_file_url(getattr(obj, 'image', None), request)
 
     def get_video_file_url(self, obj):
         """Возвращает URL видео файла."""
-        if obj.video_file and hasattr(obj.video_file, 'url'):
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.video_file.url)
-            return obj.video_file.url
-        return None
+        request = self.context.get('request')
+        return _resolve_file_url(getattr(obj, 'video_file', None), request)
 
 
 class TestimonialSerializer(serializers.ModelSerializer):
@@ -98,12 +130,11 @@ class TestimonialSerializer(serializers.ModelSerializer):
 
     def get_author_avatar_url(self, obj):
         """Возвращает URL аватара автора."""
-        if obj.author_avatar and hasattr(obj.author_avatar, 'url'):
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.author_avatar.url)
-            return obj.author_avatar.url
-        return None
+        request = self.context.get('request')
+        user = getattr(obj, 'user', None)
+        if user and getattr(user, 'avatar', None):
+            return _resolve_file_url(getattr(user, 'avatar', None), request)
+        return _resolve_file_url(getattr(obj, 'author_avatar', None), request)
 
 
 class TestimonialCreateSerializer(serializers.ModelSerializer):

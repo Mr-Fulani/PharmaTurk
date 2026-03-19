@@ -1,14 +1,13 @@
 import os
+
 import django
-from django.contrib.auth import get_user_model
 
-# Настройка Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-django.setup()
-
-from apps.catalog.models import Category, Product, Author, ProductAuthor
 
 def create_book_data():
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+    django.setup()
+    from apps.catalog.models import Category, Product, Author, ProductAuthor
+
     # Получаем или создаем категорию для книг
     books_category, created = Category.objects.get_or_create(
         slug='books',
@@ -18,7 +17,7 @@ def create_book_data():
             'is_active': True
         }
     )
-    
+
     # Подкатегории
     fiction = Category.objects.create(
         name='Художественная литература',
@@ -27,7 +26,7 @@ def create_book_data():
         parent=books_category,
         is_active=True
     )
-    
+
     science = Category.objects.create(
         name='Научная литература',
         slug='science',
@@ -35,7 +34,7 @@ def create_book_data():
         parent=books_category,
         is_active=True
     )
-    
+
     business = Category.objects.create(
         name='Бизнес и карьера',
         slug='business',
@@ -43,7 +42,7 @@ def create_book_data():
         parent=books_category,
         is_active=True
     )
-    
+
     # Создаем авторов
     author1 = Author.objects.create(
         first_name='Стивен',
@@ -51,22 +50,26 @@ def create_book_data():
         bio='Американский писатель, мастер современного хоррора',
         birth_date='1947-09-21'
     )
-    
+
     author2 = Author.objects.create(
         first_name='Юваль',
         last_name='Ной Харари',
         bio='Израильский историк и писатель',
         birth_date='1976-02-24'
     )
-    
+
     author3 = Author.objects.create(
         first_name='Эрик',
         last_name='Рис',
         bio='Американский предприниматель и писатель',
         birth_date='1978-01-01'
     )
-    
+
     # Создаем книги через Product
+    book1_image = (
+        "https://via.placeholder.com/300x400/4F46E5/FFFFFF"
+        "?text=It"
+    )
     book1 = Product.objects.create(
         name='Оно',
         slug='it',
@@ -75,7 +78,7 @@ def create_book_data():
         category=fiction,
         price=899.99,
         old_price=1099.99,
-        main_image='https://via.placeholder.com/300x400/4F46E5/FFFFFF?text=It',
+        main_image=book1_image,
         rating=4.5,
         reviews_count=1250,
         is_available=True,
@@ -92,16 +95,23 @@ def create_book_data():
         is_bestseller=True,
         is_new=False
     )
-    
+
+    book2_image = (
+        "https://via.placeholder.com/300x400/10B981/FFFFFF"
+        "?text=Sapiens"
+    )
     book2 = Product.objects.create(
         name='Sapiens: Краткая история человечества',
         slug='sapiens',
-        description='История человечества от появления Homo sapiens до современности',
+        description=(
+            'История человечества от появления Homo sapiens '
+            'до современности'
+        ),
         product_type='books',
         category=science,
         price=799.99,
         old_price=999.99,
-        main_image='https://via.placeholder.com/300x400/10B981/FFFFFF?text=Sapiens',
+        main_image=book2_image,
         rating=4.8,
         reviews_count=3420,
         is_available=True,
@@ -118,15 +128,22 @@ def create_book_data():
         is_bestseller=True,
         is_new=False
     )
-    
+
+    book3_image = (
+        "https://via.placeholder.com/300x400/F59E0B/FFFFFF"
+        "?text=Business+Model"
+    )
     book3 = Product.objects.create(
         name='Бизнес-модель нового поколения',
         slug='business-model-generation',
-        description='Практическое руководство по разработке и тестированию бизнес-моделей',
+        description=(
+            'Практическое руководство по разработке и тестированию '
+            'бизнес-моделей'
+        ),
         product_type='books',
         category=business,
         price=1299.99,
-        main_image='https://via.placeholder.com/300x400/F59E0B/FFFFFF?text=Business+Model',
+        main_image=book3_image,
         rating=4.6,
         reviews_count=890,
         is_available=True,
@@ -143,16 +160,20 @@ def create_book_data():
         is_bestseller=False,
         is_new=True
     )
-    
+
     # Связываем книги с авторами
     ProductAuthor.objects.create(product=book1, author=author1)
     ProductAuthor.objects.create(product=book2, author=author2)
     ProductAuthor.objects.create(product=book3, author=author3)
-    
+
     print("Книги успешно добавлены в существующую систему PharmaTurk!")
-    print(f"Категорий: {Category.objects.filter(slug__in=['books', 'fiction', 'science', 'business']).count()}")
+    categories_count = Category.objects.filter(
+        slug__in=['books', 'fiction', 'science', 'business']
+    ).count()
+    print(f"Категорий: {categories_count}")
     print(f"Авторов: {Author.objects.count()}")
     print(f"Книг: {Product.objects.filter(product_type='books').count()}")
+
 
 if __name__ == '__main__':
     create_book_data()

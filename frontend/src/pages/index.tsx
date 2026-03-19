@@ -1,13 +1,15 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { resolveMediaUrl } from '../lib/media'
+import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../lib/media'
+import { getSiteOrigin } from '../lib/urls'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import BannerCarousel from '../components/BannerCarouselMedia'
 import PopularProductsCarousel from '../components/PopularProductsCarousel'
+import PersonalizedRecommendations from '../components/PersonalizedRecommendations'
 import TestimonialsCarousel from '../components/TestimonialsCarousel'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription, getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../lib/i18n'
 
@@ -38,6 +40,10 @@ interface CategoryCard {
   card_media_url?: string | null
   parent?: number | null
   sort_order?: number | null
+  products_count?: number
+  gender?: string | null
+  clothing_type?: string | null
+  device_type?: string | null
   translations?: CategoryTranslation[]
 }
 
@@ -52,7 +58,8 @@ import Masonry from 'react-masonry-css'
 export default function Home({ brands, categories }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
-  const tileHeights = [224, 256, 288]
+  const tileHeights = [280, 320, 360]
+  const brandTileHeights = [280, 320, 360]
 
   // Функция для получения цветов баннера по бренду
   const getBrandColors = (brandName: string) => {
@@ -91,80 +98,6 @@ export default function Home({ brands, categories }: HomePageProps) {
     return normalized || 'medicines'
   }
 
-  const resolveMediaUrl = (url?: string | null) => {
-    if (!url) return ''
-
-    // Абсолютный URL, но мог прийти с хостом backend:8000 — переписываем на публичный
-    const clientApi = process.env.NEXT_PUBLIC_API_BASE
-    const serverApi = process.env.INTERNAL_API_BASE
-
-    const stripApiSuffix = (value?: string) => {
-      if (!value) return ''
-      return value.endsWith('/api') ? value.slice(0, -4) : value
-    }
-
-    const fallbackMediaBase =
-      process.env.NEXT_PUBLIC_MEDIA_BASE ||
-      'http://localhost:8000'
-
-    const replaceBackendHost = (base: string) => {
-      if (!base) return ''
-      try {
-        const u = new URL(base)
-        if (u.hostname === 'backend') {
-          if (typeof window !== 'undefined') {
-            u.hostname = window.location.hostname
-          } else {
-            u.hostname = 'localhost'
-            u.port = u.port || '8000'
-          }
-        }
-        return u.toString().replace(/\/$/, '')
-      } catch {
-        return base
-      }
-    }
-
-    const serverMediaBase = replaceBackendHost(stripApiSuffix(serverApi) || 'http://backend:8000')
-    const clientMediaBase =
-      typeof window === 'undefined'
-        ? replaceBackendHost(stripApiSuffix(serverApi) || stripApiSuffix(clientApi) || fallbackMediaBase)
-        : replaceBackendHost(stripApiSuffix(clientApi) || '') ||
-          `${window.location.protocol}//${window.location.hostname}:8000`
-
-    // Если абсолютный и указывает на backend/внутренний хост — заменяем на публичный
-    if (/^https?:\/\//i.test(url)) {
-      try {
-        const u = new URL(url)
-        if (serverMediaBase && url.startsWith(serverMediaBase)) {
-          return url.replace(serverMediaBase, clientMediaBase || u.origin)
-        }
-        // если хост "backend" или "backend:8000", заменим на доступный
-        if (u.hostname === 'backend') {
-          const origin8000 =
-            typeof window !== 'undefined'
-              ? `${window.location.protocol}//${window.location.hostname}:8000`
-              : fallbackMediaBase
-          return `${origin8000}${u.pathname}${u.search}`
-        }
-        return url
-      } catch {
-        return url
-      }
-    }
-
-    // Относительный путь
-    if (clientMediaBase) {
-      return url.startsWith('/') ? `${clientMediaBase}${url}` : `${clientMediaBase}/${url}`
-    }
-
-    if (typeof window !== 'undefined') {
-      const origin = window.location.origin
-      return url.startsWith('/') ? `${origin}${url}` : `${origin}/${url}`
-    }
-    return url
-  }
-
   const extractYouTubeId = (url?: string | null) => {
     if (!url) return null
     const match =
@@ -178,10 +111,10 @@ export default function Home({ brands, categories }: HomePageProps) {
     return youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : null
   }
 
-  const renderMedia = (mediaUrl?: string | null, alt?: string) => {
-    if (!mediaUrl) return null
+  const renderMedia = (mediaUrl?: string | null, alt?: string, fallbackSrc?: string) => {
+    if (!mediaUrl && !fallbackSrc) return null
 
-    const youtubeId = extractYouTubeId(mediaUrl)
+    const youtubeId = extractYouTubeId(mediaUrl || '')
     if (youtubeId) {
       const youtubeThumb = getYouTubeThumbnail(mediaUrl)
       const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
@@ -232,13 +165,10 @@ export default function Home({ brands, categories }: HomePageProps) {
     }
 
     // Если YouTube не обнаружен — обычная обработка файла/изображения
-    const src = resolveMediaUrl(mediaUrl)
+    const src = mediaUrl ? resolveMediaUrl(mediaUrl) : fallbackSrc || ''
     if (!src) return null
 
-    const normalized = src.split('?')[0].toLowerCase()
-    const isVideo = /\.(mp4|mov|webm|m4v)$/i.test(normalized)
-
-    if (isVideo) {
+    if (isVideoUrl(mediaUrl || src)) {
       return (
         <video
           className="absolute inset-0 h-full w-full object-cover"
@@ -246,6 +176,19 @@ export default function Home({ brands, categories }: HomePageProps) {
           muted
           loop
           playsInline
+          preload="metadata"
+          onError={(e) => {
+            if (fallbackSrc) {
+              const wrapper = e.currentTarget.parentElement
+              if (wrapper) {
+                const img = document.createElement('img')
+                img.src = fallbackSrc
+                img.alt = alt || ''
+                img.className = 'absolute inset-0 h-full w-full object-cover'
+                wrapper.replaceChildren(img)
+              }
+            }
+          }}
         >
           <source src={src} />
         </video>
@@ -257,6 +200,11 @@ export default function Home({ brands, categories }: HomePageProps) {
         src={src}
         alt={alt || ''}
         className="absolute inset-0 h-full w-full object-cover"
+        onError={(e) => {
+          if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
+            e.currentTarget.src = fallbackSrc
+          }
+        }}
       />
     )
   }
@@ -268,8 +216,14 @@ export default function Home({ brands, categories }: HomePageProps) {
       displaySlug: mapCategoryToRouteSlug(category.slug),
       __isTopLevel: true,
     }))
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    .slice(0, 12)
+    .sort((a, b) => {
+      // Сначала категории с товарами (по убыванию количества), затем по sort_order
+      const countA = a.products_count ?? 0
+      const countB = b.products_count ?? 0
+      if (countB !== countA) return countB - countA
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    })
+    .slice(0, 14)
 
   const handleBrandClick = (brand: Brand) => {
     const slug = mapCategoryToRouteSlug(brand.primary_category_slug || brand.slug || '')
@@ -281,7 +235,7 @@ export default function Home({ brands, categories }: HomePageProps) {
     router.push(`/categories/${slugForRoute}`)
   }
 
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+  const siteUrl = getSiteOrigin()
   const canonicalUrl = `${siteUrl}/`
   const pageTitle = 'PharmaTurk — Главная'
   const pageDescription = 'PharmaTurk: турецкие товары — лекарства, одежда, обувь, электроника, аксессуары и мебель с доставкой.'
@@ -309,18 +263,60 @@ export default function Home({ brands, categories }: HomePageProps) {
             <BannerCarousel position="main" />
         </div>
 
-        {/* Brands Section */}
+        {/* Brands Section — горизонтальный скролл на мобильных, сетка на десктопе */}
         <section className="mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
-            Популярные бренды
+            {t('popular_brands', 'Популярные бренды')}
           </h2>
+          {/* Мобильные: горизонтальный скролл */}
+          <div
+            className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 hide-scrollbar -mx-6 px-6 md:hidden"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {brands.map((brand) => {
+              const mediaUrl = brand.card_media_url || brand.logo
+              const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
+              return (
+                <div
+                  key={brand.id}
+                  onClick={() => handleBrandClick(brand)}
+                  className="relative shrink-0 w-44 h-44 sm:w-52 sm:h-52 snap-start rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
+                >
+                  {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
+                  <div className="absolute inset-0 bg-black/35" />
+                  <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
+                    <div className="text-center text-white drop-shadow">
+                      {brand.logo && (
+                        <div className="mb-2 flex justify-center">
+                          <img 
+                            src={resolveMediaUrl(brand.logo)} 
+                            alt={brand.name}
+                            className="h-8 w-auto object-contain filter brightness-0 invert"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none'
+                            }}
+                          />
+                        </div>
+                      )}
+                      <h3 className="text-lg font-bold mb-1 line-clamp-1">
+                        {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
+                      </h3>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {/* Десктоп: сетка как у категорий */}
           <Masonry
-            breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
-            className="flex w-full gap-6"
-            columnClassName="flex flex-col gap-6"
+            breakpointCols={{ default: 3, 1024: 3, 768: 3 }}
+            className="hidden md:flex w-full gap-4 md:gap-6"
+            columnClassName="flex flex-col gap-4 md:gap-6"
           >
             {brands.map((brand, idx) => {
-              const cardHeight = tileHeights[idx % tileHeights.length]
+              const mediaUrl = brand.card_media_url || brand.logo
+              const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
+              const cardHeight = brandTileHeights[idx % brandTileHeights.length]
               return (
                 <div
                   key={brand.id}
@@ -328,33 +324,25 @@ export default function Home({ brands, categories }: HomePageProps) {
                   style={{ height: cardHeight }}
                   className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
                 >
-                  {renderMedia(brand.card_media_url || brand.logo, brand.name)}
+                  {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
                   <div className="absolute inset-0 bg-black/35" />
-                  <div className="absolute inset-0 flex items-center justify-center p-6 z-10">
+                  <div className="absolute inset-0 flex items-center justify-center p-4 md:p-6 z-10">
                     <div className="text-center text-white drop-shadow">
                       {brand.logo && (
-                        <div className="mb-3 flex justify-center">
+                        <div className="mb-2 md:mb-3 flex justify-center">
                           <img 
-                            src={brand.logo} 
+                            src={resolveMediaUrl(brand.logo)} 
                             alt={brand.name}
-                            className="h-12 w-auto object-contain filter brightness-0 invert"
+                            className="h-8 md:h-12 w-auto object-contain filter brightness-0 invert"
                             onError={(e) => {
                               e.currentTarget.style.display = 'none'
                             }}
                           />
                         </div>
                       )}
-                      <h3 className="text-2xl md:text-3xl font-bold mb-2">
+                      <h3 className="text-xl md:text-3xl font-bold mb-1 md:mb-2 line-clamp-1">
                         {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
                       </h3>
-                      <p className="text-sm opacity-90 mb-2">
-                        {getLocalizedBrandDescription(brand.slug, brand.description, t, brand.translations, router.locale)}
-                      </p>
-                      {brand.products_count && (
-                        <p className="text-xs opacity-75">
-                          {brand.products_count} товаров
-                        </p>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -366,7 +354,7 @@ export default function Home({ brands, categories }: HomePageProps) {
               href="/brands"
               className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
             >
-              Все бренды
+              {t('all_brands', 'Все бренды')}
             </Link>
           </div>
         </section>
@@ -382,12 +370,14 @@ export default function Home({ brands, categories }: HomePageProps) {
             {t('categories_section_title', 'Категории товаров')}
           </h2>
           <Masonry
-            breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
-            className="flex w-full gap-6"
-            columnClassName="flex flex-col gap-6"
+            breakpointCols={{ default: 3, 1024: 3, 768: 3, 640: 2, 0: 2 }}
+            className="flex w-full gap-4 md:gap-6"
+            columnClassName="flex flex-col gap-4 md:gap-6"
           >
             {preparedCategories.map((category, idx) => {
               const cardHeight = tileHeights[idx % tileHeights.length]
+              const mediaUrl = category.card_media_url
+              const placeholderUrl = getPlaceholderImageUrl({ type: 'category', id: category.id })
               return (
               <div
                 key={category.id}
@@ -395,16 +385,20 @@ export default function Home({ brands, categories }: HomePageProps) {
                 style={{ height: cardHeight }}
                 className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
               >
-                  {renderMedia(category.card_media_url, getLocalizedCategoryName(category.slug, category.name, t, category.translations))}
+                  {renderMedia(
+                    mediaUrl || placeholderUrl,
+                    getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale),
+                    placeholderUrl
+                  )}
                   <div className="absolute inset-0 bg-black/35" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
                     <div className="text-center text-white drop-shadow">
                     <h3 className="text-xl font-bold mb-1">
-                      {getLocalizedCategoryName(category.slug, category.name, t, category.translations)}
+                      {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
                     </h3>
-                    {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations) && (
-                      <p className="text-sm opacity-90">
-                        {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations)}
+                    {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale) && (
+                      <p className="hidden md:block text-sm opacity-90">
+                        {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale)}
                       </p>
                     )}
                   </div>
@@ -430,6 +424,9 @@ export default function Home({ brands, categories }: HomePageProps) {
 
           {/* Популярные товары */}
           <PopularProductsCarousel />
+
+          {/* Вам может понравиться (RecSys) */}
+          <PersonalizedRecommendations />
           
           {/* Баннер после популярных товаров */}
           <div className="mb-12">
@@ -446,11 +443,12 @@ export default function Home({ brands, categories }: HomePageProps) {
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
   try {
-    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    const { getInternalApiUrl } = await import('../lib/urls')
+    const { fetchFooterSettings } = await import('../lib/footerSettings')
     
     // Загружаем все бренды из API с пагинацией
     let allBrands: Brand[] = []
-    let nextUrl: string | null = `${base}/api/catalog/brands`
+    let nextUrl: string | null = getInternalApiUrl('catalog/brands')
     
     // Собираем все бренды (обходим пагинацию)
     while (nextUrl) {
@@ -468,26 +466,25 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
     }
     
-    // Фильтруем бренды с товарами и сортируем по количеству товаров (популярность)
-    const brandsWithProducts = allBrands.filter((brand: Brand) => 
-      brand.products_count && brand.products_count > 0
-    )
-    
-    // Сортируем по количеству товаров (по убыванию) - самые популярные первыми
-    brandsWithProducts.sort((a: Brand, b: Brand) => {
+    // Сортировка: сначала бренды с товарами (по убыванию products_count), затем по медиа, по имени
+    const sortedBrands = [...allBrands].sort((a: Brand, b: Brand) => {
       const countA = a.products_count || 0
       const countB = b.products_count || 0
-      return countB - countA
+      if (countB !== countA) return countB - countA
+      const hasMediaA = !!(a.card_media_url && a.card_media_url.trim())
+      const hasMediaB = !!(b.card_media_url && b.card_media_url.trim())
+      if (hasMediaB !== hasMediaA) return hasMediaB ? 1 : -1
+      return (a.name || '').localeCompare(b.name || '')
     })
-    
-    // Берем топ-6 самых популярных брендов
-    const brands = brandsWithProducts.slice(0, 6)
-    
-    console.log('Loaded popular brands for homepage:', brands.map((b: Brand) => `${b.name} (${b.products_count} товаров)`))
+
+    // Показываем 11 брендов (с приоритетом у тех, у кого есть товары)
+    const brands = sortedBrands.slice(0, 11)
+
+    console.log('Loaded popular brands for homepage:', brands.map((b: Brand) => `${b.name} (${b.products_count ?? 0} товаров, медиа: ${!!b.card_media_url})`))
 
     // Загружаем категории (top-level) с пагинацией
     let allCategories: CategoryCard[] = []
-    let nextCategoryUrl: string | null = `${base}/api/catalog/categories?top_level=true&page_size=200`
+    let nextCategoryUrl: string | null = getInternalApiUrl('catalog/categories?top_level=true&page_size=200')
 
     while (nextCategoryUrl) {
       try {
@@ -502,23 +499,62 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
     }
 
-    const categories = allCategories.filter((category) => category.parent === null || typeof category.parent === 'undefined')
+    const categories = allCategories.filter((category) => {
+      // Только корневые: parent и parent_id должны быть null/undefined
+      const parentVal = (category as any).parent ?? (category as any).parent_id
+      const isRoot = parentVal === null || parentVal === undefined
+      if (!isRoot) return false
+      if (category.gender) return false
+      if (category.clothing_type) return false
+      if (category.device_type) return false
+      return true
+    })
     categories.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    
+    const normalizeSlug = (value: any) =>
+      (value || '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/_/g, '-')
+    const uniqueMap = new Map<string, CategoryCard>()
+    categories.forEach((category) => {
+      const key = normalizeSlug(category.slug)
+      const existing = uniqueMap.get(key)
+      if (!existing) {
+        uniqueMap.set(key, category)
+        return
+      }
+      const existingCount = existing.products_count ?? 0
+      const nextCount = category.products_count ?? 0
+      if (nextCount > existingCount) {
+        uniqueMap.set(key, category)
+      }
+    })
+    const uniqueCategories = Array.from(uniqueMap.values()).sort((a, b) => {
+      const countA = a.products_count ?? 0
+      const countB = b.products_count ?? 0
+      if (countB !== countA) return countB - countA
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    })
+    const footerSettings = await fetchFooterSettings()
+
     return {
       props: {
         brands,
-        categories,
+        categories: uniqueCategories,
+        footerSettings,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }
   } catch (error) {
     console.error('Error loading brands for homepage:', error)
-    
+    const { fetchFooterSettings } = await import('../lib/footerSettings')
+    const footerSettings = await fetchFooterSettings()
     return {
       props: {
         brands: [],
         categories: [],
+        footerSettings,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }

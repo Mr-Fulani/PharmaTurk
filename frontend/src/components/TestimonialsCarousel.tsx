@@ -5,6 +5,7 @@ import Link from 'next/link'
 import api from '../lib/api'
 import { StarIcon } from '@heroicons/react/20/solid'
 import { SpeakerWaveIcon, SpeakerXMarkIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline'
+import { getPlaceholderImageUrl, resolveMediaUrl } from '../lib/media'
 
 declare global {
   interface Window {
@@ -105,34 +106,34 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   const handleToggleMute = useCallback((testimonialId: number, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
     // Очищаем предыдущий таймаут для этого видео (если есть)
     const existingTimeout = muteToggleTimeoutRef.current.get(testimonialId)
     if (existingTimeout) {
       clearTimeout(existingTimeout)
       muteToggleTimeoutRef.current.delete(testimonialId)
     }
-    
+
     // Используем ref для получения текущего состояния без перерендера
     const currentMuted = videoMutedRef.current.get(testimonialId) !== false
     const newMuted = !currentMuted
-    
+
     console.log('handleToggleMute called:', {
       testimonialId,
       currentMuted,
       newMuted,
       videoMutedRef: Array.from(videoMutedRef.current.entries())
     })
-    
+
     // СНАЧАЛА обновляем UI мгновенно для визуального отклика
     updateVideoMuted((map) => {
       map.set(testimonialId, newMuted)
     })
-    
+
     // Затем применяем изменения к видео/iframe СИНХРОННО (без задержек)
     const video = videoRefs.current.get(testimonialId)
     const iframe = iframeRefs.current.get(testimonialId)
-    
+
     if (video) {
       // Управление звуком для video_file
       // Важно: изменение muted не должно перезапускать видео
@@ -142,23 +143,23 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           // Сохраняем текущее состояние воспроизведения
           const wasPlaying = !video.paused
           const currentTime = video.currentTime
-          
+
           // Устанавливаем muted только если оно отличается
           if (video.muted !== newMuted) {
             video.muted = newMuted
-            
+
             // Убеждаемся, что volume установлен правильно при включении звука
             if (!newMuted && video.volume === 0) {
               video.volume = 1.0
             }
           }
-          
+
           // Проверяем, не сбросилось ли время воспроизведения (некоторые браузеры могут это делать)
           // Восстанавливаем только если разница значительная (>0.5 сек)
           if (wasPlaying && Math.abs(video.currentTime - currentTime) > 0.5) {
             video.currentTime = currentTime
           }
-          
+
           // Восстанавливаем воспроизведение только если оно было и остановилось
           // НЕ вызываем play() если видео уже воспроизводится
           if (wasPlaying && video.paused) {
@@ -220,7 +221,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             player.setVolume(100)
             console.log('YouTube unmuted:', testimonialId, 'volume:', player.getVolume())
           }
-          
+
           // Проверяем результат после небольшой задержки
           setTimeout(() => {
             console.log('YouTube after toggle (delayed check):', {
@@ -240,11 +241,11 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   const handleTogglePlay = useCallback((testimonialId: number, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
     const video = videoRefs.current.get(testimonialId)
     const iframe = iframeRefs.current.get(testimonialId)
     const player = youtubePlayers.current.get(testimonialId)
-    
+
     console.log('handleTogglePlay called:', {
       testimonialId,
       hasVideo: !!video,
@@ -254,7 +255,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       iframeRefs: Array.from(iframeRefs.current.keys()),
       youtubePlayers: Array.from(youtubePlayers.current.keys())
     })
-    
+
     if (video) {
       // Управление воспроизведением для video_file
       try {
@@ -282,9 +283,9 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       }
     } else if (iframe) {
       // Управление воспроизведением для YouTube/Vimeo через API
-    const player = youtubePlayers.current.get(testimonialId)
-    const isPlayerReady = playerReadyMapRef.current.get(testimonialId)
-      
+      const player = youtubePlayers.current.get(testimonialId)
+      const isPlayerReady = playerReadyMapRef.current.get(testimonialId)
+
       if (player && window.YT && isPlayerReady) {
         try {
           const playerState = player.getPlayerState()
@@ -294,7 +295,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             YT_PLAYING: window.YT.PlayerState.PLAYING,
             YT_PAUSED: window.YT.PlayerState.PAUSED
           })
-          
+
           // YT.PlayerState.PLAYING = 1, YT.PlayerState.PAUSED = 2
           if (playerState === 1) {
             // Воспроизводится - ставим на паузу
@@ -319,7 +320,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                 console.error('Error setting volume after play:', e)
               }
             }, 100)
-            
+
             videoPlayingRef.current.set(testimonialId, true)
             setVideoPlaying((prev) => {
               const newMap = new Map(prev)
@@ -362,7 +363,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         })
       }
     }
-    
+
     const handlePause = (e: Event) => {
       const video = e.target as HTMLVideoElement
       const testimonialId = Array.from(videoRefs.current.entries()).find(([_, v]) => v === video)?.[0]
@@ -378,14 +379,14 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         isProgrammaticPauseRef.current.set(testimonialId, false)
       }
     }
-    
+
     videoRefs.current.forEach((video) => {
       if (video) {
         video.addEventListener('play', handlePlay)
         video.addEventListener('pause', handlePause)
       }
     })
-    
+
     return () => {
       videoRefs.current.forEach((video) => {
         if (video) {
@@ -426,10 +427,10 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     const firstScriptTag = document.getElementsByTagName('script')[0]
     firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag)
 
-    // Обработчик готовности API
-    ;(window as any).onYouTubeIframeAPIReady = () => {
-      setYoutubeApiReady(true)
-    }
+      // Обработчик готовности API
+      ; (window as any).onYouTubeIframeAPIReady = () => {
+        setYoutubeApiReady(true)
+      }
 
     // Проверяем, не загрузился ли API уже
     const checkReady = setInterval(() => {
@@ -495,7 +496,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     }
     fetchTestimonials()
   }, [])
-  
+
   useEffect(() => {
     testimonials.forEach((testimonial) => {
       if (!videoMutedRef.current.has(testimonial.id)) {
@@ -526,7 +527,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         const targetIndex = page * itemsPerPage
         const maxScrollLeft = scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth
         const scrollAmount = Math.min(targetIndex * (cardWidth + gap), maxScrollLeft)
-        
+
         scrollContainerRef.current.scrollTo({
           left: scrollAmount,
           behavior: 'smooth',
@@ -567,34 +568,34 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
     let scrollTimeout: NodeJS.Timeout
     let pageUpdateTimeout: NodeJS.Timeout
-    
+
     const checkAndControlVideos = () => {
       // Управляем паузой видео при скролле (только для video_file, загруженных через админку)
       videoRefs.current.forEach((video, testimonialId) => {
         if (!video || !video.parentElement) return
-        
+
         const cardElement = video.closest('.flex-shrink-0') as HTMLElement
         if (!cardElement) return
-        
+
         const containerRect = container.getBoundingClientRect()
         const cardRect = cardElement.getBoundingClientRect()
-        
+
         // Проверяем видимость карточки относительно VIEWPORT окна И контейнера карусели
         // Карточка должна быть видна И в контейнере И на экране
-        const isVisibleInContainer = 
+        const isVisibleInContainer =
           cardRect.left < containerRect.right &&
           cardRect.right > containerRect.left
-        
-        const isVisibleInViewport = 
+
+        const isVisibleInViewport =
           cardRect.top < window.innerHeight &&
           cardRect.bottom > 0
-        
+
         const isVisible = isVisibleInContainer && isVisibleInViewport
-        
+
         // Вычисляем процент видимости по горизонтали
-          const visibleWidth = Math.min(cardRect.right, containerRect.right) - Math.max(cardRect.left, containerRect.left)
+        const visibleWidth = Math.min(cardRect.right, containerRect.right) - Math.max(cardRect.left, containerRect.left)
         const visibleRatio = isVisible ? Math.max(0, visibleWidth / cardRect.width) : 0
-        
+
         // Если карточка видна на 30% и более - только синхронизируем muted, НЕ останавливаем видео
         // Пользователь может запустить видео вручную, и оно будет продолжать воспроизводиться
         if (isVisible && visibleRatio >= 0.3) {
@@ -618,40 +619,40 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           }
         }
       })
-      
+
       // Управляем паузой YouTube видео при скролле
       iframeRefs.current.forEach((iframe, testimonialId) => {
         if (!iframe || !iframe.parentElement) return
-        
+
         const player = youtubePlayers.current.get(testimonialId)
         if (!player || typeof player.getPlayerState !== 'function') return
-        
+
         const cardElement = iframe.closest('.flex-shrink-0') as HTMLElement
         if (!cardElement) return
-        
+
         const containerRect = container.getBoundingClientRect()
         const cardRect = cardElement.getBoundingClientRect()
-        
+
         // Проверяем видимость карточки относительно VIEWPORT окна И контейнера карусели
-        const isVisibleInContainer = 
+        const isVisibleInContainer =
           cardRect.left < containerRect.right &&
           cardRect.right > containerRect.left
-        
-        const isVisibleInViewport = 
+
+        const isVisibleInViewport =
           cardRect.top < window.innerHeight &&
           cardRect.bottom > 0
-        
+
         const isVisible = isVisibleInContainer && isVisibleInViewport
-        
+
         // Вычисляем процент видимости по горизонтали
         const visibleWidth = Math.min(cardRect.right, containerRect.right) - Math.max(cardRect.left, containerRect.left)
         const visibleRatio = isVisible ? Math.max(0, visibleWidth / cardRect.width) : 0
-        
+
         try {
           const playerState = player.getPlayerState()
           // 1 = playing, 2 = paused
           const isPlaying = playerState === 1
-          
+
           // Если карточка видна на 30% и более - НЕ останавливаем видео
           if (isVisible && visibleRatio >= 0.3) {
             // Ничего не делаем - если пользователь запустил видео, оно продолжит воспроизводиться
@@ -672,17 +673,17 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         }
       })
     }
-    
+
     const handleScroll = () => {
       // Немедленно проверяем и контролируем видео
       checkAndControlVideos()
-      
+
       // Обновление страницы с debounce
       clearTimeout(pageUpdateTimeout)
       pageUpdateTimeout = setTimeout(() => {
         const card = container.children[0] as HTMLElement
         if (!card) return
-        
+
         const cardWidth = card.offsetWidth
         const gap = 16
         const pageWidth = itemsPerPage * (cardWidth + gap)
@@ -692,7 +693,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         }
       }, 100)
     }
-    
+
     // Используем throttling для скролла (не debounce!)
     let lastScrollTime = 0
     const throttledHandleScroll = () => {
@@ -706,7 +707,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         scrollTimeout = setTimeout(handleScroll, 50 - (now - lastScrollTime))
       }
     }
-    
+
     // Обработчик для скролла страницы (window scroll)
     let lastWindowScrollTime = 0
     const throttledCheckVideos = () => {
@@ -716,17 +717,17 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         checkAndControlVideos()
       }
     }
-    
+
     container.addEventListener('scroll', throttledHandleScroll, { passive: true })
     // Добавляем обработчик скролла страницы для остановки видео при вертикальном скролле
     window.addEventListener('scroll', throttledCheckVideos, { passive: true })
-    
+
     // Первоначальная проверка
     checkAndControlVideos()
-    
+
     // Периодическая проверка на случай пропущенных событий
     const intervalId = setInterval(checkAndControlVideos, 200)
-    
+
     return () => {
       container.removeEventListener('scroll', throttledHandleScroll)
       window.removeEventListener('scroll', throttledCheckVideos)
@@ -747,7 +748,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   //   })
   //   // YouTube видео не останавливаются при смене страницы
   // }, [currentPage])
-  
+
   // Останавливаем видео при переходе на другую вкладку (для video_file И YouTube)
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -756,7 +757,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         videoRefs.current.forEach((video, testimonialId) => {
           if (video && !video.paused) {
             isProgrammaticPauseRef.current.set(testimonialId, true)
-        video.pause()
+            video.pause()
             videoPlayingRef.current.set(testimonialId, false)
             setVideoPlaying((prev) => {
               const newMap = new Map(prev)
@@ -765,11 +766,11 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
             })
           }
         })
-        
+
         // Останавливаем все YouTube видео
         youtubePlayers.current.forEach((player, testimonialId) => {
           if (!player || typeof player.getPlayerState !== 'function') return
-          
+
           try {
             const playerState = player.getPlayerState()
             // 1 = playing
@@ -788,7 +789,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         })
       }
     }
-    
+
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
@@ -829,12 +830,12 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
               onReady: (event: any) => {
                 // Обновляем состояние готовности плеера
                 playerReadyMapRef.current.set(testimonial.id, true)
-                console.log('YouTube player ready:', { 
+                console.log('YouTube player ready:', {
                   testimonialId: testimonial.id,
                   playerReadyMapRef: Array.from(playerReadyMapRef.current.entries()),
                   justSet: playerReadyMapRef.current.get(testimonial.id)
                 })
-                
+
                 try {
                   // Инициализируем БЕЗ звука (для обхода Autoplay Policy)
                   // Звук включится при первом playVideo() в handleTogglePlay
@@ -902,30 +903,44 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   }, [])
 
   if (loading) return <div className={`py-12 ${className}`} />
-  if (testimonials.length === 0) return null
 
   const renderMedia = (testimonial: Testimonial) => {
-    // Используем массив media
-    if (!testimonial.media || testimonial.media.length === 0) return null
-    
+    // Используем массив media; если его нет — показываем placeholder
+    if (!testimonial.media || testimonial.media.length === 0) {
+      const placeholder = getPlaceholderImageUrl({
+        type: 'testimonial',
+        id: testimonial.id,
+      })
+      return (
+        <img
+          src={placeholder}
+          alt={t('testimonial_image_alt', `Изображение к отзыву от ${testimonial.author_name}`)}
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            e.currentTarget.src = '/product-placeholder.svg'
+          }}
+        />
+      )
+    }
+
     // Показываем только первый медиа элемент в карусели
     const firstMedia = testimonial.media[0]
-    
+
     if (firstMedia.media_type === 'image' && firstMedia.image_url) {
       return (
         <img
-          src={firstMedia.image_url}
+          src={resolveMediaUrl(firstMedia.image_url)}
           alt={t('testimonial_image_alt', `Изображение к отзыву от ${testimonial.author_name}`)}
           className="w-full h-full object-cover"
         />
       )
     }
-    
+
     if (firstMedia.media_type === 'video' && firstMedia.video_url) {
       // Для YouTube/Vimeo видео добавляем параметры в URL (без autoplay)
       let embedUrl = firstMedia.video_url
       let isValidEmbedUrl = false
-      
+
       // Обработка YouTube URL - улучшенная версия, поддерживающая все форматы
       // Проверяем, является ли URL уже embed URL
       if (embedUrl.includes('youtube.com/embed/')) {
@@ -947,21 +962,21 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         // Поддерживаем: /watch?v=, /embed/, /shorts/, youtu.be/, m.youtube.com/
         // Для обычных видео ID всегда 11 символов, для Shorts может быть разной длины
         let videoId = null
-        
+
         // Сначала пробуем стандартный формат (11 символов)
         const standardRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})/
         let match = embedUrl.match(standardRegex)
-        
+
         // Если не нашли, пробуем формат Shorts (может быть разной длины)
         if (!match) {
           const shortsRegex = /(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)/
           match = embedUrl.match(shortsRegex)
         }
-        
+
         if (match && match[1]) {
           videoId = match[1]
         }
-        
+
         if (videoId) {
           embedUrl = `https://www.youtube.com/embed/${videoId}?muted=1&loop=1&playlist=${videoId}&controls=1&modestbranding=1&rel=0&enablejsapi=1`
           isValidEmbedUrl = true
@@ -971,7 +986,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           return null
         }
       }
-      
+
       // Обработка Vimeo URL
       if (embedUrl.includes('vimeo.com/') && !embedUrl.includes('player.vimeo.com')) {
         const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
@@ -986,7 +1001,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       } else if (embedUrl.includes('player.vimeo.com')) {
         isValidEmbedUrl = true
       }
-      
+
       // Показываем iframe только если URL валидный
       if (isValidEmbedUrl) {
         // Создаем фиксированный URL один раз (с muted=1 по умолчанию)
@@ -996,13 +1011,13 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           // Создаем URL только один раз при первом рендере
           try {
             const url = new URL(embedUrl)
-            
+
             // Убираем autoplay если есть
             url.searchParams.delete('autoplay')
-            
+
             // Всегда начинаем с muted=1 (для обхода Autoplay Policy)
             url.searchParams.set('muted', '1')
-            
+
             finalUrl = url.toString()
           } catch (error) {
             console.error('Error parsing URL:', error, embedUrl)
@@ -1013,11 +1028,11 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
               finalUrl = `${finalUrl}${separator}muted=1`
             }
           }
-          
+
           // Сохраняем фиксированный URL
           iframeUrls.current.set(testimonial.id, finalUrl)
         }
-        
+
         // Отладочная информация
         if (process.env.NODE_ENV === 'development') {
           console.log('YouTube iframe URL:', { testimonialId: testimonial.id, finalUrl })
@@ -1026,7 +1041,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         const thumbnail = getYouTubeThumbnail(firstMedia.video_url || embedUrl)
         const isPlayerReady = playerReadyMapRef.current.get(testimonial.id) === true
 
-      return (
+        return (
           <div className="w-full h-full relative" key={`container-${testimonial.id}`}>
             {thumbnail && (
               <img
@@ -1035,7 +1050,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                 className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${playerReadyMapRef.current.get(testimonial.id) ? 'opacity-0' : 'opacity-100'}`}
               />
             )}
-        <iframe
+            <iframe
               ref={(el) => {
                 if (el) {
                   iframeRefs.current.set(testimonial.id, el)
@@ -1045,19 +1060,19 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                 }
               }}
               src={finalUrl}
-          title={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
-          frameBorder="0"
+              title={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
+              frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
+              allowFullScreen
               className="absolute inset-0 w-full h-full"
-        ></iframe>
+            ></iframe>
           </div>
-      )
+        )
       }
-      
+
       return null
     }
-    
+
     if (firstMedia.media_type === 'video_file' && firstMedia.video_file_url) {
       const isMuted = videoMuted.get(testimonial.id) !== false
       return (
@@ -1076,228 +1091,270 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
           loop
           className="w-full h-full object-cover"
         >
-          <source src={firstMedia.video_file_url} type="video/mp4" />
+          <source src={resolveMediaUrl(firstMedia.video_file_url)} type="video/mp4" />
           {t('video_tag_unsupported', 'Ваш браузер не поддерживает видео.')}
         </video>
       )
     }
-    
+
     return null
   }
 
   return (
     <section className={`py-12 ${className}`}>
       <div className="mx-auto max-w-6xl px-4">
-        <h2 className="text-3xl font-bold text-main mb-8 text-center">
-          {t('testimonials_title', 'Что говорят наши клиенты')}
-        </h2>
-        <div className="relative mb-8">
-          <div
-            ref={scrollContainerRef}
-            className="flex gap-4 overflow-x-auto scrollbar-hide scroll-smooth py-4"
-            style={{
-              scrollbarWidth: 'none',
-              msOverflowStyle: 'none',
-            }}
-          >
-            {testimonials.map((testimonial) => {
-              const hasUser = testimonial.user_id != null && testimonial.user_username
-              if (hasUser) {
-                console.log('Rendering testimonial with user:', {
-                  id: testimonial.id,
-                  user_id: testimonial.user_id,
-                  user_username: testimonial.user_username
-                })
-              }
-              return (
-              <div
-                key={testimonial.id}
-                className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 hover:scale-[1.02] flex flex-col"
-              >
-                {testimonial.media && testimonial.media.length > 0 && (
-                  <Link
-                    href="/testimonials"
-                    className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100 block"
-                    onClick={(e) => {
-                      // Не перехватываем клик, если кликнули на кнопку пользователя
-                      const target = e.target as HTMLElement
-                      if (target.closest('button[type="button"]')) {
-                        e.preventDefault()
-                        e.stopPropagation()
-                      }
-                    }}
-                  >
-                    <div className="w-full h-full transition-transform duration-300 group-hover:scale-110">
-                      {renderMedia(testimonial)}
-                    </div>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    {testimonial.media && testimonial.media.some(
-                      m => (m.media_type === 'video_file' && m.video_file_url) || 
-                           (m.media_type === 'video' && m.video_url)
-                    ) && (
-                      <>
-                        {/* Кнопка play/pause - для ВСЕХ видео */}
-                      <button
-                          onClick={(e) => handleTogglePlay(testimonial.id, e)}
-                          className="absolute top-2 left-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
-                          aria-label={videoPlaying.get(testimonial.id) ? 'Пауза' : 'Воспроизведение'}
-                        >
-                          <div className="relative w-5 h-5">
-                            <PauseIcon 
-                              className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
-                                videoPlaying.get(testimonial.id) ? 'opacity-100' : 'opacity-0'
-                              }`}
-                            />
-                            <PlayIcon 
-                              className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
-                                videoPlaying.get(testimonial.id) ? 'opacity-0' : 'opacity-100'
-                              }`}
-                            />
-                          </div>
-                        </button>
-                        
-                        {/* Кнопка звука - ТОЛЬКО для загруженных видео, НЕ для YouTube/Vimeo */}
-                        {testimonial.media.some(
-                          m => (m.media_type === 'video_file' && m.video_file_url) || 
-                               (m.media_type === 'video' && m.video_url && 
-                                !m.video_url.includes('youtube.com') && 
-                                !m.video_url.includes('youtu.be') && 
-                                !m.video_url.includes('vimeo.com'))
-                        ) && (
-                          <button
-                            onClick={(e) => handleToggleMute(testimonial.id, e)}
-                            className="absolute top-2 right-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
-                            aria-label={videoMuted.get(testimonial.id) !== false ? 'Включить звук' : 'Выключить звук'}
-                          >
-                            <div className="relative w-5 h-5">
-                              <SpeakerXMarkIcon 
-                                className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
-                                  videoMuted.get(testimonial.id) !== false ? 'opacity-100' : 'opacity-0'
-                                }`}
-                              />
-                              <SpeakerWaveIcon 
-                                className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${
-                                  videoMuted.get(testimonial.id) !== false ? 'opacity-0' : 'opacity-100'
-                                }`}
-                              />
-                            </div>
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </Link>
-                )}
-                
-                {/* Текст отзыва - по центру */}
-                <Link
-                  href="/testimonials"
-                  className="flex-1 p-4 min-h-[100px] cursor-pointer"
-                  onClick={(e) => {
-                    // Не перехватываем клик, если кликнули на кнопку пользователя
-                    const target = e.target as HTMLElement
-                    if (target.closest('button[type="button"]')) {
-                      e.preventDefault()
-                      e.stopPropagation()
-                    }
-                  }}
-                >
-                  <p className="text-gray-600 text-sm line-clamp-4">
-                    "{testimonial.text}"
-                  </p>
-                </Link>
-                
-                {/* Нижняя часть: аватарка + имя слева, звездочки справа */}
-                <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 mt-auto">
-                  {testimonial.user_id != null && testimonial.user_username ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        console.log('Clicking on user profile:', {
-                          username: testimonial.user_username,
-                          userId: testimonial.user_id,
-                          testimonialId: testimonial.id
-                        })
-                        const url = `/user/${testimonial.user_username}?testimonial_id=${testimonial.id}`
-                        console.log('Navigating to:', url)
-                        router.push(url).catch(err => {
-                          console.error('Navigation error:', err)
-                        })
-                      }}
-                      onMouseDown={(e) => {
-                        e.stopPropagation()
-                      }}
-                      className="flex items-center flex-1 min-w-0 hover:opacity-80 transition-opacity cursor-pointer text-left bg-transparent border-none p-0 outline-none focus:outline-none"
-                      title={`Профиль ${testimonial.author_name}`}
-                      style={{ zIndex: 10 }}
-                    >
-                      {testimonial.author_avatar_url && (
-                        <img
-                          src={testimonial.author_avatar_url}
-                          alt={testimonial.author_name}
-                          className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0 pointer-events-none"
-                        />
-                      )}
-                      <div className="text-xs font-semibold text-gray-900 truncate pointer-events-none">
-                        {testimonial.author_name}
-                      </div>
-                    </button>
-                  ) : (
-                  <div className="flex items-center flex-1 min-w-0">
-                    {testimonial.author_avatar_url && (
-                      <img
-                        src={testimonial.author_avatar_url}
-                        alt={testimonial.author_name}
-                        className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
-                      />
-                    )}
-                    <div className="text-xs font-semibold text-gray-900 truncate">
-                      {testimonial.author_name}
-                    </div>
-                  </div>
-                  )}
-                  {testimonial.rating && (
-                    <div className="flex items-center ml-2 flex-shrink-0">
-                      {[0, 1, 2, 3, 4].map((rating) => (
-                        <StarIcon
-                          key={rating}
-                          className={`h-4 w-4 ${
-                            (testimonial.rating || 0) > rating
-                              ? 'text-yellow-400'
-                              : 'text-gray-300'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              )
-            })}
-          </div>
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-main text-center">
+            {t('testimonials_title', 'Что говорят наши клиенты')}
+          </h2>
         </div>
 
-        {totalPages > 1 && (
-          <div className="w-full flex justify-center items-center py-4">
-            <div className="flex justify-center items-center gap-2.5 px-4 py-2">
-              {Array.from({ length: totalPages }, (_, i) => i).map((pageIndex) => (
-                <button
-                  key={pageIndex}
-                  onClick={() => goToPage(pageIndex)}
-                  className="transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 rounded-full"
-                  style={{
-                    width: pageIndex === currentPage ? '14px' : '10px',
-                    height: pageIndex === currentPage ? '14px' : '10px',
-                    borderRadius: '50%',
-                    border: pageIndex === currentPage ? 'none' : '2px solid #9ca3af',
-                    backgroundColor: pageIndex === currentPage ? '#111827' : '#ffffff',
-                    cursor: 'pointer',
-                  }}
-                  aria-label={`Перейти на страницу ${pageIndex + 1}`}
-                />
-              ))}
+        {testimonials.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-xl border border-gray-100 shadow-sm mb-8">
+            <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <p className="text-gray-500 text-lg mb-4">
+              {t('no_testimonials_yet', 'Пока нет отзывов. Станьте первым!')}
+            </p>
+            <div className="mt-8">
+              <Link
+                href="/testimonials?action=add"
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm hover:shadow"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span>{t('add_testimonial', 'Оставить отзыв')}</span>
+              </Link>
             </div>
+          </div>
+        ) : (
+          <>
+            <div className="relative mb-8">
+              <div
+                ref={scrollContainerRef}
+                className="flex gap-4 overflow-x-auto scrollbar-hide scroll-smooth py-4"
+                style={{
+                  scrollbarWidth: 'none',
+                  msOverflowStyle: 'none',
+                }}
+              >
+                {testimonials.map((testimonial) => {
+                  const hasUser = testimonial.user_id != null && testimonial.user_username
+                  if (hasUser) {
+                    console.log('Rendering testimonial with user:', {
+                      id: testimonial.id,
+                      user_id: testimonial.user_id,
+                      user_username: testimonial.user_username
+                    })
+                  }
+                  return (
+                    <div
+                      key={testimonial.id}
+                      className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 hover:scale-[1.02] flex flex-col"
+                    >
+                      {testimonial.media && testimonial.media.length > 0 && (
+                        <Link
+                          href="/testimonials"
+                          className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100 block"
+                          onClick={(e) => {
+                            // Не перехватываем клик, если кликнули на кнопку пользователя
+                            const target = e.target as HTMLElement
+                            if (target.closest('button[type="button"]')) {
+                              e.preventDefault()
+                              e.stopPropagation()
+                            }
+                          }}
+                        >
+                          <div className="w-full h-full transition-transform duration-300 group-hover:scale-110">
+                            {renderMedia(testimonial)}
+                          </div>
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                          {testimonial.media && testimonial.media.some(
+                            m => (m.media_type === 'video_file' && m.video_file_url) ||
+                              (m.media_type === 'video' && m.video_url)
+                          ) && (
+                              <>
+                                {/* Кнопка play/pause - для ВСЕХ видео */}
+                                <button
+                                  onClick={(e) => handleTogglePlay(testimonial.id, e)}
+                                  className="absolute top-2 left-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
+                                  aria-label={videoPlaying.get(testimonial.id) ? 'Пауза' : 'Воспроизведение'}
+                                >
+                                  <div className="relative w-5 h-5">
+                                    <PauseIcon
+                                      className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoPlaying.get(testimonial.id) ? 'opacity-100' : 'opacity-0'
+                                        }`}
+                                    />
+                                    <PlayIcon
+                                      className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoPlaying.get(testimonial.id) ? 'opacity-0' : 'opacity-100'
+                                        }`}
+                                    />
+                                  </div>
+                                </button>
+
+                                {/* Кнопка звука - ТОЛЬКО для загруженных видео, НЕ для YouTube/Vimeo */}
+                                {testimonial.media.some(
+                                  m => (m.media_type === 'video_file' && m.video_file_url) ||
+                                    (m.media_type === 'video' && m.video_url &&
+                                      !m.video_url.includes('youtube.com') &&
+                                      !m.video_url.includes('youtu.be') &&
+                                      !m.video_url.includes('vimeo.com'))
+                                ) && (
+                                    <button
+                                      onClick={(e) => handleToggleMute(testimonial.id, e)}
+                                      className="absolute top-2 right-2 z-20 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-150 hover:scale-110 active:scale-95"
+                                      aria-label={videoMuted.get(testimonial.id) !== false ? 'Включить звук' : 'Выключить звук'}
+                                    >
+                                      <div className="relative w-5 h-5">
+                                        <SpeakerXMarkIcon
+                                          className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoMuted.get(testimonial.id) !== false ? 'opacity-100' : 'opacity-0'
+                                            }`}
+                                        />
+                                        <SpeakerWaveIcon
+                                          className={`absolute inset-0 w-5 h-5 transition-opacity duration-150 ${videoMuted.get(testimonial.id) !== false ? 'opacity-0' : 'opacity-100'
+                                            }`}
+                                        />
+                                      </div>
+                                    </button>
+                                  )}
+                              </>
+                            )}
+                        </Link>
+                      )}
+
+                      {/* Текст отзыва - по центру */}
+                      <Link
+                        href="/testimonials"
+                        className="flex-1 p-4 min-h-[100px] cursor-pointer"
+                        onClick={(e) => {
+                          // Не перехватываем клик, если кликнули на кнопку пользователя
+                          const target = e.target as HTMLElement
+                          if (target.closest('button[type="button"]')) {
+                            e.preventDefault()
+                            e.stopPropagation()
+                          }
+                        }}
+                      >
+                        <p className="text-gray-600 text-sm line-clamp-4">
+                          &quot;{testimonial.text}&quot;
+                        </p>
+                      </Link>
+
+                      {/* Нижняя часть: аватарка + имя слева, звездочки справа */}
+                      <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 mt-auto">
+                        {testimonial.user_id != null && testimonial.user_username ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              console.log('Clicking on user profile:', {
+                                username: testimonial.user_username,
+                                userId: testimonial.user_id,
+                                testimonialId: testimonial.id
+                              })
+                              const url = `/user/${testimonial.user_username}?testimonial_id=${testimonial.id}`
+                              console.log('Navigating to:', url)
+                              router.push(url).catch(err => {
+                                console.error('Navigation error:', err)
+                              })
+                            }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation()
+                            }}
+                            className="flex items-center flex-1 min-w-0 hover:opacity-80 transition-opacity cursor-pointer text-left bg-transparent border-none p-0 outline-none focus:outline-none"
+                            title={`Профиль ${testimonial.author_name}`}
+                            style={{ zIndex: 10 }}
+                          >
+                            {testimonial.author_avatar_url && (
+                              <img
+                                src={resolveMediaUrl(testimonial.author_avatar_url)}
+                                alt={testimonial.author_name}
+                                className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0 pointer-events-none"
+                                onError={(e) => {
+                                  e.currentTarget.src = '/product-placeholder.svg'
+                                }}
+                              />
+                            )}
+                            <div className="text-xs font-semibold text-gray-900 truncate pointer-events-none">
+                              {testimonial.author_name}
+                            </div>
+                          </button>
+                        ) : (
+                          <div className="flex items-center flex-1 min-w-0">
+                            {testimonial.author_avatar_url && (
+                              <img
+                                src={resolveMediaUrl(testimonial.author_avatar_url)}
+                                alt={testimonial.author_name}
+                                className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                                onError={(e) => {
+                                  e.currentTarget.src = '/product-placeholder.svg'
+                                }}
+                              />
+                            )}
+                            <div className="text-xs font-semibold text-gray-900 truncate">
+                              {testimonial.author_name}
+                            </div>
+                          </div>
+                        )}
+                        {testimonial.rating && (
+                          <div className="flex items-center ml-2 flex-shrink-0">
+                            {[0, 1, 2, 3, 4].map((rating) => (
+                              <StarIcon
+                                key={rating}
+                                className={`h-4 w-4 ${(testimonial.rating || 0) > rating
+                                  ? 'text-yellow-400'
+                                  : 'text-gray-300'
+                                  }`}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="w-full flex justify-center items-center py-4">
+                <div className="flex justify-center items-center gap-2.5 px-4 py-2">
+                  {Array.from({ length: totalPages }, (_, i) => i).map((pageIndex) => (
+                    <button
+                      key={pageIndex}
+                      onClick={() => goToPage(pageIndex)}
+                      className="transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 rounded-full"
+                      style={{
+                        width: pageIndex === currentPage ? '14px' : '10px',
+                        height: pageIndex === currentPage ? '14px' : '10px',
+                        borderRadius: '50%',
+                        border: pageIndex === currentPage ? 'none' : '2px solid #9ca3af',
+                        backgroundColor: pageIndex === currentPage ? '#111827' : '#ffffff',
+                        cursor: 'pointer',
+                      }}
+                      aria-label={`Перейти на страницу ${pageIndex + 1}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {testimonials.length > 0 && (
+          <div className="flex justify-center mt-2">
+            <Link
+              href="/testimonials?action=add"
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors shadow-sm hover:shadow"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span>{t('add_testimonial', 'Оставить отзыв')}</span>
+            </Link>
           </div>
         )}
       </div>

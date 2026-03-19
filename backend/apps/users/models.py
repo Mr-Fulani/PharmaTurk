@@ -35,9 +35,9 @@ class User(AbstractUser):
     telegram_notifications = models.BooleanField(_('telegram уведомления'), default=False)
     push_notifications = models.BooleanField(_('push уведомления'), default=True)
     
-    # Telegram
     telegram_id = models.CharField(_('telegram ID'), max_length=50, blank=True)
     telegram_username = models.CharField(_('Telegram'), max_length=50, blank=True)
+    telegram_sync_token = models.CharField(_('токен привязки Telegram'), max_length=64, blank=True, null=True, unique=True)
     
     # Социальные сети (для будущей интеграции)
     # Поля для хранения ID пользователей в соцсетях
@@ -51,9 +51,9 @@ class User(AbstractUser):
     created_at = models.DateTimeField(_('дата создания'), auto_now_add=True)
     updated_at = models.DateTimeField(_('дата обновления'), auto_now=True)
     last_login_ip = models.GenericIPAddressField(_('последний IP входа'), null=True, blank=True)
-    is_public_profile = models.BooleanField(_('публичный профиль'), default=False)
-    show_email = models.BooleanField(_('показывать email'), default=False)
-    show_phone = models.BooleanField(_('показывать телефон'), default=False)
+    is_public_profile = models.BooleanField(_('публичный профиль'), default=True)
+    show_email = models.BooleanField(_('показывать email'), default=True)
+    show_phone = models.BooleanField(_('показывать телефон'), default=True)
     
     # Язык и валюта
     language = models.CharField(_('язык'), max_length=10, choices=[
@@ -61,12 +61,13 @@ class User(AbstractUser):
         ('ru', 'Русский'),
         ('tr', 'Türkçe'),
     ], default='en')
-    currency = models.CharField(_('валюта'), max_length=3, choices=[
+    currency = models.CharField(_('валюта'), max_length=10, choices=[
         ('USD', 'Доллар США'),
         ('RUB', 'Рубль'),
         ('EUR', 'Евро'),
         ('TRY', 'Турецкая лира'),
         ('KZT', 'Казахстанский тенге'),
+        ('USDT', 'USDT (Tether)'),
     ], default='USD')
     
     USERNAME_FIELD = 'email'

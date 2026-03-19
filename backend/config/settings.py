@@ -56,6 +56,8 @@ INSTALLED_APPS = [
     "apps.feedback",
     "apps.settings",
     "apps.pages",
+    "apps.ai",
+    "apps.recommendations",
 ]
 
 # Кастомная модель пользователя
@@ -136,49 +138,72 @@ CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_TASK_ALWAYS_EAGER = False
 CELERY_TASK_TIME_LIMIT = 60 * 10
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# Очередь ai для задач AI (воркер celery_ai слушает только её); recsys для рекомендаций
+CELERY_TASK_ROUTES = {
+    "apps.ai.tasks.*": {"queue": "ai"},
+    "apps.recommendations.tasks.*": {"queue": "recsys"},
+    "apps.payments.tasks.*": {"queue": "celery"},
+    "currency.*": {"queue": "celery"},
+}
+# Расписание Celery Beat. Подробности — см. CELERY_TASKS.md в корне проекта.
 CELERY_BEAT_SCHEDULE = {
-    # Обновление цен каждые 4-6 часов
-    "refresh-prices": {
-        "task": "apps.catalog.tasks.refresh_prices",
-        "schedule": 60 * 60 * 4,  # 4 часа
+    # Валюта: обновление курсов каждые 4 часа
+    "currency-update-rates": {
+        "task": "currency.update_rates",
+        "schedule": 60 * 60 * 4,
     },
-    # Обновление наличия каждые 2 часа
-    "refresh-stock": {
-        "task": "apps.catalog.tasks.refresh_stock",
-        "schedule": 60 * 60 * 2,  # 2 часа
+    # Валюта: пересчёт цен товаров по курсам — раз в день
+    "currency-update-prices": {
+        "task": "currency.update_product_prices",
+        "schedule": 60 * 60 * 24,
+        "kwargs": {"batch_size": 200},
     },
-    # Синхронизация товаров из API парсера каждые 6 часов
-    "vapi-sync-products": {
-        "task": "apps.vapi.tasks.pull_products",
-        "schedule": 60 * 60 * 6,  # 6 часов
-        "args": (1, 100),  # первая страница, 100 товаров
-    },
-    # Синхронизация справочников каждый день в 3:00
-    "vapi-sync-categories": {
-        "task": "apps.vapi.tasks.sync_categories_and_brands",
-        "schedule": 60 * 60 * 24,  # 24 часа
-    },
-    # Полная синхронизация каталога каждые 3 дня в 2:00
-    "vapi-full-sync": {
-        "task": "apps.vapi.tasks.full_catalog_sync",
-        "schedule": 60 * 60 * 24 * 3,  # 3 дня
-        "args": (100,),  # максимум 100 страниц
-    },
-    # Запуск всех активных парсеров каждые 12 часов
-    "run-all-scrapers": {
-        "task": "apps.scrapers.tasks.run_all_active_scrapers",
-        "schedule": 60 * 60 * 12,  # 12 часов
-    },
+    # refresh-stock: заглушка — отключено, доработаем после парсеров
+    # "refresh-stock": {"task": "apps.catalog.tasks.refresh_stock", "schedule": 60 * 60 * 2},
+    # VAPI: отключено — не используется. Включить при работе с VAPI API.
+    # "vapi-sync-products": {"task": "apps.vapi.tasks.pull_products", "schedule": 60*60*6, "args": (1, 100)},
+    # "vapi-sync-categories": {"task": "apps.vapi.tasks.sync_categories_and_brands", "schedule": 60*60*24},
+    # "vapi-full-sync": {"task": "apps.vapi.tasks.full_catalog_sync", "schedule": 60*60*24*3, "args": (100,)},
+    # run-all-scrapers: отключено, доработаем после парсеров
+    # "run-all-scrapers": {"task": "apps.scrapers.tasks.run_all_active_scrapers", "schedule": 60 * 60 * 12},
     # Очистка старых сессий парсинга каждую неделю
     "cleanup-scraper-sessions": {
         "task": "apps.scrapers.tasks.cleanup_old_sessions",
         "schedule": 60 * 60 * 24 * 7,  # неделя
         "args": (30,),  # хранить 30 дней
     },
-    # Поиск и объединение дубликатов каждый день в 3:00
-    "find-merge-duplicates": {
-        "task": "apps.scrapers.tasks.find_and_merge_duplicates",
-        "schedule": 60 * 60 * 24,  # день
+    # Поиск и объединение дубликатов — только ручной запуск (см. CELERY_TASKS.md)
+    # "find-merge-duplicates": {
+    #     "task": "apps.scrapers.tasks.find_and_merge_duplicates",
+    #     "schedule": 60 * 60 * 24,  # день
+    # },
+    # Очистка неиспользуемых медиа из R2/локального хранилища ежедневно в 3:00
+    "cleanup-orphaned-media": {
+        "task": "catalog.cleanup_orphaned_media",
+        "schedule": 60 * 60 * 24,  # день (можно заменить на crontab(0, 3) при наличии celery.schedules)
+    },
+    # AI: задачи, тратящие токены OpenAI, отключены — только ручной запуск через админку /admin/ai/manual-tasks/
+    # Крипто: пометить истёкшие инвойсы (каждые 10 мин)
+    "payments-expire-crypto-invoices": {
+        "task": "apps.payments.tasks.expire_pending_crypto_payments",
+        "schedule": 60 * 10,
+    },
+    # AI: очистка старых логов (раз в неделю, не тратит токены)
+    "ai-cleanup-old-logs": {
+        "task": "apps.ai.tasks.cleanup_old_ai_logs",
+        "schedule": 60 * 60 * 24 * 7,
+        "kwargs": {"days": 30},
+    },
+    # RecSys: полная синхронизация векторов товаров в Qdrant (раз в сутки)
+    "recsys-sync-all": {
+        "task": "apps.recommendations.tasks.sync_all_products_to_qdrant",
+        "schedule": 60 * 60 * 24 * 3,  # раз в 3 дня
+    },
+    # Очистка временных файлов поиска по фото (каждый час)
+    "cleanup-temp-images": {
+        "task": "apps.recommendations.tasks.cleanup_temp_images",
+        "schedule": 60 * 60,  # 1 hour
     },
 }
 
@@ -201,11 +226,65 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Cloudflare R2 (опционально: если не заданы — используется локальное хранилище)
+R2_ACCOUNT_ID = env("R2_ACCOUNT_ID", default="")
+R2_ACCESS_KEY_ID = env("R2_ACCESS_KEY_ID", default="")
+R2_SECRET_ACCESS_KEY = env("R2_SECRET_ACCESS_KEY", default="")
+R2_BUCKET_NAME = env("R2_BUCKET_NAME", default="")
+R2_PUBLIC_URL = env(
+    "R2_PUBLIC_URL",
+    default=f"https://{R2_BUCKET_NAME}.r2.dev" if R2_BUCKET_NAME else "",
+)
+R2_USE_SSL = env.bool("R2_USE_SSL", default=True)
+
+# Storage configuration
+USE_R2 = env.bool("USE_R2", default=bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME))
+R2_PREFIX = env("R2_PREFIX", default="dev/" if DEBUG else "").strip("/")
+
+if USE_R2:
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "OPTIONS": {
+                "access_key": R2_ACCESS_KEY_ID,
+                "secret_key": R2_SECRET_ACCESS_KEY,
+                "bucket_name": R2_BUCKET_NAME,
+                "endpoint_url": f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+                "region_name": "auto",
+                "file_overwrite": False,
+                "custom_domain": (
+                    R2_PUBLIC_URL.replace("https://", "").replace("http://", "") if R2_PUBLIC_URL else None
+                ),
+                "querystring_auth": False,
+                "location": R2_PREFIX,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+else:
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {
+                "location": MEDIA_ROOT,
+                "base_url": MEDIA_URL,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+
 
 # DRF + JWT
+# JWTSafeAuthentication: при невалидном/просроченном токене возвращает None (анонимный доступ),
+# чтобы AllowAny-эндпоинты работали через ngrok при старом токене в cookies
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "api.authentication.JWTSafeAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.AllowAny",
@@ -221,8 +300,17 @@ SPECTACULAR_SETTINGS = {
 }
 
 
-# CORS
+# Настройки SSL/Proxy
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+
+# CORS и CSRF для продакшена (задать в .env)
+CSRF_TRUSTED_ORIGINS = env.list(
+    "CSRF_TRUSTED_ORIGINS",
+    default=["https://it-dev.space", "https://www.it-dev.space", "https://localhost", "http://localhost"] if DEBUG else ["https://it-dev.space", "https://www.it-dev.space"],
+)
 CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -249,12 +337,32 @@ X_FRAME_OPTIONS = "DENY"
 APPEND_SLASH = False
 
 # Email/Company defaults
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=30)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@pharmaturk.local")
+SERVER_EMAIL = env("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
+EMAIL_ADMIN = env("EMAIL_ADMIN", default=DEFAULT_FROM_EMAIL)
+# Отправка писем через API (SendGrid или SMTP2GO)
+EMAIL_API_PROVIDER = env("EMAIL_API_PROVIDER", default="")
+EMAIL_API_FROM = env("EMAIL_API_FROM", default="")
+EMAIL_API_TIMEOUT = env.int("EMAIL_API_TIMEOUT", default=15)
+SENDGRID_API_KEY = env("SENDGRID_API_KEY", default="")
+SMTP2GO_API_KEY = env("SMTP2GO_API_KEY", default="")
+SMTP2GO_API_URL = env("SMTP2GO_API_URL", default="https://api.smtp2go.com/v3")
+RESEND_API_KEY = env("RESEND_API_KEY", default="")
+RESEND_API_URL = env("RESEND_API_URL", default="https://api.resend.com")
+RESEND_USER_AGENT = env("RESEND_USER_AGENT", default="pharmaturk/1.0")
 COMPANY_NAME = env("COMPANY_NAME", default="PharmaTurk")
 COMPANY_SUPPORT_EMAIL = env("COMPANY_SUPPORT_EMAIL", default=DEFAULT_FROM_EMAIL)
 COMPANY_SUPPORT_PHONE = env("COMPANY_SUPPORT_PHONE", default="+90 (000) 000-00-00")
 COMPANY_ADDRESS = env("COMPANY_ADDRESS", default="Istanbul, Turkey")
 COMPANY_SITE_URL = env("COMPANY_SITE_URL", default="https://pharmaturk.ru")
+BOOKS_SEO_SITE_NAME = env("BOOKS_SEO_SITE_NAME", default=COMPANY_NAME)
 
 
 # Sentry (неактивен, если DSN пуст)
@@ -291,7 +399,7 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
-    
+
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
     'VERIFYING_KEY': None,
@@ -299,24 +407,75 @@ SIMPLE_JWT = {
     'ISSUER': None,
     'JWK_URL': None,
     'LEEWAY': 0,
-    
+
     'AUTH_HEADER_TYPES': ('Bearer',),
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
-    'USER_AUTHENTICATION_RULE': 'rest_framework_simplejwt.authentication.default_user_authentication_rule',
-    
+    'USER_AUTHENTICATION_RULE': (
+        'rest_framework_simplejwt.authentication.default_user_authentication_rule'
+    ),
+
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
     'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
-    
+
     'JTI_CLAIM': 'jti',
-    
+
     'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
     'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
 }
 
-# WhiteNoise настройки для раздачи статики
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# WhiteNoise: раздача статики через STORAGES["staticfiles"]
 
+# AI Configuration
+AI_CONFIG = {
+    'MODEL': env("AI_MODEL", default="gpt-4o-mini"),
+    'VISION_MODEL': env("AI_VISION_MODEL", default="gpt-4o-mini"),
+    'EMBEDDING_MODEL': env("AI_EMBEDDING_MODEL", default="text-embedding-3-small"),
+}
+
+# R2 Configuration (Used for AI processing and media proxy)
+R2_CONFIG = {
+    'endpoint_url': f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+    'aws_access_key_id': R2_ACCESS_KEY_ID,
+    'aws_secret_access_key': R2_SECRET_ACCESS_KEY,
+    'region_name': 'auto',
+    'bucket_name': R2_BUCKET_NAME,
+    'prefix': R2_PREFIX,
+    'public_url': (R2_PUBLIC_URL or '').rstrip('/'),
+}
+
+AI_R2_SETTINGS = {
+    'original_images_path': 'products/original/',
+    'processed_images_path': 'products/processed/',
+    'thumbnails_path': 'products/thumbs/',
+    'temp_processing_path': 'temp/ai_processing/',
+    'cdn_url': R2_PUBLIC_URL,
+}
+
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+
+# CoinRemitter (crypto payments)
+COINREMITTER_API_KEY = env("COINREMITTER_API_KEY", default="")
+COINREMITTER_API_PASSWORD = env("COINREMITTER_API_PASSWORD", default="")
+COINREMITTER_COIN = env("COINREMITTER_COIN", default="USDTTRC20")
+COINREMITTER_WEBHOOK_SECRET = env("COINREMITTER_WEBHOOK_SECRET", default="")
+COINREMITTER_WEBHOOK_IP_WHITELIST = env.list("COINREMITTER_WEBHOOK_IP_WHITELIST", default=[])
+SITE_URL = env("SITE_URL", default="http://localhost:3000").rstrip("/")
+# Для success_url/fail_url: URL фронтенда (checkout-success). По умолчанию = SITE_URL.
+FRONTEND_SITE_URL = env("FRONTEND_SITE_URL", default="").rstrip("/") or SITE_URL
+
+# Telegram notifications
+TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", default="")
+TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", default="") or env("NEXT_PUBLIC_TELEGRAM_BOT_USERNAME", default="")
+TELEGRAM_CHAT_ID = env("TELEGRAM_CHAT_ID", default="")
+
+# Google OAuth2 (Sign In With Google / Google One Tap)
+GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
+GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", default="")
+
+# VK OAuth (VK ID SDK)
+VK_APP_ID = env("VK_APP_ID", default="")
+VK_APP_SECRET = env("VK_APP_SECRET", default="")

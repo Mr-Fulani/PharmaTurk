@@ -11,15 +11,29 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>('light')
+  const [isHydrated, setIsHydrated] = useState(false)
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const storedTheme = sessionStorage.getItem('theme')
+    if (storedTheme === 'light' || storedTheme === 'dark') {
+      setTheme(storedTheme)
+    }
+    setIsHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (!isHydrated) return
     const root = document.documentElement
     if (theme === 'dark') {
       root.classList.add('dark')
     } else {
       root.classList.remove('dark')
     }
-  }, [theme])
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('theme', theme)
+    }
+  }, [theme, isHydrated])
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
@@ -39,4 +53,3 @@ export function useTheme(): ThemeContextValue {
   }
   return ctx
 }
-

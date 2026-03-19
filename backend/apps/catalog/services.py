@@ -1,16 +1,30 @@
 """Сервисы для работы с каталогом товаров."""
 
+import datetime
 import logging
+import re
+import uuid
+import httpx
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 from django.utils.text import slugify
+from transliterate import slugify as trans_slugify
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
 
-from .models import Category, Brand, Product, ProductImage, ProductAttribute, PriceHistory
+from .models import Category, Brand, Product, ProductImage, PriceHistory
+from .scraper_category_mapping import resolve_category_and_product_type
 from apps.vapi.client import ProductData
+from apps.catalog.utils.storage_paths import detect_media_type
 
 logger = logging.getLogger(__name__)
+
+# Реестр: product_type → имя метода CatalogNormalizer для синхронизации атрибутов в доменную модель
+SYNC_METADATA_HANDLER_NAMES = {
+    "books": "_sync_books_metadata",
+    "jewelry": "_sync_jewelry_metadata",
+}
 
 
 class CatalogNormalizer:
@@ -18,17 +32,255 @@ class CatalogNormalizer:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+
+    def _resolve_media_type(self, media_url: str) -> str:
+        media_type = detect_media_type(media_url)
+        if media_type != "image":
+            return media_type
+        if "/products/parsed/" not in (media_url or ""):
+            return media_type
+        try:
+            with httpx.Client(timeout=10, follow_redirects=True) as client:
+                response = client.head(media_url)
+                if response.status_code >= 400:
+                    return media_type
+                content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                if content_type.startswith("video/"):
+                    return "video"
+                if content_type == "image/gif" or content_type.endswith("+gif"):
+                    return "gif"
+                if content_type.startswith("image/"):
+                    return "image"
+        except Exception:
+            return media_type
+        return media_type
+
+    def _is_books_category(self, category: Category | None) -> bool:
+        if not category:
+            return False
+        if (category.slug or "").lower() == "books":
+            return True
+        parent = getattr(category, "parent", None)
+        if parent and (parent.slug or "").lower() == "books":
+            return True
+        return False
+
+    def _is_books_payload(self, category_value: str | None, attrs: Dict[str, Any]) -> bool:
+        raw = (category_value or "").strip().lower()
+        if raw in {"книги", "книга", "books", "book"}:
+            return True
+        if not isinstance(attrs, dict):
+            return False
+        return any(
+            bool(attrs.get(key))
+            for key in (
+                "isbn",
+                "author",
+                "publisher",
+                "pages",
+                "language",
+                "cover_type",
+                "format_type",
+            )
+        )
+
+    def _normalize_publisher(self, p: str) -> str:
+        if not p:
+            return ""
+        
+        # 1. Убираем кавычки
+        p = re.sub(r'[\"\'«»]', '', p)
+        
+        # 2. Убираем слова издательство, издательский дом (игнорируя регистр)
+        p = re.sub(r'(?i)\b(издательский\s+дом|издательство)\b', '', p)
+        
+        # 3. Убираем лишние пробелы по краям и внутри
+        p = re.sub(r'\s+', ' ', p).strip()
+        
+        if not p:
+            return ""
+
+        # 4. Спец-кейсы написания:
+        if p.upper() == 'UMMA LAND':
+            p = 'UMMALAND'
+        
+        # 5. Красивый регистр: если все большими буквами, делаем Title (кроме некоторых)
+        if p.isupper() and p.upper() != 'UMMALAND':
+            p = p.title()
+            
+        return p
+
+    def _sync_books_metadata(self, product: Product, attrs: Dict[str, Any]) -> None:
+        """Синхронизирует книжные атрибуты в BookProduct."""
+        book_keys = ("isbn", "publisher", "pages", "cover_type", "language", "publication_year")
+        from apps.catalog.models import BookProduct
+
+        book_product = getattr(product, "book_item", None)
+        if not book_product:
+            base_slug = product.slug or slugify(product.name)
+            slug = f"book-{base_slug}"
+            i = 2
+            while BookProduct.objects.filter(slug=slug).exists():
+                slug = f"book-{base_slug}-{i}"
+                i += 1
+            book_product = BookProduct.objects.create(
+                base_product=product,
+                name=product.name,
+                slug=slug,
+                description=product.description or "",
+                category=product.category,
+                brand=product.brand,
+                price=product.price,
+                currency=product.currency or "RUB",
+                old_price=product.old_price,
+                external_id=product.external_id or "",
+                external_url=product.external_url or "",
+                external_data=product.external_data or {},
+                is_active=product.is_active,
+                is_available=product.is_available,
+                main_image=product.main_image or "",
+            )
+            product.book_item = book_product
+
+        book_updated = False
+        isbn = attrs.get("isbn")
+        if isbn:
+            new_isbn = str(isbn).strip()
+            digits = re.sub(r"\D", "", new_isbn)
+            if len(digits) in (10, 13) and "00000" not in new_isbn and "..." not in new_isbn and new_isbn != (book_product.isbn or ""):
+                book_product.isbn = new_isbn
+                book_updated = True
+        pages = attrs.get("pages")
+        if pages is not None:
+            try:
+                pages_val = int(str(pages).strip())
+                if 0 < pages_val < 10000 and pages_val != book_product.pages:
+                    book_product.pages = pages_val
+                    book_updated = True
+            except (ValueError, TypeError):
+                pass
+        publisher = attrs.get("publisher")
+        if publisher:
+            v = self._normalize_publisher(str(publisher))
+            if v and v != (book_product.publisher or ""):
+                book_product.publisher = v
+                book_updated = True
+        cover_type = attrs.get("cover_type")
+        if cover_type:
+            v = str(cover_type).strip()
+            if v and v != (book_product.cover_type or ""):
+                book_product.cover_type = v
+                book_updated = True
+        language = attrs.get("language")
+        if language:
+            v = str(language).strip()
+            if v and v != (book_product.language or ""):
+                book_product.language = v
+                book_updated = True
+        publication_year = attrs.get("publication_year")
+        if publication_year is not None and str(publication_year).strip():
+            try:
+                year = int(str(publication_year).strip())
+                if 1900 <= year <= 2100:
+                    new_date = datetime.date(year, 1, 1)
+                    if book_product.publication_date != new_date:
+                        book_product.publication_date = new_date
+                        book_updated = True
+            except (ValueError, TypeError):
+                pass
+        if book_updated:
+            book_product.save()
+
+    def _sync_jewelry_metadata(self, product: Product, attrs: Dict[str, Any]) -> None:
+        """Синхронизирует атрибуты украшений в JewelryProduct."""
+        jewelry_keys = ("jewelry_type", "material", "metal_purity", "stone_type", "carat_weight", "gender")
+        if not any(k in attrs for k in jewelry_keys):
+            return
+        jewelry_product = getattr(product, "jewelry_item", None)
+        if not jewelry_product:
+            return  # домен создаётся сигналом ensure_domain_product_for_base при save Product
+        jewelry_updated = False
+        valid_jewelry_types = {"ring", "bracelet", "necklace", "earrings", "pendant"}
+        if "jewelry_type" in attrs and attrs["jewelry_type"]:
+            v = str(attrs["jewelry_type"]).strip().lower()
+            if v in valid_jewelry_types and v != (jewelry_product.jewelry_type or ""):
+                jewelry_product.jewelry_type = v
+                jewelry_updated = True
+        if "material" in attrs and attrs["material"]:
+            v = str(attrs["material"]).strip()[:100]
+            if v != (jewelry_product.material or ""):
+                jewelry_product.material = v
+                jewelry_updated = True
+        if "metal_purity" in attrs and attrs["metal_purity"]:
+            v = str(attrs["metal_purity"]).strip()[:50]
+            if v != (jewelry_product.metal_purity or ""):
+                jewelry_product.metal_purity = v
+                jewelry_updated = True
+        if "stone_type" in attrs and attrs["stone_type"]:
+            v = str(attrs["stone_type"]).strip()[:100]
+            if v != (jewelry_product.stone_type or ""):
+                jewelry_product.stone_type = v
+                jewelry_updated = True
+        if "carat_weight" in attrs and attrs["carat_weight"] is not None:
+            try:
+                v = Decimal(str(attrs["carat_weight"]).strip().replace(",", "."))
+                if v >= 0 and (jewelry_product.carat_weight is None or jewelry_product.carat_weight != v):
+                    jewelry_product.carat_weight = v
+                    jewelry_updated = True
+            except (ValueError, TypeError):
+                pass
+        if "gender" in attrs and attrs["gender"]:
+            v = str(attrs["gender"]).strip()[:10]
+            if v != (jewelry_product.gender or ""):
+                jewelry_product.gender = v
+                jewelry_updated = True
+        if jewelry_updated:
+            jewelry_product.save()
+
+    def _sync_product_fields_from_metadata(self, product: Product, metadata: Dict[str, Any]) -> None:
+        attrs = (metadata or {}).get("attributes") or {}
+        if not isinstance(attrs, dict):
+            return
+
+        handler_name = SYNC_METADATA_HANDLER_NAMES.get(product.product_type)
+        if handler_name:
+            handler = getattr(self, handler_name, None)
+            if handler:
+                handler(product, attrs)
+
+        updated_fields: List[str] = []
+        weight = attrs.get("weight")
+        if weight is not None and str(weight).strip():
+            try:
+                weight_str = str(weight).strip().replace(",", ".")
+                weight_val = float(weight_str)
+                if weight_val >= 0 and (product.weight_value is None or float(product.weight_value) != weight_val):
+                    product.weight_value = weight_val
+                    product.weight_unit = getattr(product, "weight_unit", None) or "kg"
+                    updated_fields.extend(["weight_value", "weight_unit"])
+            except (ValueError, TypeError):
+                pass
+
+        if updated_fields:
+            product.save(update_fields=updated_fields)
     
     def normalize_category(self, category_data: Dict[str, Any]) -> Category:
         """Нормализует данные категории из API."""
         external_id = category_data.get("id", "")
+        name = category_data.get("name", "Неизвестная категория")
+        
+        # Генерируем slug
+        base_slug = trans_slugify(name, language_code='ru') or slugify(name)
+        if not base_slug:
+            base_slug = "category"
+        slug = f"{base_slug}-{external_id}" if external_id else base_slug
         
         # Ищем существующую категорию по external_id
         category, created = Category.objects.get_or_create(
             external_id=external_id,
             defaults={
-                "name": category_data.get("name", "Неизвестная категория"),
-                "slug": slugify(category_data.get("name", "unknown")),
+                "name": name,
+                "slug": slug,
                 "description": category_data.get("description", ""),
                 "external_data": category_data,
             }
@@ -56,13 +308,20 @@ class CatalogNormalizer:
     def normalize_brand(self, brand_data: Dict[str, Any]) -> Brand:
         """Нормализует данные бренда из API."""
         external_id = brand_data.get("id", "")
+        name = brand_data.get("name", "Неизвестный бренд")
+        
+        # Генерируем slug
+        base_slug = trans_slugify(name, language_code='ru') or slugify(name)
+        if not base_slug:
+            base_slug = "brand"
+        slug = f"{base_slug}-{external_id}" if external_id else base_slug
         
         # Ищем существующий бренд по external_id
         brand, created = Brand.objects.get_or_create(
             external_id=external_id,
             defaults={
-                "name": brand_data.get("name", "Неизвестный бренд"),
-                "slug": slugify(brand_data.get("name", "unknown")),
+                "name": name,
+                "slug": slug,
                 "description": brand_data.get("description", ""),
                 "logo": brand_data.get("logo", ""),
                 "website": brand_data.get("website", ""),
@@ -86,29 +345,85 @@ class CatalogNormalizer:
     
     def normalize_product(self, product_data: ProductData) -> Product:
         """Нормализует данные товара из API."""
-        external_id = product_data.id
-        
+        external_id = str(product_data.id).strip() if product_data.id is not None else ""
+
+        # Разрешаем категорию и product_type до создания Product (единый маппинг)
+        resolved_category = None
+        resolved_product_type = None
+        if product_data.category and isinstance(product_data.category, str) and not product_data.category.isdigit():
+            resolved_category, resolved_product_type = resolve_category_and_product_type(product_data.category)
+
         # Ищем существующий товар по external_id
-        product, created = Product.objects.get_or_create(
-            external_id=external_id,
-            defaults={
-                "name": product_data.name,
-                "slug": slugify(product_data.name),
-                "description": product_data.description or "",
-                "price": product_data.price,
-                "currency": product_data.currency,
-                "is_available": product_data.availability,
-                "main_image": product_data.images[0] if product_data.images else "",
-                "external_url": product_data.url or "",
-                "external_data": product_data.metadata,
-            }
-        )
+        # Используем filter().first() вместо get_or_create, так как external_id не уникален
+        if external_id:
+            existing_products = Product.objects.filter(external_id=external_id)
+        else:
+            existing_products = Product.objects.none()
+
+        # Генерируем slug
+        base_slug = trans_slugify(product_data.name, language_code='ru') or slugify(product_data.name)
+        if not base_slug:
+            base_slug = "product"
         
+        # Добавляем external_id к slug для уникальности
+        if external_id:
+            slug = f"{base_slug}-{external_id}"
+        else:
+            slug = f"{base_slug}-{uuid.uuid4().hex[:8]}"
+        
+        main_image_url = ""
+        for media_url in product_data.images or []:
+            if self._resolve_media_type(media_url) == "image":
+                main_image_url = media_url
+                break
+
+        defaults = {
+            "name": product_data.name,
+            "slug": slug,
+            "description": product_data.description or "",
+            "price": product_data.price,
+            "currency": product_data.currency,
+            "is_available": product_data.availability,
+            "main_image": main_image_url,
+            "external_url": product_data.url or "",
+            "external_data": product_data.metadata,
+        }
+        if resolved_category is not None:
+            defaults["category_id"] = resolved_category.pk
+        if resolved_product_type is not None:
+            defaults["product_type"] = resolved_product_type
+
+        if existing_products.exists():
+            product = existing_products.first()
+            created = False
+            if existing_products.count() > 1:
+                self.logger.warning(f"Найдено {existing_products.count()} товаров с external_id {external_id}. Используется первый.")
+        else:
+            product = Product.objects.create(external_id=external_id, **defaults)
+            created = True
+        
+        # Обновляем stock_quantity если он есть в данных парсера
+        if hasattr(product_data, 'metadata') and product_data.metadata:
+            stock = product_data.metadata.get('stock_quantity')
+            if stock is not None:
+                product.stock_quantity = stock
+                product.save(update_fields=['stock_quantity'])
+
+        # Обновляем video_url если есть в метаданных (от парсеров) и у нас его нет
+        if hasattr(product_data, 'metadata') and product_data.metadata:
+            attributes = product_data.metadata.get('attributes', {})
+            if attributes.get('video_url') and not product.video_url:
+                product.video_url = attributes['video_url']
+                product.save(update_fields=['video_url'])
+
         if not created:
             # Обновляем существующий товар
             old_price = product.price
-            product.name = product_data.name
-            product.description = product_data.description or product.description
+            if not product.name and product_data.name:
+                product.name = product_data.name
+            if not product.description and product_data.description:
+                product.description = product_data.description
+            
             product.is_available = product_data.availability
             product.external_data = product_data.metadata
             product.last_synced_at = timezone.now()
@@ -128,95 +443,193 @@ class CatalogNormalizer:
                 )
             
             product.save()
-        
-        # Обрабатываем категорию
-        if product_data.category:
-            category = Category.objects.filter(
-                external_id=product_data.category
-            ).first()
-            if category:
-                product.category = category
-                product.save()
-        
+
+        # Обрабатываем категорию: для существующего товара обновляем category и product_type из маппинга
+        if product_data.category and not product.category:
+            if isinstance(product_data.category, str) and not product_data.category.isdigit():
+                category, product_type = resolve_category_and_product_type(product_data.category)
+                if category is not None:
+                    product.category = category
+                    if product_type is not None and not product.product_type:
+                        product.product_type = product_type
+                    product.save()
+            else:
+                # Это ID категории
+                category = Category.objects.filter(
+                    external_id=product_data.category
+                ).first()
+                if category:
+                    product.category = category
+                    product.save()
+
+        # Синхронизируем книжные поля ПОСЛЕ того, как product_type установлен сигналом
+        if hasattr(product_data, "metadata") and product_data.metadata:
+            self._sync_product_fields_from_metadata(product, product_data.metadata)
+
         # Обрабатываем бренд
-        if product_data.brand:
+        if product_data.brand and not product.brand:
             brand = Brand.objects.filter(
                 external_id=product_data.brand
             ).first()
             if brand:
                 product.brand = brand
                 product.save()
-        
+
         # Обрабатываем изображения
         self._normalize_product_images(product, product_data.images)
-        
+
         action = "создан" if created else "обновлен"
         self.logger.info(f"Товар {product.name} {action} (external_id: {external_id})")
-        
+
         return product
     
     def _normalize_product_images(self, product: Product, image_urls: List[str]):
         """Нормализует изображения товара."""
         if not image_urls:
             return
+
+        # Используем максимально специфичный объект (BookProduct и т.д.) для сохранения изображений
+        target = product.domain_item
+        is_domain = target != product
         
-        # Удаляем старые изображения, которых нет в новом списке
-        existing_urls = set(product.images.values_list("image_url", flat=True))
-        new_urls = set(image_urls)
+        metadata = product.external_data if isinstance(product.external_data, dict) else {}
+        attrs = metadata.get("attributes") if isinstance(metadata.get("attributes"), dict) else {}
+        source = metadata.get("source") or attrs.get("source")
+        gallery_video_url = next(
+            (url for url in image_urls if self._resolve_media_type(url) == "video"),
+            None,
+        )
+        preferred_main_video_url = attrs.get("main_video_url") or attrs.get("main_media_url")
+        if not isinstance(preferred_main_video_url, str) or not preferred_main_video_url:
+            preferred_main_video_url = None
+        elif self._resolve_media_type(preferred_main_video_url) != "video":
+            preferred_main_video_url = None
+
+        if preferred_main_video_url and preferred_main_video_url not in image_urls:
+            image_urls = [preferred_main_video_url] + list(image_urls)
+
+        deduped_urls = []
+        seen_urls = set()
+        for url in image_urls:
+            if not url:
+                continue
+            if url in seen_urls:
+                continue
+            deduped_urls.append(url)
+            seen_urls.add(url)
+        image_urls = deduped_urls
         
-        # Удаляем изображения, которых больше нет
-        product.images.filter(image_url__in=existing_urls - new_urls).delete()
+        # 1. Удаляем ВСЕ парсерные картинки (в которых есть /products/parsed/), чтобы при этом парсинге скачать и заново сохранить только свежие хэши от инстаграма.
+        # Ручные загрузки (image_file и image_url без /products/parsed/) не трогаем!
+        try:
+            parser_images_query = Q(image_url__contains='/products/parsed/')
+            
+            if hasattr(target.images.model, 'video_url'):
+                parser_images_query |= Q(video_url__contains='/products/parsed/')
+                
+            # Мы удаляем все парсерные картинки. Если они есть в новом списке - они добавятся заново ниже.
+            # Если их нет в новом списке - они просто удалятся.
+            # Это решает проблему дублирования и "бесконечного накопления" парсерных картинок.
+            target.images.filter(parser_images_query).delete()
+        except Exception as e:
+            self.logger.warning(f"Error while cleaning up old parser images for {product.pk}: {e}")
+
+        # 2. Проверяем оставшиеся существующие изображения: если внешняя ссылка битая (404), удаляем из базы!
+        existing_images = list(target.images.all())
+        broken_ids = []
+        
+        import httpx
+        with httpx.Client(timeout=3, follow_redirects=True) as client:
+            for img in existing_images:
+                url_to_check = img.video_url if hasattr(img, 'video_url') and img.video_url else img.image_url
+                if not url_to_check:
+                    continue
+                # Проверяем только HTTP ссылки
+                if not url_to_check.startswith('http'):
+                    continue
+                try:
+                    res = client.head(url_to_check)
+                    if res.status_code >= 400:
+                        self.logger.info(f"Найдена битая ссылка {url_to_check} у товара {product.name}, удаляем из базы.")
+                        broken_ids.append(img.pk)
+                except Exception as e:
+                    self.logger.warning(f"Ошибка проверки ссылки {url_to_check}: {e}")
+
+        if broken_ids:
+            target.images.filter(pk__in=broken_ids).delete()
+
+        # Узнаем, установлено ли уже главное изображение вручную или с прошлого парсинга
+        existing_any_main = target.images.filter(is_main=True).exists()
+        has_manual_main = bool(getattr(product, 'main_image_file', None)) or bool(getattr(product, 'main_image', None))
         
         # Добавляем новые изображения
+        main_image_url = None
         for i, image_url in enumerate(image_urls):
-            if image_url not in existing_urls:
-                is_main = i == 0  # Первое изображение - главное
-                ProductImage.objects.create(
-                    product=product,
-                    image_url=image_url,
-                    sort_order=i,
-                    is_main=is_main
-                )
+            media_type = self._resolve_media_type(image_url)
+            
+            filter_query = Q(image_url=image_url)
+            if hasattr(target.images.model, 'video_url'):
+                filter_query |= Q(video_url=image_url)
+                
+            existing_item = target.images.filter(filter_query).first()
+            
+            desired_is_main = False
+            if not existing_any_main and not has_manual_main:
+                if preferred_main_video_url:
+                    if media_type == "video" and image_url == preferred_main_video_url:
+                        desired_is_main = True
+                elif media_type == "image" and main_image_url is None:
+                    desired_is_main = True
+                    main_image_url = image_url
+            
+            if existing_item:
+                updates: Dict[str, Any] = {}
+                if hasattr(existing_item, 'video_url'):
+                    if media_type == "video" and existing_item.video_url != image_url:
+                        updates = {"video_url": image_url, "image_url": ""}
+                    elif media_type == "image" and existing_item.image_url != image_url:
+                        updates = {"image_url": image_url, "video_url": ""}
+                else:
+                    if media_type == "image" and existing_item.image_url != image_url:
+                        updates = {"image_url": image_url}
+                
+                # Обновляем is_main только если мы решили его сделать главным, 
+                # и он сейчас таковым не является
+                if desired_is_main and not existing_item.is_main:
+                    updates["is_main"] = desired_is_main
+                
+                if updates:
+                    existing_item.__class__.objects.filter(pk=existing_item.pk).update(**updates)
+                continue
+            
+            # Создаем новое изображение в правильной модели
+            create_kwargs = {
+                "image_url": image_url if media_type == "image" else "",
+                "sort_order": target.images.count() + i,
+                "is_main": desired_is_main
+            }
+            if hasattr(target.images.model, 'video_url'):
+                create_kwargs["video_url"] = image_url if media_type == "video" else ""
+            
+            create_kwargs["product"] = target
+            target.images.model.objects.create(**create_kwargs)
         
-        # Обновляем главное изображение товара
-        main_image = product.images.filter(is_main=True).first()
-        if main_image:
-            product.main_image = main_image.image_url
-            product.save()
-    
-    def normalize_product_attributes(self, product: Product, attributes_data: Dict[str, Any]):
-        """Нормализует атрибуты товара из API."""
-        if not attributes_data:
+        # Обновляем главное медиа в самих объектах ТОЛЬКО если оно пустое
+        if preferred_main_video_url:
+            for obj in [product, target] if is_domain else [product]:
+                update_fields = []
+                if hasattr(obj, 'video_url') and not obj.video_url:
+                    obj.video_url = preferred_main_video_url
+                    update_fields.append("video_url")
+                if update_fields:
+                    obj.save(update_fields=update_fields)
             return
-        
-        # Маппинг типов атрибутов
-        attribute_mapping = {
-            "composition": "composition",
-            "indications": "indications", 
-            "contraindications": "contraindications",
-            "side_effects": "side_effects",
-            "dosage": "dosage",
-            "storage": "storage",
-            "expiry": "expiry",
-            "manufacturer": "manufacturer",
-            "country": "country",
-            "form": "form",
-            "weight": "weight",
-        }
-        
-        # Удаляем старые атрибуты
-        product.attributes.all().delete()
-        
-        # Создаем новые атрибуты
-        for attr_type, value in attributes_data.items():
-            if attr_type in attribute_mapping and value:
-                ProductAttribute.objects.create(
-                    product=product,
-                    attribute_type=attribute_mapping[attr_type],
-                    name=attr_type.title(),
-                    value=str(value),
-                    sort_order=len(product.attributes.all())
-                )
+
+        if main_image_url and not existing_any_main and not has_manual_main:
+            for obj in [product, target] if is_domain else [product]:
+                if hasattr(obj, 'main_image') and not obj.main_image:
+                    obj.main_image = main_image_url
+                    obj.save(update_fields=['main_image'])
     
     @transaction.atomic
     def sync_categories_and_brands(self, categories_data: List[Dict], brands_data: List[Dict]):
@@ -244,10 +657,6 @@ class CatalogNormalizer:
                 product = self.normalize_product(product_data)
                 synced_count += 1
                 
-                # Если есть дополнительные атрибуты, нормализуем их
-                if hasattr(product_data, 'attributes') and product_data.attributes:
-                    self.normalize_product_attributes(product, product_data.attributes)
-                    
             except Exception as e:
                 self.logger.error(f"Ошибка при синхронизации товара {product_data.id}: {e}")
         
@@ -272,7 +681,10 @@ class CatalogService:
                     limit: int = 50,
                     offset: int = 0) -> List[Product]:
         """Получает товары с фильтрацией."""
-        queryset = Product.objects.filter(is_active=True)
+        queryset = Product.objects.filter(is_active=True).exclude(
+            Q(product_type__in=['clothing', 'shoes']) &
+            (Q(external_data__has_key='source_variant_id') | Q(external_data__has_key='source_variant_slug'))
+        )
         
         if category_id:
             queryset = queryset.filter(category_id=category_id)

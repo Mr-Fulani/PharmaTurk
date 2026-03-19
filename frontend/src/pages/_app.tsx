@@ -1,4 +1,5 @@
 import type { AppProps } from 'next/app'
+import Head from 'next/head'
 import '../../styles/globals.css'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
@@ -9,13 +10,14 @@ import { useRouter } from 'next/router'
 import { useCartStore } from '../store/cart'
 import { initCartSession } from '../lib/api'
 import { appWithTranslation } from 'next-i18next'
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line
 const nextI18NextConfig = require('../../next-i18next.config.js')
 
 function App({ Component, pageProps }: AppProps) {
   const router = useRouter()
   const { refresh } = useCartStore()
-  
+  const is404 = router.pathname === '/404'
+
   useEffect(() => {
     // Гарантируем, что cookie cart_session создана до первого запроса
     initCartSession()
@@ -65,13 +67,20 @@ function App({ Component, pageProps }: AppProps) {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <div className="min-h-screen flex flex-col">
-          <Header />
-          <div className="flex-1">
-            <Component {...pageProps} />
+        <Head>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+        </Head>
+        {is404 ? (
+          <Component {...pageProps} />
+        ) : (
+          <div className="min-h-screen flex flex-col">
+            <Header />
+            <div className="flex-1">
+              <Component {...pageProps} />
+            </div>
+            <Footer initialSettings={(pageProps as any)?.footerSettings} />
           </div>
-          <Footer />
-        </div>
+        )}
       </ThemeProvider>
     </AuthProvider>
   )

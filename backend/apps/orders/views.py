@@ -1,9 +1,12 @@
 import logging
 import uuid
+from decimal import Decimal
 from typing import Optional, Tuple
 
+from django.conf import settings
 from django.http import Http404, HttpResponse
 from django.db import transaction
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import serializers, status, viewsets
@@ -11,11 +14,121 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.catalog.models import Product
-from apps.catalog.models import ClothingVariant, ClothingVariantSize, ShoeVariant, ShoeVariantSize
+from apps.catalog.models import (
+    Product,
+    ClothingProduct,
+    ClothingProductSize,
+    ClothingVariant,
+    ClothingVariantSize,
+    ShoeProduct,
+    ShoeProductSize,
+    ShoeVariant,
+    ShoeVariantSize,
+    JewelryProduct,
+    JewelryVariant,
+    JewelryVariantSize,
+)
+from apps.catalog.utils.currency_converter import currency_converter
 from apps.users.models import UserAddress
 
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
+
+# Crypto payment (lazy to avoid circular import / optional dependency)
+def _create_crypto_invoice(number: str, total, cart_currency: str, locale: str = "") -> tuple[dict | None, dict | None]:
+    """Создаёт инвойс. Возвращает (invoice_data, payment_data) или (None, None) при ошибке.
+    Инвойс создаётся ДО создания заказа, чтобы не терять корзину при ошибке провайдера.
+    locale: язык пользователя (ru/en) — для сохранения при редиректе после оплаты.
+    """
+    from apps.payments.providers.coinremitter import create_invoice
+    from apps.payments.providers.dummy import create_invoice_dummy
+
+    site = (getattr(settings, "SITE_URL", None) or "").rstrip("/")
+    frontend = (getattr(settings, "FRONTEND_SITE_URL", None) or "").rstrip("/") or site
+    notify_url = f"{site}/api/payments/crypto/webhook/" if site else ""
+    # Next.js i18n: defaultLocale=en без префикса, ru — с /ru/
+    loc = (locale or "").strip().lower()
+    if loc not in ("ru", "en"):
+        loc = "en"
+    path_prefix = f"/{loc}" if loc == "ru" else ""
+    success_path = f"{path_prefix}/checkout-success" if path_prefix else "/checkout-success"
+    fail_path = f"{path_prefix}/checkout-crypto" if path_prefix else "/checkout-crypto"
+    q = f"number={number}&locale={loc}"
+    success_url = f"{frontend}{success_path}?{q}" if frontend else ""
+    fail_url = f"{frontend}{fail_path}?{q}" if frontend else ""
+    fiat_currency = (cart_currency or "USD").upper()[:3]
+
+    invoice_data = create_invoice(
+        amount_fiat=float(total),
+        fiat_currency=fiat_currency,
+        order_number=number,
+        notify_url=notify_url,
+        success_url=success_url,
+        fail_url=fail_url,
+        expiry_minutes=30,
+        description=f"Order {number}",
+    )
+
+    # Dummy-режим ТОЛЬКО при явном CRYPTO_DUMMY_MODE=1 (не просто DEBUG).
+    # Это позволяет тестировать через реальный CoinRemitter (TCN/USDTTRC20) даже в dev.
+    if not invoice_data and getattr(settings, "CRYPTO_DUMMY_MODE", False):
+        logger.warning(
+            "CoinRemitter create_invoice failed, using DUMMY (CRYPTO_DUMMY_MODE=1). "
+            "API key set: %s. Check COINREMITTER_API_KEY / COINREMITTER_API_PASSWORD.",
+            bool(getattr(settings, "COINREMITTER_API_KEY", "")),
+        )
+        invoice_data = create_invoice_dummy(
+            amount_fiat=float(total),
+            fiat_currency=fiat_currency,
+            order_number=number,
+            notify_url=notify_url,
+            success_url=success_url,
+            fail_url=fail_url,
+            expiry_minutes=30,
+            description=f"Order {number}",
+        )
+    elif not invoice_data:
+        logger.error(
+            "CoinRemitter create_invoice failed and CRYPTO_DUMMY_MODE is off. "
+            "API key set: %s. Returning 503 to client.",
+            bool(getattr(settings, "COINREMITTER_API_KEY", "")),
+        )
+    if not invoice_data:
+        return None, None
+
+    expires_at = invoice_data.get("expires_at") or (timezone.now() + timezone.timedelta(minutes=30))
+    payment_data = {
+        "address": invoice_data["address"],
+        "qr_code": invoice_data.get("qr_code") or "",
+        "amount": str(invoice_data["amount"]),
+        "amount_usd": str(invoice_data["amount_usd"]),
+        "currency": fiat_currency,
+        "expires_at": expires_at.isoformat() if hasattr(expires_at, "isoformat") else str(expires_at),
+        "invoice_url": invoice_data.get("invoice_url") or "",
+    }
+    return invoice_data, payment_data
+
+
+def _save_crypto_payment(order, invoice_data: dict, cart_currency: str):
+    """Сохраняет CryptoPayment после создания заказа."""
+    from apps.payments.models import CryptoPayment
+
+    fiat_currency = (cart_currency or "USD").upper()[:3]
+    expires_at = invoice_data.get("expires_at") or (timezone.now() + timezone.timedelta(minutes=30))
+    provider = "dummy" if invoice_data.get("invoice_id", "").startswith("dummy-") else "coinremitter"
+
+    CryptoPayment.objects.create(
+        order=order,
+        provider=provider,
+        invoice_id=invoice_data["invoice_id"],
+        address=invoice_data["address"],
+        amount_crypto=invoice_data["amount"],
+        amount_fiat=invoice_data["amount_usd"],
+        currency=invoice_data.get("currency") or fiat_currency,
+        status="pending",
+        qr_code_url=invoice_data.get("qr_code") or "",
+        invoice_url=invoice_data.get("invoice_url") or "",
+        expires_at=expires_at,
+    )
 from .serializers import (
     AddToCartSerializer,
     ApplyPromoCodeSerializer,
@@ -27,10 +140,56 @@ from .serializers import (
     PromoCodeSerializer,
     UpdateCartItemSerializer,
 )
-from .services import build_order_receipt_payload, render_receipt_html  # TODO: Функционал чеков временно отключен. Будет доработан позже.
-from .tasks import send_order_receipt_task  # TODO: Функционал чеков временно отключен. Будет доработан позже.
+from .services import build_order_receipt_payload, render_receipt_html, get_order_customer_email  # TODO: Функционал чеков временно отключен. Будет доработан позже.
+from .tasks import send_order_receipt_task, notify_new_order_telegram  # TODO: Функционал чеков временно отключен. Будет доработан позже.
 
 logger = logging.getLogger(__name__)
+
+
+def _get_preferred_currency(request, fallback: str = 'RUB') -> str:
+    if not request:
+        return fallback
+    preferred_currency = request.headers.get('X-Currency')
+    if preferred_currency:
+        return preferred_currency.upper()
+    preferred_currency = request.query_params.get('currency')
+    if preferred_currency:
+        return preferred_currency.upper()
+    if getattr(request, 'user', None) and request.user.is_authenticated:
+        user_currency = getattr(request.user, 'currency', None)
+        if user_currency:
+            return user_currency.upper()
+    return fallback
+
+
+def _get_product_price_for_currency(product, currency: str):
+    currency = (currency or 'RUB').upper()
+    if getattr(product, "product_type", None) == "jewelry":
+        base_price = getattr(product, "price", None)
+        if base_price is not None:
+            from_currency = (getattr(product, "currency", None) or "RUB").upper()
+            try:
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(base_price),
+                    from_currency,
+                    currency,
+                    apply_margin=True,
+                )
+                return Decimal(str(price_with_margin))
+            except Exception:
+                return Decimal(str(base_price))
+    try:
+        prices = product.get_all_prices() or {}
+        if currency in prices:
+            value = prices[currency].get('price_with_margin')
+            if value is not None:
+                return Decimal(str(value))
+    except Exception:
+        pass
+    try:
+        return Decimal(str(getattr(product, 'price', 0) or 0))
+    except Exception:
+        return Decimal('0')
 
 
 def _get_stock_for_cart_product(product: Product, chosen_size: Optional[str]) -> Tuple[Optional[int], Optional[str]]:
@@ -45,6 +204,9 @@ def _get_stock_for_cart_product(product: Product, chosen_size: Optional[str]) ->
     """
     external = getattr(product, "external_data", None) or {}
     source_variant_id = external.get("source_variant_id")
+    jewelry_variant_id = external.get("jewelry_variant_id")
+    source_type = (external.get("source_type") or "").lower()
+    source_id = external.get("source_id")
 
     normalized_type = (getattr(product, "product_type", None) or "").lower()
     size_value = (chosen_size or "").strip()
@@ -71,6 +233,33 @@ def _get_stock_for_cart_product(product: Product, chosen_size: Optional[str]) ->
             if variant.stock_quantity is not None:
                 return variant.stock_quantity, "variant"
 
+    if jewelry_variant_id and normalized_type == "jewelry":
+        variant = JewelryVariant.objects.filter(id=jewelry_variant_id, is_active=True).first()
+        if not variant:
+            return product.stock_quantity, "product"
+        if size_value:
+            size_obj = JewelryVariantSize.objects.filter(variant=variant, size_display=size_value).first()
+            if not size_obj:
+                size_obj = JewelryVariantSize.objects.filter(variant=variant, size_value=size_value).first()
+            if size_obj and size_obj.stock_quantity is not None:
+                return size_obj.stock_quantity, "variant_size"
+        if variant.stock_quantity is not None:
+            return variant.stock_quantity, "variant"
+
+    if source_type == "base_clothing":
+        base_obj = ClothingProduct.objects.filter(id=source_id, is_active=True).first()
+        if base_obj and size_value:
+            size_obj = ClothingProductSize.objects.filter(product=base_obj, size=size_value).first()
+            if size_obj and size_obj.stock_quantity is not None:
+                return size_obj.stock_quantity, "product_size"
+
+    if source_type == "base_shoes":
+        base_obj = ShoeProduct.objects.filter(id=source_id, is_active=True).first()
+        if base_obj and size_value:
+            size_obj = ShoeProductSize.objects.filter(product=base_obj, size=size_value).first()
+            if size_obj and size_obj.stock_quantity is not None:
+                return size_obj.stock_quantity, "product_size"
+
     return product.stock_quantity, "product"
 
 
@@ -84,6 +273,9 @@ def _decrement_stock_for_cart_item(product: Product, chosen_size: Optional[str],
 
     external = getattr(product, "external_data", None) or {}
     source_variant_id = external.get("source_variant_id")
+    jewelry_variant_id = external.get("jewelry_variant_id")
+    source_type = (external.get("source_type") or "").lower()
+    source_id = external.get("source_id")
     normalized_type = (getattr(product, "product_type", None) or "").lower()
     size_value = (chosen_size or "").strip()
 
@@ -136,6 +328,64 @@ def _decrement_stock_for_cart_item(product: Product, chosen_size: Optional[str],
                     variant.save(update_fields=["stock_quantity", "is_available", "updated_at"])
                     return
 
+    if jewelry_variant_id and normalized_type == "jewelry":
+        variant = JewelryVariant.objects.select_for_update().filter(id=jewelry_variant_id, is_active=True).first()
+        if variant:
+            if size_value:
+                size_obj = JewelryVariantSize.objects.select_for_update().filter(
+                    variant=variant, size_display=size_value
+                ).first()
+                if not size_obj:
+                    size_obj = JewelryVariantSize.objects.select_for_update().filter(
+                        variant=variant, size_value=size_value
+                    ).first()
+                if size_obj and size_obj.stock_quantity is not None:
+                    if size_obj.stock_quantity < quantity:
+                        raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                    size_obj.stock_quantity = size_obj.stock_quantity - quantity
+                    if size_obj.stock_quantity == 0:
+                        size_obj.is_available = False
+                    size_obj.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                    return
+            if variant.stock_quantity is not None:
+                if variant.stock_quantity < quantity:
+                    raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                variant.stock_quantity = variant.stock_quantity - quantity
+                if variant.stock_quantity == 0:
+                    variant.is_available = False
+                variant.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                return
+
+    if source_type == "base_clothing":
+        base_obj = ClothingProduct.objects.select_for_update().filter(id=source_id, is_active=True).first()
+        if base_obj and size_value:
+            size_obj = ClothingProductSize.objects.select_for_update().filter(
+                product=base_obj, size=size_value
+            ).first()
+            if size_obj and size_obj.stock_quantity is not None:
+                if size_obj.stock_quantity < quantity:
+                    raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                size_obj.stock_quantity = size_obj.stock_quantity - quantity
+                if size_obj.stock_quantity == 0:
+                    size_obj.is_available = False
+                size_obj.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                return
+
+    if source_type == "base_shoes":
+        base_obj = ShoeProduct.objects.select_for_update().filter(id=source_id, is_active=True).first()
+        if base_obj and size_value:
+            size_obj = ShoeProductSize.objects.select_for_update().filter(
+                product=base_obj, size=size_value
+            ).first()
+            if size_obj and size_obj.stock_quantity is not None:
+                if size_obj.stock_quantity < quantity:
+                    raise serializers.ValidationError({"detail": _("Недостаточно товара в наличии")})
+                size_obj.stock_quantity = size_obj.stock_quantity - quantity
+                if size_obj.stock_quantity == 0:
+                    size_obj.is_available = False
+                size_obj.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+                return
+
     # fallback: Product
     locked_product = Product.objects.select_for_update().get(pk=product.pk)
     if locked_product.stock_quantity is None:
@@ -146,6 +396,23 @@ def _decrement_stock_for_cart_item(product: Product, chosen_size: Optional[str],
     if locked_product.stock_quantity == 0:
         locked_product.is_available = False
     locked_product.save(update_fields=["stock_quantity", "is_available", "updated_at"])
+
+
+def _get_cart_with_prefetch(cart: Cart):
+    """Корзина с prefetch для позиций, товаров и изображений (в т.ч. domain_item)."""
+    from django.db.models import Prefetch
+    from apps.catalog.models import ProductImage
+    return Cart.objects.filter(pk=cart.pk).prefetch_related(
+        'items',
+        'items__product__translations',
+        Prefetch('items__product__images', queryset=ProductImage.objects.all().order_by('is_main', 'sort_order')),
+        'items__product__medicine_item__gallery_images',
+        'items__product__supplement_item__gallery_images',
+        'items__product__medical_equipment_item__gallery_images',
+        'items__product__tableware_item__gallery_images',
+        'items__product__accessory_item__gallery_images',
+        'items__product__incense_item__gallery_images',
+    ).get()
 
 
 def _get_or_create_cart(request) -> Cart:
@@ -273,13 +540,7 @@ class CartViewSet(viewsets.ViewSet):
     )
     def list(self, request):
         cart = _get_or_create_cart(request)
-        # Возвращаем корзину с предзагрузкой позиций, товаров и изображений
-        from django.db.models import Prefetch
-        from apps.catalog.models import ProductImage
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related(
-            'items',
-            Prefetch('items__product__images', queryset=ProductImage.objects.all().order_by('is_main', 'sort_order'))
-        ).get()
+        cart = _get_cart_with_prefetch(cart)
         return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
@@ -346,7 +607,8 @@ class CartViewSet(viewsets.ViewSet):
             raise
         product = serializer.validated_data['product']
         quantity = serializer.validated_data['quantity']
-        product_currency = getattr(product, "currency", None) or cart.currency or "USD"
+        preferred_currency = _get_preferred_currency(request, fallback=cart.currency or 'RUB')
+        item_price = _get_product_price_for_currency(product, preferred_currency)
         chosen_size = serializer.validated_data.get('chosen_size', '')
 
         # Проверка остатка (учитываем суммарное количество в корзине)
@@ -365,19 +627,19 @@ class CartViewSet(viewsets.ViewSet):
             chosen_size=chosen_size,
             defaults={
                 'quantity': quantity,
-                'price': product.price or 0,
-                'currency': product_currency,
+                'price': item_price,
+                'currency': preferred_currency,
                 'chosen_size': chosen_size,
             }
         )
         if not created:
             # Если уже есть, обновляем цену/валюту по актуальному товару
             updated = False
-            if item.price != (product.price or item.price):
-                item.price = product.price or item.price
+            if item.price != item_price:
+                item.price = item_price
                 updated = True
-            if item.currency != product_currency:
-                item.currency = product_currency
+            if item.currency != preferred_currency:
+                item.currency = preferred_currency
                 updated = True
             item.quantity += quantity
             if updated:
@@ -386,12 +648,11 @@ class CartViewSet(viewsets.ViewSet):
                 item.save(update_fields=['quantity', 'updated_at'])
 
         # Синхронизируем валюту корзины под валюту последнего товара (простая модель)
-        if cart.currency != product_currency:
-            cart.currency = product_currency
+        if cart.currency != preferred_currency:
+            cart.currency = preferred_currency
             cart.save(update_fields=['currency', 'updated_at'])
-        # Возвращаем свежую корзину с позициями
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
-        return Response(CartSerializer(cart).data)
+        cart = _get_cart_with_prefetch(cart)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description="Изменить количество позиции корзины",
@@ -444,8 +705,8 @@ class CartViewSet(viewsets.ViewSet):
 
         item.quantity = desired_qty
         item.save()
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
-        return Response(CartSerializer(cart).data)
+        cart = _get_cart_with_prefetch(cart)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description="Удалить позицию из корзины",
@@ -474,8 +735,8 @@ class CartViewSet(viewsets.ViewSet):
         except CartItem.DoesNotExist:
             return Response({"detail": _("Позиция не найдена")}, status=404)
         item.delete()
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
-        return Response(CartSerializer(cart).data)
+        cart = _get_cart_with_prefetch(cart)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description="Очистить корзину",
@@ -500,8 +761,8 @@ class CartViewSet(viewsets.ViewSet):
     def clear(self, request):
         cart = _get_or_create_cart(request)
         cart.items.all().delete()
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
-        return Response(CartSerializer(cart).data)
+        cart = _get_cart_with_prefetch(cart)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description="Применить промокод к корзине",
@@ -540,18 +801,34 @@ class CartViewSet(viewsets.ViewSet):
     def apply_promo(self, request):
         """Применить промокод к корзине."""
         cart = _get_or_create_cart(request)
+        logger.info("apply_promo: request.data=%s", request.data)
         serializer = ApplyPromoCodeSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            err_msg = serializer.errors.get("code", [serializer.errors])[0]
+            if isinstance(err_msg, list):
+                err_msg = err_msg[0] if err_msg else _("Неверные данные")
+            logger.warning("apply_promo: validation failed: %s", serializer.errors)
+            return Response({"detail": str(err_msg)}, status=400)
         
         code = serializer.validated_data['code']
         try:
-            promo_code = PromoCode.objects.get(code=code)
+            promo_code = PromoCode.objects.get(code__iexact=code)
         except PromoCode.DoesNotExist:
             return Response({"detail": _("Промокод не найден")}, status=404)
         
+        # Для валидности промокода используем те же числа, что и при create_from_cart:
+        # сумму по сохранённым CartItem.price (цена на момент добавления).
+        cart_total = float(sum((i.price * i.quantity for i in cart.items.all())))
+        cart_currency = cart.currency
+
         # Проверка валидности промокода
-        is_valid, error = promo_code.is_valid(user=request.user if request.user.is_authenticated else None, cart_total=float(cart.total_amount))
+        is_valid, error = promo_code.is_valid(
+            user=request.user if request.user.is_authenticated else None,
+            cart_total=cart_total,
+            cart_currency=cart_currency,
+        )
         if not is_valid:
+            logger.info("apply_promo: promo %s invalid: %s (cart_total=%s, currency=%s)", code, error, cart_total, cart_currency)
             return Response({"detail": error}, status=400)
         
         # Применяем промокод
@@ -559,8 +836,8 @@ class CartViewSet(viewsets.ViewSet):
         cart.save()
         
         # Возвращаем обновленную корзину
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
-        return Response(CartSerializer(cart).data)
+        cart = _get_cart_with_prefetch(cart)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
     @extend_schema(
         description="Удалить промокод из корзины",
@@ -592,8 +869,8 @@ class CartViewSet(viewsets.ViewSet):
         cart.save()
         
         # Возвращаем обновленную корзину
-        cart = Cart.objects.filter(pk=cart.pk).prefetch_related('items', 'items__product').get()
-        return Response(CartSerializer(cart).data)
+        cart = _get_cart_with_prefetch(cart)
+        return Response(CartSerializer(cart, context={'request': request}).data)
 
 
 class OrderViewSet(viewsets.ViewSet):
@@ -648,23 +925,41 @@ class OrderViewSet(viewsets.ViewSet):
                 Prefetch(
                     'items__product__images',
                     queryset=ProductImage.objects.all().order_by('is_main', 'sort_order')
-                )
+                ),
+                'items__product__translations'
             )
             .order_by('-created_at')
         )
-        return Response(OrderSerializer(orders, many=True).data)
+        return Response(OrderSerializer(orders, many=True, context={'request': request}).data)
 
     def retrieve(self, request, pk=None):
-        order = Order.objects.filter(user=request.user, pk=pk).prefetch_related('items').first()
+        order = Order.objects.filter(user=request.user, pk=pk).prefetch_related('items', 'items__product__translations').first()
         if not order:
             raise Http404(_("Заказ не найден"))
-        return Response(OrderSerializer(order).data)
+        return Response(OrderSerializer(order, context={'request': request}).data)
 
     @extend_schema(description="Получить заказ по номеру", responses=OrderSerializer)
     @action(detail=False, methods=['get'], url_path=r'by-number/(?P<number>[^/]+)')
     def by_number(self, request, number: str):
         order = self._get_order_for_user(request.user, number)
-        return Response(OrderSerializer(order).data)
+        data = OrderSerializer(order, context={'request': request}).data
+        if order.payment_method == 'crypto' and order.status == Order.OrderStatus.PENDING_PAYMENT:
+            try:
+                from apps.payments.models import CryptoPayment
+                cp = CryptoPayment.objects.get(order=order)
+                if cp.status == 'pending':
+                    data['payment_data'] = {
+                        'address': cp.address,
+                        'qr_code': cp.qr_code_url,
+                        'amount': str(cp.amount_crypto),
+                        'amount_usd': str(cp.amount_fiat),
+                        'currency': cp.currency,
+                        'expires_at': cp.expires_at.isoformat() if cp.expires_at else '',
+                        'invoice_url': cp.invoice_url or '',
+                    }
+            except Exception:
+                pass
+        return Response(data)
 
     # TODO: Функционал чеков временно отключен. Будет доработан позже.
     # Включает: формирование чека, отправку по email, интеграцию с админкой.
@@ -674,7 +969,10 @@ class OrderViewSet(viewsets.ViewSet):
         order = self._get_order_for_user(request.user, number)
         receipt = build_order_receipt_payload(order)
         if request.query_params.get('format') == 'html':
-            html = render_receipt_html(order, receipt)
+            locale = request.META.get('HTTP_ACCEPT_LANGUAGE', 'ru').split(',')[0].split('-')[0]
+            if locale not in ('ru', 'en'):
+                locale = 'ru'
+            html = render_receipt_html(order, receipt, locale=locale)
             return HttpResponse(html)
         serializer = OrderReceiptSerializer(receipt)
         return Response(serializer.data)
@@ -685,14 +983,18 @@ class OrderViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'], url_path=r'send-receipt/(?P<number>[^/]+)')
     def send_receipt(self, request, number: str):
         order = self._get_order_for_user(request.user, number)
-        email = request.data.get('email') or order.contact_email or (order.user.email if order.user else None)
+        # Если email не указан в запросе, используем контактный email заказа или email покупателя
+        email = request.data.get('email') or get_order_customer_email(order)
         if not email:
             return Response({"detail": _("Не указан email для отправки чека")}, status=400)
         try:
             email = serializers.EmailField().to_internal_value(email)
         except serializers.ValidationError:
             return Response({"detail": _("Укажите корректный email")}, status=400)
-        send_order_receipt_task.delay(order.id, email)
+        locale = (request.data.get('locale') or request.META.get('HTTP_ACCEPT_LANGUAGE', 'ru').split(',')[0].split('-')[0] or 'ru').strip()
+        if locale not in ('ru', 'en'):
+            locale = 'ru'
+        send_order_receipt_task.delay(order.id, email, locale=locale)
         return Response({"detail": _("Чек будет отправлен на %(email)s") % {"email": email}})
 
     @extend_schema(
@@ -743,9 +1045,55 @@ class OrderViewSet(viewsets.ViewSet):
         serializer = CreateOrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        # Расчет сумм
-        subtotal = sum((i.price * i.quantity for i in cart.items.all()))
-        shipping = 0
+        for item in cart.items.select_related('product').all():
+            product = item.product
+            if not product:
+                continue
+            if product.product_type == 'jewelry':
+                ext = product.external_data or {}
+                variant_id = ext.get('jewelry_variant_id') or ext.get('source_variant_id')
+                if variant_id:
+                    variant = JewelryVariant.objects.filter(id=variant_id, is_active=True).prefetch_related('sizes').first()
+                    if variant and variant.sizes.exists():
+                        if not item.chosen_size:
+                            return Response({"detail": _("Укажите размер для товара в корзине")}, status=400)
+                        size_obj = variant.sizes.filter(size_display=item.chosen_size).first()
+                        if not size_obj:
+                            size_obj = variant.sizes.filter(size_value=item.chosen_size).first()
+                        if not size_obj:
+                            return Response({"detail": _("Размер не найден для товара в корзине")}, status=400)
+                        if not size_obj.is_available:
+                            return Response({"detail": _("Размер недоступен для покупки")}, status=400)
+                else:
+                    base_obj = JewelryProduct.objects.filter(slug=product.slug, is_active=True).first()
+                    if base_obj:
+                        has_sizes = JewelryVariantSize.objects.filter(variant__product=base_obj).exists()
+                        if has_sizes and not item.chosen_size:
+                            return Response({"detail": _("Укажите размер для товара в корзине")}, status=400)
+
+        # Расчет сумм и конвертация валют
+        # Используем логику из CartSerializer для правильной конвертации валют
+        from apps.orders.serializers import CartSerializer
+        cart_serializer = CartSerializer(cart, context={'request': request})
+        
+        order_currency = cart_serializer.get_currency(cart)
+        subtotal = cart_serializer.get_total_amount(cart)
+        shipping_options = cart_serializer.get_shipping_options(cart)
+        
+        # Получаем конвертированные цены для позиций заказа
+        serialized_items = cart_serializer.data.get('items', [])
+        converted_prices = {item['id']: item['price'] for item in serialized_items}
+        
+        shipping_method = (serializer.validated_data.get('shipping_method') or '').lower()
+        if 'air' in shipping_method or 'авиа' in shipping_method:
+            shipping = shipping_options.get('air', 0)
+        elif 'sea' in shipping_method or 'мор' in shipping_method:
+            shipping = shipping_options.get('sea', 0)
+        else:
+            # По умолчанию используем наземную доставку
+            shipping = shipping_options.get('ground', 0)
+
+        
         discount = 0
         promo_code = None
 
@@ -753,11 +1101,11 @@ class OrderViewSet(viewsets.ViewSet):
         promo_code_value = serializer.validated_data.get('promo_code') or (cart.promo_code.code if cart.promo_code else None)
         if promo_code_value:
             try:
-                promo_code = PromoCode.objects.get(code=promo_code_value.upper())
+                promo_code = PromoCode.objects.get(code__iexact=promo_code_value)
                 # Проверка валидности промокода
-                is_valid, error = promo_code.is_valid(user=request.user, cart_total=float(subtotal))
+                is_valid, error = promo_code.is_valid(user=request.user, cart_total=float(subtotal), cart_currency=order_currency)
                 if is_valid:
-                    discount = promo_code.calculate_discount(subtotal)
+                    discount = promo_code.calculate_discount(float(subtotal), currency=order_currency)
                     # Увеличиваем счетчик использований
                     promo_code.used_count += 1
                     promo_code.save(update_fields=['used_count'])
@@ -766,10 +1114,25 @@ class OrderViewSet(viewsets.ViewSet):
             except PromoCode.DoesNotExist:
                 pass
 
-        total = subtotal + shipping - discount
+        total = Decimal(str(subtotal)) + Decimal(str(shipping)) - Decimal(str(discount))
 
         # Генерация номера заказа
         number = uuid.uuid4().hex[:12].upper()
+        payment_method = (serializer.validated_data.get('payment_method') or '').strip().lower()
+        is_crypto = payment_method == 'crypto'
+
+        # Крипто: создаём инвойс ДО заказа, чтобы не терять корзину при ошибке провайдера
+        locale = (serializer.validated_data.get("locale") or "").strip() or request.META.get("HTTP_ACCEPT_LANGUAGE", "").split(",")[0].split("-")[0] or "en"
+        if locale not in ("ru", "en"):
+            locale = "en"
+
+        if is_crypto:
+            invoice_data, payment_data = _create_crypto_invoice(number, total, order_currency, locale=locale)
+            if not invoice_data:
+                return Response(
+                    {"detail": _("Не удалось создать платёжную ссылку. Попробуйте позже или выберите другой способ оплаты.")},
+                    status=503,
+                )
 
         order = Order.objects.create(
             user=request.user,
@@ -778,14 +1141,15 @@ class OrderViewSet(viewsets.ViewSet):
             shipping_amount=shipping,
             discount_amount=discount,
             total_amount=total,
-            currency=cart.currency,
+            currency=order_currency,
             promo_code=promo_code,
             contact_name=serializer.validated_data.get('contact_name'),
             contact_phone=serializer.validated_data.get('contact_phone'),
-            contact_email=serializer.validated_data.get('contact_email', ''),
-            shipping_method=serializer.validated_data.get('shipping_method', ''),
-            payment_method=serializer.validated_data.get('payment_method', ''),
-            comment=serializer.validated_data.get('comment', ''),
+            contact_email=serializer.validated_data.get('contact_email') or '',
+            shipping_method=serializer.validated_data.get('shipping_method') or '',
+            payment_method=serializer.validated_data.get('payment_method') or '',
+            comment=serializer.validated_data.get('comment') or '',
+            status=Order.OrderStatus.PENDING_PAYMENT if is_crypto else Order.OrderStatus.NEW,
         )
 
         # Адрес доставки
@@ -799,21 +1163,53 @@ class OrderViewSet(viewsets.ViewSet):
             except UserAddress.DoesNotExist:
                 pass
 
+        if is_crypto:
+            # Крипто: сохраняем CryptoPayment, позиции заказа без списания остатка
+            _save_crypto_payment(order, invoice_data, order_currency)
+            for item in cart.items.select_related('product').all():
+                item_price = converted_prices.get(item.id, item.price)
+                OrderItem.objects.create(
+                    order=order,
+                    product=item.product,
+                    product_name=item.product.name,
+                    chosen_size=item.chosen_size,
+                    price=item_price,
+                    quantity=item.quantity,
+                    total=Decimal(str(item_price)) * item.quantity,
+                )
+            cart.items.all().delete()
+            response_data = OrderSerializer(order).data
+            response_data["payment_data"] = payment_data
+            return Response(response_data, status=201)
+        else:
+            # Позиции заказа + атомарное списание остатка
+            for item in cart.items.select_related('product').all():
+                _decrement_stock_for_cart_item(item.product, item.chosen_size, item.quantity)
+                item_price = converted_prices.get(item.id, item.price)
+                OrderItem.objects.create(
+                    order=order,
+                    product=item.product,
+                    product_name=item.product.name,
+                    chosen_size=item.chosen_size,
+                    price=item_price,
+                    quantity=item.quantity,
+                    total=Decimal(str(item_price)) * item.quantity,
+                )
+            cart.items.all().delete()
 
-        # Позиции заказа + атомарное списание остатка
-        for item in cart.items.select_related('product').all():
-            _decrement_stock_for_cart_item(item.product, item.chosen_size, item.quantity)
-            OrderItem.objects.create(
-                order=order,
-                product=item.product,
-                product_name=item.product.name,
-                chosen_size=item.chosen_size,
-                price=item.price,
-                quantity=item.quantity,
-                total=item.price * item.quantity,
+            from django.db import transaction
+
+            # Отправляем задачи только после успешного коммита транзакции,
+            # чтобы избежать race condition, когда Celery ищет еще не созданный заказ.
+            # Берём email покупателя и не отправляем на админские адреса
+            receipt_email = get_order_customer_email(order)
+            if receipt_email:
+                transaction.on_commit(
+                    lambda: send_order_receipt_task.delay(order.id, receipt_email, locale=locale)
+                )
+            
+            transaction.on_commit(
+                lambda: notify_new_order_telegram.delay(order_id=order.id, locale=locale)
             )
 
-        # Очищаем корзину
-        cart.items.all().delete()
-
-        return Response(OrderSerializer(order).data, status=201)
+            return Response(OrderSerializer(order).data, status=201)

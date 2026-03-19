@@ -1,3 +1,5 @@
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status, generics, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -13,6 +15,8 @@ import random
 import string
 import uuid
 import logging
+import os
+from django.utils.text import slugify
 
 from .models import User, UserAddress, UserSession
 
@@ -24,6 +28,7 @@ from .serializers import (
     SMSSendCodeSerializer, SMSVerifyCodeSerializer, SocialAuthSerializer,
     PublicUserProfileSerializer
 )
+from .telegram_auth import generate_telegram_sync_token, process_telegram_webhook
 
 
 def create_user_session(user, request):
@@ -44,6 +49,21 @@ def create_user_session(user, request):
         )
 
 
+def _build_avatar_filename(user, original_name):
+    ext = os.path.splitext(str(original_name).split("?")[0])[1].lower() or ".jpg"
+    parts = []
+    if user.username:
+        parts.append(user.username)
+    full_name = f"{user.first_name} {user.last_name}".strip()
+    if full_name:
+        parts.append(full_name)
+    base = "-".join(slugify(p).strip("-") for p in parts if p).strip("-")
+    if not base:
+        base = f"user-{user.id or uuid.uuid4().hex[:6]}"
+    suffix = uuid.uuid4().hex[:10]
+    return f"avatars/{base}-{suffix}{ext}"
+
+
 def get_client_ip(request):
     """Получение IP адреса клиента"""
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
@@ -58,6 +78,7 @@ class UserRegistrationView(APIView):
     """
     Регистрация нового пользователя
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
     
     @extend_schema(
@@ -123,6 +144,7 @@ class UserLoginView(APIView):
     """
     Вход пользователя
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
     
     @extend_schema(
@@ -229,6 +251,174 @@ class UserLogoutView(APIView):
                 'message': _('Ошибка при выходе из системы')
             }, status=status.HTTP_400_BAD_REQUEST)
 
+@method_decorator(csrf_exempt, name="dispatch")
+class TelegramWebhookView(APIView):
+    """
+    Обработчик вебхуков от Telegram.
+    CSRF отключён: Telegram отправляет POST без CSRF-токена.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        summary="Вебхук Telegram",
+        description="Эндпоинт для принятия сообщений от Telegram-бота для привязки аккаунтов.",
+        responses={200: {"type": "object", "properties": {"status": {"type": "string"}}}}
+    )
+    def post(self, request):
+        # Telegram отправляет JSON
+        payload = request.data or {}
+        logger.info(
+            "Telegram webhook received: update_id=%s, has_message=%s",
+            payload.get("update_id"),
+            "message" in payload,
+        )
+        success = process_telegram_webhook(payload)
+        if success:
+            return Response({"status": "ok"})
+        # Всегда возвращаем 200, чтобы Telegram не переотправлял апдейты,
+        # но логируем ошибку внутри process_telegram_webhook
+        return Response({"status": "error"})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class TelegramAuthView(APIView):
+    """
+    Авторизация через Telegram Widget.
+    CSRF отключён: данные валидируются криптографически (HMAC с bot token).
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        summary="Вход через Telegram Widget",
+        description="Аутентификация пользователя через Telegram Widget (1-click login) и получение JWT токенов.",
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "user": {"type": "object"},
+                    "tokens": {
+                        "type": "object",
+                        "properties": {
+                            "access": {"type": "string"},
+                            "refresh": {"type": "string"}
+                        }
+                    },
+                    "message": {"type": "string"}
+                }
+            },
+            400: "Ошибка аутентификации"
+        }
+    )
+    def post(self, request):
+        """Вход или регистрация пользователя через Telegram"""
+        from .telegram_auth import validate_telegram_data
+        
+        telegram_data = request.data
+        if not validate_telegram_data(telegram_data):
+            return Response(
+                {"detail": _("Неверная подпись данных Telegram. Попробуйте войти еще раз.")}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        telegram_id = str(telegram_data.get('id', ''))
+        first_name = telegram_data.get('first_name', '')
+        last_name = telegram_data.get('last_name', '')
+        username = telegram_data.get('username', '')
+        
+        if not telegram_id:
+            return Response({"detail": _("Не удалось получить ID из Telegram")}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Если пользователь уже авторизован (например, через Google) — привязываем Telegram к текущему аккаунту
+        if request.user and request.user.is_authenticated:
+            existing_by_telegram = User.objects.filter(telegram_id=telegram_id).exclude(pk=request.user.pk).first()
+            if existing_by_telegram:
+                return Response(
+                    {"detail": _("Этот Telegram уже привязан к другому аккаунту.")},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user = request.user
+            user.telegram_id = telegram_id
+            user.telegram_username = username or user.telegram_username
+            user.telegram_notifications = True
+            update_fields = ['telegram_id', 'telegram_username', 'telegram_notifications']
+            if first_name and not user.first_name:
+                user.first_name = first_name
+                update_fields.append('first_name')
+            if last_name and not user.last_name:
+                user.last_name = last_name
+                update_fields.append('last_name')
+            user.save(update_fields=update_fields)
+            logger.info(f"Telegram привязан к существующему пользователю id={user.id}")
+        else:
+            # Ищем пользователя по telegram_id
+            user = User.objects.filter(telegram_id=telegram_id).first()
+        
+        if not user:
+            from django.utils.crypto import get_random_string
+            # Создаем нового пользователя (генерируем заглушку для email)
+            dummy_email = f"tg_{telegram_id}@pharmaturk.local"
+            
+            # Проверяем, может быть кто-то уже занял такой email (крайне маловероятно)
+            if User.objects.filter(email=dummy_email).exists():
+                dummy_email = f"tg_{telegram_id}_{uuid.uuid4().hex[:6]}@pharmaturk.local"
+                
+            base_username = username or f"tg_{telegram_id}"
+            final_username = base_username
+            counter = 1
+            while User.objects.filter(username=final_username).exists():
+                final_username = f"{base_username}{counter}"
+                counter += 1
+                
+            user = User.objects.create_user(
+                email=dummy_email,
+                username=final_username,
+                password=get_random_string(16),
+                first_name=first_name,
+                last_name=last_name,
+                telegram_id=telegram_id,
+                telegram_username=username,
+                is_verified=True,  # Telegram аккаунты считаем подтвержденными
+                telegram_notifications=True # По умолчанию включаем уведомления
+            )
+            logger.info(f"Created new user via Telegram Login: {user.id}")
+        else:
+            # Обновляем данные пользователя при входе, если они изменились в Telegram
+            update_fields = []
+            if username and user.telegram_username != username:
+                user.telegram_username = username
+                update_fields.append('telegram_username')
+            if first_name and not user.first_name:
+                user.first_name = first_name
+                update_fields.append('first_name')    
+            if last_name and not user.last_name:
+                user.last_name = last_name
+                update_fields.append('last_name')
+                
+            if update_fields:
+                user.save(update_fields=update_fields)
+                
+        # Обновляем последний вход
+        user.last_login = timezone.now()
+        user.last_login_ip = get_client_ip(request)
+        user.save(update_fields=['last_login', 'last_login_ip'])
+        
+        # Генерируем JWT токены
+        refresh = RefreshToken.for_user(user)
+        
+        # Создаем сессию
+        create_user_session(user, request)
+        
+        return Response({
+            'user': UserSerializer(user, context={'request': request}).data,
+            'tokens': {
+                'access': str(refresh.access_token),
+                'refresh': str(refresh)
+            },
+            'message': _('Успешный вход через Telegram')
+        })
+
 
 class UserProfileViewSet(viewsets.ModelViewSet):
     """
@@ -320,12 +510,48 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
         if avatar_file.content_type not in allowed_types:
             return Response({'error': 'Недопустимый тип файла. Разрешены: JPEG, PNG, GIF, WebP'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # Оптимизация изображения перед сохранением (R2/локальное хранилище)
+        try:
+            from apps.catalog.utils.image_optimizer import ImageOptimizer
+            optimizer = ImageOptimizer()
+            avatar_file = optimizer.optimize_image(avatar_file, quality=85, max_size=(800, 800))
+        except Exception:
+            pass  # сохраняем как есть при ошибке оптимизации
+
+        avatar_file.name = _build_avatar_filename(request.user, avatar_file.name)
         request.user.avatar = avatar_file
         request.user.save()
         
         serializer = self.get_serializer(request.user, context={'request': request})
         return Response(serializer.data)
+
+    @extend_schema(
+        summary="Получить ссылку для привязки Telegram",
+        description="Генерация ссылки с временным токеном для безопасной привязки аккаунта Telegram бота к аккаунту пользователя",
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "link": {"type": "string"}
+                }
+            }
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='telegram-bind-link')
+    def telegram_bind_link(self, request):
+        """Получить ссылку для привязки Telegram"""
+        from django.conf import settings
+        from apps.users.telegram_auth import generate_telegram_sync_token
+        
+        token = generate_telegram_sync_token(request.user)
+        bot_username = getattr(settings, 'TELEGRAM_BOT_USERNAME', '')
+        
+        if not bot_username:
+            logger.warning("TELEGRAM_BOT_USERNAME is not set in settings")
+            
+        link = f"tg://resolve?domain={bot_username}&start={token}"
+        return Response({'link': link})
 
 
 class UserAddressViewSet(viewsets.ModelViewSet):
@@ -452,6 +678,50 @@ class UserEmailVerificationView(APIView):
             })
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserRequestVerificationCodeView(APIView):
+    """
+    Запрос кода подтверждения email. Генерирует 6-значный код и отправляет на email.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="Запросить код подтверждения email",
+        description="Генерирует код и отправляет на email текущего пользователя",
+        responses={
+            200: {"type": "object", "properties": {"message": {"type": "string"}}},
+            400: "Ошибка (email уже подтверждён или недавно запрашивали)"
+        }
+    )
+    def post(self, request):
+        user = request.user
+        if user.is_verified:
+            return Response(
+                {'detail': _('Email уже подтверждён')},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        code = ''.join(random.choices(string.digits, k=6))
+        user.verification_code = code
+        user.verification_code_expires = timezone.now() + timedelta(minutes=15)
+        user.save()
+        try:
+            from django.core.mail import send_mail
+            from django.conf import settings
+            send_mail(
+                subject=_('Код подтверждения email — PharmaTurk'),
+                message=_(
+                    'Ваш код подтверждения: %(code)s\n\n'
+                    'Код действителен 15 минут.\n'
+                    'Если вы не запрашивали подтверждение, проигнорируйте это письмо.'
+                ) % {'code': code},
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                fail_silently=True,
+            )
+        except Exception as e:
+            logger.warning('Failed to send verification email: %s', e)
+        return Response({'message': _('Код отправлен на ваш email')})
 
 
 class UserStatsView(APIView):
@@ -739,48 +1009,115 @@ class SMSVerifyCodeView(APIView):
 
 class SocialAuthView(APIView):
     """
-    Авторизация через социальные сети.
-    TODO: Реализовать после интеграции OAuth провайдеров.
+    Авторизация через социальные сети (Google, VK).
+    Принимает access_token / id_token от провайдера, верифицирует его
+    через соответствующий API и возвращает JWT токены.
+    CSRF отключён: OAuth callback приходит без CSRF-токена.
     """
+    authentication_classes = []
     permission_classes = [AllowAny]
-    
+
     @extend_schema(
         summary="Войти через соцсеть",
-        description="Авторизация через Google, Facebook, VK, Yandex или Apple",
+        description=(
+            "Авторизация через Google или VK. "
+            "Для Google передайте `credential` (id_token из Google One Tap) или `access_token` (OAuth2 popup). "
+            "Для VK передайте `access_token` из VK ID SDK. "
+            "Опционально: `vk_user_id` для VK."
+        ),
         request=SocialAuthSerializer,
         responses={
             200: {
                 "type": "object",
                 "properties": {
                     "user": {"type": "object"},
-                    "tokens": {"type": "object"},
+                    "tokens": {
+                        "type": "object",
+                        "properties": {
+                            "access": {"type": "string"},
+                            "refresh": {"type": "string"}
+                        }
+                    },
                     "message": {"type": "string"}
                 }
             },
-            400: "Ошибка валидации"
+            400: "Ошибка валидации или данные от провайдера недействительны"
         }
     )
     def post(self, request):
-        """Авторизация через соцсеть"""
+        """Авторизация через Google или VK"""
+        from .social_auth import PROVIDERS, get_or_create_social_user
+
         serializer = SocialAuthSerializer(data=request.data)
-        if serializer.is_valid():
-            provider = serializer.validated_data['provider']
-            access_token = serializer.validated_data['access_token']
-            
-            # TODO: Реализовать OAuth авторизацию
-            # from .social_auth import authenticate_social_user
-            # user = authenticate_social_user(provider, access_token)
-            # if user:
-            #     # Генерируем токены и возвращаем
-            #     ...
-            
-            return Response({
-                'message': _('Авторизация через соцсети будет доступна в ближайшее время'),
-                'provider': provider,
-                'note': 'Функционал находится в разработке'
-            }, status=status.HTTP_501_NOT_IMPLEMENTED)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        provider_name: str = serializer.validated_data['provider']
+        access_token: str = serializer.validated_data['access_token']
+        # vk_user_id — опциональный параметр для VK (из VK ID SDK)
+        vk_user_id = request.data.get('vk_user_id')
+
+        provider_class = PROVIDERS.get(provider_name)
+        if not provider_class:
+            return Response(
+                {"detail": _(f"Провайдер '{provider_name}' не поддерживается. Доступны: google, vk")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        provider = provider_class()
+        user_info = provider.get_user_info(access_token, vk_user_id=vk_user_id)
+
+        if not user_info:
+            return Response(
+                {"detail": _("Не удалось получить данные от провайдера. Проверьте токен и попробуйте снова.")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        provider_id = user_info["provider_id"]
+        id_field = provider.id_field  # 'google_id' | 'vk_id'
+
+        # Если пользователь уже авторизован (например, через Telegram) — привязываем соцсеть к текущему аккаунту
+        if request.user and request.user.is_authenticated:
+            existing_by_provider = User.objects.filter(**{id_field: provider_id}).exclude(pk=request.user.pk).first()
+            if existing_by_provider:
+                return Response(
+                    {"detail": _("Этот аккаунт уже привязан к другому пользователю.")},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            user = request.user
+            setattr(user, id_field, provider_id)
+            update_fields = [id_field]
+            if user_info.get('first_name') and not user.first_name:
+                user.first_name = user_info['first_name']
+                update_fields.append('first_name')
+            if user_info.get('last_name') and not user.last_name:
+                user.last_name = user_info['last_name']
+                update_fields.append('last_name')
+            if user_info.get('email') and user.email.endswith('@pharmaturk.local'):
+                user.email = user_info['email']
+                update_fields.append('email')
+            user.save(update_fields=update_fields)
+            logger.info(f"Social [{provider_name}] привязан к существующему пользователю id={user.id}")
+        else:
+            user = get_or_create_social_user(provider, user_info)
+
+        # Обновляем метаданные входа
+        user.last_login = timezone.now()
+        user.last_login_ip = get_client_ip(request)
+        user.save(update_fields=['last_login', 'last_login_ip'])
+
+        # Генерируем JWT токены
+        refresh = RefreshToken.for_user(user)
+        create_user_session(user, request)
+
+        return Response({
+            'user': UserSerializer(user, context={'request': request}).data,
+            'tokens': {
+                'access': str(refresh.access_token),
+                'refresh': str(refresh)
+            },
+            'message': _(f'Успешный вход через {provider_name}')
+        })
 
 
 class PublicUserProfileView(APIView):

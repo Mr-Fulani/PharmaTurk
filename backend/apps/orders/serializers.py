@@ -1,3 +1,6 @@
+from decimal import Decimal
+from urllib.parse import quote
+
 from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 from django.utils.text import slugify
@@ -9,10 +12,17 @@ from apps.catalog.models import (
     ShoeProduct,
     ElectronicsProduct,
     FurnitureProduct,
+    JewelryProduct,
     ClothingVariant,
     ShoeVariant,
     FurnitureVariant,
+    JewelryVariant,
+    JewelryVariantSize,
+    BookVariant,
 )
+from apps.catalog.utils.currency_converter import currency_converter
+from apps.catalog.currency_models import ProductVariantPrice
+from django.contrib.contenttypes.models import ContentType
 from .models import Cart, CartItem, Order, OrderItem, PromoCode
 
 VARIANT_MODEL_MAP = {
@@ -20,7 +30,115 @@ VARIANT_MODEL_MAP = {
     'shoes': ShoeVariant,
     'electronics': ElectronicsProduct,
     'furniture': FurnitureVariant,
+    'jewelry': JewelryVariant,
+    'books': BookVariant,
 }
+
+
+def _resolve_media_url(value, request):
+    if not value:
+        return None
+    # Уже прокси-URL — не добавлять /media/
+    if value.startswith('/api/'):
+        if request:
+            return request.build_absolute_uri(value)
+        return f"http://localhost:8000{value}" if value.startswith('/') else f"http://localhost:8000/{value}"
+    if 'instagram.f' in value or 'cdninstagram.com' in value:
+        if request:
+            scheme = request.scheme
+            host = request.get_host()
+            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                base_url = f"{scheme}://localhost:8000"
+            else:
+                base_url = f"{scheme}://{host}"
+            return f"{base_url}/api/catalog/proxy-image/?url={quote(value)}"
+        return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(value)}"
+    # Прокси для внешних CDN (устраняет CORS/EncodingError на Flutter Web)
+    if value.startswith('http') and ('cdn.it-dev.space' in value or 'r2.dev' in value):
+        if request:
+            scheme = request.scheme
+            host = request.get_host()
+            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                base_url = f"{scheme}://localhost:8000"
+            else:
+                base_url = f"{scheme}://{host}"
+            return f"{base_url}/api/catalog/proxy-image/?url={quote(value)}"
+        return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(value)}"
+    if not value.startswith('http'):
+        if request:
+            scheme = request.scheme
+            host = request.get_host()
+            if 'backend' in host or 'localhost:3001' in host or 'localhost:3000' in host:
+                base_url = f"{scheme}://localhost:8000"
+            else:
+                base_url = f"{scheme}://{host}"
+            return f"{base_url}/media/{value}"
+        return f"http://localhost:8000/media/{value}"
+    return value
+
+
+def _resolve_file_url(file_field, request):
+    if not file_field:
+        return None
+    if hasattr(file_field, "url"):
+        if request:
+            return request.build_absolute_uri(file_field.url)
+        return file_field.url
+    return None
+
+def _serialize_translations_qs(translations):
+    if not translations:
+        return []
+    try:
+        items = translations.all()
+    except Exception:
+        return []
+    return [
+        {
+            "locale": translation.locale,
+            "name": translation.name,
+            "description": getattr(translation, "description", ""),
+        }
+        for translation in items
+    ]
+
+
+def _resolve_variant_translations(product):
+    if not product:
+        return []
+    ext = getattr(product, "external_data", {}) or {}
+    source_variant_id = ext.get("source_variant_id")
+    source_variant_slug = ext.get("source_variant_slug")
+    if not source_variant_id and not source_variant_slug:
+        return []
+    product_type = getattr(product, "product_type", None)
+    model_map = {
+        "clothing": ClothingVariant,
+        "shoes": ShoeVariant,
+        "furniture": FurnitureVariant,
+        "jewelry": JewelryVariant,
+        "books": BookVariant,
+    }
+    model = model_map.get(product_type)
+    if not model:
+        return []
+    qs = model.objects.all()
+    if source_variant_id:
+        qs = qs.filter(id=source_variant_id)
+    elif source_variant_slug:
+        qs = qs.filter(slug=source_variant_slug)
+    variant = qs.select_related("product").first()
+    if not variant:
+        return []
+    base_product = getattr(variant, "product", None)
+    translations = _serialize_translations_qs(getattr(base_product, "translations", None))
+    if translations:
+        return translations
+    name_en = getattr(variant, "name_en", "")
+    if name_en:
+        return [{"locale": "en", "name": name_en, "description": ""}]
+    return []
+
 
 PRODUCT_TYPE_ALIASES = {
     'supplements': 'supplements',
@@ -36,12 +154,6 @@ PRODUCT_TYPE_ALIASES = {
     'headwear': 'headwear',
 }
 
-CATEGORY_PRESETS = {
-    'clothing': ('clothing', 'Одежда'),
-    'shoes': ('shoes', 'Обувь'),
-    'electronics': ('electronics', 'Электроника'),
-    'medical_equipment': ('medical-equipment', 'Медицинская техника'),
-}
 
 BASE_PRODUCT_TYPES = {
     'medicines',
@@ -50,7 +162,6 @@ BASE_PRODUCT_TYPES = {
     'tableware',
     'furniture',
     'accessories',
-    'jewelry',
     'underwear',
     'headwear',
 }
@@ -67,16 +178,17 @@ def ensure_product_from_base(base_obj, product_type: str) -> Product:
     Создает/возвращает базовый Product для карточки обуви/одежды, если Variants отсутствуют.
     """
     slug = base_obj.slug
+    desired_old_price = getattr(base_obj, 'old_price', None)
     defaults = {
         'name': getattr(base_obj, 'name', slug),
         'slug': slug,
         'description': getattr(base_obj, 'description', '') or '',
         'price': getattr(base_obj, 'price', None) or 0,
         'currency': getattr(base_obj, 'currency', None) or 'TRY',
+        'old_price': desired_old_price,
         'brand': getattr(base_obj, 'brand', None),
-        # У базовой модели обуви/одежды категория относится к ShoeCategory/ClothingCategory,
-        # поэтому для общего Product оставляем category пустым.
-        'category': None,
+        # У обуви/одежды категория в своей модели; у украшений — Category. Передаём если есть.
+        'category': getattr(base_obj, 'category', None),
         'product_type': product_type,
         'is_available': getattr(base_obj, 'is_available', True),
         'main_image': getattr(base_obj, 'main_image', '') or '',
@@ -97,6 +209,9 @@ def ensure_product_from_base(base_obj, product_type: str) -> Product:
         new_currency = getattr(base_obj, 'currency', None)
         if new_currency and product.currency != new_currency:
             product.currency = new_currency
+            changed = True
+        if product.old_price != desired_old_price:
+            product.old_price = desired_old_price
             changed = True
         availability = getattr(base_obj, 'is_available', True)
         if product.is_available != availability:
@@ -119,18 +234,15 @@ def ensure_product_from_base(base_obj, product_type: str) -> Product:
 
 
 def get_or_create_category_for_variant(product_type: str) -> Category | None:
-    preset = CATEGORY_PRESETS.get(product_type)
-    if not preset:
+    from apps.catalog.constants import get_or_create_root_category
+    if not product_type:
         return None
-    slug, name = preset
-    category, _ = Category.objects.get_or_create(
-        slug=slug,
-        defaults={'name': name, 'description': name, 'is_active': True}
-    )
-    return category
+    slug = str(product_type).replace("_", "-").lower()
+    return get_or_create_root_category(slug)
 
 
 def ensure_product_from_variant(variant, source_type: str, effective_type: str) -> Product:
+    parent_product = getattr(variant, "product", None)
     external = variant.external_data or {}
     product = None
     base_product_id = external.get('base_product_id')
@@ -139,7 +251,10 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
             product = Product.objects.get(id=base_product_id)
         except Product.DoesNotExist:
             product = None
-
+    if product is not None:
+        product_external = product.external_data or {}
+        if product_external.get("source_variant_id") != variant.id:
+            product = None
     def _variant_main_image(v):
         if getattr(v, "main_image", ""):
             return v.main_image
@@ -152,20 +267,68 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
             if first_img:
                 return first_img.image_url
         return None
-
-    base_slug = external.get('base_product_slug') or slugify(f"{source_type}-{variant.slug}")
+    base_slug = external.get('base_product_slug')
+    if not base_slug and parent_product is not None and effective_type == "jewelry":
+        base_slug = parent_product.slug
+    if source_type in ("clothing", "shoes") and not base_slug:
+        base_slug = slugify(f"{source_type}-{variant.slug}")
+    elif not base_slug:
+        base_slug = slugify(f"{source_type}-{variant.slug}")
     category = get_or_create_category_for_variant(source_type) or get_or_create_category_for_variant(effective_type)
-    parent_product = getattr(variant, "product", None)
     brand = getattr(variant, "brand", None) if hasattr(variant, "brand") else None
     if not brand and parent_product:
         brand = getattr(parent_product, "brand", None)
     main_image_candidate = _variant_main_image(variant) or (getattr(parent_product, "main_image", "") if parent_product else "")
+    desired_old_price = getattr(variant, 'old_price', None)
+    if desired_old_price is None and parent_product is not None:
+        desired_old_price = getattr(parent_product, 'old_price', None)
+    # Проверяем, есть ли цена для варианта с учетом маржи
+    variant_price_with_margin = None
+    variant_currency = getattr(variant, 'currency', None) or 'TRY'
+    display_name = variant.name or (parent_product.name if parent_product else "")
+    if parent_product is not None and effective_type == "jewelry":
+        display_name = parent_product.name or display_name
+    
+    try:
+        content_type = ContentType.objects.get_for_model(variant)
+        variant_price_obj = ProductVariantPrice.objects.filter(
+            content_type=content_type,
+            object_id=variant.id
+        ).first()
+        
+        if variant_price_obj:
+            # Используем цену с маржой из ProductVariantPrice
+            if variant_currency == 'RUB' and variant_price_obj.rub_price_with_margin:
+                variant_price_with_margin = variant_price_obj.rub_price_with_margin
+            elif variant_currency == 'USD' and variant_price_obj.usd_price_with_margin:
+                variant_price_with_margin = variant_price_obj.usd_price_with_margin
+            elif variant_currency == 'KZT' and variant_price_obj.kzt_price_with_margin:
+                variant_price_with_margin = variant_price_obj.kzt_price_with_margin
+            elif variant_currency == 'EUR' and variant_price_obj.eur_price_with_margin:
+                variant_price_with_margin = variant_price_obj.eur_price_with_margin
+            elif variant_currency == 'TRY' and variant_price_obj.try_price_with_margin:
+                variant_price_with_margin = variant_price_obj.try_price_with_margin
+            else:
+                # Если цена с маржой не найдена, используем обычную цену
+                variant_price_with_margin = getattr(variant, 'price', None)
+        else:
+            # Если ProductVariantPrice не найден, используем обычную цену варианта
+            variant_price_with_margin = getattr(variant, 'price', None)
+    except Exception as e:
+        # В случае ошибки используем обычную цену варианта
+        variant_price_with_margin = getattr(variant, 'price', None)
+    
+    base_price = variant_price_with_margin if variant_price_with_margin is not None else (getattr(parent_product, "price", None) or 0)
+    base_currency = variant_currency
+    if variant_price_with_margin is None and parent_product is not None:
+        base_currency = parent_product.currency or base_currency or 'RUB'
     defaults = {
-        'name': variant.name or (parent_product.name if parent_product else ""),
+        'name': display_name,
         'slug': base_slug,
         'description': getattr(variant, 'description', '') or (getattr(parent_product, "description", "") if parent_product else ''),
-        'price': getattr(variant, 'price', None) or (getattr(parent_product, "price", None) or 0),
-        'currency': getattr(variant, 'currency', None) or (getattr(parent_product, "currency", None) or 'TRY'),
+        'price': base_price,
+        'currency': base_currency,
+        'old_price': desired_old_price,
         'product_type': effective_type,
         'brand': brand,
         'category': category,
@@ -176,6 +339,7 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
             'effective_type': effective_type,
             'source_variant_id': variant.id,
             'source_variant_slug': variant.slug,
+            'base_product_slug': base_slug,
         },
     }
     variant_external_payload = {
@@ -183,23 +347,29 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         'effective_type': effective_type,
         'source_variant_id': variant.id,
         'source_variant_slug': variant.slug,
+        'base_product_slug': base_slug,
     }
-
     if product is None:
         product, created = Product.objects.get_or_create(slug=base_slug, defaults=defaults)
     else:
         created = False
-
     if not created:
         changed = False
-        new_price = getattr(variant, 'price', None)
-        if new_price is not None and product.price != new_price:
-            product.old_price = product.price
-            product.price = new_price
+        if display_name and product.name != display_name:
+            product.name = display_name
             changed = True
-        new_currency = getattr(variant, 'currency', None)
-        if new_currency and product.currency != new_currency:
-            product.currency = new_currency
+        if base_slug and product.slug != base_slug:
+            product.slug = base_slug
+            changed = True
+        if base_price is not None and product.price != base_price:
+            product.old_price = product.price
+            product.price = base_price
+            changed = True
+        if base_currency and product.currency != base_currency:
+            product.currency = base_currency
+            changed = True
+        if product.old_price != desired_old_price:
+            product.old_price = desired_old_price
             changed = True
         availability = getattr(variant, 'is_available', True)
         if product.is_available != availability:
@@ -209,7 +379,6 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         if main_image and product.main_image != main_image:
             product.main_image = main_image
             changed = True
-        # Обновляем тип продукта, если раньше был сохранён неверно (например, остался "medicines")
         if product.product_type != effective_type:
             product.product_type = effective_type
             changed = True
@@ -219,20 +388,16 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
         if brand and product.brand_id is None:
             product.brand = brand
             changed = True
-        # Всегда сохраняем external_data для связи с вариантом (нужно для картинок в корзине)
         product_external = product.external_data or {}
         merged_ext = {**product_external, **variant_external_payload}
         if product.external_data != merged_ext:
             product.external_data = merged_ext
             changed = True
-
         if changed:
             product.save()
     else:
-        # Новый продукт: добавляем external_data сразу
         product.external_data = {**(product.external_data or {}), **variant_external_payload}
         product.save(update_fields=['external_data'])
-
     external['base_product_id'] = product.id
     external['base_product_slug'] = product.slug
     variant.external_data = external
@@ -246,16 +411,37 @@ def resolve_variant_product(product_type: str, product_slug: str) -> Product:
     if effective_type in BASE_PRODUCT_TYPES:
         return Product.objects.get(slug=product_slug, is_active=True)
 
-    # Базовая карточка без вариантов (обувь/одежда), если slug есть в соответствующей модели
+    # Базовая карточка без вариантов (обувь/одежда/украшения), если slug есть в соответствующей модели
     base_model_map = {
         'shoes': ShoeProduct,
         'clothing': ClothingProduct,
+        'jewelry': JewelryProduct,
     }
     base_model = base_model_map.get(effective_type)
     if base_model:
         base_obj = base_model.objects.filter(slug=product_slug, is_active=True).first()
         if base_obj:
             return ensure_product_from_base(base_obj, effective_type)
+
+    if effective_type == "jewelry":
+        variant = JewelryVariant.objects.filter(slug=product_slug, is_active=True).select_related("product").first()
+        if variant and getattr(variant, "product", None):
+            product = ensure_product_from_base(variant.product, effective_type)
+            base_slug = variant.product.slug
+            variant_payload = {
+                "jewelry_variant_id": variant.id,
+                "source_variant_slug": variant.slug,
+                "base_product_slug": base_slug,
+                "effective_type": effective_type,
+            }
+            product.external_data = {**(product.external_data or {}), **variant_payload}
+            product.save(update_fields=["external_data"])
+            external = variant.external_data or {}
+            external["base_product_id"] = product.id
+            external["base_product_slug"] = base_slug
+            variant.external_data = external
+            variant.save(update_fields=["external_data"])
+            return product
 
     model = VARIANT_MODEL_MAP.get(effective_type)
     if not model:
@@ -272,15 +458,19 @@ class CartItemSerializer(serializers.ModelSerializer):
     """
     Сериализатор позиции корзины
     """
-    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_name = serializers.SerializerMethodField()
     product_slug = serializers.SerializerMethodField()
     product_type = serializers.CharField(source='product.product_type', read_only=True)
     product_image_url = serializers.SerializerMethodField()
+    product_video_url = serializers.SerializerMethodField()
+    product_translations = serializers.SerializerMethodField()
     chosen_size = serializers.CharField(read_only=True)
     
     # Добавляем поля из новой системы ценообразования
     price = serializers.SerializerMethodField()  # Изменено на метод
     currency = serializers.SerializerMethodField()  # Изменено на метод
+    old_price = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
     converted_price_rub = serializers.SerializerMethodField()  # Новое поле
     converted_price_usd = serializers.SerializerMethodField()  # Новое поле
     final_price_rub = serializers.SerializerMethodField()  # Новое поле
@@ -291,8 +481,8 @@ class CartItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = CartItem
         fields = [
-            'id', 'product', 'product_name', 'product_slug', 'product_type', 'product_image_url',
-            'quantity', 'price', 'currency', 'chosen_size', 'created_at', 'updated_at',
+            'id', 'product', 'product_name', 'product_slug', 'product_type', 'product_image_url', 'product_video_url', 'product_translations',
+            'quantity', 'price', 'currency', 'old_price', 'old_price_formatted', 'chosen_size', 'created_at', 'updated_at',
             # Новые поля из системы ценообразования
             'converted_price_rub', 'converted_price_usd', 'final_price_rub', 'final_price_usd',
             'margin_percent_applied', 'prices_in_currencies', 'total'
@@ -306,39 +496,124 @@ class CartItemSerializer(serializers.ModelSerializer):
         product = obj.product
         if not product:
             return None
+        request = self.context.get('request')
         
         # Сначала проверяем main_image
+        file_url = _resolve_file_url(getattr(product, "main_image_file", None), request)
+        if file_url:
+            return _resolve_media_url(file_url, request) or file_url
         if product.main_image:
-            return product.main_image
+            return _resolve_media_url(product.main_image, request)
 
         # Затем ищем главное изображение в связанных изображениях продукта
         main_img = product.images.filter(is_main=True).first()
         if main_img:
-            return main_img.image_url
+            file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
+            if file_url:
+                return _resolve_media_url(file_url, request) or file_url
+            return _resolve_media_url(main_img.image_url, request)
 
         first_img = product.images.first()
         if first_img:
-            return first_img.image_url
+            file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
+            if file_url:
+                return _resolve_media_url(file_url, request) or file_url
+            return _resolve_media_url(first_img.image_url, request)
+
+        # Для отдельных типов пробуем базовую модель по slug (если Product пустой)
+        try:
+            base_models = {
+                "shoes": ShoeProduct,
+                "clothing": ClothingProduct,
+                "jewelry": JewelryProduct,
+                "electronics": ElectronicsProduct,
+                "furniture": FurnitureProduct,
+            }
+            base_model = base_models.get(product.product_type)
+            if base_model:
+                base_obj = (
+                    base_model.objects.filter(slug=product.slug, is_active=True)
+                    .prefetch_related("images", "variants__images")
+                    .first()
+                )
+                if base_obj:
+                    file_url = _resolve_file_url(getattr(base_obj, "main_image_file", None), request)
+                    if file_url:
+                        return _resolve_media_url(file_url, request) or file_url
+                    if getattr(base_obj, "main_image", ""):
+                        return _resolve_media_url(base_obj.main_image, request)
+                    base_main = base_obj.images.filter(is_main=True).first()
+                    if base_main:
+                        file_url = _resolve_file_url(getattr(base_main, "image_file", None), request)
+                        if file_url:
+                            return _resolve_media_url(file_url, request) or file_url
+                        return _resolve_media_url(base_main.image_url, request)
+                    base_first = base_obj.images.first()
+                    if base_first:
+                        file_url = _resolve_file_url(getattr(base_first, "image_file", None), request)
+                        if file_url:
+                            return _resolve_media_url(file_url, request) or file_url
+                        return _resolve_media_url(base_first.image_url, request)
+                    # Фолбэк к первому варианту базового товара
+                    first_variant = base_obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
+                    if first_variant:
+                        file_url = _resolve_file_url(getattr(first_variant, "main_image_file", None), request)
+                        if file_url:
+                            return _resolve_media_url(file_url, request) or file_url
+                        if first_variant.main_image:
+                            return _resolve_media_url(first_variant.main_image, request)
+                        v_main = first_variant.images.filter(is_main=True).first()
+                        if v_main:
+                            file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                            if file_url:
+                                return _resolve_media_url(file_url, request) or file_url
+                            return _resolve_media_url(v_main.image_url, request)
+                        v_first = first_variant.images.first()
+                        if v_first:
+                            file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                            if file_url:
+                                return _resolve_media_url(file_url, request) or file_url
+                            return _resolve_media_url(v_first.image_url, request)
+        except Exception:
+            pass
 
         # Фолбэк: пробуем подтянуть изображение из варианта по сохранённым external_data
         ext = getattr(product, "external_data", {}) or {}
         variant_slug = ext.get("source_variant_slug")
         effective_type = ext.get("effective_type") or ext.get("source_type")
-        if not variant_slug or not effective_type:
-            return None
+        if not effective_type:
+            effective_type = product.product_type
+        if not variant_slug:
+            # Старые записи могли сохраниться без external_data.
+            # Для обуви/одежды slug базовой карточки создавался как "{type}-{variant_slug}".
+            if effective_type in ("shoes", "clothing"):
+                prefix = f"{effective_type}-"
+                if product.slug.startswith(prefix):
+                    variant_slug = product.slug.replace(prefix, "", 1)
+            if not variant_slug:
+                variant_slug = product.slug
 
         variant_model = VARIANT_MODEL_MAP.get(effective_type)
         if variant_model and variant_model in (ClothingVariant, ShoeVariant):
             variant = variant_model.objects.filter(slug=variant_slug, is_active=True).prefetch_related("images").first()
             if variant:
+                file_url = _resolve_file_url(getattr(variant, "main_image_file", None), request)
+                if file_url:
+                    return _resolve_media_url(file_url, request) or file_url
                 if variant.main_image:
-                    return variant.main_image
+                    return _resolve_media_url(variant.main_image, request)
                 v_main = variant.images.filter(is_main=True).first()
                 if v_main:
-                    return v_main.image_url
+                    file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                    if file_url:
+                        return _resolve_media_url(file_url, request) or file_url
+                    return _resolve_media_url(v_main.image_url, request)
                 v_first = variant.images.first()
                 if v_first:
-                    return v_first.image_url
+                    file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                    if file_url:
+                        return _resolve_media_url(file_url, request) or file_url
+                    return _resolve_media_url(v_first.image_url, request)
 
         # Дополнительный фолбэк: пробуем найти базовую карточку обуви/одежды и взять первую активную вариацию
         try:
@@ -347,30 +622,108 @@ class CartItemSerializer(serializers.ModelSerializer):
                 if base_shoe:
                     v = base_shoe.variants.filter(is_active=True).order_by('sort_order', 'id').first()
                     if v:
+                        file_url = _resolve_file_url(getattr(v, "main_image_file", None), request)
+                        if file_url:
+                            return _resolve_media_url(file_url, request) or file_url
                         if v.main_image:
-                            return v.main_image
+                            return _resolve_media_url(v.main_image, request)
                         v_main = v.images.filter(is_main=True).first()
                         if v_main:
-                            return v_main.image_url
+                            file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                            if file_url:
+                                return _resolve_media_url(file_url, request) or file_url
+                            return _resolve_media_url(v_main.image_url, request)
                         v_first = v.images.first()
                         if v_first:
-                            return v_first.image_url
+                            file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                            if file_url:
+                                return _resolve_media_url(file_url, request) or file_url
+                            return _resolve_media_url(v_first.image_url, request)
             if product.product_type == 'clothing':
                 base_cloth = ClothingProduct.objects.filter(slug=product.slug, is_active=True).prefetch_related('variants__images').first()
                 if base_cloth:
                     v = base_cloth.variants.filter(is_active=True).order_by('sort_order', 'id').first()
                     if v:
+                        file_url = _resolve_file_url(getattr(v, "main_image_file", None), request)
+                        if file_url:
+                            return file_url
                         if v.main_image:
-                            return v.main_image
+                            return _resolve_media_url(v.main_image, request)
                         v_main = v.images.filter(is_main=True).first()
                         if v_main:
-                            return v_main.image_url
+                            file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
+                            if file_url:
+                                return file_url
+                            return _resolve_media_url(v_main.image_url, request)
                         v_first = v.images.first()
                         if v_first:
-                            return v_first.image_url
+                            file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
+                            if file_url:
+                                return file_url
+                            return _resolve_media_url(v_first.image_url, request)
         except Exception:
             pass
 
+        # Фолбэк: medicine, supplement, medical_equipment, books — domain_item с gallery_images
+        try:
+            domain = getattr(product, "domain_item", None)
+            if domain and callable(domain):
+                domain = domain()
+            if domain and domain != product:
+                file_url = _resolve_file_url(getattr(domain, "main_image_file", None), request)
+                if file_url:
+                    return _resolve_media_url(file_url, request) or file_url
+                if getattr(domain, "main_image", None):
+                    return _resolve_media_url(domain.main_image, request)
+                gallery = getattr(domain, "gallery_images", None)
+                if gallery:
+                    first = gallery.first()
+                    if first:
+                        file_url = _resolve_file_url(getattr(first, "image_file", None), request)
+                        if file_url:
+                            return _resolve_media_url(file_url, request) or file_url
+                        if getattr(first, "image_url", None):
+                            return _resolve_media_url(first.image_url, request)
+        except Exception:
+            pass
+
+        return None
+
+    def get_product_video_url(self, obj):
+        """URL главного видео товара (для карточек в корзине/заказе)."""
+        product = obj.product
+        if not product:
+            return None
+        request = self.context.get('request')
+        # Product (медикаменты и т.д.)
+        file_url = _resolve_file_url(getattr(product, "main_video_file", None), request)
+        if file_url:
+            return file_url
+        raw_url = getattr(product, "video_url", None) or ""
+        if raw_url and raw_url.strip():
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+        # Базовая модель (jewelry, clothing, shoes)
+        base_models = {
+            "shoes": ShoeProduct,
+            "clothing": ClothingProduct,
+            "jewelry": JewelryProduct,
+            "electronics": ElectronicsProduct,
+            "furniture": FurnitureProduct,
+        }
+        base_model = base_models.get(product.product_type)
+        if base_model:
+            base_obj = base_model.objects.filter(slug=product.slug, is_active=True).first()
+            if base_obj:
+                file_url = _resolve_file_url(getattr(base_obj, "main_video_file", None), request)
+                if file_url:
+                    return file_url
+                raw_url = getattr(base_obj, "video_url", None) or ""
+                if raw_url and raw_url.strip():
+                    path_lower = raw_url.split("?")[0].lower()
+                    if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                        return _resolve_media_url(raw_url, request)
         return None
 
     def get_product_slug(self, obj):
@@ -379,7 +732,55 @@ class CartItemSerializer(serializers.ModelSerializer):
         if not product:
             return None
         ext = getattr(product, "external_data", {}) or {}
+        base_slug = ext.get("base_product_slug")
+        if product.product_type == "jewelry" and base_slug:
+            return base_slug
+        if product.product_type == "jewelry":
+            variant_slug = ext.get("source_variant_slug")
+            if variant_slug:
+                variant = JewelryVariant.objects.filter(slug=variant_slug, is_active=True).select_related("product").first()
+                if variant and getattr(variant, "product", None):
+                    return variant.product.slug
+            return product.slug
         return ext.get("source_variant_slug") or product.slug
+
+    def get_product_name(self, obj):
+        product = obj.product
+        if not product:
+            return None
+        if product.product_type == "jewelry":
+            ext = getattr(product, "external_data", {}) or {}
+            base_slug = ext.get("base_product_slug")
+            if base_slug:
+                base_obj = JewelryProduct.objects.filter(slug=base_slug, is_active=True).first()
+                if base_obj:
+                    return base_obj.name
+            variant_slug = ext.get("source_variant_slug")
+            if variant_slug:
+                variant = JewelryVariant.objects.filter(slug=variant_slug, is_active=True).select_related("product").first()
+                if variant and getattr(variant, "product", None):
+                    return variant.product.name
+        return product.name
+
+    def get_product_translations(self, obj):
+        product = obj.product
+        if not product:
+            return []
+        
+        # Сначала проверяем прямые переводы
+        translations = _serialize_translations_qs(getattr(product, "translations", None))
+        if translations:
+            return translations
+            
+        # Проверяем доменную модель, если это пустой Base Product
+        if hasattr(product, "domain_item"):
+            domain_obj = product.domain_item
+            if domain_obj and hasattr(domain_obj, 'translations') and domain_obj != product:
+                domain_trans = getattr(domain_obj, "translations", None)
+                if domain_trans:
+                    return _serialize_translations_qs(domain_trans)
+
+        return _resolve_variant_translations(product)
     
     def _get_preferred_currency(self, request):
         """Определяет валюту по приоритетам: explicit -> user -> язык -> default."""
@@ -406,11 +807,45 @@ class CartItemSerializer(serializers.ModelSerializer):
             'ru': 'RUB',
         }
         return language_currency_map.get(language_code, default_currency)
+
+    def _get_jewelry_price_data(self, product, target_currency: str):
+        if not product or product.price is None:
+            return None
+        from_currency = (product.currency or 'RUB').upper()
+        try:
+            _, converted, price_with_margin = currency_converter.convert_price(
+                Decimal(product.price),
+                from_currency,
+                target_currency,
+                apply_margin=True,
+            )
+            return {
+                "converted_price": converted,
+                "price_with_margin": price_with_margin,
+                "is_base_price": target_currency == from_currency,
+            }
+        except Exception:
+            return None
     
     def get_price(self, obj):
         """Получает цену в предпочитаемой валюте."""
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
+        product = obj.product
+        if product and product.product_type == "jewelry":
+            base_price = product.price
+            if base_price is not None:
+                from_currency = (product.currency or 'RUB').upper()
+                try:
+                    _, _, price_with_margin = currency_converter.convert_price(
+                        Decimal(base_price),
+                        from_currency,
+                        preferred_currency,
+                        apply_margin=True,
+                    )
+                    return price_with_margin
+                except Exception:
+                    return base_price
         
         # Получаем цену в предпочитаемой валюте
         try:
@@ -418,44 +853,138 @@ class CartItemSerializer(serializers.ModelSerializer):
             if prices and preferred_currency in prices:
                 return prices[preferred_currency].get('price_with_margin')
             elif prices:
-                # Если предпочитаемой валюты нет, вернем базовую
+                # Предпочитаемой валюты нет в кэше — конвертируем из базовой
+                base_price_val = None
+                base_curr = None
                 for currency, data in prices.items():
                     if data.get('is_base_price'):
-                        return data.get('price_with_margin')
-                # Или просто первую
-                first_currency = list(prices.keys())[0]
-                return prices[first_currency].get('price_with_margin')
+                        base_price_val = data.get('price_with_margin') or data.get('converted_price')
+                        base_curr = currency
+                        break
+                if not base_curr and prices:
+                    first_key = list(prices.keys())[0]
+                    base_price_val = prices[first_key].get('price_with_margin')
+                    base_curr = first_key
+                if base_curr and base_price_val and base_curr.upper() != preferred_currency.upper():
+                    try:
+                        _, _, price = currency_converter.convert_price(
+                            Decimal(str(base_price_val)),
+                            base_curr,
+                            preferred_currency,
+                            apply_margin=True,
+                        )
+                        return price
+                    except Exception:
+                        pass
+                if base_price_val is not None:
+                    return base_price_val
         except Exception:
             pass
-        
-        # Fallback к старому полю
+
+        # Fallback: конвертируем из obj.price (валюта позиции или продукта)
+        from_currency = (obj.currency or getattr(obj.product, 'currency', None) or 'RUB').upper()
+        try:
+            _, _, price = currency_converter.convert_price(
+                Decimal(str(obj.price)),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return price
+        except Exception:
+            pass
         return obj.price
     
     def get_currency(self, obj):
-        """Получает валюту товара из новой системы."""
+        """Всегда возвращает предпочитаемую валюту — цены конвертируются в get_price."""
+        request = self.context.get('request')
+        return self._get_preferred_currency(request)
+
+    def get_old_price(self, obj):
+        product = obj.product
+        if not product:
+            return None
+        old_price = product.old_price
+        from_currency = (product.currency or 'RUB').upper()
+        if old_price is None:
+            ext = getattr(product, "external_data", {}) or {}
+            variant_slug = ext.get("source_variant_slug")
+            effective_type = ext.get("effective_type") or ext.get("source_type")
+            variant_model = VARIANT_MODEL_MAP.get(effective_type)
+            if variant_slug and variant_model in (ClothingVariant, ShoeVariant, FurnitureVariant):
+                variant = variant_model.objects.filter(slug=variant_slug, is_active=True).first()
+                if variant:
+                    if variant.old_price is not None:
+                        old_price = variant.old_price
+                        from_currency = (variant.currency or product.currency or 'RUB').upper()
+                    elif getattr(variant, "product", None) is not None:
+                        parent_product = variant.product
+                        if parent_product.old_price is not None:
+                            old_price = parent_product.old_price
+                            from_currency = (parent_product.currency or variant.currency or product.currency or 'RUB').upper()
+        if old_price is None:
+            return None
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        if preferred_currency != from_currency:
+            try:
+                _, _, price_with_margin = currency_converter.convert_price(
+                    Decimal(old_price),
+                    from_currency,
+                    preferred_currency,
+                    apply_margin=True,
+                )
+                return price_with_margin
+            except Exception:
+                pass
+        return old_price
+
+    def get_old_price_formatted(self, obj):
+        product = obj.product
+        if not product:
+            return None
+        old_price = product.old_price
+        from_currency = (product.currency or 'RUB').upper()
+        if old_price is None:
+            ext = getattr(product, "external_data", {}) or {}
+            variant_slug = ext.get("source_variant_slug")
+            effective_type = ext.get("effective_type") or ext.get("source_type")
+            variant_model = VARIANT_MODEL_MAP.get(effective_type)
+            if variant_slug and variant_model in (ClothingVariant, ShoeVariant, FurnitureVariant):
+                variant = variant_model.objects.filter(slug=variant_slug, is_active=True).first()
+                if variant:
+                    if variant.old_price is not None:
+                        old_price = variant.old_price
+                        from_currency = (variant.currency or product.currency or 'RUB').upper()
+                    elif getattr(variant, "product", None) is not None:
+                        parent_product = variant.product
+                        if parent_product.old_price is not None:
+                            old_price = parent_product.old_price
+                            from_currency = (parent_product.currency or variant.currency or product.currency or 'RUB').upper()
+        if old_price is None:
+            return None
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
         
-        # Получаем валюту из новой системы
+        # Применяем маржу даже если валюта совпадает (особенно для рублей)
         try:
-            prices = obj.product.get_all_prices()
-            if prices and preferred_currency in prices:
-                return preferred_currency
-            elif prices:
-                # Если предпочитаемой валюты нет, вернем базовую
-                for currency, data in prices.items():
-                    if data.get('is_base_price'):
-                        return currency
-                # Или просто первую
-                return list(prices.keys())[0]
+            _, _, price_with_margin = currency_converter.convert_price(
+                Decimal(old_price),
+                from_currency,
+                preferred_currency,
+                apply_margin=True,
+            )
+            return f"{price_with_margin} {preferred_currency}"
         except Exception:
-            pass
-        
-        # Fallback к старому полю
-        return obj.currency if obj.currency else 'RUB'
+            # Fallback на исходное значение если конвертация не удалась
+            return f"{old_price} {from_currency}"
     
     def get_converted_price_rub(self, obj):
         """Получает конвертированную цену в RUB."""
+        if obj.product and obj.product.product_type == "jewelry":
+            data = self._get_jewelry_price_data(obj.product, "RUB")
+            if data:
+                return data.get("converted_price")
         try:
             prices = obj.product.get_all_prices()
             if 'RUB' in prices:
@@ -466,6 +995,10 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_converted_price_usd(self, obj):
         """Получает конвертированную цену в USD."""
+        if obj.product and obj.product.product_type == "jewelry":
+            data = self._get_jewelry_price_data(obj.product, "USD")
+            if data:
+                return data.get("converted_price")
         try:
             prices = obj.product.get_all_prices()
             if 'USD' in prices:
@@ -476,6 +1009,10 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_final_price_rub(self, obj):
         """Получает финальную цену в RUB с маржой."""
+        if obj.product and obj.product.product_type == "jewelry":
+            data = self._get_jewelry_price_data(obj.product, "RUB")
+            if data:
+                return data.get("price_with_margin")
         try:
             prices = obj.product.get_all_prices()
             if 'RUB' in prices:
@@ -486,6 +1023,10 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_final_price_usd(self, obj):
         """Получает финальную цену в USD с маржой."""
+        if obj.product and obj.product.product_type == "jewelry":
+            data = self._get_jewelry_price_data(obj.product, "USD")
+            if data:
+                return data.get("price_with_margin")
         try:
             prices = obj.product.get_all_prices()
             if 'USD' in prices:
@@ -496,6 +1037,8 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_margin_percent_applied(self, obj):
         """Получает примененную маржу."""
+        if obj.product and obj.product.product_type == "jewelry":
+            return 0
         try:
             prices = obj.product.get_all_prices()
             if prices:
@@ -520,6 +1063,15 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     def get_prices_in_currencies(self, obj):
         """Получает цены во всех валютах."""
+        if obj.product and obj.product.product_type == "jewelry":
+            base_currency = (obj.product.currency or "RUB").upper()
+            prices = {}
+            for currency in ("RUB", "USD"):
+                data = self._get_jewelry_price_data(obj.product, currency)
+                if data:
+                    data["is_base_price"] = currency == base_currency
+                    prices[currency] = data
+            return prices
         try:
             return obj.product.get_all_prices()
         except Exception:
@@ -547,12 +1099,12 @@ class ApplyPromoCodeSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=50)
 
     def validate_code(self, value):
-        """Валидация кода промокода."""
+        """Валидация кода промокода (поиск без учёта регистра)."""
         try:
-            promo_code = PromoCode.objects.get(code=value.upper())
+            PromoCode.objects.get(code__iexact=value.strip())
         except PromoCode.DoesNotExist:
             raise serializers.ValidationError(_("Промокод не найден"))
-        return value.upper()
+        return value.strip().upper()
 
 
 class CartSerializer(serializers.ModelSerializer):
@@ -564,6 +1116,7 @@ class CartSerializer(serializers.ModelSerializer):
     total_amount = serializers.SerializerMethodField()
     discount_amount = serializers.SerializerMethodField()
     final_amount = serializers.SerializerMethodField()
+    shipping_options = serializers.SerializerMethodField()
     promo_code = PromoCodeSerializer(read_only=True)
     currency = serializers.SerializerMethodField()  # Изменено на метод
 
@@ -572,10 +1125,10 @@ class CartSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'session_key', 'currency',
             'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount',
-            'promo_code',
+            'shipping_options', 'promo_code',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['user', 'created_at', 'updated_at', 'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount', 'currency']
+        read_only_fields = ['user', 'created_at', 'updated_at', 'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount', 'currency', 'shipping_options']
 
     def _get_preferred_currency(self, request):
         """Определяет валюту по приоритетам: explicit -> user -> язык -> default."""
@@ -616,45 +1169,204 @@ class CartSerializer(serializers.ModelSerializer):
         total = 0
         for item in obj.items.all():
             try:
+                if item.product and item.product.product_type == "jewelry":
+                    product = item.product
+                    base_price = product.price
+                    if base_price is not None:
+                        from_currency = (product.currency or 'RUB').upper()
+                        try:
+                            _, _, price_with_margin = currency_converter.convert_price(
+                                Decimal(base_price),
+                                from_currency,
+                                preferred_currency,
+                                apply_margin=True,
+                            )
+                            total += price_with_margin * item.quantity
+                            continue
+                        except Exception:
+                            total += float(base_price) * item.quantity
+                            continue
                 prices = item.product.get_all_prices()
                 if prices and preferred_currency in prices:
+                    # Нужная валюта найдена напрямую
                     price = prices[preferred_currency].get('price_with_margin', 0)
                 elif prices:
-                    # Если предпочитаемой валюты нет, используем базовую
+                    # Предпочитаемой валюты нет в кэше — находим базовую цену и конвертируем
+                    base_price_val = 0
+                    base_curr = None
                     for currency, data in prices.items():
                         if data.get('is_base_price'):
-                            price = data.get('price_with_margin', 0)
+                            base_price_val = data.get('price_with_margin') or data.get('converted_price') or 0
+                            base_curr = currency
                             break
+                    if not base_curr and prices:
+                        first_key = list(prices.keys())[0]
+                        base_price_val = prices[first_key].get('price_with_margin', 0)
+                        base_curr = first_key
+
+                    if base_curr and base_price_val and base_curr.upper() != preferred_currency.upper():
+                        # Конвертируем из базовой валюты в предпочитаемую
+                        try:
+                            _, _, price = currency_converter.convert_price(
+                                Decimal(str(base_price_val)),
+                                base_curr,
+                                preferred_currency,
+                                apply_margin=True,
+                            )
+                        except Exception:
+                            price = base_price_val
                     else:
-                        # Если базовой нет, берем первую
-                        first_currency = list(prices.keys())[0]
-                        price = prices[first_currency].get('price_with_margin', 0)
+                        price = base_price_val
                 else:
-                    # Fallback к старому полю
-                    price = item.price
+                    # Fallback к полю item — конвертируем из валюты позиции
+                    raw_price = item.price
+                    from_currency = (item.currency or getattr(item.product, 'currency', None) or 'RUB').upper()
+                    try:
+                        _, _, price = currency_converter.convert_price(
+                            Decimal(str(raw_price)),
+                            from_currency,
+                            preferred_currency,
+                            apply_margin=True,
+                        )
+                    except Exception:
+                        price = raw_price
                 
                 total += price * item.quantity
             except Exception:
-                # Fallback к старому полю
+                # Финальный fallback к старому полю без конвертации
                 total += item.price * item.quantity
         
-        return round(total, 2)
+        return float(round(total, 2))
     
     def get_discount_amount(self, obj):
         """Рассчитать скидку по промокоду."""
         if not obj.promo_code:
             return 0
-        total = self.get_total_amount(obj)
-        is_valid, error = obj.promo_code.is_valid(cart_total=total)
+
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        total = float(self.get_total_amount(obj))
+        is_valid, error = obj.promo_code.is_valid(cart_total=total, cart_currency=preferred_currency)
         if not is_valid:
             return 0
-        return obj.promo_code.calculate_discount(total)
+        return obj.promo_code.calculate_discount(total, currency=preferred_currency)
     
     def get_final_amount(self, obj):
         """Итоговая сумма с учётом скидки."""
-        total = self.get_total_amount(obj)
-        discount = self.get_discount_amount(obj)
-        return round(total - discount, 2)
+        from decimal import Decimal, ROUND_HALF_UP
+
+        try:
+            total_dec = Decimal(str(self.get_total_amount(obj)))
+        except Exception:
+            total_dec = Decimal('0')
+
+        try:
+            discount_dec = Decimal(str(self.get_discount_amount(obj)))
+        except Exception:
+            discount_dec = Decimal('0')
+
+        return float((total_dec - discount_dec).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+
+    def get_shipping_options(self, obj):
+        """Возвращает варианты доставки и их стоимость для всей корзины."""
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        
+        shipping_costs = {
+            'air': 0.0,
+            'sea': 0.0,
+            'ground': 0.0
+        }
+        
+        from apps.catalog.currency_models import ProductVariantPrice
+        from django.contrib.contenttypes.models import ContentType
+        from apps.catalog.utils.currency_converter import currency_converter
+        from decimal import Decimal
+        
+        for item in obj.items.all():
+            if not item.product:
+                continue
+                
+            # Валюта доставки всегда фиксированно USD по требованию
+            shipping_base_currency = 'USD'
+            air_cost = sea_cost = ground_cost = 0
+                
+            if item.product.external_data and (
+                'source_variant_id' in item.product.external_data or 'jewelry_variant_id' in item.product.external_data
+            ):
+                variant_model = None
+                if item.product.product_type == 'clothing':
+                    from apps.catalog.models import ClothingVariant
+                    variant_model = ClothingVariant
+                elif item.product.product_type == 'shoes':
+                    from apps.catalog.models import ShoeVariant
+                    variant_model = ShoeVariant
+                elif item.product.product_type == 'jewelry':
+                    from apps.catalog.models import JewelryVariant
+                    variant_model = JewelryVariant
+                elif item.product.product_type == 'furniture':
+                    from apps.catalog.models import FurnitureVariant
+                    variant_model = FurnitureVariant
+                elif item.product.product_type == 'books':
+                    from apps.catalog.models import BookVariant
+                    variant_model = BookVariant
+                
+                if variant_model:
+                    variant_id = item.product.external_data.get('source_variant_id') or item.product.external_data.get('jewelry_variant_id')
+                    variant = variant_model.objects.filter(id=variant_id).first()
+                    
+                    if variant:
+                        content_type = ContentType.objects.get_for_model(variant)
+                        variant_price = ProductVariantPrice.objects.filter(
+                            content_type=content_type,
+                            object_id=variant.id
+                        ).first()
+                        
+                        if variant_price:
+                            air_cost = variant_price.air_shipping_cost or 0
+                            sea_cost = variant_price.sea_shipping_cost or 0
+                            ground_cost = variant_price.ground_shipping_cost or 0
+
+                # Если не нашли через ProductVariantPrice — пробуем price_info (ProductPrice)
+                # Это актуально для ювелирки и других товаров, у которых данные в ProductPrice
+                if not any([air_cost, sea_cost, ground_cost]):
+                    price_info = getattr(item.product, 'price_info', None)
+                    if price_info:
+                        air_cost = price_info.air_shipping_cost or 0
+                        sea_cost = price_info.sea_shipping_cost or 0
+                        ground_cost = price_info.ground_shipping_cost or 0
+            else:
+                # Обычные товары без вариантов — читаем из price_info напрямую
+                price_info = getattr(item.product, 'price_info', None)
+                if price_info:
+                    air_cost = price_info.air_shipping_cost or 0
+                    sea_cost = price_info.sea_shipping_cost or 0
+                    ground_cost = price_info.ground_shipping_cost or 0
+                    
+            def convert_cost(cost):
+                if not cost: return 0
+                if shipping_base_currency.upper() == preferred_currency:
+                    return float(cost)
+                try:
+                    _, converted, _ = currency_converter.convert_price(
+                        Decimal(str(cost)),
+                        shipping_base_currency,
+                        preferred_currency,
+                        apply_margin=False
+                    )
+                    return float(converted)
+                except Exception:
+                    return float(cost)
+                    
+            shipping_costs['air'] += convert_cost(air_cost) * item.quantity
+            shipping_costs['sea'] += convert_cost(sea_cost) * item.quantity
+            shipping_costs['ground'] += convert_cost(ground_cost) * item.quantity
+            
+        return {
+            'air': float(round(shipping_costs['air'], 2)),
+            'sea': float(round(shipping_costs['sea'], 2)),
+            'ground': float(round(shipping_costs['ground'], 2)),
+        }
 
 
 class AddToCartSerializer(serializers.Serializer):
@@ -698,22 +1410,56 @@ class AddToCartSerializer(serializers.Serializer):
 
         normalized = normalize_product_type(effective_type)
 
-        # Проверяем вариант напрямую, чтобы валидировать размер (для одежды/обуви)
+        # Проверяем вариант напрямую, чтобы валидировать размер (для одежды/обуви/украшений)
         variant = None
         variant_model = VARIANT_MODEL_MAP.get(normalized)
-        if variant_model and variant_model in (ClothingVariant, ShoeVariant):
+        if variant_model and variant_model in (ClothingVariant, ShoeVariant, JewelryVariant):
             variant = variant_model.objects.filter(slug=product_slug, is_active=True).first()
             if variant:
-                has_size_grid = variant.sizes.exists()
-                if has_size_grid:
-                    if not chosen_size:
-                        raise serializers.ValidationError({"detail": _("Укажите размер для этого варианта")})
-                    size_obj = variant.sizes.filter(size=chosen_size).first()
-                    if not size_obj:
-                        raise serializers.ValidationError({"detail": _("Размер не найден для выбранного цвета")})
-                    if not size_obj.is_available:
-                        raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
+                if variant_model == JewelryVariant:
+                    has_size_grid = variant.sizes.exists()
+                    if has_size_grid:
+                        if not chosen_size:
+                            raise serializers.ValidationError({"detail": _("Укажите размер для этого товара")})
+                        size_obj = variant.sizes.filter(size_display=chosen_size).first()
+                        if not size_obj:
+                            size_obj = variant.sizes.filter(size_value=chosen_size).first()
+                        if not size_obj:
+                            raise serializers.ValidationError({"detail": _("Размер не найден")})
+                        if not size_obj.is_available:
+                            raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
+                else:
+                    has_size_grid = variant.sizes.exists()
+                    if has_size_grid:
+                        if not chosen_size:
+                            raise serializers.ValidationError({"detail": _("Укажите размер для этого варианта")})
+                        size_obj = variant.sizes.filter(size=chosen_size).first()
+                        if not size_obj:
+                            raise serializers.ValidationError({"detail": _("Размер не найден для выбранного цвета")})
+                        if not size_obj.is_available:
+                            raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
                 attrs['chosen_size'] = chosen_size
+            else:
+                base_model_map = {
+                    'clothing': ClothingProduct,
+                    'shoes': ShoeProduct,
+                    'jewelry': JewelryProduct,
+                }
+                base_model = base_model_map.get(normalized)
+                if base_model:
+                    base_obj = base_model.objects.filter(slug=product_slug, is_active=True).first()
+                    if base_obj and normalized == "jewelry":
+                        has_sizes = JewelryVariantSize.objects.filter(variant__product=base_obj).exists()
+                        if has_sizes:
+                            raise serializers.ValidationError({"detail": _("Выберите вариант и размер на странице товара")})
+                    if base_obj and normalized in ("clothing", "shoes") and base_obj.sizes.exists():
+                        if not chosen_size:
+                            raise serializers.ValidationError({"detail": _("Укажите размер для этого товара")})
+                        size_obj = base_obj.sizes.filter(size=chosen_size).first()
+                        if not size_obj:
+                            raise serializers.ValidationError({"detail": _("Размер не найден")})
+                        if not size_obj.is_available:
+                            raise serializers.ValidationError({"detail": _("Размер недоступен для покупки")})
         else:
             # Базовые типы (без вариантов) — пробуем найти продукт по slug сразу
             base = Product.objects.filter(slug=product_slug, is_active=True).first()
@@ -746,11 +1492,86 @@ class OrderItemSerializer(serializers.ModelSerializer):
     """
     product_slug = serializers.CharField(source='product.slug', read_only=True)
     product_image_url = serializers.SerializerMethodField()
+    product_video_url = serializers.SerializerMethodField()
+    product_translations = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    total = serializers.SerializerMethodField()
     
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'product_name', 'product_slug', 'product_image_url', 'chosen_size', 'price', 'quantity', 'total']
-        read_only_fields = ['product_name', 'price', 'total', 'product_slug', 'product_image_url']
+        fields = ['id', 'product', 'product_name', 'product_slug', 'product_image_url', 'product_video_url', 'product_translations', 'chosen_size', 'price', 'quantity', 'total']
+        read_only_fields = ['product_name', 'price', 'total', 'product_slug', 'product_image_url', 'product_video_url', 'product_translations']
+
+    def _get_preferred_currency(self, request, fallback: str = 'RUB') -> str:
+        if not request:
+            return fallback
+        preferred_currency = request.headers.get('X-Currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        preferred_currency = request.query_params.get('currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            user_currency = getattr(request.user, 'currency', None)
+            if user_currency:
+                return user_currency.upper()
+        language_code = getattr(request, 'LANGUAGE_CODE', None)
+        language_currency_map = {
+            'en': 'USD',
+            'ru': 'RUB',
+        }
+        return language_currency_map.get(language_code, fallback)
+
+    def _convert_money(self, amount: Decimal, from_currency: str, to_currency: str) -> Decimal:
+        if from_currency == to_currency:
+            return amount
+        _orig, converted, _with_margin = currency_converter.convert_price(
+            amount=amount,
+            from_currency=from_currency,
+            to_currency=to_currency,
+            apply_margin=False,
+        )
+        return converted
+
+    def get_price(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj.order, 'currency', 'RUB'))
+        order_currency = getattr(obj.order, 'currency', 'RUB')
+        try:
+            amount = Decimal(str(obj.price))
+            return self._convert_money(amount, order_currency, preferred_currency)
+        except Exception:
+            return obj.price
+
+    def get_total(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj.order, 'currency', 'RUB'))
+        order_currency = getattr(obj.order, 'currency', 'RUB')
+        try:
+            amount = Decimal(str(obj.total))
+            return self._convert_money(amount, order_currency, preferred_currency)
+        except Exception:
+            return obj.total
+
+    def get_product_translations(self, obj):
+        product = obj.product
+        if not product:
+            return []
+        
+        # Сначала проверяем прямые переводы
+        translations = _serialize_translations_qs(getattr(product, "translations", None))
+        if translations:
+            return translations
+            
+        # Проверяем доменную модель, если это пустой Base Product
+        if hasattr(product, "domain_item"):
+            domain_obj = product.domain_item
+            if domain_obj and hasattr(domain_obj, 'translations') and domain_obj != product:
+                domain_trans = getattr(domain_obj, "translations", None)
+                if domain_trans:
+                    return _serialize_translations_qs(domain_trans)
+
+        return _resolve_variant_translations(product)
     
     def get_product_image_url(self, obj):
         """Получение URL изображения товара"""
@@ -778,6 +1599,41 @@ class OrderItemSerializer(serializers.ModelSerializer):
         
         return None
 
+    def get_product_video_url(self, obj):
+        """URL главного видео товара для позиции заказа."""
+        if not obj.product:
+            return None
+        product = obj.product
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(product, "main_video_file", None), request)
+        if file_url:
+            return file_url
+        raw_url = getattr(product, "video_url", None) or ""
+        if raw_url and raw_url.strip():
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+        base_models = {
+            "shoes": ShoeProduct,
+            "clothing": ClothingProduct,
+            "jewelry": JewelryProduct,
+            "electronics": ElectronicsProduct,
+            "furniture": FurnitureProduct,
+        }
+        base_model = base_models.get(product.product_type)
+        if base_model:
+            base_obj = base_model.objects.filter(slug=product.slug, is_active=True).first()
+            if base_obj:
+                file_url = _resolve_file_url(getattr(base_obj, "main_video_file", None), request)
+                if file_url:
+                    return file_url
+                raw_url = getattr(base_obj, "video_url", None) or ""
+                if raw_url and raw_url.strip():
+                    path_lower = raw_url.split("?")[0].lower()
+                    if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                        return _resolve_media_url(raw_url, request)
+        return None
+
 
 # TODO: Функционал чеков временно отключен. Будет доработан позже.
 # Включает: формирование чека, отправку по email, интеграцию с админкой.
@@ -785,6 +1641,7 @@ class OrderReceiptItemSerializer(serializers.Serializer):
     """Позиция в чеке заказа."""
     id = serializers.IntegerField()
     product_name = serializers.CharField()
+    product_translations = serializers.ListField(child=serializers.DictField(), required=False)
     quantity = serializers.IntegerField()
     price = serializers.DecimalField(max_digits=12, decimal_places=2)
     total = serializers.DecimalField(max_digits=12, decimal_places=2)
@@ -815,6 +1672,11 @@ class OrderSerializer(serializers.ModelSerializer):
     """
     items = OrderItemSerializer(many=True, read_only=True)
     promo_code = PromoCodeSerializer(read_only=True)
+    currency = serializers.SerializerMethodField()
+    subtotal_amount = serializers.SerializerMethodField()
+    shipping_amount = serializers.SerializerMethodField()
+    discount_amount = serializers.SerializerMethodField()
+    total_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -830,6 +1692,80 @@ class OrderSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['number', 'status', 'user', 'subtotal_amount', 'total_amount', 'currency', 'created_at', 'updated_at']
 
+    def _get_preferred_currency(self, request, fallback: str = 'RUB') -> str:
+        if not request:
+            return fallback
+        preferred_currency = request.headers.get('X-Currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        preferred_currency = request.query_params.get('currency')
+        if preferred_currency:
+            return preferred_currency.upper()
+        if getattr(request, 'user', None) and request.user.is_authenticated:
+            user_currency = getattr(request.user, 'currency', None)
+            if user_currency:
+                return user_currency.upper()
+        language_code = getattr(request, 'LANGUAGE_CODE', None)
+        language_currency_map = {
+            'en': 'USD',
+            'ru': 'RUB',
+        }
+        return language_currency_map.get(language_code, fallback)
+
+    def _convert_money(self, amount: Decimal, from_currency: str, to_currency: str) -> Decimal:
+        if from_currency == to_currency:
+            return amount
+        _orig, converted, _with_margin = currency_converter.convert_price(
+            amount=amount,
+            from_currency=from_currency,
+            to_currency=to_currency,
+            apply_margin=False,
+        )
+        return converted
+
+    def get_currency(self, obj):
+        request = self.context.get('request')
+        return self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
+
+    def get_subtotal_amount(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
+        try:
+            return self._convert_money(Decimal(str(obj.subtotal_amount)), obj.currency, preferred_currency)
+        except Exception:
+            return obj.subtotal_amount
+
+    def get_shipping_amount(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
+        try:
+            return self._convert_money(Decimal(str(obj.shipping_amount)), obj.currency, preferred_currency)
+        except Exception:
+            return obj.shipping_amount
+
+    def get_discount_amount(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
+        try:
+            return self._convert_money(Decimal(str(obj.discount_amount)), obj.currency, preferred_currency)
+        except Exception:
+            return obj.discount_amount
+
+    def get_total_amount(self, obj):
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request, fallback=getattr(obj, 'currency', 'RUB'))
+        try:
+            return self._convert_money(Decimal(str(obj.total_amount)), obj.currency, preferred_currency)
+        except Exception:
+            return obj.total_amount
+
+    def get_fields(self):
+        fields = super().get_fields()
+        # Прокидываем context (request) внутрь OrderItemSerializer, чтобы он тоже конвертировал.
+        if 'items' in fields and hasattr(fields['items'], 'child'):
+            fields['items'].child.context.update(self.context)
+        return fields
+
 
 class CreateOrderSerializer(serializers.Serializer):
     """
@@ -837,13 +1773,14 @@ class CreateOrderSerializer(serializers.Serializer):
     """
     contact_name = serializers.CharField(max_length=150)
     contact_phone = serializers.CharField(max_length=32)
-    contact_email = serializers.EmailField(required=False, allow_blank=True)
-    shipping_address = serializers.IntegerField(required=False)
-    shipping_address_text = serializers.CharField(required=False, allow_blank=True)
-    shipping_method = serializers.CharField(required=False, allow_blank=True)
-    payment_method = serializers.CharField(required=False, allow_blank=True)
-    comment = serializers.CharField(required=False, allow_blank=True)
-    promo_code = serializers.CharField(required=False, allow_blank=True, max_length=50)
+    contact_email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    shipping_address = serializers.IntegerField(required=False, allow_null=True)
+    shipping_address_text = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    shipping_method = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    payment_method = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    comment = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    promo_code = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=50)
+    locale = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=10)
 
     def validate_shipping_address(self, value):
         # Валидация адреса доставки будет реализована при наличии пользователя

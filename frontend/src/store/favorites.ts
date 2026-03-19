@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import api, { initCartSession } from '../lib/api'
+import { ProductTranslation } from '../lib/i18n'
 
 interface Favorite {
   id: number
@@ -7,10 +8,17 @@ interface Favorite {
     id: number
     name: string
     slug: string
-    price: string
-    currency: string
+    price: string | number | null
+    currency: string | null
+    active_variant_price?: string | number | null
+    active_variant_currency?: string | null
+    old_price?: string | number | null
+    old_price_formatted?: string | null
+    active_variant_old_price_formatted?: string | null
     main_image_url?: string
+    video_url?: string | null
     _product_type?: string
+    translations?: ProductTranslation[]
   }
   created_at: string
 }
@@ -20,11 +28,11 @@ interface FavoritesStore {
   count: number
   loading: boolean
   refreshing: boolean
-  refresh: () => Promise<void>
+  refresh: (currency?: string) => Promise<void>
   add: (productId: number, productType?: string) => Promise<void>
   remove: (productId: number, productType?: string) => Promise<void>
   check: (productId: number, productType?: string) => Promise<boolean>
-  isFavorite: (productId: number) => boolean
+  isFavorite: (productId: number, productType?: string) => boolean
 }
 
 export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
@@ -32,17 +40,19 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
   count: 0,
   loading: false,
   refreshing: false,
-  
-  refresh: async () => {
+
+  refresh: async (currency?: string) => {
     // Предотвращаем множественные одновременные запросы
     if (get().refreshing) {
       return
     }
-    
+
     set({ refreshing: true, loading: true })
     try {
       initCartSession()
-      const response = await api.get('/catalog/favorites')
+      const response = await api.get('/catalog/favorites', {
+        headers: currency ? { 'X-Currency': currency } : undefined,
+      })
       const favorites = response.data || []
       set({ favorites, count: favorites.length, loading: false, refreshing: false })
     } catch (error) {
@@ -50,7 +60,7 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       set({ favorites: [], count: 0, loading: false, refreshing: false })
     }
   },
-  
+
   add: async (productId: number, productType: string = 'medicines') => {
     try {
       initCartSession()
@@ -61,7 +71,7 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       throw new Error(detail)
     }
   },
-  
+
   remove: async (productId: number, productType: string = 'medicines') => {
     try {
       initCartSession()
@@ -72,7 +82,7 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       throw new Error(detail)
     }
   },
-  
+
   check: async (productId: number, productType: string = 'medicines') => {
     try {
       initCartSession()
@@ -83,10 +93,15 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       return false
     }
   },
-  
-  isFavorite: (productId: number) => {
+
+  isFavorite: (productId: number, productType?: string) => {
     const { favorites } = get()
-    return favorites.some(fav => fav.product.id === productId)
+    return favorites.some(fav => {
+      const sameId = fav.product.id === productId
+      if (!productType) return sameId
+      // Если тип указан, проверяем и его
+      const type = fav.product._product_type || 'medicines'
+      return sameId && type === productType
+    })
   },
 }))
-

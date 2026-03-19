@@ -1,20 +1,22 @@
 """URL-маршруты для публичного API (v1)."""
-from django.urls import path, include
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
+from django.urls import path, include, re_path
+from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import HealthCheckView
+from .views import HealthCheckView, JWTObtainPairView, TempImageUploadView
 
+TokenRefresh = TokenRefreshView.as_view()
 
 urlpatterns = [
     # Проверка здоровья сервиса
     path("health/", HealthCheckView.as_view(), name="health-check"),
+    
+    # Временная загрузка файлов
+    re_path(r"^upload/temp/?$", TempImageUploadView.as_view(), name="temp-upload"),
 
-    # Аутентификация (JWT)
-    path("auth/jwt/create/", TokenObtainPairView.as_view(), name="jwt-create"),
-    path("auth/jwt/refresh/", TokenRefreshView.as_view(), name="jwt-refresh"),
+    # Аутентификация (JWT): в теле username или email + password
+    path("auth/jwt/create/", JWTObtainPairView.as_view(), name="jwt-create"),
+    path("auth/jwt/refresh/", TokenRefresh, name="jwt-refresh"),
+    re_path(r"^auth/jwt/refresh/?$", TokenRefresh),  # для совместимости с/без trailing slash
 
     # Пользователи
     path("users/", include("apps.users.urls")),
@@ -33,5 +35,11 @@ urlpatterns = [
 
     # Корзина и заказы
     path("orders/", include("apps.orders.urls")),
+
+    # AI: логи, генерация контента, модерация
+    path("ai/", include("apps.ai.urls")),
+
+    # Рекомендации (векторная RecSys на Qdrant)
+    path("recommendations/", include("apps.recommendations.urls")),
 ]
 

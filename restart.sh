@@ -1,5 +1,33 @@
 #!/bin/bash
 
+# Переход в директорию скрипта (чтобы docker compose находил docker-compose.yml)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Явное имя проекта — чтобы restart.sh и docker compose up/logs в другом терминале работали с одними контейнерами
+# Подгружаем .env чтобы скрипт видел переменные (например COMPOSE_FILE)
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
+# Имя проекта
+export COMPOSE_PROJECT_NAME=pharmaturk
+# Если COMPOSE_FILE не задан в .env или окружении, используем базу + локальный override (стандартное поведение Docker Compose)
+if [ -z "$COMPOSE_FILE" ]; then
+    COMPOSE_FILE="docker-compose.yml"
+    # Добавляем override только если он существует (стандарт Docker)
+    if [ -f "docker-compose.override.yml" ]; then
+        COMPOSE_FILE="${COMPOSE_FILE}:docker-compose.override.yml"
+    fi
+fi
+
+# Превращаем строку с двоеточиями в массив флагов -f для командной строки
+COMPOSE_FLAGS=""
+IFS=':' read -ra ADDR <<< "$COMPOSE_FILE"
+for i in "${ADDR[@]}"; do
+    COMPOSE_FLAGS="$COMPOSE_FLAGS -f $i"
+done
+
 # Скрипт для перезапуска проекта PharmaTurk
 # Использование: ./restart.sh [опции]
 #
@@ -9,7 +37,7 @@
 #   --rebuild        - Полная пересборка (--clean + --no-cache)
 #   --no-prune       - Не очищать неиспользуемые Docker ресурсы
 #   --logs           - Показать логи после запуска
-#   --fast           - Быстрый перезапуск: пропустить пересборку образов и prune (самый быстрый)
+#   --fast, --quick  - Быстрый перезапуск: только stop + up без пересборки и prune (рекомендуется для повседневного рестарта)
 #   --fast-rebuild   - Быстрая пересборка только frontend и backend (больше чем --fast, но быстрее чем полная сборка)
 #   --help           - Показать справку
 
@@ -61,16 +89,17 @@ show_help() {
     --rebuild        Полная пересборка (--clean + --no-cache)
     --no-prune       Не очищать неиспользуемые Docker ресурсы (по умолчанию очистка включена)
     --logs           Показать логи после запуска
-    --fast           Быстрый перезапуск: пропускает очистку docker system prune и пересборку образов (docker compose up -d --no-build)
+    --fast, --quick  Быстрый перезапуск: только остановка и запуск контейнеров, без пересборки и prune (для повседневного рестарта)
     --fast-rebuild   Быстрая пересборка только frontend и backend (быстрее, чем полная пересборка всех сервисов)
     --help           Показать эту справку
 
 Примеры:
-    ./restart.sh                    # Обычный перезапуск
+    ./restart.sh --quick --logs     # Быстрый перезапуск с логами (рекомендуется для повседневного рестарта)
+    ./restart.sh --fast             # То же, что --quick (без логов)
+    ./restart.sh                    # Обычный перезапуск (с пересборкой)
     ./restart.sh --no-cache         # Пересборка без кэша
     ./restart.sh --clean            # С очисткой базы данных
     ./restart.sh --rebuild --logs   # Полная пересборка с логами
-    ./restart.sh --fast             # Очень быстрый перезапуск (без пересборки образов)
     ./restart.sh --fast-rebuild     # Пересобрать только frontend и backend
 
 EOF
@@ -100,7 +129,7 @@ while [[ $# -gt 0 ]]; do
             SHOW_LOGS=true
             shift
             ;;
-        --fast)
+        --fast|--quick)
             FAST=true
             shift
             ;;
@@ -149,40 +178,33 @@ find backend -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 find backend -type f -name "*.pyc" -delete 2>/dev/null || true
 find backend -type f -name "*.pyo" -delete 2>/dev/null || true
 success "Кэш Python очищен"
-
-# Остановка контейнеров
+# Остановка контейнеров (всегда выполняем down — идемпотентно, если контейнеры не запущены)
 info "Останавливаем контейнеры..."
-if docker compose ps 2>/dev/null | grep -q "Up"; then
-    if [ "$CLEAN_VOLUMES" = true ]; then
-        warning "Удаляем volumes (база данных будет очищена!)"
-        read -p "Вы уверены? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            docker compose down -v || true
-            success "Контейнеры остановлены и volumes удалены"
-        else
-            info "Отменено пользователем"
-            exit 0
-        fi
+if [ "$CLEAN_VOLUMES" = true ]; then
+    warning "Удаляем volumes (база данных будет очищена!)"
+    read -p "Вы уверены? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        docker compose -p pharmaturk $COMPOSE_FLAGS down -v --remove-orphans || true
+        success "Контейнеры остановлены и volumes удалены"
     else
-        docker compose down || true
-        success "Контейнеры остановлены"
+        info "Отменено пользователем"
+        exit 0
     fi
 else
-    info "Контейнеры не запущены, пропускаем остановку"
-    if [ "$CLEAN_VOLUMES" = true ]; then
-        warning "Удаляем volumes (база данных будет очищена!)"
-        read -p "Вы уверены? (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            docker compose down -v || true
-            success "Volumes удалены"
-        else
-            info "Отменено пользователем"
-            exit 0
-        fi
-    fi
+    docker compose -p pharmaturk $COMPOSE_FLAGS down -t 1 --remove-orphans || true
+        success "Контейнеры остановлены"
 fi
+
+# Docker compose up и logs -f в других терминалах не завершаются при down — отправляем SIGTERM.
+# Часто запускают ./restart.sh --fast --logs: в первом терминале остаётся logs -f от прошлого запуска.
+pkill -TERM -f "docker compose.* up" 2>/dev/null || true
+pkill -TERM -f "docker compose.* logs" 2>/dev/null || true
+pkill -TERM -f "docker-compose.* up" 2>/dev/null || true
+pkill -TERM -f "docker-compose.* logs" 2>/dev/null || true
+
+# Пауза: даём процессам время завершиться
+sleep 3
 
 # Очистка неиспользуемых Docker ресурсов (по умолчанию включена)
 if [ "$NO_PRUNE" = false ] && [ "$FAST" = false ]; then
@@ -218,12 +240,12 @@ info "Пересобираем Docker образы..."
 if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
     info "FAST режим: пропускаем пересборку образов"
 elif [ "$FAST_REBUILD" = true ]; then
-    info "FAST-REBUILD: пересобираем только backend и frontend"
-    docker compose build backend frontend || warning "Ошибка при быстрой пересборке backend/frontend"
+    info "FAST-REBUILD: пересобираем backend и frontend"
+    docker compose -p pharmaturk $COMPOSE_FLAGS build backend frontend || warning "Ошибка при быстрой пересборке backend/frontend"
 elif [ "$NO_CACHE" = true ]; then
-    docker compose build --no-cache || warning "Ошибка при сборке образов без кэша"
+    docker compose -p pharmaturk $COMPOSE_FLAGS build --no-cache || warning "Ошибка при сборке образов без кэша"
 else
-    docker compose build || warning "Ошибка при сборке образов"
+    docker compose -p pharmaturk $COMPOSE_FLAGS build || warning "Ошибка при сборке образов"
 fi
 
 if [ "$FAST" = false ]; then
@@ -234,73 +256,57 @@ fi
 
 # Запуск контейнеров
 info "Запускаем контейнеры..."
-# В FAST режиме используем --no-build, чтобы docker compose не пытался собирать образы
+UP_OPTS="-d"
 if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
-    docker compose up -d --no-build
-else
-    docker compose up -d
+    UP_OPTS="-d --no-build"
 fi
+docker compose -p pharmaturk $COMPOSE_FLAGS up $UP_OPTS
 success "Контейнеры запущены"
 
-# Ожидание готовности сервисов
-info "Ожидаем готовности сервисов..."
-sleep 5
-
-# Проверка статуса
+# Краткая пауза: backend уже ждёт postgres (healthcheck), миграции выполняет entrypoint
 info "Проверяем статус контейнеров..."
-docker compose ps
+sleep 2
+docker compose -p pharmaturk $COMPOSE_FLAGS ps
 
-# Ожидание готовности базы данных
-info "Ожидаем готовности базы данных..."
-for i in {1..30}; do
-    if docker compose exec -T postgres pg_isready -U pharmaturk > /dev/null 2>&1; then
-        success "База данных готова"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        warning "База данных не готова после 30 попыток"
-    else
-        sleep 1
-    fi
-done
-
-# Создание и применение миграций Django
-info "Создаем и применяем миграции Django..."
-if docker compose ps backend | grep -q "Up"; then
-    if docker compose exec -T backend poetry run python manage.py makemigrations; then
-        success "Миграции созданы (если были изменения моделей)"
-    else
-        warning "Ошибка при создании миграций (возможно, контейнер еще не готов)"
-    fi
-    if docker compose exec -T backend poetry run python manage.py migrate --noinput; then
-        success "Миграции применены"
-    else
-        warning "Ошибка при применении миграций (возможно, контейнер еще не готов)"
-    fi
-else
-    warning "Backend контейнер не запущен, миграции не созданы и не применены"
-fi
+# AI RAG: подготовка Qdrant (опционально, при первом запуске или после добавления категорий/шаблонов)
+# Раскомментируйте следующую строку, чтобы один раз заполнить RAG после старта:
+# docker compose exec -T backend poetry run python manage.py setup_ai_rag
 
 # Показ логов (если указано)
 if [ "$SHOW_LOGS" = true ]; then
     info "Показываем логи (Ctrl+C для выхода)..."
-    docker compose logs -f
+    docker compose -p pharmaturk $COMPOSE_FLAGS logs -f
 else
     info "Для просмотра логов используйте: docker compose logs -f"
+    info ""
+    info "Чтобы restart.sh останавливал логи в другом терминале, в терминале 1 запускайте из корня проекта:"
+    info "  cd $SCRIPT_DIR && docker compose up"
+    info "  или:  cd $SCRIPT_DIR && docker compose logs -f"
 fi
 
 success "Проект успешно перезапущен!"
 info ""
 info "Доступные сервисы:"
-info "  - Backend API:    http://localhost:8000"
-info "  - Frontend:       http://localhost:3001"
+info "  - Backend API:    http://localhost:8000 (или ваш домен)"
+info "  - Frontend:       $(if [[ "$COMPOSE_FILE" == *"prod"* ]]; then echo "http://localhost:80 (или ваш домен)"; else echo "http://localhost:3001"; fi)"
 info "  - Admin Panel:    http://localhost:8000/admin/"
 info "  - Swagger Docs:   http://localhost:8000/api/docs/"
+info ""
 info "  - PostgreSQL:     localhost:5433"
 info "  - Redis:          localhost:6379"
 info "  - OpenSearch:     localhost:9200"
+info "  - Qdrant (AI):    localhost:6333"
+info ""
+info "Команды Django в Docker (запускать после старта контейнеров):"
+info "  docker compose exec backend poetry run python manage.py <команда>"
+info "  Примеры:"
+info "    docker compose exec backend poetry run python manage.py seed_catalog_data  # категории и бренды (после потери БД)"
+info "    docker compose exec backend poetry run python manage.py setup_ai_rag   # подготовка RAG (Qdrant)"
+info "    docker compose exec backend poetry run python manage.py init_qdrant   # только коллекции Qdrant"
+info "    docker compose exec backend poetry run python manage.py sync_categories"
+info "    docker compose exec backend poetry run python manage.py import_templates"
+info "    docker compose exec backend poetry run python manage.py benchmark_ai 5 # тест AI на 5 товарах"
 info ""
 info "Hot-reload включен:"
-info "  - Изменения в backend и frontend подхватываются автоматически"
-info "  - Backend использует runserver (автоперезагрузка при изменении .py файлов)"
-info "  - Frontend использует Next.js dev server (hot-reload для React компонентов)"
+info "  - Backend: runserver (автоперезагрузка при изменении .py)"
+info "  - Frontend: Next.js dev server (hot-reload для React)"

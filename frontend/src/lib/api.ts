@@ -1,50 +1,11 @@
 import axios, { type AxiosRequestHeaders } from 'axios'
 import Cookies from 'js-cookie'
-
-// Динамически определяем базовый URL для работы на мобильных устройствах
-function getApiBaseUrl(): string {
-  // На клиенте ВСЕГДА используем прямой URL к backend
-  // Next.js rewrites работают только на сервере (SSR), на клиенте они не работают!
-  if (typeof window !== 'undefined') {
-    const origin = window.location.origin
-    // Определяем порт backend на основе порта frontend
-    // Если порт 3001 (frontend), заменяем на 8000 (backend)
-    // Это работает и для localhost, и для IP адресов (например, 192.168.1.36)
-    if (origin.includes(':3001')) {
-      const backendUrl = origin.replace(':3001', ':8000') + '/api'
-      console.log('[getApiBaseUrl] Client - using direct backend URL:', backendUrl, 'from origin:', origin)
-      return backendUrl
-    }
-    if (origin.includes(':3000')) {
-      const backendUrl = origin.replace(':3000', ':8000') + '/api'
-      console.log('[getApiBaseUrl] Client - using direct backend URL:', backendUrl, 'from origin:', origin)
-      return backendUrl
-    }
-    // Если другой порт, пытаемся определить backend порт
-    // По умолчанию используем порт 8000
-    const backendUrl = origin.split(':').slice(0, -1).join(':') + ':8000/api'
-    console.log('[getApiBaseUrl] Client - using direct backend URL (default port 8000):', backendUrl, 'from origin:', origin)
-    return backendUrl
-  }
-  
-  // На сервере (SSR) используем переменную окружения или относительный путь
-  // При SSR запросы идут через внутреннюю сеть Docker (rewrites работают)
-  if (process.env.NEXT_PUBLIC_API_BASE) {
-    // Если это полный URL (http://...), используем его
-    if (process.env.NEXT_PUBLIC_API_BASE.startsWith('http://') || process.env.NEXT_PUBLIC_API_BASE.startsWith('https://')) {
-      return process.env.NEXT_PUBLIC_API_BASE
-    }
-  }
-  
-  // На сервере используем относительный путь (rewrites обработают через Docker сеть)
-  console.log('[getApiBaseUrl] Server - using relative path /api (rewrites will handle)')
-  return '/api'
-}
+import { getClientApiBase } from './urls'
 
 // Создаем axios instance с базовым URL
-// На клиенте URL будет определен динамически через interceptor
+// На клиенте URL определяется динамически через interceptor (getClientApiBase)
 const api = axios.create({
-  baseURL: typeof window !== 'undefined' ? getApiBaseUrl() : '/api',
+  baseURL: typeof window !== 'undefined' ? getClientApiBase() : '/api',
   withCredentials: false,
 })
 
@@ -87,35 +48,34 @@ function cryptoRandom() {
 api.interceptors.request.use((config) => {
   // Обновляем baseURL на клиенте при каждом запросе (для работы на мобильных устройствах)
   if (typeof window !== 'undefined') {
-    const apiBase = getApiBaseUrl()
+    const apiBase = getClientApiBase()
     if (apiBase && config.baseURL !== apiBase) {
       config.baseURL = apiBase
     }
-    // ВСЕГДА логируем на клиенте для диагностики проблем на мобильных (даже в production)
-    console.log('[API Request]', {
-      url: config.url,
-      baseURL: config.baseURL,
-      fullUrl: `${config.baseURL}${config.url}`,
-      origin: window.location.origin,
-      userAgent: navigator.userAgent
-    })
+    // ngrok free tier: без этого заголовка возвращает HTML-страницу предупреждения вместо API-ответа
+    if (window.location.origin.includes('ngrok-free.dev') || window.location.origin.includes('ngrok.io')) {
+      if (!config.headers) config.headers = {} as AxiosRequestHeaders
+        ; (config.headers as AxiosRequestHeaders)['ngrok-skip-browser-warning'] = '1'
+    }
+    // Диагностика: раскомментировать при проблемах с API на мобильных/ngrok
+    // console.log('[API Request]', { url: config.url, baseURL: config.baseURL, origin: window.location.origin })
   }
-  
+
   const access = Cookies.get('access')
   if (!config.headers) config.headers = {} as AxiosRequestHeaders
-  
+
   if (access) {
-    ;(config.headers as AxiosRequestHeaders)['Authorization'] = `Bearer ${access}`
+    ; (config.headers as AxiosRequestHeaders)['Authorization'] = `Bearer ${access}`
     if (process.env.NODE_ENV === 'development') {
       console.log('API: adding auth header for', config.url)
     }
-    
+
     // Для авторизованных пользователей отправляем cart_session для возможного переноса корзины/избранного
     // но только если это запрос к корзине или избранному
     if (config.url?.includes('/orders/cart') || config.url?.includes('/catalog/favorites')) {
       const cartSid = Cookies.get('cart_session')
       if (cartSid) {
-        ;(config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
+        ; (config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
         if (process.env.NODE_ENV === 'development') {
           console.log('API: sending cart session for transfer:', cartSid)
         }
@@ -127,20 +87,21 @@ api.interceptors.request.use((config) => {
     }
     // Прокидываем X-Cart-Session для анонимных пользователей
     const cartSid = ensureCartSession()
-    ;(config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
+      ; (config.headers as AxiosRequestHeaders)['X-Cart-Session'] = cartSid
   }
-  
+
   // Прокидываем язык для локализации ответов DRF/Django
   const locale = Cookies.get('NEXT_LOCALE') || (typeof navigator !== 'undefined' ? (navigator.language?.split('-')[0] || 'en') : 'en')
-  ;(config.headers as AxiosRequestHeaders)['Accept-Language'] = locale
+    ; (config.headers as AxiosRequestHeaders)['Accept-Language'] = locale
 
   const storedCurrency = Cookies.get('currency')
-  const resolvedCurrency = storedCurrency || preferredCurrency || (!access ? 'RUB' : null)
+  // для авторизованных пользователей: берём из cookie, иначе из preferredCurrency, иначе fallback RUB
+  const resolvedCurrency = storedCurrency || preferredCurrency || 'RUB'
   if (process.env.NODE_ENV === 'development') {
     console.log('[API Currency]', { storedCurrency, preferredCurrency, resolvedCurrency, url: config.url })
   }
   if (resolvedCurrency) {
-    ;(config.headers as AxiosRequestHeaders)['X-Currency'] = resolvedCurrency
+    ; (config.headers as AxiosRequestHeaders)['X-Currency'] = resolvedCurrency
   }
   return config
 })
@@ -164,7 +125,7 @@ api.interceptors.response.use(
       origin: typeof window !== 'undefined' ? window.location.origin : 'server',
       userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'server'
     })
-    
+
     const original = error.config
     if (error?.response?.status === 401 && !original._retry) {
       original._retry = true
@@ -175,7 +136,7 @@ api.interceptors.response.use(
         try {
           const refresh = Cookies.get('refresh')
           if (refresh) {
-            const resp = await axios.post(getApiBaseUrl() + '/auth/jwt/refresh/', { refresh })
+            const resp = await api.post('/auth/jwt/refresh/', { refresh })
             const newAccess = resp.data?.access
             if (newAccess) Cookies.set('access', newAccess, { sameSite: 'Lax', path: '/' })
             const newRefresh = resp.data?.refresh
@@ -233,21 +194,125 @@ export const electronicsApi = {
   getFeatured: () => api.get('/catalog/electronics/products/featured'),
 }
 
-// Универсальная функция для получения API в зависимости от типа товаров
+// Мебель
+export const furnitureApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/furniture/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/furniture/products/${slug}`),
+  getFeatured: () => api.get('/catalog/furniture/products/featured'),
+}
+
+// Ювелирные изделия
+export const jewelryApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/jewelry/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/jewelry/products/${slug}`),
+  getFeatured: () => api.get('/catalog/jewelry/products/featured'),
+}
+
+// Книги
+export const booksApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/books/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/books/products/${slug}`),
+  getFeatured: () => api.get('/catalog/books/products/featured'),
+}
+
+// Парфюмерия
+export const perfumeryApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/perfumery/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/perfumery/products/${slug}`),
+  getFeatured: () => api.get('/catalog/perfumery/products/featured'),
+}
+
+// Медикаменты (домен)
+export const medicinesDomainApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/medicines/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/medicines/products/${slug}`),
+  getFeatured: () => api.get('/catalog/medicines/products/featured'),
+}
+
+// БАДы
+export const supplementsApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/supplements/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/supplements/products/${slug}`),
+  getFeatured: () => api.get('/catalog/supplements/products/featured'),
+}
+
+// Медтехника
+export const medicalEquipmentApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/medical-equipment/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/medical-equipment/products/${slug}`),
+  getFeatured: () => api.get('/catalog/medical-equipment/products/featured'),
+}
+
+// Посуда
+export const tablewareApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/tableware/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/tableware/products/${slug}`),
+  getFeatured: () => api.get('/catalog/tableware/products/featured'),
+}
+
+// Аксессуары
+export const accessoriesApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/accessories/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/accessories/products/${slug}`),
+  getFeatured: () => api.get('/catalog/accessories/products/featured'),
+}
+
+// Благовония
+export const incenseApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/incense/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/incense/products/${slug}`),
+  getFeatured: () => api.get('/catalog/incense/products/featured'),
+}
+
+// Спорттовары
+export const sportsApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/sports/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/sports/products/${slug}`),
+  getFeatured: () => api.get('/catalog/sports/products/featured'),
+}
+
+// Автозапчасти
+export const autoPartsApi = {
+  getCategories: (params?: any) => api.get('/catalog/categories', { params }),
+  getProducts: (params?: any) => api.get('/catalog/auto-parts/products', { params }),
+  getProduct: (slug: string) => api.get(`/catalog/auto-parts/products/${slug}`),
+  getFeatured: () => api.get('/catalog/auto-parts/products/featured'),
+}
+
+// Универсальная функция для получения API в зависимости от типа товаров.
+// categoryType всегда приходит с дефисами (categoryTypeFromApi делает replace(/_/g, '-')).
 export function getApiForCategory(
-  categoryType: 'medicines' | 'clothing' | 'shoes' | 'electronics' | 'supplements' | 'medical-equipment' | 'furniture' | 'tableware' | 'accessories' | 'jewelry' | 'underwear' | 'headwear' | 'books'
+  categoryType: string
 ) {
-  // Специализированные эндпоинты есть только для одежды/обуви/электроники.
-  // Всё остальное идёт через базовый каталог (medicinesApi) без попытки принудительного маппинга.
   switch (categoryType) {
-    case 'clothing':
-      return clothingApi
-    case 'shoes':
-      return shoesApi
-    case 'electronics':
-      return electronicsApi
-    default:
-      return medicinesApi
+    case 'clothing': return clothingApi
+    case 'shoes': return shoesApi
+    case 'electronics': return electronicsApi
+    case 'furniture': return furnitureApi
+    case 'jewelry': return jewelryApi
+    case 'books': return booksApi
+    case 'perfumery': return perfumeryApi
+    case 'medicines':
+    case 'medicines-domain': return medicinesDomainApi
+    case 'supplements': return supplementsApi
+    case 'medical-equipment': return medicalEquipmentApi
+    case 'tableware': return tablewareApi
+    case 'accessories': return accessoriesApi
+    case 'incense': return incenseApi
+    case 'sports': return sportsApi
+    case 'auto-parts': return autoPartsApi
+    default: return medicinesApi
   }
 }
 

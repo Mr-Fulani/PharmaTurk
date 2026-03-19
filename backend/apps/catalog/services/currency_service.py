@@ -5,7 +5,8 @@ from datetime import datetime
 from typing import Dict, Optional, Tuple
 from django.conf import settings
 from django.core.cache import cache
-from ..models import CurrencyRate, CurrencyUpdateLog
+from apps.catalog.models import CurrencyRate, CurrencyUpdateLog
+from apps.catalog.currency_models import GlobalCurrencySettings
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,33 @@ class CurrencyRateService:
                 value = Decimal(str(currency_data['Value'])) / Decimal(str(currency_data['Nominal']))
                 rates[f"{code}-{base_currency}"] = value
                 rates[f"{base_currency}-{code}"] = Decimal('1') / value
-        
+                
+        # Добавляем кросс-курс USDT на основе USD (+ X% к цене товара)
+        # Чтобы цена товара в USDT была выше, курс USDT должен быть ниже
+        usd_to_rub = rates.get(f"USD-{base_currency}")
+        if usd_to_rub:
+            markup = GlobalCurrencySettings.load().usdt_markup_percentage
+            usdt_modifier = Decimal('1') + (markup / Decimal('100'))
+            
+            # 1 USDT программно стоит дешевле, чтобы покупатель платил больше единиц USDT
+            usdt_to_rub = usd_to_rub / usdt_modifier
+            rates[f"USDT-{base_currency}"] = usdt_to_rub
+            rates[f"{base_currency}-USDT"] = Decimal('1') / usdt_to_rub
+            
+            # Добавляем кросс-курсы USDT для других валют
+            for currency in ['EUR', 'TRY', 'KZT']:
+                curr_to_rub = rates.get(f"{currency}-{base_currency}")
+                if curr_to_rub:
+                    # USDT-TRY = сколько TRY стоит 1 USDT = USDT-RUB / TRY-RUB
+                    usdt_to_curr = usdt_to_rub / curr_to_rub
+                    rates[f"USDT-{currency}"] = usdt_to_curr
+                    rates[f"{currency}-USDT"] = Decimal('1') / usdt_to_curr
+                    
+                    # USD-TRY = USD-RUB / TRY-RUB
+                    usd_to_curr = usd_to_rub / curr_to_rub
+                    rates[f"USD-{currency}"] = usd_to_curr
+                    rates[f"{currency}-USD"] = Decimal('1') / usd_to_curr
+                    
         return rates
     
     def _parse_openexchangerates_response(self, data: Dict) -> Dict[str, Decimal]:
@@ -81,6 +108,21 @@ class CurrencyRateService:
                 rate_decimal = Decimal(str(rate))
                 rates[f"{base_currency}-{currency}"] = rate_decimal
                 rates[f"{currency}-{base_currency}"] = Decimal('1') / rate_decimal
+                
+        # Добавляем кросс-курс USDT (считаем USD базой)
+        markup = GlobalCurrencySettings.load().usdt_markup_percentage
+        usdt_modifier = Decimal('1') + (markup / Decimal('100'))
+        
+        rates[f"USDT-{base_currency}"] = Decimal('1') / usdt_modifier
+        rates[f"{base_currency}-USDT"] = usdt_modifier
+        
+        # Кросс-курсы USDT для других валют
+        for currency in ['RUB', 'EUR', 'TRY', 'KZT']:
+            usd_to_curr = rates.get(f"{base_currency}-{currency}") # например USD-RUB
+            if usd_to_curr:
+                usdt_to_curr = usd_to_curr / usdt_modifier
+                rates[f"USDT-{currency}"] = usdt_to_curr
+                rates[f"{currency}-USDT"] = Decimal('1') / usdt_to_curr
         
         return rates
     
@@ -101,7 +143,24 @@ class CurrencyRateService:
                     rate = Decimal(str(description))
                     rates[f"{title}-{base_currency}"] = rate
                     rates[f"{base_currency}-{title}"] = Decimal('1') / rate
-            
+                    
+            # Добавляем кросс-курс USDT на основе USD
+            usd_to_kzt = rates.get(f"USD-{base_currency}")
+            if usd_to_kzt:
+                markup = GlobalCurrencySettings.load().usdt_markup_percentage
+                usdt_modifier = Decimal('1') + (markup / Decimal('100'))
+                usdt_to_kzt = usd_to_kzt / usdt_modifier
+                rates[f"USDT-{base_currency}"] = usdt_to_kzt
+                rates[f"{base_currency}-USDT"] = Decimal('1') / usdt_to_kzt
+                
+                # Добавляем кросс-курсы USDT для других валют
+                for currency in ['EUR', 'RUB', 'TRY']:
+                    curr_to_kzt = rates.get(f"{currency}-{base_currency}")
+                    if curr_to_kzt:
+                        usdt_to_curr = usdt_to_kzt / curr_to_kzt
+                        rates[f"USDT-{currency}"] = usdt_to_curr
+                        rates[f"{currency}-USDT"] = Decimal('1') / usdt_to_curr
+                        
             return rates
         except Exception as e:
             logger.error(f"Error parsing NBK XML: {str(e)}")
@@ -124,7 +183,24 @@ class CurrencyRateService:
                         rate = Decimal(str(forexbuying.text.replace(',', '.')))
                         rates[f"{code}-{base_currency}"] = rate
                         rates[f"{base_currency}-{code}"] = Decimal('1') / rate
-            
+                        
+            # Добавляем кросс-курс USDT на основе USD
+            usd_to_try = rates.get(f"USD-{base_currency}")
+            if usd_to_try:
+                markup = GlobalCurrencySettings.load().usdt_markup_percentage
+                usdt_modifier = Decimal('1') + (markup / Decimal('100'))
+                usdt_to_try = usd_to_try / usdt_modifier
+                rates[f"USDT-{base_currency}"] = usdt_to_try
+                rates[f"{base_currency}-USDT"] = Decimal('1') / usdt_to_try
+                
+                # Добавляем кросс-курсы USDT для других валют
+                for currency in ['EUR', 'RUB', 'KZT']:
+                    curr_to_try = rates.get(f"{currency}-{base_currency}")
+                    if curr_to_try:
+                        usdt_to_curr = usdt_to_try / curr_to_try
+                        rates[f"USDT-{currency}"] = usdt_to_curr
+                        rates[f"{currency}-USDT"] = Decimal('1') / usdt_to_curr
+                        
             return rates
         except Exception as e:
             logger.error(f"Error parsing TCMB XML: {str(e)}")
@@ -202,7 +278,11 @@ class CurrencyRateService:
     def get_rate(self, from_currency: str, to_currency: str) -> Optional[Decimal]:
         """Получение курса для пары валют"""
         cache_key = f'rate_{from_currency}_{to_currency}'
-        cached_rate = cache.get(cache_key)
+        try:
+            cached_rate = cache.get(cache_key)
+        except Exception as e:
+            logger.warning(f"Cache get failed for {cache_key}: {e}")
+            cached_rate = None
         
         if cached_rate:
             return cached_rate
@@ -215,7 +295,10 @@ class CurrencyRateService:
             )
             
             # Кэшируем на короткое время
-            cache.set(cache_key, rate_obj.rate, 300)
+            try:
+                cache.set(cache_key, rate_obj.rate, 300)
+            except Exception as e:
+                logger.warning(f"Cache set failed for {cache_key}: {e}")
             return rate_obj.rate
             
         except CurrencyRate.DoesNotExist:

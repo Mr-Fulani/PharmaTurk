@@ -1,30 +1,40 @@
 from django import forms
 from decimal import Decimal
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
+from django.contrib.contenttypes.admin import GenericTabularInline
 from django.core.exceptions import ValidationError
+from django.db.models import Case, When, Value, IntegerField, Q
 from django.utils.html import format_html, format_html_join
 from django.utils.translation import gettext_lazy as _
 
-from .forms import ProductForm, ProductImageInlineFormSet, VariantImageInlineFormSet
+from .forms import (
+    ProductForm,
+    ProductImageInlineFormSet,
+    VariantImageInlineFormSet,
+    CategoryFormCatalogHints,
+    BrandAdminForm,
+    CATEGORY_HIERARCHY_DESCRIPTION,
+    CATEGORY_PARENT_HELP,
+    PRODUCT_CATEGORY_HELP,
+)
 from .models import (
     CategoryType, Category, CategoryTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
-    CategoryUnderwear, CategoryHeadwear, CategoryServices, MarketingCategory, MarketingRootCategory,
+    CategoryUnderwear, CategoryHeadwear, CategoryServices, CategoryPerfumery, CategoryIncense, MarketingCategory, MarketingRootCategory,
     CategoryClothing, CategoryShoes, CategoryElectronics,
-    Brand, BrandTranslation, MarketingBrand, Product, ProductTranslation, ProductImage, ProductAttribute, PriceHistory, Favorite,
-    ProductMedicines, ProductSupplements, ProductMedicalEquipment,
-    ProductTableware, ProductFurniture, ProductAccessories, ProductJewelry,
-    ProductUnderwear, ProductHeadwear,
-    ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize,
-    ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize,
+    Brand, BrandTranslation, MarketingBrand, Product, ProductTranslation, ProductImage, PriceHistory, Favorite,
+    ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
+    ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
-    Service, ServiceTranslation,
+    JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
+    Service, ServiceTranslation, ServiceImage, ServiceAttribute, 
+    GlobalAttributeKey, GlobalAttributeKeyTranslation, ProductAttributeValue,
     Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
     Author, ProductAuthor,
     # Валютные модели
-    CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog,
+    CurrencyRate, MarginSettings, ProductPrice, ServicePrice, CurrencyUpdateLog,
 )
 
 
@@ -45,6 +55,55 @@ class TopLevelCategoryFilter(SimpleListFilter):
         if self.value() == "child":
             return queryset.filter(parent__isnull=False)
         return queryset
+
+
+class CategoryLevelFilter(SimpleListFilter):
+    """Фильтр по уровню иерархии: L1, L2, L3+."""
+    title = _("Уровень иерархии")
+    parameter_name = "hierarchy_level"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("l1", _("L1 (корневые)")),
+            ("l2", _("L2 (подкатегории)")),
+            ("l3", _("L3+ (глубокие)")),
+        )
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "l1":
+            return queryset.filter(parent__isnull=True)
+        if value == "l2":
+            return queryset.filter(parent__isnull=False, parent__parent__isnull=True)
+        if value == "l3":
+            return queryset.filter(parent__isnull=False, parent__parent__isnull=False)
+        return queryset
+
+
+class CategoryRootFilter(SimpleListFilter):
+    """Фильтр по корневой категории: показывает только категории из выбранного дерева."""
+    title = _("Дерево категории")
+    parameter_name = "root_id"
+
+    def lookups(self, request, model_admin):
+        from .models import Category
+        roots = Category.objects.filter(parent__isnull=True, is_active=True).order_by('sort_order', 'name')
+        return [(str(r.pk), r.name) for r in roots]
+
+    def queryset(self, request, queryset):
+        root_id = self.value()
+        if not root_id:
+            return queryset
+        from .models import Category
+        root = Category.objects.filter(pk=root_id).first()
+        if not root:
+            return queryset
+        ids = {root.id}
+        current = set(Category.objects.filter(parent_id=root.id).values_list('id', flat=True))
+        while current:
+            ids.update(current)
+            current = set(Category.objects.filter(parent_id__in=current).values_list('id', flat=True))
+        return queryset.filter(id__in=ids)
 
 
 class ActiveRootFilter(SimpleListFilter):
@@ -68,6 +127,16 @@ class ActiveRootFilter(SimpleListFilter):
         if value == "inactive":
             return queryset.filter(is_active=False)
         return queryset
+
+
+@admin.action(description=_("Сделать активными"))
+def activate_variants(modeladmin, request, queryset):
+    queryset.update(is_active=True)
+
+
+@admin.action(description=_("Сделать неактивными"))
+def deactivate_variants(modeladmin, request, queryset):
+    queryset.update(is_active=False)
 
 
 @admin.register(CategoryType)
@@ -112,7 +181,7 @@ class ProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров."""
     model = ProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -121,7 +190,7 @@ class ClothingProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров одежды."""
     model = ClothingProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -130,7 +199,7 @@ class ShoeProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров обуви."""
     model = ShoeProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -139,7 +208,7 @@ class ElectronicsProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров электроники."""
     model = ElectronicsProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -148,7 +217,7 @@ class FurnitureProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров мебели."""
     model = FurnitureProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -158,10 +227,11 @@ class FurnitureVariantInline(admin.TabularInline):
     model = FurnitureVariant
     extra = 0
     fields = (
-        'name', 'slug',
+        'name', 'name_en', 'slug',
         'color',
         'price', 'currency',
         'main_image',
+        'main_image_file',
         'is_active', 'sort_order',
     )
     readonly_fields = ('slug',)
@@ -172,16 +242,18 @@ class FurnitureVariantImageInline(admin.TabularInline):
     """Инлайн изображений варианта мебели."""
     model = FurnitureVariantImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -190,28 +262,129 @@ class ServiceTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов услуг."""
     model = ServiceTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
 
+class GlobalAttributeKeyTranslationInline(admin.TabularInline):
+    model = GlobalAttributeKeyTranslation
+    extra = 1
+
+@admin.register(GlobalAttributeKey)
+class GlobalAttributeKeyAdmin(admin.ModelAdmin):
+    list_display = ('slug', 'name', 'sort_order')
+    search_fields = ('slug', 'translations__name')
+    inlines = [GlobalAttributeKeyTranslationInline]
+    filter_horizontal = ('categories',)
+
+class ServiceImageInline(admin.TabularInline):
+    """Inline для галереи изображений услуги."""
+    model = ServiceImage
+    extra = 1
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main')
+    verbose_name = _("Изображение в галерее")
+    verbose_name_plural = _("Галерея изображений")
+
+class ServiceAttributeInline(admin.TabularInline):
+    """Inline для атрибутов услуги (площадь, срок, формат и т.д.)."""
+    model = ServiceAttribute
+    extra = 0
+    fields = ('attribute_key', 'value', 'sort_order')
+    verbose_name = _("🛠️ Атрибут услуги")
+    verbose_name_plural = _("🛠️ Атрибуты услуг (динамические)")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "attribute_key":
+            kwargs["queryset"] = GlobalAttributeKey.objects.all().order_by('sort_order', 'slug')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+class ProductAttributeValueInline(GenericTabularInline):
+    """Inline для динамических атрибутов товара (через GenericForeignKey)."""
+    model = ProductAttributeValue
+    extra = 0
+    fields = ('attribute_key', 'value', 'value_ru', 'value_en', 'sort_order')
+    verbose_name = _("🛠️ Динамический атрибут")
+    verbose_name_plural = _("🛠️ Динамические атрибуты товаров")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "attribute_key":
+            kwargs["queryset"] = GlobalAttributeKey.objects.all().order_by('sort_order', 'slug')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class ServicePriceInline(admin.StackedInline):
+    """Inline для просмотра конвертированных цен услуги."""
+    model = ServicePrice
+    can_delete = False
+    verbose_name = _("Конвертированные цены")
+    verbose_name_plural = _("Конвертированные цены по валютам")
+    classes = ('collapse',)
+    readonly_fields = (
+        'rub_price', 'rub_price_with_margin',
+        'usd_price', 'usd_price_with_margin',
+        'kzt_price', 'kzt_price_with_margin',
+        'eur_price', 'eur_price_with_margin',
+        'try_price', 'try_price_with_margin',
+        'usdt_price', 'usdt_price_with_margin',
+    )
+    fieldsets = (
+        (_('RUB'), {'fields': ('rub_price', 'rub_price_with_margin')}),
+        (_('USD'), {'fields': ('usd_price', 'usd_price_with_margin')}),
+        (_('KZT'), {'fields': ('kzt_price', 'kzt_price_with_margin')}),
+        (_('EUR'), {'fields': ('eur_price', 'eur_price_with_margin')}),
+        (_('TRY'), {'fields': ('try_price', 'try_price_with_margin')}),
+        (_('USDT'), {'fields': ('usdt_price', 'usdt_price_with_margin')}),
+    )
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+def _category_level_display(obj):
+    """Показывает уровень: L1 (корневая), L2, L3+."""
+    if not obj.parent_id:
+        return "L1"
+    if not obj.parent or not obj.parent.parent_id:
+        return "L2"
+    return "L3+"
+
+
 class BaseCategoryAdmin(admin.ModelAdmin):
     """Базовый админ для прокси категорий с фильтром по типу."""
+    form = CategoryFormCatalogHints
     required_category_type_slug: str | None = None
-    list_display = ('name', 'slug', 'category_type', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = (ActiveRootFilter, 'is_active', TopLevelCategoryFilter, 'category_type', 'parent', 'gender', 'clothing_type', 'shoe_type', 'device_type', 'created_at')
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_filter = (
+        ActiveRootFilter,
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'category_type',
+        'clothing_type',
+        'device_type',
+        'created_at',
+    )
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
     autocomplete_fields = ('category_type',)
     inlines = [CategoryTranslationInline]
+    list_select_related = ('category_type', 'parent', 'parent__parent')
     fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
+        (None, {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
+        }),
         (_('Тип категории'), {
             'fields': ('category_type',),
             'description': _('Выберите тип категории. Если нужного типа нет, создайте его в разделе "Типы категорий".'),
         }),
-        (_('Hierarchy'), {'fields': ('parent',)}),
+        (_('Иерархия (L1/L2/L3)'), {
+            'fields': ('parent',),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
+        }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url'),
             'description': _('Можно указать файл или внешнюю ссылку (CDN/S3). Внешняя ссылка приоритетнее.'),
@@ -220,11 +393,24 @@ class BaseCategoryAdmin(admin.ModelAdmin):
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
 
+    def level_display(self, obj):
+        return _category_level_display(obj)
+    level_display.short_description = _("Уровень")
+
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         if self.required_category_type_slug:
             qs = qs.filter(category_type__slug=self.required_category_type_slug)
         return qs
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'parent' and self.required_category_type_slug:
+            from .models import Category
+            kwargs['queryset'] = Category.objects.filter(
+                category_type__slug=self.required_category_type_slug,
+                is_active=True,
+            ).order_by('sort_order', 'name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def save_model(self, request, obj, form, change):
         # НЕ перезаписываем тип категории, если он уже выбран в форме
@@ -236,6 +422,64 @@ class BaseCategoryAdmin(admin.ModelAdmin):
             except CategoryType.DoesNotExist:
                 pass
         super().save_model(request, obj, form, change)
+
+
+@admin.register(Category)
+class AllCategoriesAdmin(admin.ModelAdmin):
+    """Единый список всех категорий (корневые и подкатегории)."""
+    form = CategoryFormCatalogHints
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent_display', 'is_active', 'sort_order', 'created_at')
+    list_filter = (
+        ActiveRootFilter,
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'category_type',
+        'created_at',
+    )
+    search_fields = ('name', 'slug', 'description')
+    ordering = ('sort_order', 'name')
+    prepopulated_fields = {'slug': ('name',)}
+    autocomplete_fields = ('category_type', 'parent')
+    inlines = [CategoryTranslationInline]
+    list_select_related = ('category_type', 'parent', 'parent__parent')
+
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
+        }),
+        (_('Тип категории'), {
+            'fields': ('category_type',),
+            'description': _('Выберите тип категории. Если нужного типа нет, создайте его в разделе "Типы категорий".'),
+        }),
+        (_('Иерархия (L1/L2/L3)'), {
+            'fields': ('parent',),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
+        }),
+        (_('Медиа карточки'), {
+            'fields': ('card_media', 'card_media_external_url'),
+        }),
+        (_('Settings'), {'fields': ('is_active', 'sort_order')}),
+        (_('External'), {'fields': ('external_id', 'external_data')}),
+    )
+
+    def level_display(self, obj):
+        return _category_level_display(obj)
+    level_display.short_description = _("Уровень")
+
+    def parent_display(self, obj):
+        return obj.parent.name if obj.parent else "—"
+    parent_display.short_description = _("Родитель")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'parent':
+            from .models import Category
+            kwargs['queryset'] = Category.objects.filter(
+                is_active=True,
+            ).order_by('sort_order', 'name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 @admin.register(CategoryMedicines)
@@ -318,11 +562,25 @@ class CategoryServicesAdmin(BaseCategoryAdmin):
     )
 
 
+@admin.register(CategoryPerfumery)
+class CategoryPerfumeryAdmin(BaseCategoryAdmin):
+    required_category_type_slug = "perfumery"
+    fieldsets = BaseCategoryAdmin.fieldsets + (
+        (_('Подсказка'), {'fields': (), 'description': _("Парфюмерия: женская, мужская, унисекс, нишевая; ароматы для дома; EDP, EDT.")}),
+    )
+
+
+@admin.register(CategoryIncense)
+class CategoryIncenseAdmin(BaseCategoryAdmin):
+    required_category_type_slug = "incense"
+
+
 @admin.register(Brand)
 class BrandAdmin(admin.ModelAdmin):
     """Админка для брендов."""
-    list_display = ('name', 'slug', 'is_active', 'created_at')
-    list_filter = ('is_active', 'created_at')
+    form = BrandAdminForm
+    list_display = ('name', 'slug', 'primary_category_slug', 'is_active', 'created_at')
+    list_filter = ('is_active', 'primary_category_slug', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('name',)
     prepopulated_fields = {'slug': ('name',)}
@@ -335,7 +593,10 @@ class BrandAdmin(admin.ModelAdmin):
             'description': _('Файл или внешняя ссылка (CDN/S3) для карточки бренда; ссылка приоритетнее файла.'),
         }),
         (_('Settings'), {'fields': ('is_active',)}),
-        (_('Категория'), {'fields': ('primary_category_slug',)}),
+        (_('Категория'), {
+            'fields': ('primary_category_slug', 'category_slugs'),
+            'description': _('Основная категория — для отображения. Категории бренда — отметьте чекбоксами все категории, в которых представлен бренд (Puma: одежда, обувь, спорт).'),
+        }),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
 
@@ -344,17 +605,25 @@ class ProductImageInline(admin.TabularInline):
     """Инлайн для изображений товара."""
     model = ProductImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'video_file', 'video_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
+            video_url = obj.video_file.url if obj.video_file else obj.video_url
+            if video_url:
+                return format_html(
+                    '<video src="{}" style="max-width: 120px; max-height: 60px;" muted playsinline></video>',
+                    video_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -363,17 +632,19 @@ class ShoeProductImageInline(admin.TabularInline):
     """Инлайн для изображений обуви."""
     model = ShoeProductImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -382,17 +653,19 @@ class ClothingProductImageInline(admin.TabularInline):
     """Инлайн для изображений одежды."""
     model = ClothingProductImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -401,17 +674,19 @@ class ElectronicsProductImageInline(admin.TabularInline):
     """Инлайн для изображений электроники."""
     model = ElectronicsProductImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -420,17 +695,19 @@ class ClothingVariantImageInline(admin.TabularInline):
     """Инлайн для изображений варианта одежды."""
     model = ClothingVariantImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = VariantImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -439,38 +716,89 @@ class ShoeVariantImageInline(admin.TabularInline):
     """Инлайн для изображений варианта обуви."""
     model = ShoeVariantImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     formset = VariantImageInlineFormSet
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
 
+class RunAIActionMixin:
+    """Миксин: действия AI обработки для выбранных товаров."""
 
-class ProductAttributeInline(admin.TabularInline):
-    """Инлайн для атрибутов товара."""
-    model = ProductAttribute
-    extra = 1
-    fields = ('attribute_type', 'name', 'value', 'sort_order')
+    def _resolve_base_product_id(self, obj) -> int:
+        """Возвращает pk базового Product независимо от типа obj.
+
+        Работает и для base Product, и для доменных моделей
+        (BookProduct, ClothingProduct, …), у которых есть base_product_id.
+        """
+        return getattr(obj, "base_product_id", None) or obj.id
+
+    def run_ai(self, request, queryset):
+        from apps.ai.tasks import process_product_ai_task
+        for obj in queryset:
+            process_product_ai_task.delay(
+                product_id=self._resolve_base_product_id(obj),
+                processing_type="full",
+                auto_apply=False,
+            )
+        self.message_user(
+            request,
+            _("Запущена полная AI обработка для %(count)s товаров. Результаты появятся в разделе «Логи AI»; применить к товару — вручную после одобрения.")
+            % {"count": queryset.count()},
+            level=messages.SUCCESS,
+        )
+    run_ai.short_description = _("Полная AI обработка (без авто-применения)")
+
+    def run_ai_auto_apply(self, request, queryset):
+        """Один запуск: полная обработка + авто-применение. Не нужно идти в «Логи AI»."""
+        from apps.ai.tasks import process_product_ai_task
+        for obj in queryset:
+            process_product_ai_task.delay(
+                product_id=self._resolve_base_product_id(obj),
+                processing_type="full",
+                auto_apply=True,
+            )
+        self.message_user(
+            request,
+            _("Запущена полная AI обработка с авто-применением для %(count)s товаров. Результаты будут применены к товарам автоматически после завершения.")
+            % {"count": queryset.count()},
+            level=messages.SUCCESS,
+        )
+    run_ai_auto_apply.short_description = _("Полная AI обработка + авто-применение")
+
+    def run_find_merge_duplicates(self, request, queryset):
+        """Запуск поиска и объединения дубликатов по всему каталогу."""
+        from apps.scrapers.tasks import find_and_merge_duplicates
+        find_and_merge_duplicates.delay()
+        self.message_user(
+            request,
+            _("Запущен поиск и объединение дубликатов по всему каталогу. Результаты будут в логах Celery."),
+            level=messages.SUCCESS,
+        )
+    run_find_merge_duplicates.short_description = _("Поиск и объединение дубликатов")
 
 
-class BaseProductAdmin(admin.ModelAdmin):
+class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Базовый админ для товаров (используется прокси)."""
     form = ProductForm
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = (
-        'name', 'slug', 'product_type', 'category', 'brand', 'price', 'currency',
+        'name', 'slug', 'product_type', 'category', 'brand', 'gender', 'price', 'currency',
         'availability_status', 'country_of_origin', 'is_active', 'created_at'
     )
     list_filter = (
         'product_type', 'availability_status', 'country_of_origin',
-        'is_active', 'is_featured', 'is_available', 'category', 'brand', 'currency', 'created_at'
+        'is_active', 'is_new', 'is_featured', 'is_available', 'category', 'brand', 'gender', 'currency', 'created_at'
     )
     search_fields = (
         'name', 'slug', 'description',
@@ -482,13 +810,21 @@ class BaseProductAdmin(admin.ModelAdmin):
     autocomplete_fields = ('category', 'brand')
     
     fieldsets = (
+        ('Спец. данные', {
+            'fields': (
+                'is_active', 'is_featured',
+            )
+        }),
         (_('Основное'), {
             'fields': (
                 'name', 'slug', 'slug_preview',
                 'description'
             )
         }),
-        (_('Категоризация'), {'fields': ('product_type', 'category', 'brand')}),
+        (_('Категоризация'), {
+            'fields': ('product_type', 'category', 'brand', 'gender'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
         (_('Цены и наличие'), {
             'fields': (
                 'price', 'currency', 'old_price', 'margin_percent_applied',
@@ -511,13 +847,13 @@ class BaseProductAdmin(admin.ModelAdmin):
                 "Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях."
             )
         }),
-        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
         (_('Мета'), {'fields': ('sku', 'barcode')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Синхронизация'), {'fields': ('last_synced_at',)}),
     )
     
-    inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeInline]
+    inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeValueInline]
 
     def slug_preview(self, obj):
         """Предпросмотр slug."""
@@ -527,12 +863,68 @@ class BaseProductAdmin(admin.ModelAdmin):
     slug_preview.short_description = _("Slug (предпросмотр)")
 
 
-class BaseProductProxyAdmin(BaseProductAdmin):
+class CategoryTypeFilterMixin:
+    category_type_slug: str | None = None
+
+    def get_category_queryset(self):
+        if not self.category_type_slug:
+            return None
+        from .models import Category
+        normalized = self.category_type_slug.replace('_', '-')
+        return Category.objects.filter(
+            category_type__slug=normalized,
+            is_active=True,
+        ).order_by('sort_order', 'name')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'category':
+            qs = self.get_category_queryset()
+            if qs is not None:
+                kwargs['queryset'] = qs
+                kwargs['help_text'] = PRODUCT_CATEGORY_HELP
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class CategoryFieldFilterMixin:
+    category_field_name: str | None = None
+
+    def get_category_queryset(self):
+        if not self.category_field_name:
+            return None
+        from .models import Category
+        field = self.category_field_name
+        field_not_empty = Q(**{f"{field}__isnull": False}) & ~Q(**{field: ""})
+        parent_field_not_empty = Q(parent__isnull=False) & Q(**{f"parent__{field}__isnull": False}) & ~Q(**{f"parent__{field}": ""})
+        return Category.objects.filter(
+            field_not_empty | parent_field_not_empty,
+            is_active=True,
+        ).order_by('sort_order', 'name')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'category':
+            qs = self.get_category_queryset()
+            if qs is not None:
+                kwargs['queryset'] = qs
+                kwargs['help_text'] = PRODUCT_CATEGORY_HELP
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class BaseProductProxyAdmin(CategoryTypeFilterMixin, BaseProductAdmin):
     """Фильтрует по фиксированному product_type и скрывает поле типа."""
     required_product_type: str | None = None
     exclude = ('product_type',)
     autocomplete_fields = ('brand',)  # убираем category из autocomplete, чтобы избежать admin.E039
-    inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeInline]
+    inlines = [ProductTranslationInline, ProductImageInline, ProductAttributeValueInline]
+
+    def get_category_queryset(self):
+        if not self.required_product_type:
+            return None
+        from .models import Category
+        normalized = self.required_product_type.replace('_', '-')
+        return Category.objects.filter(
+            category_type__slug=normalized,
+            is_active=True,
+        ).order_by('sort_order', 'name')
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -556,89 +948,63 @@ class BaseProductProxyAdmin(BaseProductAdmin):
         return new_fieldsets
 
 
-@admin.register(ProductMedicines)
-class ProductMedicinesAdmin(BaseProductProxyAdmin):
-    required_product_type = "medicines"
-    fieldsets = BaseProductAdmin.fieldsets
+@admin.register(Product)
+class ProductAdmin(BaseProductAdmin):
+    """Базовые товары (Product). Все типы; здесь же можно удалить «осиротевшие» записи (например после удаления книги)."""
+    pass
 
 
-@admin.register(ProductSupplements)
-class ProductSupplementsAdmin(BaseProductProxyAdmin):
-    required_product_type = "supplements"
-    fieldsets = BaseProductAdmin.fieldsets
 
 
-@admin.register(ProductMedicalEquipment)
-class ProductMedicalEquipmentAdmin(BaseProductProxyAdmin):
-    required_product_type = "medical_equipment"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductTableware)
-class ProductTablewareAdmin(BaseProductProxyAdmin):
-    required_product_type = "tableware"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductFurniture)
-class ProductFurnitureAdmin(BaseProductProxyAdmin):
-    required_product_type = "furniture"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductAccessories)
-class ProductAccessoriesAdmin(BaseProductProxyAdmin):
-    required_product_type = "accessories"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductJewelry)
-class ProductJewelryAdmin(BaseProductProxyAdmin):
-    required_product_type = "jewelry"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductUnderwear)
-class ProductUnderwearAdmin(BaseProductProxyAdmin):
-    required_product_type = "underwear"
-    fieldsets = BaseProductAdmin.fieldsets
-
-
-@admin.register(ProductHeadwear)
-class ProductHeadwearAdmin(BaseProductProxyAdmin):
-    required_product_type = "headwear"
-    fieldsets = BaseProductAdmin.fieldsets
 
 
 @admin.register(ProductImage)
 class ProductImageAdmin(admin.ModelAdmin):
     """Админка для изображений товаров."""
-    list_display = ('product', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview', 'created_at')
+    list_display = (
+        'product',
+        'image_url',
+        'video_url',
+        'alt_text',
+        'sort_order',
+        'is_main',
+        'image_preview',
+        'created_at'
+    )
     list_filter = ('is_main', 'sort_order', 'created_at')
     search_fields = ('product__name', 'alt_text')
     ordering = ('product', 'sort_order')
     readonly_fields = ('image_preview',)
+    fields = (
+        'product',
+        'image_file',
+        'image_url',
+        'video_file',
+        'video_url',
+        'alt_text',
+        'sort_order',
+        'is_main',
+        'image_preview',
+        'created_at',
+    )
 
     def image_preview(self, obj):
         """Превью изображения."""
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                obj.image_url
-            )
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
+            video_url = obj.video_file.url if obj.video_file else obj.video_url
+            if video_url:
+                return format_html(
+                    '<video src="{}" style="max-width: 120px; max-height: 60px;" muted playsinline></video>',
+                    video_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
-
-
-@admin.register(ProductAttribute)
-class ProductAttributeAdmin(admin.ModelAdmin):
-    """Админка для атрибутов товаров."""
-    list_display = ('product', 'attribute_type', 'name', 'value', 'sort_order')
-    list_filter = ('attribute_type', 'sort_order', 'created_at')
-    search_fields = ('product__name', 'name', 'value')
-    ordering = ('product', 'sort_order', 'name')
-
-
 @admin.register(PriceHistory)
 class PriceHistoryAdmin(admin.ModelAdmin):
     """Админка для истории цен."""
@@ -674,31 +1040,65 @@ class FavoriteAdmin(admin.ModelAdmin):
 @admin.register(CategoryClothing)
 class ClothingCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий одежды."""
-    list_display = ('name', 'slug', 'gender', 'clothing_type', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'gender', 'clothing_type', 'parent', 'created_at')
+    form = CategoryFormCatalogHints
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'clothing_type', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_filter = (
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        'clothing_type',
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'created_at',
+    )
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
+    autocomplete_fields = ('category_type',)
     inlines = [CategoryTranslationInline]
     
     fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Clothing'), {'fields': ('gender', 'clothing_type')}),
-        (_('Hierarchy'), {'fields': ('parent',)}),
+        (None, {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
+        }),
+        (_('Тип категории'), {
+            'fields': ('category_type',),
+            'description': _('Выберите тип "Одежда". Исламская одежда — отдельная категория.'),
+        }),
+        (_('Clothing'), {'fields': ('clothing_type',)}),
+        (_('Иерархия (L1/L2/L3)'), {
+            'fields': ('parent',),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
+        }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
-    
+    list_select_related = ('category_type', 'parent', 'parent__parent')
+
+    def level_display(self, obj):
+        return _category_level_display(obj)
+    level_display.short_description = _("Уровень")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'parent':
+            from .models import Category
+            kwargs['queryset'] = Category.objects.filter(
+                category_type__slug='clothing',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+            kwargs['help_text'] = CATEGORY_PARENT_HELP
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def get_queryset(self, request):
-        """Фильтруем только корневые категории одежды (где clothing_type не пустое)."""
-        return super().get_queryset(request).filter(clothing_type__isnull=False).exclude(clothing_type='').filter(parent__isnull=True)
+        """Показываем категории одежды (clothing) и подкатегории. Исламская одежда — отдельный тип."""
+        return super().get_queryset(request).filter(category_type__slug='clothing')
 
 
 class ClothingVariantInline(admin.TabularInline):
     """Инлайн для вариантов одежды (основные поля)."""
     model = ClothingVariant
     extra = 0
-    fields = ('name', 'slug', 'color', 'price', 'currency', 'is_active', 'sort_order')
+    fields = ('name', 'name_en', 'slug', 'color', 'price', 'currency', 'main_image', 'main_image_file', 'is_active', 'sort_order')
     readonly_fields = ('slug',)
     show_change_link = True
 
@@ -706,6 +1106,13 @@ class ClothingVariantInline(admin.TabularInline):
 class ClothingVariantSizeInline(admin.TabularInline):
     """Инлайн размеров варианта одежды."""
     model = ClothingVariantSize
+    extra = 0
+    fields = ('size', 'is_available', 'stock_quantity', 'sort_order')
+    ordering = ('sort_order', 'size')
+
+
+class ClothingProductSizeInline(admin.TabularInline):
+    model = ClothingProductSize
     extra = 0
     fields = ('size', 'is_available', 'stock_quantity', 'sort_order')
     ordering = ('sort_order', 'size')
@@ -735,14 +1142,15 @@ class ClothingVariantAdmin(admin.ModelAdmin):
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
+    actions = [activate_variants, deactivate_variants]
     fieldsets = (
-        (None, {'fields': ('product', 'name', 'slug')}),
+        (None, {'fields': ('product', 'name', 'name_en', 'slug')}),
         (_('Характеристики'), {
             'fields': ('color',),
             'description': _("Размеры задайте в таблице размеров ниже.")
         }),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
@@ -811,28 +1219,60 @@ class ClothingVariantAdmin(admin.ModelAdmin):
     try_price_with_margin.short_description = _('TRY*')
 
 
+def _product_category_path(obj):
+    """Путь категории для отображения в списке товаров: L1 › L2 › L3."""
+    if obj.category:
+        return obj.category.get_breadcrumb_path()
+    return "—"
+
+
 @admin.register(ClothingProduct)
-class ClothingProductAdmin(admin.ModelAdmin):
+class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров одежды."""
-    list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_featured', 'category', 'brand', 'season', 'currency', 'created_at')
-    search_fields = ('name', 'slug', 'description', 'material')
+    category_field_name = "clothing_type"
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
+
+    def get_category_queryset(self):
+        """Показываем все категории одежды (L1, L2, L3) для выбора при привязке товара."""
+        from .models import Category
+        return Category.objects.filter(
+            category_type__slug='clothing',
+            is_active=True,
+        ).order_by('sort_order', 'name')
+
+    def category_path(self, obj):
+        return _product_category_path(obj)
+    category_path.short_description = _("Категория")
+
+    list_display = ('name', 'slug', 'category_path', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
+    list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
+    search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
-    exclude = ('size', 'color', 'stock_quantity', 'is_available')
+    exclude = ('size', 'color')
     readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Categorization'), {'fields': ('category', 'brand')}),
-        (_('Clothing'), {'fields': ('material', 'season')}),
+        (_('Categorization'), {
+            'fields': ('category', 'brand', 'gender'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
-        (_('Availability'), {'fields': ()}),
-        (_('Media'), {'fields': ('main_image',)}),
-        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
+        (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('SEO (EN)'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
+        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ClothingProductTranslationInline, ClothingVariantInline, ClothingProductImageInline]
+    inlines = [ClothingProductTranslationInline, ClothingProductSizeInline, ClothingVariantInline, ClothingProductImageInline, ProductAttributeValueInline]
 
     def variant_prices_overview(self, obj):
         if not obj or not obj.pk:
@@ -957,8 +1397,6 @@ class ClothingProductAdmin(admin.ModelAdmin):
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
-                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
-                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '</tr>',
                 ((c, s, base, rub, usd, kzt, eur, tr, src) for (c, s, base, rub, usd, kzt, eur, tr, src) in rows),
             )
@@ -972,17 +1410,29 @@ class ClothingProductAdmin(admin.ModelAdmin):
 @admin.register(CategoryShoes)
 class ShoeCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий обуви."""
-    list_display = ('name', 'slug', 'gender', 'shoe_type', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'gender', 'shoe_type', 'parent', 'created_at')
+    form = CategoryFormCatalogHints
+    list_display = ('name', 'slug', 'level_display', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_filter = (
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'created_at',
+    )
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
     inlines = [CategoryTranslationInline]
     
     fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Shoes'), {'fields': ('gender', 'shoe_type')}),
-        (_('Hierarchy'), {'fields': ('parent',)}),
+        (None, {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
+        }),
+        (_('Иерархия (L1/L2/L3)'), {
+            'fields': ('parent',),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
+        }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
         (_('Подсказка'), {
@@ -994,10 +1444,25 @@ class ShoeCategoryAdmin(admin.ModelAdmin):
             )
         }),
     )
-    
+    list_select_related = ('parent', 'parent__parent')
+
+    def level_display(self, obj):
+        return _category_level_display(obj)
+    level_display.short_description = _("Уровень")
+
     def get_queryset(self, request):
-        """Фильтруем только корневые категории обуви (где shoe_type не пустое)."""
-        return super().get_queryset(request).filter(shoe_type__isnull=False).exclude(shoe_type='').filter(parent__isnull=True)
+        """Показываем все категории обуви (shoes) — корневые и подкатегории."""
+        return super().get_queryset(request).filter(category_type__slug='shoes')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'parent':
+            # Показываем все категории обуви (L1, L2) для выбора родителя — можно создать L3
+            kwargs['queryset'] = Category.objects.filter(
+                category_type__slug='shoes',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+            kwargs['help_text'] = CATEGORY_PARENT_HELP
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 class ShoeVariantInline(admin.TabularInline):
@@ -1005,14 +1470,22 @@ class ShoeVariantInline(admin.TabularInline):
     model = ShoeVariant
     extra = 0
     fields = (
-        'name', 'slug',
+        'name', 'name_en', 'slug',
         'color',
         'price', 'currency',
         'main_image',
+        'main_image_file',
         'is_active', 'sort_order',
     )
     readonly_fields = ('slug',)
     show_change_link = True
+
+
+class ShoeProductSizeInline(admin.TabularInline):
+    model = ShoeProductSize
+    extra = 0
+    fields = ('size', 'is_available', 'stock_quantity', 'sort_order')
+    ordering = ('sort_order', 'size')
 
 
 class ShoeVariantSizeInline(admin.TabularInline):
@@ -1047,14 +1520,15 @@ class ShoeVariantAdmin(admin.ModelAdmin):
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
+    actions = [activate_variants, deactivate_variants]
     fieldsets = (
-        (None, {'fields': ('product', 'name', 'slug')}),
+        (None, {'fields': ('product', 'name', 'name_en', 'slug')}),
         (_('Характеристики'), {
             'fields': ('color',),
             'description': _("Размеры задайте в таблице размеров ниже.")
         }),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
@@ -1124,28 +1598,55 @@ class ShoeVariantAdmin(admin.ModelAdmin):
 
 
 @admin.register(ShoeProduct)
-class ShoeProductAdmin(admin.ModelAdmin):
+class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров обуви."""
-    list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_featured', 'category', 'brand', 'heel_height', 'currency', 'created_at')
-    search_fields = ('name', 'slug', 'description', 'material')
+
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'category':
+            from .models import Category
+            kwargs['queryset'] = Category.objects.filter(
+                category_type__slug='shoes',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+            kwargs['help_text'] = PRODUCT_CATEGORY_HELP
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def category_path(self, obj):
+        return _product_category_path(obj)
+    category_path.short_description = _("Категория")
+
+    list_display = ('name', 'slug', 'category_path', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
+    list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
+    search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
-    exclude = ('size', 'color', 'stock_quantity', 'is_available')
+    exclude = ('size', 'color')
     readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Categorization'), {'fields': ('category', 'brand')}),
-        (_('Shoes'), {'fields': ('material', 'heel_height', 'sole_type')}),
+        (_('Categorization'), {
+            'fields': ('category', 'brand', 'gender'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
-        (_('Availability'), {'fields': ()}),
-        (_('Media'), {'fields': ('main_image',)}),
-        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
+        (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('SEO (EN)'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
+        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
     # Галерея для обуви теперь задается на уровне варианта (цвета), поэтому инлайн изображений товара убран
-    inlines = [ShoeProductTranslationInline, ShoeVariantInline]
+    inlines = [ShoeProductTranslationInline, ShoeProductSizeInline, ShoeVariantInline, ProductAttributeValueInline]
 
     def variant_prices_overview(self, obj):
         if not obj or not obj.pk:
@@ -1273,7 +1774,6 @@ class ShoeProductAdmin(admin.ModelAdmin):
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
-                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
                 '</tr>',
                 ((c, s, base, rub, usd, kzt, eur, tr, src) for (c, s, base, rub, usd, kzt, eur, tr, src) in rows),
             )
@@ -1287,46 +1787,101 @@ class ShoeProductAdmin(admin.ModelAdmin):
 @admin.register(CategoryElectronics)
 class ElectronicsCategoryAdmin(admin.ModelAdmin):
     """Админка для категорий электроники."""
-    list_display = ('name', 'slug', 'device_type', 'parent', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'device_type', 'parent', 'created_at')
+    form = CategoryFormCatalogHints
+    list_display = ('name', 'slug', 'level_display', 'device_type', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_filter = (
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        'device_type',
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'created_at',
+    )
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
     inlines = [CategoryTranslationInline]
+    list_select_related = ('parent', 'parent__parent')
+    
+    def level_display(self, obj):
+        return _category_level_display(obj)
+    level_display.short_description = _("Уровень")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'parent':
+            from .models import Category
+            kwargs['queryset'] = Category.objects.filter(
+                category_type__slug='electronics',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+            kwargs['help_text'] = CATEGORY_PARENT_HELP
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
     fieldsets = (
-        (None, {'fields': ('name', 'slug', 'description')}),
+        (None, {
+            'fields': ('name', 'slug', 'description'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется из названия.'),
+        }),
         (_('Electronics'), {'fields': ('device_type',)}),
-        (_('Hierarchy'), {'fields': ('parent',)}),
+        (_('Иерархия (L1/L2/L3)'), {
+            'fields': ('parent',),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
+        }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
     
     def get_queryset(self, request):
-        """Фильтруем только корневые категории электроники (где device_type не пустое)."""
-        return super().get_queryset(request).filter(device_type__isnull=False).exclude(device_type='').filter(parent__isnull=True)
+        """Показываем все категории электроники (electronics) — корневые и подкатегории."""
+        return super().get_queryset(request).filter(category_type__slug='electronics')
 
 
 @admin.register(ElectronicsProduct)
-class ElectronicsProductAdmin(admin.ModelAdmin):
+class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров электроники."""
-    list_display = ('name', 'slug', 'category', 'brand', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_available', 'is_featured', 'category', 'brand', 'currency', 'created_at')
+    category_field_name = "device_type"
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
+
+    def get_category_queryset(self):
+        """Показываем все категории электроники (L1, L2, L3) для выбора при привязке товара."""
+        from .models import Category
+        return Category.objects.filter(
+            category_type__slug='electronics',
+            is_active=True,
+        ).order_by('sort_order', 'name')
+
+    def category_path(self, obj):
+        return _product_category_path(obj)
+    category_path.short_description = _("Категория")
+
+    list_display = ('name', 'slug', 'category_path', 'brand', 'gender', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_available', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
+    list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
     search_fields = ('name', 'slug', 'description', 'model')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Categorization'), {'fields': ('category', 'brand')}),
+        (_('Categorization'), {
+            'fields': ('category', 'brand', 'gender'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
         (_('Electronics'), {'fields': ('model', 'specifications', 'warranty', 'power_consumption')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('Media'), {'fields': ('main_image',)}),
-        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
+        (_('SEO (EN)'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
+        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ElectronicsProductTranslationInline, ElectronicsProductImageInline]
+    inlines = [ElectronicsProductTranslationInline, ElectronicsProductImageInline, ProductAttributeValueInline]
 
 
 @admin.register(FurnitureVariant)
@@ -1337,13 +1892,14 @@ class FurnitureVariantAdmin(admin.ModelAdmin):
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
+    actions = [activate_variants, deactivate_variants]
     fieldsets = (
-        (None, {'fields': ('product', 'name', 'slug')}),
+        (None, {'fields': ('product', 'name', 'name_en', 'slug')}),
         (_('Характеристики'), {
             'fields': ('color',),
         }),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Медиа'), {'fields': ('main_image',)}),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
@@ -1352,46 +1908,309 @@ class FurnitureVariantAdmin(admin.ModelAdmin):
 
 
 @admin.register(FurnitureProduct)
-class FurnitureProductAdmin(admin.ModelAdmin):
+class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров мебели."""
-    list_display = ('name', 'slug', 'category', 'brand', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_featured', 'category', 'brand', 'furniture_type', 'currency', 'created_at')
+    category_type_slug = "furniture"
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
+    list_display = ('name', 'slug', 'category', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'furniture_type', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'furniture_type')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Categorization'), {'fields': ('category', 'brand')}),
+        (_('Categorization'), {
+            'fields': ('category', 'brand', 'gender'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
         (_('Furniture'), {'fields': ('material', 'furniture_type', 'dimensions')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('Media'), {'fields': ('main_image',)}),
-        (_('Settings'), {'fields': ('is_active', 'is_featured')}),
+        (_('SEO (EN)'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
+        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [FurnitureProductTranslationInline, FurnitureVariantInline]
+    inlines = [FurnitureProductTranslationInline, FurnitureVariantInline, ProductAttributeValueInline]
+
+
+# ============================================================================
+# АДМИНКА ДЛЯ УКРАШЕНИЙ (JewelryProduct с вариантами и размерами)
+# ============================================================================
+
+class JewelryProductTranslationInline(admin.TabularInline):
+    model = JewelryProductTranslation
+    extra = 0
+    fields = ('locale', 'name', 'description')
+
+
+class JewelryProductImageInline(admin.TabularInline):
+    model = JewelryProductImage
+    extra = 1
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
+    formset = ProductImageInlineFormSet
+
+    def image_preview(self, obj):
+        if obj and (obj.image_file or obj.image_url):
+            url = obj.image_file.url if obj.image_file else obj.image_url
+            if url:
+                return format_html('<img src="{}" style="max-width: 120px; max-height: 60px;" />', url)
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
+class JewelryVariantSizeInline(admin.TabularInline):
+    """Инлайн размеров варианта украшения (кольца, браслеты и т.д.)."""
+    model = JewelryVariantSize
+    extra = 0
+    fields = ('size_display', 'is_available', 'stock_quantity', 'sort_order')
+    ordering = ('sort_order', 'size_display')
+
+
+class JewelryVariantImageInline(admin.TabularInline):
+    model = JewelryVariantImage
+    extra = 0
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main')
+    formset = VariantImageInlineFormSet
+
+
+class JewelryVariantInline(admin.TabularInline):
+    """Инлайн вариантов украшения (цвет/материал). Размеры — в отдельной админке варианта."""
+    model = JewelryVariant
+    extra = 0
+    fields = ('name', 'name_en', 'slug', 'gender', 'price', 'currency', 'is_available', 'is_active', 'sort_order')
+    readonly_fields = ('slug',)
+    show_change_link = True
+
+
+@admin.register(JewelryVariant)
+class JewelryVariantAdmin(admin.ModelAdmin):
+    """Админка варианта украшения — здесь добавляются размеры (кольца, браслеты)."""
+    list_display = ('name', 'product', 'gender', 'price', 'currency', 'is_available', 'is_active', 'sort_order', 'created_at')
+    list_filter = ('is_active', 'is_available', 'gender', 'currency', 'created_at')
+    search_fields = ('name', 'product__name', 'slug')
+    ordering = ('product', 'sort_order', '-created_at')
+    readonly_fields = ('slug',)
+    actions = [activate_variants, deactivate_variants]
+    fieldsets = (
+        (None, {'fields': ('product', 'name', 'slug')}),
+        (_('Украшение'), {'fields': ('gender',)}),
+        (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price', 'is_available')}),
+        (_('Статус'), {'fields': ('is_active', 'sort_order')}),
+    )
+    inlines = [JewelryVariantSizeInline]
+
+
+@admin.register(JewelryProduct)
+class JewelryProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.ModelAdmin):
+    """Товары украшений с вариантами и размерами (кольца, браслеты и т.д.)."""
+    category_type_slug = "jewelry"
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
+    list_display = ('name', 'slug', 'category', 'brand', 'jewelry_type', 'gender', 'material', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_new', 'is_featured', 'jewelry_type', 'gender', 'category', 'brand', 'currency', 'created_at')
+    search_fields = ('name', 'slug', 'description', 'material', 'metal_purity', 'stone_type')
+    ordering = ('-created_at',)
+    prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
+    fieldsets = (
+        (None, {'fields': ('name', 'slug', 'description')}),
+        (_('Категоризация'), {
+            'fields': ('category', 'brand'),
+            'description': PRODUCT_CATEGORY_HELP,
+        }),
+        (_('Украшение'), {'fields': ('jewelry_type', 'gender', 'material', 'metal_purity', 'stone_type', 'carat_weight')}),
+        (_('Цены'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
+        (_('Наличие'), {'fields': ('is_available', 'stock_quantity')}),
+        (_('SEO (EN)'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description', 'og_image_url'
+            ),
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
+        }),
+        (_('Медиа'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
+        (_('Настройки'), {'fields': ('is_active', 'is_new', 'is_featured')}),
+        (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
+    )
+    inlines = [JewelryProductTranslationInline, JewelryVariantInline, JewelryProductImageInline, ProductAttributeValueInline]
+
+    def variant_prices_overview(self, obj):
+        if not obj or not obj.pk:
+            return "-"
+        variants = obj.variants.filter(is_active=True).order_by('sort_order', 'id')
+        if not variants.exists():
+            return "-"
+        base_price = obj.price
+        base_currency = obj.currency
+        rows = []
+        for v in variants:
+            effective_price = v.price if v.price is not None else base_price
+            effective_currency = (v.currency or base_currency) if v.price is not None else base_currency
+            price_str = '-' if effective_price is None else f"{effective_price} {effective_currency}"
+            label = v.material or v.color or v.name or '-'
+            rows.append((label, v.slug, price_str, 'variant' if v.price is not None else 'base'))
+        header = format_html(
+            '<table style="width:100%; border-collapse:collapse;">'
+            '<thead>'
+            '<tr>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Материал</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Slug</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Цена</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Источник</th>'
+            '</tr>'
+            '</thead><tbody>'
+        )
+        body = format_html(
+            '{}',
+            format_html_join(
+                '',
+                '<tr>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;"><code>{}</code></td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '</tr>',
+                ((c, s, p, src) for (c, s, p, src) in rows),
+            )
+        )
+        footer = format_html('</tbody></table>')
+        return format_html('{}{}{}', header, body, footer)
+
+    variant_prices_overview.short_description = _('Цены вариантов')
+
+    def variant_prices_converted_overview(self, obj):
+        if not obj or not obj.pk:
+            return "-"
+        variants = obj.variants.filter(is_active=True).order_by('sort_order', 'id')
+        if not variants.exists():
+            return "-"
+
+        from .utils.currency_converter import currency_converter
+
+        base_price = obj.price
+        base_currency = (obj.currency or 'RUB').upper()
+        targets = ['RUB', 'USD', 'KZT', 'EUR', 'TRY']
+
+        rows = []
+        for v in variants[:25]:
+            effective_price = v.price if v.price is not None else base_price
+            effective_currency = (v.currency or base_currency).upper() if v.price is not None else base_currency
+            if effective_price is None:
+                continue
+
+            try:
+                results = currency_converter.convert_to_multiple_currencies(
+                    Decimal(effective_price),
+                    effective_currency,
+                    targets,
+                    apply_margin=True,
+                )
+            except Exception:
+                results = {}
+
+            def fmt(cur: str) -> str:
+                data = results.get(cur)
+                if not data:
+                    return '-'
+                return str(data.get('price_with_margin') or '-')
+
+            label = v.material or v.color or v.name or '-'
+            rows.append(
+                (
+                    label,
+                    v.slug,
+                    f"{effective_price} {effective_currency}",
+                    fmt('RUB'),
+                    fmt('USD'),
+                    fmt('KZT'),
+                    fmt('EUR'),
+                    fmt('TRY'),
+                    'variant' if v.price is not None else 'base',
+                )
+            )
+
+        if not rows:
+            return "-"
+
+        header = format_html(
+            '<table style="width:100%; border-collapse:collapse;">'
+            '<thead>'
+            '<tr>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Материал</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Slug</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">База</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">RUB*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">USD*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">KZT*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">EUR*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">TRY*</th>'
+            '<th style="text-align:left; padding:6px; border-bottom:1px solid #ddd;">Источник</th>'
+            '</tr>'
+            '</thead><tbody>'
+        )
+        body = format_html(
+            '{}',
+            format_html_join(
+                '',
+                '<tr>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;"><code>{}</code></td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '<td style="padding:6px; border-bottom:1px solid #f0f0f0;">{}</td>'
+                '</tr>',
+                ((c, s, base, rub, usd, kzt, eur, tr, src) for (c, s, base, rub, usd, kzt, eur, tr, src) in rows),
+            )
+        )
+        footer = format_html('</tbody></table>')
+        return format_html('{}{}{}', header, body, footer)
+
+    variant_prices_converted_overview.short_description = _('Цены вариантов (конвертация)')
 
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
     """Админка для услуг."""
-    list_display = ('name', 'slug', 'category', 'service_type', 'price', 'currency', 'duration', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_featured', 'category', 'service_type', 'currency', 'created_at')
-    search_fields = ('name', 'slug', 'description', 'service_type')
+    list_display = ('name', 'slug', 'category', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = ('is_active', 'is_featured', 'category', 'currency', 'created_at')
+    search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
-    
+    autocomplete_fields = ('category',)
+
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
-        (_('Categorization'), {'fields': ('category',)}),
-        (_('Service'), {'fields': ('service_type', 'duration')}),
+        (_('Категория'), {
+            'fields': ('category',),
+            'description': _('Выберите категорию услуги (ремонт, отделка, сантехника и т.д.).'),
+        }),
         (_('Pricing'), {'fields': ('price', 'currency')}),
-        (_('Media'), {'fields': ('main_image',)}),
+        (_('Media Assets'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file', 'gif_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [ServiceTranslationInline]
+    inlines = [ServiceTranslationInline, ServiceImageInline, ServiceAttributeInline, ServicePriceInline]
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Ограничиваем выбор категории только категориями типа «Услуги»."""
+        if db_field.name == 'category':
+            kwargs['queryset'] = Category.objects.filter(
+                category_type__slug='uslugi',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
 class BannerMediaInline(admin.StackedInline):
@@ -1415,11 +2234,30 @@ class BannerMediaInline(admin.StackedInline):
 @admin.register(MarketingBanner)
 class BannerAdmin(admin.ModelAdmin):
     """Админка для баннеров."""
-    list_display = ('title', 'position', 'get_media_count', 'is_active', 'sort_order', 'created_at')
+    list_display = ('title', 'get_position_display', 'get_media_count', 'is_active', 'sort_order', 'created_at')
     list_filter = ('position', 'is_active', 'created_at')
     search_fields = ('title',)
-    ordering = ('position', 'sort_order', '-created_at')
+    ordering = ('sort_order', '-created_at')
     inlines = [BannerMediaInline]
+
+    def get_queryset(self, request):
+        """Сортировка по позиции: 1—Главный, 2—Второй, 3—Третий, 4—Четвертый. Не вызываем super(),
+        т.к. родитель применяет order_by до аннотации — строим queryset сами."""
+        qs = self.model._default_manager.get_queryset()
+        return qs.annotate(
+            position_order=Case(
+                When(position='main', then=Value(1)),
+                When(position='after_brands', then=Value(2)),
+                When(position='before_footer', then=Value(3)),
+                When(position='after_popular_products', then=Value(4)),
+                default=Value(99),
+                output_field=IntegerField()
+            )
+        )
+
+    def get_ordering(self, request):
+        """Сортировка по позиции: 1—Главный, 2—Второй, 3—Третий, 4—Четвертый."""
+        return ('position_order', 'sort_order', '-created_at')
     
     fieldsets = (
         (None, {
@@ -1432,6 +2270,12 @@ class BannerAdmin(admin.ModelAdmin):
         }),
     )
     
+    def get_position_display(self, obj):
+        """Отображение позиции. Сортировка по position_order (1,2,3,4)."""
+        return obj.get_position_display()
+    get_position_display.short_description = _("Позиция баннера")
+    get_position_display.admin_order_field = 'position_order'
+
     def get_media_count(self, obj):
         """Количество медиа-файлов в баннере."""
         if obj.pk:
@@ -1539,13 +2383,22 @@ class BannerMediaAdmin(admin.ModelAdmin):
 
 @admin.register(MarketingBrand)
 class MarketingBrandAdmin(admin.ModelAdmin):
-    """Админка для карточек популярных брендов (раздел «Маркетинг»)."""
-    list_display = ('name', 'primary_category_slug', 'card_media_preview', 'is_active', 'created_at')
+    """Админка для карточек популярных брендов (раздел «Маркетинг»).
+    Редактирует те же записи, что и «Бренды» (proxy-модель). Ориентирована на
+    медиа карточки. Используйте list_filter «С медиа» для фокуса на брендах с карточками.
+    """
+    form = BrandAdminForm
+    list_display = ('name', 'primary_category_slug', 'card_media_preview', 'has_card_media', 'is_active', 'created_at')
     list_filter = ('is_active', 'primary_category_slug', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('name',)
     prepopulated_fields = {'slug': ('name',)}
     readonly_fields = ('card_media_preview',)
+
+    def has_card_media(self, obj):
+        return bool(obj.card_media or (obj.card_media_external_url or "").strip())
+    has_card_media.boolean = True
+    has_card_media.short_description = _("С медиа")
 
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
@@ -1553,7 +2406,7 @@ class MarketingBrandAdmin(admin.ModelAdmin):
             'fields': ('card_media', 'card_media_external_url', 'card_media_preview', 'logo'),
             'description': _('Изображение, GIF или видео для карточки бренда или внешняя ссылка (CDN/S3). Внешняя ссылка приоритетнее.'),
         }),
-        (_('Категория'), {'fields': ('primary_category_slug',)}),
+        (_('Категория'), {'fields': ('primary_category_slug', 'category_slugs')}),
         (_('Ссылки'), {'fields': ('website',)}),
         (_('Settings'), {'fields': ('is_active',)}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
@@ -1602,7 +2455,14 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
     from .forms import CategoryForm
     form = CategoryForm
     list_display = ('name', 'slug', 'category_type', 'parent', 'card_media_preview', 'is_active', 'sort_order', 'created_at')
-    list_filter = ('is_active', 'category_type', 'parent', 'created_at')
+    list_filter = (
+        'is_active',
+        CategoryLevelFilter,
+        CategoryRootFilter,
+        'category_type',
+        ('parent', admin.RelatedOnlyFieldListFilter),
+        'created_at',
+    )
     search_fields = ('name', 'slug', 'description')
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
@@ -1618,7 +2478,7 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
     fieldsets = (
         (_('Основная информация'), {
             'fields': ('name', 'slug', 'description'),
-            'description': _('Введите название категории. Slug будет автоматически сгенерирован из названия.'),
+            'description': _('Название: L1 — Одежда, L2 — Пальто, L3 — Пальто женское. Slug генерируется автоматически.'),
         }),
         (_('Тип категории (обязательно)'), {
             'fields': ('category_type',),
@@ -1627,9 +2487,9 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
                 'Это определяет, к какому разделу товаров относится категория.'
             ),
         }),
-        (_('Иерархия'), {
+        (_('Иерархия (L1/L2/L3)'), {
             'fields': ('parent',),
-            'description': _('Оставьте пустым для создания корневой категории, или выберите родительскую категорию для создания подкатегории.'),
+            'description': CATEGORY_HIERARCHY_DESCRIPTION,
         }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),
@@ -1780,6 +2640,10 @@ class MarketingRootCategoryAdmin(admin.ModelAdmin):
 
 # Импортируем админки для книг
 from .admin_books import *
+
+# Импортируем админки для доменов Волны 2
+from .admin_wave2 import *
+from .admin_wave3 import *
 
 # Импортируем и регистрируем админки для валютных моделей
 from .admin_currency import *

@@ -8,6 +8,9 @@ interface User {
   id: number
   email: string
   username: string
+  first_name?: string
+  last_name?: string
+  phone_number?: string
   currency?: string
 }
 
@@ -19,7 +22,8 @@ interface AuthContextValue {
   logout: () => void
   // Будущие методы для SMS и соцсетей
   loginWithSMS?: (phone: string, code: string) => Promise<void>
-  loginWithSocial?: (provider: 'google' | 'facebook' | 'vk' | 'yandex' | 'apple', token: string) => Promise<void>
+  loginWithSocial: (provider: 'google' | 'vk', token: string) => Promise<void>
+  loginWithTelegram: (telegramData: any) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -29,7 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const refreshCartRef = useRef(useCartStore.getState().refresh)
   const refreshFavoritesRef = useRef(useFavoritesStore.getState().refresh)
-  
+
   // Обновляем ref при изменении store
   useEffect(() => {
     refreshCartRef.current = useCartStore.getState().refresh
@@ -52,6 +56,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           id: profile.id,
           email: profile.user_email,
           username: profile.user_username,
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          phone_number: profile.phone_number,
           currency: profile.currency
         })
         if (profile.currency) {
@@ -76,7 +83,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { tokens, user } = res.data
       if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
       if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
-      setUser({ id: user.id, email: user.email, username: user.username, currency: user.currency })
+      setUser({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        phone_number: user.phone_number,
+        currency: user.currency
+      })
       if (user.currency) {
         Cookies.set('currency', user.currency, { sameSite: 'Lax', path: '/' })
         setPreferredCurrency(user.currency)
@@ -86,12 +101,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Обновляем избранное после входа для загрузки избранного пользователя
       refreshFavoritesRef.current()
     },
+    async loginWithSocial(provider, token) {
+      const res = await api.post('/users/social-auth/', { provider, access_token: token })
+      const { tokens, user: userData } = res.data
+      if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
+      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
+      setUser({
+        id: userData.id,
+        email: userData.email,
+        username: userData.username,
+        first_name: userData.first_name,
+        last_name: userData.last_name,
+        phone_number: userData.phone_number,
+        currency: userData.currency
+      })
+      if (userData.currency) {
+        Cookies.set('currency', userData.currency, { sameSite: 'Lax', path: '/' })
+        setPreferredCurrency(userData.currency)
+      }
+      refreshCartRef.current()
+      refreshFavoritesRef.current()
+    },
+    async loginWithTelegram(telegramData) {
+      const res = await api.post('/users/telegram/login/', telegramData)
+      const { tokens, user: userData } = res.data
+      if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
+      if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
+      setUser({
+        id: userData.id,
+        email: userData.email,
+        username: userData.username,
+        first_name: userData.first_name,
+        last_name: userData.last_name,
+        phone_number: userData.phone_number,
+        currency: userData.currency
+      })
+      if (userData.currency) {
+        Cookies.set('currency', userData.currency, { sameSite: 'Lax', path: '/' })
+        setPreferredCurrency(userData.currency)
+      }
+      refreshCartRef.current()
+      refreshFavoritesRef.current()
+    },
     async register(email, username, password) {
       const res = await api.post('/users/register/', { email, username, password, password_confirm: password })
       const { tokens, user } = res.data
       if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
       if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
-      setUser({ id: user.id, email: user.email, username: user.username, currency: user.currency })
+      setUser({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        phone_number: user.phone_number,
+        currency: user.currency
+      })
       if (user.currency) {
         Cookies.set('currency', user.currency, { sameSite: 'Lax', path: '/' })
         setPreferredCurrency(user.currency)

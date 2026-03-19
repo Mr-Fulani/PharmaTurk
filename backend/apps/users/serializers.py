@@ -1,8 +1,29 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
+from django.conf import settings
 from .models import User, UserAddress, UserSession
 from django.utils import timezone
+from urllib.parse import urlparse, quote
+
+
+def _build_proxy_media_url(file_field, request):
+    if not file_field:
+        return None
+    path = getattr(file_field, 'name', None)
+    if not path:
+        url = getattr(file_field, 'url', None)
+        if not url:
+            return None
+        parsed = urlparse(url)
+        path = parsed.path.lstrip('/')
+        media_prefix = (settings.MEDIA_URL or '').lstrip('/')
+        if media_prefix and path.startswith(media_prefix):
+            path = path[len(media_prefix):]
+    if path.startswith('media/'):
+        path = path[len('media/'):]
+    # Относительный URL — браузер подставит свой origin (localhost/ngrok/production)
+    return f"/api/catalog/proxy-media/?path={quote(path)}"
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -155,6 +176,7 @@ class UserSerializer(serializers.ModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     total_orders = serializers.SerializerMethodField()
     total_spent = serializers.SerializerMethodField()
+    telegram_bound = serializers.SerializerMethodField()
     
     class Meta:
         model = User
@@ -164,7 +186,7 @@ class UserSerializer(serializers.ModelSerializer):
             'phone_number', 'birth_date', 'is_verified',
             'language', 'currency',
             'email_notifications', 'telegram_notifications', 'push_notifications',
-            'telegram_username', 'whatsapp_phone',
+            'telegram_username', 'telegram_bound', 'whatsapp_phone',
             'country', 'city', 'postal_code', 'address',
             'avatar', 'avatar_url', 'bio',
             'is_public_profile', 'show_email', 'show_phone',
@@ -177,13 +199,102 @@ class UserSerializer(serializers.ModelSerializer):
             'user_email', 'user_username'
         ]
     
+    def validate_email(self, value):
+        """Проверка уникальности email при обновлении (исключаем текущего пользователя)"""
+        user = self.instance
+        if user and User.objects.filter(email=value).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError(_("Пользователь с таким email уже существует"))
+        if not user and User.objects.filter(email=value).exists():
+            raise serializers.ValidationError(_("Пользователь с таким email уже существует"))
+        return value
+
+    def _normalize_phone(self, value):
+        """Нормализация номера для сравнения (только цифры)"""
+        if not value:
+            return ''
+        return ''.join(c for c in str(value) if c.isdigit())
+
+    def _phone_exists_in_system(self, norm: str, exclude_user=None) -> bool:
+        """Проверка: номер уже есть в phone_number или whatsapp_phone у любого пользователя"""
+        if not norm or len(norm) < 9:
+            return False
+        qs = User.objects.all()
+        if exclude_user:
+            qs = qs.exclude(pk=exclude_user.pk)
+        for u in qs:
+            if u.phone_number and self._normalize_phone(u.phone_number) == norm:
+                return True
+            if u.whatsapp_phone and self._normalize_phone(u.whatsapp_phone) == norm:
+                return True
+        return False
+
+    def validate_phone_number(self, value):
+        """Проверка формата и уникальности номера (в т.ч. среди WhatsApp)"""
+        if not value:
+            return value
+        from django.core.validators import RegexValidator
+        from django.core.exceptions import ValidationError
+        phone_regex = RegexValidator(
+            regex=r'^\+?1?\d{9,15}$',
+            message=_("Номер телефона должен быть в формате: '+999999999'. До 15 цифр.")
+        )
+        try:
+            phone_regex(value)
+        except ValidationError as e:
+            msg = e.messages[0] if getattr(e, 'messages', None) else str(e)
+            raise serializers.ValidationError(msg)
+        norm = self._normalize_phone(value)
+        if norm and self._phone_exists_in_system(norm, self.instance):
+            raise serializers.ValidationError(_("Этот номер телефона уже используется другим аккаунтом"))
+        return value
+
+    def validate_whatsapp_phone(self, value):
+        """Проверка формата и уникальности WhatsApp (в т.ч. среди phone_number)"""
+        if not value:
+            return value
+        from django.core.validators import RegexValidator
+        from django.core.exceptions import ValidationError
+        phone_regex = RegexValidator(
+            regex=r'^\+?1?\d{9,15}$',
+            message=_("Номер должен быть в формате: '+999999999'. До 15 цифр.")
+        )
+        try:
+            phone_regex(value)
+        except ValidationError as e:
+            msg = e.messages[0] if getattr(e, 'messages', None) else str(e)
+            raise serializers.ValidationError(msg)
+        norm = self._normalize_phone(value)
+        if norm and self._phone_exists_in_system(norm, self.instance):
+            raise serializers.ValidationError(_("Этот WhatsApp номер уже используется другим аккаунтом"))
+        return value
+
+    def validate_telegram_username(self, value):
+        """Проверка уникальности Telegram username (нормализуем: без @, lowercase)"""
+        if not value:
+            return value
+        norm = str(value).strip().lstrip('@').lower()
+        if not norm:
+            return value
+        user = self.instance
+        qs = User.objects.exclude(telegram_username='')
+        if user:
+            qs = qs.exclude(pk=user.pk)
+        for u in qs:
+            if u.telegram_username:
+                u_norm = u.telegram_username.strip().lstrip('@').lower()
+                if u_norm == norm:
+                    raise serializers.ValidationError(_("Этот Telegram уже привязан к другому аккаунту"))
+        return value
+
+    def get_telegram_bound(self, obj):
+        """Telegram привязан, если задан telegram_id"""
+        return bool(obj.telegram_id)
+    
     def get_avatar_url(self, obj):
         """Получение URL аватара"""
         if obj.avatar:
             request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.avatar.url)
-            return obj.avatar.url
+            return _build_proxy_media_url(obj.avatar, request)
         return None
     
     def get_total_orders(self, obj):
@@ -354,6 +465,8 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     Сериализатор для публичного профиля пользователя
     """
     user_username = serializers.CharField(source='username', read_only=True)
+    email = serializers.EmailField(read_only=True)
+    phone_number = serializers.CharField(read_only=True)
     avatar_url = serializers.SerializerMethodField()
     total_orders = serializers.SerializerMethodField()
     testimonial_id = serializers.SerializerMethodField()
@@ -364,6 +477,8 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'user_username',
+            'email',
+            'phone_number',
             'first_name',
             'last_name',
             'middle_name',
@@ -377,15 +492,32 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
             'total_orders',
             'social_links',
         ]
+
+    def to_representation(self, instance):
+        """
+        Учитываем настройки приватности контактов:
+        - email выводим только если пользователь включил show_email или это его собственный профиль
+        - phone_number выводим только если пользователь включил show_phone или это его собственный профиль
+        """
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+
+        is_own_profile = bool(request and request.user.is_authenticated and request.user == instance)
+
+        if not (instance.show_email or is_own_profile):
+            data.pop('email', None)
+
+        if not (instance.show_phone or is_own_profile):
+            data.pop('phone_number', None)
+
+        return data
     
     def get_avatar_url(self, obj):
         """Получение URL аватара из профиля или из отзыва"""
         request = self.context.get('request')
         
         if obj.avatar:
-            if request:
-                return request.build_absolute_uri(obj.avatar.url)
-            return obj.avatar.url
+            return _build_proxy_media_url(obj.avatar, request)
         
         from apps.feedback.models import Testimonial
         testimonial_id = self.context.get('testimonial_id')
@@ -400,9 +532,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
                     author_avatar__isnull=False
                 ).first()
                 if testimonial and testimonial.author_avatar:
-                    if request:
-                        return request.build_absolute_uri(testimonial.author_avatar.url)
-                    return testimonial.author_avatar.url
+                    return _build_proxy_media_url(testimonial.author_avatar, request)
             except (ValueError, TypeError):
                 pass
         
@@ -413,12 +543,9 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
                 author_avatar__isnull=False
             ).first()
             if testimonial and testimonial.author_avatar:
-                if request:
-                    return request.build_absolute_uri(testimonial.author_avatar.url)
-                return testimonial.author_avatar.url
+                return _build_proxy_media_url(testimonial.author_avatar, request)
         except Exception:
             pass
-        
         return None
     
     def get_total_orders(self, obj):

@@ -5,15 +5,20 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Link from 'next/link'
 import api from '../lib/api'
+import { resolveMediaUrl, isVideoUrl } from '../lib/media'
 import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cart'
+import { useTheme } from '../context/ThemeContext'
+import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface CartItem {
   id: number
   product: number
   product_name?: string
+  product_translations?: ProductTranslation[]
   product_slug?: string
   product_image_url?: string
+  product_video_url?: string | null
   quantity: number
   price: string
   currency: string
@@ -36,6 +41,7 @@ interface Cart {
   final_amount?: string
   currency?: string
   promo_code?: PromoCode | null
+  shipping_options?: { air: number; sea: number; ground: number }
 }
 
 interface Address {
@@ -61,7 +67,9 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const { refresh: refreshCart, setItemsCount } = useCartStore()
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [cart, setCart] = useState<Cart | null>(initialCart || null)
   const [addresses, setAddresses] = useState<Address[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null)
@@ -70,6 +78,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   const [contactPhone, setContactPhone] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [shippingAddressText, setShippingAddressText] = useState('')
+  const [shippingMethod, setShippingMethod] = useState<'ground' | 'air' | 'sea'>('ground')
   const [paymentMethod, setPaymentMethod] = useState('cod')
   const [cardData, setCardData] = useState({
     number: '',
@@ -77,7 +86,6 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     cvv: '',
     holder: '',
   })
-  const [cryptoWallet, setCryptoWallet] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [loadingAddresses, setLoadingAddresses] = useState(true)
   const [showAddressForm, setShowAddressForm] = useState(false)
@@ -110,7 +118,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
         ])
         setCart(cartRes.data)
         setAddresses(addressesRes.data || [])
-        
+
         // Автоматически выбираем адрес по умолчанию
         const defaultAddress = addressesRes.data?.find((addr: Address) => addr.is_default)
         if (defaultAddress) {
@@ -130,6 +138,18 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
     }
     loadData()
   }, [])
+
+  // Обновляем контактные данные при загрузке профиля пользователя
+  useEffect(() => {
+    if (user) {
+      if (!selectedAddressId) {
+        const fullName = `${(user as any).first_name || ''} ${(user as any).last_name || ''}`.trim()
+        if (fullName && !contactName) setContactName(fullName)
+        if ((user as any).phone_number && !contactPhone) setContactPhone((user as any).phone_number)
+      }
+      if (!contactEmail) setContactEmail(user.email || '')
+    }
+  }, [user, selectedAddressId, contactName, contactPhone, contactEmail])
 
   const handleAddressSelect = (address: Address) => {
     setSelectedAddressId(address.id)
@@ -202,7 +222,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       router.push('/cart')
       return
     }
-    
+
     setSubmitting(true)
     try {
       const body = new URLSearchParams()
@@ -210,6 +230,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       body.set('contact_phone', contactPhone)
       if (contactEmail) body.set('contact_email', contactEmail)
       if (shippingAddressText) body.set('shipping_address_text', shippingAddressText)
+      if (shippingMethod) body.set('shipping_method', shippingMethod)
       if (paymentMethod) body.set('payment_method', paymentMethod)
       if (useSavedAddress && selectedAddressId) {
         body.set('shipping_address', String(selectedAddressId))
@@ -218,18 +239,29 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
       if (cart?.promo_code?.code) {
         body.set('promo_code', cart.promo_code.code)
       }
+      // Язык для редиректа после оплаты (crypto) — чтобы не сбрасывался при возврате
+      body.set('locale', (router.locale as string) || 'en')
       const res = await api.post('/orders/orders/create-from-cart', body, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       })
       const orderNumber = res.data?.number
       setItemsCount(0)
       await refreshCart()
-      router.push(orderNumber ? `/checkout-success?number=${encodeURIComponent(orderNumber)}` : '/checkout-success')
-      } catch (err: any) {
+      if (paymentMethod === 'crypto' && res.data?.payment_data && orderNumber) {
+        const invoiceUrl = res.data.payment_data.invoice_url
+        if (invoiceUrl) {
+          window.location.href = invoiceUrl
+        } else {
+          router.push(`/checkout-crypto?number=${encodeURIComponent(orderNumber)}`)
+        }
+      } else {
+        router.push(orderNumber ? `/checkout-success?number=${encodeURIComponent(orderNumber)}` : '/checkout-success')
+      }
+    } catch (err: any) {
       const status = err?.response?.status
       if (status === 401) {
         alert(t('login_required_to_checkout', 'Для оформления заказа необходимо войти'))
-          router.push('/auth?next=/checkout')
+        router.push('/auth?next=/checkout')
         return
       }
       const detail = err?.response?.data?.detail || err?.message || t('checkout_error_generic', 'Ошибка оформления заказа')
@@ -277,7 +309,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           {/* Форма оформления */}
           <div className="lg:col-span-2">
-            <form onSubmit={submit} className="space-y-6">
+            <form onSubmit={submit} className="space-y-6 checkout-form">
               {/* Выбор адреса доставки */}
               {addresses.length > 0 && (
                 <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -286,11 +318,10 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     {addresses.map((address) => (
                       <div
                         key={address.id}
-                        className={`rounded-lg border-2 p-4 cursor-pointer transition-all ${
-                          selectedAddressId === address.id && useSavedAddress
-                            ? 'border-[var(--accent)] bg-[var(--surface)]'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
+                        className={`rounded-lg border-2 p-4 cursor-pointer transition-all ${selectedAddressId === address.id && useSavedAddress
+                          ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                          : 'border-gray-200 hover:border-gray-300'
+                          }`}
                         onClick={() => handleAddressSelect(address)}
                       >
                         <div className="flex items-start justify-between">
@@ -298,7 +329,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-gray-900">{address.contact_name}</span>
                               {address.is_default && (
-                                <span className="text-xs bg-[var(--surface)] text-[var(--text-strong)] px-2 py-1 rounded">
+                                <span className="text-xs bg-[var(--surface)] text-[var(--text-strong)] px-2 py-1 rounded checkout-default-badge">
                                   {t('profile_address_default', 'По умолчанию')}
                                 </span>
                               )}
@@ -351,7 +382,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       required
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                     />
-          </label>
+                  </label>
                   <label className="block">
                     <span className="text-sm font-medium text-gray-700">{t('checkout_email_optional', 'Email (необязательно)')}</span>
                     <input
@@ -360,7 +391,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       onChange={(e) => setContactEmail(e.target.value)}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                     />
-          </label>
+                  </label>
                 </div>
               </div>
 
@@ -380,7 +411,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
 
                   {/* Предложение сохранить адрес */}
                   {user && (
-                    <div className="mb-4 p-3 bg-[var(--surface)] rounded-lg border border-[var(--border)]">
+                    <div className="mb-4 p-3 bg-[var(--surface)] rounded-lg border border-[var(--border)] checkout-address-save">
                       <label className="flex items-center cursor-pointer">
                         <input
                           type="checkbox"
@@ -389,7 +420,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                           className="h-4 w-4 text-[var(--accent)] focus:ring-[var(--accent)] border-gray-300 rounded"
                         />
                         <span className="ml-2 text-sm text-gray-700">
-                          {addresses.length > 0 
+                          {addresses.length > 0
                             ? t('checkout_save_address_as_second', 'Сохранить как второй адрес')
                             : t('checkout_save_address', 'Сохранить адрес в профиле')}
                         </span>
@@ -662,7 +693,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       placeholder={t('checkout_address_placeholder', 'Страна, город, улица, дом, квартира')}
                       className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                     />
-          </label>
+                  </label>
                   <button
                     type="button"
                     onClick={handleUseManualAddress}
@@ -673,16 +704,90 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 </div>
               )}
 
+              {/* Способ доставки */}
+              <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('checkout_shipping_method', 'Способ доставки')}</h2>
+                <div className="space-y-3">
+                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${shippingMethod === 'ground'
+                    ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                    : 'border-gray-200 hover:bg-gray-50'
+                    }`}>
+                    <input
+                      type="radio"
+                      name="shipping"
+                      value="ground"
+                      checked={shippingMethod === 'ground'}
+                      onChange={(e) => setShippingMethod(e.target.value as 'ground')}
+                      className="h-4 w-4 text-[var(--accent)] focus:ring-[var(--accent)]"
+                    />
+                    <div className="ml-3 flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-gray-900">{t('shipping_ground', 'Наземная доставка')}</span>
+                        <span className="font-semibold text-gray-900">
+                          {cart?.shipping_options?.ground !== undefined ? `+${cart.shipping_options.ground} ${cart.currency || 'USD'}` : ''}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">{t('shipping_ground_description', 'Доставка автотранспортом. Оптимальный выбор.')}</p>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${shippingMethod === 'air'
+                    ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                    : 'border-gray-200 hover:bg-gray-50'
+                    }`}>
+                    <input
+                      type="radio"
+                      name="shipping"
+                      value="air"
+                      checked={shippingMethod === 'air'}
+                      onChange={(e) => setShippingMethod(e.target.value as 'air')}
+                      className="h-4 w-4 text-[var(--accent)] focus:ring-[var(--accent)]"
+                    />
+                    <div className="ml-3 flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-gray-900">{t('shipping_air', 'Авиадоставка')}</span>
+                        <span className="font-semibold text-gray-900">
+                          {cart?.shipping_options?.air !== undefined ? `+${cart.shipping_options.air} ${cart.currency || 'USD'}` : ''}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">{t('shipping_air_description', 'Ускоренная воздушная доставка.')}</p>
+                    </div>
+                  </label>
+
+                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${shippingMethod === 'sea'
+                    ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                    : 'border-gray-200 hover:bg-gray-50'
+                    }`}>
+                    <input
+                      type="radio"
+                      name="shipping"
+                      value="sea"
+                      checked={shippingMethod === 'sea'}
+                      onChange={(e) => setShippingMethod(e.target.value as 'sea')}
+                      className="h-4 w-4 text-[var(--accent)] focus:ring-[var(--accent)]"
+                    />
+                    <div className="ml-3 flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-gray-900">{t('shipping_sea', 'Морская доставка')}</span>
+                        <span className="font-semibold text-gray-900">
+                          {cart?.shipping_options?.sea !== undefined ? `+${cart.shipping_options.sea} ${cart.currency || 'USD'}` : ''}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">{t('shipping_sea_description', 'Доставка морем для крупногабаритных грузов.')}</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               {/* Способ оплаты */}
               <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('checkout_payment_method', 'Способ оплаты')}</h2>
                 <div className="space-y-3">
                   {/* Наложенный платёж */}
-                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                    paymentMethod === 'cod' 
-                      ? 'border-[var(--accent)] bg-[var(--surface)]' 
-                      : 'border-gray-200 hover:bg-gray-50'
-                  }`}>
+                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${paymentMethod === 'cod'
+                    ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                    : 'border-gray-200 hover:bg-gray-50'
+                    }`}>
                     <input
                       type="radio"
                       name="payment"
@@ -703,11 +808,10 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   </label>
 
                   {/* Банковская карта */}
-                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                    paymentMethod === 'card' 
-                      ? 'border-[var(--accent)] bg-[var(--surface)]' 
-                      : 'border-gray-200 hover:bg-gray-50'
-                  }`}>
+                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${paymentMethod === 'card'
+                    ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
+                    : 'border-gray-200 hover:bg-gray-50'
+                    }`}>
                     <input
                       type="radio"
                       name="payment"
@@ -728,11 +832,10 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   </label>
 
                   {/* Криптовалюта */}
-                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                    paymentMethod === 'crypto' 
-                      ? 'border-violet-500 bg-violet-50' 
-                      : 'border-gray-200 hover:bg-gray-50'
-                  }`}>
+                  <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${paymentMethod === 'crypto'
+                    ? 'border-violet-500 bg-violet-50'
+                    : 'border-gray-200 hover:bg-gray-50'
+                    }`}>
                     <input
                       type="radio"
                       name="payment"
@@ -757,7 +860,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 {paymentMethod === 'card' && (
                   <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200 space-y-4">
                     <h3 className="text-sm font-semibold text-gray-700 mb-3">{t('payment_card_details', 'Данные карты')}</h3>
-                    
+
                     {/* Номер карты */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -848,35 +951,10 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   </div>
                 )}
 
-                {/* Поле для криптокошелька */}
+                {/* Информация о крипто-оплате: адрес выдаётся на следующей странице */}
                 {paymentMethod === 'crypto' && (
-                  <div className="mt-6 p-4 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 space-y-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <svg className="h-5 w-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <h3 className="text-sm font-semibold text-gray-700">{t('payment_crypto_wallet', 'Адрес криптокошелька')}</h3>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        {t('payment_crypto_wallet_address', 'Адрес кошелька для получения')} <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={cryptoWallet}
-                        onChange={(e) => setCryptoWallet(e.target.value)}
-                        placeholder="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
-                        className="w-full px-3 py-2 border border-amber-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono text-sm"
-                        required={paymentMethod === 'crypto'}
-                      />
-                      <p className="mt-2 text-xs text-gray-600">
-                        {t('payment_crypto_supported', 'Поддерживаемые криптовалюты: Bitcoin (BTC), Ethereum (ETH), USDT (TRC20/ERC20), Tether (USDT)')}
-                      </p>
-                    </div>
-
-                    {/* Информация о крипто-оплате */}
-                    <div className="flex items-start gap-2 p-3 bg-amber-100 rounded-lg border border-amber-300">
+                  <div className="mt-6 p-4 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200">
+                    <div className="flex items-start gap-2">
                       <svg className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -893,13 +971,13 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 )}
               </div>
 
-            <button 
-              type="submit" 
-              disabled={submitting} 
+              <button
+                type="submit"
+                disabled={submitting}
                 className="w-full rounded-md bg-violet-600 px-6 py-3 text-base font-medium text-white hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {submitting ? t('checkout_submitting', 'Отправка...') : t('checkout_submit', 'Оформить заказ')}
-            </button>
+              >
+                {submitting ? t('checkout_submitting', 'Отправка...') : t('checkout_submit', 'Оформить заказ')}
+              </button>
             </form>
           </div>
 
@@ -914,44 +992,66 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   {t('checkout_items', 'Товары')} ({cart.items_count})
                 </h3>
                 <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-                  {cart.items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors border border-gray-200"
-                    >
-                      {item.product_image_url ? (
-                        <img
-                          src={item.product_image_url}
-                          alt={item.product_name}
-                          className="w-20 h-20 object-cover rounded-lg flex-shrink-0 border border-gray-200"
-                        />
-                      ) : (
-                        <div className="w-20 h-20 rounded-lg flex-shrink-0 bg-gray-200 border border-gray-300 flex items-center justify-center">
-                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
+                  {cart.items.map((item) => {
+                    const resolvedImage = item.product_image_url ? resolveMediaUrl(item.product_image_url) : null
+                    const resolvedVideoUrl = item.product_video_url && isVideoUrl(item.product_video_url) ? resolveMediaUrl(item.product_video_url) : null
+                    const showVideo = Boolean(resolvedVideoUrl)
+                    const localizedName = getLocalizedProductName(
+                      item.product_name || `Товар #${item.product}`,
+                      t,
+                      item.product_translations,
+                      i18n.language
+                    )
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors border border-gray-200"
+                      >
+                        {showVideo ? (
+                          <video
+                            src={resolvedVideoUrl!}
+                            poster={resolvedImage || undefined}
+                            muted
+                            loop
+                            playsInline
+                            autoPlay
+                            preload="metadata"
+                            className="w-20 h-20 object-cover rounded-lg flex-shrink-0 border border-gray-200"
+                          />
+                        ) : item.product_image_url ? (
+                          <img
+                            src={resolveMediaUrl(item.product_image_url)}
+                            alt={localizedName}
+                            className="w-20 h-20 object-cover rounded-lg flex-shrink-0 border border-gray-200"
+                          />
+                        ) : (
+                          <div className="w-20 h-20 rounded-lg flex-shrink-0 bg-gray-200 border border-gray-300 flex items-center justify-center">
+                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 text-sm leading-tight mb-1 line-clamp-2">
+                            {localizedName}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
+                              {t('checkout_qty', 'Кол-во')}: {item.quantity}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {item.price} {item.currency} {t('checkout_per_item', 'за шт.')}
+                            </span>
+                          </div>
                         </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 text-sm leading-tight mb-1 line-clamp-2">
-                          {item.product_name}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded">
-                            {t('checkout_qty', 'Кол-во')}: {item.quantity}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {item.price} {item.currency} {t('checkout_per_item', 'за шт.')}
-                          </span>
+                        <div className="text-right flex-shrink-0">
+                          <p className="font-bold text-gray-900 text-sm">
+                            {(parseFloat(item.price) * item.quantity).toFixed(2)} {item.currency}
+                          </p>
                         </div>
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="font-bold text-gray-900 text-sm">
-                          {(parseFloat(item.price) * item.quantity).toFixed(2)} {item.currency}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -964,24 +1064,37 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 </div>
                 {cart.discount_amount && parseFloat(cart.discount_amount) > 0 && (
                   <>
-                    <div className="flex justify-between text-sm text-green-600">
+                    <div className="flex justify-between text-sm !text-red-600">
                       <span>{t('cart_discount', 'Скидка')}</span>
                       <span className="font-medium">
                         -{cart.discount_amount} {cart.currency || 'USD'}
                       </span>
                     </div>
                     {cart.promo_code && (
-                      <div className="text-xs text-gray-500">
-                        {t('promo_code_applied', 'Промокод')}: {cart.promo_code.code}
+                      <div className="text-xs !text-red-600">
+                        <div>
+                          {t('promo_code_applied', 'Промокод')}: {cart.promo_code.code}
+                        </div>
+                        <div className="mt-0.5">
+                          {cart.promo_code.discount_type === 'percent'
+                            ? `${cart.promo_code.discount_value}%`
+                            : `${cart.promo_code.discount_value} ${cart.currency || 'USD'}`}
+                        </div>
                       </div>
                     )}
                   </>
                 )}
-                <div className="border-t border-gray-200 pt-4">
+                <div className="flex justify-between text-sm text-gray-600 mt-2">
+                  <span>{t('checkout_shipping_cost', 'Стоимость доставки')}</span>
+                  <span className="font-medium text-gray-900">
+                    +{cart.shipping_options?.[shippingMethod] || 0} {cart.currency || 'USD'}
+                  </span>
+                </div>
+                <div className="border-t border-gray-200 pt-4 mt-4">
                   <div className="flex justify-between items-baseline">
                     <span className="text-lg font-semibold text-gray-900">{t('cart_total', 'Итого')}</span>
                     <span className="text-2xl font-bold text-violet-600">
-                      {cart.final_amount || cart.total_amount} {cart.currency || 'USD'}
+                      {(parseFloat(cart.final_amount || cart.total_amount || "0") + (cart.shipping_options?.[shippingMethod] || 0)).toFixed(2)} {cart.currency || 'USD'}
                     </span>
                   </div>
                 </div>
@@ -1004,10 +1117,9 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
 export async function getServerSideProps(ctx: any) {
   const { req, res: serverRes, locale } = ctx
   let initialCart = null
-  
+
   try {
-    // Используем относительный путь, который работает через Next.js rewrites
-    const base = process.env.INTERNAL_API_BASE || ''
+    const { getInternalApiUrl } = await import('../lib/urls')
     const cookieHeader: string = req.headers.cookie || ''
     const cartSessionMatch = cookieHeader.match(/(?:^|;\s*)cart_session=([^;]+)/)
     let cartSession = cartSessionMatch ? cartSessionMatch[1] : ''
@@ -1024,7 +1136,7 @@ export async function getServerSideProps(ctx: any) {
     const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
     const currency = currencyMatch ? currencyMatch[1] : 'RUB'
 
-    const apiRes = await fetch(`${base}/api/orders/cart`, {
+    const apiRes = await fetch(getInternalApiUrl('orders/cart'), {
       headers: {
         cookie: cookieHeader,
         'Accept-Language': locale || 'en',
@@ -1047,6 +1159,3 @@ export async function getServerSideProps(ctx: any) {
     }
   }
 }
-
-
-

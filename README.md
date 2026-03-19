@@ -17,6 +17,17 @@ git clone <repository-url>
 cd PharmaTurk
 ```
 
+## Новые функции: Поиск по фото (Визуальный поиск)
+Добавлен полноценный функционал поиска товаров по фото:
+- Загрузка изображений пользователем напрямую с устройства.
+- Поиск по URL изображений.
+- Автоматическая валидация размера (до 5 МБ) и формата файлов.
+- Встроенная безопасность от спама (rate-limiting 10 запросов/минуту).
+- Фоновая очистка временных файлов загрузок каждый час через Celery, чтобы сервер не переполнялся.
+- Векторный поиск по загруженному фото с использованием моделей CLIP и БД Qdrant для обеспечения выдачи похожих визуально товаров.
+
+## Основные компоненты системы
+
 ### 2. Настройка переменных окружения
 
 Скопируйте пример файла с переменными окружения:
@@ -58,6 +69,10 @@ curl http://localhost:8000/api/health/
 open http://localhost:8000/api/docs/
 ```
 
+### 5. Мобильное приложение (Flutter)
+
+Мобильное приложение вынесено в отдельный репозиторий: [pharmaturk-mobile](https://github.com/Mr-Fulani/pharmaturk-mobile) (Flutter, iOS/Android).
+
 ## 📋 Структура проекта
 
 ```
@@ -71,9 +86,11 @@ PharmaTurk/
 │   │   └── vapi/           # Интеграция с Vapi API
 │   ├── config/             # Настройки Django
 │   └── api/                # Основные API эндпоинты
+├── frontend/               # Next.js веб-приложение
+├── docs/                   # Документация
 ├── docker-compose.yml      # Конфигурация Docker
 ├── env.example             # Пример переменных окружения
-└── README.md              # Документация
+└── README.md               # Документация
 ```
 
 ## 🔧 Технологический стек
@@ -196,6 +213,42 @@ docker compose exec backend poetry run python manage.py migrate
 
 ```bash
 docker compose exec backend poetry run python manage.py createsuperuser
+```
+
+### Восстановление каталога (seed)
+
+Команда `seed_catalog_data` создаёт полную структуру каталога: 18 корневых категорий (медицина, БАДы, медтехника, одежда, обувь, электроника, мебель, посуда, аксессуары, украшения, нижнее бельё, головные уборы, парфюмерия, книги, услуги, спорттовары, автозапчасти, исламская одежда, благовония), подкатегории с иерархией L2–L5, типы динамических атрибутов и бренды. **При первом запуске backend seed выполняется автоматически** (см. `docker-entrypoint.sh`).
+
+```bash
+# Полное восстановление (категории + атрибуты + бренды)
+docker compose run --rm backend poetry run python manage.py seed_catalog_data
+
+# Только категории (без брендов)
+docker compose run --rm backend poetry run python manage.py seed_catalog_data --categories-only
+
+# Только бренды
+docker compose run --rm backend poetry run python manage.py seed_catalog_data --brands-only
+
+# Только типы динамических атрибутов (GlobalAttributeKey)
+docker compose run --rm backend poetry run python manage.py seed_catalog_data --attributes-only
+
+# Исправить parent у подкатегорий (после миграций)
+docker compose run --rm backend poetry run python manage.py seed_catalog_data --fix-hierarchy
+```
+
+### Статические страницы (privacy, delivery, returns)
+
+Команда `load_initial_pages` создаёт страницы «Политика конфиденциальности», «Доставка и оплата», «Возврат товара» с контентом на ru/en. **Создаёт только отсутствующие страницы, не перезаписывает существующий контент.** Выполняется автоматически при старте backend (см. `docker-entrypoint.sh`).
+
+```bash
+# Ручной запуск (если нужно)
+docker compose exec backend poetry run python manage.py load_initial_pages
+```
+
+Если backend уже запущен:
+
+```bash
+docker compose exec backend poetry run python manage.py seed_catalog_data --categories-only
 ```
 
 ## 🔒 Безопасность

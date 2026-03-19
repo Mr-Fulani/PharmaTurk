@@ -37,43 +37,29 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   const slug = params?.slug
   if (!slug) return { notFound: true }
   const lang = locale || nextI18NextConfig.i18n.defaultLocale || 'ru'
-  // Базовый API-URL берём из окружения, но при SSR внутри Docker-контейнера
-  // 'localhost:8000' указывает на сам контейнер frontend, поэтому пробуем несколько хостов.
-  const envApi = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || ''
-  const candidateHosts = []
-  if (envApi) candidateHosts.push(envApi.replace(/\/$/, ''))
-  candidateHosts.push('http://backend:8000') // docker service name
-  candidateHosts.push('http://127.0.0.1:8000')
-  candidateHosts.push('http://host.docker.internal:8000')
+  const { getInternalApiUrl } = await import('../lib/urls')
+  const url = `${getInternalApiUrl('pages/' + slug)}/?lang=${lang}`
 
   let page = null
-  for (const host of candidateHosts) {
-    try {
-      const url = `${host}/api/pages/${slug}/?lang=${lang}`
-      const res = await fetch(url)
-      if (!res.ok) {
-        // пробуем следующий хост
-        continue
-      }
+  try {
+    const res = await fetch(url)
+    if (res.ok) {
       page = await res.json()
-      if (page) break
-    } catch (e) {
-      // игнорируем и пробуем следующий
-      continue
     }
+  } catch (e) {
+    // ignore
   }
+
+  const { fetchFooterSettings } = await import('../lib/footerSettings')
+  const footerSettings = await fetchFooterSettings()
 
   if (!page) {
-    // подстраховка: если ничего не нашлось, возвращаем props с page=null
-    // это сохранит поведение текущего приложения и покажет Page not found.
     const i18nProps = await serverSideTranslations(lang, ['common'])
-    return { props: { page: null, ...i18nProps } }
+    return { props: { page: null, footerSettings, ...i18nProps } }
   }
 
-  // Подгружаем переводы на сервере для namespace 'common' (Header/Footer и т.д.)
   const i18nProps = await serverSideTranslations(lang, ['common'])
-
-  return { props: { page, ...i18nProps } }
+  return { props: { page, footerSettings, ...i18nProps } }
 }
 
 export default Page

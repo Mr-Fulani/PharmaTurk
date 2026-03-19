@@ -1,31 +1,26 @@
 import { GetServerSideProps } from 'next'
 import Head from 'next/head'
+import Link from 'next/link'
 import axios from 'axios'
-import { useState, useEffect } from 'react'
+import api from '../../lib/api'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import AddToCartButton from '../../components/AddToCartButton'
 import BuyNowButton from '../../components/BuyNowButton'
 import SecurityAndService from '../../components/SecurityAndService'
+import ServiceAttributes from '../../components/ServiceAttributes'
 import FavoriteButton from '../../components/FavoriteButton'
+import ShareButton from '../../components/ShareButton'
 import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
-import { getLocalizedColor, getLocalizedProductDescription, ProductTranslation } from '../../lib/i18n'
+import { getLocalizedBrandName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
+import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../../lib/media'
+import { getSiteOrigin } from '../../lib/urls'
+import { isBaseProductType } from '../../lib/product'
 import { useTheme } from '../../context/ThemeContext'
 
-type CategoryType =
-  | 'medicines'
-  | 'clothing'
-  | 'shoes'
-  | 'electronics'
-  | 'supplements'
-  | 'medical-equipment'
-  | 'furniture'
-  | 'tableware'
-  | 'accessories'
-  | 'jewelry'
-  | 'underwear'
-  | 'headwear'
+type CategoryType = string
 
 const CATEGORY_ALIASES: Record<string, CategoryType> = {
   supplements: 'supplements',
@@ -35,22 +30,18 @@ const CATEGORY_ALIASES: Record<string, CategoryType> = {
   tableware: 'tableware',
   accessories: 'accessories',
   jewelry: 'jewelry',
+  perfumery: 'perfumery',
   underwear: 'underwear',
   headwear: 'headwear',
+  books: 'books',
+  uslugi: 'uslugi',
 }
 
 const normalizeCategoryType = (value?: string): CategoryType => {
   if (!value) return 'medicines'
   const lower = value.toLowerCase()
-  if ([
-    'medicines', 'clothing', 'shoes', 'electronics',
-    'supplements', 'medical-equipment',
-    'furniture', 'tableware', 'accessories', 'jewelry',
-    'underwear', 'headwear'
-  ].includes(lower)) {
-    return lower as CategoryType
-  }
-  return CATEGORY_ALIASES[lower] || 'medicines'
+  // Если есть алиас - возвращаем его, иначе возвращаем как есть (для поддержки новых категорий)
+  return CATEGORY_ALIASES[lower] || lower
 }
 
 const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
@@ -62,37 +53,209 @@ const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
     case 'electronics':
       return `/api/catalog/electronics/products/${slug}`
     case 'furniture':
-    case 'tableware':
-    case 'accessories':
+      return `/api/catalog/furniture/products/${slug}`
     case 'jewelry':
+      return `/api/catalog/jewelry/products/${slug}`
+    case 'books':
+      return `/api/catalog/books/products/${slug}`
+    case 'perfumery':
+      return `/api/catalog/perfumery/products/${slug}`
+    case 'uslugi':
+      return `/api/catalog/services/${slug}`
     case 'medicines':
+      return `/api/catalog/medicines/products/${slug}`
     case 'supplements':
+      return `/api/catalog/supplements/products/${slug}`
     case 'medical-equipment':
+      return `/api/catalog/medical-equipment/products/${slug}`
+    case 'tableware':
+      return `/api/catalog/tableware/products/${slug}`
+    case 'accessories':
+      return `/api/catalog/accessories/products/${slug}`
+    case 'incense':
+      return `/api/catalog/incense/products/${slug}`
+    case 'sports':
+      return `/api/catalog/sports/products/${slug}`
+    case 'auto-parts':
+      return `/api/catalog/auto-parts/products/${slug}`
     default:
+      // Для всех остальных категорий (включая новые динамические) используем общий эндпоинт
       return `/api/catalog/products/${slug}`
   }
 }
 
+const parsePriceWithCurrency = (value?: string | number | null) => {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null }
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null }
+  }
+  const trimmed = value.trim()
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
+  }
+  return { price: trimmed, currency: null as string | null }
+}
+
+const parseNumber = (value: string | number | null | undefined) => {
+  if (value === null || typeof value === 'undefined') return null
+  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+  if (!normalized) return null
+  const num = Number(normalized)
+  return Number.isFinite(num) ? num : null
+}
+
+const formatPrice = (value: string | number | null | undefined): string | null => {
+  if (value === null || typeof value === 'undefined') return null
+  const num = parseNumber(value)
+  if (num === null) return String(value)
+
+  // Округляем до 2 знаков после запятой, затем убираем лишние нули и саму точку, если она не нужна
+  let str = num.toFixed(2)
+  if (str.includes('.')) {
+    str = str.replace(/0+$/, '').replace(/\.$/, '')
+  }
+  return str
+}
+
+const normalizeMediaValue = (value?: string | null) => {
+  if (!value) return null
+  const trimmed = String(value).trim()
+  if (!trimmed) return null
+  const lower = trimmed.toLowerCase()
+  if (lower === 'null' || lower === 'none' || lower === 'undefined') return null
+  return trimmed
+}
+
+const getDosageFormLabel = (value: string | null | undefined, t: any) => {
+  if (!value) return null
+  const forms: Record<string, string> = {
+    tablet: t('dosage_tablet', 'Таблетки'),
+    capsule: t('dosage_capsule', 'Капсулы'),
+    syrup: t('dosage_syrup', 'Сироп'),
+    injection: t('dosage_injection', 'Инъекция'),
+    cream: t('dosage_cream', 'Крем'),
+    ointment: t('dosage_ointment', 'Мазь'),
+    gel: t('dosage_gel', 'Гель'),
+    drops: t('dosage_drops', 'Капли'),
+    spray: t('dosage_spray', 'Спрей'),
+    powder: t('dosage_powder', 'Порошок'),
+  }
+  return forms[value] || value
+}
+
+interface SizeItem {
+  id: number
+  size?: string
+  size_display?: string
+  size_value?: string | number | null
+  is_available?: boolean
+  stock_quantity?: number | null
+}
+
 interface Product {
   id: number
+  base_product_id?: number | null
   name: string
   slug: string
   description: string
-  price: string
+  product_type?: string
+  price: number | string | null
+  price_formatted?: string | null
+  old_price?: string | number | null
+  old_price_formatted?: string | null
   currency: string
   stock_quantity?: number | null
   main_image?: string
   main_image_url?: string
   video_url?: string
-  images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
+  images?: { id: number; image_url: string; video_url?: string | null; alt_text?: string; is_main?: boolean }[]
+  sizes?: SizeItem[]
   variants?: Variant[]
   default_variant_slug?: string | null
   active_variant_slug?: string | null
   active_variant_price?: string | null
   active_variant_currency?: string | null
+  active_variant_old_price_formatted?: string | null
   active_variant_stock_quantity?: number | null
   active_variant_main_image_url?: string | null
   translations?: ProductTranslation[]
+  // SEO
+  meta_title?: string | null
+  meta_description?: string | null
+  meta_keywords?: string | null
+  og_title?: string | null
+  og_description?: string | null
+  og_image_url?: string | null
+  // Common Attributes
+  brand?: { id: number; name: string; slug?: string; translations?: BrandTranslation[] } | null
+  category?: { id: number; name: string; slug: string } | null
+  is_new?: boolean
+  is_featured?: boolean
+  is_bestseller?: boolean
+  rating?: number | string | null
+  reviews_count?: number | null
+  availability_status?: string | null
+  is_available?: boolean
+  min_order_quantity?: number | null
+  pack_quantity?: number | null
+  gtin?: string | null
+  mpn?: string | null
+  country_of_origin?: string | null
+  // Books
+  isbn?: string | null
+  publisher?: string | null
+  publication_date?: string | null
+  pages?: number | null
+  language?: string | null
+  cover_type?: string | null
+  book_authors?: { id: number; author: { full_name: string; full_name_en?: string } }[]
+  book_genres?: { id: number; genre: { name: string; name_en?: string } }[]
+  book_attributes?: { format?: string; thickness_mm?: string }
+  // Medicines & Supplements
+  dosage_form?: string | null
+  active_ingredient?: string | null
+  prescription_required?: boolean | null
+  volume?: string | null
+  origin_country?: string | null
+  usage_instructions?: string | null
+  side_effects?: string | null
+  contraindications?: string | null
+  storage_conditions?: string | null
+  serving_size?: string | null
+  // Physical Attributes
+  weight_value?: number | string | null
+  weight_unit?: string | null
+  length?: number | string | null
+  width?: number | string | null
+  height?: number | string | null
+  dimensions_unit?: string | null
+  sku?: string | null
+  product_code?: string | null
+  release_form?: string | null
+  dosage?: string | null
+  package_count?: number | string | null
+  // Clothing & Shoes
+  color?: string | null
+  size?: string | null
+  material?: string | null
+  season?: string | null
+  // Services
+  main_video_url?: string | null
+  main_gif_url?: string | null
+  gallery?: { id: number; image_url: string; alt_text?: string; sort_order?: number }[]
+  service_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
+  dynamic_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
+}
+
+interface FooterSettings {
+  phone: string
+  email: string
+  location: string
+  telegram_url: string
+  whatsapp_url: string
 }
 
 interface Variant {
@@ -107,7 +270,7 @@ interface Variant {
   stock_quantity?: number | null
   main_image?: string
   images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
-  sizes?: { id: number; size?: string; is_available?: boolean; stock_quantity?: number | null }[]
+  sizes?: SizeItem[]
   active_variant_currency?: string | null
 }
 
@@ -117,7 +280,10 @@ const resolveAvailableStock = (
   selectedSize: string | undefined
 ): number | null => {
   const sizeCandidate = selectedSize
-    ? (selectedVariant?.sizes || []).find((s) => (s.size || '') === selectedSize)
+    ? (selectedVariant?.sizes || product.sizes || []).find((s) => {
+      const sizeValue = `${s.size ?? s.size_display ?? (s.size_value !== undefined && s.size_value !== null ? String(s.size_value) : '')}`.trim()
+      return sizeValue === selectedSize
+    })
     : undefined
 
   const sizeStock = sizeCandidate?.stock_quantity
@@ -139,24 +305,61 @@ const resolveAvailableStock = (
 }
 
 export default function ProductPage({
-  product,
+  product: initialProduct,
   productType,
-  isBaseProduct
+  isBaseProduct,
+  preferredCurrency
 }: {
   product: Product | null
   productType: CategoryType
   isBaseProduct: boolean
+  preferredCurrency: string
 }) {
-  const { t } = useTranslation('common')
-  if (!product) {
-    return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
-  }
-  const variants = product.variants || []
+  const { t, i18n } = useTranslation('common')
+  const router = useRouter()
+  const { theme } = useTheme()
+  const [product, setProduct] = useState<Product | null>(initialProduct)
+  useEffect(() => {
+    setProduct(initialProduct)
+  }, [initialProduct])
+  const variants = product?.variants || []
+  const localizedProductName = product
+    ? getLocalizedProductName(product.name, t, product.translations, router.locale)
+    : ''
+  const displayProductName = localizedProductName || product?.name || ''
+  const localeKey = (router.locale || '').toLowerCase()
+  const isEnglishLocale = localeKey.startsWith('en')
+
+  const [footerSettings, setFooterSettings] = useState<FooterSettings>({
+    phone: '+90 552 582 14 97',
+    email: 'fulani.dev@gmail.com',
+    location: '',
+    telegram_url: 'https://t.me/fulani_admin',
+    whatsapp_url: 'https://wa.me/905525821497'
+  })
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      api.get('/settings/footer-settings/')
+        .then(response => {
+          if (response.data) {
+            setFooterSettings({
+              phone: response.data.phone || '+90 552 582 14 97',
+              email: response.data.email || 'fulani.dev@gmail.com',
+              location: response.data.location || '',
+              telegram_url: response.data.telegram_url || 'https://t.me/fulani_admin',
+              whatsapp_url: response.data.whatsapp_url || 'https://wa.me/905525821497'
+            })
+          }
+        })
+        .catch(err => console.error('Error fetching footer settings:', err))
+    }
+  }, [])
 
   // Выбираем дефолтный вариант-цвет: активный, либо первый доступный
   const initialVariant =
-    variants.find((v) => v.slug === product.active_variant_slug) ||
-    variants.find((v) => v.slug === product.default_variant_slug) ||
+    variants.find((v) => v.slug === product?.active_variant_slug) ||
+    variants.find((v) => v.slug === product?.default_variant_slug) ||
     variants.find((v) => v.is_available) ||
     variants[0] ||
     null
@@ -177,9 +380,25 @@ export default function ProductPage({
   const colors = Array.from(new Set((variants.map((v) => v.color).filter(Boolean) as string[])))
 
   // Список размеров для выбранного цвета (берем из выбранного варианта-цвета)
-  const sizesForColor = selectedVariant?.sizes || []
+  const sizesForColor = (selectedVariant?.sizes && selectedVariant.sizes.length > 0)
+    ? selectedVariant.sizes
+    : (product?.sizes || [])
+  const normalizedSizes = sizesForColor
+    .map((s, index) => {
+      const sizeValue = `${s.size ?? s.size_display ?? (s.size_value !== undefined && s.size_value !== null ? String(s.size_value) : '')}`.trim()
+      const sizeLabel = `${s.size_display ?? s.size ?? (s.size_value !== undefined && s.size_value !== null ? String(s.size_value) : '')}`.trim()
+      return { ...s, sizeValue, sizeLabel, sizeKey: sizeValue || String(index) }
+    })
+    .filter((s) => Boolean(s.sizeLabel))
 
-  const maxAvailable = resolveAvailableStock(product, selectedVariant, selectedSize)
+  const maxAvailable = product ? resolveAvailableStock(product, selectedVariant, selectedSize) : null
+  const sizeHintMessage = t(
+    'select_size_hint',
+    i18n.language?.startsWith('ru')
+      ? 'Выберите размер'
+      : 'Select a size'
+  )
+  const productSlug = product?.slug
 
   useEffect(() => {
     if (maxAvailable === 0) {
@@ -189,7 +408,27 @@ export default function ProductPage({
     if (maxAvailable !== null && quantity > maxAvailable) {
       setQuantity(Math.max(1, maxAvailable))
     }
-  }, [maxAvailable])
+  }, [maxAvailable, quantity])
+
+  useEffect(() => {
+    if (!productSlug || !selectedVariantSlug || isBaseProduct) return
+    let cancelled = false
+    const loadVariantDetails = async () => {
+      try {
+        const endpoint = resolveDetailEndpoint(productType, productSlug).replace(/^\/api\//, '')
+        const res = await api.get(endpoint, {
+          params: { active_variant_slug: selectedVariantSlug }
+        })
+        if (!cancelled && res?.data) {
+          setProduct(res.data)
+        }
+      } catch { }
+    }
+    loadVariantDetails()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedVariantSlug, productType, productSlug, isBaseProduct])
 
   // Подбор варианта при смене цвета
   const pickVariant = (color?: string) => {
@@ -201,7 +440,8 @@ export default function ProductPage({
       setSelectedSize(undefined)
       const gallerySourceLocal = found.images?.length ? found.images : product.images || []
       setActiveImage(
-        found.main_image ||
+        resolveMediaUrl(
+          found.main_image ||
           found.images?.find((img) => img.is_main)?.image_url ||
           found.images?.[0]?.image_url ||
           product.active_variant_main_image_url ||
@@ -210,111 +450,286 @@ export default function ProductPage({
           gallerySourceLocal.find((img) => img.is_main)?.image_url ||
           gallerySourceLocal[0]?.image_url ||
           null
+        ) || null
       )
     }
   }
 
-  const router = useRouter()
-  const { theme } = useTheme()
-  
-  // Формируем галерею: главное изображение + дополнительные изображения
-  const buildGallerySource = () => {
+  // Элемент галереи: обычное фото или плейсхолдер «Видео»
+  type GalleryItem = { id: number | string; image_url: string; video_url?: string | null; alt_text?: string; is_main?: boolean; sort_order?: number; isVideo?: boolean }
+  const buildGallerySource = useCallback((): GalleryItem[] => {
+    if (!product) return []
     const variantImages = selectedVariant?.images || []
     const productImages = product.images || []
-    const mainImageUrl = selectedVariant?.main_image || product.main_image_url || product.main_image
-    
-    // Используем изображения варианта если есть, иначе изображения продукта
-    const baseImages = variantImages.length > 0 ? variantImages : productImages
-    
-    // Если есть главное изображение и его нет в списке, добавляем его первым
-    if (mainImageUrl && !baseImages.some(img => img.image_url === mainImageUrl)) {
-      return [
-        { id: 0, image_url: mainImageUrl, alt_text: product.name, is_main: true, sort_order: -1 },
-        ...baseImages
-      ]
+    const mergedImages = productType === 'jewelry'
+      ? [...variantImages, ...productImages]
+      : (variantImages.length > 0 ? variantImages : productImages)
+    const mainImageRaw = normalizeMediaValue(selectedVariant?.main_image) ||
+      normalizeMediaValue(product.main_image_url) ||
+      normalizeMediaValue(product.main_image)
+    const mainImageUrl = resolveMediaUrl(mainImageRaw)
+    const normalizedProductVideoUrl = normalizeMediaValue(product.video_url || product.main_video_url)
+    const normalizedProductGifUrl = normalizeMediaValue(product.main_gif_url)
+    const hasVideo = Boolean(normalizedProductVideoUrl && isVideoUrl(normalizedProductVideoUrl))
+    const hasGif = Boolean(normalizedProductGifUrl)
+    const seenVideoUrls = new Set<string>()
+    const seenImageUrls = new Set<string>()
+
+    const baseImages: GalleryItem[] = mergedImages.flatMap((img) => {
+      const imageUrl = normalizeMediaValue(img.image_url)
+      const videoUrl = normalizeMediaValue((img as { video_url?: string | null }).video_url)
+      // Если у элемента есть video_url — не добавляем отдельную «превью»-картинку в галерею,
+      // само видео будет отображаться через product.video_url / main-video.
+      if (videoUrl && isVideoUrl(videoUrl)) {
+        if (seenVideoUrls.has(videoUrl)) {
+          return []
+        }
+        seenVideoUrls.add(videoUrl)
+        return []
+      }
+      if (!imageUrl) {
+        return []
+      }
+      if (seenImageUrls.has(imageUrl)) {
+        return []
+      }
+      seenImageUrls.add(imageUrl)
+      return [{
+        id: img.id,
+        image_url: imageUrl,
+        alt_text: img.alt_text,
+        is_main: img.is_main,
+        sort_order: (img as { sort_order?: number }).sort_order,
+      } as GalleryItem]
+    })
+    let list: GalleryItem[] = []
+    const hasMainInBase = baseImages.some((img) => img.is_main || resolveMediaUrl(img.image_url) === mainImageUrl)
+
+    if (mainImageRaw && !hasMainInBase) {
+      list = [{ id: 0, image_url: mainImageRaw, alt_text: product.name, is_main: true, sort_order: -1 }, ...baseImages]
+    } else {
+      list = baseImages
     }
-    
-    return baseImages
-  }
-  
-  const gallerySource = buildGallerySource()
+    if (hasVideo && normalizedProductVideoUrl && !seenVideoUrls.has(normalizedProductVideoUrl)) {
+      list = [{ id: 'main-video', image_url: '', video_url: normalizedProductVideoUrl, alt_text: 'Видео', isVideo: true, sort_order: -2 }, ...list]
+    }
+    if (hasGif && normalizedProductGifUrl) {
+      list = [{ id: 'main-gif', image_url: normalizedProductGifUrl, alt_text: 'GIF', sort_order: -1.5 }, ...list]
+    }
+    const sortPriority = (item: GalleryItem) => {
+      if (item.isVideo && normalizedProductVideoUrl && item.video_url === normalizedProductVideoUrl) {
+        return 0
+      }
+      if (item.is_main) {
+        return 1
+      }
+      return 2
+    }
+    return [...list].sort((a, b) => {
+      const prioA = sortPriority(a)
+      const prioB = sortPriority(b)
+      if (prioA !== prioB) return prioA - prioB
+      const orderA = a.sort_order ?? 999
+      const orderB = b.sort_order ?? 999
+      if (orderA !== orderB) return orderA - orderB
+      return String(a.id).localeCompare(String(b.id))
+    })
+  }, [product, productType, selectedVariant])
+
+  const gallerySource = useMemo(() => buildGallerySource(), [buildGallerySource])
+  const galleryMainImageUrl = normalizeMediaValue(
+    gallerySource.find((img) => !img.isVideo && img.is_main)?.image_url ||
+    gallerySource.find((img) => !img.isVideo && img.image_url)?.image_url
+  )
   const initialImage =
-    selectedVariant?.main_image ||
-    selectedVariant?.images?.find((img) => img.is_main)?.image_url ||
-    selectedVariant?.images?.[0]?.image_url ||
-    product.active_variant_main_image_url ||
-    product.main_image_url ||
-    product.main_image ||
-    gallerySource.find((img) => img.is_main)?.image_url ||
-    gallerySource[0]?.image_url
+    resolveMediaUrl(
+      galleryMainImageUrl ||
+      normalizeMediaValue(selectedVariant?.main_image) ||
+      normalizeMediaValue(selectedVariant?.images?.find((img) => img.is_main)?.image_url) ||
+      normalizeMediaValue(selectedVariant?.images?.[0]?.image_url) ||
+      normalizeMediaValue(product?.active_variant_main_image_url || null) ||
+      normalizeMediaValue(product?.main_image_url || null) ||
+      normalizeMediaValue(product?.main_image || null) ||
+      normalizeMediaValue(gallerySource.find((img) => !img.isVideo && img.image_url)?.image_url)
+    ) || ''
+  const hasImageSource = Boolean(
+    normalizeMediaValue(selectedVariant?.main_image) ||
+    selectedVariant?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
+    normalizeMediaValue(product?.main_image_url || null) ||
+    normalizeMediaValue(product?.main_image || null) ||
+    product?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
+    gallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
+  )
   const [activeImage, setActiveImage] = useState<string | null>(initialImage || null)
+  const [mainImageLoading, setMainImageLoading] = useState(false)
+  /** Для миниатюр с битой ссылкой: по id храним URL плейсхолдера, чтобы по клику показывать его в главной области */
+  const [thumbPlaceholderByKey, setThumbPlaceholderByKey] = useState<Record<string, string>>({})
+  const initialVideoUrl =
+    (product?.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
+    gallerySource.find((item) => item.isVideo && item.video_url)?.video_url ||
+    null
+  const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(initialVideoUrl)
+  const [activeMediaType, setActiveMediaType] = useState<'video' | 'image'>(() =>
+    initialVideoUrl ? 'video' : 'image'
+  )
 
   // Обновляем главную картинку при изменении товара или варианта
   useEffect(() => {
-    const currentGallerySource = selectedVariant?.images?.length ? selectedVariant.images : (product.images || [])
+    if (!product) return
+    const currentGallerySource = buildGallerySource()
+    const imageFromGallery =
+      normalizeMediaValue(currentGallerySource.find((img) => !img.isVideo && img.is_main)?.image_url) ||
+      normalizeMediaValue(currentGallerySource.find((img) => !img.isVideo && img.image_url)?.image_url)
     const newImage =
-      selectedVariant?.main_image ||
-      selectedVariant?.images?.find((img) => img.is_main)?.image_url ||
-      selectedVariant?.images?.[0]?.image_url ||
-      product.active_variant_main_image_url ||
-      product.main_image_url ||
-      product.main_image ||
-      currentGallerySource.find((img) => img.is_main)?.image_url ||
-      currentGallerySource[0]?.image_url ||
-      null
+      resolveMediaUrl(
+        imageFromGallery ||
+        normalizeMediaValue(selectedVariant?.main_image) ||
+        normalizeMediaValue(selectedVariant?.images?.find((img) => img.is_main)?.image_url) ||
+        normalizeMediaValue(selectedVariant?.images?.[0]?.image_url) ||
+        normalizeMediaValue(product.active_variant_main_image_url || null) ||
+        normalizeMediaValue(product.main_image_url || null) ||
+        normalizeMediaValue(product.main_image || null) ||
+        normalizeMediaValue(currentGallerySource.find((img) => !img.isVideo && img.image_url)?.image_url) ||
+        null
+      ) || null
     setActiveImage(newImage)
-  }, [product.id, product.slug, product.main_image_url, product.main_image, product.active_variant_main_image_url, selectedVariantSlug, selectedVariant?.main_image, selectedVariant?.images, product.images, router.asPath])
+    setMainImageLoading(false)
+    const freshVideoUrl =
+      (product.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
+      currentGallerySource.find((item) => item.isVideo && item.video_url)?.video_url ||
+      null
+    setActiveVideoUrl(freshVideoUrl)
+    const hasImages = Boolean(
+      normalizeMediaValue(selectedVariant?.main_image) ||
+      selectedVariant?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
+      normalizeMediaValue(product.main_image_url || null) ||
+      normalizeMediaValue(product.main_image || null) ||
+      currentGallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
+    )
+    setActiveMediaType(freshVideoUrl ? 'video' : (hasImages ? 'image' : 'image'))
+  }, [buildGallerySource, product, selectedVariant, router.asPath])
+
+  if (!product) {
+    return <div className="mx-auto max-w-6xl p-6">{t('not_found', 'Товар не найден')}</div>
+  }
 
   // Получаем числовое значение цены для расчетов
-  const priceValue = selectedVariant?.price 
+  const parsedActiveVariantPrice = parsePriceWithCurrency(product.active_variant_price ?? null)
+
+  // Для доменных товаров (лекарства и т.д.) без вариантов используем price_formatted
+  // который бэкенд уже сконвертировал в нужную валюту
+  const parsedPriceFormatted = parsePriceWithCurrency(
+    (!selectedVariant?.price && !product.active_variant_price && product.price_formatted)
+      ? String(product.price_formatted)
+      : null
+  )
+
+  const priceValue = selectedVariant?.price
     ? parseFloat(String(selectedVariant.price))
-    : (product.active_variant_price ? parseFloat(String(product.active_variant_price)) : (product.price ? parseFloat(String(product.price)) : null))
-  const currency = selectedVariant?.currency || product.currency || 'USD'
-  
+    : (product.active_variant_price
+      ? parseFloat(String(product.active_variant_price))
+      : (parsedPriceFormatted.price
+        ? parseFloat(String(parsedPriceFormatted.price))
+        : (product.price ? parseFloat(String(product.price)) : null)))
+
+  const currency =
+    (selectedVariant?.price != null ? selectedVariant?.currency : null) ||
+    product.active_variant_currency ||
+    parsedActiveVariantPrice.currency ||
+    parsedPriceFormatted.currency ||
+    preferredCurrency ||
+    product.currency ||
+    'USD'
+
+  const oldPriceSource =
+    product.active_variant_old_price_formatted ||
+    product.old_price_formatted ||
+    selectedVariant?.old_price ||
+    product.old_price
+  const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(
+    oldPriceSource !== null && typeof oldPriceSource !== 'undefined' ? String(oldPriceSource) : null
+  )
+  const displayOldPrice = parsedOldCurrency && parsedOldCurrency !== currency ? null : (parsedOldPrice ?? oldPriceSource)
+  const displayOldCurrency = parsedOldCurrency || currency
+  const displayOldPriceLabel = displayOldPrice ? formatPrice(displayOldPrice) : null
+  const displayOldCurrencyLabel = displayOldCurrency ? String(displayOldCurrency) : null
+  const oldPriceValue = parseNumber(displayOldPrice)
+  const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
+    ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
+    : null
+
   // Вычисляем общую сумму с учетом количества
-  const totalPrice = priceValue !== null ? (priceValue * quantity).toFixed(2) : null
-  const displayPrice = priceValue !== null 
-    ? `${priceValue} ${currency}`
+  const totalPrice = priceValue !== null ? formatPrice(priceValue * quantity) : null
+  const displayPrice = priceValue !== null
+    ? `${formatPrice(priceValue)} ${currency}`
     : t('price_on_request')
-  const displayTotalPrice = totalPrice !== null 
+  const displayTotalPrice = totalPrice !== null
     ? `${totalPrice} ${currency}`
     : t('price_on_request')
-  
-  const sizeRequired = sizesForColor.length > 0
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+
+  const sizeRequired = normalizedSizes.length > 0
+  const siteUrl = getSiteOrigin()
   const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
-  const canonicalUrl = `${siteUrl}${productPath}`
-  const metaTitle = `${product.name} — PharmaTurk`
-  const metaDescription = product.description?.slice(0, 200) || `${product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
-  const ogImage = activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
+  const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
+  const canonicalUrl = `${siteUrl}${localePrefix}${productPath}`
+  // Извлекаем переводы для текущего языка (или используем fallback)
+  const apiTranslation = product.translations?.find(
+    (tr) => tr.locale === router.locale || tr.locale === router.locale?.split('-')[0]
+  )
+  const localizedDescription = apiTranslation?.description || product.description
+
+  const metaTitle = (
+    apiTranslation?.meta_title || 
+    apiTranslation?.og_title || 
+    (product.translations && product.translations.length > 0 ? '' : product.meta_title) || 
+    (product.translations && product.translations.length > 0 ? '' : product.og_title) || 
+    ''
+  ).trim() || `${displayProductName || product.name} — PharmaTurk`
+
+  const metaDescription = (
+    apiTranslation?.meta_description ||
+    apiTranslation?.og_description ||
+    (product.translations && product.translations.length > 0 ? '' : product.meta_description) ||
+    (product.translations && product.translations.length > 0 ? '' : product.og_description) ||
+    ''
+  ).trim() || localizedDescription?.slice(0, 200) || `${displayProductName || product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
+  const ogImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
   const availability =
     selectedVariant?.is_available === false || selectedVariant?.stock_quantity === 0
       ? 'https://schema.org/OutOfStock'
       : 'https://schema.org/InStock'
   const priceForSchema = selectedVariant?.price || product.price || product.active_variant_price
-  const currencyForSchema = selectedVariant?.currency || product.currency || selectedVariant?.active_variant_currency
+  const currencyForSchema = selectedVariant?.currency || product.active_variant_currency || product.currency
   const productSchema = {
     '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: product.name,
+    '@type': productType === 'books' ? 'Book' : 'Product',
+    name: displayProductName || product.name,
     description: metaDescription,
     image: ogImage,
+    ...(productType === 'books' && product.isbn && { isbn: product.isbn }),
+    ...(productType === 'books' && product.book_authors?.length
+      ? { author: product.book_authors.map((a) => ({ '@type': 'Person', name: a.author?.full_name })) }
+      : {}),
+    ...(productType === 'books' && product.publisher && { publisher: { '@type': 'Organization', name: product.publisher } }),
+    ...(productType === 'books' && product.pages != null && { numberOfPages: product.pages }),
     sku: product.slug,
     offers: priceForSchema
       ? {
-          '@type': 'Offer',
-          price: priceForSchema,
-          priceCurrency: currencyForSchema || 'USD',
-          availability,
-          url: canonicalUrl,
-        }
+        '@type': 'Offer',
+        price: priceForSchema,
+        priceCurrency: currencyForSchema || 'USD',
+        availability,
+        url: canonicalUrl,
+      }
       : undefined,
   }
+  const isService = productType === 'uslugi'
   return (
     <>
       <Head>
         <title>{metaTitle}</title>
         <meta name="description" content={metaDescription} />
+        {product.meta_keywords && <meta name="keywords" content={product.meta_keywords} />}
         <link rel="canonical" href={canonicalUrl} />
         <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
         <meta property="og:title" content={metaTitle} />
@@ -333,60 +748,453 @@ export default function ProductPage({
       </Head>
       <main className="mx-auto max-w-6xl p-6">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1.3fr_1fr] md:items-start">
-          <div className="flex gap-4 md:h-[calc(100vh-22rem)] md:sticky md:top-6 md:self-start">
-            {/* Миниатюры слева вертикально */}
-            {gallerySource.length > 1 && (
-              <div className="flex flex-col gap-3 overflow-y-auto flex-shrink-0">
-                {gallerySource.map((img) => (
-                  // eslint-disable-next-line @next/next/no-img-element
+          <div className="flex flex-col md:flex-row gap-4 md:h-[calc(100vh-22rem)] md:sticky md:top-6 md:self-start">
+            
+            {/* --- МOБИЛЬНАЯ КАРУСЕЛЬ (Скрыта на десктопе) --- */}
+            <div className="flex md:hidden overflow-x-auto snap-x snap-mandatory gap-4 pb-2 -mx-6 px-6 hide-scrollbar flex-shrink-0">
+              {gallerySource.length > 0 ? gallerySource.map((img) => {
+                const isVideoItem = (img as GalleryItem).isVideo === true
+                const resolvedUrl = resolveMediaUrl(img.image_url)
+                const thumbKey = `mobile-${String(img.id)}`
+                return (
+                  <div key={thumbKey} className="relative shrink-0 w-full aspect-[4/5] snap-center rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
+                    {isVideoItem && img.video_url ? (
+                      <video
+                        src={resolveMediaUrl(img.video_url)}
+                        controls
+                        playsInline
+                        muted
+                        preload="metadata"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={resolvedUrl || getPlaceholderImageUrl({ type: 'product', id: product.id })}
+                        alt={img.alt_text || displayProductName || product.name}
+                        className="w-full h-full object-contain"
+                        onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
+                      />
+                    )}
+                    {/* Индикация фото (точки) как в kiton */}
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1 z-10 opacity-70">
+                      {gallerySource.map((_, i) => (
+                        <div key={i} className={`w-1.5 h-1.5 rounded-full shadow-sm ${i === 0 ? 'bg-white scale-125' : 'bg-white/60'}`} />
+                      ))}
+                    </div>
+                    
+                    <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
+                      <FavoriteButton productId={product.id} productType={productType} cornerIcon={true} />
+                      <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
+                    </div>
+                  </div>
+                )
+              }) : (
+                <div className="relative shrink-0 w-full aspect-[4/5] snap-center rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    key={img.id}
-                    src={img.image_url}
-                    alt={img.alt_text || product.name}
-                    className={`w-28 h-28 rounded-lg object-cover cursor-pointer border flex-shrink-0 ${activeImage === img.image_url ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200 hover:border-gray-300'}`}
-                    onClick={() => setActiveImage(img.image_url)}
+                    src={getPlaceholderImageUrl({ type: 'product', id: product.id, width: 800, height: 800 })}
+                    alt="No image"
+                    className="w-full h-full object-contain"
+                    onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
                   />
-                ))}
+                  <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
+                    <FavoriteButton productId={product.id} productType={productType} cornerIcon={true} />
+                    <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* --- ДЕСКТОПНЫЕ МИНИАТЮРЫ СЛЕВА (Скрыты на мобильных) --- */}
+            {gallerySource.length > 0 && (
+              <div className="hidden md:flex flex-col gap-3 overflow-y-auto flex-shrink-0">
+                {gallerySource.map((img) => {
+                  const resolvedThumbnail = resolveMediaUrl(img.image_url)
+                  const thumbKey = String(img.id)
+                  const placeholderId = `${product.id}-thumb-${img.id}`
+                  const placeholderSmall = getPlaceholderImageUrl({ type: 'product', id: placeholderId, width: 200, height: 200 })
+                  const placeholderLarge = getPlaceholderImageUrl({ type: 'product', id: placeholderId, width: 800, height: 800 })
+                  const effectiveThumbUrl = thumbPlaceholderByKey[thumbKey] || resolvedThumbnail || placeholderLarge
+                  const isVideoItem = (img as GalleryItem).isVideo === true
+                  const isActive =
+                    isVideoItem
+                      ? activeMediaType === 'video' && Boolean(img.video_url && img.video_url === activeVideoUrl)
+                      : activeMediaType === 'image' && (activeImage === resolvedThumbnail || activeImage === effectiveThumbUrl)
+                  return (
+                    <button
+                      key={thumbKey}
+                      type="button"
+                      className={`relative w-28 h-28 rounded-lg overflow-hidden border flex-shrink-0 cursor-pointer ${isActive ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200 hover:border-gray-300'}`}
+                      onClick={() => {
+                        if (isVideoItem) {
+                          setActiveMediaType('video')
+                          if (img.video_url) {
+                            setActiveVideoUrl(img.video_url)
+                          }
+                        } else {
+                          setActiveMediaType('image')
+                          const nextUrl = effectiveThumbUrl || resolvedThumbnail || null
+                          if (nextUrl !== activeImage) {
+                            setMainImageLoading(true)
+                            setActiveImage(nextUrl)
+                          }
+                        }
+                      }}
+                    >
+                      {isVideoItem && img.video_url ? (
+                        <video
+                          src={resolveMediaUrl(img.video_url)}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="w-full h-full object-cover pointer-events-none"
+                          aria-label={img.alt_text || displayProductName || product.name}
+                        />
+                      ) : (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={resolvedThumbnail || placeholderSmall}
+                          alt={img.alt_text || displayProductName || product.name}
+                          className="w-full h-full object-cover pointer-events-none"
+                          onError={(e) => {
+                            setThumbPlaceholderByKey((prev) => ({ ...prev, [thumbKey]: placeholderLarge }))
+                            e.currentTarget.src = placeholderSmall
+                          }}
+                        />
+                      )}
+                      {isVideoItem && (
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg" aria-hidden>
+                          <svg className="w-10 h-10 text-white drop-shadow" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             )}
-            {/* Главная картинка/видео справа */}
-            <div className="flex-1 h-full flex items-start justify-start rounded-xl">
-              {product.video_url ? (
-                <video 
-                  src={product.video_url} 
-                  poster={activeImage || '/product-placeholder.svg'}
+            {/* Главная область (Десктоп): видео или выбранное фото */}
+            <div className="hidden md:flex flex-1 h-full items-start justify-start rounded-xl relative">
+              {activeMediaType === 'video' && activeVideoUrl && isVideoUrl(activeVideoUrl) ? (
+                <video
+                  key="product-video"
+                  src={resolveMediaUrl(activeVideoUrl)}
                   controls
                   playsInline
                   muted
+                  preload="metadata"
                   className="max-w-full max-h-full rounded-xl object-contain"
                 />
               ) : activeImage ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={activeImage} alt={product.name} className="max-w-full max-h-full rounded-xl object-contain" />
+                <div className="relative w-full h-full min-h-[200px]">
+                  {mainImageLoading && (
+                    <div
+                      className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse"
+                      aria-hidden
+                    />
+                  )}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={activeImage}
+                    alt={displayProductName || product.name}
+                    className={`max-w-full max-h-full rounded-xl object-contain transition-opacity duration-150 ${mainImageLoading ? 'opacity-0' : 'opacity-100'}`}
+                    decoding="async"
+                    onLoad={() => setMainImageLoading(false)}
+                    onError={(e) => {
+                      // Фолбек на picsum, завязанный на id товара
+                      const { getPlaceholderImageUrl } = require('../../lib/media')
+                      setMainImageLoading(false)
+                      e.currentTarget.src = getPlaceholderImageUrl({
+                        type: 'product',
+                        id: product.id,
+                        width: 800,
+                        height: 800,
+                      })
+                    }}
+                  />
+                  {/* Иконки в углу главного изображения: избранное + шаринг */}
+                  <div
+                    className="absolute top-3 right-3 z-20 flex flex-col gap-1.5"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                  >
+                    <FavoriteButton
+                      productId={product.id}
+                      productType={productType}
+                      cornerIcon={true}
+                    />
+                    <ShareButton
+                      title={metaTitle}
+                      description={metaDescription}
+                      imageUrl={ogImage}
+                      slug={product.slug}
+                      productType={productType}
+                      pageUrl={canonicalUrl}
+                      cornerIcon={true}
+                    />
+                  </div>
+                </div>
               ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src="/product-placeholder.svg" alt="No image" className="max-w-full max-h-full rounded-xl object-contain" />
+                <div className="relative w-full h-full min-h-[200px]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={require('../../lib/media').getPlaceholderImageUrl({
+                      type: 'product',
+                      id: product.id,
+                      width: 800,
+                      height: 800,
+                    })}
+                    alt="No image"
+                    className="max-w-full max-h-full rounded-xl object-contain"
+                    onError={(e) => {
+                      e.currentTarget.src = '/product-placeholder.svg'
+                    }}
+                  />
+                  {/* Иконки в углу плейсхолдера: избранное + шаринг */}
+                  <div
+                    className="absolute top-3 right-3 z-20 flex flex-col gap-1.5"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                  >
+                    <FavoriteButton
+                      productId={product.id}
+                      productType={productType}
+                      cornerIcon={true}
+                    />
+                    <ShareButton
+                      title={metaTitle}
+                      description={metaDescription}
+                      imageUrl={ogImage}
+                      slug={product.slug}
+                      productType={productType}
+                      pageUrl={canonicalUrl}
+                      cornerIcon={true}
+                    />
+                  </div>
+                </div>
               )}
             </div>
           </div>
           <div>
-            <h1 
+            <h1
               className="text-2xl font-bold"
               style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
             >
-              {product.name}
+              {displayProductName || product.name}
             </h1>
-            <div 
-              className="mt-3 text-xl font-semibold"
-              style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
-            >
+            {/* Основные характеристики (Бренд и Артикул) */}
+            {productType !== 'uslugi' && product.product_type !== 'uslugi' && productType !== 'books' && (
+              <div
+                className="mt-3 space-y-1.5 text-sm"
+                style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+              >
+                {/* Бренд */}
+                {product.brand && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('brand', 'Бренд')}: </span>
+                    {getLocalizedBrandName(product.brand.slug || '', product.brand.name, t, product.brand.translations, router.locale)}
+                  </p>
+                )}
+                {/* Артикул / SKU */}
+                {(product.sku || product.product_code) && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('product_code', 'Код')}: </span>
+                    {product.sku || product.product_code}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Блок «Книга»: автор, издательство, страницы, ISBN, язык, обложка, рейтинг */}
+            {productType === 'books' && (
+              <div
+                className="mt-3 space-y-1.5 text-sm"
+                style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+              >
+                {product.book_authors && product.book_authors.length > 0 && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('author', 'Автор')}: </span>
+                    {product.book_authors.map((a) => {
+                      if (!a.author) return null
+                      return isEnglishLocale ? (a.author.full_name_en || a.author.full_name) : a.author.full_name
+                    }).filter(Boolean).join(', ')}
+                  </p>
+                )}
+                {(product.publisher || product.pages) && (
+                  <p>
+                    {product.publisher}
+                    {product.publisher && product.pages && ' · '}
+                    {product.pages != null && `${product.pages} ${t('pages', 'стр.')}`}
+                  </p>
+                )}
+                {product.isbn && (
+                  <p>ISBN: {product.isbn}</p>
+                )}
+                {(product.language || product.cover_type) && (
+                  <p>
+                    {[product.language, product.cover_type ? getLocalizedCoverType(product.cover_type, t) : null].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+                {(product.weight_value != null && product.weight_value !== '') && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('book_weight', 'Вес')}: </span>
+                    {String(product.weight_value)} {product.weight_unit || 'kg'}
+                  </p>
+                )}
+                {(product.book_attributes?.thickness_mm) && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('book_thickness_mm', 'Толщина, мм')}: </span>
+                    {product.book_attributes.thickness_mm}
+                  </p>
+                )}
+                {(product.book_attributes?.format) && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('book_format', 'Формат')}: </span>
+                    {product.book_attributes.format}
+                  </p>
+                )}
+                {product.publication_date && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('book_publication_year', 'Год издания')}: </span>
+                    {String(product.publication_date).slice(0, 4)}
+                  </p>
+                )}
+                {(product.rating != null && product.rating !== '' && Number(product.rating) > 0) && (
+                  <p className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-0.5 text-amber-600">
+                      <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20"><path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" /></svg>
+                      {typeof product.rating === 'number' ? product.rating.toFixed(1) : String(product.rating)}
+                    </span>
+                    {product.reviews_count != null && product.reviews_count > 0 && (
+                      <span style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}>
+                        ({product.reviews_count} {t('reviews', 'отзывов')})
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+            {/* Блок «Медикамент»: полная карточка характеристик */}
+            {(productType === 'medicines' || product.product_type === 'medicines') && (
+              <div
+                className="mt-3 space-y-1.5 text-sm"
+                style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+              >
+                {/* Лекарственная форма */}
+                {product.dosage_form && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('dosage_form', 'Лекарственная форма')}: </span>
+                    {getDosageFormLabel(product.dosage_form, t)}
+                  </p>
+                )}
+                {/* Действующее вещество */}
+                {product.active_ingredient && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('active_ingredient', 'Действующее вещество')}: </span>
+                    {product.active_ingredient}
+                  </p>
+                )}
+                {/* Рецепт */}
+                {product.prescription_required && (
+                  <p className="flex items-center gap-1.5">
+                    <svg className="h-4 w-4 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="font-medium text-orange-600 dark:text-orange-400">{t('prescription_required', 'Отпускается по рецепту')}</span>
+                  </p>
+                )}
+                {/* Объем/Количество */}
+                {product.volume && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('volume', 'Объем/Количество')}: </span>
+                    {product.volume}
+                  </p>
+                )}
+                {/* Страна производства */}
+                {product.origin_country && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('origin_country', 'Страна производства')}: </span>
+                    {product.origin_country}
+                  </p>
+                )}
+              </div>
+            )}
+            {/* Блок «БАД»: карточка характеристик */}
+            {(productType === 'supplements' || product.product_type === 'supplements') && (
+              <div
+                className="mt-3 space-y-1.5 text-sm"
+                style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+              >
+                {/* Действующее вещество */}
+                {product.active_ingredient && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('active_ingredient', 'Действующее вещество')}: </span>
+                    {product.active_ingredient}
+                  </p>
+                )}
+                {/* Размер порции */}
+                {product.serving_size && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('serving_size', 'Размер порции')}: </span>
+                    {product.serving_size}
+                  </p>
+                )}
+              </div>
+            )}
+
+
+            {(product.is_bestseller || product.is_new || product.is_featured) && (
+
+              <div className="flex flex-wrap gap-2 mt-2">
+                {product.is_featured && (
+                  <span className="rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">
+                    {t('product_featured', 'Хит')}
+                  </span>
+                )}
+                {product.is_bestseller && (
+                  <span className="rounded-md bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+                    {t('bestseller', 'Бестселлер')}
+                  </span>
+                )}
+                {product.is_new && (
+                  <span className="rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                    {t('new', 'Новинка')}
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="mt-3 text-xl font-semibold text-red-600">
               {displayPrice || t('price_on_request')}
             </div>
+            {displayOldPriceLabel && (
+              <div className="mt-1 flex items-baseline gap-2">
+                <div className="text-sm text-gray-400 line-through">
+                  {displayOldCurrencyLabel
+                    ? `${displayOldPriceLabel} ${displayOldCurrencyLabel}`
+                    : displayOldPriceLabel}
+                </div>
+                {discountPercent !== null && (
+                  <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
+                )}
+              </div>
+            )}
+            {(productType === 'medicines' || product.product_type === 'medicines') && (
+              <div
+                className="mt-2 text-xs leading-relaxed"
+                style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}
+              >
+                <p>{t('medicine_disclaimer_line1', 'Наш сайт не продает лекарства.')}</p>
+                <p>{t('medicine_disclaimer_line2', 'Указанные цены призваны способствовать рациональному использованию лекарственных средств.')}</p>
+                <p>{t('medicine_disclaimer_line3', 'Цены на лекарства взяты из еженедельных списков, публикуемых Министерством здравоохранения Турции и Турецким агентством по лекарственным средствам и медицинским изделиям (TİTCK).')}</p>
+                <p>{t('medicine_disclaimer_line4', 'Указанные цены являются рекомендованными розничными ценами для аптек и могут меняться.')}</p>
+                <p>{t('medicine_disclaimer_line5', 'Цены могут быть неактуальными.')}</p>
+              </div>
+            )}
             {(colors.length > 0 || sizesForColor.length > 0) && (
               <div className="mt-4 flex flex-col gap-4">
                 {colors.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <span 
+                    <span
                       className="text-sm font-semibold"
                       style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
                     >
@@ -395,6 +1203,23 @@ export default function ProductPage({
                     <div className="flex flex-wrap gap-2">
                       {colors.map((c) => {
                         const isActive = c === selectedColor
+                        const label = getLocalizedColor(c, t)
+                        const variantForColor = variants.find((v) => v.color === c) || null
+                        const rawThumb =
+                          normalizeMediaValue(variantForColor?.main_image) ||
+                          normalizeMediaValue(variantForColor?.images?.find((img) => img.is_main)?.image_url) ||
+                          normalizeMediaValue(variantForColor?.images?.[0]?.image_url) ||
+                          normalizeMediaValue(product?.active_variant_main_image_url) ||
+                          normalizeMediaValue(product?.main_image_url) ||
+                          normalizeMediaValue(product?.main_image) ||
+                          null
+                        const placeholder = getPlaceholderImageUrl({
+                          type: 'product',
+                          seed: `${product?.slug || 'product'}-${c}`,
+                          width: 200,
+                          height: 200,
+                        })
+                        const thumbSrc = rawThumb ? resolveMediaUrl(rawThumb) : placeholder
                         return (
                           <button
                             key={c}
@@ -402,13 +1227,26 @@ export default function ProductPage({
                               setSelectedColor(c)
                               pickVariant(c)
                             }}
-                            className={`rounded-md px-3 py-1 text-sm border transition ${
-                              isActive
-                                ? 'border-violet-600 bg-violet-50 text-violet-700'
-                                : 'border-gray-300 bg-white text-gray-800 hover:border-violet-400'
-                            }`}
+                            title={label}
+                            aria-label={label}
+                            className={`h-16 w-16 overflow-hidden rounded-md border bg-white transition ${isActive
+                              ? 'border-violet-600 ring-2 ring-violet-200'
+                              : 'border-gray-300 hover:border-violet-400'
+                              }`}
                           >
-                            {getLocalizedColor(c, t)}
+                            <img
+                              src={thumbSrc}
+                              alt={label}
+                              className="h-full w-full object-cover"
+                              data-fallback={placeholder}
+                              onError={(event) => {
+                                const target = event.currentTarget
+                                const fallback = target.dataset.fallback
+                                if (fallback && target.src !== fallback) {
+                                  target.src = fallback
+                                }
+                              }}
+                            />
                           </button>
                         )
                       })}
@@ -417,34 +1255,32 @@ export default function ProductPage({
                 )}
                 {sizesForColor.length > 0 && (
                   <div className="flex flex-col gap-2">
-                    <span 
+                    <span
                       className="text-sm font-semibold"
                       style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
                     >
                       {t('size', 'Размер')}
                     </span>
                     <div className="flex flex-wrap gap-2">
-                      {sizesForColor.map((s) => {
-                        const sizeValue = s.size || ''
+                      {normalizedSizes.map((s) => {
                         const isAvailable = s.is_available !== false && (s.stock_quantity === null || s.stock_quantity === undefined || s.stock_quantity > 0)
-                        const isActive = sizeValue === selectedSize
+                        const isActive = s.sizeValue === selectedSize
                         return (
                           <button
-                            key={sizeValue}
+                            key={s.sizeKey}
                             onClick={() => {
                               if (!isAvailable) return
-                              setSelectedSize(sizeValue)
+                              setSelectedSize(s.sizeValue)
                             }}
-                            className={`min-w-[56px] rounded-md px-3 py-2 text-sm border transition ${
-                              isAvailable
-                                ? isActive
-                                  ? 'border-violet-600 bg-violet-50 text-violet-700'
-                                  : 'border-gray-300 bg-white text-gray-800 hover:border-violet-400'
-                                : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                            }`}
+                            className={`min-w-[56px] rounded-md px-3 py-2 text-sm border transition ${isAvailable
+                              ? isActive
+                                ? 'border-violet-600 bg-violet-50 text-violet-700'
+                                : 'border-gray-300 bg-white text-gray-800 hover:border-violet-400'
+                              : 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                              }`}
                             disabled={!isAvailable}
                           >
-                            {sizeValue || t('size', 'Размер')}
+                            {s.sizeLabel || t('size', 'Размер')}
                           </button>
                         )
                       })}
@@ -453,90 +1289,158 @@ export default function ProductPage({
                 )}
               </div>
             )}
-            
-            {/* Селектор количества */}
-            <div className="mt-4 flex flex-col gap-2">
-              <span 
-                className="text-sm font-semibold"
-                style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
-              >
-                {t('quantity', 'Количество')}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  disabled={quantity <= 1}
-                  className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label={t('decrease_quantity', 'Уменьшить количество')}
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-                  </svg>
-                </button>
-                <span 
-                  className="min-w-[3rem] text-center text-2xl font-extrabold"
-                  style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
-                >
-                  {quantity}
-                </span>
-                <button
-                  onClick={() => {
-                    if (maxAvailable !== null) {
-                      setQuantity(Math.min(maxAvailable, quantity + 1))
-                      return
-                    }
-                    setQuantity(quantity + 1)
-                  }}
-                  disabled={maxAvailable !== null && quantity >= maxAvailable}
-                  className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
-                  aria-label={t('increase_quantity', 'Увеличить количество')}
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
+
+            {/* Динамические атрибуты (Техстек, характеристики, серийник и т.д.) */}
+            {(isService ? product.service_attributes : product.dynamic_attributes)?.length > 0 && (
+              <div className="mt-8">
+                <ServiceAttributes
+                  attributes={(isService ? product.service_attributes : (product.dynamic_attributes || []))}
+                  title={isService ? undefined : t('characteristics', 'Характеристики')}
+                />
               </div>
-            </div>
+            )}
+
+            {/* Селектор количества */}
+            {!isService && (
+              <div className="mt-4 flex flex-col gap-2">
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
+                >
+                  {t('quantity', 'Количество')}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    disabled={quantity <= 1}
+                    className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label={t('decrease_quantity', 'Уменьшить количество')}
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                    </svg>
+                  </button>
+                  <span
+                    className="min-w-[3rem] text-center text-2xl font-extrabold"
+                    style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
+                  >
+                    {quantity}
+                  </span>
+                  <div className="relative group">
+                    <button
+                      onClick={() => {
+                        if (sizeRequired && !selectedSize) {
+                          return
+                        }
+                        if (maxAvailable !== null) {
+                          setQuantity(Math.min(maxAvailable, quantity + 1))
+                          return
+                        }
+                        setQuantity(quantity + 1)
+                      }}
+                      disabled={(sizeRequired && !selectedSize) || (maxAvailable !== null && quantity >= maxAvailable)}
+                      className="flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
+                      aria-label={t('increase_quantity', 'Увеличить количество')}
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                    {sizeRequired && !selectedSize && (
+                      <span className="pointer-events-none absolute -top-2 left-1/2 z-10 -translate-x-1/2 -translate-y-full rounded-md bg-gray-900 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+                        {sizeHintMessage}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Кнопки действий */}
             <div className="mt-4 flex flex-col gap-3">
-            <AddToCartButton
-              productId={isBaseProduct ? product.id : undefined}
-              productType={productType}
-              productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
-              size={selectedSize}
-              requireSize={!isBaseProduct && sizeRequired}
-                quantity={quantity}
-                showPrice={true}
-                price={displayTotalPrice}
-                className="w-full"
-                label={t('add_to_cart', 'В корзину')}
-              />
-              <BuyNowButton
-                productId={isBaseProduct ? product.id : undefined}
-                productType={productType}
-                productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
-                size={selectedSize}
-                requireSize={!isBaseProduct && sizeRequired}
-                quantity={quantity}
-                className="w-full"
-            />
-              {product.id && (
-                <div className="flex justify-center">
-                <FavoriteButton productId={product.id} productType={productType} iconOnly={false} />
-                </div>
+              {isService ? (
+                <>
+                  {/* Для услуг — связь через мессенджеры, а не корзина */}
+                  <div className="flex flex-col gap-3">
+                    <a
+                      href={`${footerSettings.whatsapp_url}?text=${encodeURIComponent(t('order_service_message', 'Здравствуйте! Хочу заказать услугу: ') + (displayProductName || product.name))}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 rounded-lg bg-[#25D366] px-6 py-4 font-bold text-white transition-all hover:scale-[1.02] hover:bg-[#128C7E] active:scale-[0.98]"
+                    >
+                      <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
+                        <path d="M17.472 14.382c-.022-.014-.503-.245-.582-.273-.08-.029-.137-.043-.194.043-.057.087-.222.28-.272.336-.05.056-.098.064-.188.019-.089-.044-.378-.14-.72-.445-.265-.236-.445-.53-.496-.618-.05-.088-.005-.136.039-.181.039-.039.088-.103.132-.154.044-.052.059-.088.088-.147.03-.059.015-.11-.008-.155-.022-.046-.194-.467-.266-.64-.07-.168-.14-.146-.194-.148-.05-.002-.108-.002-.165-.002-.057 0-.15-.021-.229.063-.079.084-.301.294-.301.718 0 .423.308.832.351.89.043.059.605.924 1.467 1.297.205.088.365.14.49.18.207.065.395.056.544.034.166-.024.503-.205.574-.403.072-.198.072-.367.05-.403-.022-.036-.081-.057-.17-.101zm-5.469 4.383c-1.206 0-2.388-.325-3.424-.94l-.246-.146-2.544.668.68-2.48-.16-.254a7.926 7.926 0 0 1-1.213-4.252c0-4.387 3.57-7.958 7.958-7.958 2.126 0 4.125.827 5.628 2.33s2.33 3.502 2.33 5.628c0 4.389-3.572 7.96-7.958 7.96zm7.957-17.758C17.935 1.006 15.011 0 12.003 0 5.432 0 .08 5.352.08 11.924c0 2.099.549 4.148 1.595 5.96L0 24l6.324-1.658c1.745.952 3.716 1.455 5.672 1.455 6.568 0 11.921-5.352 11.921-11.924 0-3.184-1.24-6.179-3.49-8.428z" />
+                      </svg>
+                      {t('order_via_whatsapp', 'Заказать через WhatsApp')}
+                    </a>
+                    <a
+                      href={`${footerSettings.telegram_url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 rounded-lg bg-[#0088cc] px-6 py-4 font-bold text-white transition-all hover:scale-[1.02] hover:bg-[#0077b5] active:scale-[0.98]"
+                    >
+                      <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1 .22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.02-1.93 1.25-5.45 3.63-.51.35-.98.53-1.39.52-.46-.01-1.33-.26-1.98-.48-.8-.27-1.43-.42-1.38-.89.03-.25.38-.51 1.07-.78 4.21-1.83 7.01-3.04 8.39-3.63 3.96-1.67 4.79-1.96 5.33-1.97.12 0 .38.03.55.17.14.12.18.28.2.4.02.1.03.29.02.4z" />
+                      </svg>
+                      {t('order_via_telegram', 'Заказать через Telegram')}
+                    </a>
+                  </div>
+                </>
+              ) : (
+                (productType === 'medicines' || product.product_type === 'medicines') ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={true}
+                      className="w-full inline-flex items-center justify-center rounded-md border border-gray-300 bg-gray-100 px-4 py-2 text-sm font-medium text-gray-500 cursor-not-allowed"
+                    >
+                      {t('medicine_consult_button', 'Узнать актуальную цену - получить консультацию')}
+                    </button>
+                    <Link
+                      href="/how-to-order-medicines"
+                      className="w-full inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-all duration-200"
+                    >
+                      {t('medicine_how_to_order_button', 'Как заказать из Турции')}
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <AddToCartButton
+                      productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
+                      productType={productType}
+                      productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+                      size={selectedSize}
+                      requireSize={!isBaseProduct && sizeRequired}
+                      quantity={quantity}
+                      showPrice={true}
+                      price={displayTotalPrice}
+                      className="w-full"
+                      label={t('add_to_cart', 'В корзину')}
+                    />
+                    <BuyNowButton
+                      productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
+                      productType={productType}
+                      productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+                      size={selectedSize}
+                      requireSize={!isBaseProduct && sizeRequired}
+                      quantity={quantity}
+                      className="w-full"
+                    />
+                  </>
+                )
               )}
+
             </div>
 
             {/* Безопасность и сервис */}
-            <SecurityAndService />
+            {!isService && <SecurityAndService />}
           </div>
         </div>
 
         {/* Описание товара - на всю ширину */}
-        <div 
+        <div
           className="mt-6 rounded-lg border dark:border-gray-700 overflow-hidden w-full"
-          style={{ 
+          style={{
             borderColor: theme === 'dark' ? '#374151' : '#E5E7EB',
             backgroundColor: theme === 'dark' ? '#1F2937' : '#FFF8E7'
           }}
@@ -544,7 +1448,7 @@ export default function ProductPage({
           <button
             onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
             className="w-full flex items-center justify-between p-4 text-left transition-colors"
-            style={{ 
+            style={{
               backgroundColor: 'transparent'
             }}
             onMouseEnter={(e) => {
@@ -554,7 +1458,7 @@ export default function ProductPage({
               e.currentTarget.style.backgroundColor = 'transparent'
             }}
           >
-            <span 
+            <span
               className="font-medium"
               style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
             >
@@ -572,33 +1476,110 @@ export default function ProductPage({
           </button>
 
           {isDescriptionExpanded && (
-            <div 
+            <div
               className="border-t dark:border-gray-700 p-6"
-              style={{ 
+              style={{
                 borderTopColor: theme === 'dark' ? '#374151' : '#E5E7EB',
                 backgroundColor: theme === 'dark' ? '#111827' : '#FFFBF0'
               }}
             >
               <div className="prose max-w-none dark:prose-invert">
-                <p 
+                <div
                   className="whitespace-pre-wrap leading-relaxed text-base"
                   style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
-                >
-                  {getLocalizedProductDescription(product.description, t, product.translations, router.locale)}
-                </p>
+                  dangerouslySetInnerHTML={{ __html: getLocalizedProductDescription(product.description, t, product.translations, router.locale) }}
+                />
               </div>
             </div>
           )}
         </div>
 
-        {/* Похожие товары */}
+        {/* Дополнительные секции для лекарств */}
+        {(productType === 'medicines' || product.product_type === 'medicines') && (
+          <div className="mt-4 flex flex-col gap-4">
+            {[
+              { id: 'usage', title: t('usage_instructions', 'Способ применения'), content: product.usage_instructions, fieldName: 'usage_instructions' },
+              { id: 'side_effects', title: t('side_effects', 'Побочные действия'), content: product.side_effects, fieldName: 'side_effects' },
+              { id: 'contraindications', title: t('contraindications', 'Противопоказания'), content: product.contraindications, fieldName: 'contraindications' },
+              { id: 'storage', title: t('storage_conditions', 'Условия хранения'), content: product.storage_conditions, fieldName: 'storage_conditions' }
+            ].map((section: any) => {
+              if (!section.content) return null
+              const isExpanded = (product as any)[`_is_${section.id}_expanded`] ?? false
+              return (
+                <div
+                  key={section.id}
+                  className="rounded-lg border dark:border-gray-700 overflow-hidden w-full"
+                  style={{
+                    borderColor: theme === 'dark' ? '#374151' : '#E5E7EB',
+                    backgroundColor: theme === 'dark' ? '#1F2937' : '#FFF8E7'
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setProduct(prev => {
+                        if (!prev) return prev
+                        return { ...prev, [`_is_${section.id}_expanded`]: !isExpanded } as any
+                      })
+                    }}
+                    className="w-full flex items-center justify-between p-4 text-left transition-colors"
+                    style={{
+                      backgroundColor: 'transparent'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = theme === 'dark' ? '#374151' : '#FFF5DC'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent'
+                    }}
+                  >
+                    <span
+                      className="font-medium"
+                      style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
+                    >
+                      {section.title}
+                    </span>
+                    <svg
+                      className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {isExpanded && (
+                    <div
+                      className="border-t dark:border-gray-700 p-6"
+                      style={{
+                        borderTopColor: theme === 'dark' ? '#374151' : '#E5E7EB',
+                        backgroundColor: theme === 'dark' ? '#111827' : '#FFFBF0'
+                      }}
+                    >
+                      <div className="prose max-w-none dark:prose-invert">
+                        <div
+                          className="whitespace-pre-wrap leading-relaxed text-base"
+                          style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
+                          dangerouslySetInnerHTML={{ __html: getLocalizedProductDescription(section.content, t, product.translations, router.locale, section.fieldName) }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Похожие товары (RecSys когда доступен) */}
         <SimilarProducts
           productType={productType}
           currentProductId={product.id}
           currentProductSlug={product.slug}
           limit={8}
+          useRecsys={true}
         />
-      </main>
+      </main >
     </>
   )
 }
@@ -619,53 +1600,105 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     productSlug = slugParts[1]
   }
 
-  const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
-  const endpoint = resolveDetailEndpoint(categoryType, productSlug)
-  
+  const { getInternalApiUrl } = await import('../../lib/urls')
   // Извлекаем валюту из cookie
   const cookieHeader: string = ctx.req.headers.cookie || ''
   const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
   const currency = currencyMatch ? currencyMatch[1] : 'RUB'
-  
-  try {
-    const res = await axios.get(`${base}${endpoint}`, {
+
+  const localePrefix = ctx.locale ? `/${ctx.locale}` : ''
+  const fetchProduct = (type: CategoryType, slug: string) =>
+    axios.get(getInternalApiUrl(resolveDetailEndpoint(type, slug).replace(/^\/api\//, '')), {
       headers: {
         'X-Currency': currency,
         'Accept-Language': ctx.locale || 'en'
       }
     })
-    const baseProductTypes: CategoryType[] = [
-      'medicines', 'supplements', 'medical-equipment',
-      'furniture', 'tableware', 'accessories', 'jewelry',
-      'underwear', 'headwear'
-    ]
-    const isBaseProduct = baseProductTypes.includes(categoryType)
-    return {
-      props: {
-        ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
-        product: res.data,
-        productType: categoryType,
-        isBaseProduct,
-      },
-    }
-  } catch (error) {
-    const localePrefix = ctx.locale ? `/${ctx.locale}` : ''
 
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'furniture', 'medicines']
+  const buildProps = async (res: any, type: CategoryType) => ({
+    props: {
+      ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
+      product: res.data,
+      productType: type,
+      isBaseProduct: isBaseProductType(type),
+      preferredCurrency: currency,
+    },
+  })
+
+  if (slugParts.length === 1) {
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery', 'supplements', 'medical-equipment']
+    for (const t of probeTypes) {
+      try {
+        const res = await fetchProduct(t, productSlug)
+        const product = res.data
+        const actualType = product.product_type || t
+
+        if (actualType !== 'medicines') {
+          return {
+            redirect: {
+              destination: `${localePrefix}/product/${actualType}/${productSlug}`,
+              permanent: false,
+            },
+          }
+        }
+        return buildProps(res, 'medicines')
+      } catch {
+        continue
+      }
+    }
+    return { notFound: true }
+  }
+
+  try {
+    const res = await fetchProduct(categoryType, productSlug)
+    const product = res.data
+    const actualType = product.product_type
+
+    // Редирект на канонический URL, если тип в URL не совпадает с реальным product_type
+    // (напр. /product/medicines/kolco-s-kamnem → /product/jewelry/kolco-s-kamnem)
+    if (actualType && actualType !== categoryType) {
+      return {
+        redirect: {
+          destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
+          permanent: false,
+        },
+      }
+    }
+
+    const activeVariantSlug = res.data?.active_variant_slug
+    const baseSlug = res.data?.slug
+    if (activeVariantSlug && baseSlug && activeVariantSlug === productSlug && baseSlug !== productSlug) {
+      return {
+        redirect: {
+          destination: `${localePrefix}/product/${categoryType}/${baseSlug}`,
+          permanent: false,
+        },
+      }
+    }
+    return buildProps(res, categoryType)
+  } catch (error) {
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery']
     const typesToTry = probeTypes.filter((t) => t !== categoryType)
 
     for (const t of typesToTry) {
       const probeEndpoint = resolveDetailEndpoint(t, productSlug)
       try {
-        await axios.get(`${base}${probeEndpoint}`, {
+        const res = await axios.get(getInternalApiUrl(probeEndpoint.replace(/^\/api\//, '')), {
           headers: {
             'X-Currency': currency,
             'Accept-Language': ctx.locale || 'en'
           }
         })
+        const product = res.data
+        const actualType = product.product_type || t
+
+        if (actualType === categoryType) {
+          return buildProps(res, categoryType)
+        }
+
         return {
           redirect: {
-            destination: `${localePrefix}/product/${t}/${productSlug}`,
+            destination: `${localePrefix}/product/${actualType}/${productSlug}`,
             permanent: false,
           },
         }
@@ -674,16 +1707,6 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
       }
     }
 
-    if (slugParts.length === 1) {
-      return {
-        redirect: {
-          destination: `${localePrefix}/product/${categoryType}/${productSlug}`,
-          permanent: false,
-        },
-      }
-    }
-
     return { notFound: true }
   }
 }
-

@@ -152,7 +152,6 @@ class Command(BaseCommand):
             name='Женская обувь',
             slug='women-shoes',
             gender='women',
-            shoe_type='general',
             is_active=True,
             sort_order=1
         )
@@ -161,7 +160,6 @@ class Command(BaseCommand):
             name='Кроссовки',
             slug='sneakers',
             gender='women',
-            shoe_type='sneakers',
             parent=women_shoes,
             is_active=True,
             sort_order=1

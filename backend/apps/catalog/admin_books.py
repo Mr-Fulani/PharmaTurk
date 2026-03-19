@@ -1,15 +1,28 @@
 """Админки для моделей книг."""
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.translation import gettext_lazy as _
 from django.utils.html import format_html
 from django.db import models as django_models
+
+from .forms import PRODUCT_CATEGORY_HELP
 from .models import (
-    Author, ProductAuthor, Product, ProductBooks, 
+    Author, ProductAuthor, BookProduct,
+    BookProductTranslation, BookProductImage,
     Category, CategoryBooks,
     BookVariant, BookVariantSize, BookVariantImage,
-    ProductTranslation, ProductImage, ProductAttribute
+    ProductGenre, CategoryTranslation
 )
+
+
+@admin.action(description=_("Сделать активными"))
+def activate_book_variants(modeladmin, request, queryset):
+    queryset.update(is_active=True)
+
+
+@admin.action(description=_("Сделать неактивными"))
+def deactivate_book_variants(modeladmin, request, queryset):
+    queryset.update(is_active=False)
 
 
 class BookVariantSizeInline(admin.TabularInline):
@@ -23,7 +36,7 @@ class BookVariantImageInline(admin.TabularInline):
     """Inline для изображений вариантов книг."""
     model = BookVariantImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'is_main', 'sort_order')
+    fields = ('image_file', 'image_url', 'alt_text', 'is_main', 'sort_order')
 
 
 @admin.register(BookVariant)
@@ -34,8 +47,9 @@ class BookVariantAdmin(admin.ModelAdmin):
     search_fields = ('name', 'product__name', 'slug', 'cover_type', 'format_type', 'sku', 'barcode')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
+    actions = [activate_book_variants, deactivate_book_variants]
     fieldsets = (
-        (None, {'fields': ('product', 'name', 'slug')}),
+        (None, {'fields': ('product', 'name', 'name_en', 'slug')}),
         (_('Характеристики'), {
             'fields': ('cover_type', 'format_type', 'isbn'),
             'description': _("Форматы задайте в таблице форматов ниже.")
@@ -49,41 +63,38 @@ class BookVariantAdmin(admin.ModelAdmin):
     inlines = [BookVariantSizeInline, BookVariantImageInline]
 
 
-class ProductTranslationInline(admin.TabularInline):
-    """Inline для переводов товара."""
-    model = ProductTranslation
+class BookProductTranslationInline(admin.TabularInline):
+    """Inline для переводов книги."""
+    model = BookProductTranslation
     extra = 1
-    fields = ('locale', 'description')
+    fields = ('locale', 'name', 'description')
     verbose_name = _('Перевод')
     verbose_name_plural = _('Переводы')
 
 
-class ProductImageInline(admin.TabularInline):
-    """Inline для изображений товара."""
-    model = ProductImage
+class BookProductImageInline(admin.TabularInline):
+    """Inline для изображений книги."""
+    model = BookProductImage
     extra = 1
-    fields = ('image_url', 'alt_text', 'is_main', 'sort_order', 'image_preview')
+    fields = ('image_file', 'image_url', 'alt_text', 'is_main', 'sort_order')
     readonly_fields = ('image_preview',)
     verbose_name = _('Изображение')
     verbose_name_plural = _('Изображения')
     
     def image_preview(self, obj):
-        if obj and obj.image_url:
-            return format_html(
-                '<img src="{}" style="max-width: 100px; max-height: 100px;" />',
-                obj.image_url
-            )
+        if obj:
+            media_url = None
+            if obj.image_file:
+                media_url = obj.image_file.url
+            elif obj.image_url:
+                media_url = obj.image_url
+            if media_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 100px; max-height: 100px;" />',
+                    media_url
+                )
         return "-"
     image_preview.short_description = _("Превью")
-
-
-class ProductAttributeInline(admin.TabularInline):
-    """Inline для атрибутов товара."""
-    model = ProductAttribute
-    extra = 1
-    fields = ('attribute_type', 'name', 'value', 'sort_order')
-    verbose_name = _('Атрибут')
-    verbose_name_plural = _('Атрибуты')
 
 
 class ProductAuthorInline(admin.TabularInline):
@@ -96,19 +107,37 @@ class ProductAuthorInline(admin.TabularInline):
     verbose_name_plural = _('Авторы')
 
 
+class ProductGenreInline(admin.TabularInline):
+    """Inline для жанров книги."""
+    model = ProductGenre
+    extra = 1
+    fields = ('genre', 'sort_order')
+    verbose_name = _('Жанр')
+    verbose_name_plural = _('Жанры')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'genre':
+            kwargs['queryset'] = Category.objects.filter(
+                django_models.Q(slug='books') |
+                django_models.Q(parent__slug='books')
+            ).order_by('name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
 class BookVariantInline(admin.TabularInline):
-    """Inline для вариантов книг в ProductBooks."""
+    """Inline для вариантов книг в BookProduct."""
     model = BookVariant
     extra = 0
-    fields = ('name', 'cover_type', 'format_type', 'price', 'currency', 'is_active', 'sort_order')
+    fields = ('name', 'name_en', 'cover_type', 'format_type', 'price', 'currency', 'main_image', 'is_active', 'sort_order')
 
 
-@admin.register(ProductBooks)
-class ProductBooksAdmin(admin.ModelAdmin):
+@admin.register(BookProduct)
+class BookProductAdmin(admin.ModelAdmin):
     """Админка для товаров-книг."""
+    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = [
         'name', 'authors_list', 'category', 'price', 
-        'old_price', 'rating', 'is_available', 'is_bestseller',
+        'old_price', 'is_available', 'is_bestseller',
         'is_new', 'isbn', 'publisher', 'created_at'
     ]
     list_filter = [
@@ -118,62 +147,59 @@ class ProductBooksAdmin(admin.ModelAdmin):
     list_editable = ['price', 'old_price', 'is_available', 'is_bestseller']
     search_fields = ['name', 'description', 'isbn', 'publisher']
     prepopulated_fields = {'slug': ('name',)}
-    readonly_fields = ['product_type', 'rating', 'reviews_count', 'slug_preview', 'last_synced_at', 'created_at', 'updated_at']
+    readonly_fields = ['rating', 'reviews_count', 'slug_preview', 'created_at', 'updated_at']
     
     fieldsets = (
         (_('Основное'), {
             'fields': ('name', 'slug', 'slug_preview', 'description')
         }),
         (_('Категоризация'), {
-            'fields': ('product_type', 'category')
+            'fields': ('category', 'brand'),
+            'description': PRODUCT_CATEGORY_HELP,
         }),
         (_('Информация о книге'), {
             'fields': ('isbn', 'publisher', 'publication_date', 'pages', 'language', 'cover_type')
         }),
         (_('Цены и наличие'), {
-            'fields': (
-                'price', 'currency', 'old_price', 'margin_percent_applied',
-                'availability_status', 'is_available', 'stock_quantity',
-                'min_order_quantity', 'pack_quantity'
-            )
+            'fields': ('price', 'currency', 'old_price', 'is_available', 'stock_quantity')
         }),
         (_('Рейтинг и статус'), {
             'fields': ('rating', 'reviews_count', 'is_featured', 'is_bestseller', 'is_new')
         }),
-        (_('Логистика'), {
-            'fields': (
-                'gtin', 'mpn', 'weight_value', 'weight_unit', 'length',
-                'width', 'height', 'dimensions_unit', 'country_of_origin'
-            ),
-            'classes': ('collapse',)
-        }),
-        (_('SEO (EN)'), {
+        (_("SEO (EN)"), {
             'fields': (
                 'meta_title', 'meta_description', 'meta_keywords',
                 'og_title', 'og_description', 'og_image_url'
             ),
-            'classes': ('collapse',),
-            'description': _('Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях.')
+            'description': _("Англоязычные SEO-поля и OpenGraph.")
         }),
         (_('Медиа'), {
-            'fields': ('main_image',)
-        }),
-        (_('Мета'), {
-            'fields': ('sku', 'barcode'),
-            'classes': ('collapse',)
+            'fields': ('main_image', 'main_image_file')
         }),
         (_('Внешние данные'), {
             'fields': ('external_id', 'external_url', 'external_data'),
             'classes': ('collapse',)
         }),
-        (_('Синхронизация'), {
-            'fields': ('last_synced_at',),
-            'classes': ('collapse',)
-        }),
     )
     
-    inlines = [ProductAuthorInline, ProductTranslationInline, ProductImageInline, ProductAttributeInline, BookVariantInline]
-    
+    inlines = [ProductAuthorInline, ProductGenreInline, BookProductTranslationInline, BookProductImageInline, BookVariantInline]
+
+    def delete_queryset(self, request, queryset):
+        """При удалении книг в админке удаляем и базовый Product, чтобы товар пропал с фронта."""
+        from apps.catalog.models import Product
+        base_ids = list(queryset.values_list("base_product_id", flat=True).distinct())
+        super().delete_queryset(request, queryset)
+        if base_ids:
+            Product.objects.filter(pk__in=base_ids).delete()
+
+    def delete_model(self, request, obj):
+        """При удалении одной книги удаляем и базовый Product."""
+        from apps.catalog.models import Product
+        base_id = obj.base_product_id
+        super().delete_model(request, obj)
+        if base_id:
+            Product.objects.filter(pk=base_id).delete()
+
     def authors_list(self, obj):
         """Список авторов через запятую."""
         authors = obj.book_authors.all()
@@ -181,14 +207,20 @@ class ProductBooksAdmin(admin.ModelAdmin):
     authors_list.short_description = _('Авторы')
     
     def get_queryset(self, request):
-        """Фильтруем только книги."""
-        return super().get_queryset(request).filter(product_type='books')
+        """Книги — теперь из собственной таблицы."""
+        return super().get_queryset(request)
     
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        """Фильтруем категории только для книг."""
+        """Показываем все категории книг (L1, L2, L3) для выбора при привязке товара."""
         if db_field.name == 'category':
             kwargs['queryset'] = Category.objects.filter(
-                django_models.Q(slug='books') | 
+                category_type__slug='books',
+                is_active=True,
+            ).order_by('sort_order', 'name')
+            kwargs['help_text'] = PRODUCT_CATEGORY_HELP
+        elif db_field.name == 'genre':
+            kwargs['queryset'] = Category.objects.filter(
+                django_models.Q(slug='books') |
                 django_models.Q(parent__slug='books')
             ).order_by('name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
@@ -199,10 +231,54 @@ class ProductBooksAdmin(admin.ModelAdmin):
             return format_html('<code>{}</code>', obj.slug)
         return "-"
     slug_preview.short_description = _("Slug (предпросмотр)")
-    
+
+    def run_ai(self, request, queryset):
+        """Поставить выбранные товары в очередь AI; результат — в логах, применить вручную после одобрения."""
+        from apps.ai.tasks import process_product_ai_task
+        for book in queryset:
+            process_product_ai_task.delay(
+                product_id=book.base_product_id,
+                processing_type="full",
+                auto_apply=False,
+            )
+        self.message_user(
+            request,
+            _("Запущена полная AI обработка для %(count)s товаров. Результаты появятся в разделе «Логи AI»; применить к товару — вручную после одобрения.")
+            % {"count": queryset.count()},
+            level=messages.SUCCESS,
+        )
+    run_ai.short_description = _("Полная AI обработка (без авто-применения)")
+
+    def run_ai_auto_apply(self, request, queryset):
+        """Один запуск: полная обработка + авто-применение. Не нужно идти в «Логи AI»."""
+        from apps.ai.tasks import process_product_ai_task
+        for book in queryset:
+            process_product_ai_task.delay(
+                product_id=book.base_product_id,
+                processing_type="full",
+                auto_apply=True,
+            )
+        self.message_user(
+            request,
+            _("Запущена полная AI обработка с авто-применением для %(count)s товаров. Результаты будут применены к товарам автоматически после завершения.")
+            % {"count": queryset.count()},
+            level=messages.SUCCESS,
+        )
+    run_ai_auto_apply.short_description = _("Полная AI обработка + авто-применение")
+
+    def run_find_merge_duplicates(self, request, queryset):
+        """Запуск поиска и объединения дубликатов по всему каталогу."""
+        from apps.scrapers.tasks import find_and_merge_duplicates
+        find_and_merge_duplicates.delay()
+        self.message_user(
+            request,
+            _("Запущен поиск и объединение дубликатов по всему каталогу. Результаты будут в логах Celery."),
+            level=messages.SUCCESS,
+        )
+    run_find_merge_duplicates.short_description = _("Поиск и объединение дубликатов")
+
     def save_model(self, request, obj, form, change):
-        """Автоматически устанавливаем product_type='books'."""
-        obj.product_type = 'books'
+        """Сохраняем книгу."""
         super().save_model(request, obj, form, change)
 
 
@@ -215,6 +291,15 @@ class CategoryBooksAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     readonly_fields = ('created_at', 'updated_at')
     ordering = ('sort_order', 'name')
+    
+    class CategoryBooksTranslationInline(admin.TabularInline):
+        model = CategoryTranslation
+        extra = 1
+        fields = ('locale', 'name', 'description')
+        verbose_name = _('Перевод')
+        verbose_name_plural = _('Переводы')
+
+    inlines = [CategoryBooksTranslationInline]
     
     fieldsets = (
         (None, {
@@ -257,7 +342,7 @@ class AuthorAdmin(admin.ModelAdmin):
     books_count.short_description = _('Количество книг')
 
 
-# ProductAuthor скрыт из меню - управляется через inline в ProductBooksAdmin
+# ProductAuthor скрыт из меню - управляется через inline в BookProductAdmin
 # Но регистрируем для возможности прямого доступа при необходимости
 @admin.register(ProductAuthor)
 class ProductAuthorAdmin(admin.ModelAdmin):

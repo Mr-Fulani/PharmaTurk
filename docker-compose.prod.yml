@@ -1,0 +1,62 @@
+services:
+  backend:
+    restart: always
+    environment:
+      USE_RUNSERVER: 0
+    ports:
+      - "8000:8000"
+    volumes:
+      - staticfiles:/app/staticfiles
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+  frontend:
+    build:
+      target: production
+    command: npm run start
+    restart: always
+    # Remove direct port 80 mapping, let Nginx handle it
+    environment:
+      - NODE_ENV=production
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+  nginx:
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - staticfiles:/app/staticfiles:ro
+
+  postgres:
+    restart: always
+
+  redis:
+    restart: always
+
+  opensearch:
+    restart: always
+
+  qdrant:
+    restart: always
+
+  celeryworker:
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+  celery_ai:
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+  celerybeat:
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1

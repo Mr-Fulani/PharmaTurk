@@ -30,7 +30,7 @@ def update_currency_rates():
     try:
         logger.info("Starting currency rates update...")
         
-        from .services.currency_service import CurrencyRateService
+        from .utils.currency_service import CurrencyRateService
         service = CurrencyRateService()
         success, message = service.update_rates()
         
@@ -94,6 +94,172 @@ def cleanup_old_currency_logs(days_to_keep=30):
         return {'status': 'error', 'message': str(e)}
 
 
+def _normalize_media_path(path: str) -> str:
+    """Нормализация пути для сравнения: убрать лишние слэши, префиксы dev/prod, привести к единому виду."""
+    if not path or not isinstance(path, str):
+        return ""
+    
+    # Убираем /media/ если есть (из URL)
+    if path.startswith("/media/"):
+        path = path[len("/media/"):]
+        
+    p = path.strip("/").replace("//", "/")
+    
+    # Убираем префикс R2 если он там есть
+    from django.conf import settings
+    prefix = (getattr(settings, "R2_CONFIG", {}).get("prefix", "") or "").strip("/")
+    if prefix and p.startswith(prefix + "/"):
+        p = p[len(prefix) + 1:]
+    elif prefix and p == prefix:
+        return ""
+        
+    return p
+
+
+def _collect_db_media_paths():
+    """
+    Собрать все пути к медиа-файлам из БД.
+    Динамически обходит все модели всех приложений, находит FileField/ImageField,
+    а также URLField, и собирает пути. Это защищает от пропуска новых моделей/полей.
+    """
+    from django.apps import apps
+    from django.db.models import FileField, ImageField, URLField
+    from urllib.parse import urlparse
+
+    paths = set()
+    seen = set()  # (model_label, field_name) для логирования
+
+    for model in apps.get_models():
+        for field in model._meta.get_fields():
+            if not isinstance(field, (FileField, ImageField, URLField)):
+                continue
+            key = (model._meta.label, field.name)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                manager = getattr(model, "_base_manager", model.objects)
+                for obj in manager.only(field.name).iterator(chunk_size=500):
+                    val = getattr(obj, field.name, None)
+                    if not val:
+                        continue
+                    if isinstance(field, (FileField, ImageField)):
+                        if getattr(val, "name", None):
+                            normalized = _normalize_media_path(val.name)
+                            if normalized:
+                                paths.add(normalized)
+                    elif isinstance(field, URLField):
+                        if isinstance(val, str) and val.strip():
+                            parsed = urlparse(val)
+                            path = parsed.path
+                            normalized = _normalize_media_path(path)
+                            if normalized:
+                                paths.add(normalized)
+            except Exception as e:
+                logger.warning("cleanup_orphaned_media: skip %s.%s: %s", model._meta.label, field.name, e)
+    return paths
+
+
+def _list_storage_files(storage, path=""):
+    """Рекурсивно собрать все ключи файлов в хранилище."""
+    collected = set()
+    try:
+        dirs, files = storage.listdir(path)
+        for f in files:
+            full = f"{path}/{f}" if path else f
+            collected.add(_normalize_media_path(full))
+        for d in dirs:
+            prefix = f"{path}/{d}" if path else d
+            collected.update(_list_storage_files(storage, prefix))
+    except Exception:
+        pass
+    return collected
+
+
+# Префиксы путей, которые НИКОГДА не удалять (AI-обработка, кэш, временные файлы, аватарки).
+# Файлы здесь не привязаны к моделям Django или привязаны, но могут не попасть в _collect_db_media_paths.
+_PROTECTED_STORAGE_PREFIXES = (
+    "products/original/",
+    "products/processed/",
+    "products/thumbs/",
+    "products/parsed/",  # файлы, скачанные парсерами
+    "temp/",
+    "avatars/",  # аватарки пользователей (users.User.avatar)
+    "testimonials/",  # аватарки авторов отзывов (feedback.Testimonial.author_avatar)
+)
+
+# Префиксы других окружений — не удалять при очистке.
+# На проде (R2_PREFIX="") listdir возвращает весь бакет, включая dev/.
+# Без этой защиты prod-задача удаляла бы медиа из dev/.
+_OTHER_ENV_PREFIXES = ("dev/", "staging/", "test/", "local/")
+
+
+def _is_protected_path(path: str) -> bool:
+    """Проверить, что путь защищён от удаления."""
+    if not path:
+        return True
+    normalized = _normalize_media_path(path)
+    for prefix in _PROTECTED_STORAGE_PREFIXES:
+        if normalized.startswith(prefix) or path.startswith(prefix):
+            return True
+    # Не удалять файлы из других окружений (dev/, staging/ и т.д.)
+    for prefix in _OTHER_ENV_PREFIXES:
+        if normalized.startswith(prefix) or path.startswith(prefix):
+            return True
+    return False
+
+
+@shared_task(name="catalog.cleanup_orphaned_media")
+def cleanup_orphaned_media():
+    """
+    Удаление файлов из R2/локального хранилища, которых нет в БД.
+    Не удаляет: защищённые префиксы (AI, temp), пути других окружений (dev/, staging/).
+    На проде (R2_PREFIX="") listdir возвращает весь бакет — без защиты dev/ файлы удалялись бы.
+    """
+    from django.core.files.storage import default_storage
+
+    try:
+        db_paths = _collect_db_media_paths()
+        try:
+            storage_paths = _list_storage_files(default_storage)
+        except Exception as e:
+            logger.warning("Could not list storage files (e.g. not using R2): %s", e)
+            return {"status": "skipped", "message": "Storage listing not supported", "deleted": 0}
+
+        # Только те файлы в storage, которых нет в БД
+        orphaned = storage_paths - db_paths
+        # Исключаем защищённые пути (AI, temp, avatars) и пути других окружений (dev/, staging/)
+        to_delete = [p for p in orphaned if not _is_protected_path(p)]
+
+        logger.info(
+            "cleanup_orphaned_media: db_paths=%s, storage_paths=%s, orphaned=%s, protected_excluded=%s, to_delete=%s",
+            len(db_paths),
+            len(storage_paths),
+            len(orphaned),
+            len(orphaned) - len(to_delete),
+            len(to_delete),
+        )
+        if to_delete and len(to_delete) <= 20:
+            logger.info("cleanup_orphaned_media: will delete paths: %s", to_delete)
+        elif to_delete:
+            logger.info("cleanup_orphaned_media: will delete first 10 paths: %s", to_delete[:10])
+
+        deleted = 0
+        for path in to_delete:
+            try:
+                # default_storage уже настроен на R2_PREFIX через location
+                # поэтому удаление path удалит именно то, что нужно.
+                default_storage.delete(path)
+                deleted += 1
+            except Exception as e:
+                logger.warning("Failed to delete orphaned file %s: %s", path, e)
+        logger.info("cleanup_orphaned_media: deleted %s orphaned files", deleted)
+        return {"status": "success", "deleted": deleted}
+    except Exception as e:
+        logger.exception("cleanup_orphaned_media failed: %s", e)
+        return {"status": "error", "message": str(e), "deleted": 0}
+
+
 @shared_task(name='currency.health_check')
 def currency_system_health_check():
     """Проверка здоровья системы валют."""
@@ -132,4 +298,3 @@ def currency_system_health_check():
     except Exception as e:
         logger.error(f"Exception in currency health check: {str(e)}")
         return {'status': 'error', 'message': str(e)}
-

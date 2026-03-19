@@ -9,9 +9,21 @@ from .views import (
     ShoeCategoryViewSet, ShoeProductViewSet,
     ElectronicsCategoryViewSet, ElectronicsProductViewSet,
     FurnitureProductViewSet,
+    JewelryProductViewSet,
+    BookProductViewSet,
+    PerfumeryProductViewSet,
+    MedicineProductViewSet,
+    SupplementProductViewSet,
+    MedicalEquipmentProductViewSet,
+    TablewareProductViewSet,
+    AccessoryProductViewSet,
+    IncenseProductViewSet,
     ServiceViewSet,
     BannerViewSet,
+    SportsProductViewSet,
+    AutoPartProductViewSet,
     proxy_image,
+    proxy_media,
 )
 
 # Основной роутер для медикаментов (существующий)
@@ -41,6 +53,50 @@ electronics_router.register(r'products', ElectronicsProductViewSet, basename='el
 furniture_router = DefaultRouter(trailing_slash=False)
 furniture_router.register(r'products', FurnitureProductViewSet, basename='furniture-product')
 
+# Роутер для украшений
+jewelry_router = DefaultRouter(trailing_slash=False)
+jewelry_router.register(r'products', JewelryProductViewSet, basename='jewelry-product')
+
+# Роутер для книг
+books_router = DefaultRouter(trailing_slash=False)
+books_router.register(r'products', BookProductViewSet, basename='book-product')
+
+# Роутер для парфюмерии
+perfumery_router = DefaultRouter(trailing_slash=False)
+perfumery_router.register(r'products', PerfumeryProductViewSet, basename='perfumery-product')
+
+# Роутер для медикаментов (домен)
+medicines_router = DefaultRouter(trailing_slash=False)
+medicines_router.register(r'products', MedicineProductViewSet, basename='medicine-product')
+
+# Роутер для БАДов
+supplements_router = DefaultRouter(trailing_slash=False)
+supplements_router.register(r'products', SupplementProductViewSet, basename='supplement-product')
+
+# Роутер для медтехники
+medical_equipment_router = DefaultRouter(trailing_slash=False)
+medical_equipment_router.register(r'products', MedicalEquipmentProductViewSet, basename='medical-equipment-product')
+
+# Роутер для посуды
+tableware_router = DefaultRouter(trailing_slash=False)
+tableware_router.register(r'products', TablewareProductViewSet, basename='tableware-product')
+
+# Роутер для аксессуаров
+accessories_router = DefaultRouter(trailing_slash=False)
+accessories_router.register(r'products', AccessoryProductViewSet, basename='accessory-product')
+
+# Роутер для благовоний
+incense_router = DefaultRouter(trailing_slash=False)
+incense_router.register(r'products', IncenseProductViewSet, basename='incense-product')
+
+# Роутер для спорттоваров
+sports_router = DefaultRouter(trailing_slash=False)
+sports_router.register(r'products', SportsProductViewSet, basename='sports-product')
+
+# Роутер для автозапчастей
+auto_parts_router = DefaultRouter(trailing_slash=False)
+auto_parts_router.register(r'products', AutoPartProductViewSet, basename='auto-part-product')
+
 # Роутер для услуг
 services_router = DefaultRouter(trailing_slash=False)
 services_router.register(r'services', ServiceViewSet, basename='service')
@@ -61,9 +117,46 @@ urlpatterns = [
     # Маршруты для мебели
     path('furniture/', include(furniture_router.urls)),
     
+    # Маршруты для украшений
+    path('jewelry/', include(jewelry_router.urls)),
+    
+    # Маршруты для книг
+    path('books/', include(books_router.urls)),
+    
+    # Маршруты для парфюмерии
+    path('perfumery/', include(perfumery_router.urls)),
+    
+    # Маршруты для медикаментов (домен)
+    path('medicines/', include(medicines_router.urls)),
+    
+    # Маршруты для БАДов
+    path('supplements/', include(supplements_router.urls)),
+    
+    # Маршруты для медтехники
+    path('medical-equipment/', include(medical_equipment_router.urls)),
+    
+    # Маршруты для посуды
+    path('tableware/', include(tableware_router.urls)),
+    
+    # Маршруты для аксессуаров
+    path('accessories/', include(accessories_router.urls)),
+    
+    # Маршруты для благовоний
+    path('incense/', include(incense_router.urls)),
+    
+    # Маршруты для спорттоваров
+    path('sports/', include(sports_router.urls)),
+
+    # Маршруты для автозапчастей
+    path('auto-parts/', include(auto_parts_router.urls)),
+
     # Маршруты для услуг
     path('', include(services_router.urls)),
     
-    # Прокси для Instagram изображений
+    # Прокси для Instagram/CDN изображений (с/без slash — APPEND_SLASH=False)
     path('proxy-image/', proxy_image, name='proxy_image'),
+    path('proxy-image', proxy_image, name='proxy_image_no_slash'),
+    # Прокси для R2-медиа (видео/картинки) — устраняет ERR_SSL_PROTOCOL_ERROR
+    path('proxy-media/', proxy_media, name='proxy_media'),
+    path('proxy-media', proxy_media, name='proxy_media_no_slash'),
 ]

@@ -5,18 +5,25 @@ import Link from 'next/link'
 import api from '../lib/api'
 import { useEffect, useState, useCallback } from 'react'
 import { useCartStore } from '../store/cart'
+import { resolveMediaUrl, getPlaceholderImageUrl, isVideoUrl } from '../lib/media'
+import { needsTypeInPath } from '../lib/product'
+import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface CartItem {
   id: number
   product: number
   product_name?: string
+  product_translations?: ProductTranslation[]
   product_slug?: string
   product_type?: string
   product_image_url?: string
+  product_video_url?: string | null
   chosen_size?: string
   quantity: number
   price: string
   currency: string
+  old_price?: string | number | null
+  old_price_formatted?: string | null
 }
 
 interface PromoCode {
@@ -38,8 +45,16 @@ interface Cart {
   promo_code?: PromoCode | null
 }
 
+const parseNumber = (value: string | number | null | undefined) => {
+  if (value === null || typeof value === 'undefined') return null
+  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+  if (!normalized) return null
+  const num = Number(normalized)
+  return Number.isFinite(num) ? num : null
+}
+
 export default function CartPage({ initialCart }: { initialCart: Cart }) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const [cart, setCart] = useState<Cart>({
     ...initialCart,
     items: initialCart.items || []
@@ -219,7 +234,11 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
       setPromoCode('')
       await refreshCart()
     } catch (error: any) {
-      const errorMessage = error?.response?.data?.detail || t('promo_code_error', 'Ошибка применения промокода')
+      const data = error?.response?.data
+      const errorMessage =
+        (typeof data?.detail === 'string' && data.detail) ||
+        (Array.isArray(data?.code) && data.code[0]) ||
+        t('promo_code_error', 'Ошибка применения промокода')
       setPromoError(errorMessage)
     } finally {
       setPromoLoading(false)
@@ -241,7 +260,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
 
   const getProductLink = (slug?: string, productId?: number, productType?: string) => {
     if (slug) {
-      if (productType === 'shoes' || productType === 'clothing') {
+      if (productType && needsTypeInPath(productType)) {
         return `/product/${productType}/${slug}`
       }
       return `/product/${slug}`
@@ -298,27 +317,70 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
             {/* Список товаров */}
             <div className="lg:col-span-2">
               <div className="space-y-4">
-                {(cart.items || []).map((item) => (
-                  <div
-                    key={item.id}
-                    className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all duration-200"
-                  >
-                    {/* Изображение товара */}
+                {(cart.items || []).map((item) => {
+                  const oldPriceSource = item.old_price_formatted ?? item.old_price
+                  const priceValue = parseNumber(item.price)
+                  const oldPriceValue = parseNumber(oldPriceSource)
+                  const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
+                    ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
+                    : null
+                  const resolvedImage = item.product_image_url
+                    ? resolveMediaUrl(item.product_image_url)
+                    : null
+                  const resolvedVideoUrl = item.product_video_url && isVideoUrl(item.product_video_url)
+                    ? resolveMediaUrl(item.product_video_url)
+                    : null
+                  const showVideo = Boolean(resolvedVideoUrl)
+                  const localizedName = getLocalizedProductName(
+                    item.product_name || `Товар #${item.product}`,
+                    t,
+                    item.product_translations,
+                    i18n.language
+                  )
+                  return (
+                    <div
+                      key={item.id}
+                      className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-all duration-200"
+                    >
+                    {/* Главное медиа товара (видео или изображение) */}
                     <Link
                       href={getProductLink(item.product_slug, item.product, item.product_type)}
                       className="relative w-full sm:w-32 h-32 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100"
                     >
-                      {item.product_image_url ? (
-                        <img
-                          src={item.product_image_url}
-                          alt={item.product_name || `Товар #${item.product}`}
+                      {showVideo ? (
+                        <video
+                          src={resolvedVideoUrl!}
+                          poster={resolvedImage || undefined}
+                          muted
+                          loop
+                          playsInline
+                          autoPlay
+                          preload="metadata"
                           className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                        />
+                      ) : resolvedImage ? (
+                        <img
+                          src={resolvedImage}
+                          alt={localizedName}
+                          className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          onError={(e) => {
+                            e.currentTarget.src = getPlaceholderImageUrl({
+                              type: 'product',
+                              id: item.product || item.id,
+                            })
+                          }}
                         />
                       ) : (
                         <img
-                          src="/product-placeholder.svg"
+                          src={getPlaceholderImageUrl({
+                            type: 'product',
+                            id: item.product || item.id,
+                          })}
                           alt="No image"
                           className="h-full w-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.src = '/product-placeholder.svg'
+                          }}
                         />
                       )}
                     </Link>
@@ -331,7 +393,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           className="block"
                         >
                           <h3 className="text-lg font-semibold text-gray-900 hover-text-warm transition-colors line-clamp-2">
-                            {item.product_name || `Товар #${item.product}`}
+                            {localizedName}
                           </h3>
                         </Link>
                         {item.chosen_size ? (
@@ -339,9 +401,19 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                             {t('size', 'Размер')}: <span className="font-medium text-gray-900">{item.chosen_size}</span>
                           </div>
                         ) : null}
-                        <div className="mt-1 text-lg font-bold text-[var(--text-strong)]">
+                        <div className="mt-1 text-lg font-bold text-red-600">
                           {item.price} {item.currency}
                         </div>
+                        {(item.old_price_formatted || item.old_price) && (
+                          <div className="flex items-baseline gap-2">
+                            <div className="text-sm text-gray-400 line-through">
+                              {item.old_price_formatted || `${item.old_price} ${item.currency}`}
+                            </div>
+                            {discountPercent !== null && (
+                              <div className="text-sm font-semibold !text-red-600">-{discountPercent}%</div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Управление количеством и удалением */}
@@ -398,7 +470,8 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                       </div>
                     </div>
                   </div>
-                ))}
+                )
+                })}
               </div>
 
               {/* Кнопка очистки корзины */}
@@ -421,13 +494,13 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                 {/* Промокод */}
                 <div className="mb-4">
                   {cart.promo_code ? (
-                    <div className="rounded-lg bg-green-50 p-3 border border-green-200">
+                    <div className="rounded-lg bg-red-50 p-3 border border-red-200">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-sm font-medium text-green-800">
+                          <div className="text-sm font-medium !text-red-700">
                             {t('promo_code_applied', 'Промокод применён')}: {cart.promo_code.code}
                           </div>
-                          <div className="text-xs text-green-600 mt-1">
+                          <div className="text-xs !text-red-600 mt-1">
                             {cart.promo_code.discount_type === 'percent' 
                               ? `${cart.promo_code.discount_value}%`
                               : `${cart.promo_code.discount_value} ${cart.currency || 'USD'}`}
@@ -436,7 +509,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                         <button
                           onClick={removePromoCode}
                           disabled={promoLoading}
-                          className="text-green-600 hover:text-green-800 text-sm font-medium disabled:opacity-50"
+                          className="!text-red-600 hover:!text-red-700 text-sm font-medium disabled:opacity-50"
                         >
                           {t('remove', 'Удалить')}
                         </button>
@@ -485,7 +558,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     </div>
                   )}
                   {cart.discount_amount && parseFloat(cart.discount_amount) > 0 && (
-                    <div className="flex justify-between text-sm text-green-600">
+                    <div className="flex justify-between text-sm !text-red-600">
                       <span>{t('cart_discount', 'Скидка')}</span>
                       <span className="font-medium">
                         -{cart.discount_amount} {cart.currency || 'USD'}
@@ -541,7 +614,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
 export async function getServerSideProps(ctx: any) {
   const { req, res: serverRes, locale } = ctx
   try {
-    const base = process.env.INTERNAL_API_BASE || 'http://backend:8000'
+    const { getInternalApiUrl } = await import('../lib/urls')
     const cookieHeader: string = req.headers.cookie || ''
     const cartSessionMatch = cookieHeader.match(/(?:^|;\s*)cart_session=([^;]+)/)
     let cartSession = cartSessionMatch ? cartSessionMatch[1] : ''
@@ -558,7 +631,7 @@ export async function getServerSideProps(ctx: any) {
     const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
     const currency = currencyMatch ? currencyMatch[1] : 'RUB'
 
-    const apiRes = await fetch(`${base}/api/orders/cart`, {
+    const apiRes = await fetch(getInternalApiUrl('orders/cart'), {
       headers: {
         cookie: cookieHeader,
         'Accept-Language': locale || 'en',

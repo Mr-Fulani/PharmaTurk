@@ -4,17 +4,28 @@ import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
+import ShareButton from './ShareButton'
+import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../lib/media'
+import { buildProductUrl } from '../lib/urls'
+import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface Product {
   id: number
+  base_product_id?: number | null
   name: string
   slug: string
-  price: string | null
-  currency: string
-  oldPrice?: string | null
+  price: string | number | null
+  currency?: string | null
+  oldPrice?: string | number | null
+  old_price?: string | number | null
+  old_price_formatted?: string | null
+  active_variant_price?: string | number | null
+  active_variant_currency?: string | null
+  active_variant_old_price_formatted?: string | null
   badge?: string | null
   rating?: number | null
   main_image_url?: string | null
+  video_url?: string | null
   brand?: {
     id: number
     name: string
@@ -22,14 +33,51 @@ interface Product {
   }
   is_new?: boolean
   product_type?: string
+  translations?: ProductTranslation[]
 }
 
 interface PopularProductsCarouselProps {
   className?: string
 }
 
+const parsePriceWithCurrency = (value?: string | number | null) => {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null }
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null }
+  }
+  const trimmed = value.trim()
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
+  }
+  return { price: trimmed, currency: null as string | null }
+}
+
+const parseNumber = (value: string | number | null | undefined) => {
+  if (value === null || typeof value === 'undefined') return null
+  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+  if (!normalized) return null
+  const num = Number(normalized)
+  return Number.isFinite(num) ? num : null
+}
+
+const formatPrice = (value: string | number | null | undefined): string | null => {
+  if (value === null || typeof value === 'undefined') return null
+  const num = parseNumber(value)
+  if (num === null) return String(value)
+
+  // Округляем до 2 знаков после запятой, затем убираем лишние нули и саму точку, если она не нужна
+  let str = num.toFixed(2)
+  if (str.includes('.')) {
+    str = str.replace(/0+$/, '').replace(/\.$/, '')
+  }
+  return str
+}
+
 export default function PopularProductsCarousel({ className = '' }: PopularProductsCarouselProps) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(0)
@@ -41,20 +89,21 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
     const fetchProducts = async () => {
       try {
         console.log('[PopularProducts] Fetching products...')
-        const [medicinesRes, clothingRes, shoesRes, electronicsRes] = await Promise.allSettled([
+        const [medicinesRes, clothingRes, shoesRes, electronicsRes, jewelryRes] = await Promise.allSettled([
           api.get('/catalog/products/featured'),
           api.get('/catalog/clothing/products/featured'),
           api.get('/catalog/shoes/products/featured'),
           api.get('/catalog/electronics/products/featured'),
+          api.get('/catalog/jewelry/products/featured'),
         ])
         console.log('[PopularProducts] Fetched, processing responses...')
 
         const allProducts: Product[] = []
-        const processResponse = (res: PromiseSettledResult<any>, product_type: string) => {
+        const processResponse = (res: PromiseSettledResult<any>, fallbackType: string) => {
           if (res.status === 'fulfilled' && res.value.data) {
             const data = res.value.data
             const items = Array.isArray(data) ? data : data.results || []
-            return items.map((p: any) => ({ ...p, product_type }))
+            return items.map((p: any) => ({ ...p, product_type: p.product_type || fallbackType }))
           }
           return []
         }
@@ -62,21 +111,33 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
         allProducts.push(...processResponse(clothingRes, 'clothing'))
         allProducts.push(...processResponse(shoesRes, 'shoes'))
         allProducts.push(...processResponse(electronicsRes, 'electronics'))
+        allProducts.push(...processResponse(jewelryRes, 'jewelry'))
 
-        if (allProducts.length === 0) {
+        const uniqueAllProducts = Array.from(
+          new Map(allProducts.map(item => [item.id, item])).values()
+        )
+
+        if (uniqueAllProducts.length < 8) {
           try {
             const response = await api.get('/catalog/products', {
               params: { ordering: '-created_at', limit: 20 },
             })
             const data = response.data
             const productsList = Array.isArray(data) ? data : data.results || []
-            allProducts.push(...productsList.map((p: any) => ({ ...p, product_type: 'medicines' })))
+
+            // Фильтруем дубликаты, если какие-то featured товары уже есть в списке последних
+            const existingIds = new Set(uniqueAllProducts.map((p: any) => p.id))
+            const newProducts = productsList
+              .filter((p: any) => !existingIds.has(p.id))
+              .map((p: any) => ({ ...p, product_type: p.product_type || 'medicines' }))
+
+            uniqueAllProducts.push(...newProducts)
           } catch (error) {
             console.error('Failed to fetch latest products:', error)
           }
         }
 
-        const shuffled = allProducts.sort(() => Math.random() - 0.5).slice(0, 20)
+        const shuffled = uniqueAllProducts.sort(() => Math.random() - 0.5).slice(0, 20)
         console.log('[PopularProducts] Sample product prices:', shuffled.slice(0, 3).map(p => ({ name: p.name, price: p.price, currency: p.currency })))
         setProducts(shuffled)
       } catch (error) {
@@ -101,7 +162,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
         // Ensure we don't scroll past the last possible position
         const maxScrollLeft = scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth
         const scrollAmount = Math.min(targetIndex * (cardWidth + gap), maxScrollLeft)
-        
+
         scrollContainerRef.current.scrollTo({
           left: scrollAmount,
           behavior: 'smooth',
@@ -154,20 +215,20 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
       if (container) {
         const card = container.children[0] as HTMLElement
         if (!card) return
-        
+
         const cardWidth = card.offsetWidth
         const gap = 16
         const pageWidth = itemsPerPage * (cardWidth + gap)
-        
+
         // Use Math.floor to be more precise about which page we're on
         const newPage = Math.floor((container.scrollLeft + pageWidth / 2) / pageWidth)
-        
+
         if (newPage < totalPages && newPage !== currentPage) {
           setCurrentPage(newPage)
         }
       }
     }
-    
+
     const debouncedHandleScroll = () => {
       clearTimeout(scrollTimeout)
       scrollTimeout = setTimeout(handleScroll, 150)
@@ -207,7 +268,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
   const getPaginationDots = () => {
     const maxDots = 3
     if (totalPages <= maxDots) {
-      return [...Array(totalPages).keys()] // e.g., [0, 1, 2]
+      return Array.from({ length: totalPages }, (_, i) => i) // e.g., [0, 1, 2]
     }
     if (currentPage === 0) {
       return [0, 1, 2]
@@ -222,7 +283,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
     <section className={`py-12 ${className}`}>
       <div className="mx-auto max-w-6xl px-4">
         <h2 className="text-3xl font-bold text-main mb-8 text-center">
-          {t('popular_products_title', 'Популярные товары')}
+          {t('section_best_sellers', 'Хиты продаж')}
         </h2>
         <div className="relative mb-8">
           <div
@@ -233,76 +294,153 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
               msOverflowStyle: 'none',
             }}
           >
-            {products.map((product) => (
-              <div
-                key={product.id}
-                className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden group"
-              >
-                <Link
-                  href={`/product/${product.product_type || 'medicines'}/${product.slug}`}
-                  className="relative block w-full h-80 overflow-hidden bg-gray-100"
+            {products.map((product) => {
+              const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
+              const { price: parsedBasePrice, currency: parsedBaseCurrency } = parsePriceWithCurrency(product.price)
+              const displayPrice = parsedVariantPrice ?? parsedBasePrice ?? product.price
+              const displayCurrency = product.active_variant_currency || parsedVariantCurrency || parsedBaseCurrency || product.currency
+              const oldPriceSource =
+                product.active_variant_old_price_formatted ||
+                product.old_price_formatted ||
+                product.old_price ||
+                product.oldPrice
+              const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(oldPriceSource)
+              const displayOldCurrency = parsedOldCurrency || displayCurrency || product.currency
+
+              // Форматируем старую цену, убирая лишние нули
+              let displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? oldPriceSource : null
+              if (displayOldPrice && typeof displayOldPrice === 'string') {
+                // Убираем лишние нули после запятой
+                displayOldPrice = displayOldPrice.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '')
+              }
+
+              const displayPriceLabel = displayPrice ? formatPrice(displayPrice) : null
+              const displayOldPriceLabel = displayOldPrice ? formatPrice(displayOldPrice) : null
+              const displayCurrencyLabel = displayCurrency ? String(displayCurrency) : null
+              const displayOldCurrencyLabel = displayOldCurrency ? String(displayOldCurrency) : null
+              const priceValue = parseNumber(displayPrice)
+              const oldPriceValue = parseNumber(displayOldPrice)
+              const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
+                ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
+                : null
+
+              const localizedName = getLocalizedProductName(product.name, t, product.translations, i18n.language)
+              return (
+                <div
+                  key={product.id}
+                  className="flex-shrink-0 w-44 md:w-60 group flex flex-col gap-2 relative transition-all duration-300 hover:-translate-y-1 snap-start"
                 >
-                  <img
-                    src={product.main_image_url || '/product-placeholder.svg'}
-                    alt={product.name}
-                    className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-                  />
-                  {product.is_new && (
-                    <span className="absolute left-2 top-2 rounded-md bg-pink-100 px-2 py-0.5 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
-                      {t('product_new', 'Новинка')}
-                    </span>
-                  )}
-                  <div
-                    className="absolute top-2 right-2 z-20"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                    }}
-                  >
-                    <FavoriteButton
-                      productId={product.id}
-                      productType={product.product_type || 'medicines'}
-                      iconOnly={true}
-                      className="!p-2 !rounded-full w-10 h-10 bg-white/90 hover:bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform"
-                    />
-                  </div>
-                </Link>
-                <div className="p-4">
-                  {product.brand && (
-                    <div className="text-xs text-gray-500 mb-1">{product.brand.name}</div>
-                  )}
                   <Link
-                    href={`/product/${product.product_type || 'medicines'}/${product.slug}`}
-                    className="block mb-2"
+                    href={buildProductUrl(product.product_type || 'medicines', product.slug)}
+                    className="relative block w-full aspect-[4/5] overflow-hidden bg-gray-100/50 rounded-xl"
                   >
-                  <h3 className="text-sm font-semibold text-gray-900 line-clamp-2 hover-text-warm transition-colors">
-                      {product.name}
-                    </h3>
-                  </Link>
-                  <div className="mb-3">
-                    <div className="flex items-baseline gap-2">
-                      <div className="text-lg font-bold text-[var(--text-strong)]">
-                        {product.price
-                          ? `${product.price} ${product.currency}`
-                          : t('price_on_request', 'Цена по запросу')}
+                    {product.video_url && isVideoUrl(product.video_url) ? (
+                      <video
+                        src={resolveMediaUrl(product.video_url)}
+                        poster={
+                          (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
+                          getPlaceholderImageUrl({ type: 'product', id: product.id })
+                        }
+                        muted
+                        playsInline
+                        loop
+                        autoPlay
+                        preload="metadata"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <img
+                        src={
+                          (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
+                          getPlaceholderImageUrl({ type: 'product', id: product.id })
+                        }
+                        alt={localizedName}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        onError={(e) => {
+                          e.currentTarget.src = getPlaceholderImageUrl({
+                            type: 'product',
+                            id: `${product.id}-fallback`,
+                          })
+                        }}
+                      />
+                    )}
+
+                    {/* Индикация фото (точки) */}
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10 opacity-70">
+                      <div className="w-1.5 h-1.5 rounded-full bg-white scale-125 shadow-sm"></div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-white/60 shadow-sm"></div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-white/60 shadow-sm"></div>
+                    </div>
+
+                    {product.is_new && (
+                      <div className="absolute left-2 top-2 flex flex-col gap-1 z-10">
+                        <span className="rounded-md bg-green-100/90 backdrop-blur-sm px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-200">
+                          {t('product_new', 'Новинка')}
+                        </span>
                       </div>
-                      {product.oldPrice && (
-                        <div className="text-sm text-gray-400 line-through">
-                          {product.oldPrice} {product.currency}
-                        </div>
+                    )}
+                    
+                    <div
+                      className="absolute top-2 right-2 z-20 flex flex-col gap-1.5"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                      }}
+                    >
+                      <FavoriteButton
+                        productId={product.id}
+                        productType={product.product_type || 'medicines'}
+                        cornerIcon={true}
+                      />
+                      <ShareButton
+                        title={localizedName}
+                        imageUrl={
+                          product.main_image_url
+                            ? resolveMediaUrl(product.main_image_url)
+                            : null
+                        }
+                        slug={product.slug}
+                        productType={product.product_type || 'medicines'}
+                        cornerIcon={true}
+                      />
+                    </div>
+                  </Link>
+
+                  <Link 
+                    href={buildProductUrl(product.product_type || 'medicines', product.slug)}
+                    className="flex flex-col px-1"
+                  >
+                    <div className="flex items-baseline gap-2 mb-1">
+                      <span className="text-base md:text-lg font-bold text-[var(--text-strong)] leading-tight tracking-tight">
+                        {displayPriceLabel
+                          ? displayCurrencyLabel
+                            ? `${displayPriceLabel} ${displayCurrencyLabel}`
+                            : displayPriceLabel
+                          : t('price_on_request', 'Цена по запросу')}
+                      </span>
+                      {displayOldPriceLabel && (
+                        <span className="text-xs md:text-sm text-gray-400 line-through">
+                          {displayOldCurrencyLabel
+                            ? `${displayOldPriceLabel} ${displayOldCurrencyLabel}`
+                            : displayOldPriceLabel}
+                        </span>
+                      )}
+                      {displayOldPriceLabel && discountPercent !== null && (
+                        <span className="text-xs font-semibold !text-red-500">-{discountPercent}%</span>
                       )}
                     </div>
-                  </div>
-                  <AddToCartButton
-                    productId={product.id}
-                    productType={product.product_type || 'medicines'}
-                    productSlug={product.slug}
-                    className="w-full"
-                    label={t('add_to_cart', 'В корзину')}
-                  />
+                    {product.brand && (
+                      <div className="text-[10px] md:text-xs text-gray-400 uppercase tracking-widest leading-none mb-1">
+                        {product.brand.name}
+                      </div>
+                    )}
+                    <h3 className="uppercase text-sm font-semibold text-[var(--text-strong)] line-clamp-2 leading-tight tracking-wide">
+                      {localizedName}
+                    </h3>
+                  </Link>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
@@ -341,4 +479,3 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
     </section>
   )
 }
-

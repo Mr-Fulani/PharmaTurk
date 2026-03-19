@@ -5,7 +5,9 @@ import axios from 'axios'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Masonry from 'react-masonry-css'
-import { resolveMediaUrl } from '../../lib/media'
+import BannerCarousel from '../../components/BannerCarouselMedia'
+import { resolveMediaUrl, getPlaceholderImageUrl, isVideoUrl } from '../../lib/media'
+import { getSiteOrigin } from '../../lib/urls'
 import { getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../../lib/i18n'
 
 interface Brand {
@@ -39,13 +41,13 @@ const mapCategoryToRouteSlug = (slug?: string | null) => {
   return normalized || 'medicines'
 }
 
-const renderMedia = (mediaUrl?: string | null, alt?: string) => {
-  if (!mediaUrl) return null
+const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
+  const effectiveUrl = mediaUrl || getPlaceholderImageUrl({ type: 'brand', id })
 
-  const youtubeId = extractYouTubeId(mediaUrl)
+  const youtubeId = extractYouTubeId(effectiveUrl)
   if (youtubeId) {
-    const youtubeThumb = getYouTubeThumbnail(mediaUrl)
-    const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
+    const youtubeThumb = getYouTubeThumbnail(effectiveUrl)
+      const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
     const params = [
       'autoplay=1',
       'mute=1',
@@ -92,13 +94,10 @@ const renderMedia = (mediaUrl?: string | null, alt?: string) => {
     )
   }
 
-  const src = resolveMediaUrl(mediaUrl)
+  const src = resolveMediaUrl(effectiveUrl)
   if (!src) return null
 
-  const normalized = src.split('?')[0].toLowerCase()
-  const isVideo = /\.(mp4|mov|webm|m4v)$/i.test(normalized)
-
-  if (isVideo) {
+  if (isVideoUrl(mediaUrl || src)) {
     return (
       <video
         className="absolute inset-0 h-full w-full object-cover"
@@ -106,6 +105,20 @@ const renderMedia = (mediaUrl?: string | null, alt?: string) => {
         muted
         loop
         playsInline
+        preload="metadata"
+        onError={(e) => {
+          const placeholder = id ? getPlaceholderImageUrl({ type: 'brand', id }) : null
+          if (placeholder) {
+            const wrapper = e.currentTarget.parentElement
+            if (wrapper) {
+              const img = document.createElement('img')
+              img.src = placeholder
+              img.alt = alt || ''
+              img.className = 'absolute inset-0 h-full w-full object-cover'
+              wrapper.replaceChildren(img)
+            }
+          }
+        }}
       >
         <source src={src} />
       </video>
@@ -118,6 +131,12 @@ const renderMedia = (mediaUrl?: string | null, alt?: string) => {
       src={src}
       alt={alt || ''}
       className="absolute inset-0 h-full w-full object-cover"
+      onError={(e) => {
+        const placeholder = id ? getPlaceholderImageUrl({ type: 'brand', id }) : null
+        if (placeholder && e.currentTarget.src !== placeholder) {
+          e.currentTarget.src = placeholder
+        }
+      }}
     />
   )
 }
@@ -126,7 +145,7 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
   const { t } = useTranslation('common')
   const router = useRouter()
 
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+  const siteUrl = getSiteOrigin()
   const canonicalUrl = `${siteUrl}/brands`
   const pageTitle = t('brands_page_title', 'Бренды — PharmaTurk')
   const pageDescription = t('brands_page_description', 'Популярные бренды из Турции: одежда, обувь, электроника, аксессуары и товары для здоровья.')
@@ -160,6 +179,10 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
           </div>
         </section>
 
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8">
+          <BannerCarousel position="main" />
+        </div>
+
         <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <Masonry
             breakpointCols={{ default: 3, 1024: 3, 768: 2, 640: 1 }}
@@ -178,7 +201,7 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
                   style={{ height: cardHeight }}
                   className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-gray-900/10"
                 >
-                  {renderMedia(brand.card_media_url || brand.logo, brand.name)}
+                  {renderMedia(brand.card_media_url || brand.logo, brand.name, brand.id)}
                   <div className="absolute inset-0 bg-black/35" />
                   <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
                     <div className="text-center text-white drop-shadow">
@@ -219,11 +242,9 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
 
 export const getServerSideProps = async (ctx: any) => {
   try {
-    // Используем относительный путь, который работает через Next.js rewrites
-    const base = process.env.INTERNAL_API_BASE || ''
-
+    const { getInternalApiUrl } = await import('../../lib/urls')
     let allBrands: Brand[] = []
-    let nextUrl: string | null = `${base}/api/catalog/brands?page_size=200`
+    let nextUrl: string | null = getInternalApiUrl('catalog/brands?page_size=200')
 
     while (nextUrl) {
       const res = await axios.get(nextUrl)
@@ -241,12 +262,14 @@ export const getServerSideProps = async (ctx: any) => {
       if (slug.startsWith('clothing')) endpoints.push('/api/catalog/clothing/products')
       else if (slug.startsWith('shoes')) endpoints.push('/api/catalog/shoes/products')
       else if (slug.startsWith('electronics')) endpoints.push('/api/catalog/electronics/products')
+      else if (slug.startsWith('furniture')) endpoints.push('/api/catalog/furniture/products')
+      else if (slug.startsWith('jewelry')) endpoints.push('/api/catalog/jewelry/products')
       // Общий каталог — всегда в конце как fallback
       endpoints.push('/api/catalog/products')
 
       for (const ep of endpoints) {
         try {
-          const res = await axios.get(`${base}${ep}`, {
+          const res = await axios.get(getInternalApiUrl(ep.replace(/^\/api\//, '')), {
             params: { brand_id: brand.id, page_size: 1 },
           })
           const data = res.data
@@ -271,10 +294,8 @@ export const getServerSideProps = async (ctx: any) => {
       )
     }
 
-    // Оставляем бренды с товарами (>0), затем сортируем по количеству и имени
-    allBrands = allBrands
-      .filter((b) => (b.products_count ?? 0) > 0)
-      .sort((a, b) => {
+    // Показываем все бренды, сортируем: сначала с товарами (по количеству), затем без товаров (по имени)
+    allBrands = [...allBrands].sort((a, b) => {
       const ca = a.products_count ?? 0
       const cb = b.products_count ?? 0
       if (cb !== ca) return cb - ca
@@ -296,4 +317,3 @@ export const getServerSideProps = async (ctx: any) => {
     }
   }
 }
-

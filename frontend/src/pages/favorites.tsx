@@ -4,11 +4,36 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { GetServerSideProps } from 'next'
 import Link from 'next/link'
+import Cookies from 'js-cookie'
 import { useFavoritesStore } from '../store/favorites'
 import ProductCard from '../components/ProductCard'
+import { isBaseProductType, needsTypeInPath } from '../lib/product'
+
+const parseNumber = (value: string | number | null | undefined) => {
+  if (value === null || typeof value === 'undefined') return null
+  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
+  if (!normalized) return null
+  const num = Number(normalized)
+  return Number.isFinite(num) ? num : null
+}
+
+const parsePriceWithCurrency = (value?: string | number | null) => {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null }
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null }
+  }
+  const trimmed = value.trim()
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
+  }
+  return { price: trimmed, currency: null as string | null }
+}
 
 export default function FavoritesPage() {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const { favorites, loading, refresh } = useFavoritesStore()
   const refreshedRef = useRef(false)
 
@@ -16,7 +41,8 @@ export default function FavoritesPage() {
     // Загружаем избранное только один раз при монтировании
     if (!refreshedRef.current) {
       refreshedRef.current = true
-      refresh()
+      const currentCurrency = Cookies.get('currency')
+      refresh(currentCurrency)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -70,35 +96,46 @@ export default function FavoritesPage() {
             {favorites.map((favorite) => {
               const product = favorite.product
               const productType = product._product_type || 'medicines'
-              const baseProductTypes = [
-                'medicines',
-                'supplements',
-                'medical-equipment',
-                'medical_equipment',
-                'furniture',
-                'tableware',
-                'accessories',
-                'jewelry',
-                'underwear',
-                'headwear',
-              ]
-              const isBaseProduct = baseProductTypes.includes(productType)
-              const productHref = isBaseProduct 
-                ? `/product/${product.slug}` 
-                : `/product/${productType}/${product.slug}`
+              const isBaseProduct = isBaseProductType(productType)
+              const productHref = needsTypeInPath(productType)
+                ? `/product/${productType}/${product.slug}`
+                : `/product/${product.slug}`
+              const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
+              
+              // Используем ту же логику, что и в корзине для старой цены
+              const oldPriceSource = product.active_variant_old_price_formatted ?? product.old_price_formatted ?? product.old_price
+              const priceValue = parseNumber(product.price)
+              const oldPriceValue = parseNumber(oldPriceSource)
+              
+              const displayPrice = parsedVariantPrice ?? product.price
+              const displayCurrency = product.active_variant_currency || parsedVariantCurrency || product.currency
+              
+              // Форматируем старую цену как в корзине
+              let displayOldPrice = null
+              if (oldPriceValue !== null && priceValue !== null && oldPriceValue > priceValue) {
+                // Используем только числовое значение без валюты, чтобы избежать дублирования в ProductCard
+                displayOldPrice = oldPriceValue
+              }
               
               return (
                 <ProductCard
                   key={favorite.id}
                   id={product.id}
+                  baseProductId={(product as { base_product_id?: number }).base_product_id}
                   name={product.name}
                   slug={product.slug}
-                  price={product.price}
-                  currency={product.currency}
+                  price={displayPrice ? String(displayPrice) : null}
+                  currency={displayCurrency || undefined}
+                  oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                   imageUrl={product.main_image_url}
+                  videoUrl={product.video_url}
                   href={productHref}
                   productType={productType}
                   isBaseProduct={isBaseProduct}
+                  isNew={(product as { is_new?: boolean }).is_new}
+                  isFeatured={(product as { is_featured?: boolean }).is_featured}
+                  translations={product.translations}
+                  locale={i18n.language}
                 />
               )
             })}
@@ -116,4 +153,3 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     },
   }
 }
-

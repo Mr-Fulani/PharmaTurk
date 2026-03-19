@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
-import { resolveMediaUrl } from '../lib/media'
+import { resolveMediaUrl, getPlaceholderImageUrl } from '../lib/media'
 
 interface BannerMedia {
   id: number
@@ -38,37 +38,13 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   const [displayMedia, setDisplayMedia] = useState<BannerMedia[]>([])
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [fallbackToPicsumIds, setFallbackToPicsumIds] = useState<Record<number, boolean>>({})
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
 
-  const hasMediaContent = (media: BannerMedia | null | undefined) => {
-    if (!media) return false
-    const trimVal = (v: any) => (typeof v === 'string' ? v.trim() : '')
-    return !!(trimVal(media.title) || trimVal(media.description) || (trimVal(media.link_text) && trimVal(media.link_url)))
-  }
-
-  const rotateActiveToContent = (list: BannerMedia[]) => {
-    if (list.length <= 1) return list
-    const res = [...list]
-    const max = res.length
-    
-    console.log('🔄 rotateActiveToContent called')
-    console.log('Input:', res.map((m, i) => `${i}:${m.id}`))
-    
-    for (let i = 0; i < max; i++) {
-      // Активный элемент теперь ВСЕГДА на позиции 0 (nth-child(1))
-      const active = res[0]
-      if (hasMediaContent(active)) {
-        console.log('Output (after', i, 'rotations):', res.map((m, i) => `${i}:${m.id}`))
-        return res
-      }
-      const first = res.shift()
-      if (first) res.push(first)
-    }
-    
-    console.log('Output (after max rotations):', res.map((m, i) => `${i}:${m.id}`))
-    return res
-  }
+  // Важно: порядок медиа на фронте должен совпадать с порядком в админке.
+  // Поэтому НИЧЕГО не крутим и не переставляем — просто показываем media_files
+  // в том порядке, в котором пришли из API (там уже сортировка по sort_order, id).
 
   useEffect(() => {
     const fetchBanners = async () => {
@@ -89,12 +65,13 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
           // НЕ дублируем - показываем только реальные медиа
           const mediaFiles = firstBanner.media_files
           const initialList = mediaFiles.slice(0, Math.min(6, mediaFiles.length))
-          const displayMediaList = rotateActiveToContent(initialList)
+          // Без ротации: каждый медиа-элемент соответствует своему разделу в админке
+          const displayMediaList = initialList
           setDisplayMedia(displayMediaList)
           
-          // Устанавливаем активный медиа: если медиа одно - первое, если несколько - второе (index 1)
+          // Активный слайд — всегда первый (index 0), чтобы картинка и текст совпадали на большой области
           if (displayMediaList.length > 0) {
-            const activeMedia = displayMediaList.length === 1 ? displayMediaList[0] : displayMediaList[1]
+            const activeMedia = displayMediaList[0]
             setActiveMediaId(activeMedia.id)
           }
           
@@ -103,7 +80,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
             title: firstBanner.title,
             mediaCount: mediaFiles.length,
             displayCount: displayMediaList.length,
-            activeMediaId: displayMediaList.length === 1 ? displayMediaList[0]?.id : displayMediaList[1]?.id
+            activeMediaId: displayMediaList[0]?.id
           })
           
           // Детальное логирование данных медиа
@@ -119,6 +96,12 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
               hasLink: !!(media.link_text && media.link_url)
             })
           })
+        } else {
+          // Нет активных баннеров (все деактивированы в админке) — очищаем состояние,
+          // иначе останутся старые данные и деактивированный баннер «залипнет» на экране
+          setBanner(null)
+          setDisplayMedia([])
+          setActiveMediaId(null)
         }
       } catch (error: any) {
         console.error('Failed to fetch banners:', error)
@@ -141,7 +124,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
         // Проверяем, не было ли ручного действия в последние 4 секунды
         const timeSinceLastManual = Date.now() - lastManualActionRef.current
         if (timeSinceLastManual > 4000) {
-          goToNextMedia()
+          goToNextMedia(false)
         }
       }, 5000)
     }
@@ -169,64 +152,60 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     }
   }, [displayMedia])
 
-  const goToPreviousMedia = () => {
+  const goToPreviousMedia = (isManual: boolean) => {
     if (!banner || displayMedia.length <= 1) return
     
     console.log('⬅️ PREVIOUS button clicked')
     console.log('Before:', displayMedia.map((m, i) => `${i}:${m.id}`))
     
-    // Отмечаем ручное действие
-    lastManualActionRef.current = Date.now()
-    resetAutoPlay()
-    
-    // Логика из оригинала: prepend(items[items.length - 1])
-    // Берем ПОСЛЕДНИЙ элемент и добавляем его в НАЧАЛО
-    const newMedia = [...displayMedia]
-    const lastItem = newMedia.pop()  // Берем последний элемент
-    if (lastItem) {
-      newMedia.unshift(lastItem)  // Добавляем в начало (станет активным на nth-child(1))
+    if (isManual) {
+      lastManualActionRef.current = Date.now()
+      resetAutoPlay()
     }
     
-    console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
-    
-    setDisplayMedia(newMedia)
-    
-    // Активный элемент всегда на позиции 0 (первый элемент, nth-child(1))
-    const activeMedia = newMedia[0]
-    if (activeMedia) {
-      console.log('New active media:', activeMedia.id)
-      setActiveMediaId(activeMedia.id)
-    }
+    setDisplayMedia((prev) => {
+      if (prev.length <= 1) return prev
+      const newMedia = [...prev]
+      const lastItem = newMedia.pop()
+      if (lastItem) {
+        newMedia.unshift(lastItem)
+      }
+      console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
+      const activeMedia = newMedia[0]
+      if (activeMedia) {
+        console.log('New active media:', activeMedia.id)
+        setActiveMediaId(activeMedia.id)
+      }
+      return newMedia
+    })
   }
 
-  const goToNextMedia = () => {
+  const goToNextMedia = (isManual: boolean) => {
     if (!banner || displayMedia.length <= 1) return
     
     console.log('➡️ NEXT button clicked')
     console.log('Before:', displayMedia.map((m, i) => `${i}:${m.id}`))
     
-    // Отмечаем ручное действие
-    lastManualActionRef.current = Date.now()
-    resetAutoPlay()
-    
-    // Логика из оригинала: appendChild(items[0])
-    // Берем ПЕРВЫЙ элемент (активный nth-child(1)) и добавляем в КОНЕЦ
-    const newMedia = [...displayMedia]
-    const firstItem = newMedia.shift()  // Берем первый элемент
-    if (firstItem) {
-      newMedia.push(firstItem)  // Добавляем в конец
+    if (isManual) {
+      lastManualActionRef.current = Date.now()
+      resetAutoPlay()
     }
     
-    console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
-    
-    setDisplayMedia(newMedia)
-    
-    // Активный элемент всегда на позиции 0 (первый элемент, nth-child(1))
-    const activeMedia = newMedia[0]
-    if (activeMedia) {
-      console.log('New active media:', activeMedia.id)
-      setActiveMediaId(activeMedia.id)
-    }
+    setDisplayMedia((prev) => {
+      if (prev.length <= 1) return prev
+      const newMedia = [...prev]
+      const firstItem = newMedia.shift()
+      if (firstItem) {
+        newMedia.push(firstItem)
+      }
+      console.log('After:', newMedia.map((m, i) => `${i}:${m.id}`))
+      const activeMedia = newMedia[0]
+      if (activeMedia) {
+        console.log('New active media:', activeMedia.id)
+        setActiveMediaId(activeMedia.id)
+      }
+      return newMedia
+    })
   }
 
   const getVideoEmbedUrl = (url: string): string | null => {
@@ -257,15 +236,13 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   }
 
   const renderMediaItem = (media: BannerMedia, index: number) => {
-    // Активность определяем по id, а не только по индексу, чтобы текст был сразу
+    // Активный слайд — всегда первый (index 0), чтобы картинка и текст совпадали
     const isActive =
       activeMediaId !== null
         ? media.id === activeMediaId
-        : displayMedia.length === 1
-          ? index === 0
-          : index === 1
+        : index === 0
     
-    const fullUrl = resolveMediaUrl(media.content_url)
+    const fullUrl = media.content_url ? resolveMediaUrl(media.content_url) : ''
     const embedUrl = media.content_type === 'video' ? getVideoEmbedUrl(fullUrl) : null
 
     const handleThumbnailClick = () => {
@@ -333,8 +310,8 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     // Учитываем, что значения могут быть пустыми строками
     const hasMediaContent = !!(title || description || (linkText && linkUrl))
     
-    // Контент показываем только для активного элемента с данными, и только для больших (index < 2)
-    const shouldShowContent = isActive && index < 2 && hasMediaContent
+    // Контент показываем только для активного слайда (index 0 — большая картинка), чтобы текст не путался с другим слайдом
+    const shouldShowContent = isActive && index === 0 && hasMediaContent
     
     // Отладка для активного элемента с данными
     if (isActive && typeof window !== 'undefined' && hasMediaContent) {
@@ -360,14 +337,43 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
         data-banner-item
         className={styles.item}
         style={{
-          backgroundImage: (media.content_type === 'image' || media.content_type === 'gif') 
-            ? `url(${fullUrl})` 
-            : 'none',
+          backgroundImage:
+            (media.content_type === 'image' || media.content_type === 'gif') && fullUrl
+              ? `url(${fullUrl})`
+              : 'none',
         }}
         onClick={index >= 1 ? handleThumbnailClick : handleLargeImageClick}
       >
+        {/* Изображение / GIF как <img>, чтобы отлавливать ошибки и показывать плейсхолдер */}
+        {(media.content_type === 'image' || media.content_type === 'gif') && (() => {
+          const isPicsum = !fullUrl || fallbackToPicsumIds[media.id]
+          return (
+            <img
+              src={
+                fullUrl ||
+                getPlaceholderImageUrl({
+                  type: 'banner',
+                  seed: `${position}-${media.id}-${Math.random().toString(16).slice(2, 6)}`,
+                  width: 1200,
+                  height: 400,
+                })
+              }
+              alt={title || banner?.title || 'Banner'}
+              className={isPicsum ? styles.itemPicsumPlaceholder : styles.itemImage}
+              onError={(e) => {
+                setFallbackToPicsumIds((prev) => ({ ...prev, [media.id]: true }))
+                e.currentTarget.src = getPlaceholderImageUrl({
+                  type: 'banner',
+                  seed: `${position}-${media.id}-fallback-${Math.random().toString(16).slice(2, 6)}`,
+                  width: 1200,
+                  height: 400,
+                })
+              }}
+            />
+          )
+        })()}
         {/* Видео контент */}
-        {media.content_type === 'video' && embedUrl && (
+        {media.content_type === 'video' && embedUrl && fullUrl && (
           <iframe
             src={embedUrl}
             className={styles.itemIframe}
@@ -375,7 +381,8 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
             allowFullScreen
           />
         )}
-        {media.content_type === 'video' && !embedUrl && (
+        {media.content_type === 'video' && !embedUrl && fullUrl && (
+          // Обычное видео (MP4/WebM из R2 или локального хранилища)
           <video
             autoPlay
             loop
@@ -385,6 +392,27 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
           >
             <source src={fullUrl} type={media.content_mime_type || 'video/mp4'} />
           </video>
+        )}
+        {media.content_type === 'video' && !fullUrl && (
+          // Нет валидного URL — показываем placeholder (только picsum)
+          <img
+            src={getPlaceholderImageUrl({
+              type: 'banner',
+              seed: `${position}-video-${media.id}-${Math.random().toString(16).slice(2, 6)}`,
+              width: 1200,
+              height: 400,
+            })}
+            alt={title || banner?.title || 'Banner'}
+            className={styles.itemPicsumPlaceholder}
+            onError={(e) => {
+              e.currentTarget.src = getPlaceholderImageUrl({
+                type: 'banner',
+                seed: `${position}-video-${media.id}-fallback-${Math.random().toString(16).slice(2, 6)}`,
+                width: 1200,
+                height: 400,
+              })
+            }}
+          />
         )}
 
         {/* Контент с текстом - показываем только на большой картинке и только если у медиа есть свои данные */}
@@ -439,6 +467,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
   }
 
   if (!banner) {
+    // Нет баннеров (удалены или деактивированы в админке) — не показываем блок
     return null
   }
 
@@ -454,7 +483,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
         <div className={styles.buttonContainer}>
           <button
             className={styles.navButton}
-            onClick={goToPreviousMedia}
+            onClick={() => goToPreviousMedia(true)}
             aria-label="Предыдущее медиа"
           >
             <svg className={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -463,7 +492,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
           </button>
           <button
             className={styles.navButton}
-            onClick={goToNextMedia}
+            onClick={() => goToNextMedia(true)}
             aria-label="Следующее медиа"
           >
             <svg className={styles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -475,4 +504,3 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     </div>
   )
 }
-

@@ -9,6 +9,7 @@ import api from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { StarIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/20/solid'
 import { PhotoIcon, VideoCameraIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/outline'
+import { getPlaceholderImageUrl, resolveMediaUrl } from '../../lib/media'
 
 interface TestimonialMedia {
   id: number
@@ -39,7 +40,7 @@ interface MediaItem {
 }
 
 export default function TestimonialsPage() {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const { user } = useAuth()
   const [testimonials, setTestimonials] = useState<Testimonial[]>([])
@@ -52,7 +53,7 @@ export default function TestimonialsPage() {
   const modalIframeRef = useRef<HTMLIFrameElement | null>(null)
   const modalIframeUrl = useRef<string | null>(null)
   const [videoMuted, setVideoMuted] = useState<Map<number, boolean>>(new Map())
-  
+
   // Form state
   const [formData, setFormData] = useState({
     text: '',
@@ -63,6 +64,13 @@ export default function TestimonialsPage() {
   const [touchStart, setTouchStart] = useState(0)
   const [touchEnd, setTouchEnd] = useState(0)
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  const isRu = i18n.language?.toLowerCase().startsWith('ru')
+  const filteredByUserLabel = isRu
+    ? t('filtered_by_user', { lng: 'ru', defaultValue: 'Отзывы пользователя' })
+    : t('filtered_by_user', 'Reviews by user')
+  const showAllTestimonialsLabel = isRu
+    ? t('show_all_testimonials', { lng: 'ru', defaultValue: 'Показать все отзывы' })
+    : t('show_all_testimonials', 'Show all reviews')
 
   useEffect(() => {
     const fetchTestimonials = async () => {
@@ -70,7 +78,7 @@ export default function TestimonialsPage() {
         // Получаем параметр username из URL для фильтрации
         const username = router.query.username as string | undefined
         const params = username ? { username } : {}
-        
+
         const response = await api.get('/feedback/testimonials/', { params })
         const data = response.data
         setTestimonials(Array.isArray(data) ? data : data.results || [])
@@ -82,6 +90,20 @@ export default function TestimonialsPage() {
     }
     fetchTestimonials()
   }, [router.query.username])
+
+  // Открываем форму, если есть параметр action=add
+  useEffect(() => {
+    if (router.isReady && router.query.action === 'add') {
+      setShowForm(true)
+      // Если пользователь не авторизован, можно прокрутить к кнопке "Войти", 
+      // но лучше пока просто открыть блок с формой (там будет написано, что надо войти)
+      const timer = setTimeout(() => {
+        const formElement = document.getElementById('add-testimonial-form')
+        if (formElement) formElement.scrollIntoView({ behavior: 'smooth' })
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [router.isReady, router.query.action])
 
   // Блокировка скролла при открытом модальном окне
   useEffect(() => {
@@ -106,7 +128,7 @@ export default function TestimonialsPage() {
       document.body.style.overflow = 'unset'
     }
   }, [selectedTestimonial, videoMuted])
-  
+
   // Останавливаем видео при переходе на другую вкладку
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -118,17 +140,17 @@ export default function TestimonialsPage() {
         }
       }
     }
-    
+
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
 
-  const allMedia = selectedTestimonial 
-    ? (selectedTestimonial.media && selectedTestimonial.media.length > 0 
-        ? selectedTestimonial.media 
-        : [])
+  const allMedia = selectedTestimonial
+    ? (selectedTestimonial.media && selectedTestimonial.media.length > 0
+      ? selectedTestimonial.media
+      : [])
     : []
 
   const nextMedia = () => {
@@ -153,7 +175,7 @@ export default function TestimonialsPage() {
 
   const handleTouchEnd = () => {
     if (!touchStart || !touchEnd) return
-    
+
     const distance = touchStart - touchEnd
     const isLeftSwipe = distance > 50
     const isRightSwipe = distance < -50
@@ -168,7 +190,7 @@ export default function TestimonialsPage() {
 
   const handleToggleMute = () => {
     if (!selectedTestimonial) return
-    
+
     setVideoMuted((prev) => {
       const newMap = new Map(prev)
       const currentMuted = newMap.get(selectedTestimonial.id) !== false
@@ -204,13 +226,13 @@ export default function TestimonialsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!user) {
       alert(t('login_required_to_submit_testimonial', 'Для отправки отзыва необходимо войти.'))
       router.push('/auth')
       return
     }
-    
+
     setSubmitting(true)
 
     try {
@@ -244,13 +266,13 @@ export default function TestimonialsPage() {
       setFormData({ text: '', rating: 0 })
       setMediaItems([])
       setShowForm(false)
-      
+
       // Показываем сообщение об успешной отправке и модерации
       setShowSuccessMessage(true)
       setTimeout(() => {
         setShowSuccessMessage(false)
       }, 5000) // Скрываем через 5 секунд
-      
+
       // Обновляем список отзывов (только активные)
       const updatedResponse = await api.get('/feedback/testimonials/')
       const updatedData = updatedResponse.data
@@ -267,17 +289,17 @@ export default function TestimonialsPage() {
     if (media.media_type === 'image' && media.image_url) {
       return (
         <img
-          src={media.image_url}
+          src={resolveMediaUrl(media.image_url)}
           alt={selectedTestimonial?.author_name || 'Testimonial'}
           className="w-full h-full object-cover"
         />
       )
     }
-    
+
     if (media.media_type === 'video' && media.video_url) {
       let embedUrl = media.video_url
       let isValidEmbedUrl = false
-      
+
       // Обработка YouTube URL - улучшенная версия, поддерживающая все форматы
       // Проверяем, является ли URL уже embed URL
       if (embedUrl.includes('youtube.com/embed/')) {
@@ -299,17 +321,17 @@ export default function TestimonialsPage() {
         // Поддерживаем: /watch?v=, /embed/, /shorts/, youtu.be/, m.youtube.com/
         // Для обычных видео ID всегда 11 символов, для Shorts может быть разной длины
         let videoId = null
-        
+
         // Сначала пробуем стандартный формат (11 символов)
         const standardRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})/
         let match = embedUrl.match(standardRegex)
-        
+
         // Если не нашли, пробуем формат Shorts (может быть разной длины)
         if (!match) {
           const shortsRegex = /(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)/
           match = embedUrl.match(shortsRegex)
         }
-        
+
         if (match && match[1]) {
           videoId = match[1]
           embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&muted=1&loop=1&playlist=${videoId}&controls=1&rel=0&modestbranding=1`
@@ -320,7 +342,7 @@ export default function TestimonialsPage() {
           return null
         }
       }
-      
+
       // Обработка Vimeo URL
       if (embedUrl.includes('vimeo.com/') && !embedUrl.includes('player.vimeo.com')) {
         const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
@@ -344,12 +366,12 @@ export default function TestimonialsPage() {
         }
         isValidEmbedUrl = true
       }
-      
+
       // Показываем iframe только если URL валидный
       if (isValidEmbedUrl) {
         // Сохраняем URL и ref для управления воспроизведением в модальном окне
         modalIframeUrl.current = embedUrl
-        
+
         // Инициализируем muted состояние, если еще не установлено (по умолчанию true - без звука)
         if (selectedTestimonial && !videoMuted.has(selectedTestimonial.id)) {
           setVideoMuted((prev) => {
@@ -358,23 +380,23 @@ export default function TestimonialsPage() {
             return newMap
           })
         }
-        
+
         // Получаем текущее состояние muted (по умолчанию true)
-        const isMuted = selectedTestimonial 
+        const isMuted = selectedTestimonial
           ? (videoMuted.get(selectedTestimonial.id) !== false)
           : true
-        
+
         // Создаем URL с правильным параметром muted
         // Для включения звука нужно УБРАТЬ параметр muted, а не ставить muted=0
         let finalUrl = embedUrl
         try {
           const url = new URL(embedUrl)
-          
+
           // Убеждаемся, что autoplay=1 присутствует
           if (!url.searchParams.has('autoplay')) {
             url.searchParams.set('autoplay', '1')
           }
-          
+
           if (isMuted) {
             // Выключен звук - устанавливаем muted=1
             url.searchParams.set('muted', '1')
@@ -382,7 +404,7 @@ export default function TestimonialsPage() {
             // Включен звук - убираем параметр muted полностью
             url.searchParams.delete('muted')
           }
-          
+
           finalUrl = url.toString()
         } catch (error) {
           console.error('Error parsing URL:', error, embedUrl)
@@ -392,7 +414,7 @@ export default function TestimonialsPage() {
             const separator = finalUrl.includes('?') ? '&' : '?'
             finalUrl = `${finalUrl}${separator}autoplay=1`
           }
-          
+
           if (isMuted) {
             // Выключен звук - убеждаемся, что muted=1 есть
             if (!finalUrl.includes('muted=1')) {
@@ -413,12 +435,12 @@ export default function TestimonialsPage() {
             finalUrl = finalUrl.replace(/[?&]$/, '')
           }
         }
-        
+
         // Отладочная информация
         if (process.env.NODE_ENV === 'development') {
           console.log('YouTube iframe URL (modal):', { testimonialId: selectedTestimonial?.id, isMuted, finalUrl })
         }
-        
+
         return (
           <iframe
             key={`modal-${selectedTestimonial?.id || 'video'}-${isMuted ? 'muted' : 'unmuted'}`}
@@ -434,10 +456,10 @@ export default function TestimonialsPage() {
           />
         )
       }
-      
+
       return null
     }
-    
+
     if (media.media_type === 'video_file' && media.video_file_url) {
       return (
         <video
@@ -445,34 +467,48 @@ export default function TestimonialsPage() {
           playsInline
           className="w-full h-full object-cover"
         >
-          <source src={media.video_file_url} type="video/mp4" />
+          <source src={resolveMediaUrl(media.video_file_url)} type="video/mp4" />
           {t('video_tag_unsupported', 'Ваш браузер не поддерживает видео.')}
         </video>
       )
     }
-    
-    return null
+
+    // Если медиа нет или оно некорректно – показываем placeholder
+    const placeholder = getPlaceholderImageUrl({
+      type: 'testimonial',
+      id: selectedTestimonial?.id || media.id,
+    })
+    return (
+      <img
+        src={placeholder}
+        alt={selectedTestimonial?.author_name || 'Testimonial'}
+        className="w-full h-full object-cover"
+        onError={(e) => {
+          e.currentTarget.src = '/product-placeholder.svg'
+        }}
+      />
+    )
   }
 
   const extractYouTubeId = (url: string): string | null => {
     if (!url) return null
-    
+
     // Проверяем, является ли URL уже embed URL
     if (url.includes('youtube.com/embed/')) {
       const embedMatch = url.match(/youtube\.com\/embed\/([^"&?\/\s]+)/)
       return embedMatch ? embedMatch[1] : null
     }
-    
+
     // Сначала пробуем стандартный формат (11 символов)
     const standardRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})/
     let match = url.match(standardRegex)
-    
+
     // Если не нашли, пробуем формат Shorts (может быть разной длины)
     if (!match) {
       const shortsRegex = /(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)/
       match = url.match(shortsRegex)
     }
-    
+
     return match ? match[1] : null
   }
 
@@ -509,7 +545,7 @@ export default function TestimonialsPage() {
       <Head>
         <title>{t('testimonials_page_title', 'Отзывы клиентов')} - PharmaTurk</title>
       </Head>
-      
+
       {/* Success notification */}
       {showSuccessMessage && (
         <div className="fixed top-4 right-4 z-50 animate-slide-in">
@@ -542,24 +578,24 @@ export default function TestimonialsPage() {
           </div>
         </div>
       )}
-      
+
       <div className="min-h-screen bg-gray-50 py-12">
         <div className="mx-auto max-w-6xl px-4">
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h1 className="text-4xl font-bold text-gray-900 mb-2">
-              {t('testimonials_page_title', 'Отзывы клиентов')}
-            </h1>
+                  {t('testimonials_page_title', 'Отзывы клиентов')}
+                </h1>
                 {router.query.username && (
                   <p className="text-lg text-gray-700">
-                    {t('filtered_by_user', 'Отзывы пользователя')}: <span className="font-semibold">@{router.query.username}</span>
+                    {filteredByUserLabel}: <span className="font-semibold">@{router.query.username}</span>
                   </p>
                 )}
                 {!router.query.username && (
-            <p className="text-gray-600">
-              {t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')}
-            </p>
+                  <p className="text-gray-600">
+                    {t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')}
+                  </p>
                 )}
               </div>
               {router.query.username && (
@@ -567,7 +603,7 @@ export default function TestimonialsPage() {
                   href="/testimonials"
                   className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
                 >
-                  {t('show_all_testimonials', 'Показать все отзывы')}
+                  {showAllTestimonialsLabel}
                 </Link>
               )}
             </div>
@@ -596,7 +632,7 @@ export default function TestimonialsPage() {
                       <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100">
                         {cardMedia.media_type === 'image' && cardMedia.image_url && (
                           <img
-                            src={cardMedia.image_url}
+                            src={resolveMediaUrl(cardMedia.image_url)}
                             alt={testimonial.author_name}
                             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                           />
@@ -622,7 +658,7 @@ export default function TestimonialsPage() {
                         )}
                         {cardMedia.media_type === 'video_file' && cardMedia.video_file_url && (
                           <video
-                            src={`${cardMedia.video_file_url}#t=0.5`}
+                            src={`${resolveMediaUrl(cardMedia.video_file_url)}#t=0.5`}
                             muted
                             playsInline
                             preload="metadata"
@@ -632,14 +668,14 @@ export default function TestimonialsPage() {
                       </div>
                     )
                   })()}
-                  
+
                   {/* Текст отзыва - по центру */}
                   <div className="flex-1 p-4 min-h-[100px]">
                     <p className="text-gray-600 text-sm line-clamp-4">
-                      "{testimonial.text}"
+                      &quot;{testimonial.text}&quot;
                     </p>
                   </div>
-                  
+
                   {/* Нижняя часть: аватарка + имя слева, звездочки справа */}
                   <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 mt-auto">
                     {testimonial.user_id && testimonial.user_username ? (
@@ -652,9 +688,12 @@ export default function TestimonialsPage() {
                       >
                         {testimonial.author_avatar_url && (
                           <img
-                            src={testimonial.author_avatar_url}
+                            src={resolveMediaUrl(testimonial.author_avatar_url)}
                             alt={testimonial.author_name}
                             className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                            onError={(e) => {
+                              e.currentTarget.src = '/product-placeholder.svg'
+                            }}
                           />
                         )}
                         <div className="text-xs font-semibold text-gray-900 truncate">
@@ -662,29 +701,31 @@ export default function TestimonialsPage() {
                         </div>
                       </Link>
                     ) : (
-                    <div className="flex items-center flex-1 min-w-0">
-                      {testimonial.author_avatar_url && (
-                        <img
-                          src={testimonial.author_avatar_url}
-                          alt={testimonial.author_name}
-                          className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
-                        />
-                      )}
-                      <div className="text-xs font-semibold text-gray-900 truncate">
-                        {testimonial.author_name}
+                      <div className="flex items-center flex-1 min-w-0">
+                        {testimonial.author_avatar_url && (
+                          <img
+                            src={resolveMediaUrl(testimonial.author_avatar_url)}
+                            alt={testimonial.author_name}
+                            className="w-8 h-8 rounded-full mr-3 object-cover flex-shrink-0"
+                            onError={(e) => {
+                              e.currentTarget.src = '/product-placeholder.svg'
+                            }}
+                          />
+                        )}
+                        <div className="text-xs font-semibold text-gray-900 truncate">
+                          {testimonial.author_name}
+                        </div>
                       </div>
-                    </div>
                     )}
                     {testimonial.rating && (
                       <div className="flex items-center ml-2 flex-shrink-0">
                         {[0, 1, 2, 3, 4].map((rating) => (
                           <StarIcon
                             key={rating}
-                            className={`h-4 w-4 ${
-                              (testimonial.rating || 0) > rating
-                                ? 'text-yellow-400'
-                                : 'text-gray-300'
-                            }`}
+                            className={`h-4 w-4 ${(testimonial.rating || 0) > rating
+                              ? 'text-yellow-400'
+                              : 'text-gray-300'
+                              }`}
                           />
                         ))}
                       </div>
@@ -697,7 +738,7 @@ export default function TestimonialsPage() {
 
           {/* Add Testimonial Button */}
           {user ? (
-            <div className="text-center mt-12 mb-8">
+            <div id="add-testimonial-form" className="text-center mt-12 mb-8">
               <button
                 onClick={() => setShowForm(!showForm)}
                 className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
@@ -706,7 +747,7 @@ export default function TestimonialsPage() {
               </button>
             </div>
           ) : (
-            <div className="text-center mt-12 mb-8">
+            <div id="add-testimonial-form" className="text-center mt-12 mb-8">
               <p className="text-gray-600 mb-4">
                 {t('login_required_to_submit_testimonial', 'Для отправки отзыва необходимо войти.')}
               </p>
@@ -725,7 +766,7 @@ export default function TestimonialsPage() {
               <h2 className="text-2xl font-bold text-gray-900 mb-6">
                 {t('add_testimonial', 'Оставить отзыв')}
               </h2>
-              
+
               <form onSubmit={handleSubmit} className="space-y-6">
                 {user && (
                   <div className="bg-gray-50 p-4 rounded-lg">
@@ -748,11 +789,10 @@ export default function TestimonialsPage() {
                         key={rating}
                         type="button"
                         onClick={() => setFormData({ ...formData, rating })}
-                        className={`p-2 rounded ${
-                          formData.rating >= rating
-                            ? 'text-yellow-400'
-                            : 'text-gray-300 hover:text-yellow-300'
-                        }`}
+                        className={`p-2 rounded ${formData.rating >= rating
+                          ? 'text-yellow-400'
+                          : 'text-gray-300 hover:text-yellow-300'
+                          }`}
                       >
                         <StarIcon className="w-6 h-6" />
                       </button>
@@ -777,7 +817,7 @@ export default function TestimonialsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     {t('add_media', 'Добавить медиа')}
                   </label>
-                  
+
                   <div className="space-y-4">
                     {/* Image upload */}
                     <div>
@@ -884,8 +924,8 @@ export default function TestimonialsPage() {
 
       {/* Modal for testimonial detail */}
       {selectedTestimonial && (
-        <div 
-          className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+        <div
+          className="fixed inset-0 bg-black/60 z-50 flex items-start md:items-center justify-center p-4 sm:p-6"
           onClick={() => {
             setSelectedTestimonial(null)
             setCurrentMediaIndex(0)
@@ -893,7 +933,7 @@ export default function TestimonialsPage() {
         >
           <div
             ref={modalRef}
-            className="bg-white rounded-3xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto relative"
+            className="bg-white rounded-3xl shadow-2xl w-full max-w-[95vw] sm:max-w-lg md:max-w-4xl max-h-[90vh] overflow-y-auto relative"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close button - только для мобильных устройств */}
@@ -907,17 +947,17 @@ export default function TestimonialsPage() {
               <XMarkIcon className="w-6 h-6" />
             </button>
 
-            <div className="flex flex-col items-center gap-6 p-6">
+            <div className="flex flex-col md:flex-row md:items-start gap-6 p-4 sm:p-6">
               {/* Media Slider */}
               {allMedia.length > 0 && allMedia[currentMediaIndex] && (
-                <div 
-                  className="relative w-full max-w-sm aspect-[9/16] bg-black rounded-2xl overflow-hidden"
+                <div
+                  className="relative w-full md:w-5/12 aspect-[9/16] sm:aspect-[4/5] md:aspect-[3/4] bg-black rounded-2xl overflow-hidden"
                   onTouchStart={handleTouchStart}
                   onTouchMove={handleTouchMove}
                   onTouchEnd={handleTouchEnd}
                 >
                   {renderMedia(allMedia[currentMediaIndex])}
-                  
+
                   {allMedia.length > 1 && (
                     <>
                       <button
@@ -934,16 +974,15 @@ export default function TestimonialsPage() {
                       >
                         <ChevronRightIcon className="w-5 h-5" />
                       </button>
-                      
+
                       {/* Media indicators */}
                       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2 z-10">
                         {allMedia.map((_, index) => (
                           <button
                             key={index}
                             onClick={() => setCurrentMediaIndex(index)}
-                            className={`w-2 h-2 rounded-full transition-all ${
-                              index === currentMediaIndex ? 'bg-white' : 'bg-white/50'
-                            }`}
+                            className={`w-2 h-2 rounded-full transition-all ${index === currentMediaIndex ? 'bg-white' : 'bg-white/50'
+                              }`}
                             aria-label={`Go to media ${index + 1}`}
                           />
                         ))}
@@ -954,40 +993,39 @@ export default function TestimonialsPage() {
               )}
 
               {/* Content */}
-              <div className="w-full space-y-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center">
+              <div className="w-full md:w-7/12 space-y-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-center min-w-0">
                     {selectedTestimonial.author_avatar_url && (
                       <img
-                        src={selectedTestimonial.author_avatar_url}
+                        src={resolveMediaUrl(selectedTestimonial.author_avatar_url)}
                         alt={selectedTestimonial.author_name}
                         className="w-12 h-12 rounded-full mr-4 object-cover"
                       />
                     )}
-                    <div>
+                    <div className="min-w-0">
                       <h2 className="text-2xl font-bold text-gray-900">{selectedTestimonial.author_name}</h2>
                       <p className="text-sm text-gray-500">
                         {new Date(selectedTestimonial.created_at).toLocaleDateString('ru-RU')}
                       </p>
                     </div>
                   </div>
-                  
+
                   {selectedTestimonial.rating && (
                     <div className="flex items-center">
                       {[0, 1, 2, 3, 4].map((rating) => (
                         <StarIcon
                           key={rating}
-                          className={`h-5 w-5 ${
-                            (selectedTestimonial.rating || 0) > rating
-                              ? 'text-yellow-400'
-                              : 'text-gray-300'
-                          }`}
+                          className={`h-5 w-5 ${(selectedTestimonial.rating || 0) > rating
+                            ? 'text-yellow-400'
+                            : 'text-gray-300'
+                            }`}
                         />
                       ))}
                     </div>
                   )}
                 </div>
-                
+
                 <p className="text-gray-700 text-lg leading-relaxed whitespace-pre-wrap">
                   {selectedTestimonial.text}
                 </p>
@@ -1022,4 +1060,3 @@ export const getServerSideProps: GetServerSideProps = async ({ locale }) => {
     },
   }
 }
-

@@ -8,3 +8,6 @@ class UsersConfig(AppConfig):
     name = "apps.users"
     verbose_name = "Пользователи"
 
+    def ready(self):
+        import apps.users.signals  # noqa: F401
+

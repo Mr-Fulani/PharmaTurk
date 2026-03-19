@@ -1,18 +1,18 @@
 import os
+from decimal import Decimal
+
 import django
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-django.setup()
-
-from apps.catalog.models import Category, Product
-from decimal import Decimal
 
 def create_islamic_books():
     """Создание исламских категорий книг и книг в этих категориях"""
-    
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+    django.setup()
+    from apps.catalog.models import Category, Product
+
     # Получаем главную категорию "Книги"
     books_category = Category.objects.get(slug='books')
-    
+
     # Создаем исламские категории
     categories_data = [
         {
@@ -41,7 +41,7 @@ def create_islamic_books():
             'description': 'Исламская история и биографии'
         }
     ]
-    
+
     created_categories = {}
     for cat_data in categories_data:
         category, created = Category.objects.get_or_create(
@@ -54,15 +54,18 @@ def create_islamic_books():
             }
         )
         created_categories[cat_data['slug']] = category
-        print(f"{'Создана' if created else 'Найдена'} категория: {category.name}")
-    
+        status = 'Создана' if created else 'Найдена'
+        print(f"{status} категория: {category.name}")
+
     # Создаем книги для каждой категории
     books_data = [
         # Исламский фикх
         {
             'name': 'Фикх ас-Сунна',
             'slug': 'fiqh-as-sunna',
-            'description': 'Классический труд по исламскому праву на основе Сунны',
+            'description': (
+                'Классический труд по исламскому праву на основе Сунны'
+            ),
             'category': 'islamic-fiqh',
             'price': '1299.99',
             'old_price': '1599.99',
@@ -93,7 +96,7 @@ def create_islamic_books():
             'is_bestseller': True,
             'stock_quantity': 12
         },
-        
+
         # Тафсир
         {
             'name': 'Тафсир Ибн Касира',
@@ -129,7 +132,7 @@ def create_islamic_books():
             'is_bestseller': True,
             'stock_quantity': 10
         },
-        
+
         # Адаб
         {
             'name': 'Рияд ас-Салихин',
@@ -165,7 +168,7 @@ def create_islamic_books():
             'is_bestseller': False,
             'stock_quantity': 14
         },
-        
+
         # Хадис
         {
             'name': 'Сахих аль-Бухари',
@@ -201,7 +204,7 @@ def create_islamic_books():
             'is_bestseller': True,
             'stock_quantity': 7
         },
-        
+
         # История
         {
             'name': 'Ас-Сира ан-Набавийя',
@@ -238,16 +241,16 @@ def create_islamic_books():
             'stock_quantity': 11
         }
     ]
-    
+
     created_count = 0
     for book_data in books_data:
         category = created_categories[book_data['category']]
-        
+
         # Проверяем, существует ли книга
         if Product.objects.filter(slug=book_data['slug']).exists():
             print(f"Книга уже существует: {book_data['name']}")
             continue
-        
+
         book = Product.objects.create(
             name=book_data['name'],
             slug=book_data['slug'],
@@ -271,10 +274,12 @@ def create_islamic_books():
         )
         created_count += 1
         print(f"Создана книга: {book.name} в категории {category.name}")
-    
+
     print(f"\n✅ Создано категорий: {len(created_categories)}")
     print(f"✅ Создано книг: {created_count}")
-    print(f"✅ Всего книг в базе: {Product.objects.filter(product_type='books').count()}")
+    total_books = Product.objects.filter(product_type='books').count()
+    print(f"✅ Всего книг в базе: {total_books}")
+
 
 if __name__ == '__main__':
     create_islamic_books()

@@ -5,16 +5,28 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import ProductCard from '../../components/ProductCard'
 import Sidebar from '../../components/Sidebar'
+import { isBaseProductType } from '../../lib/product'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
+import { ProductTranslation } from '../../lib/i18n'
 
 interface Product {
   id: number
   name: string
   slug: string
   price: string | null
+  price_formatted?: string
+  old_price?: string | number | null
+  old_price_formatted?: string
   currency: string
   main_image_url?: string | null
+  meta_title?: string | null
+  meta_description?: string | null
+  meta_keywords?: string | null
+  og_title?: string | null
+  og_description?: string | null
+  og_image_url?: string | null
+  translations?: ProductTranslation[]
 }
 
 interface Category {
@@ -48,7 +60,7 @@ export default function BrandPage({
   categories: Category[]
   brands: Brand[]
 }) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const { slug } = router.query
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
@@ -89,7 +101,7 @@ export default function BrandPage({
 
     const scrollKey = `scroll_${router.asPath}`
     let shouldRestoreScroll = false
-    
+
     // Сохраняем позицию скролла при уходе со страницы
     const handleRouteChangeStart = (url: string) => {
       if (url !== router.asPath) {
@@ -181,7 +193,7 @@ export default function BrandPage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
         />
       </Head>
-      <div className="mx-auto flex max-w-6xl gap-6 px-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 sm:px-6 md:flex-row">
         {/* Sidebar */}
         <div className="hidden md:block mt-6">
           <Sidebar
@@ -196,10 +208,10 @@ export default function BrandPage({
             sortBy={sortBy}
             inStockOnly={inStockOnly}
             isOpen={true}
-            onToggle={() => {}}
+            onToggle={() => { }}
           />
         </div>
-        
+
         {/* Mobile Sidebar */}
         <div className="md:hidden">
           <Sidebar
@@ -217,9 +229,9 @@ export default function BrandPage({
             onToggle={() => setSidebarOpen(!sidebarOpen)}
           />
         </div>
-        
+
         {/* Main Content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-4 sm:p-6">
           {/* Mobile sidebar toggle */}
           <div className="md:hidden mb-4">
             <button
@@ -245,22 +257,31 @@ export default function BrandPage({
             <h1 className="text-3xl font-bold text-gray-900 mb-2">{brandData.name}</h1>
             <p className="text-gray-600">{brandData.description}</p>
           </div>
-          
+
           <div className="mt-2 w-full">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-7">
-              {brandData.products.map((p) => (
-                <ProductCard
-                  key={p.id}
-                  id={p.id}
-                  name={p.name}
-                  slug={p.slug}
-                  price={p.price}
-                  currency={p.currency}
-                  imageUrl={p.main_image_url}
-                  productType="medicines"
-                  isBaseProduct
-                />
-              ))}
+              {brandData.products.map((p) => {
+                const pt = (p as { product_type?: string }).product_type || 'medicines'
+                return (
+                  <ProductCard
+                    key={p.id}
+                    id={p.id}
+                    baseProductId={(p as { base_product_id?: number }).base_product_id}
+                    name={p.name}
+                    slug={p.slug}
+                    price={p.price}
+                    currency={p.currency}
+                    imageUrl={p.main_image_url}
+                    videoUrl={(p as { video_url?: string }).video_url}
+                    productType={pt}
+                    isBaseProduct={isBaseProductType(pt)}
+                    isNew={(p as { is_new?: boolean }).is_new}
+                    isFeatured={(p as { is_featured?: boolean }).is_featured}
+                    translations={p.translations}
+                    locale={i18n.language}
+                  />
+                )
+              })}
             </div>
 
             {brandData.products.length === 0 && (
@@ -278,7 +299,7 @@ export default function BrandPage({
                     disabled={currentPage <= 1}
                     className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                   >
-                    Назад
+                    {t('pagination_back', 'Назад')}
                   </button>
                   {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                     <button
@@ -294,7 +315,7 @@ export default function BrandPage({
                     disabled={currentPage >= totalPages}
                     className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                   >
-                    Вперед
+                    {t('pagination_forward', 'Вперед')}
                   </button>
                 </div>
               </div>
@@ -309,129 +330,107 @@ export default function BrandPage({
 export async function getServerSideProps(ctx: any) {
   try {
     const { slug } = ctx.params
-    // Используем относительный путь, который работает через Next.js rewrites
-    const base = process.env.INTERNAL_API_BASE || ''
     const page = Number(ctx.query?.page || 1)
     const pageSize = 24
+    const { getInternalApiUrl } = await import('../../lib/urls')
+    const slugValue = Array.isArray(slug) ? slug[0] : String(slug || '')
 
-    // Генерируем тестовые данные для брендов с контекстными сайтбарами
-    const mockBrandData: Record<string, BrandData & { categories: Category[], brands: Brand[] }> = {
-      'zara': {
-        name: 'Zara',
-        description: 'Модная одежда и аксессуары от испанского бренда',
-        products: [
-          {
-            id: 101,
-            name: 'Платье Zara весеннее',
-            slug: 'zara-dress-spring',
-            price: '2999',
-            currency: 'RUB',
-            main_image_url: '/product-placeholder.svg'
-          },
-          {
-            id: 102,
-            name: 'Джинсы Zara классик',
-            slug: 'zara-jeans-classic',
-            price: '3999',
-            currency: 'RUB',
-            main_image_url: '/product-placeholder.svg'
-          },
-          {
-            id: 103,
-            name: 'Блузка Zara офисная',
-            slug: 'zara-blouse-office',
-            price: '2499',
-            currency: 'RUB',
-            main_image_url: '/product-placeholder.svg'
-          }
-        ],
-        totalCount: 3,
-        categories: [
-          { id: 1, name: 'Платья', slug: 'dresses', count: 156 },
-          { id: 2, name: 'Джинсы', slug: 'jeans', count: 89 },
-          { id: 3, name: 'Блузки и рубашки', slug: 'blouses', count: 134 },
-          { id: 4, name: 'Юбки', slug: 'skirts', count: 67 },
-          { id: 5, name: 'Пиджаки', slug: 'blazers', count: 45 },
-          { id: 6, name: 'Аксессуары', slug: 'accessories', count: 98 },
-          { id: 7, name: 'Обувь', slug: 'shoes', count: 87 }
-        ],
-        brands: [
-          { id: 1, name: 'Zara', count: 234 },
-          { id: 2, name: 'Massimo Dutti', count: 89 },
-          { id: 3, name: 'Pull & Bear', count: 156 },
-          { id: 4, name: 'Bershka', count: 178 },
-          { id: 5, name: 'Stradivarius', count: 134 },
-          { id: 6, name: 'Oysho', count: 67 },
-          { id: 7, name: 'Uterqüe', count: 45 }
-        ]
-      },
-      'wikiki': {
-        name: 'Wikiki',
-        description: 'Стильная молодежная одежда',
-        products: [
-          {
-            id: 201,
-            name: 'Футболка Wikiki молодежная',
-            slug: 'wikiki-tshirt-youth',
-            price: '1299',
-            currency: 'RUB',
-            main_image_url: '/product-placeholder.svg'
-          },
-          {
-            id: 202,
-            name: 'Шорты Wikiki летние',
-            slug: 'wikiki-shorts-summer',
-            price: '1599',
-            currency: 'RUB',
-            main_image_url: '/product-placeholder.svg'
-          }
-        ],
-        totalCount: 2,
-        categories: [
-          { id: 1, name: 'Футболки', slug: 'tshirts', count: 89 },
-          { id: 2, name: 'Шорты', slug: 'shorts', count: 67 },
-          { id: 3, name: 'Толстовки', slug: 'hoodies', count: 54 },
-          { id: 4, name: 'Джинсы', slug: 'jeans', count: 43 },
-          { id: 5, name: 'Платья', slug: 'dresses', count: 32 },
-          { id: 6, name: 'Аксессуары', slug: 'accessories', count: 28 }
-        ],
-        brands: [
-          { id: 1, name: 'Wikiki', count: 156 },
-          { id: 2, name: 'H&M', count: 134 },
-          { id: 3, name: 'Forever 21', count: 89 },
-          { id: 4, name: 'Uniqlo', count: 76 },
-          { id: 5, name: 'C&A', count: 54 },
-          { id: 6, name: 'Mango', count: 67 }
-        ]
+    let allBrands: any[] = []
+    let nextUrl: string | null = getInternalApiUrl('catalog/brands?page_size=200')
+    while (nextUrl) {
+      const res = await axios.get(nextUrl)
+      const data = res.data
+      const pageBrands = Array.isArray(data) ? data : data.results || []
+      allBrands = [...allBrands, ...pageBrands]
+      nextUrl = data.next || null
+    }
+
+    const brand = allBrands.find((item) => item.slug === slugValue)
+    if (!brand) {
+      return {
+        props: {
+          ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
+          brandData: null,
+          page,
+          categories: [],
+          brands: [],
+        },
       }
     }
 
-    const brandData = mockBrandData[slug as string]
-    
+    const primarySlug = (brand.primary_category_slug || '')
+      .toString()
+      .toLowerCase()
+      .replace(/_/g, '-')
+    const typedSlugs = ['clothing', 'shoes', 'electronics', 'furniture', 'jewelry']
+    let productsEndpoint = 'catalog/products'
+    if (primarySlug.startsWith('clothing')) productsEndpoint = 'catalog/clothing/products'
+    else if (primarySlug.startsWith('shoes')) productsEndpoint = 'catalog/shoes/products'
+    else if (primarySlug.startsWith('electronics')) productsEndpoint = 'catalog/electronics/products'
+    else if (primarySlug.startsWith('furniture')) productsEndpoint = 'catalog/furniture/products'
+    else if (primarySlug.startsWith('jewelry')) productsEndpoint = 'catalog/jewelry/products'
+
+    const productParams: Record<string, any> = {
+      page,
+      page_size: pageSize,
+      brand_id: brand.id,
+    }
+
+    if (primarySlug && !typedSlugs.some((value) => primarySlug.startsWith(value))) {
+      productParams.product_type = primarySlug.replace(/-/g, '_')
+    }
+
+    const productsRes = await axios.get(getInternalApiUrl(productsEndpoint), { params: productParams })
+    const productsData = productsRes.data
+    const products = Array.isArray(productsData) ? productsData : productsData.results || []
+    const totalCount = typeof productsData?.count === 'number' ? productsData.count : products.length
+
+    let categories: Category[] = []
+    try {
+      const categoriesRes = await axios.get(getInternalApiUrl('catalog/categories?top_level=true&page_size=200'))
+      const categoriesData = categoriesRes.data
+      categories = Array.isArray(categoriesData) ? categoriesData : categoriesData.results || []
+    } catch {
+      categories = []
+    }
+
+    let brands: Brand[] = []
+    try {
+      const brandParams: Record<string, any> = { page_size: 200 }
+      if (primarySlug) {
+        brandParams.primary_category_slug = primarySlug
+        brandParams.product_type = primarySlug.replace(/-/g, '_')
+      }
+      const brandsRes = await axios.get(getInternalApiUrl('catalog/brands'), { params: brandParams })
+      const brandsData = brandsRes.data
+      brands = Array.isArray(brandsData) ? brandsData : brandsData.results || []
+    } catch {
+      brands = []
+    }
+
     return {
       props: {
         ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
-        brandData: brandData ? {
-          name: brandData.name,
-          description: brandData.description,
-          products: brandData.products,
-          totalCount: brandData.totalCount
-        } : null,
+        brandData: {
+          name: brand.name,
+          description: brand.description,
+          products,
+          totalCount,
+        },
         page,
-        categories: brandData?.categories || [],
-        brands: brandData?.brands || [],
+        categories,
+        brands,
       },
     }
   } catch (e) {
-    return { 
-      props: { 
-        ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])), 
+    return {
+      props: {
+        ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
         brandData: null,
         page: 1,
         categories: [],
         brands: []
-      } 
+      }
     }
   }
 }
-

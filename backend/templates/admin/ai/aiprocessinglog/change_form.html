@@ -1,0 +1,74 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    /* Тёмная тема: читаемость блока «Ответ LLM» (.theme-dark — Django admin, [data-theme="dark"] — альтернатива) */
+    .theme-dark .formatted-llm-content,
+    [data-theme="dark"] .formatted-llm-content,
+    .theme-dark .formatted-llm-content .formatted-llm-section,
+    [data-theme="dark"] .formatted-llm-content .formatted-llm-section { color: #e0e0e0; }
+    .theme-dark .formatted-llm-content .formatted-llm-section strong,
+    [data-theme="dark"] .formatted-llm-content .formatted-llm-section strong { color: #7ec8e3 !important; }
+    .theme-dark .formatted-llm-content .formatted-llm-block,
+    .theme-dark .formatted-llm-content pre,
+    [data-theme="dark"] .formatted-llm-content .formatted-llm-block,
+    [data-theme="dark"] .formatted-llm-content pre { background: #2d2d2d !important; color: #d4d4d4 !important; border-radius: 4px; }
+    .theme-dark .formatted-llm-content details summary,
+    [data-theme="dark"] .formatted-llm-content details summary { color: #7ec8e3 !important; }
+    /* Верхняя панель «Действия» в тёмной теме */
+    .theme-dark .ai-actions-row,
+    [data-theme="dark"] .ai-actions-row { background: #2d2d2d !important; border-color: #444 !important; }
+    .theme-dark .ai-actions-row .ai-actions-hint,
+    [data-theme="dark"] .ai-actions-row .ai-actions-hint { color: #aaa !important; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  {% if show_save_and_apply and original %}
+    <div class="submit-row ai-actions-row" style="margin-bottom: 1em; padding: 10px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
+      <strong>Действия:</strong>
+      <button type="button" id="ai-save-and-apply-top" class="default" style="background: #28a745; color: #fff; border-color: #1e7e34; font-weight: bold; margin-left: 8px; cursor: pointer; padding: 5px 15px;"
+        title="Сохранить отредактированные поля и сразу применить результат к карточке товара">
+        💾 Сохранить и применить к товару
+      </button>
+      <span class="ai-actions-hint" style="margin-left: 8px; color: #666;">— применит результаты из этой формы к карточке товара.</span>
+    </div>
+    <script>
+      (function() {
+        var btn = document.getElementById('ai-save-and-apply-top');
+        if (btn) {
+          btn.addEventListener('click', function() {
+            var form = document.querySelector('#content-main form');
+            if (form) {
+              var input = document.createElement('input');
+              input.type = 'hidden';
+              input.name = '_save_and_apply';
+              input.value = '1';
+              form.appendChild(input);
+              form.submit();
+            }
+          });
+        }
+      })();
+    </script>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
+
+{% block submit_buttons_bottom %}
+  {{ block.super }}
+  {% if show_save_and_apply and original %}
+    <div class="submit-row" style="margin-top: 0; padding-top: 0; border-top: none;">
+      <input
+        type="submit"
+        name="_save_and_apply"
+        value="💾 Сохранить и применить к товару"
+        class="default"
+        style="background: #28a745; color: #fff; border-color: #1e7e34; font-weight: bold;"
+        title="Сохранить отредактированные поля и сразу применить результат к карточке товара"
+      >
+    </div>
+  {% endif %}
+{% endblock %}

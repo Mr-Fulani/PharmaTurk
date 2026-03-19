@@ -1,14 +1,11 @@
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 
 class Command(BaseCommand):
-    help = 'Load initial static pages: delivery, returns, privacy (with en/ru content)'
+    help = 'Load initial static pages: delivery, returns, privacy (with en/ru content). Creates only if missing, does not overwrite existing content.'
 
     def handle(self, *args, **options):
         from apps.pages.models import Page
-
-        now = timezone.now()
 
         pages = [
             {
@@ -93,7 +90,7 @@ class Command(BaseCommand):
         ]
 
         for p in pages:
-            obj, created = Page.objects.update_or_create(
+            obj, created = Page.objects.get_or_create(
                 slug=p['slug'],
                 defaults={
                     'title_en': p['title_en'],
@@ -106,6 +103,6 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(self.style.SUCCESS(f"Created page: {obj.slug}"))
             else:
-                self.stdout.write(self.style.SUCCESS(f"Updated page: {obj.slug}"))
+                self.stdout.write(f"Skipped page: {obj.slug} (already exists)")
 
         self.stdout.write(self.style.SUCCESS('Initial pages loaded.'))

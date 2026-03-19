@@ -1,8 +1,8 @@
 """Django команда для инициализации парсеров."""
 
 from django.core.management.base import BaseCommand
-from apps.scrapers.models import ScraperConfig
-
+from apps.scrapers.models import ScraperConfig, CategoryMapping
+from apps.catalog.models import Category
 
 class Command(BaseCommand):
     """Команда для создания начальных конфигураций парсеров."""
@@ -12,7 +12,65 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """Обработчик команды."""
         
-        # Создаем конфигурацию для ilacabak.com
+        # ... (ilacabak and zara configs remain unchanged) ...
+
+        # Создаем конфигурацию для umma-land.com
+        ummaland_config, created = ScraperConfig.objects.get_or_create(
+            name='ummaland',
+            defaults={
+                'parser_class': 'ummaland',
+                'base_url': 'https://umma-land.com',
+                'description': 'Парсер для книг и исламских товаров с сайта umma-land.com',
+                'status': 'active',
+                'is_enabled': True,
+                'priority': 30,
+                'delay_min': 1.0,
+                'delay_max': 3.0,
+                'timeout': 30,
+                'max_retries': 3,
+                'max_pages_per_run': 1000,
+                'max_products_per_run': 1000,
+                'sync_enabled': False,
+                'sync_interval_hours': 24,
+                'use_proxy': False,
+            }
+        )
+        
+        if created:
+            self.stdout.write(
+                self.style.SUCCESS('Создана конфигурация парсера ummaland')
+            )
+            
+            # Настройка маппинга категорий
+            try:
+                # Пытаемся найти внутреннюю категорию "Книги"
+                internal_category = Category.objects.filter(slug='books').first()
+                
+                if not internal_category:
+                    internal_category = Category.objects.filter(name__iexact='Книги').first()
+                
+                if internal_category:
+                    CategoryMapping.objects.get_or_create(
+                        scraper_config=ummaland_config,
+                        external_category_name='Книги',
+                        defaults={
+                            'internal_category': internal_category,
+                            'external_category_url': 'https://umma-land.com/product-category/books',
+                            'external_category_id': '16',
+                            'is_active': True
+                        }
+                    )
+                    self.stdout.write(self.style.SUCCESS('Создан маппинг категории Книги'))
+                else:
+                    self.stdout.write(self.style.WARNING('Внутренняя категория Книги не найдена, маппинг не создан'))
+                    
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'Ошибка при создании маппинга: {e}'))
+                
+        else:
+            self.stdout.write(
+                self.style.WARNING('Конфигурация парсера ummaland уже существует')
+            )
         ilacabak_config, created = ScraperConfig.objects.get_or_create(
             name='ilacabak',
             defaults={
@@ -72,6 +130,64 @@ class Command(BaseCommand):
         else:
             self.stdout.write(
                 self.style.WARNING('Конфигурация парсера zara уже существует')
+            )
+        
+        # Создаем конфигурацию для umma-land.com
+        ummaland_config, created = ScraperConfig.objects.get_or_create(
+            name='ummaland',
+            defaults={
+                'parser_class': 'ummaland',
+                'base_url': 'https://umma-land.com',
+                'description': 'Парсер для книг и исламских товаров с сайта umma-land.com',
+                'status': 'active',
+                'is_enabled': True,
+                'priority': 30,
+                'delay_min': 1.0,
+                'delay_max': 3.0,
+                'timeout': 30,
+                'max_retries': 3,
+                'max_pages_per_run': 1000,
+                'max_products_per_run': 1000,
+                'sync_enabled': False,
+                'sync_interval_hours': 24,
+                'use_proxy': False,
+            }
+        )
+        
+        if created:
+            self.stdout.write(
+                self.style.SUCCESS('Создана конфигурация парсера ummaland')
+            )
+            
+            # Настройка маппинга категорий
+            try:
+                # Пытаемся найти внутреннюю категорию "Книги"
+                internal_category = Category.objects.filter(slug='books').first()
+                
+                if not internal_category:
+                    internal_category = Category.objects.filter(name__iexact='Книги').first()
+                
+                if internal_category:
+                    CategoryMapping.objects.get_or_create(
+                        scraper_config=ummaland_config,
+                        external_category_name='Книги',
+                        defaults={
+                            'internal_category': internal_category,
+                            'external_category_url': 'https://umma-land.com/product-category/books',
+                            'external_category_id': '16',
+                            'is_active': True
+                        }
+                    )
+                    self.stdout.write(self.style.SUCCESS('Создан маппинг категории Книги'))
+                else:
+                    self.stdout.write(self.style.WARNING('Внутренняя категория Книги не найдена, маппинг не создан'))
+                    
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f'Ошибка при создании маппинга: {e}'))
+                
+        else:
+            self.stdout.write(
+                self.style.WARNING('Конфигурация парсера ummaland уже существует')
             )
         
         # Показываем статистику

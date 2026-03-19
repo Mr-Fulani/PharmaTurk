@@ -9,7 +9,35 @@ from .models import (
     ClothingVariantImage,
     ShoeVariantImage,
     Category,
+    Brand,
+    CategoryType,
+    validate_card_media_file_size,
 )
+
+
+def _parent_has_main_media(formset, url_attr="main_image", file_attr="main_image_file"):
+    """Проверяет, что у родительской формы заполнено главное медиа: изображение или видео (из instance или request)."""
+    def has_media(url_key, file_key):
+        if instance:
+            if getattr(instance, url_key, None):
+                return True
+            f = getattr(instance, file_key, None)
+            if f and (hasattr(f, "name") and f.name):
+                return True
+        if data.get(url_key) and str(data.get(url_key)).strip():
+            return True
+        if files.get(file_key):
+            return True
+        return False
+
+    instance = getattr(formset, "instance", None)
+    data = getattr(formset, "data", None) or {}
+    files = getattr(formset, "files", None) or {}
+    if has_media(url_attr, file_attr):
+        return True
+    if has_media("video_url", "main_video_file"):
+        return True
+    return False
 
 
 class ProductImageInlineFormSet(BaseInlineFormSet):
@@ -17,18 +45,35 @@ class ProductImageInlineFormSet(BaseInlineFormSet):
 
     def clean(self):
         super().clean()
-        images = [
+        active_forms = [
             form for form in self.forms
-            if not form.cleaned_data.get("DELETE", False) and form.cleaned_data.get("image_url")
+            if not form.cleaned_data.get("DELETE", False)
         ]
-        if len(images) > 5:
-            raise ValidationError(_("Можно загрузить не более 5 изображений товара."))
+        media_items = [
+            form for form in active_forms
+            if (
+                form.cleaned_data.get("image_url")
+                or form.cleaned_data.get("image_file")
+                or form.cleaned_data.get("video_url")
+                or form.cleaned_data.get("video_file")
+            )
+        ]
+        for form in media_items:
+            image_file = form.cleaned_data.get("image_file")
+            if image_file:
+                validate_card_media_file_size(image_file)
+            video_file = form.cleaned_data.get("video_file")
+            if video_file:
+                validate_card_media_file_size(video_file)
+        if len(media_items) > 5:
+            raise ValidationError(_("Можно загрузить не более 5 медиафайлов товара."))
+        images = [
+            form for form in active_forms
+            if form.cleaned_data.get("image_url") or form.cleaned_data.get("image_file")
+        ]
         if images and not any(img.cleaned_data.get("is_main") for img in images):
-            # Если в объекте уже есть main_image, не требуем is_main в галерее
-            instance = getattr(self, "instance", None)
-            has_main_field = getattr(instance, "main_image", None) if instance else None
-            if not has_main_field:
-                raise ValidationError(_("Необходимо отметить как минимум одно изображение как главное."))
+            if not _parent_has_main_media(self):
+                raise ValidationError(_("Необходимо отметить как минимум одно изображение как главное, или заполнить поле 'Главное изображение (файл)'."))
 
 
 class VariantImageInlineFormSet(BaseInlineFormSet):
@@ -36,17 +81,23 @@ class VariantImageInlineFormSet(BaseInlineFormSet):
 
     def clean(self):
         super().clean()
-        images = [
+        active_forms = [
             form for form in self.forms
-            if not form.cleaned_data.get("DELETE", False) and form.cleaned_data.get("image_url")
+            if not form.cleaned_data.get("DELETE", False)
         ]
+        images = [
+            form for form in active_forms
+            if form.cleaned_data.get("image_url") or form.cleaned_data.get("image_file")
+        ]
+        for form in images:
+            image_file = form.cleaned_data.get("image_file")
+            if image_file:
+                validate_card_media_file_size(image_file)
         if len(images) > 5:
             raise ValidationError(_("Можно загрузить не более 5 изображений варианта."))
         if images and not any(img.cleaned_data.get("is_main") for img in images):
-            instance = getattr(self, "instance", None)
-            has_main_field = getattr(instance, "main_image", None) if instance else None
-            if not has_main_field:
-                raise ValidationError(_("Необходимо отметить как минимум одно изображение варианта как главное."))
+            if not _parent_has_main_media(self):
+                raise ValidationError(_("Необходимо отметить как минимум одно изображение варианта как главное, или заполнить поле 'Главное изображение (файл)'."))
 
 
 class ProductForm(forms.ModelForm):
@@ -69,12 +120,49 @@ class ProductForm(forms.ModelForm):
         return value
 
 
+# Подсказки по уровням иерархии категорий (L1=корневая, L2=подкатегория, L3+=глубже)
+CATEGORY_NAME_PLACEHOLDER = _("L1: Одежда | L2: Пальто | L3: Пальто женское")
+CATEGORY_PARENT_HELP = _(
+    "Уровень: пусто = L1 (корневая). Выберите L1 для L2. Выберите L2 для L3."
+)
+# Описание блока «Иерархия» в fieldset
+CATEGORY_HIERARCHY_DESCRIPTION = _(
+    "L1 (корневая) — родитель пусто. L2 — выберите L1. L3 — выберите L2. "
+    "Товары привязываются к категории нижнего уровня."
+)
+# Подсказка для поля «Категория» в форме товара
+PRODUCT_CATEGORY_HELP = _(
+    "Выберите категорию L1, L2 или L3. Товары привязываются к категории нижнего уровня (например, Пальто, а не Одежда)."
+)
+
+
+class CategoryFormCatalogHints(forms.ModelForm):
+    """Форма для категорий каталога с подсказками по иерархии (поддержка L3+)."""
+    class Meta:
+        model = Category
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "name" in self.fields:
+            self.fields["name"].widget.attrs.setdefault("placeholder", CATEGORY_NAME_PLACEHOLDER)
+        if "parent" in self.fields:
+            self.fields["parent"].help_text = CATEGORY_PARENT_HELP
+
+
 class CategoryForm(forms.ModelForm):
-    """Форма для категории с валидацией типа."""
+    """Форма для категории с валидацией типа и подсказками по иерархии."""
     
     class Meta:
         model = Category
         fields = "__all__"
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "name" in self.fields:
+            self.fields["name"].widget.attrs.setdefault("placeholder", CATEGORY_NAME_PLACEHOLDER)
+        if "parent" in self.fields:
+            self.fields["parent"].help_text = CATEGORY_PARENT_HELP
     
     def clean_category_type(self):
         category_type = self.cleaned_data.get("category_type")
@@ -82,3 +170,47 @@ class CategoryForm(forms.ModelForm):
             raise ValidationError(_("Необходимо выбрать тип категории! Если нужного типа нет, создайте его в разделе 'Типы категорий'."))
         return category_type
 
+    def clean(self):
+        cleaned_data = super().clean()
+        parent = cleaned_data.get("parent")
+        category_type = cleaned_data.get("category_type")
+        if parent and category_type and parent.category_type_id != category_type.id:
+            raise ValidationError(_("Родитель должен быть того же типа категории."))
+        if parent and parent.parent_id:
+            raise ValidationError(_("Родитель должен быть корневой категорией."))
+        return cleaned_data
+
+
+def _get_brand_category_choices():
+    """Динамический список категорий из CategoryType (добавляются через админку)."""
+    return list(
+        CategoryType.objects.filter(is_active=True)
+        .order_by("sort_order", "name")
+        .values_list("slug", "name")
+    )
+
+
+class BrandAdminForm(forms.ModelForm):
+    """Форма бренда с чекбоксами для выбора категорий (список из CategoryType)."""
+
+    category_slugs = forms.MultipleChoiceField(
+        choices=[],  # заполняется в __init__ из CategoryType
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        label=_("Категории бренда"),
+        help_text=_("Отметьте категории, в которых представлен бренд. Список берётся из «Типы категорий»."),
+    )
+
+    class Meta:
+        model = Brand
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["category_slugs"].choices = _get_brand_category_choices()
+        if self.instance and self.instance.pk:
+            self.fields["category_slugs"].initial = self.instance.category_slugs or []
+
+    def clean_category_slugs(self):
+        value = self.cleaned_data.get("category_slugs")
+        return list(value) if value else []

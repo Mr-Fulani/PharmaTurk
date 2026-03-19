@@ -6,11 +6,14 @@ import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
+import type { TFunction } from 'i18next'
 import api from '../lib/api'
+import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface OrderItem {
   id: number
   product_name: string
+  product_translations?: ProductTranslation[]
   quantity: number
   price: string
   total: string
@@ -36,7 +39,7 @@ interface Order {
   items: OrderItem[]
 }
 
-interface ReceiptItem extends OrderItem {}
+interface ReceiptItem extends OrderItem { }
 
 interface OrderReceipt {
   number: string
@@ -62,7 +65,7 @@ type SendState = 'idle' | 'sending' | 'success' | 'error'
 
 export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: string | null }) {
   const router = useRouter()
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const number = useMemo(
     () => (orderNumber || (router.query?.number as string) || '').toString().trim(),
     [orderNumber, router.query]
@@ -72,9 +75,25 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null)
   const [loading, setLoading] = useState(Boolean(number))
   const [error, setError] = useState<string | null>(null)
+  const [isAuthError, setIsAuthError] = useState(false)
   const [sendEmail, setSendEmail] = useState('')
   const [sendState, setSendState] = useState<SendState>('idle')
   const [sendMessage, setSendMessage] = useState('')
+
+  // Восстановление языка при возврате с внешней оплаты (crypto): ?locale=ru → /ru/checkout-success
+  useEffect(() => {
+    const qLocale = (router.query?.locale as string)?.toLowerCase()
+    if (qLocale === 'ru' && router.locale !== 'ru') {
+      const num = (router.query?.number as string) || ''
+      router.replace(`/ru/checkout-success?number=${encodeURIComponent(num)}`)
+      return
+    }
+    if (qLocale === 'en' && router.locale !== 'en') {
+      const num = (router.query?.number as string) || ''
+      router.replace(`/checkout-success?number=${encodeURIComponent(num)}`)
+      return
+    }
+  }, [router.query?.locale, router.locale, router])
 
   useEffect(() => {
     if (!number) {
@@ -86,19 +105,25 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
     const fetchData = async () => {
       setLoading(true)
       setError(null)
+      setIsAuthError(false)
       try {
-        const [orderRes, receiptRes] = await Promise.all([
-          api.get(`/orders/orders/by-number/${number}`),
-          api.get(`/orders/orders/receipt/${number}`)
-        ])
+        const orderRes = await api.get(`/orders/orders/by-number/${number}`)
         if (!active) return
         setOrder(orderRes.data)
-        setReceipt(receiptRes.data)
         setSendEmail(orderRes.data?.contact_email || orderRes.data?.user?.email || '')
       } catch (err: any) {
         if (!active) return
+        const status = err?.response?.status
         const detail = err?.response?.data?.detail || t('order_success_send_error')
-        setError(detail)
+        setIsAuthError(status === 401)
+        setError(status === 401 ? t('order_success_login_required', 'Войдите в аккаунт, чтобы увидеть заказ') : detail)
+      }
+      try {
+        const receiptRes = await api.get(`/orders/orders/receipt/${number}`)
+        if (!active) return
+        setReceipt(receiptRes.data)
+      } catch {
+        // Чек опционален — заказ уже загружен
       } finally {
         if (active) setLoading(false)
       }
@@ -121,7 +146,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
   // TODO: Функционал чеков временно отключен. Будет доработан позже.
   const handlePrintReceipt = () => {
     if (!receipt) return
-    const html = buildReceiptDocument(receipt)
+    const html = buildReceiptDocument(receipt, router.locale || 'ru', t)
     const printWindow = window.open('', '_blank', 'width=800,height=1000')
     if (!printWindow) return
     printWindow.document.write(html)
@@ -136,12 +161,15 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
     setSendState('sending')
     setSendMessage('')
     try {
-      const res = await api.post(`/orders/orders/send-receipt/${number}`, { email: sendEmail })
+      const res = await api.post(`/orders/orders/send-receipt/${number}`, {
+        email: sendEmail,
+        locale: router.locale || 'ru',
+      })
       setSendState('success')
-      setSendMessage(res.data?.detail || t('order_success_send_success', { email: sendEmail }))
+      setSendMessage(t('order_success_send_success', { email: sendEmail }))
     } catch (err: any) {
       setSendState('error')
-      setSendMessage(err?.response?.data?.detail || t('order_success_send_error'))
+      setSendMessage(t('order_success_send_error'))
     }
   }
 
@@ -181,6 +209,28 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
           {error && !loading && (
             <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50/80 p-6 text-rose-700">
               <p>{error}</p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                {isAuthError && (
+                  <Link
+                    href={`/auth?next=${encodeURIComponent(`/checkout-success?number=${number}`)}`}
+                    className="rounded-full bg-violet-600 px-5 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+                  >
+                    {t('order_success_actions_login', 'Войти')}
+                  </Link>
+                )}
+                <Link
+                  href="/profile"
+                  className="rounded-full border border-violet-200 px-5 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-50"
+                >
+                  {t('order_success_actions_view_orders', 'Мои заказы')}
+                </Link>
+                <Link
+                  href="/"
+                  className="rounded-full border border-gray-200 px-5 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                >
+                  {t('order_success_actions_continue', 'Продолжить покупки')}
+                </Link>
+              </div>
             </div>
           )}
 
@@ -220,7 +270,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                     />
                     <StatisticCard
                       label={t('order_success_payment_method')}
-                      value={order.payment_method || '—'}
+                      value={order.payment_method ? t(`payment_${order.payment_method}`, { defaultValue: order.payment_method }) : '—'}
                       accent="from-blue-500/10 to-blue-100/40"
                     />
                     <StatisticCard
@@ -284,9 +334,8 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                   </div>
                   {sendMessage && (
                     <p
-                      className={`mt-3 text-sm ${
-                        sendState === 'success' ? 'text-emerald-600' : 'text-rose-600'
-                      }`}
+                      className={`mt-3 text-sm ${sendState === 'success' ? 'text-emerald-600' : 'text-rose-600'
+                        }`}
                     >
                       {sendMessage}
                     </p>
@@ -309,10 +358,12 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
                   </div>
 
                   <div className="mt-6 space-y-4">
-                    {receipt?.items.map((item) => (
+                    {(receipt?.items ?? []).map((item) => (
                       <div key={item.id} className="flex items-center justify-between rounded-2xl border border-gray-100 px-4 py-3">
                         <div>
-                          <p className="font-semibold text-gray-900">{item.product_name}</p>
+                          <p className="font-semibold text-gray-900">
+                            {getLocalizedProductName(item.product_name, t, item.product_translations, i18n.language)}
+                          </p>
                           <p className="text-xs text-gray-500">
                             {t('order_success_qty', { defaultValue: '×{{count}}', count: item.quantity })}
                           </p>
@@ -373,23 +424,38 @@ function StatisticCard({ label, value, accent }: { label: string; value: string;
 }
 
 // TODO: Функционал чеков временно отключен. Будет доработан позже.
-function buildReceiptDocument(receipt: OrderReceipt) {
+function buildReceiptDocument(
+  receipt: OrderReceipt,
+  locale: string,
+  t: TFunction<'common'>
+) {
   const formatter = (value: string) => `${value} ${receipt.totals.currency}`
   const rows = receipt.items
-    .map(
-      (item) =>
-        `<tr><td>${item.product_name}</td><td>${item.quantity}</td><td>${formatter(item.price)}</td><td>${formatter(
-          item.total
-        )}</td></tr>`
-    )
+    .map((item) => {
+      const localizedName = getLocalizedProductName(item.product_name, t, item.product_translations, locale)
+      return `<tr><td>${localizedName}</td><td>${item.quantity}</td><td>${formatter(item.price)}</td><td>${formatter(
+        item.total
+      )}</td></tr>`
+    })
     .join('')
+
+  const title = t('receipt_print_title', 'Чек заказа №')
+  const issued = t('receipt_print_issued', 'Выдан')
+  const product = t('receipt_print_product', 'Товар')
+  const qty = t('receipt_print_qty', 'Кол-во')
+  const price = t('receipt_print_price', 'Цена')
+  const totalCol = t('receipt_print_total_col', 'Сумма')
+  const totalLabel = t('receipt_print_total_label', 'Итого')
+
+  const lang = locale === 'en' ? 'en' : 'ru'
+  const issuedStr = new Date(receipt.issued_at).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU')
 
   return `
     <!DOCTYPE html>
-    <html lang="ru">
+    <html lang="${lang}">
       <head>
         <meta charSet="utf-8" />
-        <title>Receipt #${receipt.number}</title>
+        <title>${title}${receipt.number}</title>
         <style>
           body { font-family: -apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif; background:#f4f3ff; padding:40px; color:#1f1f35; }
           .card { max-width:800px; margin:0 auto; background:#fff; border-radius:32px; padding:40px; box-shadow:0 20px 60px rgba(31,31,53,.1); }
@@ -402,13 +468,13 @@ function buildReceiptDocument(receipt: OrderReceipt) {
       </head>
       <body>
         <div class="card">
-          <h1>Чек заказа №${receipt.number}</h1>
-          <p>Выдан: ${new Date(receipt.issued_at).toLocaleString()}</p>
+          <h1>${title}${receipt.number}</h1>
+          <p>${issued}: ${issuedStr}</p>
           <table>
-            <thead><tr><th>Товар</th><th>Кол-во</th><th>Цена</th><th>Сумма</th></tr></thead>
+            <thead><tr><th>${product}</th><th>${qty}</th><th>${price}</th><th>${totalCol}</th></tr></thead>
             <tbody>${rows}</tbody>
             <tfoot>
-              <tr><td colspan="3">Итого</td><td>${formatter(receipt.totals.total)}</td></tr>
+              <tr><td colspan="3">${totalLabel}</td><td>${formatter(receipt.totals.total)}</td></tr>
             </tfoot>
           </table>
         </div>

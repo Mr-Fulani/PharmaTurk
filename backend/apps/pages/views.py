@@ -23,8 +23,13 @@ class PageDetailView(generics.RetrieveAPIView):
     lookup_field = "slug"
 
     def get(self, request, *args, **kwargs):
-        # Определяем язык: сначала ?lang=, затем ?locale=, иначе default 'ru'
-        lang = request.GET.get("lang") or request.GET.get("locale") or request.GET.get("_lang") or "ru"
+        # Определяем язык: ?lang=, ?locale=, заголовок X-Language, иначе default 'ru'
+        lang = (
+            request.GET.get("lang")
+            or request.GET.get("locale")
+            or request.GET.get("_lang")
+            or request.headers.get("X-Language", "").split("-")[0].lower() or "ru"
+        )
         self.serializer_class = PageSerializer
         try:
             page = self.get_object()
