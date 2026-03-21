@@ -25,6 +25,13 @@ def index_product_vectors(product_ids=None, batch_size=100):
     if product_ids is not None:
         queryset = (
             Product.objects.filter(id__in=product_ids)
+            .exclude(
+                Q(product_type__in=['clothing', 'shoes']) &
+                (
+                    Q(external_data__has_key='source_variant_id') |
+                    Q(external_data__has_key='source_variant_slug')
+                )
+            )
             .select_related("category", "brand")
             .prefetch_related("images")
         )
@@ -32,6 +39,13 @@ def index_product_vectors(product_ids=None, batch_size=100):
     else:
         base_qs = (
             Product.objects.filter(is_available=True)
+            .exclude(
+                Q(product_type__in=['clothing', 'shoes']) &
+                (
+                    Q(external_data__has_key='source_variant_id') |
+                    Q(external_data__has_key='source_variant_slug')
+                )
+            )
             .filter(
                 Q(vector_data__isnull=True)
                 | Q(vector_data__last_synced__isnull=True)
@@ -95,13 +109,20 @@ def sync_all_products_to_qdrant():
     from .models import ProductVector
 
     ProductVector.objects.update(last_synced=None)
-    total = Product.objects.filter(is_available=True).count()
+    from django.db.models import Q
+    base_qs = Product.objects.filter(is_available=True).exclude(
+        Q(product_type__in=['clothing', 'shoes']) &
+        (
+            Q(external_data__has_key='source_variant_id') |
+            Q(external_data__has_key='source_variant_slug')
+        )
+    )
+    total = base_qs.count()
     batch_size = 500
     batches = (total // batch_size) + 1
     for offset in range(0, total, batch_size):
         ids = list(
-            Product.objects.filter(is_available=True)
-            .values_list("id", flat=True)[offset : offset + batch_size]
+            base_qs.values_list("id", flat=True)[offset : offset + batch_size]
         )
         index_product_vectors.delay(product_ids=ids)
     return {"batches": batches}
