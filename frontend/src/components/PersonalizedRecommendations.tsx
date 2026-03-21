@@ -95,6 +95,10 @@ export default function PersonalizedRecommendations() {
   }
 
   if (products.length === 0) return null
+  
+  // Скрываем блок, если он отдаёт общую "трендовую" подборку, 
+  // чтобы не дублировать контент с блоком "Хиты продаж" (Featured)
+  if (basedOn === 'trending') return null
 
   return (
     <section className="py-8">
