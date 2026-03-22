@@ -24,6 +24,8 @@ import requests
 import hashlib
 import os
 
+from api.authentication import JWTSafeAuthentication
+
 logger = logging.getLogger(__name__)
 
 from .models import (
@@ -2102,10 +2104,13 @@ class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
 
 class FavoriteViewSet(viewsets.ViewSet):
     """API для работы с избранным."""
-    
     from rest_framework.permissions import AllowAny
     from .models import Service
     permission_classes = [AllowAny]
+    # Исключаем SessionAuthentication: она принудительно применяет CSRF к POST/DELETE
+    # даже при AllowAny. Это ломает добавление в избранное для анонимов после
+    # открытия Django-сессии (просмотра страницы). JWT-аутентификация достаточна.
+    authentication_classes = [JWTSafeAuthentication]
     
     def _get_session_key(self, request):
         """Получить ключ сессии для анонимных пользователей."""
