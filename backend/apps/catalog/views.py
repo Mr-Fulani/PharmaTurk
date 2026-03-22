@@ -1206,6 +1206,19 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
             )
             reranked = reranker.rerank(similar_list, product, strategy=strategy, request=request)
             rec_ids = [r["product"]["id"] for r in reranked]
+
+            # Исключаем теневые варианты (shadow variants) из результатов
+            if rec_ids:
+                shadow_ids = set(
+                    Product.objects.filter(id__in=rec_ids).filter(
+                        models.Q(external_data__has_key='source_variant_id') |
+                        models.Q(external_data__has_key='source_variant_slug')
+                    ).values_list('id', flat=True)
+                )
+                if shadow_ids:
+                    reranked = [r for r in reranked if r["product"]["id"] not in shadow_ids]
+                    rec_ids = [rid for rid in rec_ids if rid not in shadow_ids]
+
             if rec_ids:
                 session_key = getattr(request.session, "session_key", None) or ""
                 from apps.recommendations.tasks import log_recommendation_event
