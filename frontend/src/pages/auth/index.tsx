@@ -113,7 +113,7 @@ function TelegramLoginWidget() {
       script.id = uniqueId.current
       script.async = true
       
-      // Очищаем контейнер перед добавлением скрипта (защита от двойного рендера)
+      // Очищаем контейнер перед добавлением скрипта
       containerRef.current.innerHTML = ''
       containerRef.current.appendChild(script)
     }
@@ -122,21 +122,46 @@ function TelegramLoginWidget() {
       const wrapper = document.getElementById(uniqueId.current + '-wrapper')
       if (!wrapper) return
       
-      const iframe = wrapper.querySelector('iframe') as HTMLIFrameElement | null
+      // Ищем сгенерированный Telegram iframe
+      const iframes = document.querySelectorAll(`iframe[id^="telegram-login-"]`)
+      let iframe = null
+      
+      // Ищем свободный iframe, который еще не перенесен в наш враппер
+      for (let i = 0; i < iframes.length; i++) {
+        const currentIframe = iframes[i] as HTMLIFrameElement;
+        // Если iframe уже внутри какого-то враппера, пропускаем
+        if (currentIframe.closest('.telegram-widget-wrapper')) continue;
+        iframe = currentIframe;
+        break;
+      }
+      
+      // Если свободный не найден, возможно он уже внутри нашего враппера
+      if (!iframe) {
+        iframe = wrapper.querySelector('iframe') as HTMLIFrameElement | null
+      }
+      
       if (!iframe) return
       
+      // Переносим iframe внутрь нашего враппера, если он отрендерился снаружи
+      if (iframe.parentElement !== wrapper) {
+        wrapper.appendChild(iframe)
+      }
+
       const htmlWrapper = wrapper as HTMLElement
       htmlWrapper.style.position = 'absolute'
       htmlWrapper.style.inset = '0'
-      htmlWrapper.style.zIndex = '20'
+      htmlWrapper.style.zIndex = '50'
       
-      iframe.style.width = '100%'
-      iframe.style.height = '100%'
-      iframe.style.opacity = '0'
+      iframe.style.width = '40px' // Ставим точные размеры как у нашей иконки
+      iframe.style.height = '40px'
+      iframe.style.opacity = '0.01'
       iframe.style.position = 'absolute'
       iframe.style.inset = '0'
-      iframe.style.zIndex = '20'
+      iframe.style.zIndex = '50'
       iframe.style.pointerEvents = 'auto'
+      
+      // Фикс для Telegram: иногда виджет внутри iframe блокирует клики, если iframe слишком большой или растянут
+      // Мы ставим размеры точно по иконке, чтобы клик приходился ровно в центр виджета
       
       clearInterval(intervalId)
     }, 200)
@@ -146,12 +171,12 @@ function TelegramLoginWidget() {
 
   return (
     <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden hover:opacity-80 transition-opacity">
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2AABEE] text-white shadow-sm pointer-events-none">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2AABEE] text-white shadow-sm pointer-events-none relative z-10">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M22.5 3.5L2.8 11.1c-1 .4-1 .9-.2 1.1l5 1.6 1.9 5.7c.2.6.3.8.6.8.3 0 .5-.2.8-.5l2.5-2.4 5.2 3.9c1 .6 1.7.3 2-1l3.6-16.9c.4-1.6-.6-2.3-1.7-1.8zM9.3 14.9l-.7 2.6-.4-3.6 9.7-6.2-8.6 7.2z" />
         </svg>
       </div>
-      <div id={uniqueId.current + '-wrapper'} ref={containerRef} className="telegram-widget-wrapper absolute inset-0 opacity-0 z-20" style={{ cursor: 'pointer' }} />
+      <div id={uniqueId.current + '-wrapper'} ref={containerRef} className="telegram-widget-wrapper absolute inset-0 z-50 flex items-center justify-center" style={{ cursor: 'pointer', pointerEvents: 'auto' }} />
     </div>
   )
 }
