@@ -51,7 +51,6 @@ export function ymInit(): void {
 
 declare global {
   interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ym: (id: number, action: string, ...args: any[]) => void
+    ym: (id: number, action: string, ...args: unknown[]) => void
   }
 }
