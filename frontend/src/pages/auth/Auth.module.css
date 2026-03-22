@@ -1,0 +1,175 @@
+.container {
+  position: relative;
+  width: 850px;
+  max-width: 100%;
+  height: 550px;
+  background: var(--surface);
+  border-radius: 30px;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.formBox {
+  position: absolute;
+  right: 0;
+  width: 50%;
+  height: 100%;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: var(--text);
+  padding: 40px;
+  z-index: 1;
+  transition: 0.6s ease-in-out 1.2s, visibility 0s 1s;
+}
+
+.container.active .formBox {
+  right: 50%;
+}
+
+.formBoxRegister {
+  visibility: hidden;
+}
+
+.container.active .formBoxRegister {
+  visibility: visible;
+}
+
+.toggleBox {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.toggleBox::before {
+  content: '';
+  position: absolute;
+  left: -250%;
+  width: 300%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 150px;
+  transition: 1.8s ease-in-out;
+}
+
+.container.active .toggleBox::before {
+  left: 50%;
+}
+
+.togglePanel {
+  position: absolute;
+  width: 50%;
+  height: 100%;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  transition: 0.6s ease-in-out;
+  pointer-events: auto;
+  padding: 20px;
+  text-align: center;
+}
+
+.toggleLeft {
+  left: 0;
+  transition-delay: 1.2s;
+}
+
+.container.active .toggleLeft {
+  left: -50%;
+  transition-delay: 0.6s;
+}
+
+.toggleRight {
+  right: -50%;
+  transition-delay: 0.6s;
+}
+
+.container.active .toggleRight {
+  right: 0;
+  transition-delay: 1.2s;
+}
+
+.inputBox {
+  position: relative;
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.inputBox input {
+  width: 100%;
+  padding: 12px 40px 12px 16px;
+  background: var(--bg);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  outline: none;
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+  transition: border-color 0.2s;
+}
+
+.inputBox input:focus {
+  border-color: var(--accent);
+}
+
+.inputBox .icon {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #888;
+  pointer-events: none;
+}
+
+@media screen and (max-width: 768px) {
+  .container {
+    height: calc(100vh - 40px);
+    min-height: 650px;
+  }
+  .formBox {
+    bottom: 0;
+    width: 100%;
+    height: 70%;
+    padding: 20px 30px;
+  }
+  .container.active .formBox {
+    right: 0;
+    bottom: 30%;
+  }
+  .toggleBox::before {
+    left: 0;
+    top: -270%;
+    width: 100%;
+    height: 300%;
+    border-radius: 20vw;
+  }
+  .container.active .toggleBox::before {
+    left: 0;
+    top: 70%;
+  }
+  .container.active .toggleLeft {
+    left: 0;
+    top: -30%;
+  }
+  .togglePanel {
+    width: 100%;
+    height: 30%;
+  }
+  .toggleLeft {
+    top: 0;
+  }
+  .toggleRight {
+    right: 0;
+    bottom: -30%;
+  }
+  .container.active .toggleRight {
+    bottom: 0;
+  }
+}
