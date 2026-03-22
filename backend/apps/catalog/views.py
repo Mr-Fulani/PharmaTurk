@@ -778,7 +778,11 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
 class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами."""
     
-    queryset = Product.objects.filter(is_active=True)
+    # Теневые варианты исключены на уровне класса (защита от случаев когда get_queryset не вызывается)
+    queryset = Product.objects.filter(is_active=True).exclude(
+        models.Q(external_data__has_key='source_variant_id') |
+        models.Q(external_data__has_key='source_variant_slug')
+    )
     serializer_class = ProductSerializer
     pagination_class = StandardPagination
     lookup_field = 'slug'
@@ -808,12 +812,10 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
         """Фильтрация товаров по параметрам."""
         queryset = Product.objects.filter(is_active=True)
         queryset = queryset.exclude(product_type='jewelry')
+        # Универсально исключаем все теневые варианты (для любых product_type)
         queryset = queryset.exclude(
-            models.Q(product_type__in=['clothing', 'shoes']) &
-            (
-                models.Q(external_data__has_key='source_variant_id') |
-                models.Q(external_data__has_key='source_variant_slug')
-            )
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
         )
         
         # Фильтр по категории (поддержка массивов)
@@ -1260,6 +1262,17 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
                 vector_type="image",
                 n_results=n_results,
             )
+            # Исключаем теневые варианты из результатов
+            if similar_list:
+                vis_ids = [r["product_id"] for r in similar_list]
+                shadow_ids = set(
+                    Product.objects.filter(id__in=vis_ids).filter(
+                        models.Q(external_data__has_key='source_variant_id') |
+                        models.Q(external_data__has_key='source_variant_slug')
+                    ).values_list('id', flat=True)
+                )
+                if shadow_ids:
+                    similar_list = [r for r in similar_list if r["product_id"] not in shadow_ids]
             return Response({"count": len(similar_list), "results": similar_list})
         except Exception as e:
             logger.warning(
@@ -1270,6 +1283,7 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
                 {"count": 0, "results": [], "error": str(e)},
                 status=status.HTTP_200_OK,
             )
+
 
 
 # ============================================================================
