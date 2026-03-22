@@ -180,15 +180,20 @@ class TestimonialCreateSerializer(serializers.ModelSerializer):
         if not author_avatar and user.avatar:
             # Копируем аватар из профиля
             # Открываем файл и создаем копию для отзыва
-            user.avatar.open('rb')
-            file_content = user.avatar.read()
-            user.avatar.close()
-            
-            # Создаем новый файл для отзыва
-            from django.core.files.base import ContentFile
-            import os
-            file_name = os.path.basename(user.avatar.name)
-            author_avatar = ContentFile(file_content, name=file_name)
+            try:
+                user.avatar.open('rb')
+                file_content = user.avatar.read()
+                user.avatar.close()
+                
+                # Создаем новый файл для отзыва
+                from django.core.files.base import ContentFile
+                import os
+                file_name = os.path.basename(user.avatar.name)
+                author_avatar = ContentFile(file_content, name=file_name)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Failed to copy avatar for testimonial: %s" % e)
+                author_avatar = None
         
         testimonial = Testimonial.objects.create(
             user=user,

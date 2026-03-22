@@ -188,6 +188,11 @@ _PROTECTED_STORAGE_PREFIXES = (
     "testimonials/",  # аватарки авторов отзывов (feedback.Testimonial.author_avatar)
 )
 
+# Известные корневые директории медиа
+_KNOWN_ROOT_DIRS = (
+    "products/", "temp/", "avatars/", "testimonials/", "marketing/", "services/"
+)
+
 # Префиксы других окружений — не удалять при очистке.
 # На проде (R2_PREFIX="") listdir возвращает весь бакет, включая dev/.
 # Без этой защиты prod-задача удаляла бы медиа из dev/.
@@ -198,14 +203,24 @@ def _is_protected_path(path: str) -> bool:
     """Проверить, что путь защищён от удаления."""
     if not path:
         return True
+    
+    # Если путь начинается с папки, которая не является известной (например, префикс разработчика `misha/`),
+    # мы всегда защищаем этот путь, чтобы продакшен скрипт не удалял локальные файлы.
+    has_known_root = any(path.startswith(r) for r in _KNOWN_ROOT_DIRS)
+    if not has_known_root and "/" in path:
+        return True
+
     normalized = _normalize_media_path(path)
+    
     for prefix in _PROTECTED_STORAGE_PREFIXES:
         if normalized.startswith(prefix) or path.startswith(prefix):
             return True
+            
     # Не удалять файлы из других окружений (dev/, staging/ и т.д.)
     for prefix in _OTHER_ENV_PREFIXES:
         if normalized.startswith(prefix) or path.startswith(prefix):
             return True
+            
     return False
 
 
@@ -216,6 +231,11 @@ def cleanup_orphaned_media():
     Не удаляет: защищённые префиксы (AI, temp), пути других окружений (dev/, staging/).
     На проде (R2_PREFIX="") listdir возвращает весь бакет — без защиты dev/ файлы удалялись бы.
     """
+    from django.conf import settings
+    if getattr(settings, 'DEBUG', False):
+        logger.info("cleanup_orphaned_media skipped: DEBUG=True. (Prevents local celery from wiping shared media across developers using the same R2 prefix)")
+        return {"status": "skipped", "message": "Disabled in DEBUG mode"}
+
     from django.core.files.storage import default_storage
 
     try:
