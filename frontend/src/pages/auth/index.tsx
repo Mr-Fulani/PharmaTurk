@@ -84,6 +84,7 @@ function TelegramLoginWidget() {
   const redirect = usePostLoginRedirect()
   const containerRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation('common')
+  const uniqueId = useRef(`telegram-login-${Math.random().toString(36).substring(2, 9)}`)
 
   useEffect(() => {
     ; (window as any).onTelegramAuth = async (user: any) => {
@@ -109,23 +110,34 @@ function TelegramLoginWidget() {
       script.setAttribute('data-request-access', 'write')
       script.setAttribute('data-userpic', 'false')
       script.setAttribute('data-onauth', 'onTelegramAuth(user)')
+      script.id = uniqueId.current
       script.async = true
+      
+      // Очищаем контейнер перед добавлением скрипта (защита от двойного рендера)
+      containerRef.current.innerHTML = ''
       containerRef.current.appendChild(script)
     }
 
     const intervalId = setInterval(() => {
-      const iframe = containerRef.current?.querySelector('iframe') as HTMLIFrameElement | null
-      if (!iframe || !containerRef.current) return
-      containerRef.current.style.position = 'absolute'
-      containerRef.current.style.inset = '0'
-      containerRef.current.style.zIndex = '10'
+      const wrapper = document.getElementById(uniqueId.current + '-wrapper')
+      if (!wrapper) return
+      
+      const iframe = wrapper.querySelector('iframe') as HTMLIFrameElement | null
+      if (!iframe) return
+      
+      const htmlWrapper = wrapper as HTMLElement
+      htmlWrapper.style.position = 'absolute'
+      htmlWrapper.style.inset = '0'
+      htmlWrapper.style.zIndex = '20'
+      
       iframe.style.width = '100%'
       iframe.style.height = '100%'
       iframe.style.opacity = '0'
       iframe.style.position = 'absolute'
       iframe.style.inset = '0'
-      iframe.style.zIndex = '10'
+      iframe.style.zIndex = '20'
       iframe.style.pointerEvents = 'auto'
+      
       clearInterval(intervalId)
     }, 200)
 
@@ -139,7 +151,7 @@ function TelegramLoginWidget() {
           <path d="M22.5 3.5L2.8 11.1c-1 .4-1 .9-.2 1.1l5 1.6 1.9 5.7c.2.6.3.8.6.8.3 0 .5-.2.8-.5l2.5-2.4 5.2 3.9c1 .6 1.7.3 2-1l3.6-16.9c.4-1.6-.6-2.3-1.7-1.8zM9.3 14.9l-.7 2.6-.4-3.6 9.7-6.2-8.6 7.2z" />
         </svg>
       </div>
-      <div ref={containerRef} className="absolute inset-0 opacity-0" />
+      <div id={uniqueId.current + '-wrapper'} ref={containerRef} className="telegram-widget-wrapper absolute inset-0 opacity-0 z-20" style={{ cursor: 'pointer' }} />
     </div>
   )
 }
