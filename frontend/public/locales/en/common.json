@@ -1100,5 +1100,21 @@
   "medicine_how_to_order_q5": "How does delivery work?",
   "medicine_how_to_order_a5": "We arrange delivery from Turkey via trusted logistics channels. Timing and cost depend on the destination and delivery method.",
   "medicine_how_to_order_q6": "Can I request multiple medicines at once?",
-  "medicine_how_to_order_a6": "Yes, you can submit a single request for multiple medicines. We will check availability and offer the best option."
+  "medicine_how_to_order_a6": "Yes, you can submit a single request for multiple medicines. We will check availability and offer the best option.",
+
+  "cookie_banner_label": "Cookie notice",
+  "cookie_banner_title": "We use cookies",
+  "cookie_banner_text": "We use cookies to improve site performance, analytics and personalisation. Analytics data is only collected with your consent.",
+  "cookie_banner_accept": "Accept all",
+  "cookie_banner_essential": "Essential only",
+  "cookie_banner_learn_more": "Learn more",
+
+  "privacy_cookies_title": "Cookie Usage",
+  "privacy_cookies_desc": "Our site uses cookies — small text files stored on your device. We split them into two types:",
+  "privacy_cookies_necessary": "Essential cookies",
+  "privacy_cookies_necessary_desc": "Technically required: shopping cart, login session, language preferences. Set automatically without requiring consent.",
+  "privacy_cookies_analytics": "Analytics cookies",
+  "privacy_cookies_analytics_desc": "Google Analytics (via Google Tag Manager) and Yandex Metrica for site traffic analysis. Only set with your explicit consent.",
+  "privacy_cookies_consent": "Managing consent",
+  "privacy_cookies_consent_desc": "On first visit we ask for your consent. You can withdraw it at any time by clearing browser cookies or clicking \"Essential only\" on your next visit."
 }
