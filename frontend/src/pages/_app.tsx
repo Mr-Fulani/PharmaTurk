@@ -132,7 +132,7 @@ ym(${YM_ID},'init',{
             <div className="flex-1">
               <Component {...pageProps} />
             </div>
-            <Footer initialSettings={(pageProps as any)?.footerSettings} />
+            <Footer initialSettings={(pageProps as Record<string, unknown>)?.footerSettings} />
           </div>
         )}
 
