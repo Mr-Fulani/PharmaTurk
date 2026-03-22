@@ -108,8 +108,15 @@ def ensure_domain_product_for_base(product):
     Если у Product есть product_type с доменной моделью:
     - доменной записи нет → создаём и копируем данные из Product;
     - запись уже есть → обновляем её общие поля из Product (скрапер/импорт).
+
+    Теневые варианты (external_data содержит source_variant_id или source_variant_slug)
+    пропускаются: они не должны создавать записи в доменных таблицах.
     """
     if not product or not product.pk or not product.product_type:
+        return
+    # Ранний выход для теневых вариантов
+    external = getattr(product, 'external_data', None) or {}
+    if external.get('source_variant_id') or external.get('source_variant_slug'):
         return
     domain_map = _get_domain_map()
     if product.product_type not in domain_map:
