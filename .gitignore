@@ -78,3 +78,4 @@ skills-lock.json
 
 # Backup/scratch scripts
 backend/check_book.py
+backend/products_db_dump.txt

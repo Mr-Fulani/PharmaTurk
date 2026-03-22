@@ -14,6 +14,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from api.authentication import JWTSafeAuthentication
+
 from apps.catalog.models import (
     Product,
     ClothingProduct,
@@ -508,6 +510,8 @@ def _get_or_create_cart(request) -> Cart:
 class CartViewSet(viewsets.ViewSet):
     """Управление корзиной."""
     permission_classes = [AllowAny]
+    # Исключаем SessionAuthentication: она применяет CSRF к POST/DELETE даже при AllowAny
+    authentication_classes = [JWTSafeAuthentication]
 
     @extend_schema(
         description="Получить текущую корзину",
@@ -876,6 +880,8 @@ class CartViewSet(viewsets.ViewSet):
 class OrderViewSet(viewsets.ViewSet):
     """Управление заказами."""
     permission_classes = [IsAuthenticated]
+    # SessionAuthentication вызывает CSRF-ошибки для POST — используем только JWT
+    authentication_classes = [JWTSafeAuthentication]
 
     def _get_order_for_user(self, user, number: str) -> Order:
         try:
