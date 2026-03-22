@@ -1144,6 +1144,12 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
         featured_products = Product.objects.filter(
             is_active=True, 
             is_featured=True
+        ).exclude(
+            models.Q(product_type__in=['clothing', 'shoes']) &
+            (
+                models.Q(external_data__has_key='source_variant_id') |
+                models.Q(external_data__has_key='source_variant_slug')
+            )
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
@@ -1426,6 +1432,9 @@ class ClothingProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelVie
         featured_products = ClothingProduct.objects.filter(
             is_active=True, 
             is_featured=True
+        ).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
@@ -1616,6 +1625,9 @@ class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet
         featured_products = ShoeProduct.objects.filter(
             is_active=True, 
             is_featured=True
+        ).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
@@ -1868,6 +1880,9 @@ class JewelryProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelView
     def featured(self, request):
         featured_products = JewelryProduct.objects.filter(
             is_active=True, is_featured=True
+        ).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
@@ -2002,6 +2017,9 @@ class FurnitureProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelVi
         featured_products = FurnitureProduct.objects.filter(
             is_active=True, 
             is_featured=True
+        ).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
