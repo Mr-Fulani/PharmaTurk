@@ -23,6 +23,7 @@ export default function AuthIndexPage() {
   const router = useRouter()
   const tabParam = (router.query.tab as string) || 'login'
   const [tab, setTab] = useState<'login' | 'register'>(tabParam === 'register' ? 'register' : 'login')
+  const [loginMethod, setLoginMethod] = useState<'password' | 'sms'>('password')
   const { t } = useTranslation('common')
 
   const switchTo = (nextTab: 'login' | 'register') => {
@@ -36,12 +37,55 @@ export default function AuthIndexPage() {
       <Head>
         <title>{tab === 'login' ? t('login') : t('register')} — Turk-Export</title>
       </Head>
-      <main className="mx-auto max-w-md p-6">
-        <div className="mb-4 inline-flex rounded-md border border-[var(--border)] p-1 bg-[var(--surface)]">
-          <button onClick={() => switchTo('login')} className={`rounded px-3 py-1.5 text-sm ${tab === 'login' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}>{t('login')}</button>
-          <button onClick={() => switchTo('register')} className={`rounded px-3 py-1.5 text-sm ${tab === 'register' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}>{t('register')}</button>
+      <main className="mx-auto max-w-md p-6 flex flex-col items-center min-h-[60vh] justify-center">
+        <div className="w-full">
+          {tab === 'login' ? (
+            <div className="mb-4 inline-flex flex-wrap justify-center rounded-md border border-[var(--border)] p-1 bg-[var(--surface)] gap-1 w-full">
+              <button
+                onClick={() => switchTo('login')}
+                className="rounded px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap transition-colors bg-[var(--accent)] text-white"
+              >
+                {t('login')}
+              </button>
+              <button
+                onClick={() => switchTo('register')}
+                className="rounded px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap transition-colors text-main hover:bg-[var(--surface)]"
+              >
+                {t('register')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoginMethod('password')}
+                className={`rounded px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap transition-colors ${loginMethod === 'password' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}
+              >
+                {t('auth_login_method_password')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoginMethod('sms')}
+                className={`rounded px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap transition-colors ${loginMethod === 'sms' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}
+              >
+                {t('auth_login_method_sms')}
+              </button>
+            </div>
+          ) : (
+            <div className="mb-4 inline-flex flex-wrap justify-center rounded-md border border-[var(--border)] p-1 bg-[var(--surface)] gap-1 w-full">
+              <button
+                onClick={() => switchTo('login')}
+                className="rounded px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap transition-colors text-main hover:bg-[var(--surface)]"
+              >
+                {t('login')}
+              </button>
+              <button
+                onClick={() => switchTo('register')}
+                className="rounded px-3 py-1.5 text-xs sm:text-sm whitespace-nowrap transition-colors bg-[var(--accent)] text-white"
+              >
+                {t('register')}
+              </button>
+            </div>
+          )}
+          {tab === 'login' ? <LoginForm loginMethod={loginMethod} /> : <RegisterForm />}
         </div>
-        {tab === 'login' ? <LoginForm /> : <RegisterForm />}
       </main>
     </>
   )
@@ -79,7 +123,7 @@ function TelegramLoginWidget() {
       const script = document.createElement('script')
       script.src = 'https://telegram.org/js/telegram-widget.js?22'
       script.setAttribute('data-telegram-login', botName)
-      script.setAttribute('data-size', 'large')
+      script.setAttribute('data-size', 'small')
       script.setAttribute('data-radius', '4')
       script.setAttribute('data-request-access', 'write')
       script.setAttribute('data-userpic', 'false')
@@ -87,9 +131,36 @@ function TelegramLoginWidget() {
       script.async = true
       containerRef.current.appendChild(script)
     }
+
+    const intervalId = setInterval(() => {
+      const iframe = containerRef.current?.querySelector('iframe') as HTMLIFrameElement | null
+      if (!iframe || !containerRef.current) return
+      containerRef.current.style.position = 'absolute'
+      containerRef.current.style.inset = '0'
+      containerRef.current.style.zIndex = '10'
+      iframe.style.width = '100%'
+      iframe.style.height = '100%'
+      iframe.style.opacity = '0'
+      iframe.style.position = 'absolute'
+      iframe.style.inset = '0'
+      iframe.style.zIndex = '10'
+      iframe.style.pointerEvents = 'auto'
+      clearInterval(intervalId)
+    }, 200)
+
+    return () => clearInterval(intervalId)
   }, [loginWithTelegram, router, t])
 
-  return <div ref={containerRef} className="flex justify-center my-4" />
+  return (
+    <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2AABEE] text-white shadow-sm pointer-events-none">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M22.5 3.5L2.8 11.1c-1 .4-1 .9-.2 1.1l5 1.6 1.9 5.7c.2.6.3.8.6.8.3 0 .5-.2.8-.5l2.5-2.4 5.2 3.9c1 .6 1.7.3 2-1l3.6-16.9c.4-1.6-.6-2.3-1.7-1.8zM9.3 14.9l-.7 2.6-.4-3.6 9.7-6.2-8.6 7.2z" />
+        </svg>
+      </div>
+      <div ref={containerRef} className="absolute inset-0 opacity-0" />
+    </div>
+  )
 }
 
 // ─── Google One Tap кнопка ────────────────────────────────────────────────────
@@ -130,9 +201,26 @@ function GoogleLoginButton() {
   useEffect(() => {
     if (!googleClientId) return
 
+    const applyGoogleIconStyles = () => {
+      const btn = document.getElementById('google-signin-btn')
+      if (!btn) return
+      const child = btn.querySelector('div, iframe') as HTMLElement | null
+      if (!child) return
+      child.style.width = '40px'
+      child.style.height = '40px'
+      child.style.display = 'block'
+    }
+
     const initGoogle = () => {
       const google = (window as any).google
       if (!google?.accounts?.id) return
+      const btn = document.getElementById('google-signin-btn')
+      if (btn) btn.innerHTML = ''
+      google.accounts.id.renderButton(
+        document.getElementById('google-signin-btn'),
+        { theme: theme === 'dark' ? 'filled_black' : 'filled_blue', size: 'large', type: 'icon', shape: 'circle' }
+      )
+      setTimeout(applyGoogleIconStyles, 0)
       google.accounts.id.initialize({
         client_id: googleClientId,
         callback: handleGoogleResponse,
@@ -152,56 +240,18 @@ function GoogleLoginButton() {
       script.onload = initGoogle
       document.head.appendChild(script)
     }
-  }, [googleClientId])
-
-  // Рендерим стандартную кнопку Google, так как кастомная через prompt()
-  // может блокироваться браузером или если пользователь ранее закрыл One Tap
-  useEffect(() => {
-    if (!googleClientId) return
-    const google = (window as any).google
-    if (google?.accounts?.id) {
-      google.accounts.id.renderButton(
-        document.getElementById('google-signin-btn'),
-        { theme: theme === 'dark' ? 'filled_black' : 'outline', size: 'large', width: '100%', text: "signin_with" }
-      )
-    } else {
-      setTimeout(() => {
-        const g = (window as any).google
-        if (g?.accounts?.id && document.getElementById('google-signin-btn')) {
-          g.accounts.id.renderButton(
-            document.getElementById('google-signin-btn'),
-            { theme: theme === 'dark' ? 'filled_black' : 'outline', size: 'large', width: '100%', text: "signin_with" }
-          )
-        }
-      }, 1000) // fallback if loads later
-    }
+    const styleInterval = setInterval(applyGoogleIconStyles, 200)
+    return () => clearInterval(styleInterval)
   }, [googleClientId, theme])
-
-  const handleClick = () => {
-    if (!googleClientId) {
-      setError('Google Client ID не настроен')
-      return
-    }
-    const google = (window as any).google
-    if (!google?.accounts?.id) {
-      setError(t('auth_social_error', 'Ошибка входа через Google'))
-      return
-    }
-    google.accounts.id.prompt()
-  }
 
   if (!googleClientId) return null
 
   return (
-    <div className="flex flex-col gap-1">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={loading}
-        className="flex items-center justify-center gap-2 w-full rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 transition-colors dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-      >
-        <div id="google-signin-btn" className="w-full flex justify-center [&>div]:w-full"></div>
-      </button>
+    <div className="flex flex-col items-center gap-1">
+      <div
+        id="google-signin-btn"
+        className={`flex h-10 w-10 items-center justify-center rounded-full bg-white border border-gray-200 shadow-sm ${loading ? 'opacity-60' : ''}`}
+      />
       {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
   )
@@ -302,18 +352,17 @@ function VKLoginButton() {
   if (!vkAppId) return null
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col items-center gap-1">
       <button
         type="button"
         onClick={handleVKLogin}
         disabled={loading}
-        className="flex items-center justify-center gap-2 w-full rounded-md bg-[#0077FF] hover:bg-[#005ecc] px-4 py-2.5 text-sm font-medium text-white shadow-sm disabled:opacity-60 transition-colors"
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0077FF] hover:bg-[#005ecc] text-white shadow-sm disabled:opacity-60 transition-colors"
+        aria-label="VK"
       >
-        {/* VK logo */}
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
           <path d="M15.684 0H8.316C1.592 0 0 1.592 0 8.316v7.368C0 22.408 1.592 24 8.316 24h7.368C22.408 24 24 22.408 24 15.684V8.316C24 1.592 22.391 0 15.684 0zm3.692 17.123h-1.744c-.66 0-.862-.523-2.049-1.712-1.033-1.01-1.49-1.135-1.744-1.135-.356 0-.458.102-.458.593v1.563c0 .424-.135.678-1.252.678-1.846 0-3.896-1.12-5.335-3.208C5.046 11.155 4.56 9.235 4.56 8.812c0-.254.102-.491.593-.491h1.744c.44 0 .61.203.779.678.864 2.49 2.303 4.675 2.896 4.675.22 0 .322-.102.322-.66V9.218c-.068-1.167-.683-1.269-.683-1.692 0-.203.17-.407.44-.407h2.743c.373 0 .508.203.508.643v3.473c0 .372.17.508.271.508.22 0 .407-.136.813-.542 1.254-1.405 2.151-3.574 2.151-3.574.119-.254.322-.491.762-.491h1.744c.526 0 .643.271.526.643-.22 1.017-2.354 4.031-2.354 4.031-.186.305-.254.44 0 .78.186.254.796.779 1.201 1.252.745.847 1.32 1.558 1.473 2.049.17.483-.086.728-.576.728z" />
         </svg>
-        {loading ? t('auth_logging_in', 'Вход...') : t('auth_vk_login', 'Войти через ВКонтакте')}
       </button>
       {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
@@ -342,9 +391,9 @@ function OrDivider({ label }: { label: string }) {
 function SocialLoginBlock() {
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
   const vkAppId = process.env.NEXT_PUBLIC_VK_APP_ID
-  if (!googleClientId && !vkAppId) return null
   return (
-    <div className="flex flex-col gap-3 mt-2">
+    <div className="flex items-center justify-center gap-3 mt-2">
+      <TelegramLoginWidget />
       {googleClientId && <GoogleLoginButton />}
       {vkAppId && <VKLoginButton />}
     </div>
@@ -353,19 +402,25 @@ function SocialLoginBlock() {
 
 // ─── Форма входа ──────────────────────────────────────────────────────────────
 
-function LoginForm() {
+function LoginForm({ loginMethod }: { loginMethod: 'password' | 'sms' }) {
   const { login } = useAuth()
   const redirect = usePostLoginRedirect()
   const [loginValue, setLoginValue] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [loginMethod, setLoginMethod] = useState<'password' | 'sms'>('password')
   const [smsCode, setSmsCode] = useState('')
   const [smsSent, setSmsSent] = useState(false)
   const { t } = useTranslation('common')
   const { theme } = useTheme()
   const isDark = theme === 'dark'
+
+  useEffect(() => {
+    setError('')
+    setSmsSent(false)
+    setSmsCode('')
+    if (loginMethod === 'sms') setPassword('')
+  }, [loginMethod])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -399,24 +454,6 @@ function LoginForm() {
 
   return (
     <div className="space-y-4">
-      {/* Переключатель метода входа */}
-      <div className="inline-flex rounded-md border border-[var(--border)] p-1 bg-[var(--surface)]">
-        <button
-          type="button"
-          onClick={() => { setLoginMethod('password'); setSmsSent(false); setSmsCode(''); setError('') }}
-          className={`rounded px-3 py-1.5 text-sm transition-colors ${loginMethod === 'password' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}
-        >
-          {t('auth_login_method_password')}
-        </button>
-        <button
-          type="button"
-          onClick={() => { setLoginMethod('sms'); setPassword(''); setError('') }}
-          className={`rounded px-3 py-1.5 text-sm transition-colors ${loginMethod === 'sms' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}
-        >
-          {t('auth_login_method_sms')}
-        </button>
-      </div>
-
       <form onSubmit={submit} className="grid gap-3">
         {loginMethod === 'password' ? (
           <>
@@ -480,7 +517,6 @@ function LoginForm() {
       </form>
 
       <OrDivider label={t('auth_or_login_with')} />
-      <TelegramLoginWidget />
       <SocialLoginBlock />
     </div>
   )
@@ -534,7 +570,6 @@ function RegisterForm() {
         <button type="submit" disabled={loading} className="rounded-md bg-[var(--accent)] px-4 py-2 text-white hover:bg-[var(--accent-strong)] disabled:opacity-60">{loading ? t('auth_registering') : t('auth_register_button')}</button>
       </form>
       <OrDivider label={t('auth_or_register_with')} />
-      <TelegramLoginWidget />
       <SocialLoginBlock />
     </div>
   )
