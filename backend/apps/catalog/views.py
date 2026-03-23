@@ -1365,7 +1365,11 @@ class ClothingCategoryViewSet(viewsets.ReadOnlyModelViewSet):
 class ClothingProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами одежды."""
     
-    queryset = ClothingProduct.objects.filter(is_active=True)
+    # Теневые варианты исключены на уровне класса
+    queryset = ClothingProduct.objects.filter(is_active=True).exclude(
+        models.Q(external_data__has_key='source_variant_id') |
+        models.Q(external_data__has_key='source_variant_slug')
+    )
     serializer_class = ClothingProductSerializer
     pagination_class = StandardPagination
     lookup_field = 'slug'
@@ -1384,7 +1388,10 @@ class ClothingProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelVie
     
     def get_queryset(self):
         """Фильтрация товаров одежды по параметрам."""
-        queryset = ClothingProduct.objects.filter(is_active=True).prefetch_related(
+        queryset = ClothingProduct.objects.filter(is_active=True).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
+        ).prefetch_related(
             'images',
             'variants',
             'variants__images',
@@ -1558,7 +1565,11 @@ class ShoeCategoryViewSet(viewsets.ReadOnlyModelViewSet):
 class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами обуви."""
     
-    queryset = ShoeProduct.objects.filter(is_active=True)
+    # Теневые варианты исключены на уровне класса
+    queryset = ShoeProduct.objects.filter(is_active=True).exclude(
+        models.Q(external_data__has_key='source_variant_id') |
+        models.Q(external_data__has_key='source_variant_slug')
+    )
     serializer_class = ShoeProductSerializer
     pagination_class = StandardPagination
     lookup_field = 'slug'
@@ -1577,7 +1588,10 @@ class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet
     
     def get_queryset(self):
         """Фильтрация товаров обуви по параметрам."""
-        queryset = ShoeProduct.objects.filter(is_active=True).prefetch_related(
+        queryset = ShoeProduct.objects.filter(is_active=True).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
+        ).prefetch_related(
             'images',
             'variants',
             'variants__images',
