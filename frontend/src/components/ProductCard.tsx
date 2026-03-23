@@ -6,6 +6,7 @@ import ShareButton from './ShareButton'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
+import { useState, useEffect } from 'react'
 
 interface ProductCardProps {
   id: number
@@ -74,6 +75,12 @@ export default function ProductCard({
   isFeatured
 }: ProductCardProps) {
   const { t, i18n } = useTranslation('common')
+  const [isMounted, setIsMounted] = useState(false)
+  
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+  
   const localizedName = getLocalizedProductName(name, t, translations, locale || i18n.language)
   const localizedDescription = getLocalizedProductDescription(
     description,

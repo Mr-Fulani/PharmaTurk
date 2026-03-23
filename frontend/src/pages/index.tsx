@@ -474,7 +474,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const hasMediaA = !!(a.card_media_url && a.card_media_url.trim())
       const hasMediaB = !!(b.card_media_url && b.card_media_url.trim())
       if (hasMediaB !== hasMediaA) return hasMediaB ? 1 : -1
-      return (a.name || '').localeCompare(b.name || '')
+      return (a.name || '').localeCompare(b.name || '', 'ru')
     })
 
     // Показываем 11 брендов (с приоритетом у тех, у кого есть товары)

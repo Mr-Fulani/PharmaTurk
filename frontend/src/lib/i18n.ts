@@ -41,14 +41,6 @@ export function normalizeCategorySlug(slug: string): string {
 
 /**
  * Получает локализованное название категории
- * Приоритет: 1) JSON файлы, 2) API переводы, 3) fallback (название с бэкенда)
- * 
- * @param slug - slug категории
- * @param fallbackName - название с бэкенда (используется если перевода нет)
- * @param t - функция перевода из next-i18next
- * @param translations - переводы из API (опционально)
- * @param currentLocale - текущий язык (опционально, по умолчанию из t)
- * @returns локализованное название или fallback
  */
 export function getLocalizedCategoryName(
   slug: string,
@@ -58,15 +50,9 @@ export function getLocalizedCategoryName(
   currentLocale?: string
 ): string {
   const normalizedSlug = normalizeCategorySlug(slug)
-  // Получаем текущий язык из роутера или из пути
-  let locale = currentLocale
-  if (!locale && typeof window !== 'undefined') {
-    const pathLocale = window.location.pathname.split('/')[1]
-    locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
-  }
-  locale = locale || 'ru'
+  const locale = currentLocale || 'ru'
 
-  // 1. Сначала проверяем переводы из API (данные из админки)
+  // 1. Сначала проверяем переводы из API
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
     if (apiTranslation && apiTranslation.name) {
@@ -74,27 +60,18 @@ export function getLocalizedCategoryName(
     }
   }
 
-  // 2. Затем проверяем JSON файлы (статические переводы)
+  // 2. Затем проверяем JSON файлы
   const jsonKey = `category_${normalizedSlug}_name`
-  const jsonTranslated = t(jsonKey, { defaultValue: null })
+  const jsonTranslated = t(jsonKey)
   if (jsonTranslated && jsonTranslated !== jsonKey) {
     return jsonTranslated
   }
 
-  // 3. Fallback на название с бэкенда
   return fallbackName
 }
 
 /**
  * Получает локализованное описание категории
- * Приоритет: 1) JSON файлы, 2) API переводы, 3) fallback (описание с бэкенда)
- * 
- * @param slug - slug категории
- * @param fallbackDescription - описание с бэкенда (используется если перевода нет)
- * @param t - функция перевода из next-i18next
- * @param translations - переводы из API (опционально)
- * @param currentLocale - текущий язык (опционально, по умолчанию из t)
- * @returns локализованное описание или fallback
  */
 export function getLocalizedCategoryDescription(
   slug: string,
@@ -106,15 +83,8 @@ export function getLocalizedCategoryDescription(
   if (!fallbackDescription) return null
 
   const normalizedSlug = normalizeCategorySlug(slug)
-  // Получаем текущий язык из роутера или из пути
-  let locale = currentLocale
-  if (!locale && typeof window !== 'undefined') {
-    const pathLocale = window.location.pathname.split('/')[1]
-    locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
-  }
-  locale = locale || 'ru'
+  const locale = currentLocale || 'ru'
 
-  // 1. Сначала проверяем переводы из API (данные из админки)
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
     if (apiTranslation && apiTranslation.description) {
@@ -122,20 +92,17 @@ export function getLocalizedCategoryDescription(
     }
   }
 
-  // 2. Затем проверяем JSON файлы (статические переводы)
   const jsonKey = `category_${normalizedSlug}_description`
-  const jsonTranslated = t(jsonKey, { defaultValue: null })
+  const jsonTranslated = t(jsonKey)
   if (jsonTranslated && jsonTranslated !== jsonKey) {
     return jsonTranslated
   }
 
-  // 3. Fallback на описание с бэкенда
   return fallbackDescription
 }
 
 /**
  * Нормализует slug бренда для использования в ключах локализации
- * Заменяет подчеркивания на дефисы и приводит к нижнему регистру
  */
 export function normalizeBrandSlug(slug: string): string {
   return (slug || '').trim().toLowerCase().replace(/_/g, '-')
@@ -143,14 +110,6 @@ export function normalizeBrandSlug(slug: string): string {
 
 /**
  * Получает локализованное название бренда
- * Приоритет: 1) JSON файлы, 2) API переводы, 3) fallback (название с бэкенда)
- * 
- * @param slug - slug бренда
- * @param fallbackName - название с бэкенда (используется если перевода нет)
- * @param t - функция перевода из next-i18next
- * @param translations - переводы из API (опционально)
- * @param currentLocale - текущий язык (опционально, по умолчанию из t)
- * @returns локализованное название или fallback
  */
 export function getLocalizedBrandName(
   slug: string,
@@ -160,15 +119,8 @@ export function getLocalizedBrandName(
   currentLocale?: string
 ): string {
   const normalizedSlug = normalizeBrandSlug(slug)
-  // Получаем текущий язык из роутера или из пути
-  let locale = currentLocale
-  if (!locale && typeof window !== 'undefined') {
-    const pathLocale = window.location.pathname.split('/')[1]
-    locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
-  }
-  locale = locale || 'ru'
+  const locale = currentLocale || 'ru'
 
-  // 1. Сначала проверяем переводы из API (данные из админки)
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
     if (apiTranslation && apiTranslation.name) {
@@ -176,27 +128,17 @@ export function getLocalizedBrandName(
     }
   }
 
-  // 2. Затем проверяем JSON файлы (статические переводы)
   const jsonKey = `brand_${normalizedSlug}_name`
-  const jsonTranslated = t(jsonKey, { defaultValue: null })
+  const jsonTranslated = t(jsonKey)
   if (jsonTranslated && jsonTranslated !== jsonKey) {
     return jsonTranslated
   }
 
-  // 3. Fallback на название с бэкенда
   return fallbackName
 }
 
 /**
  * Получает локализованное описание бренда
- * Приоритет: 1) JSON файлы, 2) API переводы, 3) fallback (описание с бэкенда)
- * 
- * @param slug - slug бренда
- * @param fallbackDescription - описание с бэкенда (используется если перевода нет)
- * @param t - функция перевода из next-i18next
- * @param translations - переводы из API (опционально)
- * @param currentLocale - текущий язык (опционально, по умолчанию из t)
- * @returns локализованное описание или fallback
  */
 export function getLocalizedBrandDescription(
   slug: string,
@@ -208,15 +150,8 @@ export function getLocalizedBrandDescription(
   if (!fallbackDescription) return null
 
   const normalizedSlug = normalizeBrandSlug(slug)
-  // Получаем текущий язык из роутера или из пути
-  let locale = currentLocale
-  if (!locale && typeof window !== 'undefined') {
-    const pathLocale = window.location.pathname.split('/')[1]
-    locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
-  }
-  locale = locale || 'ru'
+  const locale = currentLocale || 'ru'
 
-  // 1. Сначала проверяем переводы из API (данные из админки)
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
     if (apiTranslation && apiTranslation.description) {
@@ -224,20 +159,17 @@ export function getLocalizedBrandDescription(
     }
   }
 
-  // 2. Затем проверяем JSON файлы (статические переводы)
   const jsonKey = `brand_${normalizedSlug}_description`
-  const jsonTranslated = t(jsonKey, { defaultValue: null })
+  const jsonTranslated = t(jsonKey)
   if (jsonTranslated && jsonTranslated !== jsonKey) {
     return jsonTranslated
   }
 
-  // 3. Fallback на описание с бэкенда
   return fallbackDescription
 }
 
 /**
  * Нормализует название цвета для использования в ключах локализации
- * Приводит к нижнему регистру, заменяет пробелы и спецсимволы на подчеркивания
  */
 export function normalizeColorName(color: string): string {
   return (color || '')
@@ -249,30 +181,23 @@ export function normalizeColorName(color: string): string {
 
 /**
  * Получает локализованное название цвета
- * Приоритет: 1) JSON файлы, 2) fallback (оригинальное название)
- * 
- * @param color - название цвета с бэкенда
- * @param t - функция перевода из next-i18next
- * @returns локализованное название или оригинальное
  */
 export function getLocalizedColor(color: string, t: TFunction): string {
   if (!color) return color
 
   const normalizedColor = normalizeColorName(color)
   const jsonKey = `color_${normalizedColor}`
-  const translated = t(jsonKey, { defaultValue: null })
+  const translated = t(jsonKey)
 
-  // Если перевод найден и отличается от ключа, возвращаем его
   if (translated && translated !== jsonKey) {
     return translated
   }
 
-  // Иначе возвращаем оригинальное название
   return color
 }
 
 /**
- * Нормализует значение обложки/формата для ключа локализации (латиница, нижний регистр, пробелы -> подчёркивания).
+ * Нормализует значение обложки/формата для ключа локализации
  */
 export function normalizeBookAttributeValue(value: string): string {
   return (value || '')
@@ -284,12 +209,11 @@ export function normalizeBookAttributeValue(value: string): string {
 
 /**
  * Возвращает локализованное значение типа обложки (ru/en).
- * Пробует ключ cover_type_<normalized>, иначе возвращает исходное значение.
  */
 export function getLocalizedCoverType(coverType: string | null | undefined, t: TFunction): string {
   if (!coverType) return ''
   const key = `cover_type_${normalizeBookAttributeValue(coverType)}`
-  const translated = t(key, { defaultValue: null })
+  const translated = t(key)
   if (translated && translated !== key) return translated
   return coverType
 }
@@ -301,13 +225,7 @@ export function getLocalizedProductName(
   currentLocale?: string
 ): string {
   if (!fallbackName) return ''
-
-  let locale = currentLocale
-  if (!locale && typeof window !== 'undefined') {
-    const pathLocale = window.location.pathname.split('/')[1]
-    locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
-  }
-  locale = locale || 'ru'
+  const locale = currentLocale || 'ru'
 
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
@@ -321,13 +239,6 @@ export function getLocalizedProductName(
 
 /**
  * Получает локализованное описание товара
- * Приоритет: 1) API переводы, 2) fallback (описание с бэкенда)
- * 
- * @param fallbackDescription - описание с бэкенда (используется если перевода нет)
- * @param t - функция перевода из next-i18next
- * @param translations - переводы из API (опционально)
- * @param currentLocale - текущий язык (опционально, по умолчанию из t)
- * @returns локализованное описание или fallback
  */
 export function getLocalizedProductDescription(
   fallbackDescription: string | null | undefined,
@@ -337,16 +248,8 @@ export function getLocalizedProductDescription(
   fieldName: string = 'description'
 ): string {
   if (!fallbackDescription && !translations) return ''
+  const locale = currentLocale || 'ru'
 
-  // Получаем текущий язык из роутера или из пути
-  let locale = currentLocale
-  if (!locale && typeof window !== 'undefined') {
-    const pathLocale = window.location.pathname.split('/')[1]
-    locale = (pathLocale === 'ru' || pathLocale === 'en') ? pathLocale : 'ru'
-  }
-  locale = locale || 'ru'
-
-  // Проверяем переводы из API
   if (translations && translations.length > 0) {
     const apiTranslation = translations.find(tr => tr.locale === locale || tr.locale === locale.split('-')[0])
     if (apiTranslation) {
@@ -355,6 +258,5 @@ export function getLocalizedProductDescription(
     }
   }
 
-  // Fallback на описание с бэкенда
   return fallbackDescription || ''
 }

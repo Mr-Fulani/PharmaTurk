@@ -299,7 +299,7 @@ export const getServerSideProps = async (ctx: any) => {
       const ca = a.products_count ?? 0
       const cb = b.products_count ?? 0
       if (cb !== ca) return cb - ca
-      return (a.name || '').localeCompare(b.name || '')
+      return (a.name || '').localeCompare(b.name || '', 'ru')
     })
 
     return {

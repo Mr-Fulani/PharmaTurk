@@ -173,6 +173,11 @@ export default function CategorySidebar({
     attributes: {},
   }
   const [filters, setFilters] = useState<FilterState>(initialFilters || defaultFilters)
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   // Синхронизация с внешними фильтрами
   useEffect(() => {
@@ -358,7 +363,7 @@ export default function CategorySidebar({
       seen.add(key)
       return true
     })
-  }, [subcategories, categoryType, t, router.locale])
+  }, [subcategories, categoryType, t, router.locale, isMounted])
 
   const handlePriceChange = () => {
     const minValue = parseNumber(priceRange.min)
@@ -444,7 +449,7 @@ export default function CategorySidebar({
       const labelContent = (
         <span className="flex-1 truncate">
           {item.nameKey
-            ? t(item.nameKey)
+            ? t(item.nameKey, item.name)
             : item.slug && item.type === 'category'
               ? getLocalizedCategoryName(item.slug, item.name, t, item.translations as CategoryTranslation[], router.locale)
               : item.type === 'brand' && item.slug
@@ -527,13 +532,14 @@ export default function CategorySidebar({
 
   return (
     <>
-      {isOpen && <div className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" onClick={onToggle} />}
+      {isOpen && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[45] lg:hidden" onClick={onToggle} />}
       <aside
+        suppressHydrationWarning
         className={`
-          fixed lg:sticky top-16 lg:top-20 left-0 z-30
-          h-full lg:h-auto lg:max-h-[calc(100vh-2rem)]
-          w-80 bg-[var(--bg)]/95 backdrop-blur-md text-main border-r lg:border-r-0 lg:border border-[var(--border)] rounded-2xl
-          shadow-[0_20px_60px_-20px_rgba(255,255,255,0.3),0_20px_50px_-18px_rgba(67,113,247,0.25)] lg:shadow-md
+          fixed lg:sticky top-0 lg:top-20 left-0 z-[50]
+          h-[100dvh] lg:h-auto lg:max-h-[calc(100vh-2rem)]
+          w-80 bg-[var(--bg)]/95 backdrop-blur-2xl text-main border-r lg:border-r-0 lg:border border-[var(--border)]
+          shadow-[0_0_40px_rgba(0,0,0,0.2)] lg:shadow-md
           transform transition-all duration-300 ease-in-out
           overflow-y-auto custom-scrollbar
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
@@ -562,7 +568,8 @@ export default function CategorySidebar({
           {categoryGroups.length > 0 && categoryGroups.map((group) => {
             const firstItem = group.items[0]
             const shouldHideTitle = firstItem && firstItem.name === group.title
-            const sectionTitle = group.titleKey ? t(group.titleKey) : group.title
+            const title = group.titleKey ? t(group.titleKey, group.title) : group.title
+            const sectionTitle = title
             
             return (
               <div key={group.title} className="border-b border-[var(--border)] pb-2">
@@ -636,7 +643,9 @@ export default function CategorySidebar({
             <div className="border-b pb-4 space-y-4">
               {availableAttributes.map((attr) => (
                 <div key={attr.key}>
-                  <h3 className="text-base font-semibold text-main mb-3">{attr.name}</h3>
+                  <h3 className="text-base font-semibold text-main mb-3">
+                    {t(`attribute_${attr.key}`, attr.name)}
+                  </h3>
                   <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                     {attr.values.map((val) => (
                       <label key={val} className="flex items-center space-x-3 cursor-pointer group">
@@ -646,7 +655,9 @@ export default function CategorySidebar({
                           onChange={() => toggleAttributeFilter(attr.key, val)}
                           className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                         />
-                        <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">{val}</span>
+                        <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">
+                          {t(`attr_val_${val.toLowerCase().replace(/\s+/g, '_')}`, val)}
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -1026,7 +1037,7 @@ export default function CategorySidebar({
                       }
                       className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
                     />
-                    <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_in_stock')}</span>
+                    <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors">{t('sidebar_in_stock', 'В наличии')}</span>
                   </label>
                   <label className="flex items-center space-x-3 cursor-pointer group">
                     <input
@@ -1046,6 +1057,16 @@ export default function CategorySidebar({
               )}
             </div>
           )}
+        </div>
+        
+        {/* Мобильная кнопка подтверждения */}
+        <div className="lg:hidden sticky bottom-0 left-0 right-0 p-4 bg-[var(--bg)]/95 backdrop-blur-md border-t border-[var(--border)] shadow-[0_-10px_20px_rgba(0,0,0,0.1)]">
+          <button
+            onClick={onToggle}
+            className="w-full py-3 bg-[var(--accent)] text-white rounded-xl font-bold hover:bg-[var(--accent-hover)] transition-all active:scale-[0.98]"
+          >
+            {t('sidebar_show_results', 'Показать результаты')}
+          </button>
         </div>
       </aside>
     </>

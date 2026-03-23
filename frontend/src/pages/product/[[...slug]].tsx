@@ -533,7 +533,7 @@ export default function ProductPage({
       const orderA = a.sort_order ?? 999
       const orderB = b.sort_order ?? 999
       if (orderA !== orderB) return orderA - orderB
-      return String(a.id).localeCompare(String(b.id))
+      return String(a.id).localeCompare(String(b.id), 'ru')
     })
   }, [product, productType, selectedVariant])
 

@@ -324,7 +324,7 @@ const areFiltersEqual = (left: FilterState, right: FilterState) =>
 const createTreeItem = (category: Category, allCategories: Category[]): SidebarTreeItem => {
   const children = allCategories
     .filter((c) => c.parent === category.id)
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'ru'))
   
   return {
     id: `cat-${category.id}`,
@@ -355,7 +355,7 @@ const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => 
   // Прямые дети корня (L2: Куртка, Платья и т.д.)
   const level2 = categories
     .filter((c) => c.parent != null && rootIds.has(c.parent as number))
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'ru'))
 
   if (level2.length === 0) return []
 
@@ -381,7 +381,7 @@ const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] => 
   // Категории 2-го уровня (напр. "Антибиотики", "Витамины")
   const level2 = categories
     .filter((c) => c.parent != null && rootIds.has(c.parent as number))
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'ru'))
 
   if (level2.length === 0) return []
 
@@ -473,7 +473,7 @@ const buildGenericTreeSections = (
   const rootIds = new Set(roots.map((r) => r.id))
   const level2 = categories
     .filter((c) => c.parent != null && rootIds.has(c.parent as number))
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'ru'))
 
   if (level2.length === 0) return []
 
@@ -794,6 +794,12 @@ export default function CategoryPage({
   const [availableGenders, setAvailableGenders] = useState<string[]>(initialAvailableGenders)
   const showGenderFilter = (availableGenders || []).length > 0
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [brandOptions, setBrandOptions] = useState<Brand[]>(brands || [])
   useEffect(() => {
@@ -1445,7 +1451,7 @@ export default function CategoryPage({
                 ) : null
               })()}
               <p className="mt-4 text-sm opacity-80">
-                {t('products_found', 'Найдено товаров')}: <span className="font-semibold">{totalCount}</span>
+                {t('products_found', 'Найдено товаров')}: <span suppressHydrationWarning className="font-semibold">{totalCount}</span>
               </p>
             </div>
           </div>

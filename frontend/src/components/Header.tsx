@@ -122,7 +122,7 @@ export default function Header() {
   }
 
   // i18n placeholder - используем fallback для предотвращения ошибки гидратации
-  const placeholder = isClient ? t('search_placeholder') : 'Search...'
+  const placeholder = t('search_placeholder', 'Поиск витаминов, магния...')
 
   // Debounced suggestions
   useEffect(() => {
@@ -158,20 +158,22 @@ export default function Header() {
   }, [query])
 
   return (
-    <header className={`sticky top-0 z-50 border-b backdrop-blur shadow-md transition-colors duration-200 ${isDark
-      ? 'border-[#1f2a3d] bg-[#0a1222] shadow-[0_10px_40px_rgba(0,0,0,0.6)]'
-      : 'border-[var(--border)] bg-[var(--surface)]'
-      }`}>
+    <header
+      suppressHydrationWarning
+      className={`sticky top-0 z-50 border-b backdrop-blur shadow-md transition-colors duration-200 ${isDark
+        ? 'border-[#1f2a3d] bg-[#0a1222] shadow-[0_10px_40px_rgba(0,0,0,0.6)]'
+        : 'border-[var(--border)] bg-[var(--surface)]'
+        }`}>
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
         <div className="flex items-center justify-between gap-3 py-3">
-          <Link href="/" className={`text-lg font-bold transition-all duration-200 hover:scale-105 ${isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900'}`}>Turk-Export</Link>
+          <Link href="/" className={`text-lg font-bold transition-all duration-200 hover:scale-105 ${isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900'}`}>PharmaTurk</Link>
           <div className="hidden flex-1 items-center gap-3 md:flex">
             <div ref={searchRef} className="relative flex w-full max-w-xl items-center">
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={() => { if (query.trim().length >= 2) setShowSuggestions(true) }}
-                placeholder={placeholder}
+                placeholder={t('search_placeholder', 'Поиск лекарств, магния...')}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setShowSuggestions(false); goSearch() } }}
                 className={`w-full rounded-l-lg border px-3 py-2 text-sm outline-none transition-colors duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-400 focus:border-slate-500' : 'border-gray-300 bg-white text-gray-900 focus:border-gray-400'}`}
               />
@@ -334,7 +336,7 @@ export default function Header() {
               onClick={() => setShowSuggestions(false)}
               className={`transition-all duration-200 ${path.startsWith('/cart') ? (isDark ? 'font-medium text-white' : 'font-medium text-gray-900') : (isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900 hover:font-medium')}`}
             >
-              {t('menu_cart', 'Корзина')} {isClient && itemsCount ? `(${itemsCount})` : ''}
+              {t('menu_cart', 'Корзина')}{isClient && itemsCount ? ` (${itemsCount})` : ''}
             </Link>
             {user ? (
               <AnimatedLogoutButton
