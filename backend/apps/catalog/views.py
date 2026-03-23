@@ -402,20 +402,45 @@ class FacetedModelViewSetMixin:
             for k in sorted(grouped.keys())
         ]
 
+    def _get_facet_queryset(self):
+        """Возвращает queryset для расчета фасетов, игнорируя текущие фильтры по полу и динамическим атрибутам."""
+        original_get = self.request._request.GET
+        mutable_get = original_get.copy()
+        
+        keys_to_remove = []
+        for key in mutable_get.keys():
+            if key in ('gender', 'gender[]') or key.startswith('attr_'):
+                keys_to_remove.append(key)
+                
+        for key in keys_to_remove:
+            del mutable_get[key]
+            
+        try:
+            self.request._request.GET = mutable_get
+            qs = self.filter_queryset(self.get_queryset())
+        finally:
+            self.request._request.GET = original_get
+            
+        return qs
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
+        
+        # Получаем базовый queryset для фасетов, чтобы они не пропадали при выборе
+        facet_queryset = self._get_facet_queryset()
+        
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             data = self.get_paginated_response(serializer.data).data
-            data['available_attributes'] = self._calculate_available_attributes(queryset)
-            data['available_genders'] = self._calculate_available_genders(queryset)
+            data['available_attributes'] = self._calculate_available_attributes(facet_queryset)
+            data['available_genders'] = self._calculate_available_genders(facet_queryset)
             return Response(data)
         serializer = self.get_serializer(queryset, many=True)
         return Response({
             'results': serializer.data,
-            'available_attributes': self._calculate_available_attributes(queryset),
-            'available_genders': self._calculate_available_genders(queryset),
+            'available_attributes': self._calculate_available_attributes(facet_queryset),
+            'available_genders': self._calculate_available_genders(facet_queryset),
         })
 
 
