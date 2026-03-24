@@ -1438,7 +1438,7 @@ export default function CategoryPage({
 
       {/* Hero Section */}
       <div className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-4xl md:text-5xl font-bold mb-4">{localizedCategoryName}</h1>
@@ -1458,26 +1458,56 @@ export default function CategoryPage({
         </div>
       </div>
 
-      {/* Breadcrumbs */}
-      <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 text-sm text-main flex flex-wrap items-center gap-2">
-        {breadcrumbs.map((item, idx) => {
-          const isLast = idx === breadcrumbs.length - 1
-          return (
-            <span key={`${item.href}-${idx}`} className="flex items-center gap-2">
-              {!isLast ? (
-                <Link href={item.href} className="hover:text-[var(--accent)] transition-colors">
-                  {item.label}
-                </Link>
-              ) : (
-                <span className="text-main font-medium">{item.label}</span>
-              )}
-              {!isLast && <span className="text-main/60">/</span>}
-            </span>
-          )
-        })}
-      </nav>
+      {/* Breadcrumbs & View Toggles (Desktop) */}
+      <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+        <nav className="text-sm text-main flex flex-wrap items-center gap-2">
+          {breadcrumbs.map((item, idx) => {
+            const isLast = idx === breadcrumbs.length - 1
+            return (
+              <span key={`${item.href}-${idx}`} className="flex items-center gap-2">
+                {!isLast ? (
+                  <Link href={item.href} className="hover:text-[var(--accent)] transition-colors">
+                    {item.label}
+                  </Link>
+                ) : (
+                  <span className="text-main font-medium">{item.label}</span>
+                )}
+                {!isLast && <span className="text-main/60">/</span>}
+              </span>
+            )
+          })}
+        </nav>
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        {/* View mode toggle (Desktop) */}
+        <div className="hidden lg:flex items-center gap-2">
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`p-2 rounded-lg transition-colors ${viewMode === 'grid'
+              ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+              : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
+              }`}
+            aria-label="Grid view"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`p-2 rounded-lg transition-colors ${viewMode === 'list'
+              ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+              : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
+              }`}
+            aria-label="List view"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Sidebar */}
           <div className="lg:w-1/4">
@@ -1505,8 +1535,8 @@ export default function CategoryPage({
 
           {/* Main Content */}
           <div className="lg:w-3/4">
-            {/* Toolbar */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+            {/* Toolbar (Mobile) */}
+            <div className="flex lg:hidden items-center justify-between gap-4 mb-6">
               {/* Mobile filter button */}
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -1557,7 +1587,7 @@ export default function CategoryPage({
                 <div
                   className={
                     viewMode === 'grid'
-                      ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8'
+                      ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 mb-8'
                       : 'space-y-4 mb-8'
                   }
                 >

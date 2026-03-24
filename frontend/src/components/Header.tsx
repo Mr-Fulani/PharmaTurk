@@ -164,7 +164,7 @@ export default function Header() {
         ? 'border-[#1f2a3d] bg-[#0a1222] shadow-[0_10px_40px_rgba(0,0,0,0.6)]'
         : 'border-[var(--border)] bg-[var(--surface)]'
         }`}>
-      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+      <div className="mx-auto w-full max-w-6xl px-3 sm:px-6">
         <div className="flex items-center justify-between gap-3 py-3">
           <Link href="/" className={`text-lg font-bold transition-all duration-200 hover:scale-105 ${isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900'}`}>PharmaTurk</Link>
           <div className="hidden flex-1 items-center gap-3 md:flex">
