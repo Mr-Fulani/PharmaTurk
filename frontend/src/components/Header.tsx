@@ -175,7 +175,7 @@ export default function Header() {
                 onFocus={() => { if (query.trim().length >= 2) setShowSuggestions(true) }}
                 placeholder={t('search_placeholder', 'Поиск лекарств, магния...')}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setShowSuggestions(false); goSearch() } }}
-                className={`w-full rounded-l-lg border px-3 py-2 text-sm outline-none transition-colors duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-400 focus:border-slate-500' : 'border-gray-300 bg-white text-gray-900 focus:border-gray-400'}`}
+                className={`w-full rounded-l-lg border px-3 py-2 text-base md:text-sm outline-none transition-colors duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-400 focus:border-slate-500' : 'border-gray-300 bg-white text-gray-900 focus:border-gray-400'}`}
               />
               <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`rounded-r-lg border border-l-0 px-3 py-2 text-sm transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:bg-slate-700 hover:border-slate-500' : 'border-gray-300 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:text-red-700 hover:font-medium'}`}>{t('search_button', 'Поиск')}</button>
               {showSuggestions && query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
@@ -347,7 +347,7 @@ export default function Header() {
               onFocus={() => { if (query.trim().length >= 2) setShowSuggestions(true) }}
               placeholder={placeholder}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setShowSuggestions(false); goSearch() } }}
-              className={`w-full rounded-l-lg border px-3 py-2 text-sm outline-none transition-colors duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-400 focus:border-slate-500' : 'border-gray-300 bg-white text-gray-900 focus:border-gray-400'}`}
+              className={`w-full rounded-l-lg border px-3 py-2 text-base md:text-sm outline-none transition-colors duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-400 focus:border-slate-500' : 'border-gray-300 bg-white text-gray-900 focus:border-gray-400'}`}
             />
             <button onClick={() => { setShowSuggestions(false); goSearch() }} className={`rounded-r-lg border border-l-0 px-3 py-2 text-sm transition-all duration-200 ${isDark ? 'border-slate-700 bg-slate-800 text-slate-100 hover:bg-slate-700 hover:border-slate-500' : 'border-gray-300 bg-white text-gray-700 hover:bg-red-100 hover:border-red-400 hover:text-red-700 hover:font-medium'}`}>{t('search_button', 'Поиск')}</button>
             {showSuggestions && query.trim().length >= 2 && (suggestions.length > 0 || loadingSuggest) ? (
