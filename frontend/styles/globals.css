@@ -167,6 +167,7 @@ html, body {
   background-color: var(--bg);
   color: var(--text);
   transition: background-color 0.2s ease, color 0.2s ease;
+  overflow-x: hidden;
 }
 
 /* Использование чистого шрифта для полей ввода (улучшение читаемости логинов/паролей/адресов) */

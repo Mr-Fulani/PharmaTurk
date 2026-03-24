@@ -33,7 +33,7 @@ export default function SearchPage() {
   return (
     <>
       <Head><title>{t('search_results', 'Результаты поиска')} — {q}</title></Head>
-      <main className="mx-auto max-w-6xl px-3 py-6 sm:p-6">
+      <main className="mx-auto max-w-6xl px-3 pt-0 pb-6 sm:p-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('search_results', 'Результаты поиска')}</h1>
         <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">{q ? `${t('search_for', 'По запросу')}: "${q}"` : t('search_placeholder')}</div>
         <div className="mt-8">

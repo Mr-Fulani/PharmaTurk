@@ -262,6 +262,10 @@
     display: none;
   }
 
+  .container {
+    overflow: hidden;
+  }
+
   .item {
     width: clamp(110px, 30vw, 160px);
     height: clamp(140px, 40vw, 220px);

@@ -231,7 +231,7 @@ export default function BrandPage({
         </div>
 
         {/* Main Content */}
-        <main className="flex-1 px-3 py-4 sm:p-6">
+        <main className="flex-1 px-3 pt-0 pb-4 sm:p-6">
           {/* Mobile sidebar toggle */}
           <div className="md:hidden mb-4">
             <button
