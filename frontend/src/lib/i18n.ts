@@ -60,11 +60,25 @@ export function getLocalizedCategoryName(
     }
   }
 
-  // 2. Затем проверяем JSON файлы
+  // 2. Затем проверяем JSON файлы (специфичные для категорий)
   const jsonKey = `category_${normalizedSlug}_name`
   const jsonTranslated = t(jsonKey)
   if (jsonTranslated && jsonTranslated !== jsonKey) {
     return jsonTranslated
+  }
+
+  // 3. Fallback к фильтрам (часто они дублируют названия категорий)
+  const filterKey = `filter_${normalizedSlug}`
+  const filterTranslated = t(filterKey)
+  if (filterTranslated && filterTranslated !== filterKey) {
+    return filterTranslated
+  }
+
+  // 4. Fallback к значениям атрибутов (иногда слаги приходят на русском или совпадают с атрибутами)
+  const attrKey = `attr_val_${normalizedSlug}`
+  const attrTranslated = t(attrKey)
+  if (attrTranslated && attrTranslated !== attrKey) {
+    return attrTranslated
   }
 
   return fallbackName
