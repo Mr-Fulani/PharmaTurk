@@ -1,0 +1,121 @@
+.navigation {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: 0.5s;
+  transition-delay: 0.3s;
+}
+
+.navigation.active {
+  width: 240px;
+  height: 180px;
+  background: var(--surface);
+  box-shadow: 0 25px 70px rgba(0,0,0,0.5);
+  border-radius: 30px;
+  transition: width 0.5s, height 0.5s, border-radius 0.5s, background 0.5s, box-shadow 0.5s;
+  transition-delay: 0s;
+}
+
+@media (max-width: 480px) {
+  .navigation.active {
+    width: 220px;
+    height: 165px;
+  }
+}
+
+.navigation > span {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--accent);
+  border-radius: 50%;
+  transform: translate(calc(10px * var(--x)), calc(10px * var(--y)));
+  transition: transform 0.5s, width 0.5s, height 0.5s, background 0.5s;
+  transition-delay: calc(0.05s * var(--i));
+  z-index: 10;
+}
+
+.navigation.active > span {
+  width: 55px;
+  height: 55px;
+  background: var(--accent-soft);
+  transform: translate(calc(75px * var(--x)), calc(75px * var(--y)));
+  border: 1px solid var(--accent);
+}
+
+@media (max-width: 480px) {
+  .navigation.active > span {
+    width: 50px;
+    height: 50px;
+    transform: translate(calc(65px * var(--x)), calc(65px * var(--y)));
+  }
+}
+
+.navigation > span .icon {
+  transition: 0.3s;
+  font-size: 0;
+  opacity: 0;
+  color: var(--accent);
+}
+
+.navigation.active > span .icon {
+  font-size: 1.5rem;
+  opacity: 1;
+}
+
+.navigation.active > span:hover {
+  background: var(--accent);
+}
+
+.navigation.active > span:hover .icon {
+  color: #fff;
+}
+
+/* Close icon in center when active */
+.navigation .closeBar {
+  position: absolute;
+  width: 20px;
+  height: 2.5px;
+  background: var(--accent);
+  transition: 0.5s;
+  opacity: 0;
+  z-index: 20;
+}
+
+.navigation.active .closeBar:nth-child(1) {
+  opacity: 1;
+  transform: rotate(45deg);
+}
+
+.navigation.active .closeBar:nth-child(2) {
+  opacity: 1;
+  transform: rotate(-45deg);
+}
+
+.badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #ff4d4f;
+  color: white;
+  border-radius: 10px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: bold;
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid white;
+}
