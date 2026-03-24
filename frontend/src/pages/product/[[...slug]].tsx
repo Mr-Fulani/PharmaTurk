@@ -14,7 +14,7 @@ import ShareButton from '../../components/ShareButton'
 import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
-import { getLocalizedBrandName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
+import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../../lib/media'
 import { getSiteOrigin } from '../../lib/urls'
 import { isBaseProductType } from '../../lib/product'
@@ -401,6 +401,44 @@ export default function ProductPage({
   )
   const productSlug = product?.slug
 
+  const breadcrumbs = useMemo(() => {
+    const list = [{ label: t('breadcrumb_home', 'Главная'), href: '/' }]
+    
+    // Если есть категория, добавляем её
+    if (product?.category) {
+      const categoryName = getLocalizedCategoryName(
+        product.category.slug,
+        product.category.name,
+        t,
+        undefined, // У нас в интерфейсе Product.category нет translations, используем slug для поиска в JSON
+        router.locale
+      )
+      list.push({
+        label: categoryName,
+        href: `/categories/${product.category.slug}`
+      })
+    } else if (productType && productType !== 'medicines') {
+      // Фолбэк на тип продукта, если категория не задана явно
+      const categoryName = getLocalizedCategoryName(
+        productType,
+        productType,
+        t,
+        undefined,
+        router.locale
+      )
+      list.push({
+        label: categoryName,
+        href: `/categories/${productType}`
+      })
+    }
+
+    list.push({
+      label: displayProductName,
+      href: '#'
+    })
+    return list
+  }, [product, displayProductName, productType, t, router.locale])
+
   useEffect(() => {
     if (maxAvailable === 0) {
       setQuantity(1)
@@ -747,7 +785,26 @@ export default function ProductPage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
         />
       </Head>
-      <main className="mx-auto max-w-6xl p-6">
+      <div className="mx-auto max-w-6xl px-3 pt-3 pb-0 sm:py-3 flex items-center justify-between overflow-x-auto no-scrollbar">
+        <nav className="text-sm text-main flex flex-wrap items-center gap-2 whitespace-nowrap">
+          {breadcrumbs.map((item, idx) => {
+            const isLast = idx === breadcrumbs.length - 1
+            return (
+              <span key={`${item.href}-${idx}`} className="flex items-center gap-2">
+                {!isLast ? (
+                  <Link href={item.href} className="hover:text-[var(--accent)] transition-colors">
+                    {item.label}
+                  </Link>
+                ) : (
+                  <span className="text-main font-medium">{item.label}</span>
+                )}
+                {!isLast && <span className="text-main/60">/</span>}
+              </span>
+            )
+          })}
+        </nav>
+      </div>
+      <main className="mx-auto max-w-6xl px-3 pt-0 pb-8 sm:py-8">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1.3fr_1fr] md:items-start">
           <div className="flex flex-col md:flex-row gap-4 md:h-[calc(100vh-22rem)] md:sticky md:top-6 md:self-start">
             
