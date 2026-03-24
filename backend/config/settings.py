@@ -137,8 +137,17 @@ CACHES = {
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_TASK_ALWAYS_EAGER = False
-CELERY_TASK_TIME_LIMIT = 60 * 10
+# Глобальный дефолт — 30 минут. Для скрейперов переопределяем ниже через CELERY_TASK_ANNOTATIONS.
+CELERY_TASK_TIME_LIMIT = 60 * 30
+CELERY_TASK_SOFT_TIME_LIMIT = 60 * 25
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# Расширенные лимиты конкретно для scraper-задач (могут парсить сотни товаров с изображениями)
+CELERY_TASK_ANNOTATIONS = {
+    "apps.scrapers.tasks.run_scraper_task": {
+        "time_limit": 60 * 60 * 2,       # hard limit: 2 часа
+        "soft_time_limit": 60 * 60 * 1,  # soft limit: 1 час (можно перехватить SoftTimeLimitExceeded)
+    },
+}
 # Очередь ai для задач AI (воркер celery_ai слушает только её); recsys для рекомендаций
 CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},

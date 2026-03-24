@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 SYNC_METADATA_HANDLER_NAMES = {
     "books": "_sync_books_metadata",
     "jewelry": "_sync_jewelry_metadata",
+    "medicines": "_sync_medicines_metadata",
 }
 
 
@@ -32,27 +33,34 @@ class CatalogNormalizer:
     
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        # Кеш результатов HEAD-запросов для определения типа медиа.
+        # Хранится на уровне экземпляра, чтобы не делать повторные запросы
+        # к одному и тому же URL в рамках одного запуска парсера.
+        self._media_type_cache: dict = {}
 
     def _resolve_media_type(self, media_url: str) -> str:
+        if media_url in self._media_type_cache:
+            return self._media_type_cache[media_url]
         media_type = detect_media_type(media_url)
-        if media_type != "image":
-            return media_type
-        if "/products/parsed/" not in (media_url or ""):
+        if media_type != "image" or "/products/parsed/" not in (media_url or ""):
+            self._media_type_cache[media_url] = media_type
             return media_type
         try:
             with httpx.Client(timeout=10, follow_redirects=True) as client:
                 response = client.head(media_url)
                 if response.status_code >= 400:
+                    self._media_type_cache[media_url] = media_type
                     return media_type
                 content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
                 if content_type.startswith("video/"):
-                    return "video"
-                if content_type == "image/gif" or content_type.endswith("+gif"):
-                    return "gif"
-                if content_type.startswith("image/"):
-                    return "image"
+                    media_type = "video"
+                elif content_type == "image/gif" or content_type.endswith("+gif"):
+                    media_type = "gif"
+                elif content_type.startswith("image/"):
+                    media_type = "image"
         except Exception:
-            return media_type
+            pass
+        self._media_type_cache[media_url] = media_type
         return media_type
 
     def _is_books_category(self, category: Category | None) -> bool:
@@ -236,6 +244,54 @@ class CatalogNormalizer:
                 jewelry_updated = True
         if jewelry_updated:
             jewelry_product.save()
+
+    def _sync_medicines_metadata(self, product: Product, attrs: Dict[str, Any]) -> None:
+        """Синхронизирует атрибуты медикаментов в MedicineProduct."""
+        medicine_keys = (
+            "dosage_form", "active_ingredient", "prescription_required", "prescription_type", "volume", 
+            "origin_country", "sgk_status", "administration_route"
+        )
+        if not any(k in attrs for k in medicine_keys):
+            return
+            
+        medicine_product = getattr(product, "medicine_item", None)
+        if not medicine_product:
+            return  # домен создаётся сигналом ensure_domain_product_for_base при save Product
+            
+        medicine_updated = False
+        
+        if "dosage_form" in attrs and attrs["dosage_form"]:
+            v = str(attrs["dosage_form"]).strip()[:100]
+            if v != (medicine_product.dosage_form or ""):
+                medicine_product.dosage_form = v
+                medicine_updated = True
+                
+        if "active_ingredient" in attrs and attrs["active_ingredient"]:
+            v = str(attrs["active_ingredient"]).strip()[:300]
+            if v != (medicine_product.active_ingredient or ""):
+                medicine_product.active_ingredient = v
+                medicine_updated = True
+                
+        if "volume" in attrs and attrs["volume"]:
+            v = str(attrs["volume"]).strip()[:100]
+            if v != (medicine_product.volume or ""):
+                medicine_product.volume = v
+                medicine_updated = True
+                
+        if "origin_country" in attrs and attrs["origin_country"]:
+            v = str(attrs["origin_country"]).strip()[:200]
+            if v != (medicine_product.origin_country or ""):
+                medicine_product.origin_country = v
+                medicine_updated = True
+                
+        if "prescription_required" in attrs:
+            val = bool(attrs["prescription_required"])
+            if val != medicine_product.prescription_required:
+                medicine_product.prescription_required = val
+                medicine_updated = True
+                
+        if medicine_updated:
+            medicine_product.save()
 
     def _sync_product_fields_from_metadata(self, product: Product, metadata: Dict[str, Any]) -> None:
         attrs = (metadata or {}).get("attributes") or {}
@@ -490,6 +546,8 @@ class CatalogNormalizer:
 
         # Используем максимально специфичный объект (BookProduct и т.д.) для сохранения изображений
         target = product.domain_item
+        if not hasattr(target, 'images'):
+            target = product
         is_domain = target != product
         
         metadata = product.external_data if isinstance(product.external_data, dict) else {}
@@ -534,33 +592,41 @@ class CatalogNormalizer:
         except Exception as e:
             self.logger.warning(f"Error while cleaning up old parser images for {product.pk}: {e}")
 
-        # 2. Проверяем оставшиеся существующие изображения: если внешняя ссылка битая (404), удаляем из базы!
+        # 2. Битые ссылки проверяем только для ручных (не парсерных) изображений,
+        # и только если их немного (не более 5), чтобы не тормозить парсинг.
         existing_images = list(target.images.all())
         broken_ids = []
-        
-        import httpx
-        with httpx.Client(timeout=3, follow_redirects=True) as client:
-            for img in existing_images:
-                url_to_check = img.video_url if hasattr(img, 'video_url') and img.video_url else img.image_url
-                if not url_to_check:
-                    continue
-                # Проверяем только HTTP ссылки
-                if not url_to_check.startswith('http'):
-                    continue
-                try:
-                    res = client.head(url_to_check)
-                    if res.status_code >= 400:
-                        self.logger.info(f"Найдена битая ссылка {url_to_check} у товара {product.name}, удаляем из базы.")
-                        broken_ids.append(img.pk)
-                except Exception as e:
-                    self.logger.warning(f"Ошибка проверки ссылки {url_to_check}: {e}")
+        manual_images = [
+            img for img in existing_images
+            if not ('/products/parsed/' in (img.image_url or '') or '/products/parsed/' in (getattr(img, 'video_url', '') or ''))
+        ]
+        if manual_images and len(manual_images) <= 5:
+            import httpx
+            with httpx.Client(timeout=3, follow_redirects=True) as client:
+                for img in manual_images:
+                    url_to_check = img.video_url if hasattr(img, 'video_url') and img.video_url else img.image_url
+                    if not url_to_check or not url_to_check.startswith('http'):
+                        continue
+                    try:
+                        res = client.head(url_to_check)
+                        if res.status_code >= 400:
+                            self.logger.info(f"Найдена битая ссылка {url_to_check} у товара {product.name}, удаляем из базы.")
+                            broken_ids.append(img.pk)
+                    except Exception as e:
+                        self.logger.warning(f"Ошибка проверки ссылки {url_to_check}: {e}")
 
         if broken_ids:
             target.images.filter(pk__in=broken_ids).delete()
 
         # Узнаем, установлено ли уже главное изображение вручную или с прошлого парсинга
         existing_any_main = target.images.filter(is_main=True).exists()
-        has_manual_main = bool(getattr(product, 'main_image_file', None)) or bool(getattr(product, 'main_image', None))
+        has_manual_main = False
+        if bool(getattr(product, 'main_image_file', None)):
+            has_manual_main = True
+        elif bool(getattr(product, 'main_image', None)):
+            # Если это загруженная парсером картинка, мы не считаем её "ручной"
+            if '/products/parsed/' not in product.main_image:
+                has_manual_main = True
         
         # Добавляем новые изображения
         main_image_url = None
@@ -627,9 +693,10 @@ class CatalogNormalizer:
 
         if main_image_url and not existing_any_main and not has_manual_main:
             for obj in [product, target] if is_domain else [product]:
-                if hasattr(obj, 'main_image') and not obj.main_image:
-                    obj.main_image = main_image_url
-                    obj.save(update_fields=['main_image'])
+                if hasattr(obj, 'main_image'):
+                    if not obj.main_image or '/products/parsed/' in obj.main_image:
+                        obj.main_image = main_image_url
+                        obj.save(update_fields=['main_image'])
     
     @transaction.atomic
     def sync_categories_and_brands(self, categories_data: List[Dict], brands_data: List[Dict]):
