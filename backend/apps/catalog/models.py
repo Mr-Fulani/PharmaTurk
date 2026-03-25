@@ -784,7 +784,7 @@ class AbstractDomainProduct(models.Model):
         blank=True,
         help_text=_("OpenGraph description (англ.) для социальных сетей.")
     )
-    og_image_url = models.URLField(
+    og_image_url = models.CharField(
         _("OG Image URL"),
         blank=True,
         max_length=2000,
@@ -1160,9 +1160,10 @@ class Product(models.Model):
         blank=True,
         help_text=_("OpenGraph description (англ.) для социальных сетей.")
     )
-    og_image_url = models.URLField(
+    og_image_url = models.CharField(
         _("OG Image URL"),
         blank=True,
+        max_length=2000,
         help_text=_("Ссылка на изображение для OpenGraph, если оно отличается от основного.")
     )
     
