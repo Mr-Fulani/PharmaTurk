@@ -4031,6 +4031,40 @@ class MedicineProduct(AbstractDomainProduct):
         _("Страна производства"), max_length=200, blank=True,
     )
 
+    # ── Новые поля (универсальные для всех источников) ────────────
+    barcode = models.CharField(
+        _("Штрих-код (EAN/GTIN)"), max_length=50, blank=True, db_index=True,
+        help_text=_("Ключ для поиска медиа и мёрджа данных из разных источников."),
+    )
+    atc_code = models.CharField(
+        _("Код АТХ"), max_length=20, blank=True, db_index=True,
+        help_text=_("Международная классификация (напр.: B02BD08). Объединяет аналоги."),
+    )
+    administration_route = models.CharField(
+        _("Путь введения"), max_length=100, blank=True,
+        help_text=_("Например: Интравенозный, Интрамышечный, Перорально, Топикально."),
+    )
+    shelf_life = models.CharField(
+        _("Срок годности"), max_length=50, blank=True,
+        help_text=_("Например: 24 месяца."),
+    )
+    storage_conditions = models.CharField(
+        _("Условия хранения"), max_length=500, blank=True,
+        help_text=_("Краткое описание условий хранения (температура, свет и т.д.)."),
+    )
+    sgk_status = models.CharField(
+        _("Статус оплаты СГК"), max_length=100, blank=True,
+        help_text=_("Например: Bedeli Ödenir / Bedeli Ödenmez."),
+    )
+    prescription_type = models.CharField(
+        _("Тип рецепта"), max_length=100, blank=True,
+        help_text=_("Например: Turuncu Reçete, Beyaz Reçete, Mor Reçete."),
+    )
+    special_notes = models.TextField(
+        _("Особые сведения"), blank=True,
+        help_text=_("Дополнительные предупреждения (ОЗЕЛ БИЛГИЛЕР)."),
+    )
+
     class Meta:
         verbose_name = _("Товар — Медикамент")
         verbose_name_plural = _("Товары — Медикаменты")
@@ -4060,6 +4094,7 @@ class MedicineProductTranslation(models.Model):
     side_effects = models.TextField(_("Побочные действия"), blank=True)
     contraindications = models.TextField(_("Противопоказания"), blank=True)
     storage_conditions = models.TextField(_("Условия хранения"), blank=True)
+    indications = models.TextField(_("Показания к применению"), blank=True)
 
     # Локализованные атрибуты препарата
     dosage_form = models.CharField(
@@ -4103,6 +4138,35 @@ class MedicineProductImage(models.Model):
         verbose_name = _("Изображение медикамента")
         verbose_name_plural = _("Изображения медикаментов")
         ordering = ["sort_order", "created_at"]
+
+
+class MedicineAnalog(models.Model):
+    """Аналог препарата (вкладка Eşdeğeri на ilacfiyati.com и др.)"""
+
+    product = models.ForeignKey(
+        MedicineProduct,
+        on_delete=models.CASCADE,
+        related_name="analogs",
+        verbose_name=_("Препарат"),
+    )
+    name = models.CharField(_("Название"), max_length=500)
+    barcode = models.CharField(_("Штрих-код"), max_length=50, blank=True, db_index=True)
+    atc_code = models.CharField(_("Код АТХ"), max_length=20, blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=200, blank=True)
+    source = models.CharField(
+        _("Источник"), max_length=100, blank=True,
+        help_text=_("ilacfiyati, ilacabak, и т.д.")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Аналог препарата")
+        verbose_name_plural = _("Аналоги препарата")
+        ordering = ["name"]
+        unique_together = [("product", "barcode", "source")]
+
+    def __str__(self):
+        return f"{self.name} (аналог {self.product.name})"
 
     def __str__(self):
         return f"Изображение {self.product.name}"

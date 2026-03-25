@@ -286,12 +286,118 @@ class JewelryAIApplier(BaseAIApplier):
         return updated
 
 
+class MedicineAIApplier(BaseAIApplier):
+    """Применяет AI-результаты к медицинским препаратам.
+
+    Помимо базовых SEO/переводов, заполняет специфические поля:
+    barcode, atc_code, shelf_life, storage_conditions, administration_route,
+    sgk_status, prescription_type, special_notes.
+    Для переводов также заполняет: indications, usage_instructions,
+    side_effects, contraindications, storage_conditions.
+    """
+
+    # Ссылка: имя поля в attrs → (имя в модели, max_len | None)
+    _MEDICINE_FIELDS = [
+        ('barcode', 'barcode', 50),
+        ('atc_code', 'atc_code', 20),
+        ('administration_route', 'administration_route', 100),
+        ('shelf_life', 'shelf_life', 50),
+        ('storage_conditions', 'storage_conditions', 500),
+        ('sgk_status', 'sgk_status', 100),
+        ('prescription_type', 'prescription_type', 100),
+        ('special_notes', 'special_notes', None),  # TextField — без обрезки
+    ]
+
+    # Поля перевода MedicineProductTranslation
+    _TRANSLATION_FIELDS = [
+        'indications', 'usage_instructions', 'side_effects',
+        'contraindications', 'storage_conditions',
+    ]
+
+    def apply(self, target: Any, ai_data: Dict[str, Any]) -> bool:
+        updated = super().apply(target, ai_data)
+        attrs = ai_data.get('extracted_attributes') or {}
+        medicine_updated = False
+
+        # Применяем медицинские поля из extracted_attributes
+        for attr_key, model_field, max_len in self._MEDICINE_FIELDS:
+            val = attrs.get(attr_key)
+            if not val:
+                continue
+            val = str(val).strip()
+            if max_len:
+                val = val[:max_len]
+            # Не перезаписываем если в модели уже есть значение
+            if hasattr(target, model_field) and not getattr(target, model_field, None):
+                setattr(target, model_field, val)
+                medicine_updated = True
+
+        if medicine_updated:
+            target.save()
+            updated = True
+
+        # Применяем поля переводов (уже обработаны в super().apply)
+        translations = ai_data.get('translations', {})
+        for locale, data in translations.items():
+            if not isinstance(data, dict):
+                continue
+            trans = getattr(target, 'translations', None)
+            if trans is None:
+                continue
+            obj = trans.filter(locale=locale).first()
+            if not obj:
+                continue
+            trans_updated = False
+            for field in self._TRANSLATION_FIELDS:
+                val = data.get(field)
+                if val and not getattr(obj, field, None):
+                    setattr(obj, field, str(val))
+                    trans_updated = True
+            if trans_updated:
+                obj.save()
+                updated = True
+
+        return updated
+
+    def apply_translations(self, target: Any, translations_data: Dict[str, Any]) -> bool:
+        """Override: добавляем обработку поля indications в переводах."""
+        if not hasattr(target, 'translations'):
+            return False
+        updated = False
+        for locale, data in translations_data.items():
+            if not isinstance(data, dict):
+                continue
+            trans = target.translations.filter(locale=locale).first()
+            created = False
+            if not trans:
+                trans = target.translations.model(product=target, locale=locale)
+                created = True
+            trans_updated = False
+            # Базовые поля
+            for field in ['name', 'description']:
+                val = data.get(f'generated_{field}') or data.get(field)
+                if val and getattr(trans, field, None) != val:
+                    setattr(trans, field, val)
+                    trans_updated = True
+            # Медицинские поля
+            for field in self._TRANSLATION_FIELDS:
+                val = data.get(field)
+                if val and not getattr(trans, field, None):
+                    setattr(trans, field, str(val))
+                    trans_updated = True
+            if trans_updated or created:
+                trans.save()
+                updated = True
+        return updated
+
+
 class AIResultApplier:
     """Сервис-диспетчер для применения результатов AI."""
     
     _type_handlers = {
         "books": BookAIApplier,
         "jewelry": JewelryAIApplier,
+        "medicines": MedicineAIApplier,
     }
     
     _site_handlers = {

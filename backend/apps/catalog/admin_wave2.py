@@ -7,7 +7,7 @@ from django.db import models as django_models
 
 from .models import (
     Category,
-    MedicineProduct, MedicineProductTranslation, MedicineProductImage,
+    MedicineProduct, MedicineProductTranslation, MedicineProductImage, MedicineAnalog,
     SupplementProduct, SupplementProductTranslation, SupplementProductImage,
     MedicalEquipmentProduct, MedicalEquipmentProductTranslation, MedicalEquipmentProductImage,
     TablewareProduct, TablewareProductTranslation, TablewareProductImage,
@@ -203,12 +203,15 @@ class MedicineProductAdmin(_SimpleDomainAdmin):
     _category_type_slug = "medicines"
     _domain_fieldset = (_('Специфика медикамента'), {
         'fields': (
-            'dosage_form', 'active_ingredient', 'prescription_required',
-            'volume', 'origin_country'
+            'dosage_form', 'active_ingredient', 'prescription_required', 'prescription_type',
+            'volume', 'origin_country',
+            'barcode', 'atc_code', 'administration_route',
+            'shelf_life', 'storage_conditions',
+            'sgk_status', 'special_notes',
         ),
     })
     list_display = [
-        'name', 'category', 'dosage_form', 'active_ingredient',
+        'name', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code',
         'prescription_required', 'price', 'old_price',
         'is_available', 'is_new', 'created_at',
     ]
@@ -218,10 +221,18 @@ class MedicineProductAdmin(_SimpleDomainAdmin):
     ]
     inlines = [
         _make_translation_inline(MedicineProductTranslation, extra_fields=(
-            'usage_instructions', 'side_effects', 'contraindications', 'storage_conditions',
-            'dosage_form', 'active_ingredient', 'volume', 'origin_country'
+            'usage_instructions', 'side_effects', 'contraindications',
+            'storage_conditions', 'indications',
+            'dosage_form', 'active_ingredient', 'volume', 'origin_country',
         )),
         _make_image_inline(MedicineProductImage),
+        type('MedicineAnalogInline', (admin.TabularInline,), {
+            'model': MedicineAnalog,
+            'extra': 0,
+            'fields': ('name', 'barcode', 'atc_code', 'source', 'external_id'),
+            'verbose_name': _('Аналог'),
+            'verbose_name_plural': _('Аналоги (из Eşdeğeri)'),
+        }),
     ]
 
 

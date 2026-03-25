@@ -203,6 +203,8 @@ class IlacFiyatiParser(BaseScraper):
                             attributes['storage_conditions'] = val
                         elif 'nfc' in key:
                             attributes['nfc_code'] = val
+                        elif 'özel' in key or 'ozel' in key:
+                            attributes['special_notes'] = val
 
                         description_lines.append(f"{cols[0].text.strip()}: {val}")
             
