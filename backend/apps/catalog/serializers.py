@@ -4495,7 +4495,7 @@ class MedicineProductTranslationSerializer(serializers.ModelSerializer):
         model = MedicineProductTranslation
         fields = [
             'locale', 'name', 'description', 'usage_instructions',
-            'side_effects', 'contraindications', 'storage_conditions',
+            'side_effects', 'contraindications', 'storage_conditions', 'indications',
             'dosage_form', 'active_ingredient', 'volume', 'origin_country'
         ]
 
@@ -4538,6 +4538,8 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     side_effects = serializers.SerializerMethodField()
     contraindications = serializers.SerializerMethodField()
     storage_conditions = serializers.SerializerMethodField()
+    indications = serializers.SerializerMethodField()
+    special_notes = serializers.SerializerMethodField()
 
     dosage_form = serializers.SerializerMethodField()
     active_ingredient = serializers.SerializerMethodField()
@@ -4588,7 +4590,14 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
         return self._get_translation_field(obj, 'contraindications')
 
     def get_storage_conditions(self, obj):
-        return self._get_translation_field(obj, 'storage_conditions')
+        return self._get_translation_field(obj, 'storage_conditions', obj.storage_conditions)
+
+    def get_indications(self, obj):
+        return self._get_translation_field(obj, 'indications')
+
+    def get_special_notes(self, obj):
+        # Берём из основной модели (не переводится)
+        return obj.special_notes or None
 
 
     class Meta:
@@ -4596,9 +4605,11 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
         fields = [
             'id', 'name', 'slug', 'description', 'category', 'brand', 'product_type',
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
-            'dosage_form', 'active_ingredient', 'prescription_required',
-            'volume', 'origin_country',
-            'usage_instructions', 'side_effects', 'contraindications', 'storage_conditions',
+            'dosage_form', 'active_ingredient', 'prescription_required', 'prescription_type',
+            'volume', 'origin_country', 'administration_route', 'shelf_life',
+            'barcode', 'atc_code', 'sgk_status', 'special_notes',
+            'usage_instructions', 'side_effects', 'contraindications',
+            'storage_conditions', 'indications',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id', 'meta_title', 'meta_description', 'meta_keywords',

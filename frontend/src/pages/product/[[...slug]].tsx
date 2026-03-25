@@ -218,12 +218,20 @@ interface Product {
   dosage_form?: string | null
   active_ingredient?: string | null
   prescription_required?: boolean | null
+  prescription_type?: string | null
   volume?: string | null
   origin_country?: string | null
   usage_instructions?: string | null
   side_effects?: string | null
   contraindications?: string | null
   storage_conditions?: string | null
+  indications?: string | null
+  administration_route?: string | null
+  shelf_life?: string | null
+  barcode?: string | null
+  atc_code?: string | null
+  sgk_status?: string | null
+  special_notes?: string | null
   serving_size?: string | null
   // Physical Attributes
   weight_value?: number | string | null
@@ -1175,6 +1183,55 @@ export default function ProductPage({
                     {product.origin_country}
                   </p>
                 )}
+                {/* Путь введения */}
+                {product.administration_route && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('administration_route', 'Путь введения')}: </span>
+                    {product.administration_route}
+                  </p>
+                )}
+                {/* Срок годности */}
+                {product.shelf_life && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('shelf_life', 'Срок годности')}: </span>
+                    {product.shelf_life}
+                  </p>
+                )}
+                {/* Условия хранения (краткие) */}
+                {product.storage_conditions && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('storage_conditions_short', 'Условия хранения')}: </span>
+                    {product.storage_conditions}
+                  </p>
+                )}
+                {/* СГК / страховка */}
+                {product.sgk_status && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_status', 'СГК')}: </span>
+                    {product.sgk_status}
+                  </p>
+                )}
+                {/* Тип рецепта */}
+                {product.prescription_type && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('prescription_type', 'Тип рецепта')}: </span>
+                    {product.prescription_type}
+                  </p>
+                )}
+                {/* Штрих-код */}
+                {product.barcode && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('barcode', 'Штрих-код')}: </span>
+                    <span className="font-mono">{product.barcode}</span>
+                  </p>
+                )}
+                {/* ATC-код */}
+                {product.atc_code && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('atc_code', 'АТХ код')}: </span>
+                    <span className="font-mono">{product.atc_code}</span>
+                  </p>
+                )}
               </div>
             )}
             {/* Блок «БАД»: карточка характеристик */}
@@ -1556,10 +1613,12 @@ export default function ProductPage({
         {(productType === 'medicines' || product.product_type === 'medicines') && (
           <div className="mt-4 flex flex-col gap-4">
             {[
+              { id: 'indications', title: t('indications', 'Показания к применению'), content: product.indications, fieldName: 'indications' },
               { id: 'usage', title: t('usage_instructions', 'Способ применения'), content: product.usage_instructions, fieldName: 'usage_instructions' },
               { id: 'side_effects', title: t('side_effects', 'Побочные действия'), content: product.side_effects, fieldName: 'side_effects' },
               { id: 'contraindications', title: t('contraindications', 'Противопоказания'), content: product.contraindications, fieldName: 'contraindications' },
-              { id: 'storage', title: t('storage_conditions', 'Условия хранения'), content: product.storage_conditions, fieldName: 'storage_conditions' }
+              { id: 'storage', title: t('storage_conditions', 'Условия хранения'), content: product.storage_conditions, fieldName: 'storage_conditions' },
+              { id: 'special_notes', title: t('special_notes', 'Особые сведения'), content: product.special_notes, fieldName: 'special_notes' },
             ].map((section: any) => {
               if (!section.content) return null
               const isExpanded = (product as any)[`_is_${section.id}_expanded`] ?? false
