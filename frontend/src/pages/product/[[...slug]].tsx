@@ -1228,7 +1228,7 @@ export default function ProductPage({
                 {product.administration_route && (
                   <p>
                     <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('administration_route', 'Путь введения')}: </span>
-                    {product.administration_route}
+                    {getAdministrationRouteLabel(product.administration_route, t)}
                   </p>
                 )}
                 {/* Срок годности */}
@@ -1276,21 +1276,21 @@ export default function ProductPage({
                 {/* SGK Эквивалент */}
                 {product.sgk_equivalent_code && (
                   <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_equivalent_code', 'SGK Eşdeğer Kodu')}: </span>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_equivalent_code', 'Код эквивалента SGK')}: </span>
                     <span className="font-mono">{product.sgk_equivalent_code}</span>
                   </p>
                 )}
                 {/* SGK Код акт. вещ-ва */}
                 {product.sgk_active_ingredient_code && (
                   <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_active_ingredient_code', 'SGK Etkin Madde Kodu')}: </span>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_active_ingredient_code', 'Код акт. вещ-ва SGK')}: </span>
                     <span className="font-mono">{product.sgk_active_ingredient_code}</span>
                   </p>
                 )}
                 {/* SGK Публичный номер */}
                 {product.sgk_public_no && (
                   <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_public_no', 'SGK Kamu No')}: </span>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_public_no', 'Публичный номер SGK')}: </span>
                     <span className="font-mono">{product.sgk_public_no}</span>
                   </p>
                 )}
