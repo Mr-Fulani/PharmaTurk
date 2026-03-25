@@ -318,6 +318,27 @@ class ContentGenerator:
             if getattr(jewelry_item, "gender", None):
                 data["gender"] = jewelry_item.gender
 
+        # Медицинские атрибуты из доменной модели MedicineProduct
+        medicine_item = getattr(product, "medicine_item", None)
+        if medicine_item:
+            for field in ("active_ingredient", "dosage_form", "administration_route",
+                          "prescription_required", "volume", "origin_country"):
+                val = getattr(medicine_item, field, None)
+                if val is not None and val != "":
+                    data[field] = val
+
+        # Атрибуты из external_data (от парсера, например ilacfiyati)
+        if product.external_data:
+            raw_attrs = product.external_data.get("attributes") or {}
+            medicine_keys = (
+                "active_ingredient", "dosage_form", "administration_route",
+                "shelf_life", "storage_conditions", "sgk_status",
+                "atc_code", "nfc_code", "prescription_type", "barcode"
+            )
+            for k in medicine_keys:
+                if k in raw_attrs and k not in data:
+                    data[k] = raw_attrs[k]
+
         return data
 
     def _is_books_product(self, product: Product) -> bool:
@@ -459,6 +480,17 @@ class ContentGenerator:
             known_attrs["stone_type"] = input_data.get("stone_type")
             known_attrs["carat_weight"] = input_data.get("carat_weight")
             known_attrs["gender"] = input_data.get("gender")
+        
+        # Медицинские атрибуты: передаём AI всё что знаем о препарате
+        medicine_attrs_keys = (
+            "active_ingredient", "dosage_form", "administration_route",
+            "prescription_required", "prescription_type", "volume",
+            "origin_country", "shelf_life", "storage_conditions",
+            "sgk_status", "atc_code", "barcode"
+        )
+        medicine_attrs = {k: input_data[k] for k in medicine_attrs_keys if k in input_data and input_data[k]}
+        if medicine_attrs:
+            known_attrs.update(medicine_attrs)
         data = {
             "product_name": input_data["name"],
             "current_description": input_data["description"],

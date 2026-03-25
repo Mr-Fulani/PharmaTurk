@@ -264,7 +264,7 @@ class Category(models.Model):
     )
     
     # Общие поля
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активна"), default=True)
     margin_percent = models.DecimalField(
@@ -568,7 +568,7 @@ class Brand(models.Model):
     description = models.TextField(_("Описание"), blank=True)
     logo = models.URLField(_("Логотип"), blank=True)
     website = models.URLField(_("Сайт"), blank=True)
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     margin_percent = models.DecimalField(
@@ -749,8 +749,8 @@ class AbstractDomainProduct(models.Model):
     )
 
     # Внешние данные
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
 
     # SEO (EN) & OpenGraph
@@ -787,6 +787,7 @@ class AbstractDomainProduct(models.Model):
     og_image_url = models.URLField(
         _("OG Image URL"),
         blank=True,
+        max_length=2000,
         help_text=_("Ссылка на изображение для OpenGraph, если оно отличается от основного.")
     )
 
@@ -1126,8 +1127,8 @@ class Product(models.Model):
     )
     
     # Внешние данные
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     meta_title = models.CharField(
         _("Meta Title"),
@@ -1779,8 +1780,8 @@ class ClothingVariant(models.Model):
         blank=True,
         null=True,
     )
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -2356,8 +2357,8 @@ class ShoeVariant(models.Model):
         blank=True,
         null=True,
     )
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -2680,8 +2681,8 @@ class JewelryVariant(models.Model):
         blank=True,
         null=True,
     )
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -2999,8 +3000,8 @@ class Service(models.Model):
     )
     
     # Внешние данные
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     
     # Статус
@@ -3526,8 +3527,8 @@ class FurnitureVariant(models.Model):
         blank=True,
         null=True,
     )
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -3902,8 +3903,8 @@ class PerfumeryVariant(models.Model):
         blank=True,
         null=True,
     )
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -4815,8 +4816,8 @@ class BookVariant(models.Model):
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     main_image = models.URLField(_("Главное изображение варианта"), blank=True)
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
