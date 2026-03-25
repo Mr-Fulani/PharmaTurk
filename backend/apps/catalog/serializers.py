@@ -4407,6 +4407,21 @@ class _SimpleDomainMixin:
             if file_url:
                 return file_url
             return _resolve_media_url(img.image_url, request)
+
+        # Fallback to base product
+        base = getattr(obj, "base_product", None)
+        if base:
+            file_url = _resolve_file_url(getattr(base, "main_image_file", None), request)
+            if file_url:
+                return file_url
+            if base.main_image:
+                return _resolve_media_url(base.main_image, request)
+            b_img = base.images.filter(is_main=True).first() or base.images.first()
+            if b_img:
+                file_url = _resolve_file_url(getattr(b_img, "image_file", None), request)
+                if file_url:
+                    return file_url
+                return _resolve_media_url(b_img.image_url, request)
         return None
 
     def get_price(self, obj):
@@ -4465,8 +4480,16 @@ class _SimpleDomainMixin:
 
     def get_images(self, obj):
         from_context = self.context
-        imgs = obj.gallery_images.all()
+        imgs = list(obj.gallery_images.all())
         image_serializer = self._image_serializer_class
+        
+        # Fallback to base product images if domain gallery is empty
+        if not imgs:
+            base = getattr(obj, "base_product", None)
+            if base:
+                # Используем базовый сериализатор изображений для общих изображений Product
+                return ProductImageSerializer(base.images.all(), many=True, context=from_context).data
+                
         return image_serializer(imgs, many=True, context=from_context).data
 
     def get_meta_title(self, obj):

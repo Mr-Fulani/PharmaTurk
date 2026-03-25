@@ -72,7 +72,7 @@ class IlacFiyatiParser(BaseScraper):
                 page += 1
                 
         except Exception as e:
-            self.logger.error(f"Ошибка при парсинге списка товаров: {e}")
+            self.logger.error(f"Ошибка при парсимге списка товаров: {e}")
             
         return products
 
@@ -89,7 +89,7 @@ class IlacFiyatiParser(BaseScraper):
 
             soup = BeautifulSoup(html, 'html.parser')
             
-            # 1. Название товара (чаще в h1 или в .font-size-22.text-primary.fw-bold)
+            # 1. Название товара
             title_elem = soup.select_one('.product-name, h1, h2, .font-size-22.text-primary.fw-bold, .title')
             name = ""
             if title_elem:
@@ -105,9 +105,7 @@ class IlacFiyatiParser(BaseScraper):
                 return None
 
             # 2. Цена
-            # На ilacfiyati.com цена в строке таблицы İLAÇ FİYATI: "164,22 TL"
             price = None
-            # Сначала пробуем найти напрямую в таблице по ключу (самый точный способ)
             for row in soup.find_all('tr'):
                 cols = row.find_all(['th', 'td'])
                 if len(cols) == 2:
@@ -116,9 +114,8 @@ class IlacFiyatiParser(BaseScraper):
                         price = normalize_price(cols[1].text)
                         if price:
                             break
-            # Запасной вариант: ищем в тексте по символу ₺ или слову TL
             if not price:
-                price_tags = soup.find_all(text=lambda x: x and ('₺' in x or ' TL' in x))
+                price_tags = soup.find_all(text=lambda x: x and ('\u20BA' in x or ' TL' in x))
                 for text_node in price_tags:
                     text_clean = text_node.strip()
                     if any(char.isdigit() for char in text_clean):
@@ -130,9 +127,8 @@ class IlacFiyatiParser(BaseScraper):
             # 3. Дополнительные атрибуты (таблицы, характеристики)
             attributes = {}
             description_lines = []
-            brand = ""  # Бренд/производитель для ScrapedProduct.brand
+            brand = ""
             
-            # Собираем данные из таблиц, если они есть
             tables = soup.find_all('table')
             for table in tables:
                 rows = table.find_all('tr')
@@ -142,34 +138,36 @@ class IlacFiyatiParser(BaseScraper):
                         key = clean_text(cols[0].text).lower()
                         val = clean_text(cols[1].text)
                         
-                        if 'barkod' in key or 'barcode' in key:
+                        # Сопоставление ключей (игнорируем точки над i и специфику турецкого lower())
+                        key_norm = key.replace('i̇', 'i').replace('\u0131', 'i').replace('i', 'i')
+                        
+                        if 'barkod' in key_norm or 'barcode' in key_norm:
                             attributes['barcode'] = val
-                        elif 'fi̇rma' in key or 'firma' in key or 'manufacturer' in key:
-                            # Название фирмы → бренд товара (Fi̇RMA ADI.lower() = 'fi̇rma adi')
+                        elif ('fi' in key_norm and 'rma' in key_norm) or 'manufacturer' in key_norm:
                             if not brand:
                                 brand = val
-                        elif 'atc' in key:
+                        elif 'atc' in key_norm:
                             attributes['atc_code'] = val
-                        elif 'etki̇n madde kodu' in key or 'etkin madde kodu' in key:
+                        elif 'etki' in key_norm and 'madde' in key_norm and 'kodu' in key_norm:
                             attributes['sgk_active_ingredient_code'] = val
-                        elif 'etki̇n madde' in key or 'etkin madde' in key:
-                            # Действующее вещество: ETKİN MADDE → 'etki̇n madde', но НЕ 'SGK ETKİN MADDE KODU'
-                            if 'kodu' not in key and 'active_ingredient' not in attributes:
-                                attributes['active_ingredient'] = val
-                        elif 'reçete' in key:
+                        elif 'etki' in key_norm and 'madde' in key_norm:
+                            if 'kodu' not in key_norm:
+                                # Действующее вещество
+                                if 'active_ingredient' not in attributes:
+                                    attributes['active_ingredient'] = val
+                        elif 're\u00e7ete' in key_norm or 'recete' in key_norm:
                             attributes['prescription_type'] = val
-                            if 'reçetesiz' not in val.lower() and val.lower().strip() != '-':
+                            if 're\u00e7etesiz' not in val.lower() and val.lower().strip() != '-':
                                 attributes['prescription_required'] = True
-                        elif 'ambalaj' in key or 'miktar' in key:
+                        elif 'ambalaj' in key_norm or 'miktar' in key_norm:
                             attributes['volume'] = val
-                        elif 'formu' in key:
-                            # Маппинг турецких форм выпуска на наши choices-коды
+                        elif 'formu' in key_norm:
                             val_lower = val.lower()
                             if 'tablet' in val_lower or 'film' in val_lower:
                                 attributes['dosage_form'] = 'tablet'
-                            elif 'kapsül' in val_lower or 'kapsul' in val_lower:
+                            elif 'kaps\u00fcl' in val_lower or 'kapsul' in val_lower:
                                 attributes['dosage_form'] = 'capsule'
-                            elif 'şurup' in val_lower or 'surup' in val_lower:
+                            elif '\u015furup' in val_lower or 'surup' in val_lower:
                                 attributes['dosage_form'] = 'syrup'
                             elif 'damla' in val_lower:
                                 attributes['dosage_form'] = 'drops'
@@ -181,7 +179,7 @@ class IlacFiyatiParser(BaseScraper):
                                 attributes['dosage_form'] = 'gel'
                             elif 'ampul' in val_lower or 'enjeksiyon' in val_lower or 'flakon' in val_lower:
                                 attributes['dosage_form'] = 'injection'
-                            elif 'toz' in val_lower or 'granül' in val_lower:
+                            elif 'toz' in val_lower or 'gran\u00fcl' in val_lower:
                                 attributes['dosage_form'] = 'powder'
                             elif 'sprey' in val_lower or 'spray' in val_lower or 'inhaler' in val_lower:
                                 attributes['dosage_form'] = 'spray'
@@ -189,44 +187,40 @@ class IlacFiyatiParser(BaseScraper):
                                 attributes['dosage_form'] = 'suppository'
                             else:
                                 attributes['dosage_form'] = 'other'
-                            # Сохраняем исходное турецкое значение как дополнительный атрибут для AI
                             attributes['dosage_form_raw'] = val
-                        elif 'menşei' in key:
+                        elif 'men\u015fei' in key_norm or 'mensei' in key_norm:
                             attributes['origin_country'] = val
-                        elif 'sgk ödeme' in key:
-                            # Статус оплаты SGK (первое совпадение)
+                        elif 'sgk' in key_norm and ('\u00f6deme' in key_norm or 'odeme' in key_norm or 'fiyat' in key_norm):
                             if 'sgk_status' not in attributes:
                                 attributes['sgk_status'] = val
-                        elif 'eşdeğer kodu' in key or 'esdeger kodu' in key:
+                        elif 'e\u015fde\u011fer kodu' in key_norm or 'esdeger kodu' in key_norm:
                             attributes['sgk_equivalent_code'] = val
-                        elif 'kamu no' in key:
+                        elif 'kamu no' in key_norm:
                             attributes['sgk_public_no'] = val
-                        elif 'uygulama' in key:
+                        elif 'uygulama' in key_norm:
                             attributes['administration_route'] = val
-                        elif 'raf ömrü' in key:
+                        elif 'raf \u00f6mr\u00fc' in key_norm or 'raf omru' in key_norm:
                             attributes['shelf_life'] = val
-                        elif 'saklama' in key:
+                        elif 'saklama' in key_norm:
                             attributes['storage_conditions'] = val
-                        elif 'nfc' in key:
+                        elif 'nfc' in key_norm:
                             attributes['nfc_code'] = val
-                        elif 'özel' in key or 'ozel' in key:
+                        elif '\u00f6zel' in key_norm or 'ozel' in key_norm:
                             attributes['special_notes'] = val
 
                         description_lines.append(f"{cols[0].text.strip()}: {val}")
             
-            # Дополнительно вытаскиваем вкладки с описанием (Ne İçin Kullanılır, Yan Etkileri, и др.)
+            # Дополнительно вытаскиваем вкладки с описанием
             tabs_content = soup.select('.tab-content, .panel-body, #ozet, #kullanim, #yan-etkiler')
             for tab in tabs_content:
                 text = clean_text(tab.text)
                 if text:
                     description_lines.append(text)
             
-            # Формируем сырое описание из таблиц и вкладок для последующей AI обработки
             description = "\n\n".join(description_lines)
             
             # 4. Изображения
             images = []
-            # Пробуем найти og:image как главное
             og_img = soup.find("meta", property="og:image")
             if og_img and og_img.get("content"):
                 images.append(urljoin(self.base_url, og_img["content"]))
@@ -237,9 +231,6 @@ class IlacFiyatiParser(BaseScraper):
                 if not src:
                     continue
                 src_lower = src.lower()
-                
-                # Товарные картинки обычно лежат в /dosyalar/ (исключая /dosyalar/site/ - где логотип)
-                # Исключаем UI картинки типа svg, shadow.png, app-store.webp
                 is_product_img = (
                     ("dosyalar" in src_lower and "site" not in src_lower) or 
                     ("urun" in src_lower) or 
@@ -252,7 +243,6 @@ class IlacFiyatiParser(BaseScraper):
                     if full_img_url not in images:
                         images.append(full_img_url)
 
-            # Внешний ID берём из URL
             external_id = product_url.rstrip("/").split("/")[-1]
             if not external_id:
                 external_id = name
@@ -261,14 +251,14 @@ class IlacFiyatiParser(BaseScraper):
                 name=name,
                 description=description,
                 price=price,
-                currency="TRY",         # На сайте цены в турецких лирах
+                currency="TRY",         
                 url=product_url,
                 images=images,
                 external_id=external_id,
-                brand=brand,            # Производитель из поля FİRMA ADI
+                brand=brand,            
                 barcode=attributes.get('barcode', ''),
-                is_available=True,      # Считаем, что товар доступен (так как сайт информационный)
-                stock_quantity=3,       # Дефолтное значение
+                is_available=True,      
+                stock_quantity=3,       
                 source=self.get_name(),
                 attributes=attributes
             )

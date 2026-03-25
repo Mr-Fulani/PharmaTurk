@@ -249,7 +249,9 @@ class CatalogNormalizer:
         """Синхронизирует атрибуты медикаментов в MedicineProduct."""
         medicine_keys = (
             "dosage_form", "active_ingredient", "prescription_required", "prescription_type", "volume", 
-            "origin_country", "sgk_status", "administration_route"
+            "origin_country", "sgk_status", "administration_route", "barcode", "atc_code",
+            "nfc_code", "sgk_equivalent_code", "sgk_active_ingredient_code", "sgk_public_no",
+            "shelf_life", "storage_conditions"
         )
         if not any(k in attrs for k in medicine_keys):
             return
@@ -260,18 +262,32 @@ class CatalogNormalizer:
             
         medicine_updated = False
         
-        if "dosage_form" in attrs and attrs["dosage_form"]:
-            v = str(attrs["dosage_form"]).strip()[:100]
-            if v != (medicine_product.dosage_form or ""):
-                medicine_product.dosage_form = v
-                medicine_updated = True
-                
-        if "active_ingredient" in attrs and attrs["active_ingredient"]:
-            v = str(attrs["active_ingredient"]).strip()[:300]
-            if v != (medicine_product.active_ingredient or ""):
-                medicine_product.active_ingredient = v
-                medicine_updated = True
-                
+        # Маппинг ключей из attrs в поля модели и их лимиты (чтобы не было DataError)
+        # (attr_key, model_field, max_len)
+        field_mapping = [
+            ("dosage_form", "dosage_form", 100),
+            ("active_ingredient", "active_ingredient", 300),
+            ("prescription_type", "prescription_type", 500),
+            ("volume", "volume", 100),
+            ("origin_country", "origin_country", 500),
+            ("sgk_status", "sgk_status", 500),
+            ("administration_route", "administration_route", 500),
+            ("barcode", "barcode", 100),
+            ("atc_code", "atc_code", 100),
+            ("nfc_code", "nfc_code", 100),
+            ("sgk_equivalent_code", "sgk_equivalent_code", 100),
+            ("sgk_active_ingredient_code", "sgk_active_ingredient_code", 100),
+            ("sgk_public_no", "sgk_public_no", 100),
+            ("shelf_life", "shelf_life", 200),
+            ("storage_conditions", "storage_conditions", 500),
+        ]
+
+        for attr_key, model_field, max_len in field_mapping:
+            if attr_key in attrs and attrs[attr_key]:
+                v = str(attrs[attr_key]).strip()[:max_len]
+                if v != (getattr(medicine_product, model_field) or ""):
+                    setattr(medicine_product, model_field, v)
+                    medicine_updated = True
                 
         if "prescription_required" in attrs:
             val = bool(attrs["prescription_required"])
@@ -535,9 +551,16 @@ class CatalogNormalizer:
 
         # Используем максимально специфичный объект (BookProduct и т.д.) для сохранения изображений
         target = product.domain_item
+        image_manager_name = "images"
         if not hasattr(target, 'images'):
-            target = product
+            if hasattr(target, 'gallery_images'):
+                image_manager_name = "gallery_images"
+            else:
+                target = product
+                image_manager_name = "images"
+                
         is_domain = target != product
+        image_manager = getattr(target, image_manager_name)
         
         metadata = product.external_data if isinstance(product.external_data, dict) else {}
         attrs = metadata.get("attributes") if isinstance(metadata.get("attributes"), dict) else {}
@@ -572,20 +595,20 @@ class CatalogNormalizer:
             parser_images_query = Q(image_url__contains='/products/parsed/')
             exclude_query = Q(image_url__in=image_urls)
             
-            if hasattr(target.images.model, 'video_url'):
+            if hasattr(image_manager.model, 'video_url'):
                 parser_images_query |= Q(video_url__contains='/products/parsed/')
                 exclude_query |= Q(video_url__in=image_urls)
                 
             # Мы удаляем все парсерные картинки, КРОМЕ тех, что есть в новом списке image_urls.
             # Иначе `post_delete` сигнал удалит физический файл из R2.
-            target.images.filter(parser_images_query).exclude(exclude_query).delete()
+            image_manager.filter(parser_images_query).exclude(exclude_query).delete()
         except Exception as e:
             self.logger.warning(f"Error while cleaning up old parser images for {product.pk}: {e}")
 
 
         # 2. Битые ссылки проверяем только для ручных (не парсерных) изображений,
         # и только если их немного (не более 5), чтобы не тормозить парсинг.
-        existing_images = list(target.images.all())
+        existing_images = list(image_manager.all())
         broken_ids = []
         manual_images = [
             img for img in existing_images
@@ -607,10 +630,10 @@ class CatalogNormalizer:
                         self.logger.warning(f"Ошибка проверки ссылки {url_to_check}: {e}")
 
         if broken_ids:
-            target.images.filter(pk__in=broken_ids).delete()
+            image_manager.filter(pk__in=broken_ids).delete()
 
         # Узнаем, установлено ли уже главное изображение вручную или с прошлого парсинга
-        existing_any_main = target.images.filter(is_main=True).exists()
+        existing_any_main = image_manager.filter(is_main=True).exists()
         has_manual_main = False
         if bool(getattr(product, 'main_image_file', None)):
             has_manual_main = True
@@ -625,10 +648,10 @@ class CatalogNormalizer:
             media_type = self._resolve_media_type(image_url)
             
             filter_query = Q(image_url=image_url)
-            if hasattr(target.images.model, 'video_url'):
+            if hasattr(image_manager.model, 'video_url'):
                 filter_query |= Q(video_url=image_url)
                 
-            existing_item = target.images.filter(filter_query).first()
+            existing_item = image_manager.filter(filter_query).first()
             
             desired_is_main = False
             if not existing_any_main and not has_manual_main:
@@ -662,14 +685,14 @@ class CatalogNormalizer:
             # Создаем новое изображение в правильной модели
             create_kwargs = {
                 "image_url": image_url if media_type == "image" else "",
-                "sort_order": target.images.count() + i,
+                "sort_order": image_manager.count() + i,
                 "is_main": desired_is_main
             }
-            if hasattr(target.images.model, 'video_url'):
+            if hasattr(image_manager.model, 'video_url'):
                 create_kwargs["video_url"] = image_url if media_type == "video" else ""
             
             create_kwargs["product"] = target
-            target.images.model.objects.create(**create_kwargs)
+            image_manager.model.objects.create(**create_kwargs)
         
         # Обновляем главное медиа в самих объектах ТОЛЬКО если оно пустое
         if preferred_main_video_url:

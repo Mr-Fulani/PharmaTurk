@@ -538,7 +538,7 @@ class ContentGenerator:
         - Технические поля заполняй только если данные есть в current_description, raw_description, known_attributes ИЛИ image_analysis. Не придумывай.
         - Для книг: author, pages, isbn, publisher, cover_type, language, publication_year. cover_type (переплёт) можно определить по фото.
         - Для украшений (jewelry): обязательно извлекай в attributes: jewelry_type (ring/bracelet/necklace/earrings/pendant), material (серебро/silver, золото/gold), metal_purity из текста про пробу («925 пробы», «585», «проба 750» → metal_purity: «925» / «585» / «750»), stone_type, carat_weight, gender — по описанию или по фото.
-        - Для медикаментов: если в raw_description или current_description есть инструкции по применению, побочные эффекты, противопоказания, показания (Ne İçin Kullanılır, Yan Etkileri, vs.) — ОБЯЗАТЕЛЬНО извлеки их, переведи на нужный язык и заполни соответствующие поля (indications, usage_instructions, side_effects, contraindications, storage_conditions, administration_route, shelf_life, sgk_status, prescription_type, special_notes) внутри объектов "ru" и "en".
+        - Для медикаментов: ОЯЗАТЕЛЬНО переведи все технические поля из known_attributes на русский и английский. Если в raw_description или current_description есть инструкции по применению, побочные эффекты, противопоказания, показания (Ne İçin Kullanılır, Yan Etkileri, vs.) — ОБЯЗАТЕЛЬНО извлеки их, переведи на нужный язык (RU/EN) и заполни соответствующие поля (indications, usage_instructions, side_effects, contraindications, storage_conditions, administration_route, shelf_life, sgk_status, prescription_type, special_notes, origin_country) внутри объектов "ru" и "en". Например: "Subkütan" (TR) -> "Подкожно" (RU) / "Subcutaneous" (EN); "İthal" (TR) -> "Импортный" (RU) / "Imported" (EN).
         - Название (generated_title): только основной заголовок, без подзаголовка. Например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура». Для книг: если в image_analysis есть name (название с обложки) — используй его; автор — из image_analysis.author.
         - SEO — только на английском (латиница). Кириллица в SEO недопустима.
         - В "ru" — название и описание на русском; в "en" — название, описание (перевод ru) и все SEO на английском.
@@ -723,7 +723,12 @@ class ContentGenerator:
             log.extracted_attributes["seo_en"] = seo_en_data
 
         # Дополнительные поля переводов (indications, usage_instructions и т.д.)
-        trans_fields = ['indications', 'usage_instructions', 'side_effects', 'contraindications', 'storage_conditions']
+        trans_fields = [
+            'indications', 'usage_instructions', 'side_effects', 
+            'contraindications', 'storage_conditions', 'administration_route',
+            'shelf_life', 'sgk_status', 'prescription_type', 'special_notes',
+            'origin_country'
+        ]
         trans_data = {'ru': {}, 'en': {}}
         for field in trans_fields:
             if field in data_source and data_source[field]:
@@ -731,6 +736,8 @@ class ContentGenerator:
             if field in en_data and en_data[field]:
                 trans_data['en'][field] = en_data[field]
         if trans_data['ru'] or trans_data['en']:
+            if not log.extracted_attributes:
+                log.extracted_attributes = {}
             log.extracted_attributes['translations_data'] = trans_data
 
         # Попытка найти категорию

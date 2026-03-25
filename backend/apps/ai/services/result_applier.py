@@ -298,12 +298,12 @@ class MedicineAIApplier(BaseAIApplier):
 
     # Ссылка: имя поля в attrs → (имя в модели, max_len | None)
     _MEDICINE_FIELDS = [
-        ('barcode', 'barcode', 50),
-        ('atc_code', 'atc_code', 20),
-        ('nfc_code', 'nfc_code', 20),
-        ('sgk_equivalent_code', 'sgk_equivalent_code', 50),
-        ('sgk_active_ingredient_code', 'sgk_active_ingredient_code', 50),
-        ('sgk_public_no', 'sgk_public_no', 50),
+        ('barcode', 'barcode', 100),
+        ('atc_code', 'atc_code', 100),
+        ('nfc_code', 'nfc_code', 100),
+        ('sgk_equivalent_code', 'sgk_equivalent_code', 100),
+        ('sgk_active_ingredient_code', 'sgk_active_ingredient_code', 100),
+        ('sgk_public_no', 'sgk_public_no', 100),
     ]
 
     # Поля перевода MedicineProductTranslation
@@ -311,7 +311,8 @@ class MedicineAIApplier(BaseAIApplier):
         'indications', 'usage_instructions', 'side_effects',
         'contraindications', 'storage_conditions',
         'administration_route', 'shelf_life', 'sgk_status', 
-        'prescription_type', 'special_notes'
+        'prescription_type', 'special_notes', 'origin_country',
+        'dosage_form', 'active_ingredient', 'volume'
     ]
 
     def apply(self, target: Any, ai_data: Dict[str, Any]) -> bool:
@@ -336,27 +337,8 @@ class MedicineAIApplier(BaseAIApplier):
             target.save()
             updated = True
 
-        # Применяем поля переводов (уже обработаны в super().apply)
-        translations = ai_data.get('translations', {})
-        for locale, data in translations.items():
-            if not isinstance(data, dict):
-                continue
-            trans = getattr(target, 'translations', None)
-            if trans is None:
-                continue
-            obj = trans.filter(locale=locale).first()
-            if not obj:
-                continue
-            trans_updated = False
-            for field in self._TRANSLATION_FIELDS:
-                val = data.get(field)
-                if val and not getattr(obj, field, None):
-                    setattr(obj, field, str(val))
-                    trans_updated = True
-            if trans_updated:
-                obj.save()
-                updated = True
-
+        # Переводы уже обработаны в super().apply -> apply_translations.
+        # Больше ничего здесь делать не нужно для MedicineProductTranslation.
         return updated
 
     def apply_translations(self, target: Any, translations_data: Dict[str, Any]) -> bool:
@@ -380,10 +362,21 @@ class MedicineAIApplier(BaseAIApplier):
                     setattr(trans, field, val)
                     trans_updated = True
             # Медицинские поля
+            # Маппинг для обрезания длины в переводах
+            limits = {
+                'administration_route': 500,
+                'shelf_life': 200,
+                'sgk_status': 500,
+                'prescription_type': 500,
+                'origin_country': 500,
+            }
             for field in self._TRANSLATION_FIELDS:
                 val = data.get(field)
-                if val and not getattr(trans, field, None):
-                    setattr(trans, field, str(val))
+                if val and getattr(trans, field, None) != val:
+                    val_str = str(val).strip()
+                    if field in limits:
+                        val_str = val_str[:limits[field]]
+                    setattr(trans, field, val_str)
                     trans_updated = True
             if trans_updated or created:
                 trans.save()

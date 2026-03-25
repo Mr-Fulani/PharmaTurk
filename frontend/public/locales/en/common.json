@@ -1197,5 +1197,15 @@
   "privacy_cookies_consent": "Managing consent",
   "privacy_cookies_consent_desc": "On first visit we ask for your consent. You can withdraw it at any time by clearing browser cookies or clicking \"Essential only\" on your next visit.",
   "imported": "Imported",
-  "domestic": "Domestic"
+  "domestic": "Turkey (Domestic)",
+  "administration_route": "Administration Route",
+  "shelf_life": "Shelf Life",
+  "sgk_status": "SGK Status",
+  "prescription_type": "Prescription Type",
+  "barcode": "Barcode",
+  "atc_code": "ATC Code",
+  "nfc_code": "NFC Code",
+  "sgk_equivalent_code": "SGK Equivalent Code",
+  "sgk_active_ingredient_code": "SGK Active Ingredient Code",
+  "sgk_public_no": "SGK Public Number"
 }

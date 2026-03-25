@@ -1140,5 +1140,15 @@
   "privacy_cookies_consent": "Управление согласием",
   "privacy_cookies_consent_desc": "При первом посещении мы запрашиваем ваше согласие. Вы можете в любой момент отозвать согласие, очистив cookie браузера или нажав \"Только необходимые\" при следующем посещении.",
   "imported": "Импортное",
-  "domestic": "Турция (Местное)"
+  "domestic": "Турция (Местное)",
+  "administration_route": "Путь введения",
+  "shelf_life": "Срок годности",
+  "sgk_status": "СГК",
+  "prescription_type": "Тип рецепта",
+  "barcode": "Штрих-код",
+  "atc_code": "АТХ код",
+  "nfc_code": "NFC код",
+  "sgk_equivalent_code": "Код эквивалента SGK",
+  "sgk_active_ingredient_code": "Код активного вещества SGK",
+  "sgk_public_no": "Публичный номер SGK"
 }

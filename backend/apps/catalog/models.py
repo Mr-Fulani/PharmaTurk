@@ -4029,24 +4029,24 @@ class MedicineProduct(AbstractDomainProduct):
         help_text=_("Например: 50 мл, 20 таб."),
     )
     origin_country = models.CharField(
-        _("Страна производства"), max_length=200, blank=True,
+        _("Страна производства"), max_length=500, blank=True,
     )
 
     # ── Новые поля (универсальные для всех источников) ────────────
     barcode = models.CharField(
-        _("Штрих-код (EAN/GTIN)"), max_length=50, blank=True, db_index=True,
+        _("Штрих-код (EAN/GTIN)"), max_length=100, blank=True, db_index=True,
         help_text=_("Ключ для поиска медиа и мёрджа данных из разных источников."),
     )
     atc_code = models.CharField(
-        _("Код АТХ"), max_length=20, blank=True, db_index=True,
+        _("Код АТХ"), max_length=100, blank=True, db_index=True,
         help_text=_("Международная классификация (напр.: B02BD08). Объединяет аналоги."),
     )
     administration_route = models.CharField(
-        _("Путь введения"), max_length=100, blank=True,
+        _("Путь введения"), max_length=500, blank=True,
         help_text=_("Например: Интравенозный, Интрамышечный, Перорально, Топикально."),
     )
     shelf_life = models.CharField(
-        _("Срок годности"), max_length=50, blank=True,
+        _("Срок годности"), max_length=200, blank=True,
         help_text=_("Например: 24 месяца."),
     )
     storage_conditions = models.CharField(
@@ -4054,11 +4054,11 @@ class MedicineProduct(AbstractDomainProduct):
         help_text=_("Краткое описание условий хранения (температура, свет и т.д.)."),
     )
     sgk_status = models.CharField(
-        _("Статус оплаты СГК"), max_length=100, blank=True,
+        _("Статус оплаты СГК"), max_length=500, blank=True,
         help_text=_("Например: Bedeli Ödenir / Bedeli Ödenmez."),
     )
     prescription_type = models.CharField(
-        _("Тип рецепта"), max_length=100, blank=True,
+        _("Тип рецепта"), max_length=500, blank=True,
         help_text=_("Например: Turuncu Reçete, Beyaz Reçete, Mor Reçete."),
     )
     special_notes = models.TextField(
@@ -4066,16 +4066,16 @@ class MedicineProduct(AbstractDomainProduct):
         help_text=_("Дополнительные предупреждения (ОЗЕЛ БИЛГИЛЕР)."),
     )
     nfc_code = models.CharField(
-        _("NFC Код"), max_length=50, blank=True,
+        _("NFC Код"), max_length=100, blank=True,
     )
     sgk_equivalent_code = models.CharField(
-        _("SGK Eşdeğer Kodu"), max_length=50, blank=True,
+        _("SGK Eşdeğer Kodu"), max_length=100, blank=True,
     )
     sgk_active_ingredient_code = models.CharField(
-        _("SGK Etkin Madde Kodu"), max_length=50, blank=True,
+        _("SGK Etkin Madde Kodu"), max_length=100, blank=True,
     )
     sgk_public_no = models.CharField(
-        _("SGK Kamu No"), max_length=50, blank=True,
+        _("SGK Kamu No"), max_length=100, blank=True,
     )
 
     class Meta:
@@ -4121,19 +4121,19 @@ class MedicineProductTranslation(models.Model):
         _("Объем/Количество"), max_length=100, blank=True,
     )
     origin_country = models.CharField(
-        _("Страна производства"), max_length=200, blank=True,
+        _("Страна производства"), max_length=500, blank=True,
     )
     administration_route = models.CharField(
-        _("Путь введения"), max_length=100, blank=True,
+        _("Путь введения"), max_length=500, blank=True,
     )
     shelf_life = models.CharField(
-        _("Срок годности"), max_length=50, blank=True,
+        _("Срок годности"), max_length=200, blank=True,
     )
     sgk_status = models.CharField(
-        _("Статус SGK"), max_length=100, blank=True,
+        _("Статус SGK"), max_length=500, blank=True,
     )
     prescription_type = models.CharField(
-        _("Вид рецепта"), max_length=100, blank=True,
+        _("Вид рецепта"), max_length=500, blank=True,
     )
     special_notes = models.TextField(
         _("Особые отметки (SUT / Medula)"), blank=True,
