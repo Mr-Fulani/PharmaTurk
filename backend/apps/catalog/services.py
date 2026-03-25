@@ -570,16 +570,18 @@ class CatalogNormalizer:
         # Ручные загрузки (image_file и image_url без /products/parsed/) не трогаем!
         try:
             parser_images_query = Q(image_url__contains='/products/parsed/')
+            exclude_query = Q(image_url__in=image_urls)
             
             if hasattr(target.images.model, 'video_url'):
                 parser_images_query |= Q(video_url__contains='/products/parsed/')
+                exclude_query |= Q(video_url__in=image_urls)
                 
-            # Мы удаляем все парсерные картинки. Если они есть в новом списке - они добавятся заново ниже.
-            # Если их нет в новом списке - они просто удалятся.
-            # Это решает проблему дублирования и "бесконечного накопления" парсерных картинок.
-            target.images.filter(parser_images_query).delete()
+            # Мы удаляем все парсерные картинки, КРОМЕ тех, что есть в новом списке image_urls.
+            # Иначе `post_delete` сигнал удалит физический файл из R2.
+            target.images.filter(parser_images_query).exclude(exclude_query).delete()
         except Exception as e:
             self.logger.warning(f"Error while cleaning up old parser images for {product.pk}: {e}")
+
 
         # 2. Битые ссылки проверяем только для ручных (не парсерных) изображений,
         # и только если их немного (не более 5), чтобы не тормозить парсинг.
