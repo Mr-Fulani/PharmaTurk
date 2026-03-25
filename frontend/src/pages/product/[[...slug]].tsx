@@ -129,6 +129,21 @@ const normalizeMediaValue = (value?: string | null) => {
   return trimmed
 }
 
+const getAdministrationRouteLabel = (value: string | null | undefined, t: any) => {
+  if (!value) return null
+  const routeLabels: Record<string, string> = {
+    'Ağızdan': t('route_oral', 'Peroral'),
+    'Damar İçine': t('route_intravenous', 'Intravenous'),
+    'Kas İçine': t('route_intramuscular', 'Intramuscular'),
+    'Cilt Üzerine': t('route_topical', 'Topical'),
+    'Solunum Yoluyla': t('route_inhalation', 'Inhalation'),
+    'Rektal Yoldan': t('route_rectal', 'Rectal'),
+    'Göz İçine': t('route_ophthalmic', 'Ophthalmic'),
+    'Kulak İçine': t('route_otic', 'Otic'),
+  }
+  return routeLabels[value] || value
+}
+
 const getDosageFormLabel = (value: string | null | undefined, t: any) => {
   if (!value) return null
   const forms: Record<string, string> = {
