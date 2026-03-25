@@ -4065,6 +4065,18 @@ class MedicineProduct(AbstractDomainProduct):
         _("Особые сведения"), blank=True,
         help_text=_("Дополнительные предупреждения (ОЗЕЛ БИЛГИЛЕР)."),
     )
+    nfc_code = models.CharField(
+        _("NFC Код"), max_length=50, blank=True,
+    )
+    sgk_equivalent_code = models.CharField(
+        _("SGK Eşdeğer Kodu"), max_length=50, blank=True,
+    )
+    sgk_active_ingredient_code = models.CharField(
+        _("SGK Etkin Madde Kodu"), max_length=50, blank=True,
+    )
+    sgk_public_no = models.CharField(
+        _("SGK Kamu No"), max_length=50, blank=True,
+    )
 
     class Meta:
         verbose_name = _("Товар — Медикамент")
@@ -4110,6 +4122,21 @@ class MedicineProductTranslation(models.Model):
     )
     origin_country = models.CharField(
         _("Страна производства"), max_length=200, blank=True,
+    )
+    administration_route = models.CharField(
+        _("Путь введения"), max_length=100, blank=True,
+    )
+    shelf_life = models.CharField(
+        _("Срок годности"), max_length=50, blank=True,
+    )
+    sgk_status = models.CharField(
+        _("Статус SGK"), max_length=100, blank=True,
+    )
+    prescription_type = models.CharField(
+        _("Вид рецепта"), max_length=100, blank=True,
+    )
+    special_notes = models.TextField(
+        _("Особые отметки (SUT / Medula)"), blank=True,
     )
 
     class Meta:

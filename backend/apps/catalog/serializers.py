@@ -4545,6 +4545,10 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     active_ingredient = serializers.SerializerMethodField()
     volume = serializers.SerializerMethodField()
     origin_country = serializers.SerializerMethodField()
+    administration_route = serializers.SerializerMethodField()
+    shelf_life = serializers.SerializerMethodField()
+    sgk_status = serializers.SerializerMethodField()
+    prescription_type = serializers.SerializerMethodField()
 
     def _get_translation_field(self, obj, field_name, fallback_value=None):
         request = self.context.get('request')
@@ -4596,9 +4600,19 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
         return self._get_translation_field(obj, 'indications')
 
     def get_special_notes(self, obj):
-        # Берём из основной модели (не переводится)
-        return obj.special_notes or None
+        return self._get_translation_field(obj, 'special_notes', obj.special_notes)
 
+    def get_administration_route(self, obj):
+        return self._get_translation_field(obj, 'administration_route', obj.administration_route)
+
+    def get_shelf_life(self, obj):
+        return self._get_translation_field(obj, 'shelf_life', obj.shelf_life)
+
+    def get_sgk_status(self, obj):
+        return self._get_translation_field(obj, 'sgk_status', obj.sgk_status)
+
+    def get_prescription_type(self, obj):
+        return self._get_translation_field(obj, 'prescription_type', obj.prescription_type)
 
     class Meta:
         model = MedicineProduct
@@ -4607,7 +4621,7 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
             'dosage_form', 'active_ingredient', 'prescription_required', 'prescription_type',
             'volume', 'origin_country', 'administration_route', 'shelf_life',
-            'barcode', 'atc_code', 'sgk_status', 'special_notes',
+            'barcode', 'atc_code', 'nfc_code', 'sgk_status', 'sgk_equivalent_code', 'sgk_active_ingredient_code', 'sgk_public_no', 'special_notes',
             'usage_instructions', 'side_effects', 'contraindications',
             'storage_conditions', 'indications',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',

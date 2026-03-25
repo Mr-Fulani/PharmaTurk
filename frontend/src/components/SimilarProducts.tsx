@@ -24,6 +24,7 @@ interface Product {
   is_featured?: boolean
   is_new?: boolean
   translations?: ProductTranslation[]
+  base_product_id?: number | null
 }
 
 interface SimilarProductResult {
@@ -37,6 +38,7 @@ interface SimilarProductsProps {
   productType: string
   currentProductId?: number
   currentProductSlug?: string
+  currentBaseProductId?: number | null
   limit?: number
   /** Use RecSys API (vector similar) when slug is available */
   useRecsys?: boolean
@@ -64,6 +66,7 @@ export default function SimilarProducts({
   productType,
   currentProductId,
   currentProductSlug,
+  currentBaseProductId,
   limit = 8,
   useRecsys = false
 }: SimilarProductsProps) {
@@ -80,11 +83,24 @@ export default function SimilarProducts({
         if (useRecsys && currentProductSlug && productType !== 'jewelry') {
           const response = await api.get(
             `/catalog/products/${encodeURIComponent(currentProductSlug)}/similar`,
-            { params: { limit, strategy: 'balanced' } }
+            { params: { limit: limit + 1, strategy: 'balanced' } } // Берем +1 на случай если API вернет текущий товар
           )
           const results: SimilarProductResult[] = response.data.results || []
           if (results.length > 0) {
-            setProducts(results.map((r) => r.product))
+            let mappedProducts = results.map((r) => r.product)
+            
+            mappedProducts = mappedProducts.filter((p: Product) => {
+              // Filter out the exact same product using id or slug
+              if (currentProductId && p.id === currentProductId) return false
+              if (currentProductSlug && p.slug === currentProductSlug) return false
+              // Also filter if they share the same base_product_id
+              if (currentBaseProductId && p.base_product_id === currentBaseProductId) return false
+              if (p.base_product_id && p.id === currentProductId) return false
+              return true
+            })
+            mappedProducts = mappedProducts.slice(0, limit)
+
+            setProducts(mappedProducts)
             const reasonMap: Record<number, string> = {}
             results.forEach((r) => {
               if (r.product?.id && r.reason) reasonMap[r.product.id] = r.reason
@@ -117,11 +133,12 @@ export default function SimilarProducts({
         })
 
         let filteredProducts = response.data.results || response.data || []
-        if (currentProductId) {
-          filteredProducts = filteredProducts.filter((p: Product) => p.id !== currentProductId)
-        } else if (currentProductSlug) {
-          filteredProducts = filteredProducts.filter((p: Product) => p.slug !== currentProductSlug)
-        }
+        filteredProducts = filteredProducts.filter((p: Product) => {
+          if (currentProductId && p.id === currentProductId) return false
+          if (currentProductSlug && p.slug === currentProductSlug) return false
+          if (currentBaseProductId && p.base_product_id === currentBaseProductId) return false
+          return true
+        })
         setProducts(filteredProducts.slice(0, limit))
         setReasons({})
       } catch (error) {

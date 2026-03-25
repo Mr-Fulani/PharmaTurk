@@ -150,9 +150,11 @@ class IlacFiyatiParser(BaseScraper):
                                 brand = val
                         elif 'atc' in key:
                             attributes['atc_code'] = val
+                        elif 'etki̇n madde kodu' in key or 'etkin madde kodu' in key:
+                            attributes['sgk_active_ingredient_code'] = val
                         elif 'etki̇n madde' in key or 'etkin madde' in key:
                             # Действующее вещество: ETKİN MADDE → 'etki̇n madde', но НЕ 'SGK ETKİN MADDE KODU'
-                            if 'sgk' not in key and 'active_ingredient' not in attributes:
+                            if 'kodu' not in key and 'active_ingredient' not in attributes:
                                 attributes['active_ingredient'] = val
                         elif 'reçete' in key:
                             attributes['prescription_type'] = val
@@ -195,6 +197,10 @@ class IlacFiyatiParser(BaseScraper):
                             # Статус оплаты SGK (первое совпадение)
                             if 'sgk_status' not in attributes:
                                 attributes['sgk_status'] = val
+                        elif 'eşdeğer kodu' in key or 'esdeger kodu' in key:
+                            attributes['sgk_equivalent_code'] = val
+                        elif 'kamu no' in key:
+                            attributes['sgk_public_no'] = val
                         elif 'uygulama' in key:
                             attributes['administration_route'] = val
                         elif 'raf ömrü' in key:

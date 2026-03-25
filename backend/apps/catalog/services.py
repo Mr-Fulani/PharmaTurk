@@ -272,17 +272,6 @@ class CatalogNormalizer:
                 medicine_product.active_ingredient = v
                 medicine_updated = True
                 
-        if "volume" in attrs and attrs["volume"]:
-            v = str(attrs["volume"]).strip()[:100]
-            if v != (medicine_product.volume or ""):
-                medicine_product.volume = v
-                medicine_updated = True
-                
-        if "origin_country" in attrs and attrs["origin_country"]:
-            v = str(attrs["origin_country"]).strip()[:200]
-            if v != (medicine_product.origin_country or ""):
-                medicine_product.origin_country = v
-                medicine_updated = True
                 
         if "prescription_required" in attrs:
             val = bool(attrs["prescription_required"])

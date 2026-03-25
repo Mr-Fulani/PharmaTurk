@@ -300,18 +300,18 @@ class MedicineAIApplier(BaseAIApplier):
     _MEDICINE_FIELDS = [
         ('barcode', 'barcode', 50),
         ('atc_code', 'atc_code', 20),
-        ('administration_route', 'administration_route', 100),
-        ('shelf_life', 'shelf_life', 50),
-        ('storage_conditions', 'storage_conditions', 500),
-        ('sgk_status', 'sgk_status', 100),
-        ('prescription_type', 'prescription_type', 100),
-        ('special_notes', 'special_notes', None),  # TextField — без обрезки
+        ('nfc_code', 'nfc_code', 20),
+        ('sgk_equivalent_code', 'sgk_equivalent_code', 50),
+        ('sgk_active_ingredient_code', 'sgk_active_ingredient_code', 50),
+        ('sgk_public_no', 'sgk_public_no', 50),
     ]
 
     # Поля перевода MedicineProductTranslation
     _TRANSLATION_FIELDS = [
         'indications', 'usage_instructions', 'side_effects',
         'contraindications', 'storage_conditions',
+        'administration_route', 'shelf_life', 'sgk_status', 
+        'prescription_type', 'special_notes'
     ]
 
     def apply(self, target: Any, ai_data: Dict[str, Any]) -> bool:

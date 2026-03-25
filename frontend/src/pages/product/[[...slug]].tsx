@@ -142,8 +142,41 @@ const getDosageFormLabel = (value: string | null | undefined, t: any) => {
     drops: t('dosage_drops', 'Капли'),
     spray: t('dosage_spray', 'Спрей'),
     powder: t('dosage_powder', 'Порошок'),
+    suppository: t('dosage_suppository', 'Суппозитории'),
+    other: t('dosage_other', 'Другое'),
   }
   return forms[value] || value
+}
+
+const getSgkStatusLabel = (value: string | null | undefined, t: any) => {
+  if (!value) return null
+  const statusLabels: Record<string, string> = {
+    'Bedeli Ödenir': t('sgk_status_paid', 'Bedeli Ödenir'),
+    'Bedeli Ödenmez': t('sgk_status_not_paid', 'Bedeli Ödenmez'),
+    'Pasif': t('sgk_status_passive', 'Pasif'),
+  }
+  return statusLabels[value] || value
+}
+
+const getPrescriptionTypeLabel = (value: string | null | undefined, t: any) => {
+  if (!value) return null
+  const prescriptionLabels: Record<string, string> = {
+    'Beyaz Reçete': t('prescription_white', 'Beyaz Reçete'),
+    'Kırmızı Reçete': t('prescription_red', 'Kırmızı Reçete'),
+    'Yeşil Reçete': t('prescription_green', 'Yeşil Reçete'),
+    'Mor Reçete': t('prescription_purple', 'Mor Reçete'),
+    'Turuncu Reçete': t('prescription_orange', 'Turuncu Reçete'),
+    'Normal Reçete': t('prescription_normal', 'Normal Reçete'),
+    'Reçetesiz': t('prescription_none', 'Reçetesiz'),
+  }
+  return prescriptionLabels[value] || value
+}
+
+const formatShelfLife = (value: string | null | undefined, t: any) => {
+  if (!value) return null
+  if (value.includes(' Ay')) return value.replace(' Ay', ' ' + t('months', 'мес.'))
+  if (value.includes(' Yıl')) return value.replace(' Yıl', ' ' + t('years', 'лет'))
+  return value
 }
 
 interface SizeItem {
@@ -230,6 +263,10 @@ interface Product {
   shelf_life?: string | null
   barcode?: string | null
   atc_code?: string | null
+  nfc_code?: string | null
+  sgk_equivalent_code?: string | null
+  sgk_active_ingredient_code?: string | null
+  sgk_public_no?: string | null
   sgk_status?: string | null
   special_notes?: string | null
   serving_size?: string | null
@@ -1180,7 +1217,11 @@ export default function ProductPage({
                 {product.origin_country && (
                   <p>
                     <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('origin_country', 'Страна производства')}: </span>
-                    {product.origin_country}
+                    {product.origin_country.toUpperCase() === 'İTHAL' || product.origin_country.toUpperCase() === 'ITHAL' 
+                      ? t('imported', 'Импортное')
+                      : product.origin_country.toUpperCase() === 'YERLİ' || product.origin_country.toUpperCase() === 'YERLI'
+                        ? t('domestic', 'Турция (Местное)')
+                        : product.origin_country}
                   </p>
                 )}
                 {/* Путь введения */}
@@ -1194,28 +1235,21 @@ export default function ProductPage({
                 {product.shelf_life && (
                   <p>
                     <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('shelf_life', 'Срок годности')}: </span>
-                    {product.shelf_life}
-                  </p>
-                )}
-                {/* Условия хранения (краткие) */}
-                {product.storage_conditions && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('storage_conditions_short', 'Условия хранения')}: </span>
-                    {product.storage_conditions}
+                    {formatShelfLife(product.shelf_life, t)}
                   </p>
                 )}
                 {/* СГК / страховка */}
                 {product.sgk_status && (
                   <p>
                     <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_status', 'СГК')}: </span>
-                    {product.sgk_status}
+                    {getSgkStatusLabel(product.sgk_status, t)}
                   </p>
                 )}
                 {/* Тип рецепта */}
                 {product.prescription_type && (
                   <p>
                     <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('prescription_type', 'Тип рецепта')}: </span>
-                    {product.prescription_type}
+                    {getPrescriptionTypeLabel(product.prescription_type, t)}
                   </p>
                 )}
                 {/* Штрих-код */}
@@ -1230,6 +1264,34 @@ export default function ProductPage({
                   <p>
                     <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('atc_code', 'АТХ код')}: </span>
                     <span className="font-mono">{product.atc_code}</span>
+                  </p>
+                )}
+                {/* NFC Код */}
+                {product.nfc_code && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('nfc_code', 'NFC код')}: </span>
+                    <span className="font-mono">{product.nfc_code}</span>
+                  </p>
+                )}
+                {/* SGK Эквивалент */}
+                {product.sgk_equivalent_code && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_equivalent_code', 'SGK Eşdeğer Kodu')}: </span>
+                    <span className="font-mono">{product.sgk_equivalent_code}</span>
+                  </p>
+                )}
+                {/* SGK Код акт. вещ-ва */}
+                {product.sgk_active_ingredient_code && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_active_ingredient_code', 'SGK Etkin Madde Kodu')}: </span>
+                    <span className="font-mono">{product.sgk_active_ingredient_code}</span>
+                  </p>
+                )}
+                {/* SGK Публичный номер */}
+                {product.sgk_public_no && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_public_no', 'SGK Kamu No')}: </span>
+                    <span className="font-mono">{product.sgk_public_no}</span>
                   </p>
                 )}
               </div>
@@ -1692,6 +1754,7 @@ export default function ProductPage({
         <SimilarProducts
           productType={productType}
           currentProductId={product.id}
+          currentBaseProductId={product.base_product_id}
           currentProductSlug={product.slug}
           limit={8}
           useRecsys={true}

@@ -486,7 +486,8 @@ class ContentGenerator:
             "active_ingredient", "dosage_form", "administration_route",
             "prescription_required", "prescription_type", "volume",
             "origin_country", "shelf_life", "storage_conditions",
-            "sgk_status", "atc_code", "barcode"
+            "sgk_status", "atc_code", "barcode", "nfc_code",
+            "sgk_equivalent_code", "sgk_active_ingredient_code", "sgk_public_no"
         )
         medicine_attrs = {k: input_data[k] for k in medicine_attrs_keys if k in input_data and input_data[k]}
         if medicine_attrs:
@@ -537,6 +538,7 @@ class ContentGenerator:
         - Технические поля заполняй только если данные есть в current_description, raw_description, known_attributes ИЛИ image_analysis. Не придумывай.
         - Для книг: author, pages, isbn, publisher, cover_type, language, publication_year. cover_type (переплёт) можно определить по фото.
         - Для украшений (jewelry): обязательно извлекай в attributes: jewelry_type (ring/bracelet/necklace/earrings/pendant), material (серебро/silver, золото/gold), metal_purity из текста про пробу («925 пробы», «585», «проба 750» → metal_purity: «925» / «585» / «750»), stone_type, carat_weight, gender — по описанию или по фото.
+        - Для медикаментов: если в raw_description или current_description есть инструкции по применению, побочные эффекты, противопоказания, показания (Ne İçin Kullanılır, Yan Etkileri, vs.) — ОБЯЗАТЕЛЬНО извлеки их, переведи на нужный язык и заполни соответствующие поля (indications, usage_instructions, side_effects, contraindications, storage_conditions, administration_route, shelf_life, sgk_status, prescription_type, special_notes) внутри объектов "ru" и "en".
         - Название (generated_title): только основной заголовок, без подзаголовка. Например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура». Для книг: если в image_analysis есть name (название с обложки) — используй его; автор — из image_analysis.author.
         - SEO — только на английском (латиница). Кириллица в SEO недопустима.
         - В "ru" — название и описание на русском; в "en" — название, описание (перевод ru) и все SEO на английском.
@@ -546,14 +548,34 @@ class ContentGenerator:
         {{
             "ru": {{
                 "generated_title": "Название на русском",
-                "generated_description": "Описание на русском, 20–100 слов (HTML allowed)"
+                "generated_description": "Описание на русском, 20–100 слов (HTML allowed)",
+                "indications": "Показания к применению (RU)",
+                "usage_instructions": "Инструкция по применению (RU)",
+                "side_effects": "Побочные эффекты (RU)",
+                "contraindications": "Противопоказания (RU)",
+                "storage_conditions": "Условия хранения (RU)",
+                "administration_route": "Путь введения (RU)",
+                "shelf_life": "Срок годности (RU)",
+                "sgk_status": "Статус SGK (RU)",
+                "prescription_type": "Тип рецепта (RU)",
+                "special_notes": "Особые отметки (SUT / Medula) (RU)"
             }},
             "en": {{
                 "generated_title": "Product name in English",
                 "generated_description": "Same description in English, 20–100 words (HTML allowed)",
                 "seo_title": "SEO meta title in English only",
                 "seo_description": "SEO meta description in English only",
-                "keywords": ["keyword1", "keyword2"]
+                "keywords": ["keyword1", "keyword2"],
+                "indications": "Indications (EN)",
+                "usage_instructions": "Usage instructions (EN)",
+                "side_effects": "Side effects (EN)",
+                "contraindications": "Contraindications (EN)",
+                "storage_conditions": "Storage conditions (EN)",
+                "administration_route": "Administration route (EN)",
+                "shelf_life": "Shelf life (EN)",
+                "sgk_status": "SGK status (EN)",
+                "prescription_type": "Prescription type (EN)",
+                "special_notes": "Special notes (SUT / Medula) (EN)"
             }},
             "suggested_category_name": "Category name (RU)",
             "category_confidence": 0.95,
@@ -700,6 +722,17 @@ class ContentGenerator:
             
             log.extracted_attributes["seo_en"] = seo_en_data
 
+        # Дополнительные поля переводов (indications, usage_instructions и т.д.)
+        trans_fields = ['indications', 'usage_instructions', 'side_effects', 'contraindications', 'storage_conditions']
+        trans_data = {'ru': {}, 'en': {}}
+        for field in trans_fields:
+            if field in data_source and data_source[field]:
+                trans_data['ru'][field] = data_source[field]
+            if field in en_data and en_data[field]:
+                trans_data['en'][field] = en_data[field]
+        if trans_data['ru'] or trans_data['en']:
+            log.extracted_attributes['translations_data'] = trans_data
+
         # Попытка найти категорию
         if "suggested_category_name" in content:
             cat_name = content["suggested_category_name"]
@@ -796,10 +829,12 @@ class ContentGenerator:
                 'ru': {
                     'name': (log.generated_title or original_name).strip(),
                     'description': log.generated_description,
+                    **attrs.get('translations_data', {}).get('ru', {})
                 },
                 'en': {
                     'name': en_name,
                     'description': en_description,
+                    **attrs.get('translations_data', {}).get('en', {})
                 }
             }
         }

@@ -205,13 +205,13 @@ class MedicineProductAdmin(_SimpleDomainAdmin):
         'fields': (
             'dosage_form', 'active_ingredient', 'prescription_required', 'prescription_type',
             'volume', 'origin_country',
-            'barcode', 'atc_code', 'administration_route',
+            'barcode', 'atc_code', 'nfc_code', 'administration_route',
             'shelf_life', 'storage_conditions',
-            'sgk_status', 'special_notes',
+            'sgk_status', 'sgk_equivalent_code', 'sgk_active_ingredient_code', 'sgk_public_no', 'special_notes',
         ),
     })
     list_display = [
-        'name', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code',
+        'name', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code', 'nfc_code', 'sgk_public_no',
         'prescription_required', 'price', 'old_price',
         'is_available', 'is_new', 'created_at',
     ]
