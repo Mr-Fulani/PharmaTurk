@@ -129,6 +129,9 @@ class ActiveRootFilter(SimpleListFilter):
         return queryset
 
 
+from .admin_base import AIStatusFilter, RunAIActionMixin
+
+
 @admin.action(description=_("Сделать активными"))
 def activate_variants(modeladmin, request, queryset):
     queryset.update(is_active=True)
@@ -732,60 +735,7 @@ class ShoeVariantImageInline(admin.TabularInline):
         return "-"
     image_preview.short_description = _("Превью")
 
-class RunAIActionMixin:
-    """Миксин: действия AI обработки для выбранных товаров."""
-
-    def _resolve_base_product_id(self, obj) -> int:
-        """Возвращает pk базового Product независимо от типа obj.
-
-        Работает и для base Product, и для доменных моделей
-        (BookProduct, ClothingProduct, …), у которых есть base_product_id.
-        """
-        return getattr(obj, "base_product_id", None) or obj.id
-
-    def run_ai(self, request, queryset):
-        from apps.ai.tasks import process_product_ai_task
-        for obj in queryset:
-            process_product_ai_task.delay(
-                product_id=self._resolve_base_product_id(obj),
-                processing_type="full",
-                auto_apply=False,
-            )
-        self.message_user(
-            request,
-            _("Запущена полная AI обработка для %(count)s товаров. Результаты появятся в разделе «Логи AI»; применить к товару — вручную после одобрения.")
-            % {"count": queryset.count()},
-            level=messages.SUCCESS,
-        )
-    run_ai.short_description = _("Полная AI обработка (без авто-применения)")
-
-    def run_ai_auto_apply(self, request, queryset):
-        """Один запуск: полная обработка + авто-применение. Не нужно идти в «Логи AI»."""
-        from apps.ai.tasks import process_product_ai_task
-        for obj in queryset:
-            process_product_ai_task.delay(
-                product_id=self._resolve_base_product_id(obj),
-                processing_type="full",
-                auto_apply=True,
-            )
-        self.message_user(
-            request,
-            _("Запущена полная AI обработка с авто-применением для %(count)s товаров. Результаты будут применены к товарам автоматически после завершения.")
-            % {"count": queryset.count()},
-            level=messages.SUCCESS,
-        )
-    run_ai_auto_apply.short_description = _("Полная AI обработка + авто-применение")
-
-    def run_find_merge_duplicates(self, request, queryset):
-        """Запуск поиска и объединения дубликатов по всему каталогу."""
-        from apps.scrapers.tasks import find_and_merge_duplicates
-        find_and_merge_duplicates.delay()
-        self.message_user(
-            request,
-            _("Запущен поиск и объединение дубликатов по всему каталогу. Результаты будут в логах Celery."),
-            level=messages.SUCCESS,
-        )
-    run_find_merge_duplicates.short_description = _("Поиск и объединение дубликатов")
+# RunAIActionMixin and get_ai_status are now imported from .admin_base
 
 
 class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
@@ -793,10 +743,11 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     form = ProductForm
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = (
-        'name', 'slug', 'product_type', 'category', 'brand', 'gender', 'price', 'currency',
-        'availability_status', 'country_of_origin', 'is_active', 'created_at'
+        'name', 'slug', 'get_ai_status', 'product_type', 'category', 'brand', 'gender', 'price', 'currency',
+        'availability_status', 'is_active', 'created_at'
     )
     list_filter = (
+        AIStatusFilter,
         'product_type', 'availability_status', 'country_of_origin',
         'is_active', 'is_new', 'is_featured', 'is_available', 'category', 'brand', 'gender', 'currency', 'created_at'
     )
@@ -1228,6 +1179,7 @@ def _product_category_path(obj):
 
 @admin.register(ClothingProduct)
 class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
+    ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров одежды."""
     category_field_name = "clothing_type"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
@@ -1244,8 +1196,8 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
         return _product_category_path(obj)
     category_path.short_description = _("Категория")
 
-    list_display = ('name', 'slug', 'category_path', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
+    list_display = ('name', 'slug', 'get_ai_status', 'category_path', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = (AIStatusFilter, 'is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
     list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
     search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
@@ -1599,6 +1551,7 @@ class ShoeVariantAdmin(admin.ModelAdmin):
 
 @admin.register(ShoeProduct)
 class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
+    ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров обуви."""
 
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
@@ -1617,8 +1570,8 @@ class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         return _product_category_path(obj)
     category_path.short_description = _("Категория")
 
-    list_display = ('name', 'slug', 'category_path', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
+    list_display = ('name', 'slug', 'get_ai_status', 'category_path', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = (AIStatusFilter, 'is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
     list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
     search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
@@ -1838,6 +1791,7 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(ElectronicsProduct)
 class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
+    ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров электроники."""
     category_field_name = "device_type"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
@@ -1854,8 +1808,8 @@ class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.
         return _product_category_path(obj)
     category_path.short_description = _("Категория")
 
-    list_display = ('name', 'slug', 'category_path', 'brand', 'gender', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_available', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
+    list_display = ('name', 'slug', 'get_ai_status', 'category_path', 'brand', 'gender', 'model', 'price', 'currency', 'is_available', 'is_active', 'created_at')
+    list_filter = (AIStatusFilter, 'is_active', 'is_available', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
     list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
     search_fields = ('name', 'slug', 'description', 'model')
     ordering = ('-created_at',)
@@ -1909,11 +1863,12 @@ class FurnitureVariantAdmin(admin.ModelAdmin):
 
 @admin.register(FurnitureProduct)
 class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.ModelAdmin):
+    ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров мебели."""
     category_type_slug = "furniture"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
-    list_display = ('name', 'slug', 'category', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'furniture_type', 'currency', 'created_at')
+    list_display = ('name', 'slug', 'get_ai_status', 'category', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = (AIStatusFilter, 'is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'furniture_type', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'furniture_type')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
@@ -2011,11 +1966,12 @@ class JewelryVariantAdmin(admin.ModelAdmin):
 
 @admin.register(JewelryProduct)
 class JewelryProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.ModelAdmin):
+    ai_logs_prefetch_path = "base_product__ai_logs"
     """Товары украшений с вариантами и размерами (кольца, браслеты и т.д.)."""
     category_type_slug = "jewelry"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
-    list_display = ('name', 'slug', 'category', 'brand', 'jewelry_type', 'gender', 'material', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = ('is_active', 'is_new', 'is_featured', 'jewelry_type', 'gender', 'category', 'brand', 'currency', 'created_at')
+    list_display = ('name', 'slug', 'get_ai_status', 'category', 'brand', 'jewelry_type', 'gender', 'material', 'price', 'currency', 'is_active', 'created_at')
+    list_filter = (AIStatusFilter, 'is_active', 'is_new', 'is_featured', 'jewelry_type', 'gender', 'category', 'brand', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'metal_purity', 'stone_type')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}

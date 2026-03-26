@@ -87,11 +87,29 @@ class ContentGenerator:
         """
         if options:
             processing_type = self._options_to_processing_type(options)
+        
+        force = (options or {}).get("force", False)
+
         try:
             product = Product.objects.get(id=product_id)
         except Product.DoesNotExist:
             logger.error(f"Product {product_id} not found")
             raise ValueError(f"Product {product_id} not found")
+
+        # Проверяем, не был ли товар уже успешно обработан
+        if not force:
+            existing_log = AIProcessingLog.objects.filter(
+                product=product,
+                processing_type=processing_type,
+                status__in=[
+                    AIProcessingStatus.COMPLETED,
+                    AIProcessingStatus.APPROVED,
+                    AIProcessingStatus.MODERATION
+                ]
+            ).first()
+            if existing_log:
+                logger.info(f"Product {product_id} already processed (log {existing_log.id}), skipping.")
+                return existing_log
 
         # Создаем лог
         log_entry = AIProcessingLog.objects.create(
