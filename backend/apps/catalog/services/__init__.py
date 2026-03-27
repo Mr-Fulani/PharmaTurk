@@ -8,5 +8,10 @@ _spec.loader.exec_module(_module)
 
 CatalogNormalizer = _module.CatalogNormalizer
 CatalogService = _module.CatalogService
+from .medicine_media_enricher import MedicineMediaEnricher
 
-__all__ = ["CatalogNormalizer", "CatalogService"]
+__all__ = [
+    "CatalogNormalizer",
+    "CatalogService",
+    "MedicineMediaEnricher",
+]

@@ -1734,6 +1734,7 @@ class ProductImage(models.Model):
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
+    image_hash = models.CharField(_("Хэш изображения"), max_length=64, blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
 
     class Meta:
@@ -4160,6 +4161,7 @@ class MedicineProductImage(models.Model):
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
+    image_hash = models.CharField(_("Хэш изображения"), max_length=64, blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
 
     class Meta:

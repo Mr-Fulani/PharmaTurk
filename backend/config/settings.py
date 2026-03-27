@@ -148,6 +148,8 @@ CELERY_TASK_ANNOTATIONS = {
         "soft_time_limit": 60 * 60 * 1,  # soft limit: 1 час (можно перехватить SoftTimeLimitExceeded)
     },
 }
+from celery.schedules import crontab
+
 # Очередь ai для задач AI (воркер celery_ai слушает только её); recsys для рекомендаций
 CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},
@@ -157,6 +159,12 @@ CELERY_TASK_ROUTES = {
 }
 # Расписание Celery Beat. Подробности — см. CELERY_TASKS.md в корне проекта.
 CELERY_BEAT_SCHEDULE = {
+    # Обогащение медиа медикаментов каждую ночь
+    "enrich-medicine-media-nightly": {
+        "task": "catalog.enrich_medicine_media",
+        "schedule": crontab(hour=3, minute=0),
+        "kwargs": {"max_images_per_product": 3},
+    },
     # Валюта: обновление курсов каждые 4 часа
     "currency-update-rates": {
         "task": "currency.update_rates",
@@ -395,6 +403,12 @@ LOGGING = {
     },
     "root": {"handlers": ["console"], "level": "INFO"},
 }
+
+# Media Enrichment
+SERPER_API_KEY = env("SERPER_API_KEY", default="")
+MEDICINE_MEDIA_MIN_WIDTH = env.int("MEDICINE_MEDIA_MIN_WIDTH", default=400)
+MEDICINE_MEDIA_MIN_HEIGHT = env.int("MEDICINE_MEDIA_MIN_HEIGHT", default=400)
+MEDICINE_MEDIA_MAX_PER_PRODUCT = env.int("MEDICINE_MEDIA_MAX_PER_PRODUCT", default=3)
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

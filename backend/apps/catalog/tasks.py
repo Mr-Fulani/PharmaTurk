@@ -6,7 +6,11 @@ from __future__ import annotations
 
 from celery import shared_task
 from django.core.management import call_command
+from django.db.models import Count
 import logging
+
+from apps.catalog.models import MedicineProduct
+from apps.catalog.services import MedicineMediaEnricher
 
 logger = logging.getLogger(__name__)
 
@@ -318,3 +322,55 @@ def currency_system_health_check():
     except Exception as e:
         logger.error(f"Exception in currency health check: {str(e)}")
         return {'status': 'error', 'message': str(e)}
+
+
+@shared_task(
+    name="catalog.enrich_medicine_media",
+    bind=True, max_retries=2, default_retry_delay=300,
+)
+def enrich_medicine_media(
+    self,
+    product_ids: list[int] | None = None,
+    max_images_per_product: int = 3,
+) -> dict:
+    """
+    Обогащение медиа для MedicineProduct.
+    - product_ids=None  → все товары с медиа меньше max_images_per_product
+    - product_ids=[...] → только указанные товары
+    """
+    try:
+        queryset = MedicineProduct.objects.annotate(
+            gallery_images_count=Count('gallery_images')
+        ).filter(gallery_images_count__lt=max_images_per_product)
+        
+        if product_ids:
+            queryset = queryset.filter(id__in=product_ids)
+            
+        enricher = MedicineMediaEnricher()
+        
+        products_processed = 0
+        images_added = 0
+        errors = 0
+        
+        for product in queryset.iterator():
+            try:
+                added = enricher.enrich(product, max_images_per_product)
+                products_processed += 1
+                images_added += added
+            except Exception as e:
+                logger.error("Failed to enrich media for product %s: %s", product.id, e)
+                errors += 1
+                
+        return {
+            "status": "success",
+            "products_processed": products_processed,
+            "images_added": images_added,
+            "errors": errors,
+        }
+    except Exception as e:
+        logger.exception("enrich_medicine_media failed: %s", e)
+        # Only retry if it's not a direct caller issue
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e)
+        return {"status": "error", "message": str(e)}
+
