@@ -358,11 +358,11 @@ class TelegramAuthView(APIView):
         if not user:
             from django.utils.crypto import get_random_string
             # Создаем нового пользователя (генерируем заглушку для email)
-            dummy_email = f"tg_{telegram_id}@pharmaturk.local"
+            dummy_email = f"tg_{telegram_id}@mudaroba.local"
             
             # Проверяем, может быть кто-то уже занял такой email (крайне маловероятно)
             if User.objects.filter(email=dummy_email).exists():
-                dummy_email = f"tg_{telegram_id}_{uuid.uuid4().hex[:6]}@pharmaturk.local"
+                dummy_email = f"tg_{telegram_id}_{uuid.uuid4().hex[:6]}@mudaroba.local"
                 
             base_username = username or f"tg_{telegram_id}"
             final_username = base_username
@@ -709,7 +709,7 @@ class UserRequestVerificationCodeView(APIView):
             from django.core.mail import send_mail
             from django.conf import settings
             send_mail(
-                subject=_('Код подтверждения email — PharmaTurk'),
+                subject=_('Код подтверждения email — Mudaroba'),
                 message=_(
                     'Ваш код подтверждения: %(code)s\n\n'
                     'Код действителен 15 минут.\n'
@@ -1093,7 +1093,7 @@ class SocialAuthView(APIView):
             if user_info.get('last_name') and not user.last_name:
                 user.last_name = user_info['last_name']
                 update_fields.append('last_name')
-            if user_info.get('email') and user.email.endswith('@pharmaturk.local'):
+            if user_info.get('email') and user.email.endswith('@mudaroba.local'):
                 user.email = user_info['email']
                 update_fields.append('email')
             user.save(update_fields=update_fields)

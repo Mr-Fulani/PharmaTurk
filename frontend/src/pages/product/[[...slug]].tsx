@@ -783,7 +783,7 @@ export default function ProductPage({
     (product.translations && product.translations.length > 0 ? '' : product.meta_title) || 
     (product.translations && product.translations.length > 0 ? '' : product.og_title) || 
     ''
-  ).trim() || `${displayProductName || product.name} — PharmaTurk`
+  ).trim() || `${displayProductName || product.name} — Mudaroba`
 
   const metaDescription = (
     apiTranslation?.meta_description ||
@@ -791,7 +791,7 @@ export default function ProductPage({
     (product.translations && product.translations.length > 0 ? '' : product.meta_description) ||
     (product.translations && product.translations.length > 0 ? '' : product.og_description) ||
     ''
-  ).trim() || localizedDescription?.slice(0, 200) || `${displayProductName || product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
+  ).trim() || localizedDescription?.slice(0, 200) || `${displayProductName || product.name} — ${t('buy_on_mudaroba', 'купить на Mudaroba')}`
   const ogImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
   const availability =
     selectedVariant?.is_available === false || selectedVariant?.stock_quantity === 0

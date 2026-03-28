@@ -1,8 +1,8 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
-const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || 'PharmaTurk'
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
+const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || 'Mudaroba'
 
 export interface SEOProps {
   /** Заголовок страницы (без суффикса — суффикс добавляется автоматически) */

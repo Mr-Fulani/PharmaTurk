@@ -237,8 +237,8 @@ export default function Home({ brands, categories }: HomePageProps) {
 
   const siteUrl = getSiteOrigin()
   const canonicalUrl = `${siteUrl}/`
-  const pageTitle = 'PharmaTurk — Главная'
-  const pageDescription = 'PharmaTurk: турецкие товары — лекарства, одежда, обувь, электроника, аксессуары и мебель с доставкой.'
+  const pageTitle = 'Mudaroba — Главная'
+  const pageDescription = 'Mudaroba: турецкие товары — лекарства, одежда, обувь, электроника, аксессуары и мебель с доставкой.'
 
   return (
     <>
@@ -280,11 +280,11 @@ export default function Home({ brands, categories }: HomePageProps) {
                   <div
                     key={brand.id}
                     onClick={() => handleBrandClick(brand)}
-                    className="relative shrink-0 w-[96px] h-[120px] snap-start rounded-[20px] overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow bg-gray-900"
+                    className="relative shrink-0 w-[96px] h-[120px] snap-start rounded-[20px] overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow bg-gray-900 group"
                   >
                     {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
-                    <div className="absolute inset-0 bg-black/40" />
-                    <div className="absolute inset-0 flex items-center justify-center p-2 z-10">
+                    <div className="absolute inset-0 bg-black/40 hidden" />
+                    <div className="absolute inset-0 hidden items-center justify-center p-2 z-10">
                       <div className="text-center text-white drop-shadow w-full">
                         {brand.logo ? (
                           <div className="flex justify-center items-center w-full px-1">
@@ -338,11 +338,11 @@ export default function Home({ brands, categories }: HomePageProps) {
                     key={brand.id}
                     onClick={() => handleBrandClick(brand)}
                     style={{ height: cardHeight }}
-                    className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
+                    className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
                   >
                     {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
-                    <div className="absolute inset-0 bg-black/35" />
-                    <div className="absolute inset-0 flex items-center justify-center p-4 md:p-6 z-10">
+                    <div className="absolute inset-0 bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
+                    <div className="absolute inset-0 flex items-center justify-center p-4 md:p-6 z-10 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
                       <div className="text-center text-white drop-shadow">
                         {brand.logo && (
                           <div className="mb-2 md:mb-3 flex justify-center">

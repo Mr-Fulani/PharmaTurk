@@ -1396,9 +1396,9 @@ export default function CategoryPage({
     if (Array.isArray(v)) return (v as any[]).map((x) => (typeof x === 'string' ? x : '')).join('')
     return v != null ? String(v) : ''
   }, [localizedCategoryName])
-  const ogTitle = useMemo(() => `${titleText} — PharmaTurk`, [titleText])
+  const ogTitle = useMemo(() => `${titleText} — Mudaroba`, [titleText])
   const ogDescription = useMemo(
-    () => categoryDescription || t('catalog_of_category', 'Каталог {{category}} в PharmaTurk', { category: (titleText || '').toLowerCase() }),
+    () => categoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() }),
     [categoryDescription, titleText, t]
   )
   const breadcrumbSchema = useMemo(() => {
@@ -1418,7 +1418,7 @@ export default function CategoryPage({
   return (
     <>
       <Head>
-        <title>{titleText ? `${titleText} - PharmaTurk` : 'Категория - PharmaTurk'}</title>
+        <title>{titleText ? `${titleText} - Mudaroba` : 'Категория - Mudaroba'}</title>
         <meta name="description" content={ogDescription} />
         <link rel="canonical" href={canonicalUrl} />
         <link rel="alternate" hrefLang="ru" href={canonicalUrl} />

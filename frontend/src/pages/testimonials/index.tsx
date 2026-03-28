@@ -543,7 +543,7 @@ export default function TestimonialsPage() {
   return (
     <>
       <Head>
-        <title>{t('testimonials_page_title', 'Отзывы клиентов')} - PharmaTurk</title>
+        <title>{t('testimonials_page_title', 'Отзывы клиентов')} - Mudaroba</title>
       </Head>
 
       {/* Success notification */}

@@ -1,7 +1,7 @@
 import Document, { Html, Head, Main, NextScript, DocumentContext, DocumentInitialProps } from 'next/document'
 
 const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
 
 interface MyDocumentProps extends DocumentInitialProps {
   locale?: string
@@ -20,7 +20,7 @@ class MyDocument extends Document<MyDocumentProps> {
   }
 
   render() {
-    const siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'PharmaTurk'
+    const siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'Mudaroba'
     const { locale = 'en', path = '/' } = this.props
 
     // Строим hreflang URL

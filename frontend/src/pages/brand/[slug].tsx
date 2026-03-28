@@ -71,12 +71,12 @@ export default function BrandPage({
   const productsPerPage = 24
   const currentPage = Number(page) || 1
   const totalPages = Math.max(1, Math.ceil((Number(brandData?.totalCount) || 0) / productsPerPage))
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
   const canonicalUrl = `${siteUrl}/brand/${slug || ''}`
-  const metaTitle = brandData ? `${brandData.name} — PharmaTurk` : 'Бренд — PharmaTurk'
+  const metaTitle = brandData ? `${brandData.name} — Mudaroba` : 'Бренд — Mudaroba'
   const metaDescription =
     brandData?.description?.slice(0, 200) ||
-    `Товары бренда ${brandData?.name || ''} на PharmaTurk`
+    `Товары бренда ${brandData?.name || ''} на Mudaroba`
   const breadcrumbSchema = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',

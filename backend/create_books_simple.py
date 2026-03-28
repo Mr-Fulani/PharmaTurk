@@ -120,7 +120,7 @@ def create_books_only():
     ProductAuthor.objects.create(product=book2, author=author2)
     ProductAuthor.objects.create(product=book3, author=author3)
     
-    print("Книги успешно добавлены в существующую систему PharmaTurk!")
+    print("Книги успешно добавлены в существующую систему Mudaroba!")
     print(f"Авторов: {Author.objects.count()}")
     print(f"Книг: {Product.objects.filter(product_type='books').count()}")
 

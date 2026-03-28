@@ -9,7 +9,7 @@ import { getInternalApiUrl } from '../lib/urls'
  * Доступен по адресу: /sitemap.xml
  */
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
 
 interface SitemapUrl {
   loc: string

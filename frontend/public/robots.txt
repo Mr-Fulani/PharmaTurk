@@ -8,4 +8,4 @@ Disallow: /auth/
 Disallow: /_next/
 
 # Sitemap
-Sitemap: https://pharmaturk.ru/sitemap.xml
+Sitemap: https://mudaroba.com/sitemap.xml

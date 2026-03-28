@@ -176,7 +176,7 @@ export default function CheckoutSuccessPage({ orderNumber }: { orderNumber?: str
   return (
     <>
       <Head>
-        <title>{t('order_success_page_title')} — PharmaTurk</title>
+        <title>{t('order_success_page_title')} — Mudaroba</title>
       </Head>
       <main className="min-h-screen bg-gradient-to-b from-violet-50/60 via-white to-white py-12">
         <div className="mx-auto w-full max-w-6xl px-4">

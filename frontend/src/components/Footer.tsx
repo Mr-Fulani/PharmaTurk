@@ -258,7 +258,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
           </div>
         </div>
         <div className="mt-8 border-t border-main pt-4 text-center text-xs text-main/70">
-          © <span suppressHydrationWarning>{new Date().getFullYear()}</span> PharmaTurk
+          © <span suppressHydrationWarning>{new Date().getFullYear()}</span> Mudaroba
         </div>
       </div>
     </footer>

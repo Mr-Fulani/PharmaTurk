@@ -38,8 +38,8 @@ nano .env   # или vim / другой редактор
 | Переменная | Описание |
 |------------|----------|
 | `DJANGO_SECRET_KEY` | Уникальный длинный ключ (например: `openssl rand -base64 48`) |
-| `DJANGO_ALLOWED_HOSTS` | Домены через запятую: `pharmaturk.ru,www.pharmaturk.ru` |
-| `CSRF_TRUSTED_ORIGINS` | То же с протоколом: `https://pharmaturk.ru,https://www.pharmaturk.ru` |
+| `DJANGO_ALLOWED_HOSTS` | Домены через запятую: `mudaroba.com,www.mudaroba.com` |
+| `CSRF_TRUSTED_ORIGINS` | То же с протоколом: `https://mudaroba.com,https://www.mudaroba.com` |
 | `CORS_ALLOWED_ORIGINS` | Те же URL для CORS |
 | `DATABASE_URL` | Строка подключения к PostgreSQL (внутри Docker: `postgres://pharmaturk:ПАРОЛЬ@postgres:5432/pharmaturk`) |
 | `NEXT_PUBLIC_SITE_URL` | Публичный URL сайта (canonical, медиа). Для ngrok: `https://xxx.ngrok-free.dev` |
@@ -84,9 +84,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend poe
 # Frontend (Next.js)
 server {
     listen 443 ssl http2;
-    server_name pharmaturk.ru www.pharmaturk.ru;
-    ssl_certificate /etc/letsencrypt/live/pharmaturk.ru/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/pharmaturk.ru/privkey.pem;
+    server_name mudaroba.com www.mudaroba.com;
+    ssl_certificate /etc/letsencrypt/live/mudaroba.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mudaroba.com/privkey.pem;
 
     location / {
         proxy_pass http://127.0.0.1:3001;
@@ -103,9 +103,9 @@ server {
 # Backend API
 server {
     listen 443 ssl http2;
-    server_name api.pharmaturk.ru;
-    ssl_certificate /etc/letsencrypt/live/pharmaturk.ru/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/pharmaturk.ru/privkey.pem;
+    server_name api.mudaroba.com;
+    ssl_certificate /etc/letsencrypt/live/mudaroba.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mudaroba.com/privkey.pem;
 
     location / {
         proxy_pass http://127.0.0.1:8000;

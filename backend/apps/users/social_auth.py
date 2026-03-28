@@ -272,11 +272,11 @@ def get_or_create_social_user(
     dummy_email = (
         email
         if email
-        else f"{provider.name}_{provider_id}@pharmaturk.local"
+        else f"{provider.name}_{provider_id}@mudaroba.local"
     )
     # Уникальность email (крайне маловероятно, но защищаемся)
     if User.objects.filter(email=dummy_email).exists():
-        dummy_email = f"{provider.name}_{provider_id}_{uuid.uuid4().hex[:6]}@pharmaturk.local"
+        dummy_email = f"{provider.name}_{provider_id}_{uuid.uuid4().hex[:6]}@mudaroba.local"
 
     # Генерируем username
     base_username = (

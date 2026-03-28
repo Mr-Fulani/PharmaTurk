@@ -256,7 +256,7 @@ class SocialAuthTests(APITestCase):
         user = User.objects.get(vk_id='123456789')
         self.assertEqual(user.first_name, 'VK')
         # У VK нет email — должен быть dummy email
-        self.assertIn('@pharmaturk.local', user.email)
+        self.assertIn('@mudaroba.local', user.email)
 
     def test_social_auth_invalid_provider(self):
         """Неизвестный провайдер возвращает 400."""
