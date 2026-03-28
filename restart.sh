@@ -11,7 +11,7 @@ if [ -f .env ]; then
 fi
 
 # Имя проекта
-export COMPOSE_PROJECT_NAME=pharmaturk
+export COMPOSE_PROJECT_NAME=mudaroba
 # Если COMPOSE_FILE не задан в .env или окружении, используем базу + локальный override (стандартное поведение Docker Compose)
 if [ -z "$COMPOSE_FILE" ]; then
     COMPOSE_FILE="docker-compose.yml"
