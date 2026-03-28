@@ -160,7 +160,7 @@ if ! command -v docker compose &> /dev/null; then
     exit 1
 fi
 
-info "Начинаем перезапуск проекта PharmaTurk..."
+info "Начинаем перезапуск проекта Mudaroba..."
 
 # КАПИТАЛЬНАЯ ОЧИСТКА КЭША ПЕРЕД ОСТАНОВКОЙ
 info "🧹 Очищаем весь кэш перед перезапуском..."
