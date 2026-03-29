@@ -4,11 +4,11 @@ from django.contrib import admin
 from django.contrib.admin import AdminSite
 
 
-class PharmaTurkAdminSite(AdminSite):
+class MudarobaAdminSite(AdminSite):
     """Кастомная админ-панель с улучшенной организацией."""
     
-    site_header = 'PharmaTurk - Панель управления'
-    site_title = 'PharmaTurk Admin'
+    site_header = 'Mudaroba - Панель управления'
+    site_title = 'Mudaroba Admin'
     index_title = 'Добро пожаловать в панель управления'
     
     def get_app_list(self, request, app_label=None):
@@ -144,4 +144,4 @@ class PharmaTurkAdminSite(AdminSite):
 
 
 # Создаем экземпляр кастомной админки
-admin_site = PharmaTurkAdminSite(name='pharmaturk_admin')
+admin_site = MudarobaAdminSite(name='pharmaturk_admin')

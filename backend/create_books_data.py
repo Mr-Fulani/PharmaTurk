@@ -166,7 +166,7 @@ def create_book_data():
     ProductAuthor.objects.create(product=book2, author=author2)
     ProductAuthor.objects.create(product=book3, author=author3)
 
-    print("Книги успешно добавлены в существующую систему PharmaTurk!")
+    print("Книги успешно добавлены в существующую систему Mudaroba!")
     categories_count = Category.objects.filter(
         slug__in=['books', 'fiction', 'science', 'business']
     ).count()

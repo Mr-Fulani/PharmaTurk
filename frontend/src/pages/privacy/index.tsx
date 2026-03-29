@@ -4,7 +4,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
-import { Lock, FileText, Database, Shield } from 'lucide-react'
+import { Lock, FileText, Database, Shield, Cookie } from 'lucide-react'
 
 export default function PrivacyPage({ pageData }: { pageData: any }) {
     const { t } = useTranslation('common')
@@ -83,11 +83,68 @@ export default function PrivacyPage({ pageData }: { pageData: any }) {
                             </p>
                         </div>
                     </div>
+
+                    {/* ── Секция Cookie ────────────────────────────────── */}
+                    <div className="h-px w-full bg-gradient-to-r from-transparent via-gray-200 to-transparent dark:via-gray-700 mb-10"></div>
+
+                    <div id="cookies" className="scroll-mt-20">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+                                <Cookie className="h-5 w-5" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-main">
+                                {t('privacy_cookies_title', 'Использование файлов cookie')}
+                            </h2>
+                        </div>
+
+                        <p className="text-main/75 mb-6 leading-relaxed">
+                            {t('privacy_cookies_desc', 'Наш сайт использует файлы cookie — небольшие текстовые файлы, которые сохраняются на вашем устройстве. Мы разделяем их на два типа:')}
+                        </p>
+
+                        <div className="grid gap-4 md:grid-cols-2 mb-6">
+                            {/* Необходимые */}
+                            <div className="rounded-xl border border-green-100 bg-green-50/50 p-5 dark:bg-green-900/10 dark:border-green-900/30">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500"></span>
+                                    <h3 className="font-semibold text-main">
+                                        {t('privacy_cookies_necessary', 'Необходимые cookie')}
+                                    </h3>
+                                </div>
+                                <p className="text-sm text-main/70 leading-relaxed">
+                                    {t('privacy_cookies_necessary_desc', 'Технически обязательные файлы: корзина покупок, сессия входа, языковые настройки. Устанавливаются автоматически и не требуют согласия.')}
+                                </p>
+                            </div>
+
+                            {/* Аналитические */}
+                            <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-5 dark:bg-blue-900/10 dark:border-blue-900/30">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                                    <h3 className="font-semibold text-main">
+                                        {t('privacy_cookies_analytics', 'Аналитические cookie')}
+                                    </h3>
+                                </div>
+                                <p className="text-sm text-main/70 leading-relaxed">
+                                    {t('privacy_cookies_analytics_desc', 'Google Analytics (через Google Tag Manager) и Яндекс.Метрика для анализа посещаемости сайта. Устанавливаются только с вашего явного согласия.')}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-5 dark:bg-indigo-900/10 dark:border-indigo-900/30">
+                            <h3 className="font-semibold text-main mb-2">
+                                {t('privacy_cookies_consent', 'Управление согласием')}
+                            </h3>
+                            <p className="text-sm text-main/70 leading-relaxed">
+                                {t('privacy_cookies_consent_desc', 'При первом посещении мы запрашиваем ваше согласие. Вы можете в любой момент отозвать согласие, очистив cookie браузера или нажав "Только необходимые" при следующем посещении.')}
+                            </p>
+                        </div>
+                    </div>
+                    {/* ── / Секция Cookie ──────────────────────────────── */}
                 </div>
             </main>
         </>
     )
 }
+
 
 export const getServerSideProps: GetServerSideProps = async (ctx) => {
     let pageData = null

@@ -54,9 +54,6 @@ services:
       - /app/*/__pycache__
 
   celerybeat:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
     volumes:
       - ./backend:/app
       - /app/__pycache__

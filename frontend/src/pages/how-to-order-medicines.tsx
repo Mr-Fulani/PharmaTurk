@@ -22,7 +22,7 @@ export default function HowToOrderMedicinesPage({ footerSettings }: { footerSett
   return (
     <>
       <Head>
-        <title>{t('medicine_how_to_order_title', 'Как заказать лекарства из Турции')} — PharmaTurk</title>
+        <title>{t('medicine_how_to_order_title', 'Как заказать лекарства из Турции')} — Mudaroba</title>
         <meta name="description" content={t('medicine_how_to_order_subtitle', 'Ответы на частые вопросы о заказе и доставке лекарственных препаратов из Турции.')} />
       </Head>
       <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">

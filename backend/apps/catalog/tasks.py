@@ -6,7 +6,11 @@ from __future__ import annotations
 
 from celery import shared_task
 from django.core.management import call_command
+from django.db.models import Count
 import logging
+
+from apps.catalog.models import MedicineProduct
+from apps.catalog.services import MedicineMediaEnricher
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +192,11 @@ _PROTECTED_STORAGE_PREFIXES = (
     "testimonials/",  # аватарки авторов отзывов (feedback.Testimonial.author_avatar)
 )
 
+# Известные корневые директории медиа
+_KNOWN_ROOT_DIRS = (
+    "products/", "temp/", "avatars/", "testimonials/", "marketing/", "services/"
+)
+
 # Префиксы других окружений — не удалять при очистке.
 # На проде (R2_PREFIX="") listdir возвращает весь бакет, включая dev/.
 # Без этой защиты prod-задача удаляла бы медиа из dev/.
@@ -198,14 +207,24 @@ def _is_protected_path(path: str) -> bool:
     """Проверить, что путь защищён от удаления."""
     if not path:
         return True
+    
+    # Если путь начинается с папки, которая не является известной (например, префикс разработчика `misha/`),
+    # мы всегда защищаем этот путь, чтобы продакшен скрипт не удалял локальные файлы.
+    has_known_root = any(path.startswith(r) for r in _KNOWN_ROOT_DIRS)
+    if not has_known_root and "/" in path:
+        return True
+
     normalized = _normalize_media_path(path)
+    
     for prefix in _PROTECTED_STORAGE_PREFIXES:
         if normalized.startswith(prefix) or path.startswith(prefix):
             return True
+            
     # Не удалять файлы из других окружений (dev/, staging/ и т.д.)
     for prefix in _OTHER_ENV_PREFIXES:
         if normalized.startswith(prefix) or path.startswith(prefix):
             return True
+            
     return False
 
 
@@ -216,6 +235,11 @@ def cleanup_orphaned_media():
     Не удаляет: защищённые префиксы (AI, temp), пути других окружений (dev/, staging/).
     На проде (R2_PREFIX="") listdir возвращает весь бакет — без защиты dev/ файлы удалялись бы.
     """
+    from django.conf import settings
+    if getattr(settings, 'DEBUG', False):
+        logger.info("cleanup_orphaned_media skipped: DEBUG=True. (Prevents local celery from wiping shared media across developers using the same R2 prefix)")
+        return {"status": "skipped", "message": "Disabled in DEBUG mode"}
+
     from django.core.files.storage import default_storage
 
     try:
@@ -298,3 +322,55 @@ def currency_system_health_check():
     except Exception as e:
         logger.error(f"Exception in currency health check: {str(e)}")
         return {'status': 'error', 'message': str(e)}
+
+
+@shared_task(
+    name="catalog.enrich_medicine_media",
+    bind=True, max_retries=2, default_retry_delay=300,
+)
+def enrich_medicine_media(
+    self,
+    product_ids: list[int] | None = None,
+    max_images_per_product: int = 3,
+) -> dict:
+    """
+    Обогащение медиа для MedicineProduct.
+    - product_ids=None  → все товары с медиа меньше max_images_per_product
+    - product_ids=[...] → только указанные товары
+    """
+    try:
+        queryset = MedicineProduct.objects.annotate(
+            gallery_images_count=Count('gallery_images')
+        ).filter(gallery_images_count__lt=max_images_per_product)
+        
+        if product_ids:
+            queryset = queryset.filter(id__in=product_ids)
+            
+        enricher = MedicineMediaEnricher()
+        
+        products_processed = 0
+        images_added = 0
+        errors = 0
+        
+        for product in queryset.iterator():
+            try:
+                added = enricher.enrich(product, max_images_per_product)
+                products_processed += 1
+                images_added += added
+            except Exception as e:
+                logger.error("Failed to enrich media for product %s: %s", product.id, e)
+                errors += 1
+                
+        return {
+            "status": "success",
+            "products_processed": products_processed,
+            "images_added": images_added,
+            "errors": errors,
+        }
+    except Exception as e:
+        logger.exception("enrich_medicine_media failed: %s", e)
+        # Only retry if it's not a direct caller issue
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e)
+        return {"status": "error", "message": str(e)}
+

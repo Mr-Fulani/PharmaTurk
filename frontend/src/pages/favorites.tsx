@@ -52,7 +52,7 @@ export default function FavoritesPage() {
       <Head>
         <title>{t('favorites_title', 'Избранное')} — Turk-Export</title>
       </Head>
-      <main className="mx-auto max-w-6xl p-6">
+      <main className="mx-auto max-w-6xl px-3 pt-4 pb-6 sm:p-6">
         <h1 className="mb-6 text-3xl font-bold text-gray-900">
           {t('favorites_title', 'Избранное')}
         </h1>
@@ -92,7 +92,7 @@ export default function FavoritesPage() {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {favorites.map((favorite) => {
               const product = favorite.product
               const productType = product._product_type || 'medicines'

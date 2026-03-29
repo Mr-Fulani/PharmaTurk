@@ -38,7 +38,7 @@ def _r2_proxy_url(absolute_url, request):
     
     r2_config = getattr(settings, 'R2_CONFIG', {})
     r2_public = (r2_config.get('public_url', None) or getattr(settings, 'R2_PUBLIC_URL', '') or '').rstrip('/')
-    project_cdn = 'https://cdn.it-dev.space'  # CNAME для R2
+    project_cdn = 'https://cdn.mudaroba.com'  # CNAME для R2
     
     is_r2 = r2_public and absolute_url.startswith(r2_public)
     is_project_cdn = absolute_url.startswith(project_cdn)
@@ -84,8 +84,8 @@ def _resolve_media_url(value, request):
         return f"/api/catalog/proxy-image/?url={quote(value)}"
     
     # Прокси для внешних CDN (устраняет CORS/EncodingError на Flutter Web)
-    # ВАЖНО: Если это видео с cdn.it-dev.space, оно уже должно было уйти выше в proxy-media
-    if value.startswith('http') and ('cdn.it-dev.space' in value or 'r2.dev' in value):
+    # ВАЖНО: Если это видео с cdn.mudaroba.com, оно уже должно было уйти выше в proxy-media
+    if value.startswith('http') and ('cdn.mudaroba.com' in value or 'r2.dev' in value):
         proxy = _r2_proxy_url(value, request)
         if proxy:
             return proxy
@@ -4407,6 +4407,21 @@ class _SimpleDomainMixin:
             if file_url:
                 return file_url
             return _resolve_media_url(img.image_url, request)
+
+        # Fallback to base product
+        base = getattr(obj, "base_product", None)
+        if base:
+            file_url = _resolve_file_url(getattr(base, "main_image_file", None), request)
+            if file_url:
+                return file_url
+            if base.main_image:
+                return _resolve_media_url(base.main_image, request)
+            b_img = base.images.filter(is_main=True).first() or base.images.first()
+            if b_img:
+                file_url = _resolve_file_url(getattr(b_img, "image_file", None), request)
+                if file_url:
+                    return file_url
+                return _resolve_media_url(b_img.image_url, request)
         return None
 
     def get_price(self, obj):
@@ -4465,8 +4480,16 @@ class _SimpleDomainMixin:
 
     def get_images(self, obj):
         from_context = self.context
-        imgs = obj.gallery_images.all()
+        imgs = list(obj.gallery_images.all())
         image_serializer = self._image_serializer_class
+        
+        # Fallback to base product images if domain gallery is empty
+        if not imgs:
+            base = getattr(obj, "base_product", None)
+            if base:
+                # Используем базовый сериализатор изображений для общих изображений Product
+                return ProductImageSerializer(base.images.all(), many=True, context=from_context).data
+                
         return image_serializer(imgs, many=True, context=from_context).data
 
     def get_meta_title(self, obj):
@@ -4495,7 +4518,7 @@ class MedicineProductTranslationSerializer(serializers.ModelSerializer):
         model = MedicineProductTranslation
         fields = [
             'locale', 'name', 'description', 'usage_instructions',
-            'side_effects', 'contraindications', 'storage_conditions',
+            'side_effects', 'contraindications', 'storage_conditions', 'indications',
             'dosage_form', 'active_ingredient', 'volume', 'origin_country'
         ]
 
@@ -4538,11 +4561,17 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     side_effects = serializers.SerializerMethodField()
     contraindications = serializers.SerializerMethodField()
     storage_conditions = serializers.SerializerMethodField()
+    indications = serializers.SerializerMethodField()
+    special_notes = serializers.SerializerMethodField()
 
     dosage_form = serializers.SerializerMethodField()
     active_ingredient = serializers.SerializerMethodField()
     volume = serializers.SerializerMethodField()
     origin_country = serializers.SerializerMethodField()
+    administration_route = serializers.SerializerMethodField()
+    shelf_life = serializers.SerializerMethodField()
+    sgk_status = serializers.SerializerMethodField()
+    prescription_type = serializers.SerializerMethodField()
 
     def _get_translation_field(self, obj, field_name, fallback_value=None):
         request = self.context.get('request')
@@ -4588,17 +4617,36 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
         return self._get_translation_field(obj, 'contraindications')
 
     def get_storage_conditions(self, obj):
-        return self._get_translation_field(obj, 'storage_conditions')
+        return self._get_translation_field(obj, 'storage_conditions', obj.storage_conditions)
 
+    def get_indications(self, obj):
+        return self._get_translation_field(obj, 'indications')
+
+    def get_special_notes(self, obj):
+        return self._get_translation_field(obj, 'special_notes', obj.special_notes)
+
+    def get_administration_route(self, obj):
+        return self._get_translation_field(obj, 'administration_route', obj.administration_route)
+
+    def get_shelf_life(self, obj):
+        return self._get_translation_field(obj, 'shelf_life', obj.shelf_life)
+
+    def get_sgk_status(self, obj):
+        return self._get_translation_field(obj, 'sgk_status', obj.sgk_status)
+
+    def get_prescription_type(self, obj):
+        return self._get_translation_field(obj, 'prescription_type', obj.prescription_type)
 
     class Meta:
         model = MedicineProduct
         fields = [
             'id', 'name', 'slug', 'description', 'category', 'brand', 'product_type',
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
-            'dosage_form', 'active_ingredient', 'prescription_required',
-            'volume', 'origin_country',
-            'usage_instructions', 'side_effects', 'contraindications', 'storage_conditions',
+            'dosage_form', 'active_ingredient', 'prescription_required', 'prescription_type',
+            'volume', 'origin_country', 'administration_route', 'shelf_life',
+            'barcode', 'atc_code', 'nfc_code', 'sgk_status', 'sgk_equivalent_code', 'sgk_active_ingredient_code', 'sgk_public_no', 'special_notes',
+            'usage_instructions', 'side_effects', 'contraindications',
+            'storage_conditions', 'indications',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id', 'meta_title', 'meta_description', 'meta_keywords',

@@ -24,6 +24,8 @@ import requests
 import hashlib
 import os
 
+from api.authentication import JWTSafeAuthentication
+
 logger = logging.getLogger(__name__)
 
 from .models import (
@@ -400,20 +402,45 @@ class FacetedModelViewSetMixin:
             for k in sorted(grouped.keys())
         ]
 
+    def _get_facet_queryset(self):
+        """Возвращает queryset для расчета фасетов, игнорируя текущие фильтры по полу и динамическим атрибутам."""
+        original_get = self.request._request.GET
+        mutable_get = original_get.copy()
+        
+        keys_to_remove = []
+        for key in mutable_get.keys():
+            if key in ('gender', 'gender[]') or key.startswith('attr_'):
+                keys_to_remove.append(key)
+                
+        for key in keys_to_remove:
+            del mutable_get[key]
+            
+        try:
+            self.request._request.GET = mutable_get
+            qs = self.filter_queryset(self.get_queryset())
+        finally:
+            self.request._request.GET = original_get
+            
+        return qs
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
+        
+        # Получаем базовый queryset для фасетов, чтобы они не пропадали при выборе
+        facet_queryset = self._get_facet_queryset()
+        
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             data = self.get_paginated_response(serializer.data).data
-            data['available_attributes'] = self._calculate_available_attributes(queryset)
-            data['available_genders'] = self._calculate_available_genders(queryset)
+            data['available_attributes'] = self._calculate_available_attributes(facet_queryset)
+            data['available_genders'] = self._calculate_available_genders(facet_queryset)
             return Response(data)
         serializer = self.get_serializer(queryset, many=True)
         return Response({
             'results': serializer.data,
-            'available_attributes': self._calculate_available_attributes(queryset),
-            'available_genders': self._calculate_available_genders(queryset),
+            'available_attributes': self._calculate_available_attributes(facet_queryset),
+            'available_genders': self._calculate_available_genders(facet_queryset),
         })
 
 
@@ -776,7 +803,11 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
 class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами."""
     
-    queryset = Product.objects.filter(is_active=True)
+    # Теневые варианты исключены на уровне класса (защита от случаев когда get_queryset не вызывается)
+    queryset = Product.objects.filter(is_active=True).exclude(
+        models.Q(external_data__has_key='source_variant_id') |
+        models.Q(external_data__has_key='source_variant_slug')
+    )
     serializer_class = ProductSerializer
     pagination_class = StandardPagination
     lookup_field = 'slug'
@@ -806,12 +837,10 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
         """Фильтрация товаров по параметрам."""
         queryset = Product.objects.filter(is_active=True)
         queryset = queryset.exclude(product_type='jewelry')
+        # Универсально исключаем все теневые варианты (для любых product_type)
         queryset = queryset.exclude(
-            models.Q(product_type__in=['clothing', 'shoes']) &
-            (
-                models.Q(external_data__has_key='source_variant_id') |
-                models.Q(external_data__has_key='source_variant_slug')
-            )
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
         )
         
         # Фильтр по категории (поддержка массивов)
@@ -1144,6 +1173,12 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
         featured_products = Product.objects.filter(
             is_active=True, 
             is_featured=True
+        ).exclude(
+            models.Q(product_type__in=['clothing', 'shoes']) &
+            (
+                models.Q(external_data__has_key='source_variant_id') |
+                models.Q(external_data__has_key='source_variant_slug')
+            )
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
@@ -1200,6 +1235,19 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
             )
             reranked = reranker.rerank(similar_list, product, strategy=strategy, request=request)
             rec_ids = [r["product"]["id"] for r in reranked]
+
+            # Исключаем теневые варианты (shadow variants) из результатов
+            if rec_ids:
+                shadow_ids = set(
+                    Product.objects.filter(id__in=rec_ids).filter(
+                        models.Q(external_data__has_key='source_variant_id') |
+                        models.Q(external_data__has_key='source_variant_slug')
+                    ).values_list('id', flat=True)
+                )
+                if shadow_ids:
+                    reranked = [r for r in reranked if r["product"]["id"] not in shadow_ids]
+                    rec_ids = [rid for rid in rec_ids if rid not in shadow_ids]
+
             if rec_ids:
                 session_key = getattr(request.session, "session_key", None) or ""
                 from apps.recommendations.tasks import log_recommendation_event
@@ -1239,6 +1287,17 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
                 vector_type="image",
                 n_results=n_results,
             )
+            # Исключаем теневые варианты из результатов
+            if similar_list:
+                vis_ids = [r["product_id"] for r in similar_list]
+                shadow_ids = set(
+                    Product.objects.filter(id__in=vis_ids).filter(
+                        models.Q(external_data__has_key='source_variant_id') |
+                        models.Q(external_data__has_key='source_variant_slug')
+                    ).values_list('id', flat=True)
+                )
+                if shadow_ids:
+                    similar_list = [r for r in similar_list if r["product_id"] not in shadow_ids]
             return Response({"count": len(similar_list), "results": similar_list})
         except Exception as e:
             logger.warning(
@@ -1249,6 +1308,7 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
                 {"count": 0, "results": [], "error": str(e)},
                 status=status.HTTP_200_OK,
             )
+
 
 
 # ============================================================================
@@ -1305,7 +1365,11 @@ class ClothingCategoryViewSet(viewsets.ReadOnlyModelViewSet):
 class ClothingProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами одежды."""
     
-    queryset = ClothingProduct.objects.filter(is_active=True)
+    # Теневые варианты исключены на уровне класса
+    queryset = ClothingProduct.objects.filter(is_active=True).exclude(
+        models.Q(external_data__has_key='source_variant_id') |
+        models.Q(external_data__has_key='source_variant_slug')
+    )
     serializer_class = ClothingProductSerializer
     pagination_class = StandardPagination
     lookup_field = 'slug'
@@ -1324,7 +1388,10 @@ class ClothingProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelVie
     
     def get_queryset(self):
         """Фильтрация товаров одежды по параметрам."""
-        queryset = ClothingProduct.objects.filter(is_active=True).prefetch_related(
+        queryset = ClothingProduct.objects.filter(is_active=True).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
+        ).prefetch_related(
             'images',
             'variants',
             'variants__images',
@@ -1426,6 +1493,9 @@ class ClothingProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelVie
         featured_products = ClothingProduct.objects.filter(
             is_active=True, 
             is_featured=True
+        ).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
@@ -1495,7 +1565,11 @@ class ShoeCategoryViewSet(viewsets.ReadOnlyModelViewSet):
 class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами обуви."""
     
-    queryset = ShoeProduct.objects.filter(is_active=True)
+    # Теневые варианты исключены на уровне класса
+    queryset = ShoeProduct.objects.filter(is_active=True).exclude(
+        models.Q(external_data__has_key='source_variant_id') |
+        models.Q(external_data__has_key='source_variant_slug')
+    )
     serializer_class = ShoeProductSerializer
     pagination_class = StandardPagination
     lookup_field = 'slug'
@@ -1514,7 +1588,10 @@ class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet
     
     def get_queryset(self):
         """Фильтрация товаров обуви по параметрам."""
-        queryset = ShoeProduct.objects.filter(is_active=True).prefetch_related(
+        queryset = ShoeProduct.objects.filter(is_active=True).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
+        ).prefetch_related(
             'images',
             'variants',
             'variants__images',
@@ -1616,6 +1693,9 @@ class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet
         featured_products = ShoeProduct.objects.filter(
             is_active=True, 
             is_featured=True
+        ).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
@@ -1868,6 +1948,9 @@ class JewelryProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelView
     def featured(self, request):
         featured_products = JewelryProduct.objects.filter(
             is_active=True, is_featured=True
+        ).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
@@ -2002,6 +2085,9 @@ class FurnitureProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelVi
         featured_products = FurnitureProduct.objects.filter(
             is_active=True, 
             is_featured=True
+        ).exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
         return Response(serializer.data)
@@ -2071,10 +2157,13 @@ class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
 
 class FavoriteViewSet(viewsets.ViewSet):
     """API для работы с избранным."""
-    
     from rest_framework.permissions import AllowAny
     from .models import Service
     permission_classes = [AllowAny]
+    # Исключаем SessionAuthentication: она принудительно применяет CSRF к POST/DELETE
+    # даже при AllowAny. Это ломает добавление в избранное для анонимов после
+    # открытия Django-сессии (просмотра страницы). JWT-аутентификация достаточна.
+    authentication_classes = [JWTSafeAuthentication]
     
     def _get_session_key(self, request):
         """Получить ключ сессии для анонимных пользователей."""
@@ -2469,7 +2558,7 @@ def proxy_image(request):
     logger.info(f"Contains cdninstagram: {'cdninstagram.com' in image_url}")
     
     # Разрешённые домены для прокси (Instagram, CDN проекта)
-    _ALLOWED_PROXY_DOMAINS = ('instagram.f', 'cdninstagram.com', 'cdn.it-dev.space', 'r2.dev')
+    _ALLOWED_PROXY_DOMAINS = ('instagram.f', 'cdninstagram.com', 'cdn.mudaroba.com', 'r2.dev')
     if not any(d in image_url for d in _ALLOWED_PROXY_DOMAINS):
         logger.error(f"Invalid domain check failed for URL: {image_url[:100]}")
         return JsonResponse({'error': f'Invalid domain: {image_url[:100]}...'}, status=400)

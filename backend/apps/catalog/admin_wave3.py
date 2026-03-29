@@ -6,6 +6,7 @@ from .models import (
     AutoPartProduct, AutoPartProductTranslation, AutoPartProductImage, AutoPartVariant,
 )
 from .admin_wave2 import _SimpleDomainAdmin, _make_translation_inline, _make_image_inline
+from .admin_base import AIStatusFilter
 
 
 @admin.register(SportsProduct)
@@ -15,11 +16,11 @@ class SportsProductAdmin(_SimpleDomainAdmin):
         'fields': ('sport_type', 'equipment_type', 'material'),
     })
     list_display = [
-        'name', 'category', 'sport_type', 'equipment_type',
+        'name', 'get_ai_status', 'category', 'sport_type', 'equipment_type',
         'price', 'old_price', 'is_available', 'created_at',
     ]
     list_filter = [
-        'category', 'is_available', 'sport_type', 'equipment_type', 'created_at'
+        AIStatusFilter, 'category', 'is_available', 'sport_type', 'equipment_type', 'created_at'
     ]
     
     class SportsVariantInline(admin.TabularInline):
@@ -43,11 +44,11 @@ class AutoPartProductAdmin(_SimpleDomainAdmin):
         'fields': ('part_number', 'car_brand', 'car_model', 'compatibility_years'),
     })
     list_display = [
-        'name', 'category', 'part_number', 'car_brand',
+        'name', 'get_ai_status', 'category', 'part_number', 'car_brand',
         'price', 'old_price', 'is_available', 'created_at',
     ]
     list_filter = [
-        'category', 'is_available', 'car_brand', 'created_at'
+        AIStatusFilter, 'category', 'is_available', 'car_brand', 'created_at'
     ]
     search_fields = _SimpleDomainAdmin.search_fields + ['part_number', 'car_brand', 'car_model']
     

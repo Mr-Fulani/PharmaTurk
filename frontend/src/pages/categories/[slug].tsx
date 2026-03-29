@@ -324,7 +324,7 @@ const areFiltersEqual = (left: FilterState, right: FilterState) =>
 const createTreeItem = (category: Category, allCategories: Category[]): SidebarTreeItem => {
   const children = allCategories
     .filter((c) => c.parent === category.id)
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'ru'))
   
   return {
     id: `cat-${category.id}`,
@@ -355,7 +355,7 @@ const buildClothingSections = (categories: Category[]): SidebarTreeSection[] => 
   // Прямые дети корня (L2: Куртка, Платья и т.д.)
   const level2 = categories
     .filter((c) => c.parent != null && rootIds.has(c.parent as number))
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'ru'))
 
   if (level2.length === 0) return []
 
@@ -381,7 +381,7 @@ const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] => 
   // Категории 2-го уровня (напр. "Антибиотики", "Витамины")
   const level2 = categories
     .filter((c) => c.parent != null && rootIds.has(c.parent as number))
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'ru'))
 
   if (level2.length === 0) return []
 
@@ -473,7 +473,7 @@ const buildGenericTreeSections = (
   const rootIds = new Set(roots.map((r) => r.id))
   const level2 = categories
     .filter((c) => c.parent != null && rootIds.has(c.parent as number))
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'ru'))
 
   if (level2.length === 0) return []
 
@@ -794,6 +794,12 @@ export default function CategoryPage({
   const [availableGenders, setAvailableGenders] = useState<string[]>(initialAvailableGenders)
   const showGenderFilter = (availableGenders || []).length > 0
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [brandOptions, setBrandOptions] = useState<Brand[]>(brands || [])
   useEffect(() => {
@@ -1390,9 +1396,9 @@ export default function CategoryPage({
     if (Array.isArray(v)) return (v as any[]).map((x) => (typeof x === 'string' ? x : '')).join('')
     return v != null ? String(v) : ''
   }, [localizedCategoryName])
-  const ogTitle = useMemo(() => `${titleText} — PharmaTurk`, [titleText])
+  const ogTitle = useMemo(() => `${titleText} — Mudaroba`, [titleText])
   const ogDescription = useMemo(
-    () => categoryDescription || t('catalog_of_category', 'Каталог {{category}} в PharmaTurk', { category: (titleText || '').toLowerCase() }),
+    () => categoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() }),
     [categoryDescription, titleText, t]
   )
   const breadcrumbSchema = useMemo(() => {
@@ -1412,7 +1418,7 @@ export default function CategoryPage({
   return (
     <>
       <Head>
-        <title>{titleText ? `${titleText} - PharmaTurk` : 'Категория - PharmaTurk'}</title>
+        <title>{titleText ? `${titleText} - Mudaroba` : 'Категория - Mudaroba'}</title>
         <meta name="description" content={ogDescription} />
         <link rel="canonical" href={canonicalUrl} />
         <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
@@ -1432,7 +1438,7 @@ export default function CategoryPage({
 
       {/* Hero Section */}
       <div className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-4xl md:text-5xl font-bold mb-4">{localizedCategoryName}</h1>
@@ -1445,33 +1451,63 @@ export default function CategoryPage({
                 ) : null
               })()}
               <p className="mt-4 text-sm opacity-80">
-                {t('products_found', 'Найдено товаров')}: <span className="font-semibold">{totalCount}</span>
+                {t('products_found', 'Найдено товаров')}: <span suppressHydrationWarning className="font-semibold">{totalCount}</span>
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Breadcrumbs */}
-      <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 text-sm text-main flex flex-wrap items-center gap-2">
-        {breadcrumbs.map((item, idx) => {
-          const isLast = idx === breadcrumbs.length - 1
-          return (
-            <span key={`${item.href}-${idx}`} className="flex items-center gap-2">
-              {!isLast ? (
-                <Link href={item.href} className="hover:text-[var(--accent)] transition-colors">
-                  {item.label}
-                </Link>
-              ) : (
-                <span className="text-main font-medium">{item.label}</span>
-              )}
-              {!isLast && <span className="text-main/60">/</span>}
-            </span>
-          )
-        })}
-      </nav>
+      {/* Breadcrumbs & View Toggles (Desktop) */}
+      <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 pt-3 pb-0 sm:py-3 flex items-center justify-between">
+        <nav className="text-sm text-main flex flex-wrap items-center gap-2">
+          {breadcrumbs.map((item, idx) => {
+            const isLast = idx === breadcrumbs.length - 1
+            return (
+              <span key={`${item.href}-${idx}`} className="flex items-center gap-2">
+                {!isLast ? (
+                  <Link href={item.href} className="hover:text-[var(--accent)] transition-colors">
+                    {item.label}
+                  </Link>
+                ) : (
+                  <span className="text-main font-medium">{item.label}</span>
+                )}
+                {!isLast && <span className="text-main/60">/</span>}
+              </span>
+            )
+          })}
+        </nav>
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        {/* View mode toggle (Desktop) */}
+        <div className="hidden lg:flex items-center gap-2">
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`p-2 rounded-lg transition-colors ${viewMode === 'grid'
+              ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+              : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
+              }`}
+            aria-label="Grid view"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`p-2 rounded-lg transition-colors ${viewMode === 'list'
+              ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+              : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
+              }`}
+            aria-label="List view"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 pt-0 pb-8 sm:py-8">
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Sidebar */}
           <div className="lg:w-1/4">
@@ -1499,8 +1535,8 @@ export default function CategoryPage({
 
           {/* Main Content */}
           <div className="lg:w-3/4">
-            {/* Toolbar */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+            {/* Toolbar (Mobile) */}
+            <div className="flex lg:hidden items-center justify-between gap-4 mb-6">
               {/* Mobile filter button */}
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -1551,7 +1587,7 @@ export default function CategoryPage({
                 <div
                   className={
                     viewMode === 'grid'
-                      ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8'
+                      ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 mb-8'
                       : 'space-y-4 mb-8'
                   }
                 >

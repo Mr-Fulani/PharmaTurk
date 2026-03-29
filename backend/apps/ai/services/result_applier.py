@@ -286,12 +286,111 @@ class JewelryAIApplier(BaseAIApplier):
         return updated
 
 
+class MedicineAIApplier(BaseAIApplier):
+    """Применяет AI-результаты к медицинским препаратам.
+
+    Помимо базовых SEO/переводов, заполняет специфические поля:
+    barcode, atc_code, shelf_life, storage_conditions, administration_route,
+    sgk_status, prescription_type, special_notes.
+    Для переводов также заполняет: indications, usage_instructions,
+    side_effects, contraindications, storage_conditions.
+    """
+
+    # Ссылка: имя поля в attrs → (имя в модели, max_len | None)
+    _MEDICINE_FIELDS = [
+        ('barcode', 'barcode', 100),
+        ('atc_code', 'atc_code', 100),
+        ('nfc_code', 'nfc_code', 100),
+        ('sgk_equivalent_code', 'sgk_equivalent_code', 100),
+        ('sgk_active_ingredient_code', 'sgk_active_ingredient_code', 100),
+        ('sgk_public_no', 'sgk_public_no', 100),
+    ]
+
+    # Поля перевода MedicineProductTranslation
+    _TRANSLATION_FIELDS = [
+        'indications', 'usage_instructions', 'side_effects',
+        'contraindications', 'storage_conditions',
+        'administration_route', 'shelf_life', 'sgk_status', 
+        'prescription_type', 'special_notes', 'origin_country',
+        'dosage_form', 'active_ingredient', 'volume'
+    ]
+
+    def apply(self, target: Any, ai_data: Dict[str, Any]) -> bool:
+        updated = super().apply(target, ai_data)
+        attrs = ai_data.get('extracted_attributes') or {}
+        medicine_updated = False
+
+        # Применяем медицинские поля из extracted_attributes
+        for attr_key, model_field, max_len in self._MEDICINE_FIELDS:
+            val = attrs.get(attr_key)
+            if not val:
+                continue
+            val = str(val).strip()
+            if max_len:
+                val = val[:max_len]
+            # Не перезаписываем если в модели уже есть значение
+            if hasattr(target, model_field) and not getattr(target, model_field, None):
+                setattr(target, model_field, val)
+                medicine_updated = True
+
+        if medicine_updated:
+            target.save()
+            updated = True
+
+        # Переводы уже обработаны в super().apply -> apply_translations.
+        # Больше ничего здесь делать не нужно для MedicineProductTranslation.
+        return updated
+
+    def apply_translations(self, target: Any, translations_data: Dict[str, Any]) -> bool:
+        """Override: добавляем обработку поля indications в переводах."""
+        if not hasattr(target, 'translations'):
+            return False
+        updated = False
+        for locale, data in translations_data.items():
+            if not isinstance(data, dict):
+                continue
+            trans = target.translations.filter(locale=locale).first()
+            created = False
+            if not trans:
+                trans = target.translations.model(product=target, locale=locale)
+                created = True
+            trans_updated = False
+            # Базовые поля
+            for field in ['name', 'description']:
+                val = data.get(f'generated_{field}') or data.get(field)
+                if val and getattr(trans, field, None) != val:
+                    setattr(trans, field, val)
+                    trans_updated = True
+            # Медицинские поля
+            # Маппинг для обрезания длины в переводах
+            limits = {
+                'administration_route': 500,
+                'shelf_life': 200,
+                'sgk_status': 500,
+                'prescription_type': 500,
+                'origin_country': 500,
+            }
+            for field in self._TRANSLATION_FIELDS:
+                val = data.get(field)
+                if val and getattr(trans, field, None) != val:
+                    val_str = str(val).strip()
+                    if field in limits:
+                        val_str = val_str[:limits[field]]
+                    setattr(trans, field, val_str)
+                    trans_updated = True
+            if trans_updated or created:
+                trans.save()
+                updated = True
+        return updated
+
+
 class AIResultApplier:
     """Сервис-диспетчер для применения результатов AI."""
     
     _type_handlers = {
         "books": BookAIApplier,
         "jewelry": JewelryAIApplier,
+        "medicines": MedicineAIApplier,
     }
     
     _site_handlers = {

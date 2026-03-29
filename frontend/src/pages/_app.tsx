@@ -1,8 +1,10 @@
 import type { AppProps } from 'next/app'
 import Head from 'next/head'
+import Script from 'next/script'
 import '../../styles/globals.css'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
+import CookieBanner from '../components/CookieBanner'
 import { AuthProvider } from '../context/AuthContext'
 import { ThemeProvider } from '../context/ThemeContext'
 import { useEffect } from 'react'
@@ -10,13 +12,19 @@ import { useRouter } from 'next/router'
 import { useCartStore } from '../store/cart'
 import { initCartSession } from '../lib/api'
 import { appWithTranslation } from 'next-i18next'
+import { useCookieConsent } from '../hooks/useCookieConsent'
+import { gtmPageView } from '../lib/gtm'
+import { ymPageHit } from '../lib/ym'
 // eslint-disable-next-line
 const nextI18NextConfig = require('../../next-i18next.config.js')
+
+const YM_ID = process.env.NEXT_PUBLIC_YM_ID
 
 function App({ Component, pageProps }: AppProps) {
   const router = useRouter()
   const { refresh } = useCartStore()
   const is404 = router.pathname === '/404'
+  const { consent } = useCookieConsent()
 
   useEffect(() => {
     // Гарантируем, что cookie cart_session создана до первого запроса
@@ -64,12 +72,58 @@ function App({ Component, pageProps }: AppProps) {
       router.events.off('routeChangeComplete', handleRouteChangeComplete)
     }
   }, [router])
+
+  // ─── Аналитика: pageview при каждой смене маршрута ────────────────────────
+  useEffect(() => {
+    if (consent !== 'accepted') return
+
+    const handleRouteChangeComplete = (url: string) => {
+      gtmPageView(url)
+      ymPageHit(url)
+    }
+
+    router.events.on('routeChangeComplete', handleRouteChangeComplete)
+    return () => {
+      router.events.off('routeChangeComplete', handleRouteChangeComplete)
+    }
+  }, [router.events, consent])
+
   return (
     <AuthProvider>
       <ThemeProvider>
         <Head>
           <meta name="viewport" content="width=device-width, initial-scale=1" />
         </Head>
+
+        {/* Яндекс.Метрика — загружается только при наличии согласия */}
+        {consent === 'accepted' && YM_ID && (
+          <Script
+            id="yandex-metrika"
+            strategy="afterInteractive"
+            dangerouslySetInnerHTML={{
+              __html: `
+(function(m,e,t,r,i,k,a){
+  m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+  m[i].l=1*new Date();
+  for(var j=0;j<document.scripts.length;j++){
+    if(document.scripts[j].src===r){return;}
+  }
+  k=e.createElement(t),a=e.getElementsByTagName(t)[0];
+  k.async=1;k.src=r;a.parentNode.insertBefore(k,a);
+})(window,document,'script','https://mc.yandex.ru/metrika/tag.js','ym');
+
+ym(${YM_ID},'init',{
+  defer: true,
+  clickmap: true,
+  trackLinks: true,
+  accurateTrackBounce: true,
+  webvisor: false
+});
+              `.trim(),
+            }}
+          />
+        )}
+
         {is404 ? (
           <Component {...pageProps} />
         ) : (
@@ -78,9 +132,12 @@ function App({ Component, pageProps }: AppProps) {
             <div className="flex-1">
               <Component {...pageProps} />
             </div>
-            <Footer initialSettings={(pageProps as any)?.footerSettings} />
+            <Footer initialSettings={(pageProps as Record<string, unknown>)?.footerSettings} />
           </div>
         )}
+
+        {/* Cookie Consent баннер — показывается всем пользователям */}
+        <CookieBanner />
       </ThemeProvider>
     </AuthProvider>
   )

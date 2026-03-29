@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-app = FastAPI(title="ML Service", description="Optional ML/embeddings service for PharmaTurk AI")
+app = FastAPI(title="ML Service", description="Optional ML/embeddings service for Mudaroba AI")
 
 
 @app.get("/health")

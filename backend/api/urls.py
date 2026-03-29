@@ -41,5 +41,8 @@ urlpatterns = [
 
     # Рекомендации (векторная RecSys на Qdrant)
     path("recommendations/", include("apps.recommendations.urls")),
+
+    # Маркетинг: cookie consent, аналитика
+    path("marketing/", include("apps.marketing.urls")),
 ]
 

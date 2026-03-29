@@ -45,7 +45,7 @@ export function getSiteOrigin(): string {
   if (typeof window !== 'undefined') {
     return window.location.origin.replace(/\/+$/, '')
   }
-  const url = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'https://pharmaturk.ru'
+  const url = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || 'https://mudaroba.com'
   return url.replace(/\/+$/, '')
 }
 

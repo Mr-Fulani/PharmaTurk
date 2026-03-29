@@ -47,8 +47,16 @@ class RecommendationViewSet(viewsets.ViewSet):
             )
         from apps.catalog.models import Product
         from apps.catalog.serializers import serialize_product_for_card
+        from django.db.models import Q
+        
         product_ids = [r["product_id"] for r in results]
-        products = Product.objects.filter(id__in=product_ids).prefetch_related(
+        products = Product.objects.filter(id__in=product_ids).exclude(
+            Q(product_type__in=['clothing', 'shoes']) &
+            (
+                Q(external_data__has_key='source_variant_id') |
+                Q(external_data__has_key='source_variant_slug')
+            )
+        ).prefetch_related(
             'images', 'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
             'shoe_item__images', 'shoe_item__variants', 'shoe_item__variants__images',
             'jewelry_item__images', 'electronics_item__images', 'furniture_item__images',
@@ -94,8 +102,16 @@ class RecommendationViewSet(viewsets.ViewSet):
             )
         from apps.catalog.models import Product
         from apps.catalog.serializers import serialize_product_for_card
+        from django.db.models import Q
+        
         product_ids = [r["product_id"] for r in recs]
-        products = Product.objects.filter(id__in=product_ids).prefetch_related(
+        products = Product.objects.filter(id__in=product_ids).exclude(
+            Q(product_type__in=['clothing', 'shoes']) &
+            (
+                Q(external_data__has_key='source_variant_id') |
+                Q(external_data__has_key='source_variant_slug')
+            )
+        ).prefetch_related(
             'images', 'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
             'shoe_item__images', 'shoe_item__variants', 'shoe_item__variants__images',
             'jewelry_item__images', 'electronics_item__images', 'furniture_item__images',
@@ -155,9 +171,18 @@ class RecommendationViewSet(viewsets.ViewSet):
         """Fallback: recent/trending products."""
         from apps.catalog.models import Product
         from apps.catalog.serializers import serialize_product_for_card
+        from django.db.models import Q
+        
         trending = (
             Product.objects.filter(is_available=True)
             .exclude(product_type="jewelry")
+            .exclude(
+                Q(product_type__in=['clothing', 'shoes']) &
+                (
+                    Q(external_data__has_key='source_variant_id') |
+                    Q(external_data__has_key='source_variant_slug')
+                )
+            )
             .order_by("-created_at")
             .prefetch_related(
                 'images', 'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',

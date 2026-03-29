@@ -180,7 +180,7 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
                 _save_downloaded_file_to_storage(instance, field_name, file_obj)
                 logger.info(f"Auto-downloaded {instance.__class__.__name__} URL to {field_name}")
         else:
-            # Если URL внутренний (например, cdn.it-dev.space), пробуем извлечь путь
+            # Если URL внутренний (например, cdn.mudaroba.com), пробуем извлечь путь
             try:
                 from urllib.parse import urlparse
                 path = urlparse(url).path 

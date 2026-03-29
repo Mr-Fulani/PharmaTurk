@@ -42,7 +42,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: pharmaturk-backend
+    image: mudaroba-backend
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health/ || exit 1"]
       interval: 5s
@@ -99,7 +99,7 @@ services:
         condition: service_healthy
 
   celeryworker:
-    image: pharmaturk-backend
+    image: mudaroba-backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -116,7 +116,7 @@ services:
     mem_limit: 4g
 
   celery_ai:
-    image: pharmaturk-backend
+    image: mudaroba-backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -133,7 +133,7 @@ services:
     mem_limit: 2g
 
   celerybeat:
-    image: pharmaturk-backend
+    image: mudaroba-backend
     depends_on:
       postgres:
         condition: service_healthy

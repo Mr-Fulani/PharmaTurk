@@ -147,7 +147,7 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
 
   const siteUrl = getSiteOrigin()
   const canonicalUrl = `${siteUrl}/brands`
-  const pageTitle = t('brands_page_title', 'Бренды — PharmaTurk')
+  const pageTitle = t('brands_page_title', 'Бренды — Mudaroba')
   const pageDescription = t('brands_page_description', 'Популярные бренды из Турции: одежда, обувь, электроника, аксессуары и товары для здоровья.')
 
   return (
@@ -199,11 +199,11 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
                   key={brand.id}
                   href={href}
                   style={{ height: cardHeight }}
-                  className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-gray-900/10"
+                  className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-gray-900/10 group"
                 >
                   {renderMedia(brand.card_media_url || brand.logo, brand.name, brand.id)}
-                  <div className="absolute inset-0 bg-black/35" />
-                  <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
+                  <div className="absolute inset-0 bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
+                  <div className="absolute inset-0 flex items-center justify-center p-4 z-10 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
                     <div className="text-center text-white drop-shadow">
                       <h3 className="text-xl font-bold mb-1">
                         {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
@@ -299,7 +299,7 @@ export const getServerSideProps = async (ctx: any) => {
       const ca = a.products_count ?? 0
       const cb = b.products_count ?? 0
       if (cb !== ca) return cb - ca
-      return (a.name || '').localeCompare(b.name || '')
+      return (a.name || '').localeCompare(b.name || '', 'ru')
     })
 
     return {

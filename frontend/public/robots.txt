@@ -1,2 +1,11 @@
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /api/
+Disallow: /profile
+Disallow: /cart
+Disallow: /checkout
+Disallow: /auth/
+Disallow: /_next/
+
+# Sitemap
+Sitemap: https://mudaroba.com/sitemap.xml

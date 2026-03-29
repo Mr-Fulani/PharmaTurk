@@ -43,6 +43,7 @@
   -webkit-text-fill-color: #ffffff !important;
   background-color: #111827 !important;
   border-color: #374151 !important;
+  color-scheme: dark;
 }
 
 /* Читаемые формы оформления в тёмной теме */
@@ -166,6 +167,7 @@ html, body {
   background-color: var(--bg);
   color: var(--text);
   transition: background-color 0.2s ease, color 0.2s ease;
+  overflow-x: hidden;
 }
 
 /* Использование чистого шрифта для полей ввода (улучшение читаемости логинов/паролей/адресов) */

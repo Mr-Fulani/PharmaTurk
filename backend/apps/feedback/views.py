@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.utils.text import slugify
 import os
 import uuid
+from api.authentication import JWTSafeAuthentication
 from .models import Testimonial
 from .serializers import TestimonialSerializer, TestimonialCreateSerializer
 
@@ -31,6 +32,8 @@ class TestimonialViewSet(viewsets.ModelViewSet):
     """
     queryset = Testimonial.objects.filter(is_active=True)
     permission_classes = [AllowAny]
+    # SessionAuthentication применяет CSRF к POST даже при AllowAny — используем только JWT
+    authentication_classes = [JWTSafeAuthentication]
 
     def get_serializer_class(self):
         """Возвращает соответствующий сериализатор в зависимости от действия."""

@@ -14,7 +14,7 @@ import ShareButton from '../../components/ShareButton'
 import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
-import { getLocalizedBrandName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
+import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../../lib/media'
 import { getSiteOrigin } from '../../lib/urls'
 import { isBaseProductType } from '../../lib/product'
@@ -129,6 +129,21 @@ const normalizeMediaValue = (value?: string | null) => {
   return trimmed
 }
 
+const getAdministrationRouteLabel = (value: string | null | undefined, t: any) => {
+  if (!value) return null
+  const routeLabels: Record<string, string> = {
+    'Ağızdan': t('route_oral', 'Peroral'),
+    'Damar İçine': t('route_intravenous', 'Intravenous'),
+    'Kas İçine': t('route_intramuscular', 'Intramuscular'),
+    'Cilt Üzerine': t('route_topical', 'Topical'),
+    'Solunum Yoluyla': t('route_inhalation', 'Inhalation'),
+    'Rektal Yoldan': t('route_rectal', 'Rectal'),
+    'Göz İçine': t('route_ophthalmic', 'Ophthalmic'),
+    'Kulak İçine': t('route_otic', 'Otic'),
+  }
+  return routeLabels[value] || value
+}
+
 const getDosageFormLabel = (value: string | null | undefined, t: any) => {
   if (!value) return null
   const forms: Record<string, string> = {
@@ -142,8 +157,41 @@ const getDosageFormLabel = (value: string | null | undefined, t: any) => {
     drops: t('dosage_drops', 'Капли'),
     spray: t('dosage_spray', 'Спрей'),
     powder: t('dosage_powder', 'Порошок'),
+    suppository: t('dosage_suppository', 'Суппозитории'),
+    other: t('dosage_other', 'Другое'),
   }
   return forms[value] || value
+}
+
+const getSgkStatusLabel = (value: string | null | undefined, t: any) => {
+  if (!value) return null
+  const statusLabels: Record<string, string> = {
+    'Bedeli Ödenir': t('sgk_status_paid', 'Bedeli Ödenir'),
+    'Bedeli Ödenmez': t('sgk_status_not_paid', 'Bedeli Ödenmez'),
+    'Pasif': t('sgk_status_passive', 'Pasif'),
+  }
+  return statusLabels[value] || value
+}
+
+const getPrescriptionTypeLabel = (value: string | null | undefined, t: any) => {
+  if (!value) return null
+  const prescriptionLabels: Record<string, string> = {
+    'Beyaz Reçete': t('prescription_white', 'Beyaz Reçete'),
+    'Kırmızı Reçete': t('prescription_red', 'Kırmızı Reçete'),
+    'Yeşil Reçete': t('prescription_green', 'Yeşil Reçete'),
+    'Mor Reçete': t('prescription_purple', 'Mor Reçete'),
+    'Turuncu Reçete': t('prescription_orange', 'Turuncu Reçete'),
+    'Normal Reçete': t('prescription_normal', 'Normal Reçete'),
+    'Reçetesiz': t('prescription_none', 'Reçetesiz'),
+  }
+  return prescriptionLabels[value] || value
+}
+
+const formatShelfLife = (value: string | null | undefined, t: any) => {
+  if (!value) return null
+  if (value.includes(' Ay')) return value.replace(' Ay', ' ' + t('months', 'мес.'))
+  if (value.includes(' Yıl')) return value.replace(' Yıl', ' ' + t('years', 'лет'))
+  return value
 }
 
 interface SizeItem {
@@ -218,12 +266,24 @@ interface Product {
   dosage_form?: string | null
   active_ingredient?: string | null
   prescription_required?: boolean | null
+  prescription_type?: string | null
   volume?: string | null
   origin_country?: string | null
   usage_instructions?: string | null
   side_effects?: string | null
   contraindications?: string | null
   storage_conditions?: string | null
+  indications?: string | null
+  administration_route?: string | null
+  shelf_life?: string | null
+  barcode?: string | null
+  atc_code?: string | null
+  nfc_code?: string | null
+  sgk_equivalent_code?: string | null
+  sgk_active_ingredient_code?: string | null
+  sgk_public_no?: string | null
+  sgk_status?: string | null
+  special_notes?: string | null
   serving_size?: string | null
   // Physical Attributes
   weight_value?: number | string | null
@@ -330,9 +390,10 @@ export default function ProductPage({
   const localeKey = (router.locale || '').toLowerCase()
   const isEnglishLocale = localeKey.startsWith('en')
 
+  const envSupportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || ''
   const [footerSettings, setFooterSettings] = useState<FooterSettings>({
     phone: '+90 552 582 14 97',
-    email: 'fulani.dev@gmail.com',
+    email: envSupportEmail,
     location: '',
     telegram_url: 'https://t.me/fulani_admin',
     whatsapp_url: 'https://wa.me/905525821497'
@@ -345,7 +406,7 @@ export default function ProductPage({
           if (response.data) {
             setFooterSettings({
               phone: response.data.phone || '+90 552 582 14 97',
-              email: response.data.email || 'fulani.dev@gmail.com',
+              email: response.data.email || envSupportEmail,
               location: response.data.location || '',
               telegram_url: response.data.telegram_url || 'https://t.me/fulani_admin',
               whatsapp_url: response.data.whatsapp_url || 'https://wa.me/905525821497'
@@ -399,6 +460,44 @@ export default function ProductPage({
       : 'Select a size'
   )
   const productSlug = product?.slug
+
+  const breadcrumbs = useMemo(() => {
+    const list = [{ label: t('breadcrumb_home', 'Главная'), href: '/' }]
+    
+    // Если есть категория, добавляем её
+    if (product?.category) {
+      const categoryName = getLocalizedCategoryName(
+        product.category.slug,
+        product.category.name,
+        t,
+        undefined, // У нас в интерфейсе Product.category нет translations, используем slug для поиска в JSON
+        router.locale
+      )
+      list.push({
+        label: categoryName,
+        href: `/categories/${product.category.slug}`
+      })
+    } else if (productType && productType !== 'medicines') {
+      // Фолбэк на тип продукта, если категория не задана явно
+      const categoryName = getLocalizedCategoryName(
+        productType,
+        productType,
+        t,
+        undefined,
+        router.locale
+      )
+      list.push({
+        label: categoryName,
+        href: `/categories/${productType}`
+      })
+    }
+
+    list.push({
+      label: displayProductName,
+      href: '#'
+    })
+    return list
+  }, [product, displayProductName, productType, t, router.locale])
 
   useEffect(() => {
     if (maxAvailable === 0) {
@@ -532,7 +631,7 @@ export default function ProductPage({
       const orderA = a.sort_order ?? 999
       const orderB = b.sort_order ?? 999
       if (orderA !== orderB) return orderA - orderB
-      return String(a.id).localeCompare(String(b.id))
+      return String(a.id).localeCompare(String(b.id), 'ru')
     })
   }, [product, productType, selectedVariant])
 
@@ -684,7 +783,7 @@ export default function ProductPage({
     (product.translations && product.translations.length > 0 ? '' : product.meta_title) || 
     (product.translations && product.translations.length > 0 ? '' : product.og_title) || 
     ''
-  ).trim() || `${displayProductName || product.name} — PharmaTurk`
+  ).trim() || `${displayProductName || product.name} — Mudaroba`
 
   const metaDescription = (
     apiTranslation?.meta_description ||
@@ -692,7 +791,7 @@ export default function ProductPage({
     (product.translations && product.translations.length > 0 ? '' : product.meta_description) ||
     (product.translations && product.translations.length > 0 ? '' : product.og_description) ||
     ''
-  ).trim() || localizedDescription?.slice(0, 200) || `${displayProductName || product.name} — ${t('buy_on_pharmaturk', 'купить на PharmaTurk')}`
+  ).trim() || localizedDescription?.slice(0, 200) || `${displayProductName || product.name} — ${t('buy_on_mudaroba', 'купить на Mudaroba')}`
   const ogImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
   const availability =
     selectedVariant?.is_available === false || selectedVariant?.stock_quantity === 0
@@ -746,7 +845,26 @@ export default function ProductPage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
         />
       </Head>
-      <main className="mx-auto max-w-6xl p-6">
+      <div className="mx-auto max-w-6xl px-3 pt-3 pb-0 sm:py-3 flex items-center justify-between overflow-x-auto no-scrollbar">
+        <nav className="text-sm text-main flex flex-wrap items-center gap-2 whitespace-nowrap">
+          {breadcrumbs.map((item, idx) => {
+            const isLast = idx === breadcrumbs.length - 1
+            return (
+              <span key={`${item.href}-${idx}`} className="flex items-center gap-2">
+                {!isLast ? (
+                  <Link href={item.href} className="hover:text-[var(--accent)] transition-colors">
+                    {item.label}
+                  </Link>
+                ) : (
+                  <span className="text-main font-medium">{item.label}</span>
+                )}
+                {!isLast && <span className="text-main/60">/</span>}
+              </span>
+            )
+          })}
+        </nav>
+      </div>
+      <main className="mx-auto max-w-6xl px-3 pt-0 pb-8 sm:py-8">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1.3fr_1fr] md:items-start">
           <div className="flex flex-col md:flex-row gap-4 md:h-[calc(100vh-22rem)] md:sticky md:top-6 md:self-start">
             
@@ -1114,7 +1232,81 @@ export default function ProductPage({
                 {product.origin_country && (
                   <p>
                     <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('origin_country', 'Страна производства')}: </span>
-                    {product.origin_country}
+                    {product.origin_country.toUpperCase() === 'İTHAL' || product.origin_country.toUpperCase() === 'ITHAL' 
+                      ? t('imported', 'Импортное')
+                      : product.origin_country.toUpperCase() === 'YERLİ' || product.origin_country.toUpperCase() === 'YERLI'
+                        ? t('domestic', 'Турция (Местное)')
+                        : product.origin_country}
+                  </p>
+                )}
+                {/* Путь введения */}
+                {product.administration_route && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('administration_route', 'Путь введения')}: </span>
+                    {getAdministrationRouteLabel(product.administration_route, t)}
+                  </p>
+                )}
+                {/* Срок годности */}
+                {product.shelf_life && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('shelf_life', 'Срок годности')}: </span>
+                    {formatShelfLife(product.shelf_life, t)}
+                  </p>
+                )}
+                {/* СГК / страховка */}
+                {product.sgk_status && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_status', 'СГК')}: </span>
+                    {getSgkStatusLabel(product.sgk_status, t)}
+                  </p>
+                )}
+                {/* Тип рецепта */}
+                {product.prescription_type && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('prescription_type', 'Тип рецепта')}: </span>
+                    {getPrescriptionTypeLabel(product.prescription_type, t)}
+                  </p>
+                )}
+                {/* Штрих-код */}
+                {product.barcode && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('barcode', 'Штрих-код')}: </span>
+                    <span className="font-mono">{product.barcode}</span>
+                  </p>
+                )}
+                {/* ATC-код */}
+                {product.atc_code && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('atc_code', 'АТХ код')}: </span>
+                    <span className="font-mono">{product.atc_code}</span>
+                  </p>
+                )}
+                {/* NFC Код */}
+                {product.nfc_code && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('nfc_code', 'NFC код')}: </span>
+                    <span className="font-mono">{product.nfc_code}</span>
+                  </p>
+                )}
+                {/* SGK Эквивалент */}
+                {product.sgk_equivalent_code && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_equivalent_code', 'Код эквивалента SGK')}: </span>
+                    <span className="font-mono">{product.sgk_equivalent_code}</span>
+                  </p>
+                )}
+                {/* SGK Код акт. вещ-ва */}
+                {product.sgk_active_ingredient_code && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_active_ingredient_code', 'Код акт. вещ-ва SGK')}: </span>
+                    <span className="font-mono">{product.sgk_active_ingredient_code}</span>
+                  </p>
+                )}
+                {/* SGK Публичный номер */}
+                {product.sgk_public_no && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_public_no', 'Публичный номер SGK')}: </span>
+                    <span className="font-mono">{product.sgk_public_no}</span>
                   </p>
                 )}
               </div>
@@ -1498,10 +1690,12 @@ export default function ProductPage({
         {(productType === 'medicines' || product.product_type === 'medicines') && (
           <div className="mt-4 flex flex-col gap-4">
             {[
+              { id: 'indications', title: t('indications', 'Показания к применению'), content: product.indications, fieldName: 'indications' },
               { id: 'usage', title: t('usage_instructions', 'Способ применения'), content: product.usage_instructions, fieldName: 'usage_instructions' },
               { id: 'side_effects', title: t('side_effects', 'Побочные действия'), content: product.side_effects, fieldName: 'side_effects' },
               { id: 'contraindications', title: t('contraindications', 'Противопоказания'), content: product.contraindications, fieldName: 'contraindications' },
-              { id: 'storage', title: t('storage_conditions', 'Условия хранения'), content: product.storage_conditions, fieldName: 'storage_conditions' }
+              { id: 'storage', title: t('storage_conditions', 'Условия хранения'), content: product.storage_conditions, fieldName: 'storage_conditions' },
+              { id: 'special_notes', title: t('special_notes', 'Особые сведения'), content: product.special_notes, fieldName: 'special_notes' },
             ].map((section: any) => {
               if (!section.content) return null
               const isExpanded = (product as any)[`_is_${section.id}_expanded`] ?? false
@@ -1575,6 +1769,7 @@ export default function ProductPage({
         <SimilarProducts
           productType={productType}
           currentProductId={product.id}
+          currentBaseProductId={product.base_product_id}
           currentProductSlug={product.slug}
           limit={8}
           useRecsys={true}

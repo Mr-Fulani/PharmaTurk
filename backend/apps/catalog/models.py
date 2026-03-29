@@ -264,7 +264,7 @@ class Category(models.Model):
     )
     
     # Общие поля
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активна"), default=True)
     margin_percent = models.DecimalField(
@@ -568,7 +568,7 @@ class Brand(models.Model):
     description = models.TextField(_("Описание"), blank=True)
     logo = models.URLField(_("Логотип"), blank=True)
     website = models.URLField(_("Сайт"), blank=True)
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     margin_percent = models.DecimalField(
@@ -749,8 +749,8 @@ class AbstractDomainProduct(models.Model):
     )
 
     # Внешние данные
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
 
     # SEO (EN) & OpenGraph
@@ -784,9 +784,10 @@ class AbstractDomainProduct(models.Model):
         blank=True,
         help_text=_("OpenGraph description (англ.) для социальных сетей.")
     )
-    og_image_url = models.URLField(
+    og_image_url = models.CharField(
         _("OG Image URL"),
         blank=True,
+        max_length=2000,
         help_text=_("Ссылка на изображение для OpenGraph, если оно отличается от основного.")
     )
 
@@ -1126,8 +1127,8 @@ class Product(models.Model):
     )
     
     # Внешние данные
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     meta_title = models.CharField(
         _("Meta Title"),
@@ -1159,9 +1160,10 @@ class Product(models.Model):
         blank=True,
         help_text=_("OpenGraph description (англ.) для социальных сетей.")
     )
-    og_image_url = models.URLField(
+    og_image_url = models.CharField(
         _("OG Image URL"),
         blank=True,
+        max_length=2000,
         help_text=_("Ссылка на изображение для OpenGraph, если оно отличается от основного.")
     )
     
@@ -1732,6 +1734,7 @@ class ProductImage(models.Model):
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
+    image_hash = models.CharField(_("Хэш изображения"), max_length=64, blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
 
     class Meta:
@@ -1779,8 +1782,8 @@ class ClothingVariant(models.Model):
         blank=True,
         null=True,
     )
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -2356,8 +2359,8 @@ class ShoeVariant(models.Model):
         blank=True,
         null=True,
     )
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -2680,8 +2683,8 @@ class JewelryVariant(models.Model):
         blank=True,
         null=True,
     )
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -2999,8 +3002,8 @@ class Service(models.Model):
     )
     
     # Внешние данные
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     
     # Статус
@@ -3526,8 +3529,8 @@ class FurnitureVariant(models.Model):
         blank=True,
         null=True,
     )
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -3902,8 +3905,8 @@ class PerfumeryVariant(models.Model):
         blank=True,
         null=True,
     )
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -4027,7 +4030,53 @@ class MedicineProduct(AbstractDomainProduct):
         help_text=_("Например: 50 мл, 20 таб."),
     )
     origin_country = models.CharField(
-        _("Страна производства"), max_length=200, blank=True,
+        _("Страна производства"), max_length=500, blank=True,
+    )
+
+    # ── Новые поля (универсальные для всех источников) ────────────
+    barcode = models.CharField(
+        _("Штрих-код (EAN/GTIN)"), max_length=100, blank=True, db_index=True,
+        help_text=_("Ключ для поиска медиа и мёрджа данных из разных источников."),
+    )
+    atc_code = models.CharField(
+        _("Код АТХ"), max_length=100, blank=True, db_index=True,
+        help_text=_("Международная классификация (напр.: B02BD08). Объединяет аналоги."),
+    )
+    administration_route = models.CharField(
+        _("Путь введения"), max_length=500, blank=True,
+        help_text=_("Например: Интравенозный, Интрамышечный, Перорально, Топикально."),
+    )
+    shelf_life = models.CharField(
+        _("Срок годности"), max_length=200, blank=True,
+        help_text=_("Например: 24 месяца."),
+    )
+    storage_conditions = models.CharField(
+        _("Условия хранения"), max_length=500, blank=True,
+        help_text=_("Краткое описание условий хранения (температура, свет и т.д.)."),
+    )
+    sgk_status = models.CharField(
+        _("Статус оплаты СГК"), max_length=500, blank=True,
+        help_text=_("Например: Bedeli Ödenir / Bedeli Ödenmez."),
+    )
+    prescription_type = models.CharField(
+        _("Тип рецепта"), max_length=500, blank=True,
+        help_text=_("Например: Turuncu Reçete, Beyaz Reçete, Mor Reçete."),
+    )
+    special_notes = models.TextField(
+        _("Особые сведения"), blank=True,
+        help_text=_("Дополнительные предупреждения (ОЗЕЛ БИЛГИЛЕР)."),
+    )
+    nfc_code = models.CharField(
+        _("NFC Код"), max_length=100, blank=True,
+    )
+    sgk_equivalent_code = models.CharField(
+        _("SGK Eşdeğer Kodu"), max_length=100, blank=True,
+    )
+    sgk_active_ingredient_code = models.CharField(
+        _("SGK Etkin Madde Kodu"), max_length=100, blank=True,
+    )
+    sgk_public_no = models.CharField(
+        _("SGK Kamu No"), max_length=100, blank=True,
     )
 
     class Meta:
@@ -4059,6 +4108,7 @@ class MedicineProductTranslation(models.Model):
     side_effects = models.TextField(_("Побочные действия"), blank=True)
     contraindications = models.TextField(_("Противопоказания"), blank=True)
     storage_conditions = models.TextField(_("Условия хранения"), blank=True)
+    indications = models.TextField(_("Показания к применению"), blank=True)
 
     # Локализованные атрибуты препарата
     dosage_form = models.CharField(
@@ -4072,7 +4122,22 @@ class MedicineProductTranslation(models.Model):
         _("Объем/Количество"), max_length=100, blank=True,
     )
     origin_country = models.CharField(
-        _("Страна производства"), max_length=200, blank=True,
+        _("Страна производства"), max_length=500, blank=True,
+    )
+    administration_route = models.CharField(
+        _("Путь введения"), max_length=500, blank=True,
+    )
+    shelf_life = models.CharField(
+        _("Срок годности"), max_length=200, blank=True,
+    )
+    sgk_status = models.CharField(
+        _("Статус SGK"), max_length=500, blank=True,
+    )
+    prescription_type = models.CharField(
+        _("Вид рецепта"), max_length=500, blank=True,
+    )
+    special_notes = models.TextField(
+        _("Особые отметки (SUT / Medula)"), blank=True,
     )
 
     class Meta:
@@ -4096,12 +4161,42 @@ class MedicineProductImage(models.Model):
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
+    image_hash = models.CharField(_("Хэш изображения"), max_length=64, blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
 
     class Meta:
         verbose_name = _("Изображение медикамента")
         verbose_name_plural = _("Изображения медикаментов")
         ordering = ["sort_order", "created_at"]
+
+
+class MedicineAnalog(models.Model):
+    """Аналог препарата (вкладка Eşdeğeri на ilacfiyati.com и др.)"""
+
+    product = models.ForeignKey(
+        MedicineProduct,
+        on_delete=models.CASCADE,
+        related_name="analogs",
+        verbose_name=_("Препарат"),
+    )
+    name = models.CharField(_("Название"), max_length=500)
+    barcode = models.CharField(_("Штрих-код"), max_length=50, blank=True, db_index=True)
+    atc_code = models.CharField(_("Код АТХ"), max_length=20, blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=200, blank=True)
+    source = models.CharField(
+        _("Источник"), max_length=100, blank=True,
+        help_text=_("ilacfiyati, ilacabak, и т.д.")
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Аналог препарата")
+        verbose_name_plural = _("Аналоги препарата")
+        ordering = ["name"]
+        unique_together = [("product", "barcode", "source")]
+
+    def __str__(self):
+        return f"{self.name} (аналог {self.product.name})"
 
     def __str__(self):
         return f"Изображение {self.product.name}"
@@ -4815,8 +4910,8 @@ class BookVariant(models.Model):
     is_available = models.BooleanField(_("В наличии"), default=True)
     stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
     main_image = models.URLField(_("Главное изображение варианта"), blank=True)
-    external_id = models.CharField(_("Внешний ID"), max_length=100, blank=True)
-    external_url = models.URLField(_("Внешняя ссылка"), blank=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
     external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
     is_active = models.BooleanField(_("Активен"), default=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)

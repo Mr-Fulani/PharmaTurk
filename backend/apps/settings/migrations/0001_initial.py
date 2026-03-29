@@ -30,12 +30,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "email",
-                    models.EmailField(
-                        blank=True,
-                        default="fulani.dev@gmail.com",
-                        max_length=254,
-                        verbose_name="Email",
-                    ),
+                    models.EmailField(blank=True, default="", max_length=254, verbose_name="Email"),
                 ),
                 (
                     "location",

@@ -7,13 +7,14 @@ from django.db import models as django_models
 
 from .models import (
     Category,
-    MedicineProduct, MedicineProductTranslation, MedicineProductImage,
+    MedicineProduct, MedicineProductTranslation, MedicineProductImage, MedicineAnalog,
     SupplementProduct, SupplementProductTranslation, SupplementProductImage,
     MedicalEquipmentProduct, MedicalEquipmentProductTranslation, MedicalEquipmentProductImage,
     TablewareProduct, TablewareProductTranslation, TablewareProductImage,
     AccessoryProduct, AccessoryProductTranslation, AccessoryProductImage,
     IncenseProduct, IncenseProductTranslation, IncenseProductImage,
 )
+from .admin_base import AIStatusFilter, RunAIActionMixin
 
 
 # ─────────────────────────────────────────────────────────────
@@ -70,15 +71,16 @@ def _make_image_inline(model_class):
 #  Базовый Admin для простых доменов
 # ─────────────────────────────────────────────────────────────
 
-class _SimpleDomainAdmin(admin.ModelAdmin):
+class _SimpleDomainAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Базовый ModelAdmin для простых доменных моделей без вариантов."""
+    ai_logs_prefetch_path = "base_product__ai_logs"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
 
     list_display = [
-        'name', 'category', 'gender', 'price', 'old_price',
+        'name', 'get_ai_status', 'category', 'gender', 'price', 'old_price',
         'is_available', 'is_new', 'is_featured', 'created_at',
     ]
-    list_filter = ['category', 'gender', 'is_available', 'is_new', 'is_featured', 'created_at']
+    list_filter = [AIStatusFilter, 'category', 'gender', 'is_available', 'is_new', 'is_featured', 'created_at']
     list_editable = ['price', 'old_price', 'is_available']
     search_fields = ['name', 'description', 'slug']
     prepopulated_fields = {'slug': ('name',)}
@@ -151,47 +153,7 @@ class _SimpleDomainAdmin(admin.ModelAdmin):
             ).order_by('sort_order', 'name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
-    def run_ai(self, request, queryset):
-        from apps.ai.tasks import process_product_ai_task
-        for obj in queryset:
-            process_product_ai_task.delay(
-                product_id=getattr(obj, "base_product_id", None) or obj.id,
-                processing_type="full",
-                auto_apply=False,
-            )
-        self.message_user(
-            request,
-            _("Запущена полная AI обработка для %(count)s товаров.")
-            % {"count": queryset.count()},
-            level=messages.SUCCESS,
-        )
-    run_ai.short_description = _("Полная AI обработка (без авто-применения)")
-
-    def run_ai_auto_apply(self, request, queryset):
-        from apps.ai.tasks import process_product_ai_task
-        for obj in queryset:
-            process_product_ai_task.delay(
-                product_id=getattr(obj, "base_product_id", None) or obj.id,
-                processing_type="full",
-                auto_apply=True,
-            )
-        self.message_user(
-            request,
-            _("Запущена полная AI обработка с авто-применением для %(count)s товаров.")
-            % {"count": queryset.count()},
-            level=messages.SUCCESS,
-        )
-    run_ai_auto_apply.short_description = _("Полная AI обработка + авто-применение")
-
-    def run_find_merge_duplicates(self, request, queryset):
-        from apps.scrapers.tasks import find_and_merge_duplicates
-        find_and_merge_duplicates.delay()
-        self.message_user(
-            request,
-            _("Запущен поиск и объединение дубликатов."),
-            level=messages.SUCCESS,
-        )
-    run_find_merge_duplicates.short_description = _("Поиск и объединение дубликатов")
+    # run_ai, run_ai_auto_apply, run_find_merge_duplicates inherited from RunAIActionMixin
 
 
 # ─────────────────────────────────────────────────────────────
@@ -203,25 +165,36 @@ class MedicineProductAdmin(_SimpleDomainAdmin):
     _category_type_slug = "medicines"
     _domain_fieldset = (_('Специфика медикамента'), {
         'fields': (
-            'dosage_form', 'active_ingredient', 'prescription_required',
-            'volume', 'origin_country'
+            'dosage_form', 'active_ingredient', 'prescription_required', 'prescription_type',
+            'volume', 'origin_country',
+            'barcode', 'atc_code', 'nfc_code', 'administration_route',
+            'shelf_life', 'storage_conditions',
+            'sgk_status', 'sgk_equivalent_code', 'sgk_active_ingredient_code', 'sgk_public_no', 'special_notes',
         ),
     })
     list_display = [
-        'name', 'category', 'dosage_form', 'active_ingredient',
+        'name', 'get_ai_status', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code', 'nfc_code', 'sgk_public_no',
         'prescription_required', 'price', 'old_price',
         'is_available', 'is_new', 'created_at',
     ]
     list_filter = [
-        'category', 'is_available', 'prescription_required',
+        AIStatusFilter, 'category', 'is_available', 'prescription_required',
         'dosage_form', 'is_new', 'created_at',
     ]
     inlines = [
         _make_translation_inline(MedicineProductTranslation, extra_fields=(
-            'usage_instructions', 'side_effects', 'contraindications', 'storage_conditions',
-            'dosage_form', 'active_ingredient', 'volume', 'origin_country'
+            'usage_instructions', 'side_effects', 'contraindications',
+            'storage_conditions', 'indications',
+            'dosage_form', 'active_ingredient', 'volume', 'origin_country',
         )),
         _make_image_inline(MedicineProductImage),
+        type('MedicineAnalogInline', (admin.TabularInline,), {
+            'model': MedicineAnalog,
+            'extra': 0,
+            'fields': ('name', 'barcode', 'atc_code', 'source', 'external_id'),
+            'verbose_name': _('Аналог'),
+            'verbose_name_plural': _('Аналоги (из Eşdeğeri)'),
+        }),
     ]
 
 
@@ -236,11 +209,11 @@ class SupplementProductAdmin(_SimpleDomainAdmin):
         'fields': ('dosage_form', 'active_ingredient'),
     })
     list_display = [
-        'name', 'category', 'dosage_form', 'active_ingredient',
+        'name', 'get_ai_status', 'category', 'dosage_form', 'active_ingredient',
         'price', 'old_price', 'is_available', 'is_new', 'created_at',
     ]
     list_filter = [
-        'category', 'is_available', 'dosage_form', 'is_new', 'created_at',
+        AIStatusFilter, 'category', 'is_available', 'dosage_form', 'is_new', 'created_at',
     ]
     inlines = [
         _make_translation_inline(SupplementProductTranslation, extra_fields=(
@@ -261,11 +234,11 @@ class MedicalEquipmentProductAdmin(_SimpleDomainAdmin):
         'fields': ('equipment_type',),
     })
     list_display = [
-        'name', 'category', 'equipment_type',
+        'name', 'get_ai_status', 'category', 'equipment_type',
         'price', 'old_price', 'is_available', 'is_new', 'created_at',
     ]
     list_filter = [
-        'category', 'is_available', 'is_new', 'created_at',
+        AIStatusFilter, 'category', 'is_available', 'is_new', 'created_at',
     ]
     inlines = [
         _make_translation_inline(MedicalEquipmentProductTranslation),
@@ -284,11 +257,11 @@ class TablewareProductAdmin(_SimpleDomainAdmin):
         'fields': ('material',),
     })
     list_display = [
-        'name', 'category', 'material',
+        'name', 'get_ai_status', 'category', 'material',
         'price', 'old_price', 'is_available', 'is_new', 'created_at',
     ]
     list_filter = [
-        'category', 'is_available', 'material', 'is_new', 'created_at',
+        AIStatusFilter, 'category', 'is_available', 'material', 'is_new', 'created_at',
     ]
     inlines = [
         _make_translation_inline(TablewareProductTranslation),
@@ -307,11 +280,11 @@ class AccessoryProductAdmin(_SimpleDomainAdmin):
         'fields': ('accessory_type', 'material'),
     })
     list_display = [
-        'name', 'category', 'accessory_type', 'material',
+        'name', 'get_ai_status', 'category', 'accessory_type', 'material',
         'price', 'old_price', 'is_available', 'is_new', 'created_at',
     ]
     list_filter = [
-        'category', 'is_available', 'accessory_type', 'is_new', 'created_at',
+        AIStatusFilter, 'category', 'is_available', 'accessory_type', 'is_new', 'created_at',
     ]
     inlines = [
         _make_translation_inline(AccessoryProductTranslation),
@@ -330,11 +303,11 @@ class IncenseProductAdmin(_SimpleDomainAdmin):
         'fields': ('scent_type',),
     })
     list_display = [
-        'name', 'category', 'scent_type',
+        'name', 'get_ai_status', 'category', 'scent_type',
         'price', 'old_price', 'is_available', 'is_new', 'created_at',
     ]
     list_filter = [
-        'category', 'is_available', 'scent_type', 'is_new', 'created_at',
+        AIStatusFilter, 'category', 'is_available', 'scent_type', 'is_new', 'created_at',
     ]
     inlines = [
         _make_translation_inline(IncenseProductTranslation),

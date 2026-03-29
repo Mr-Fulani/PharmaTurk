@@ -53,12 +53,14 @@ BRAND_CLEAR_PRODUCT_TYPES = {"books"}
 _DOMAIN_GETTER_NAMES = {
     "books": "_get_book_product",
     "jewelry": "_get_jewelry_product",
+    "medicines": "_get_medicine_product",
 }
 
 # Реестр: product_type → метод обновления атрибутов доменной модели из attrs
 _ATTRIBUTE_UPDATE_HANDLER_NAMES = {
     "books": "_update_book_attributes",
     "jewelry": "_update_jewelry_attributes",
+    "medicines": "_update_medicine_attributes",
 }
 
 
@@ -207,14 +209,29 @@ class ScraperIntegrationService:
         scraped_products = []
 
         try:
+            # Анализируем URL
+            parsed_url = urlparse(start_url)
+            path_parts = [p for p in parsed_url.path.strip('/').split('/') if p]
+            
+            is_category = (
+                "/category/" in start_url or "/kategori/" in start_url or 
+                (len(path_parts) == 1 and path_parts[0] in ('ilaclar', 'takviye-edici-gida'))
+            )
+            is_search = "/search" in start_url or "/arama" in start_url
+            is_product = (
+                "/product/" in start_url or 
+                ("/p/" in start_url and "instagram.com" not in start_url) or
+                (len(path_parts) >= 2 and path_parts[0] in ('ilaclar', 'takviye-edici-gida'))
+            )
+
             # Определяем тип парсинга по URL
-            if "/category/" in start_url or "/kategori/" in start_url:
+            if is_category:
                 # Парсинг категории
                 products = parser.parse_product_list(start_url, max_pages=session.max_pages)
                 scraped_products.extend(products)
                 session.pages_processed += len(products) // 20 + 1  # Примерная оценка
 
-            elif "/search" in start_url or "/arama" in start_url:
+            elif is_search:
                 # Поиск товаров
                 query = self._extract_search_query(start_url)
                 if query:
@@ -222,9 +239,7 @@ class ScraperIntegrationService:
                     scraped_products.extend(products)
                     session.pages_processed += 1
 
-            elif "/product/" in start_url or (
-                "/p/" in start_url and "instagram.com" not in start_url
-            ):
+            elif is_product:
                 # Парсинг отдельного товара (не Instagram)
                 product = parser.parse_product_detail(start_url)
                 if product:
@@ -780,6 +795,43 @@ class ScraperIntegrationService:
         product.jewelry_item = jewelry
         return jewelry
 
+    def _get_medicine_product(self, product: Product) -> "MedicineProduct":
+        """Находит или создаёт MedicineProduct для Product с product_type='medicines'."""
+        from apps.catalog.models import MedicineProduct
+        from django.utils.text import slugify
+
+        medicine = getattr(product, "medicine_item", None)
+        if medicine:
+            return medicine
+
+        base_slug = product.slug or slugify(product.name)
+        slug = f"medicine-{base_slug}"
+        i = 2
+        while MedicineProduct.objects.filter(slug=slug).exists():
+            slug = f"medicine-{base_slug}-{i}"
+            i += 1
+            
+        medicine = MedicineProduct(
+            base_product=product,
+            name=product.name,
+            slug=slug,
+            description=product.description or "",
+            category=product.category,
+            brand=product.brand,
+            price=product.price,
+            currency=product.currency or "RUB",
+            old_price=product.old_price,
+            external_id=product.external_id or "",
+            external_url=product.external_url or "",
+            external_data=product.external_data or {},
+            is_active=product.is_active,
+            is_available=product.is_available,
+            main_image=product.main_image or "",
+        )
+        medicine.save()
+        product.medicine_item = medicine
+        return medicine
+
     def _update_book_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
         """Обновляет книжные атрибуты в BookProduct."""
         if not any(
@@ -891,6 +943,52 @@ class ScraperIntegrationService:
             updated = True
         if updated:
             jewelry_product.save()
+        return updated
+
+    def _update_medicine_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
+        """Обновляет медицинские атрибуты в MedicineProduct."""
+        medicine_keys = (
+            "dosage_form", "active_ingredient", "prescription_required", "volume", 
+            "origin_country", "sgk_status", "administration_route"
+        )
+        if not any(k in attrs for k in medicine_keys):
+            return False
+            
+        medicine_product = self._get_medicine_product(product)
+        updated = False
+        
+        if "dosage_form" in attrs and attrs["dosage_form"]:
+            v = str(attrs["dosage_form"]).strip()[:100]
+            if v and not medicine_product.dosage_form:
+                medicine_product.dosage_form = v
+                updated = True
+                
+        if "active_ingredient" in attrs and attrs["active_ingredient"]:
+            v = str(attrs["active_ingredient"]).strip()[:300]
+            if v and not medicine_product.active_ingredient:
+                medicine_product.active_ingredient = v
+                updated = True
+                
+        if "volume" in attrs and attrs["volume"]:
+            v = str(attrs["volume"]).strip()[:100]
+            if v and not medicine_product.volume:
+                medicine_product.volume = v
+                updated = True
+                
+        if "origin_country" in attrs and attrs["origin_country"]:
+            v = str(attrs["origin_country"]).strip()[:200]
+            if v and not medicine_product.origin_country:
+                medicine_product.origin_country = v
+                updated = True
+                
+        if "prescription_required" in attrs:
+            val = bool(attrs["prescription_required"])
+            if val != medicine_product.prescription_required:
+                medicine_product.prescription_required = val
+                updated = True
+                
+        if updated:
+            medicine_product.save()
         return updated
 
     def _update_product_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:

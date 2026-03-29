@@ -19,7 +19,7 @@ const nextConfig = {
     return [
       {
         source: '/favicon.ico',
-        destination: '/telegram-icon.png',
+        destination: '/favicon.ico', // Update when you have a real favicon for Mudaroba
       },
       {
         source: '/api/:path*',

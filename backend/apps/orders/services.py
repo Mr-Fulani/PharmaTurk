@@ -214,11 +214,11 @@ def build_order_receipt_payload(order: Order, locale: str = 'ru') -> Dict[str, A
     total = _decimal(order.total_amount or (subtotal + shipping - discount))
 
     seller = {
-        "name": getattr(settings, "COMPANY_NAME", "PharmaTurk"),
+        "name": getattr(settings, "COMPANY_NAME", "Mudaroba"),
         "email": getattr(settings, "EMAIL_API_FROM", "") or getattr(settings, "COMPANY_SUPPORT_EMAIL", settings.DEFAULT_FROM_EMAIL),
         "phone": getattr(settings, "COMPANY_SUPPORT_PHONE", ""),
         "address": getattr(settings, "COMPANY_ADDRESS", ""),
-        "site": getattr(settings, "COMPANY_SITE_URL", "https://pharmaturk.ru"),
+        "site": getattr(settings, "COMPANY_SITE_URL", "https://mudaroba.com"),
     }
     # Добавляем ссылки соцсетей из FooterSettings
     try:

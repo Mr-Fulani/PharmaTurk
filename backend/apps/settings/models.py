@@ -1,7 +1,12 @@
 """Модели для настроек сайта."""
 
+from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+
+
+def _default_footer_email() -> str:
+    return (getattr(settings, "EMAIL_API_FROM", "") or getattr(settings, "COMPANY_SUPPORT_EMAIL", "") or getattr(settings, "DEFAULT_FROM_EMAIL", "")).strip()
 
 
 class FooterSettings(models.Model):
@@ -9,7 +14,7 @@ class FooterSettings(models.Model):
     
     # Контакты
     phone = models.CharField(_("Телефон"), max_length=50, blank=True, default="+90 552 582 14 97")
-    email = models.EmailField(_("Email"), blank=True, default="fulani.dev@gmail.com")
+    email = models.EmailField(_("Email"), blank=True, default=_default_footer_email)
     location = models.CharField(_("Адрес"), max_length=200, blank=True, default="Стамбул, Турция")
     
     # Социальные сети
@@ -47,4 +52,3 @@ class FooterSettings(models.Model):
         """Загружает или создает единственную запись настроек."""
         obj, created = cls.objects.get_or_create(pk=1)
         return obj
-

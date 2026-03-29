@@ -71,21 +71,21 @@ COINREMITTER_COIN=USDTTRC20
 
 # URL для webhook (должен вести на backend)
 # Вариант A: backend на отдельном поддомене
-SITE_URL=https://api.pharmaturk.ru
+SITE_URL=https://api.mudaroba.com
 
 # Вариант B: backend за тем же доменом (Nginx проксирует /api)
-SITE_URL=https://pharmaturk.ru
+SITE_URL=https://mudaroba.com
 
 # URL фронтенда (success_url, fail_url — редирект после оплаты)
-FRONTEND_SITE_URL=https://pharmaturk.ru
+FRONTEND_SITE_URL=https://mudaroba.com
 ```
 
 ### 3.4. Схема URL
 
 | Переменная         | Назначение                    | Пример                    |
 |--------------------|-------------------------------|---------------------------|
-| `SITE_URL`         | Базовый URL backend (webhook) | `https://api.pharmaturk.ru` |
-| `FRONTEND_SITE_URL`| URL фронтенда (редиректы)     | `https://pharmaturk.ru`   |
+| `SITE_URL`         | Базовый URL backend (webhook) | `https://api.mudaroba.com` |
+| `FRONTEND_SITE_URL`| URL фронтенда (редиректы)     | `https://mudaroba.com`   |
 
 Формируемые URL:
 - `notify_url`: `{SITE_URL}/api/payments/crypto/webhook/` — CoinRemitter шлёт сюда POST при смене статуса
@@ -96,11 +96,11 @@ FRONTEND_SITE_URL=https://pharmaturk.ru
 
 Webhook должен доходить до backend. Пример конфигурации:
 
-**Backend на api.pharmaturk.ru:**
+**Backend на api.mudaroba.com:**
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name api.pharmaturk.ru;
+    server_name api.mudaroba.com;
     # ... ssl ...
 
     location / {
@@ -113,11 +113,11 @@ server {
 }
 ```
 
-**Frontend и API на одном домене (pharmaturk.ru):**
+**Frontend и API на одном домене (mudaroba.com):**
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name pharmaturk.ru www.pharmaturk.ru;
+    server_name mudaroba.com www.mudaroba.com;
     # ... ssl ...
 
     location /api/ {
@@ -138,7 +138,7 @@ server {
     }
 }
 ```
-В этом случае `SITE_URL=https://pharmaturk.ru` — запросы на `/api/payments/crypto/webhook/` пойдут на backend.
+В этом случае `SITE_URL=https://mudaroba.com` — запросы на `/api/payments/crypto/webhook/` пойдут на backend.
 
 ### 3.6. Проверка webhook
 

@@ -54,7 +54,7 @@ def _resolve_media_url(value, request):
             return f"{base_url}/api/catalog/proxy-image/?url={quote(value)}"
         return f"http://localhost:8000/api/catalog/proxy-image/?url={quote(value)}"
     # Прокси для внешних CDN (устраняет CORS/EncodingError на Flutter Web)
-    if value.startswith('http') and ('cdn.it-dev.space' in value or 'r2.dev' in value):
+    if value.startswith('http') and ('cdn.mudaroba.com' in value or 'r2.dev' in value):
         if request:
             scheme = request.scheme
             host = request.get_host()

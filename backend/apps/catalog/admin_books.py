@@ -13,6 +13,7 @@ from .models import (
     BookVariant, BookVariantSize, BookVariantImage,
     ProductGenre, CategoryTranslation
 )
+from .admin_base import AIStatusFilter, RunAIActionMixin
 
 
 @admin.action(description=_("Сделать активными"))
@@ -132,16 +133,17 @@ class BookVariantInline(admin.TabularInline):
 
 
 @admin.register(BookProduct)
-class BookProductAdmin(admin.ModelAdmin):
+class BookProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров-книг."""
+    ai_logs_prefetch_path = "base_product__ai_logs"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = [
-        'name', 'authors_list', 'category', 'price', 
+        'name', 'get_ai_status', 'authors_list', 'category', 'price', 
         'old_price', 'is_available', 'is_bestseller',
         'is_new', 'isbn', 'publisher', 'created_at'
     ]
     list_filter = [
-        'category', 'is_available', 'is_bestseller', 'is_new', 
+        AIStatusFilter, 'category', 'is_available', 'is_bestseller', 'is_new', 
         'created_at', 'rating', 'publisher', 'language'
     ]
     list_editable = ['price', 'old_price', 'is_available', 'is_bestseller']
@@ -232,50 +234,7 @@ class BookProductAdmin(admin.ModelAdmin):
         return "-"
     slug_preview.short_description = _("Slug (предпросмотр)")
 
-    def run_ai(self, request, queryset):
-        """Поставить выбранные товары в очередь AI; результат — в логах, применить вручную после одобрения."""
-        from apps.ai.tasks import process_product_ai_task
-        for book in queryset:
-            process_product_ai_task.delay(
-                product_id=book.base_product_id,
-                processing_type="full",
-                auto_apply=False,
-            )
-        self.message_user(
-            request,
-            _("Запущена полная AI обработка для %(count)s товаров. Результаты появятся в разделе «Логи AI»; применить к товару — вручную после одобрения.")
-            % {"count": queryset.count()},
-            level=messages.SUCCESS,
-        )
-    run_ai.short_description = _("Полная AI обработка (без авто-применения)")
-
-    def run_ai_auto_apply(self, request, queryset):
-        """Один запуск: полная обработка + авто-применение. Не нужно идти в «Логи AI»."""
-        from apps.ai.tasks import process_product_ai_task
-        for book in queryset:
-            process_product_ai_task.delay(
-                product_id=book.base_product_id,
-                processing_type="full",
-                auto_apply=True,
-            )
-        self.message_user(
-            request,
-            _("Запущена полная AI обработка с авто-применением для %(count)s товаров. Результаты будут применены к товарам автоматически после завершения.")
-            % {"count": queryset.count()},
-            level=messages.SUCCESS,
-        )
-    run_ai_auto_apply.short_description = _("Полная AI обработка + авто-применение")
-
-    def run_find_merge_duplicates(self, request, queryset):
-        """Запуск поиска и объединения дубликатов по всему каталогу."""
-        from apps.scrapers.tasks import find_and_merge_duplicates
-        find_and_merge_duplicates.delay()
-        self.message_user(
-            request,
-            _("Запущен поиск и объединение дубликатов по всему каталогу. Результаты будут в логах Celery."),
-            level=messages.SUCCESS,
-        )
-    run_find_merge_duplicates.short_description = _("Поиск и объединение дубликатов")
+    # run_ai, run_ai_auto_apply, run_find_merge_duplicates are now provided by RunAIActionMixin
 
     def save_model(self, request, obj, form, change):
         """Сохраняем книгу."""

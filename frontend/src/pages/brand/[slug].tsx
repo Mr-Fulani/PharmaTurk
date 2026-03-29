@@ -71,12 +71,12 @@ export default function BrandPage({
   const productsPerPage = 24
   const currentPage = Number(page) || 1
   const totalPages = Math.max(1, Math.ceil((Number(brandData?.totalCount) || 0) / productsPerPage))
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pharmaturk.ru').replace(/\/$/, '')
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
   const canonicalUrl = `${siteUrl}/brand/${slug || ''}`
-  const metaTitle = brandData ? `${brandData.name} — PharmaTurk` : 'Бренд — PharmaTurk'
+  const metaTitle = brandData ? `${brandData.name} — Mudaroba` : 'Бренд — Mudaroba'
   const metaDescription =
     brandData?.description?.slice(0, 200) ||
-    `Товары бренда ${brandData?.name || ''} на PharmaTurk`
+    `Товары бренда ${brandData?.name || ''} на Mudaroba`
   const breadcrumbSchema = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -193,7 +193,7 @@ export default function BrandPage({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
         />
       </Head>
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 sm:px-6 md:flex-row">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-3 sm:px-6 md:flex-row">
         {/* Sidebar */}
         <div className="hidden md:block mt-6">
           <Sidebar
@@ -231,7 +231,7 @@ export default function BrandPage({
         </div>
 
         {/* Main Content */}
-        <main className="flex-1 p-4 sm:p-6">
+        <main className="flex-1 px-3 pt-0 pb-4 sm:p-6">
           {/* Mobile sidebar toggle */}
           <div className="md:hidden mb-4">
             <button
@@ -259,7 +259,7 @@ export default function BrandPage({
           </div>
 
           <div className="mt-2 w-full">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-7">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-3 sm:gap-7">
               {brandData.products.map((p) => {
                 const pt = (p as { product_type?: string }).product_type || 'medicines'
                 return (

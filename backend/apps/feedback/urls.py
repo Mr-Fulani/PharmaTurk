@@ -5,8 +5,11 @@ from .views import TestimonialViewSet
 router = DefaultRouter()
 router.register(r'testimonials', TestimonialViewSet, basename='testimonial')
 
-# Дублируем list для пути без trailing slash (fetch/axios не всегда следует редиректу)
-testimonials_list = TestimonialViewSet.as_view({'get': 'list'})
+# Дублируем list и create для пути без trailing slash (fetch/axios не всегда следует редиректу)
+testimonials_list = TestimonialViewSet.as_view({
+    'get': 'list',
+    'post': 'create'
+})
 
 urlpatterns = [
     path('testimonials', testimonials_list),

@@ -18,25 +18,32 @@ interface FooterSettings {
 export default function Footer({ initialSettings }: { initialSettings?: Partial<FooterSettings> }) {
   const { t, i18n } = useTranslation('common')
   const theme = useTheme()
+  const [isMounted, setIsMounted] = useState(false)
+  const envSupportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || ''
   const defaultLocation = t('footer_location', 'Стамбул, Турция')
   const defaultCryptoText = t('footer_crypto_payment', 'Возможна оплата криптовалютой')
+  
   // Инициализируем с дефолтными значениями, чтобы избежать проблем при SSR
   const [settings, setSettings] = useState<FooterSettings>({
     phone: initialSettings?.phone || '+90 552 582 14 97',
-    email: initialSettings?.email || 'fulani.dev@gmail.com',
-    location: initialSettings?.location || defaultLocation,
+    email: initialSettings?.email || envSupportEmail,
+    location: initialSettings?.location || 'Стамбул, Турция',
     telegram_url: initialSettings?.telegram_url || '',
     whatsapp_url: initialSettings?.whatsapp_url || '',
     vk_url: initialSettings?.vk_url || '',
     instagram_url: initialSettings?.instagram_url || '',
-    crypto_payment_text: initialSettings?.crypto_payment_text || defaultCryptoText
+    crypto_payment_text: initialSettings?.crypto_payment_text || 'Возможна оплата криптовалютой'
   })
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   useEffect(() => {
     if (!initialSettings) return
     setSettings((prev) => ({
       phone: initialSettings.phone || prev.phone || '+90 552 582 14 97',
-      email: initialSettings.email || prev.email || 'fulani.dev@gmail.com',
+      email: initialSettings.email || prev.email || envSupportEmail,
       location: initialSettings.location || prev.location || defaultLocation,
       telegram_url: initialSettings.telegram_url || prev.telegram_url || '',
       whatsapp_url: initialSettings.whatsapp_url || prev.whatsapp_url || '',
@@ -67,7 +74,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
             : defaultCryptoText
           setSettings((prev) => ({
             phone: data.phone || initialSettings?.phone || prev.phone || '+90 552 582 14 97',
-            email: data.email || initialSettings?.email || prev.email || 'fulani.dev@gmail.com',
+            email: data.email || initialSettings?.email || prev.email || envSupportEmail,
             location: resolvedLocation || initialSettings?.location || prev.location || defaultLocation,
             telegram_url: data.telegram_url || initialSettings?.telegram_url || prev.telegram_url || '',
             whatsapp_url: data.whatsapp_url || initialSettings?.whatsapp_url || prev.whatsapp_url || '',
@@ -84,7 +91,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
       // На сервере используем значения по умолчанию
       setSettings({
         phone: '+90 552 582 14 97',
-        email: 'fulani.dev@gmail.com',
+        email: envSupportEmail,
         location: defaultLocation,
         telegram_url: '',
         whatsapp_url: '',
@@ -102,8 +109,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
   const cryptoText = settings.crypto_payment_text || defaultCryptoText
 
   return (
-    <footer className="mt-10 border-t border-main shadow-xl transition-colors duration-200 dark:bg-[#0c1628] dark:border-[#1f2a3d] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.55)]" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
-      <div className="mx-auto max-w-6xl px-6 py-10 text-sm text-main">
+    <footer suppressHydrationWarning className="mt-10 border-t border-main shadow-xl transition-colors duration-200 dark:bg-[#0c1628] dark:border-[#1f2a3d] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.55)]" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
+      <div className="mx-auto max-w-6xl px-3 sm:px-6 py-10 text-sm text-main">
         <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <div className="flex items-start justify-center sm:justify-start">
             {/* Логотип/изображение оплат — увеличенный размер и правильное выравнивание */}
@@ -251,7 +258,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
           </div>
         </div>
         <div className="mt-8 border-t border-main pt-4 text-center text-xs text-main/70">
-          © {new Date().getFullYear()} Turk-Export
+          © <span suppressHydrationWarning>{new Date().getFullYear()}</span> Mudaroba
         </div>
       </div>
     </footer>

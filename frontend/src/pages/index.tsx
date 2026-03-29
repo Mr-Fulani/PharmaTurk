@@ -237,8 +237,8 @@ export default function Home({ brands, categories }: HomePageProps) {
 
   const siteUrl = getSiteOrigin()
   const canonicalUrl = `${siteUrl}/`
-  const pageTitle = 'PharmaTurk — Главная'
-  const pageDescription = 'PharmaTurk: турецкие товары — лекарства, одежда, обувь, электроника, аксессуары и мебель с доставкой.'
+  const pageTitle = 'Mudaroba — Главная'
+  const pageDescription = 'Mudaroba: турецкие товары — лекарства, одежда, обувь, электроника, аксессуары и мебель с доставкой.'
 
   return (
     <>
@@ -255,167 +255,183 @@ export default function Home({ brands, categories }: HomePageProps) {
         <meta property="twitter:description" content={pageDescription} />
         <meta property="twitter:card" content="summary_large_image" />
       </Head>
-      
+
       <main className="bg-page text-main min-h-screen transition-colors duration-200">
-      <div className="mx-auto max-w-6xl px-6 py-8">
+        <div className="mx-auto max-w-6xl px-3 sm:px-4 md:px-6 py-4 sm:py-8">
           {/* Главный баннер */}
           <div className="mb-12">
             <BannerCarousel position="main" />
-        </div>
+          </div>
 
-        {/* Brands Section — горизонтальный скролл на мобильных, сетка на десктопе */}
-        <section className="mb-12">
-          <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
-            {t('popular_brands', 'Популярные бренды')}
-          </h2>
-          {/* Мобильные: горизонтальный скролл */}
-          <div
-            className="flex overflow-x-auto snap-x snap-mandatory gap-4 pb-4 hide-scrollbar -mx-6 px-6 md:hidden"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-          >
-            {brands.map((brand) => {
-              const mediaUrl = brand.card_media_url || brand.logo
-              const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
-              return (
-                <div
-                  key={brand.id}
-                  onClick={() => handleBrandClick(brand)}
-                  className="relative shrink-0 w-44 h-44 sm:w-52 sm:h-52 snap-start rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
-                >
-                  {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
-                  <div className="absolute inset-0 bg-black/35" />
-                  <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
-                    <div className="text-center text-white drop-shadow">
-                      {brand.logo && (
-                        <div className="mb-2 flex justify-center">
-                          <img 
-                            src={resolveMediaUrl(brand.logo)} 
-                            alt={brand.name}
-                            className="h-8 w-auto object-contain filter brightness-0 invert"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none'
-                            }}
-                          />
-                        </div>
-                      )}
-                      <h3 className="text-lg font-bold mb-1 line-clamp-1">
-                        {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
-                      </h3>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          {/* Десктоп: сетка как у категорий */}
-          <Masonry
-            breakpointCols={{ default: 3, 1024: 3, 768: 3 }}
-            className="hidden md:flex w-full gap-4 md:gap-6"
-            columnClassName="flex flex-col gap-4 md:gap-6"
-          >
-            {brands.map((brand, idx) => {
-              const mediaUrl = brand.card_media_url || brand.logo
-              const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
-              const cardHeight = brandTileHeights[idx % brandTileHeights.length]
-              return (
-                <div
-                  key={brand.id}
-                  onClick={() => handleBrandClick(brand)}
-                  style={{ height: cardHeight }}
-                  className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
-                >
-                  {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
-                  <div className="absolute inset-0 bg-black/35" />
-                  <div className="absolute inset-0 flex items-center justify-center p-4 md:p-6 z-10">
-                    <div className="text-center text-white drop-shadow">
-                      {brand.logo && (
-                        <div className="mb-2 md:mb-3 flex justify-center">
-                          <img 
-                            src={resolveMediaUrl(brand.logo)} 
-                            alt={brand.name}
-                            className="h-8 md:h-12 w-auto object-contain filter brightness-0 invert"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none'
-                            }}
-                          />
-                        </div>
-                      )}
-                      <h3 className="text-xl md:text-3xl font-bold mb-1 md:mb-2 line-clamp-1">
-                        {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
-                      </h3>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </Masonry>
-          <div className="mt-6 flex justify-center">
-            <Link
-              href="/brands"
-              className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
+          {/* Brands Section — горизонтальный скролл на мобильных, сетка на десктопе */}
+          <section className="mb-12">
+            <h2 className="hidden md:block text-2xl md:text-3xl font-bold text-main mb-8 text-center">
+              {t('popular_brands', 'Популярные бренды')}
+            </h2>
+            {/* Мобильные: горизонтальный скролл */}
+            <div
+              className="flex overflow-x-auto snap-x snap-mandatory gap-2 pb-4 hide-scrollbar -mr-3 pr-3 sm:-mr-4 sm:pr-4 md:hidden"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
-              {t('all_brands', 'Все бренды')}
-            </Link>
-          </div>
-        </section>
+              {brands.slice(0, 10).map((brand) => {
+                const mediaUrl = brand.card_media_url || brand.logo
+                const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
+                return (
+                  <div
+                    key={brand.id}
+                    onClick={() => handleBrandClick(brand)}
+                    className="relative shrink-0 w-[96px] h-[120px] snap-start rounded-[20px] overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow bg-gray-900 group"
+                  >
+                    {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
+                    <div className="absolute inset-0 bg-black/40 hidden" />
+                    <div className="absolute inset-0 hidden items-center justify-center p-2 z-10">
+                      <div className="text-center text-white drop-shadow w-full">
+                        {brand.logo ? (
+                          <div className="flex justify-center items-center w-full px-1">
+                            <img
+                              src={resolveMediaUrl(brand.logo)}
+                              alt={brand.name}
+                              className="max-h-[36px] w-full object-contain filter brightness-0 invert"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none'
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <h3 className="text-xs font-bold line-clamp-2 leading-tight px-0.5">
+                            {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
+                          </h3>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+
+              {/* Кнопка "Все бренды" в конце свайпа */}
+              <div
+                className="relative flex flex-col items-center justify-center shrink-0 w-[96px] h-[120px] snap-start rounded-[20px] cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow bg-[var(--surface-soft)] border border-[var(--border)]"
+                onClick={() => router.push('/brands')}
+              >
+                <div className="w-10 h-10 rounded-full bg-[var(--accent)] text-white flex items-center justify-center mb-2 shadow-md">
+                  <svg className="w-5 h-5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+                <span className="text-[11px] font-bold text-center px-1 leading-tight uppercase text-main">
+                  {t('all_brands', 'Все бренды')}
+                </span>
+              </div>
+            </div>
+            {/* Десктоп: сетка как у категорий */}
+            <Masonry
+              breakpointCols={{ default: 3, 1024: 3, 768: 3 }}
+              className="hidden md:flex w-full gap-4 md:gap-6"
+              columnClassName="flex flex-col gap-4 md:gap-6"
+            >
+              {brands.map((brand, idx) => {
+                const mediaUrl = brand.card_media_url || brand.logo
+                const placeholderUrl = getPlaceholderImageUrl({ type: 'brand', id: brand.id })
+                const cardHeight = brandTileHeights[idx % brandTileHeights.length]
+                return (
+                  <div
+                    key={brand.id}
+                    onClick={() => handleBrandClick(brand)}
+                    style={{ height: cardHeight }}
+                    className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
+                  >
+                    {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
+                    <div className="absolute inset-0 bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
+                    <div className="absolute inset-0 flex items-center justify-center p-4 md:p-6 z-10 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
+                      <div className="text-center text-white drop-shadow">
+                        {brand.logo && (
+                          <div className="mb-2 md:mb-3 flex justify-center">
+                            <img
+                              src={resolveMediaUrl(brand.logo)}
+                              alt={brand.name}
+                              className="h-8 md:h-12 w-auto object-contain filter brightness-0 invert"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none'
+                              }}
+                            />
+                          </div>
+                        )}
+                        <h3 className="text-xl md:text-3xl font-bold mb-1 md:mb-2 line-clamp-1">
+                          {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
+                        </h3>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </Masonry>
+            <div className="mt-6 hidden md:flex justify-center">
+              <Link
+                href="/brands"
+                className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
+              >
+                {t('all_brands', 'Все бренды')}
+              </Link>
+            </div>
+          </section>
 
           {/* Баннер после брендов */}
           <div className="mb-12">
             <BannerCarousel position="after_brands" />
           </div>
 
-        {/* Categories Section */}
+          {/* Categories Section */}
           <section className="mb-12">
-          <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
-            {t('categories_section_title', 'Категории товаров')}
-          </h2>
-          <Masonry
-            breakpointCols={{ default: 3, 1024: 3, 768: 3, 640: 2, 0: 2 }}
-            className="flex w-full gap-4 md:gap-6"
-            columnClassName="flex flex-col gap-4 md:gap-6"
-          >
-            {preparedCategories.map((category, idx) => {
-              const cardHeight = tileHeights[idx % tileHeights.length]
-              const mediaUrl = category.card_media_url
-              const placeholderUrl = getPlaceholderImageUrl({ type: 'category', id: category.id })
-              return (
-              <div
-                key={category.id}
-                onClick={() => handleCategoryClick(category)}
-                style={{ height: cardHeight }}
-                className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
-              >
-                  {renderMedia(
-                    mediaUrl || placeholderUrl,
-                    getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale),
-                    placeholderUrl
-                  )}
-                  <div className="absolute inset-0 bg-black/35" />
-                  <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
-                    <div className="text-center text-white drop-shadow">
-                    <h3 className="text-xl font-bold mb-1">
-                      {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
-                    </h3>
-                    {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale) && (
-                      <p className="hidden md:block text-sm opacity-90">
-                        {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-              )
-            })}
-          </Masonry>
-          <div className="mt-6 flex justify-center">
-            <Link
-              href="/categories"
-              className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
+            <h2 className="text-2xl md:text-3xl font-bold text-main mb-8 text-center">
+              {t('categories_section_title', 'Категории товаров')}
+            </h2>
+            <Masonry
+              breakpointCols={{ default: 3, 1024: 3, 768: 3, 640: 2, 0: 2 }}
+              className="flex w-full gap-4 md:gap-6"
+              columnClassName="flex flex-col gap-4 md:gap-6"
             >
-              {t('all_categories', 'Все категории')}
-            </Link>
-          </div>
-        </section>
+              {preparedCategories.map((category, idx) => {
+                const cardHeight = tileHeights[idx % tileHeights.length]
+                const mediaUrl = category.card_media_url
+                const placeholderUrl = getPlaceholderImageUrl({ type: 'category', id: category.id })
+                return (
+                  <div
+                    key={category.id}
+                    onClick={() => handleCategoryClick(category)}
+                    style={{ height: cardHeight }}
+                    className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
+                  >
+                    {renderMedia(
+                      mediaUrl || placeholderUrl,
+                      getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale),
+                      placeholderUrl
+                    )}
+                    <div className="absolute inset-0 bg-black/35" />
+                    <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
+                      <div className="text-center text-white drop-shadow">
+                        <h3 className="text-xl font-bold mb-1">
+                          {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}
+                        </h3>
+                        {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale) && (
+                          <p className="hidden md:block text-sm opacity-90">
+                            {getLocalizedCategoryDescription(category.slug, category.description, t, category.translations, router.locale)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </Masonry>
+            <div className="mt-6 flex justify-center">
+              <Link
+                href="/categories"
+                className="inline-flex items-center rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[var(--accent-strong)] transition-colors"
+              >
+                {t('all_categories', 'Все категории')}
+              </Link>
+            </div>
+          </section>
 
           {/* Баннер перед футером */}
           <div className="mb-12">
@@ -427,12 +443,12 @@ export default function Home({ brands, categories }: HomePageProps) {
 
           {/* Вам может понравиться (RecSys) */}
           <PersonalizedRecommendations />
-          
+
           {/* Баннер после популярных товаров */}
           <div className="mb-12">
             <BannerCarousel position="after_popular_products" />
           </div>
-          
+
           {/* Отзывы клиентов */}
           <TestimonialsCarousel />
         </div>
@@ -445,11 +461,11 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   try {
     const { getInternalApiUrl } = await import('../lib/urls')
     const { fetchFooterSettings } = await import('../lib/footerSettings')
-    
+
     // Загружаем все бренды из API с пагинацией
     let allBrands: Brand[] = []
     let nextUrl: string | null = getInternalApiUrl('catalog/brands')
-    
+
     // Собираем все бренды (обходим пагинацию)
     while (nextUrl) {
       try {
@@ -457,7 +473,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         const data = brandsRes.data
         const pageBrands = Array.isArray(data) ? data : (data.results || [])
         allBrands = [...allBrands, ...pageBrands]
-        
+
         // Проверяем наличие следующей страницы
         nextUrl = data.next || null
       } catch (err) {
@@ -465,7 +481,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         break
       }
     }
-    
+
     // Сортировка: сначала бренды с товарами (по убыванию products_count), затем по медиа, по имени
     const sortedBrands = [...allBrands].sort((a: Brand, b: Brand) => {
       const countA = a.products_count || 0
@@ -474,7 +490,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const hasMediaA = !!(a.card_media_url && a.card_media_url.trim())
       const hasMediaB = !!(b.card_media_url && b.card_media_url.trim())
       if (hasMediaB !== hasMediaA) return hasMediaB ? 1 : -1
-      return (a.name || '').localeCompare(b.name || '')
+      return (a.name || '').localeCompare(b.name || '', 'ru')
     })
 
     // Показываем 11 брендов (с приоритетом у тех, у кого есть товары)

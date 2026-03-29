@@ -310,7 +310,7 @@ def send_order_receipt_task(
     message = EmailMultiAlternatives(
         subject=subject,
         body=text_body,
-        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@pharmaturk.local"),
+        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@mudaroba.local"),
         to=[recipient],
     )
     message.attach_alternative(html_body, "text/html")

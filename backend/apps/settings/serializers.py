@@ -26,5 +26,5 @@ class FooterSettingsSerializer(serializers.ModelSerializer):
     
     def get_site_url(self, obj):
         """Базовый URL сайта для ссылок на страницы (политика, доставка и т.д.)."""
-        return getattr(settings, 'COMPANY_SITE_URL', 'https://pharmaturk.ru').rstrip('/')
+        return getattr(settings, 'COMPANY_SITE_URL', 'https://mudaroba.com').rstrip('/')
 

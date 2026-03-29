@@ -442,6 +442,7 @@ def register_default_parsers():
         _registry.register(InstagramParser)
         _registry.register(UmmalandParser)
         _registry.register(MySiteParser)          # ← добавить
+        _registry.register(IlacFiyatiParser)      # ← добавить
     except ImportError as e:
         logging.getLogger(__name__).warning(f"Не удалось импортировать парсеры: {e}")
 ```
@@ -520,6 +521,7 @@ parser_class = get_parser(task.url)    # → по домену из URL
 | `instagram` | `InstagramParser` | instagram.com, www.instagram.com |
 | `zara` | `ZaraParser` | zara.com, tr.zara.com, ru.zara.com |
 | `ilacabak` | `IlacabakParser` | ilacabak.com, www.ilacabak.com |
+| `ilacfiyati` | `IlacFiyatiParser` | ilacfiyati.com, www.ilacfiyati.com |
 
 ---
 

@@ -11,7 +11,12 @@ if [ -f .env ]; then
 fi
 
 # Имя проекта
-export COMPOSE_PROJECT_NAME=pharmaturk
+# Читаем COMPOSE_PROJECT_NAME из .env, если его нет - ставим дефолтное
+if grep -q "^COMPOSE_PROJECT_NAME=" .env; then
+  export COMPOSE_PROJECT_NAME=$(grep "^COMPOSE_PROJECT_NAME=" .env | cut -d '=' -f2)
+else
+  export COMPOSE_PROJECT_NAME=pharmaturk
+fi
 # Если COMPOSE_FILE не задан в .env или окружении, используем базу + локальный override (стандартное поведение Docker Compose)
 if [ -z "$COMPOSE_FILE" ]; then
     COMPOSE_FILE="docker-compose.yml"
@@ -160,7 +165,7 @@ if ! command -v docker compose &> /dev/null; then
     exit 1
 fi
 
-info "Начинаем перезапуск проекта PharmaTurk..."
+info "Начинаем перезапуск проекта ${COMPOSE_PROJECT_NAME}..."
 
 # КАПИТАЛЬНАЯ ОЧИСТКА КЭША ПЕРЕД ОСТАНОВКОЙ
 info "🧹 Очищаем весь кэш перед перезапуском..."

@@ -19,13 +19,20 @@ def process_product_ai_task(
     processing_type: str = "full",
     auto_apply: bool = False,
     options: dict = None,
+    force: bool = False,
 ):
     """Обработка одного товара AI (описание, категория, анализ изображений)."""
     try:
+        if options is None:
+            options = {}
+        if force:
+            options["force"] = True
+
         logger.info(
-            "Starting AI processing for product %s, type=%s",
+            "Starting AI processing for product %s, type=%s, force=%s",
             product_id,
             processing_type,
+            force,
         )
         generator = ContentGenerator()
         log_entry = generator.process_product(
@@ -34,11 +41,20 @@ def process_product_ai_task(
             auto_apply=auto_apply,
             options=options,
         )
-        logger.info(
-            "AI processing completed for product %s. Log ID: %s",
-            product_id,
-            log_entry.id,
-        )
+
+        if log_entry.status in [AIProcessingStatus.COMPLETED, AIProcessingStatus.APPROVED, AIProcessingStatus.MODERATION] and not force:
+             # Если статус уже финальный и мы не форсировали, значит лог был возвращен существующий
+             logger.info(
+                "AI processing skipped for product %s (already exists). Log ID: %s",
+                product_id,
+                log_entry.id,
+            )
+        else:
+            logger.info(
+                "AI processing completed for product %s. Log ID: %s",
+                product_id,
+                log_entry.id,
+            )
         from apps.recommendations.tasks import index_product_vectors
         index_product_vectors.apply_async(args=[[product_id]], countdown=60)
         return {

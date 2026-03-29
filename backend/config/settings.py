@@ -137,8 +137,19 @@ CACHES = {
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_TASK_ALWAYS_EAGER = False
-CELERY_TASK_TIME_LIMIT = 60 * 10
+# Глобальный дефолт — 30 минут. Для скрейперов переопределяем ниже через CELERY_TASK_ANNOTATIONS.
+CELERY_TASK_TIME_LIMIT = 60 * 30
+CELERY_TASK_SOFT_TIME_LIMIT = 60 * 25
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# Расширенные лимиты конкретно для scraper-задач (могут парсить сотни товаров с изображениями)
+CELERY_TASK_ANNOTATIONS = {
+    "apps.scrapers.tasks.run_scraper_task": {
+        "time_limit": 60 * 60 * 2,       # hard limit: 2 часа
+        "soft_time_limit": 60 * 60 * 1,  # soft limit: 1 час (можно перехватить SoftTimeLimitExceeded)
+    },
+}
+from celery.schedules import crontab
+
 # Очередь ai для задач AI (воркер celery_ai слушает только её); recsys для рекомендаций
 CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},
@@ -148,6 +159,12 @@ CELERY_TASK_ROUTES = {
 }
 # Расписание Celery Beat. Подробности — см. CELERY_TASKS.md в корне проекта.
 CELERY_BEAT_SCHEDULE = {
+    # Обогащение медиа медикаментов каждую ночь
+    "enrich-medicine-media-nightly": {
+        "task": "catalog.enrich_medicine_media",
+        "schedule": crontab(hour=3, minute=0),
+        "kwargs": {"max_images_per_product": 3},
+    },
     # Валюта: обновление курсов каждые 4 часа
     "currency-update-rates": {
         "task": "currency.update_rates",
@@ -307,7 +324,7 @@ USE_X_FORWARDED_HOST = True
 # CORS и CSRF для продакшена (задать в .env)
 CSRF_TRUSTED_ORIGINS = env.list(
     "CSRF_TRUSTED_ORIGINS",
-    default=["https://it-dev.space", "https://www.it-dev.space", "https://localhost", "http://localhost"] if DEBUG else ["https://it-dev.space", "https://www.it-dev.space"],
+    default=["https://mudaroba.com", "https://www.mudaroba.com", "https://localhost", "http://localhost"] if DEBUG else ["https://mudaroba.com", "https://www.mudaroba.com"],
 )
 CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
@@ -344,7 +361,7 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)
 EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=30)
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@pharmaturk.local")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="no-reply@mudaroba.local")
 SERVER_EMAIL = env("SERVER_EMAIL", default=DEFAULT_FROM_EMAIL)
 EMAIL_ADMIN = env("EMAIL_ADMIN", default=DEFAULT_FROM_EMAIL)
 # Отправка писем через API (SendGrid или SMTP2GO)
@@ -357,11 +374,11 @@ SMTP2GO_API_URL = env("SMTP2GO_API_URL", default="https://api.smtp2go.com/v3")
 RESEND_API_KEY = env("RESEND_API_KEY", default="")
 RESEND_API_URL = env("RESEND_API_URL", default="https://api.resend.com")
 RESEND_USER_AGENT = env("RESEND_USER_AGENT", default="pharmaturk/1.0")
-COMPANY_NAME = env("COMPANY_NAME", default="PharmaTurk")
+COMPANY_NAME = env("COMPANY_NAME", default="Mudaroba")
 COMPANY_SUPPORT_EMAIL = env("COMPANY_SUPPORT_EMAIL", default=DEFAULT_FROM_EMAIL)
 COMPANY_SUPPORT_PHONE = env("COMPANY_SUPPORT_PHONE", default="+90 (000) 000-00-00")
 COMPANY_ADDRESS = env("COMPANY_ADDRESS", default="Istanbul, Turkey")
-COMPANY_SITE_URL = env("COMPANY_SITE_URL", default="https://pharmaturk.ru")
+COMPANY_SITE_URL = env("COMPANY_SITE_URL", default="https://mudaroba.com")
 BOOKS_SEO_SITE_NAME = env("BOOKS_SEO_SITE_NAME", default=COMPANY_NAME)
 
 
@@ -386,6 +403,12 @@ LOGGING = {
     },
     "root": {"handlers": ["console"], "level": "INFO"},
 }
+
+# Media Enrichment
+SERPER_API_KEY = env("SERPER_API_KEY", default="")
+MEDICINE_MEDIA_MIN_WIDTH = env.int("MEDICINE_MEDIA_MIN_WIDTH", default=400)
+MEDICINE_MEDIA_MIN_HEIGHT = env.int("MEDICINE_MEDIA_MIN_HEIGHT", default=400)
+MEDICINE_MEDIA_MAX_PER_PRODUCT = env.int("MEDICINE_MEDIA_MAX_PER_PRODUCT", default=3)
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

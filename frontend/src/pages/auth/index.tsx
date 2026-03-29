@@ -5,6 +5,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useRouter } from 'next/router'
+import styles from './Auth.module.css'
 
 // ─── Утилита: редирект после входа ──────────────────────────────────────────
 
@@ -36,12 +37,36 @@ export default function AuthIndexPage() {
       <Head>
         <title>{tab === 'login' ? t('login') : t('register')} — Turk-Export</title>
       </Head>
-      <main className="mx-auto max-w-md p-6">
-        <div className="mb-4 inline-flex rounded-md border border-[var(--border)] p-1 bg-[var(--surface)]">
-          <button onClick={() => switchTo('login')} className={`rounded px-3 py-1.5 text-sm ${tab === 'login' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}>{t('login')}</button>
-          <button onClick={() => switchTo('register')} className={`rounded px-3 py-1.5 text-sm ${tab === 'register' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}>{t('register')}</button>
+      <main className="flex min-h-[80vh] items-center justify-center p-4">
+        <div className={`${styles.container} ${tab === 'register' ? styles.active : ''}`}>
+          
+          <div className={`${styles.formBox} ${styles.login}`}>
+            <LoginForm />
+          </div>
+
+          <div className={`${styles.formBox} ${styles.register}`}>
+            <RegisterForm />
+          </div>
+
+          <div className={styles.toggleBox}>
+            <div className={`${styles.togglePanel} ${styles.toggleLeft}`}>
+              <h1>{t('auth_hello_welcome')}</h1>
+              <p>{t('auth_dont_have_account')}</p>
+              <button className={styles.btn} onClick={() => switchTo('register')}>
+                {t('register')}
+              </button>
+            </div>
+
+            <div className={`${styles.togglePanel} ${styles.toggleRight}`}>
+              <h1>{t('auth_welcome_back')}</h1>
+              <p>{t('auth_already_have_account')}</p>
+              <button className={styles.btn} onClick={() => switchTo('login')}>
+                {t('login')}
+              </button>
+            </div>
+          </div>
+
         </div>
-        {tab === 'login' ? <LoginForm /> : <RegisterForm />}
       </main>
     </>
   )
@@ -59,6 +84,7 @@ function TelegramLoginWidget() {
   const redirect = usePostLoginRedirect()
   const containerRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation('common')
+  const uniqueId = useRef(`telegram-login-${Math.random().toString(36).substring(2, 9)}`)
 
   useEffect(() => {
     ; (window as any).onTelegramAuth = async (user: any) => {
@@ -79,17 +105,80 @@ function TelegramLoginWidget() {
       const script = document.createElement('script')
       script.src = 'https://telegram.org/js/telegram-widget.js?22'
       script.setAttribute('data-telegram-login', botName)
-      script.setAttribute('data-size', 'large')
+      script.setAttribute('data-size', 'small')
       script.setAttribute('data-radius', '4')
       script.setAttribute('data-request-access', 'write')
       script.setAttribute('data-userpic', 'false')
       script.setAttribute('data-onauth', 'onTelegramAuth(user)')
+      script.id = uniqueId.current
       script.async = true
+      
+      // Очищаем контейнер перед добавлением скрипта
+      containerRef.current.innerHTML = ''
       containerRef.current.appendChild(script)
     }
+
+    const intervalId = setInterval(() => {
+      const wrapper = document.getElementById(uniqueId.current + '-wrapper')
+      if (!wrapper) return
+      
+      // Ищем сгенерированный Telegram iframe
+      const iframes = document.querySelectorAll(`iframe[id^="telegram-login-"]`)
+      let iframe = null
+      
+      // Ищем свободный iframe, который еще не перенесен в наш враппер
+      for (let i = 0; i < iframes.length; i++) {
+        const currentIframe = iframes[i] as HTMLIFrameElement;
+        // Если iframe уже внутри какого-то враппера, пропускаем
+        if (currentIframe.closest('.telegram-widget-wrapper')) continue;
+        iframe = currentIframe;
+        break;
+      }
+      
+      // Если свободный не найден, возможно он уже внутри нашего враппера
+      if (!iframe) {
+        iframe = wrapper.querySelector('iframe') as HTMLIFrameElement | null
+      }
+      
+      if (!iframe) return
+      
+      // Переносим iframe внутрь нашего враппера, если он отрендерился снаружи
+      if (iframe.parentElement !== wrapper) {
+        wrapper.appendChild(iframe)
+      }
+
+      const htmlWrapper = wrapper as HTMLElement
+      htmlWrapper.style.position = 'absolute'
+      htmlWrapper.style.inset = '0'
+      htmlWrapper.style.zIndex = '50'
+      
+      iframe.style.width = '40px' // Ставим точные размеры как у нашей иконки
+      iframe.style.height = '40px'
+      iframe.style.opacity = '0.01'
+      iframe.style.position = 'absolute'
+      iframe.style.inset = '0'
+      iframe.style.zIndex = '50'
+      iframe.style.pointerEvents = 'auto'
+      
+      // Фикс для Telegram: иногда виджет внутри iframe блокирует клики, если iframe слишком большой или растянут
+      // Мы ставим размеры точно по иконке, чтобы клик приходился ровно в центр виджета
+      
+      clearInterval(intervalId)
+    }, 200)
+
+    return () => clearInterval(intervalId)
   }, [loginWithTelegram, router, t])
 
-  return <div ref={containerRef} className="flex justify-center my-4" />
+  return (
+    <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden hover:opacity-80 transition-opacity">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2AABEE] text-white shadow-sm pointer-events-none relative z-10">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M22.5 3.5L2.8 11.1c-1 .4-1 .9-.2 1.1l5 1.6 1.9 5.7c.2.6.3.8.6.8.3 0 .5-.2.8-.5l2.5-2.4 5.2 3.9c1 .6 1.7.3 2-1l3.6-16.9c.4-1.6-.6-2.3-1.7-1.8zM9.3 14.9l-.7 2.6-.4-3.6 9.7-6.2-8.6 7.2z" />
+        </svg>
+      </div>
+      <div id={uniqueId.current + '-wrapper'} ref={containerRef} className="telegram-widget-wrapper absolute inset-0 z-50 flex items-center justify-center" style={{ cursor: 'pointer', pointerEvents: 'auto' }} />
+    </div>
+  )
 }
 
 // ─── Google One Tap кнопка ────────────────────────────────────────────────────
@@ -105,7 +194,6 @@ function GoogleLoginButton() {
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
 
   const handleGoogleResponse = async (response: any) => {
-    // Google One Tap возвращает response.credential (id_token)
     const credential = response?.credential
     if (!credential) {
       setError(t('auth_social_error', 'Ошибка входа через Google'))
@@ -133,6 +221,20 @@ function GoogleLoginButton() {
     const initGoogle = () => {
       const google = (window as any).google
       if (!google?.accounts?.id) return
+      
+      const btnWrappers = document.querySelectorAll('.google-signin-btn-wrapper')
+      
+      btnWrappers.forEach((btn, index) => {
+        const uniqueId = `google-signin-btn-${index}`
+        btn.id = uniqueId
+        btn.innerHTML = ''
+        
+        google.accounts.id.renderButton(
+          document.getElementById(uniqueId),
+          { theme: 'outline', size: 'large', type: 'icon', shape: 'circle' }
+        )
+      })
+      
       google.accounts.id.initialize({
         client_id: googleClientId,
         callback: handleGoogleResponse,
@@ -141,7 +243,6 @@ function GoogleLoginButton() {
       })
     }
 
-    // Загружаем GSI если ещё не загружен
     if ((window as any).google?.accounts?.id) {
       initGoogle()
     } else {
@@ -152,57 +253,16 @@ function GoogleLoginButton() {
       script.onload = initGoogle
       document.head.appendChild(script)
     }
-  }, [googleClientId])
-
-  // Рендерим стандартную кнопку Google, так как кастомная через prompt()
-  // может блокироваться браузером или если пользователь ранее закрыл One Tap
-  useEffect(() => {
-    if (!googleClientId) return
-    const google = (window as any).google
-    if (google?.accounts?.id) {
-      google.accounts.id.renderButton(
-        document.getElementById('google-signin-btn'),
-        { theme: theme === 'dark' ? 'filled_black' : 'outline', size: 'large', width: '100%', text: "signin_with" }
-      )
-    } else {
-      setTimeout(() => {
-        const g = (window as any).google
-        if (g?.accounts?.id && document.getElementById('google-signin-btn')) {
-          g.accounts.id.renderButton(
-            document.getElementById('google-signin-btn'),
-            { theme: theme === 'dark' ? 'filled_black' : 'outline', size: 'large', width: '100%', text: "signin_with" }
-          )
-        }
-      }, 1000) // fallback if loads later
-    }
   }, [googleClientId, theme])
-
-  const handleClick = () => {
-    if (!googleClientId) {
-      setError('Google Client ID не настроен')
-      return
-    }
-    const google = (window as any).google
-    if (!google?.accounts?.id) {
-      setError(t('auth_social_error', 'Ошибка входа через Google'))
-      return
-    }
-    google.accounts.id.prompt()
-  }
 
   if (!googleClientId) return null
 
   return (
-    <div className="flex flex-col gap-1">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={loading}
-        className="flex items-center justify-center gap-2 w-full rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 transition-colors dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-      >
-        <div id="google-signin-btn" className="w-full flex justify-center [&>div]:w-full"></div>
-      </button>
-      {error && <p className="text-xs text-red-500">{error}</p>}
+    <div className="flex flex-col items-center gap-1 hover:opacity-80 transition-opacity" style={{ colorScheme: 'light' }}>
+      <div
+        className={`google-signin-btn-wrapper flex items-center justify-center ${loading ? 'opacity-60' : ''}`}
+      />
+      {error && <p className="text-xs text-red-500 absolute -bottom-5">{error}</p>}
     </div>
   )
 }
@@ -228,7 +288,6 @@ function VKLoginButton() {
     setError('')
 
     try {
-      // Открываем VK OAuth popup
       const width = 600
       const height = 500
       const left = window.screenX + (window.outerWidth - width) / 2
@@ -238,7 +297,6 @@ function VKLoginButton() {
 
       const popup = window.open(vkAuthUrl, 'vk_auth', `width=${width},height=${height},left=${left},top=${top}`)
 
-      // Слушаем сообщение от popup
       const handleMessage = async (event: MessageEvent) => {
         if (event.origin !== window.location.origin) return
         if (event.data?.type !== 'vk_auth') return
@@ -254,13 +312,11 @@ function VKLoginButton() {
         }
 
         try {
-          // Бэкенд принимает access_token + опциональный vk_user_id
           const res = await import('../../lib/api').then(m => m.default.post('/users/social-auth/', {
             provider: 'vk',
             access_token,
             vk_user_id: user_id,
           }))
-          // loginWithSocial не подходит напрямую (нет vk_user_id), вызываем вручную
           const Cookies = (await import('js-cookie')).default
           const { setPreferredCurrency } = await import('../../lib/api')
           const { tokens, user: userData } = res.data
@@ -271,7 +327,6 @@ function VKLoginButton() {
             setPreferredCurrency(userData.currency)
           }
           redirect()
-          // Принудительный reload для обновления AuthContext
           window.location.reload()
         } catch (e2: any) {
           const raw = e2?.response?.data?.detail || ''
@@ -285,7 +340,6 @@ function VKLoginButton() {
 
       window.addEventListener('message', handleMessage)
 
-      // Таймаут — если popup закрыт без авторизации
       const checkClosed = setInterval(() => {
         if (popup?.closed) {
           clearInterval(checkClosed)
@@ -302,37 +356,19 @@ function VKLoginButton() {
   if (!vkAppId) return null
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col items-center gap-1 relative">
       <button
         type="button"
         onClick={handleVKLogin}
         disabled={loading}
-        className="flex items-center justify-center gap-2 w-full rounded-md bg-[#0077FF] hover:bg-[#005ecc] px-4 py-2.5 text-sm font-medium text-white shadow-sm disabled:opacity-60 transition-colors"
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0077FF] hover:bg-[#005ecc] text-white shadow-sm disabled:opacity-60 transition-colors"
+        aria-label="VK"
       >
-        {/* VK logo */}
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
           <path d="M15.684 0H8.316C1.592 0 0 1.592 0 8.316v7.368C0 22.408 1.592 24 8.316 24h7.368C22.408 24 24 22.408 24 15.684V8.316C24 1.592 22.391 0 15.684 0zm3.692 17.123h-1.744c-.66 0-.862-.523-2.049-1.712-1.033-1.01-1.49-1.135-1.744-1.135-.356 0-.458.102-.458.593v1.563c0 .424-.135.678-1.252.678-1.846 0-3.896-1.12-5.335-3.208C5.046 11.155 4.56 9.235 4.56 8.812c0-.254.102-.491.593-.491h1.744c.44 0 .61.203.779.678.864 2.49 2.303 4.675 2.896 4.675.22 0 .322-.102.322-.66V9.218c-.068-1.167-.683-1.269-.683-1.692 0-.203.17-.407.44-.407h2.743c.373 0 .508.203.508.643v3.473c0 .372.17.508.271.508.22 0 .407-.136.813-.542 1.254-1.405 2.151-3.574 2.151-3.574.119-.254.322-.491.762-.491h1.744c.526 0 .643.271.526.643-.22 1.017-2.354 4.031-2.354 4.031-.186.305-.254.44 0 .78.186.254.796.779 1.201 1.252.745.847 1.32 1.558 1.473 2.049.17.483-.086.728-.576.728z" />
         </svg>
-        {loading ? t('auth_logging_in', 'Вход...') : t('auth_vk_login', 'Войти через ВКонтакте')}
       </button>
-      {error && <p className="text-xs text-red-500">{error}</p>}
-    </div>
-  )
-}
-
-// ─── Разделитель «или» ────────────────────────────────────────────────────────
-
-function OrDivider({ label }: { label: string }) {
-  const { theme } = useTheme()
-  const isDark = theme === 'dark'
-  return (
-    <div className="relative mt-4">
-      <div className="absolute inset-0 flex items-center">
-        <div className="w-full border-t border-gray-300 dark:border-gray-600" />
-      </div>
-      <div className="relative flex justify-center text-sm">
-        <span className={`px-2 ${isDark ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500'}`}>{label}</span>
-      </div>
+      {error && <p className="text-xs text-red-500 absolute -bottom-5">{error}</p>}
     </div>
   )
 }
@@ -342,9 +378,9 @@ function OrDivider({ label }: { label: string }) {
 function SocialLoginBlock() {
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
   const vkAppId = process.env.NEXT_PUBLIC_VK_APP_ID
-  if (!googleClientId && !vkAppId) return null
   return (
-    <div className="flex flex-col gap-3 mt-2">
+    <div className={styles.socialIcons}>
+      <TelegramLoginWidget />
       {googleClientId && <GoogleLoginButton />}
       {vkAppId && <VKLoginButton />}
     </div>
@@ -356,16 +392,21 @@ function SocialLoginBlock() {
 function LoginForm() {
   const { login } = useAuth()
   const redirect = usePostLoginRedirect()
+  const [loginMethod, setLoginMethod] = useState<'password' | 'sms'>('password')
   const [loginValue, setLoginValue] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [loginMethod, setLoginMethod] = useState<'password' | 'sms'>('password')
   const [smsCode, setSmsCode] = useState('')
   const [smsSent, setSmsSent] = useState(false)
   const { t } = useTranslation('common')
-  const { theme } = useTheme()
-  const isDark = theme === 'dark'
+
+  useEffect(() => {
+    setError('')
+    setSmsSent(false)
+    setSmsCode('')
+    if (loginMethod === 'sms') setPassword('')
+  }, [loginMethod])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -398,90 +439,103 @@ function LoginForm() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Переключатель метода входа */}
-      <div className="inline-flex rounded-md border border-[var(--border)] p-1 bg-[var(--surface)]">
-        <button
-          type="button"
-          onClick={() => { setLoginMethod('password'); setSmsSent(false); setSmsCode(''); setError('') }}
-          className={`rounded px-3 py-1.5 text-sm transition-colors ${loginMethod === 'password' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}
-        >
-          {t('auth_login_method_password')}
-        </button>
-        <button
-          type="button"
-          onClick={() => { setLoginMethod('sms'); setPassword(''); setError('') }}
-          className={`rounded px-3 py-1.5 text-sm transition-colors ${loginMethod === 'sms' ? 'bg-[var(--accent)] text-white' : 'text-main hover:bg-[var(--surface)]'}`}
-        >
-          {t('auth_login_method_sms')}
-        </button>
-      </div>
+    <div className="w-full max-w-[320px] mx-auto">
+      <form onSubmit={submit} className="flex flex-col w-full">
+        <h1>{t('login')}</h1>
+        
+        <div className="flex justify-center gap-2 mb-2 mt-4">
+           <button 
+              type="button" 
+              onClick={() => setLoginMethod('password')} 
+              className={`px-3 py-1.5 text-xs sm:text-sm rounded transition-colors ${loginMethod === 'password' ? 'bg-[var(--accent)] text-white' : 'bg-gray-200 dark:bg-gray-800 text-[var(--text-strong)]'}`}
+           >
+              {t('auth_login_method_password')}
+           </button>
+           <button 
+              type="button" 
+              onClick={() => setLoginMethod('sms')} 
+              className={`px-3 py-1.5 text-xs sm:text-sm rounded transition-colors ${loginMethod === 'sms' ? 'bg-[var(--accent)] text-white' : 'bg-gray-200 dark:bg-gray-800 text-[var(--text-strong)]'}`}
+           >
+              {t('auth_login_method_sms')}
+           </button>
+        </div>
 
-      <form onSubmit={submit} className="grid gap-3">
         {loginMethod === 'password' ? (
           <>
-            <input
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400"
-              placeholder={t('auth_login_placeholder')}
-              value={loginValue}
-              onChange={(e) => setLoginValue(e.target.value)}
-              required
-            />
-            <input
-              className={`w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400 auth-password-input ${isDark ? 'border-gray-700 bg-gray-900 placeholder:text-gray-400' : ''}`}
-              placeholder={t('password_placeholder', 'Пароль (мин. 8 знаков, буквы и цифры)')}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+            <div className={styles.inputBox}>
+              <input
+                placeholder={t('auth_login_placeholder')}
+                value={loginValue}
+                onChange={(e) => setLoginValue(e.target.value)}
+                onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity(t('auth_fill_field'))}
+                onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
+                required
+              />
+            </div>
+            <div className={styles.inputBox}>
+              <input
+                className="auth-password-input"
+                placeholder={t('password_placeholder')}
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity(t('auth_fill_field'))}
+                onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
+                required
+              />
+            </div>
           </>
         ) : (
           <>
-            <div className="flex gap-2">
+            <div className={`${styles.inputBox} flex gap-2`}>
               <input
-                className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400"
                 placeholder="+7 (999) 123-45-67"
                 type="tel"
                 value={loginValue}
                 onChange={(e) => setLoginValue(e.target.value)}
+                onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity(t('auth_fill_field'))}
+                onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
                 required
               />
               <button
                 type="button"
                 onClick={handleSendSMS}
                 disabled={smsSent || loading}
-                className="rounded-md bg-[var(--accent)] px-4 py-2 text-white hover:bg-[var(--accent-strong)] disabled:opacity-60 whitespace-nowrap"
+                className="rounded-md bg-[var(--accent)] px-3 text-white hover:bg-[var(--accent-strong)] disabled:opacity-60 text-sm whitespace-nowrap"
               >
                 {smsSent ? t('auth_code_sent') : t('auth_send_code')}
               </button>
             </div>
             {smsSent && (
-              <input
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400"
-                placeholder={t('auth_sms_code_placeholder')}
-                type="text"
-                value={smsCode}
-                onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                maxLength={6}
-                required
-              />
+              <div className={styles.inputBox}>
+                <input
+                  placeholder={t('auth_sms_code_placeholder')}
+                  type="text"
+                  value={smsCode}
+                  onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity(t('auth_fill_field'))}
+                  onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
+                  maxLength={6}
+                  required
+                />
+              </div>
             )}
           </>
         )}
-        {error ? <div className="text-sm text-[var(--text-strong)]">{error}</div> : null}
+        
+        {error ? <div className="text-sm text-red-500 mb-2">{error}</div> : null}
+        
         <button
           type="submit"
           disabled={loading}
-          className="rounded-md bg-[var(--accent)] px-4 py-2 text-white hover:bg-[var(--accent-strong)] disabled:opacity-60"
+          className={styles.btn}
         >
           {loading ? t('auth_logging_in') : t('login')}
         </button>
-      </form>
 
-      <OrDivider label={t('auth_or_login_with')} />
-      <TelegramLoginWidget />
-      <SocialLoginBlock />
+        <p className="mt-6 mb-2 text-sm text-[var(--text-weak)]">{t('auth_or_login_with')}</p>
+        <SocialLoginBlock />
+      </form>
     </div>
   )
 }
@@ -497,8 +551,6 @@ function RegisterForm() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { t } = useTranslation('common')
-  const { theme } = useTheme()
-  const isDark = theme === 'dark'
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -518,24 +570,54 @@ function RegisterForm() {
   }
 
   return (
-    <div className="space-y-4">
-      <form onSubmit={submit} className="grid gap-3">
-        <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('email', 'Email')} value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <input className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400" placeholder={t('username', 'Имя пользователя')} value={username} onChange={(e) => setUsername(e.target.value)} required />
-        <input
-          className={`w-full rounded-md border border-gray-300 bg-white px-3 py-2 outline-none focus:border-gray-400 auth-password-input ${isDark ? 'border-gray-700 bg-gray-900 placeholder:text-gray-400' : ''}`}
-          placeholder={t('password_placeholder', 'Пароль (мин. 8 знаков, буквы и цифры)')}
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        {error ? <div className="text-sm text-[var(--text-strong)]">{error}</div> : null}
-        <button type="submit" disabled={loading} className="rounded-md bg-[var(--accent)] px-4 py-2 text-white hover:bg-[var(--accent-strong)] disabled:opacity-60">{loading ? t('auth_registering') : t('auth_register_button')}</button>
+    <div className="w-full max-w-[320px] mx-auto">
+      <form onSubmit={submit} className="flex flex-col w-full">
+        <h1>{t('register')}</h1>
+        
+        <div className={styles.inputBox}>
+          <input 
+            placeholder={t('email')} 
+            type="email"
+            value={email} 
+            onChange={(e) => setEmail(e.target.value)} 
+            onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity(t('auth_fill_field'))}
+            onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
+            required 
+          />
+        </div>
+        <div className={styles.inputBox}>
+          <input 
+            placeholder={t('username')} 
+            value={username} 
+            onChange={(e) => setUsername(e.target.value)} 
+            onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity(t('auth_fill_field'))}
+            onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
+            required 
+          />
+        </div>
+        <div className={styles.inputBox}>
+          <input
+            className="auth-password-input"
+            placeholder={t('password_placeholder')}
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity(t('auth_fill_field'))}
+            onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
+            required
+          />
+        </div>
+        
+        {error ? <div className="text-sm text-red-500 mb-2">{error}</div> : null}
+        
+        <button type="submit" disabled={loading} className={styles.btn}>
+          {loading ? t('auth_registering') : t('auth_register_button')}
+        </button>
+
+        <p className="mt-6 mb-2 text-sm text-[var(--text-weak)]">{t('auth_or_register_with')}</p>
+        <SocialLoginBlock />
       </form>
-      <OrDivider label={t('auth_or_register_with')} />
-      <TelegramLoginWidget />
-      <SocialLoginBlock />
     </div>
   )
 }
+

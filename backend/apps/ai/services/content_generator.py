@@ -87,11 +87,29 @@ class ContentGenerator:
         """
         if options:
             processing_type = self._options_to_processing_type(options)
+        
+        force = (options or {}).get("force", False)
+
         try:
             product = Product.objects.get(id=product_id)
         except Product.DoesNotExist:
             logger.error(f"Product {product_id} not found")
             raise ValueError(f"Product {product_id} not found")
+
+        # Проверяем, не был ли товар уже успешно обработан
+        if not force:
+            existing_log = AIProcessingLog.objects.filter(
+                product=product,
+                processing_type=processing_type,
+                status__in=[
+                    AIProcessingStatus.COMPLETED,
+                    AIProcessingStatus.APPROVED,
+                    AIProcessingStatus.MODERATION
+                ]
+            ).first()
+            if existing_log:
+                logger.info(f"Product {product_id} already processed (log {existing_log.id}), skipping.")
+                return existing_log
 
         # Создаем лог
         log_entry = AIProcessingLog.objects.create(
@@ -318,6 +336,27 @@ class ContentGenerator:
             if getattr(jewelry_item, "gender", None):
                 data["gender"] = jewelry_item.gender
 
+        # Медицинские атрибуты из доменной модели MedicineProduct
+        medicine_item = getattr(product, "medicine_item", None)
+        if medicine_item:
+            for field in ("active_ingredient", "dosage_form", "administration_route",
+                          "prescription_required", "volume", "origin_country"):
+                val = getattr(medicine_item, field, None)
+                if val is not None and val != "":
+                    data[field] = val
+
+        # Атрибуты из external_data (от парсера, например ilacfiyati)
+        if product.external_data:
+            raw_attrs = product.external_data.get("attributes") or {}
+            medicine_keys = (
+                "active_ingredient", "dosage_form", "administration_route",
+                "shelf_life", "storage_conditions", "sgk_status",
+                "atc_code", "nfc_code", "prescription_type", "barcode"
+            )
+            for k in medicine_keys:
+                if k in raw_attrs and k not in data:
+                    data[k] = raw_attrs[k]
+
         return data
 
     def _is_books_product(self, product: Product) -> bool:
@@ -396,7 +435,7 @@ class ContentGenerator:
 
     def _get_system_prompt(self) -> str:
         return """
-        Ты - контент-менеджер и SEO-специалист для интернет-магазина PharmaTurk.
+        Ты - контент-менеджер и SEO-специалист для интернет-магазина Mudaroba.
 
         Правила:
         1. Название товара (ru.generated_title) — ОБЯЗАТЕЛЬНО заполняй. Это главное отображаемое название: короткое, без подзаголовка и лишнего текста (например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция и инструменты»). Для книг при наличии name в image_analysis — используй его; иначе очисти product_name от подзаголовка.
@@ -459,6 +498,18 @@ class ContentGenerator:
             known_attrs["stone_type"] = input_data.get("stone_type")
             known_attrs["carat_weight"] = input_data.get("carat_weight")
             known_attrs["gender"] = input_data.get("gender")
+        
+        # Медицинские атрибуты: передаём AI всё что знаем о препарате
+        medicine_attrs_keys = (
+            "active_ingredient", "dosage_form", "administration_route",
+            "prescription_required", "prescription_type", "volume",
+            "origin_country", "shelf_life", "storage_conditions",
+            "sgk_status", "atc_code", "barcode", "nfc_code",
+            "sgk_equivalent_code", "sgk_active_ingredient_code", "sgk_public_no"
+        )
+        medicine_attrs = {k: input_data[k] for k in medicine_attrs_keys if k in input_data and input_data[k]}
+        if medicine_attrs:
+            known_attrs.update(medicine_attrs)
         data = {
             "product_name": input_data["name"],
             "current_description": input_data["description"],
@@ -505,6 +556,7 @@ class ContentGenerator:
         - Технические поля заполняй только если данные есть в current_description, raw_description, known_attributes ИЛИ image_analysis. Не придумывай.
         - Для книг: author, pages, isbn, publisher, cover_type, language, publication_year. cover_type (переплёт) можно определить по фото.
         - Для украшений (jewelry): обязательно извлекай в attributes: jewelry_type (ring/bracelet/necklace/earrings/pendant), material (серебро/silver, золото/gold), metal_purity из текста про пробу («925 пробы», «585», «проба 750» → metal_purity: «925» / «585» / «750»), stone_type, carat_weight, gender — по описанию или по фото.
+        - Для медикаментов: ОЯЗАТЕЛЬНО переведи все технические поля из known_attributes на русский и английский. Если в raw_description или current_description есть инструкции по применению, побочные эффекты, противопоказания, показания (Ne İçin Kullanılır, Yan Etkileri, vs.) — ОБЯЗАТЕЛЬНО извлеки их, переведи на нужный язык (RU/EN) и заполни соответствующие поля (indications, usage_instructions, side_effects, contraindications, storage_conditions, administration_route, shelf_life, sgk_status, prescription_type, special_notes, origin_country) внутри объектов "ru" и "en". Например: "Subkütan" (TR) -> "Подкожно" (RU) / "Subcutaneous" (EN); "İthal" (TR) -> "Импортный" (RU) / "Imported" (EN).
         - Название (generated_title): только основной заголовок, без подзаголовка. Например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура». Для книг: если в image_analysis есть name (название с обложки) — используй его; автор — из image_analysis.author.
         - SEO — только на английском (латиница). Кириллица в SEO недопустима.
         - В "ru" — название и описание на русском; в "en" — название, описание (перевод ru) и все SEO на английском.
@@ -514,14 +566,34 @@ class ContentGenerator:
         {{
             "ru": {{
                 "generated_title": "Название на русском",
-                "generated_description": "Описание на русском, 20–100 слов (HTML allowed)"
+                "generated_description": "Описание на русском, 20–100 слов (HTML allowed)",
+                "indications": "Показания к применению (RU)",
+                "usage_instructions": "Инструкция по применению (RU)",
+                "side_effects": "Побочные эффекты (RU)",
+                "contraindications": "Противопоказания (RU)",
+                "storage_conditions": "Условия хранения (RU)",
+                "administration_route": "Путь введения (RU)",
+                "shelf_life": "Срок годности (RU)",
+                "sgk_status": "Статус SGK (RU)",
+                "prescription_type": "Тип рецепта (RU)",
+                "special_notes": "Особые отметки (SUT / Medula) (RU)"
             }},
             "en": {{
                 "generated_title": "Product name in English",
                 "generated_description": "Same description in English, 20–100 words (HTML allowed)",
                 "seo_title": "SEO meta title in English only",
                 "seo_description": "SEO meta description in English only",
-                "keywords": ["keyword1", "keyword2"]
+                "keywords": ["keyword1", "keyword2"],
+                "indications": "Indications (EN)",
+                "usage_instructions": "Usage instructions (EN)",
+                "side_effects": "Side effects (EN)",
+                "contraindications": "Contraindications (EN)",
+                "storage_conditions": "Storage conditions (EN)",
+                "administration_route": "Administration route (EN)",
+                "shelf_life": "Shelf life (EN)",
+                "sgk_status": "SGK status (EN)",
+                "prescription_type": "Prescription type (EN)",
+                "special_notes": "Special notes (SUT / Medula) (EN)"
             }},
             "suggested_category_name": "Category name (RU)",
             "category_confidence": 0.95,
@@ -668,6 +740,24 @@ class ContentGenerator:
             
             log.extracted_attributes["seo_en"] = seo_en_data
 
+        # Дополнительные поля переводов (indications, usage_instructions и т.д.)
+        trans_fields = [
+            'indications', 'usage_instructions', 'side_effects', 
+            'contraindications', 'storage_conditions', 'administration_route',
+            'shelf_life', 'sgk_status', 'prescription_type', 'special_notes',
+            'origin_country'
+        ]
+        trans_data = {'ru': {}, 'en': {}}
+        for field in trans_fields:
+            if field in data_source and data_source[field]:
+                trans_data['ru'][field] = data_source[field]
+            if field in en_data and en_data[field]:
+                trans_data['en'][field] = en_data[field]
+        if trans_data['ru'] or trans_data['en']:
+            if not log.extracted_attributes:
+                log.extracted_attributes = {}
+            log.extracted_attributes['translations_data'] = trans_data
+
         # Попытка найти категорию
         if "suggested_category_name" in content:
             cat_name = content["suggested_category_name"]
@@ -764,10 +854,12 @@ class ContentGenerator:
                 'ru': {
                     'name': (log.generated_title or original_name).strip(),
                     'description': log.generated_description,
+                    **attrs.get('translations_data', {}).get('ru', {})
                 },
                 'en': {
                     'name': en_name,
                     'description': en_description,
+                    **attrs.get('translations_data', {}).get('en', {})
                 }
             }
         }
