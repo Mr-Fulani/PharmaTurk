@@ -1,8 +1,8 @@
 [tool.poetry]
 name = "pharmaturk-backend"
 version = "0.1.0"
-description = "MVP бэкенд Turk-Export на Django/DRF с Celery, Redis, PostgreSQL, Swagger, JWT"
-authors = ["Turk-Export Team <dev@turk-export.example>"]
+description = "MVP бэкенд Mudaroba на Django/DRF с Celery, Redis, PostgreSQL, Swagger, JWT"
+authors = ["Mudaroba Team <dev@mudaroba.example>"]
 readme = "README.md"
 packages = [{ include = "config" }, { include = "api" }, { include = "apps" }]
 

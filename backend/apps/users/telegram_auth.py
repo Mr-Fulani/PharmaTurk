@@ -106,7 +106,7 @@ def process_telegram_webhook(payload: dict) -> bool:
         logger.info(f"Telegram webhook: linked user {user.id} to telegram_id {telegram_id}")
         _send_telegram_message(
             chat_id, 
-            "✅ Ваш Telegram успешно привязан к аккаунту Turk-Export!\n"
+            "✅ Ваш Telegram успешно привязан к аккаунту Mudaroba!\n"
             "Теперь вы будете получать уведомления о заказах и чеки прямо сюда."
         )
         return True

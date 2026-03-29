@@ -310,7 +310,7 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Turk-Export API",
+    "TITLE": "Mudaroba API",
     "DESCRIPTION": "MVP API для интернет-магазина турецких товаров",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,

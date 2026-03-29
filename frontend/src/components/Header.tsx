@@ -166,7 +166,9 @@ export default function Header() {
         }`}>
       <div className="mx-auto w-full max-w-6xl px-3 sm:px-6">
         <div className="flex items-center justify-between gap-3 py-3">
-          <Link href="/" className={`text-lg font-bold transition-all duration-200 hover:scale-105 ${isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900'}`}>Mudaroba</Link>
+          <Link href="/" className={`text-lg font-bold transition-all duration-200 hover:scale-105 ${isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900'}`}>
+            Mudaroba<sup className="text-[0.6em] font-medium ml-0.5 opacity-80">TM</sup>
+          </Link>
           <div className="hidden flex-1 items-center gap-3 md:flex">
             <div ref={searchRef} className="relative flex w-full max-w-xl items-center">
               <input
