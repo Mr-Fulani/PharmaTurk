@@ -25,6 +25,7 @@ SYNC_METADATA_HANDLER_NAMES = {
     "books": "_sync_books_metadata",
     "jewelry": "_sync_jewelry_metadata",
     "medicines": "_sync_medicines_metadata",
+    "furniture": "_sync_furniture_metadata",
 }
 
 
@@ -297,6 +298,58 @@ class CatalogNormalizer:
                 
         if medicine_updated:
             medicine_product.save()
+            
+    def _sync_furniture_metadata(self, product: Product, attrs: Dict[str, Any]) -> None:
+        """Синхронизирует атрибуты мебели в FurnitureProduct."""
+        furniture_product = getattr(product, "furniture_item", None)
+        if not furniture_product:
+            return
+            
+        updated = False
+        
+        # Основные поля из атрибутов
+        fields_map = {
+            "color": ("color", 100),
+            "material": ("material", 500),
+            "dimensions": ("dimensions", 200),
+            "item_no": ("item_no", 50),
+            "designer": ("designer", 255),
+            "video_url": ("video_url", 500),
+        }
+        
+        for attr_key, (model_field, max_len) in fields_map.items():
+            if attr_key in attrs and attrs[attr_key]:
+                val = str(attrs[attr_key]).strip()[:max_len]
+                if val != (getattr(furniture_product, model_field) or ""):
+                    setattr(furniture_product, model_field, val)
+                    updated = True
+        
+        # Габариты (ширина, высота, глубина)
+        for dim in ["width", "height", "depth"]:
+            if dim in attrs and attrs[dim] is not None:
+                try:
+                    val = Decimal(str(attrs[dim]).replace(",", "."))
+                    if val != getattr(furniture_product, dim):
+                        setattr(furniture_product, dim, val)
+                        updated = True
+                except:
+                    pass
+        
+        if updated:
+            furniture_product.save()
+            
+        # Галерея изображений (FurnitureProductImage)
+        images = attrs.get("images")
+        if isinstance(images, list) and images:
+             from apps.catalog.models import FurnitureProductImage
+             existing_urls = set(furniture_product.images.values_list('image_url', flat=True))
+             for idx, url in enumerate(images):
+                 if url and url not in existing_urls:
+                     FurnitureProductImage.objects.create(
+                         product=furniture_product,
+                         image_url=url,
+                         sort_order=idx
+                     )
 
     def _sync_product_fields_from_metadata(self, product: Product, metadata: Dict[str, Any]) -> None:
         attrs = (metadata or {}).get("attributes") or {}

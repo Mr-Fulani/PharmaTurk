@@ -522,6 +522,7 @@ parser_class = get_parser(task.url)    # → по домену из URL
 | `zara` | `ZaraParser` | zara.com, tr.zara.com, ru.zara.com |
 | `ilacabak` | `IlacabakParser` | ilacabak.com, www.ilacabak.com |
 | `ilacfiyati` | `IlacFiyatiParser` | ilacfiyati.com, www.ilacfiyati.com |
+| `ikea` | `IkeaParser` | ikea.com.tr, www.ikea.com.tr |
 
 ---
 

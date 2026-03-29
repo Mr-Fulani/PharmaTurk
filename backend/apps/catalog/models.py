@@ -735,7 +735,7 @@ class AbstractDomainProduct(models.Model):
         _("Количество на складе"), null=True, blank=True
     )
 
-    # Изображения
+    # Изображения и Видео
     main_image = models.URLField(
         _("Главное изображение"),
         max_length=2000,
@@ -746,6 +746,41 @@ class AbstractDomainProduct(models.Model):
         upload_to=get_product_upload_path,
         blank=True,
         null=True,
+    )
+    video_url = models.URLField(
+        _("URL видео"),
+        max_length=2000,
+        blank=True,
+        help_text=_("URL видео для товара (например, из Instagram постов или IKEA).")
+    )
+    main_video_file = models.FileField(
+        _("Главное видео (файл)"),
+        upload_to=get_product_upload_path,
+        blank=True,
+        null=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=["mp4", "mov", "webm", "avi", "mkv"]),
+        ],
+    )
+
+    # Идентификаторы и габариты
+    gtin = models.CharField(_("GTIN"), max_length=64, blank=True)
+    mpn = models.CharField(_("MPN"), max_length=64, blank=True)
+    weight_value = models.DecimalField(
+        _("Вес"), max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    weight_unit = models.CharField(_("Единица веса"), max_length=10, default="g")
+    length = models.DecimalField(
+        _("Длина"), max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    width = models.DecimalField(
+        _("Ширина"), max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    height = models.DecimalField(
+        _("Высота"), max_digits=8, decimal_places=3, null=True, blank=True
+    )
+    dimensions_unit = models.CharField(
+        _("Единица размера"), max_length=10, default="cm"
     )
 
     # Внешние данные
@@ -908,6 +943,43 @@ class AbstractDomainProduct(models.Model):
         product.currency = self.currency
         product.old_price = self.old_price
         product.is_available = getattr(self, 'is_available', True)
+        product.stock_quantity = getattr(self, 'stock_quantity', None)
+        product.external_id = self.external_id
+        product.external_url = self.external_url
+        product.external_data = self.external_data
+        
+        # Видео
+        product.video_url = self.video_url
+        product.main_video_file = self.main_video_file
+        
+        # Габариты
+        product.gtin = self.gtin
+        product.mpn = self.mpn
+        product.weight_value = self.weight_value
+        product.weight_unit = self.weight_unit
+        product.length = self.length
+        product.width = self.width
+        product.height = self.height
+        product.dimensions_unit = self.dimensions_unit
+        
+        # SEO
+        product.seo_title = self.meta_title
+        product.seo_description = self.meta_description
+        product.keywords = [k.strip() for k in (self.meta_keywords or "").split(",") if k.strip()]
+        product.meta_title = self.meta_title
+        product.meta_description = self.meta_description
+        product.meta_keywords = self.meta_keywords
+        product.og_title = self.og_title
+        product.og_description = self.og_description
+        product.og_image_url = self.og_image_url
+        
+        product.main_image = self.main_image
+        product.main_image_file = self.main_image_file
+        product.is_active = self.is_active
+        product.is_new = self.is_new
+        product.is_featured = self.is_featured
+        
+        product.save()
         if hasattr(self, 'stock_quantity'):
             product.stock_quantity = getattr(self, 'stock_quantity', None)
         product.product_type = self._domain_product_type
@@ -1399,7 +1471,10 @@ class Product(models.Model):
         return None
     
     def get_all_prices(self):
-        """Получает цены во всех валютах"""
+        """Получает цены во всех валютах (с кэшированием в рамках инстанса)"""
+        if hasattr(self, '_all_prices_cache'):
+            return self._all_prices_cache
+            
         from .currency_models import ProductPrice
         
         prices = {}
@@ -1456,142 +1531,90 @@ class Product(models.Model):
                         'price_with_margin': variant_price.usdt_price_with_margin,
                         'is_base_price': False
                     }
+                self._all_prices_cache = prices
                 return prices
 
             price_info = self.price_info
-            
-            # Базовая цена (если price_info только что создан, base_currency может быть из продукта)
-            base_currency = (price_info.base_currency or self.currency or 'RUB').upper()
-            prices[base_currency] = {
-                'original_price': price_info.base_price,
-                'converted_price': price_info.base_price,
-                'price_with_margin': price_info.base_price,
-                'is_base_price': True
-            }
-            
-            # RUB
-            if price_info.rub_price_with_margin:
-                prices['RUB'] = {
-                    'original_price': price_info.rub_price,
-                    'converted_price': price_info.rub_price,
-                    'price_with_margin': price_info.rub_price_with_margin,
-                    'is_base_price': False
-                }
-            
-            # USD
-            if price_info.usd_price_with_margin:
-                prices['USD'] = {
-                    'original_price': price_info.usd_price,
-                    'converted_price': price_info.usd_price,
-                    'price_with_margin': price_info.usd_price_with_margin,
-                    'is_base_price': False
-                }
-            
-            # KZT
-            if price_info.kzt_price_with_margin:
-                prices['KZT'] = {
-                    'original_price': price_info.kzt_price,
-                    'converted_price': price_info.kzt_price,
-                    'price_with_margin': price_info.kzt_price_with_margin,
-                    'is_base_price': False
-                }
-            
-            # EUR
-            if price_info.eur_price_with_margin:
-                prices['EUR'] = {
-                    'original_price': price_info.eur_price,
-                    'converted_price': price_info.eur_price,
-                    'price_with_margin': price_info.eur_price_with_margin,
-                    'is_base_price': False
-                }
-            
-            # TRY
-            if price_info.try_price_with_margin:
-                prices['TRY'] = {
-                    'original_price': price_info.try_price,
-                    'converted_price': price_info.try_price,
-                    'price_with_margin': price_info.try_price_with_margin,
-                    'is_base_price': False
-                }
-                
-            # USDT
-            if price_info.usdt_price_with_margin:
-                prices['USDT'] = {
-                    'original_price': price_info.usdt_price,
-                    'converted_price': price_info.usdt_price,
-                    'price_with_margin': price_info.usdt_price_with_margin,
-                    'is_base_price': False
-                }
-                
-        except ProductPrice.DoesNotExist:
-            # Для невариативных товаров без ProductPrice создаём запись (конвертация по валютам),
-            # чтобы смена валюты на фронте работала. Затем повторно строим словарь цен.
-            if self.price is not None and self.currency:
-                try:
-                    self.update_currency_prices()
-                    price_info = ProductPrice.objects.filter(product=self).first()
-                    if price_info:
-                        base_currency = (price_info.base_currency or self.currency or 'RUB').upper()
-                        prices[base_currency] = {
-                            'original_price': price_info.base_price,
-                            'converted_price': price_info.base_price,
-                            'price_with_margin': price_info.base_price,
-                            'is_base_price': True
-                        }
-                        if price_info.rub_price_with_margin:
-                            prices['RUB'] = {
-                                'original_price': price_info.rub_price,
-                                'converted_price': price_info.rub_price,
-                                'price_with_margin': price_info.rub_price_with_margin,
-                                'is_base_price': False
-                            }
-                        if price_info.usd_price_with_margin:
-                            prices['USD'] = {
-                                'original_price': price_info.usd_price,
-                                'converted_price': price_info.usd_price,
-                                'price_with_margin': price_info.usd_price_with_margin,
-                                'is_base_price': False
-                            }
-                        if price_info.kzt_price_with_margin:
-                            prices['KZT'] = {
-                                'original_price': price_info.kzt_price,
-                                'converted_price': price_info.kzt_price,
-                                'price_with_margin': price_info.kzt_price_with_margin,
-                                'is_base_price': False
-                            }
-                        if price_info.eur_price_with_margin:
-                            prices['EUR'] = {
-                                'original_price': price_info.eur_price,
-                                'converted_price': price_info.eur_price,
-                                'price_with_margin': price_info.eur_price_with_margin,
-                                'is_base_price': False
-                            }
-                        if price_info.try_price_with_margin:
-                            prices['TRY'] = {
-                                'original_price': price_info.try_price,
-                                'converted_price': price_info.try_price,
-                                'price_with_margin': price_info.try_price_with_margin,
-                                'is_base_price': False
-                            }
-                        if price_info.usdt_price_with_margin:
-                            prices['USDT'] = {
-                                'original_price': price_info.usdt_price,
-                                'converted_price': price_info.usdt_price,
-                                'price_with_margin': price_info.usdt_price_with_margin,
-                                'is_base_price': False
-                            }
-                        return prices
-                except Exception:
-                    pass
-                # Fallback: только базовая валюта
-                prices[self.currency] = {
-                    'original_price': self.price,
-                    'converted_price': self.price,
-                    'price_with_margin': self.price,
+            if price_info:
+                # Базовая цена (если price_info только что создан, base_currency может быть из продукта)
+                base_currency = (price_info.base_currency or self.currency or 'RUB').upper()
+                prices[base_currency] = {
+                    'original_price': price_info.base_price,
+                    'converted_price': price_info.base_price,
+                    'price_with_margin': price_info.base_price,
                     'is_base_price': True
                 }
-        
+                
+                # RUB
+                if price_info.rub_price_with_margin:
+                    prices['RUB'] = {
+                        'original_price': price_info.rub_price,
+                        'converted_price': price_info.rub_price,
+                        'price_with_margin': price_info.rub_price_with_margin,
+                        'is_base_price': False
+                    }
+                
+                # USD
+                if price_info.usd_price_with_margin:
+                    prices['USD'] = {
+                        'original_price': price_info.usd_price,
+                        'converted_price': price_info.usd_price,
+                        'price_with_margin': price_info.usd_price_with_margin,
+                        'is_base_price': False
+                    }
+                
+                # KZT
+                if price_info.kzt_price_with_margin:
+                    prices['KZT'] = {
+                        'original_price': price_info.kzt_price,
+                        'converted_price': price_info.kzt_price,
+                        'price_with_margin': price_info.kzt_price_with_margin,
+                        'is_base_price': False
+                    }
+                
+                # EUR
+                if price_info.eur_price_with_margin:
+                    prices['EUR'] = {
+                        'original_price': price_info.eur_price,
+                        'converted_price': price_info.eur_price,
+                        'price_with_margin': price_info.eur_price_with_margin,
+                        'is_base_price': False
+                    }
+                    
+                # TRY
+                if price_info.try_price_with_margin:
+                    prices['TRY'] = {
+                        'original_price': price_info.try_price,
+                        'converted_price': price_info.try_price,
+                        'price_with_margin': price_info.try_price_with_margin,
+                        'is_base_price': False
+                    }
+
+                # USDT
+                if price_info.usdt_price_with_margin:
+                    prices['USDT'] = {
+                        'original_price': price_info.usdt_price,
+                        'converted_price': price_info.usdt_price,
+                        'price_with_margin': price_info.usdt_price_with_margin,
+                        'is_base_price': False
+                    }
+
+        except Exception:
+            pass
+
+        # Если не нашли запись с ценами (ProductPrice), используем базовую цену товара как fallback
+        if not prices and self.price is not None:
+            base_curr = (self.currency or 'RUB').upper()
+            prices[base_curr] = {
+                'original_price': self.price,
+                'converted_price': self.price,
+                'price_with_margin': self.price,
+                'is_base_price': True
+            }
+
+        self._all_prices_cache = prices
         return prices
+    
     
     def get_current_price(self, preferred_currency='RUB'):
         """Получает текущую цену в предпочитаемой валюте"""
@@ -3378,19 +3401,13 @@ class FurnitureProduct(AbstractDomainProduct):
     )
 
     # Специфичные для мебели поля
-    material = models.CharField(_("Материал"), max_length=100, blank=True)
+    material = models.CharField(_("Материал"), max_length=1000, blank=True)
     furniture_type = models.CharField(
         _("Тип мебели"),
-        max_length=100,
+        max_length=255,
         blank=True,
-        choices=[
-            ("chairs", _("Стулья")),
-            ("tables", _("Столы")),
-            ("wardrobes", _("Шкафы")),
-            ("sofas", _("Диваны")),
-        ],
     )
-    dimensions = models.CharField(_("Размеры"), max_length=200, blank=True, help_text=_("Например: 200x100x80 см"))
+    dimensions = models.CharField(_("Размеры"), max_length=500, blank=True, help_text=_("Например: 200x100x80 см"))
 
     class Meta:
         verbose_name = _("Товар мебели")

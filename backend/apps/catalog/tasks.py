@@ -374,3 +374,33 @@ def enrich_medicine_media(
             raise self.retry(exc=e)
         return {"status": "error", "message": str(e)}
 
+
+@shared_task(
+    name="catalog.sync_ikea_products",
+    bind=True, max_retries=3, default_retry_delay=300,
+)
+def sync_ikea_product_task(self, item_codes: list[str]) -> dict:
+    """Задача: получение данных о товарах IKEA по артикулам."""
+    from apps.catalog.services import IkeaService
+    
+    service = IkeaService()
+    items = service.fetch_items(item_codes)
+    
+    processed = 0
+    errors = 0
+    
+    for item in items:
+        try:
+            service.upsert_furniture_product(item)
+            processed += 1
+        except Exception as e:
+            logger.error(f"Error upserting IKEA product: {str(e)}")
+            errors += 1
+            
+    return {
+        "status": "success",
+        "processed": processed,
+        "errors": errors,
+        "total": len(item_codes)
+    }
+

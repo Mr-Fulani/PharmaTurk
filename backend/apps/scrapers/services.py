@@ -54,6 +54,7 @@ _DOMAIN_GETTER_NAMES = {
     "books": "_get_book_product",
     "jewelry": "_get_jewelry_product",
     "medicines": "_get_medicine_product",
+    "furniture": "_get_furniture_product",
 }
 
 # Реестр: product_type → метод обновления атрибутов доменной модели из attrs
@@ -61,6 +62,7 @@ _ATTRIBUTE_UPDATE_HANDLER_NAMES = {
     "books": "_update_book_attributes",
     "jewelry": "_update_jewelry_attributes",
     "medicines": "_update_medicine_attributes",
+    "furniture": "_update_furniture_attributes",
 }
 
 
@@ -611,6 +613,94 @@ class ScraperIntegrationService:
             return bool(getattr(config, "ai_on_update_enabled", True))
         return True
 
+    def _get_furniture_product(self, product: Product) -> "FurnitureProduct":
+        """Находит или создаёт FurnitureProduct для Product с product_type='furniture'."""
+        from apps.catalog.models import FurnitureProduct
+        item = getattr(product, "furniture_item", None)
+        if item:
+            return item
+            
+        # Создаём FurnitureProduct, привязанный к shadow Product
+        from django.utils.text import slugify
+        import uuid
+
+        base_slug = product.slug or slugify(product.name)
+        slug = f"furn-{base_slug}"
+        if len(slug) > 490:
+            slug = slug[:490]
+        
+        i = 2
+        while FurnitureProduct.objects.filter(slug=slug).exists():
+            suffix = f"-{i}"
+            slug = f"{slug[:500-len(suffix)]}{suffix}"
+            i += 1
+            
+        # Базовые поля от Product
+        item = FurnitureProduct(
+            base_product=product,
+            name=product.name,
+            slug=slug,
+            description=product.description or "",
+            category=product.category,
+            brand=product.brand,
+            price=product.price,
+            currency=product.currency or "RUB",
+            old_price=product.old_price,
+            external_id=product.external_id or "",
+            external_url=product.external_url or "",
+            external_data=product.external_data or {},
+            is_active=product.is_active,
+            is_available=product.is_available,
+            main_image=product.main_image or "",
+        )
+        item.save()
+        # Обновляем кеш
+        product.furniture_item = item
+        return item
+
+    def _update_furniture_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
+        """Обновляет специфичные поля FurnitureProduct из атрибутов парсера."""
+        item = self._get_furniture_product(product)
+        updated = False
+        
+        if "dimensions" in attrs and attrs["dimensions"] and attrs["dimensions"] != item.dimensions:
+            item.dimensions = attrs["dimensions"]
+            updated = True
+        if "material" in attrs and attrs["material"] and attrs["material"] != item.material:
+            item.material = attrs["material"]
+            updated = True
+        if "furniture_type" in attrs and attrs["furniture_type"] and attrs["furniture_type"] != item.furniture_type:
+            item.furniture_type = attrs["furniture_type"]
+            updated = True
+            
+        # Обновляем остатки и доступность в доменной модели тоже
+        if product.is_available != item.is_available:
+            item.is_available = product.is_available
+            updated = True
+        if product.stock_quantity != item.stock_quantity:
+            item.stock_quantity = product.stock_quantity
+            item.is_available = (item.stock_quantity or 0) > 0
+            updated = True
+            
+        # Если есть видео
+        if "video_url" in attrs and attrs["video_url"]:
+            # Сохраняем в external_data или если есть поле video_url в модели
+            if hasattr(item, "video_url") and item.video_url != attrs["video_url"]:
+                item.video_url = attrs["video_url"]
+                updated = True
+
+        # Если есть информация о вариантах от IKEA, сохраняем в external_data
+        if "variant_info" in attrs and attrs["variant_info"]:
+            if not isinstance(item.external_data, dict):
+                item.external_data = {}
+            if "variants" not in item.external_data:
+                item.external_data["variants"] = attrs["variant_info"]
+                updated = True
+            
+        if updated:
+            item.save()
+        return updated
+
     def _update_existing_product(
         self,
         session: ScrapingSession,
@@ -630,6 +720,12 @@ class ScraperIntegrationService:
         # Обновляем наличие
         if scraped_product.is_available != existing_product.is_available:
             existing_product.is_available = scraped_product.is_available
+            updated = True
+            
+        # Обновляем количество на складе
+        if scraped_product.stock_quantity is not None and scraped_product.stock_quantity != existing_product.stock_quantity:
+            existing_product.stock_quantity = scraped_product.stock_quantity
+            existing_product.is_available = (existing_product.stock_quantity or 0) > 0
             updated = True
 
         # Обновляем изображения, если их нет

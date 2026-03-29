@@ -571,9 +571,10 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        # Скрываем описание ТОЛЬКО для главной страницы
+        # Скрываем описание и счетчики ТОЛЬКО для главной страницы
         if self.request.query_params.get('main_page') == 'true':
             context['hide_description'] = True
+            context['hide_counts'] = True
         return context
 
     def children(self, request, pk=None):

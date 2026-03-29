@@ -28,6 +28,7 @@ from .models import (
     ShoeProduct, ShoeProductTranslation, ShoeProductImage, ShoeVariant, ShoeVariantImage, ShoeVariantSize, ShoeProductSize,
     ElectronicsProduct, ElectronicsProductTranslation, ElectronicsProductImage,
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
+    FurnitureProductImage,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
     Service, ServiceTranslation, ServiceImage, ServiceAttribute, 
     GlobalAttributeKey, GlobalAttributeKeyTranslation, ProductAttributeValue,
@@ -248,6 +249,25 @@ class FurnitureVariantImageInline(admin.TabularInline):
     fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
     readonly_fields = ('image_preview',)
     
+    def image_preview(self, obj):
+        """Превью изображения."""
+        if obj:
+            image_url = obj.image_file.url if obj.image_file else obj.image_url
+            if image_url:
+                return format_html(
+                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
+                    image_url
+                )
+        return "-"
+    image_preview.short_description = _("Превью")
+
+class FurnitureProductImageInline(admin.TabularInline):
+    """Инлайн изображений товара мебели (галерея)."""
+    model = FurnitureProductImage
+    extra = 1
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
+
     def image_preview(self, obj):
         """Превью изображения."""
         if obj:
@@ -1893,7 +1913,7 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Mod
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
-    inlines = [FurnitureProductTranslationInline, FurnitureVariantInline, ProductAttributeValueInline]
+    inlines = [FurnitureProductTranslationInline, FurnitureVariantInline, FurnitureProductImageInline, ProductAttributeValueInline]
 
 
 # ============================================================================

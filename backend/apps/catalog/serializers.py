@@ -267,10 +267,14 @@ class CategorySerializer(serializers.ModelSerializer):
     
     def get_children_count(self, obj):
         """Количество подкатегорий."""
+        if self.context.get('hide_counts'):
+            return 0
         return obj.children.filter(is_active=True).count()
 
     def get_products_count(self, obj):
         """Количество товаров в категории и всех её подкатегориях."""
+        if self.context.get('hide_counts'):
+            return 0
         cat_ids = _get_category_ids_with_descendants([obj.slug])
         if not cat_ids:
             return 0
@@ -337,11 +341,16 @@ class BrandSerializer(serializers.ModelSerializer):
         """Скрытие счетчика товаров для главной страницы."""
         ret = super().to_representation(instance)
         if self.context.get('hide_counts'):
-            ret['products_count'] = None
+            ret['products_count'] = 0
         return ret
     
     def get_products_count(self, obj):
         """Количество товаров бренда в наличии (точное с учетом доменов)."""
+        # Если в контексте указано скрыть счетчики (например, для главной страницы),
+        # выходим немедленно, чтобы не нагружать БД тяжелыми запросами count().
+        if self.context.get('hide_counts'):
+            return None
+
         model_map = {
             'jewelry': JewelryProduct,
             'clothing': ClothingProduct,
@@ -816,15 +825,21 @@ class ProductSerializer(serializers.ModelSerializer):
         return None
 
     def get_video_url(self, obj):
+        """URL видео товара (Generic). Приоритет загруженному файлу."""
         request = self.context.get('request')
+        
+        # 1. Приоритет файлу из R2/Media (проксированный)
+        file_field = getattr(obj, "main_video_file", None)
+        if file_field and getattr(file_field, "name", None):
+            return _resolve_file_url(file_field, request)
+            
+        # 2. Фолбэк на внешний URL
         raw_url = getattr(obj, "video_url", None) or ""
         if raw_url and raw_url.strip():
             path_lower = raw_url.split("?")[0].lower()
             if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
                 return _resolve_media_url(raw_url, request)
-        file_field = getattr(obj, "main_video_file", None)
-        if file_field and getattr(file_field, "name", None):
-            return _resolve_file_url(file_field, request)
+                
         return None
 
     def get_meta_title(self, obj):
@@ -1690,18 +1705,28 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         return None
     
     def get_video_url(self, obj):
-        """URL видео для воспроизведения: только реальное видео, не изображения."""
+        """URL видео для воспроизведения (Clothing). Приоритет загруженному файлу."""
         request = self.context.get('request')
-        raw_url = getattr(obj, "video_url", None) or ""
-        if not raw_url or not raw_url.strip():
-            raw_url = ""
-        if raw_url:
-            path_lower = raw_url.split("?")[0].lower()
-            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
-                return _resolve_media_url(raw_url, request)
+        
+        # 1. Приоритет файлу в ClothingProduct
         file_field = getattr(obj, "main_video_file", None)
         if file_field and getattr(file_field, "name", None):
             return _resolve_file_url(file_field, request)
+
+        # 2. Проверка shadow-копии (Product)
+        base_product = getattr(obj, "base_product", None)
+        if base_product:
+            file_field = getattr(base_product, "main_video_file", None)
+            if file_field and getattr(file_field, "name", None):
+                return _resolve_file_url(file_field, request)
+
+        # 3. Фолбэк на внешний URL
+        raw_url = getattr(obj, "video_url", None) or ""
+        if raw_url and raw_url.strip():
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+                
         return None
     
     def get_price_formatted(self, obj):
@@ -1974,7 +1999,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     active_variant_stock_quantity = serializers.SerializerMethodField()
     active_variant_main_image_url = serializers.SerializerMethodField()
     active_variant_old_price_formatted = serializers.SerializerMethodField()
-    active_variant_old_price_formatted = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
     translations = ShoeProductTranslationSerializer(many=True, read_only=True)
     product_type = serializers.CharField(source='_domain_product_type', read_only=True)
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
@@ -1991,7 +2016,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'size', 'color',
-            'is_available', 'stock_quantity', 'main_image', 'main_image_url',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
             'images', 'sizes', 'dynamic_attributes', 'product_type',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
@@ -2002,6 +2027,31 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
+    def get_video_url(self, obj):
+        """URL видео товара (Shoes). Приоритет загруженному файлу."""
+        request = self.context.get('request')
+        
+        # 1. Приоритет файлу в ShoeProduct
+        file_field = getattr(obj, "main_video_file", None)
+        if file_field and getattr(file_field, "name", None):
+            return _resolve_file_url(file_field, request)
+
+        # 2. Проверка shadow-копии (Product)
+        base_product = getattr(obj, "base_product", None)
+        if base_product:
+            file_field = getattr(base_product, "main_video_file", None)
+            if file_field and getattr(file_field, "name", None):
+                return _resolve_file_url(file_field, request)
+
+        # 3. Фолбэк на внешний URL
+        raw_url = getattr(obj, "video_url", None) or ""
+        if raw_url and raw_url.strip():
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+                
+        return None
+
     def get_main_image_url(self, obj):
         """URL главного изображения.
         
@@ -2512,6 +2562,23 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
         return resolve_book_seo_value(obj, "og_image_url")
 
 
+class FurnitureProductImageSerializer(serializers.ModelSerializer):
+    """Сериализатор изображений товаров мебели (галерея)."""
+    
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FurnitureProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+    
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.image_url, request)
+
+
 # ============================================================================
 # СЕРИАЛИЗАТОРЫ ДЛЯ МЕБЕЛИ
 # ============================================================================
@@ -2657,6 +2724,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
     og_title = serializers.SerializerMethodField()
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
     
     class Meta:
         model = FurnitureProduct
@@ -2664,7 +2732,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'material', 'furniture_type', 'dimensions',
-            'is_available', 'stock_quantity', 'main_image', 'main_image_url',
+            'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
             'images', 'dynamic_attributes',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
@@ -2704,6 +2772,31 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
                 if file_url:
                     return file_url
                 return _resolve_media_url(v_first.image_url, request)
+        return None
+    
+    def get_video_url(self, obj):
+        """URL видео товара (Furniture). Приоритет загруженному файлу."""
+        request = self.context.get('request')
+        
+        # 1. Приоритет файлу в FurnitureProduct
+        file_field = getattr(obj, "main_video_file", None)
+        if file_field and getattr(file_field, "name", None):
+            return _resolve_file_url(file_field, request)
+
+        # 2. Проверка shadow-копии (Product), т.к. enrichment часто обновляет только её
+        base_product = getattr(obj, "base_product", None)
+        if base_product:
+            file_field = getattr(base_product, "main_video_file", None)
+            if file_field and getattr(file_field, "name", None):
+                return _resolve_file_url(file_field, request)
+
+        # 3. Фолбэк на внешний URL
+        raw_url = getattr(obj, "video_url", None) or ""
+        if raw_url and raw_url.strip():
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+                
         return None
     
     def get_price_formatted(self, obj):
@@ -2826,11 +2919,23 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         return (preferred or obj.currency or 'RUB').upper()
 
     def get_images(self, obj):
-        """Галерея изображений."""
+        """Галерея изображений. Объединяет изображения товара и текущего варианта."""
+        all_images = []
+        request = self.context.get('request')
+        
+        # 1. Изображения самого товара
+        product_images = obj.images.all().order_by("sort_order")
+        if product_images.exists():
+            all_images.extend(FurnitureProductImageSerializer(product_images, many=True, context={'request': request}).data)
+            
+        # 2. Изображения активного варианта
         variant = self._get_active_variant(obj)
         if variant:
-            return FurnitureVariantImageSerializer(variant.images.all().order_by("sort_order"), many=True).data
-        return []
+            variant_images = variant.images.all().order_by("sort_order")
+            if variant_images.exists():
+                all_images.extend(FurnitureVariantImageSerializer(variant_images, many=True, context={'request': request}).data)
+                
+        return all_images
 
     def _get_default_variant(self, obj):
         variants = getattr(obj, "variants", None)
@@ -3212,16 +3317,28 @@ class JewelryProductSerializer(serializers.ModelSerializer):
         return None
 
     def get_video_url(self, obj):
-        """URL видео (Reels и т.д.): только реальное видео, не изображения."""
+        """URL видео товара (Jewelry). Приоритет загруженному файлу."""
         request = self.context.get('request')
+        
+        # 1. Приоритет файлу в JewelryProduct
+        file_field = getattr(obj, "main_video_file", None)
+        if file_field and getattr(file_field, "name", None):
+            return _resolve_file_url(file_field, request)
+
+        # 2. Проверка shadow-копии (Product)
+        base_product = getattr(obj, "base_product", None)
+        if base_product:
+            file_field = getattr(base_product, "main_video_file", None)
+            if file_field and getattr(file_field, "name", None):
+                return _resolve_file_url(file_field, request)
+
+        # 3. Фолбэк на внешний URL
         raw_url = getattr(obj, "video_url", None) or ""
         if raw_url and raw_url.strip():
             path_lower = raw_url.split("?")[0].lower()
             if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
                 return _resolve_media_url(raw_url, request)
-        file_field = getattr(obj, "main_video_file", None)
-        if file_field and getattr(file_field, "name", None):
-            return _resolve_file_url(file_field, request)
+                
         return None
 
     def _get_preferred_currency(self, obj) -> str:
