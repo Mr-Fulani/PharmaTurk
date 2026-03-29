@@ -2558,7 +2558,7 @@ def proxy_image(request):
     logger.info(f"Contains cdninstagram: {'cdninstagram.com' in image_url}")
     
     # Разрешённые домены для прокси (Instagram, CDN проекта)
-    _ALLOWED_PROXY_DOMAINS = ('instagram.f', 'cdninstagram.com', 'cdn.it-dev.space', 'r2.dev')
+    _ALLOWED_PROXY_DOMAINS = ('instagram.f', 'cdninstagram.com', 'cdn.mudaroba.com', 'r2.dev')
     if not any(d in image_url for d in _ALLOWED_PROXY_DOMAINS):
         logger.error(f"Invalid domain check failed for URL: {image_url[:100]}")
         return JsonResponse({'error': f'Invalid domain: {image_url[:100]}...'}, status=400)

@@ -1,4 +1,4 @@
-name: mudaroba
+name: pharmaturk
 
 services:
   postgres:

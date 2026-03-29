@@ -38,7 +38,7 @@ def _r2_proxy_url(absolute_url, request):
     
     r2_config = getattr(settings, 'R2_CONFIG', {})
     r2_public = (r2_config.get('public_url', None) or getattr(settings, 'R2_PUBLIC_URL', '') or '').rstrip('/')
-    project_cdn = 'https://cdn.it-dev.space'  # CNAME для R2
+    project_cdn = 'https://cdn.mudaroba.com'  # CNAME для R2
     
     is_r2 = r2_public and absolute_url.startswith(r2_public)
     is_project_cdn = absolute_url.startswith(project_cdn)
@@ -84,8 +84,8 @@ def _resolve_media_url(value, request):
         return f"/api/catalog/proxy-image/?url={quote(value)}"
     
     # Прокси для внешних CDN (устраняет CORS/EncodingError на Flutter Web)
-    # ВАЖНО: Если это видео с cdn.it-dev.space, оно уже должно было уйти выше в proxy-media
-    if value.startswith('http') and ('cdn.it-dev.space' in value or 'r2.dev' in value):
+    # ВАЖНО: Если это видео с cdn.mudaroba.com, оно уже должно было уйти выше в proxy-media
+    if value.startswith('http') and ('cdn.mudaroba.com' in value or 'r2.dev' in value):
         proxy = _r2_proxy_url(value, request)
         if proxy:
             return proxy

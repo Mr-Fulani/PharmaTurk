@@ -324,7 +324,7 @@ USE_X_FORWARDED_HOST = True
 # CORS и CSRF для продакшена (задать в .env)
 CSRF_TRUSTED_ORIGINS = env.list(
     "CSRF_TRUSTED_ORIGINS",
-    default=["https://it-dev.space", "https://www.it-dev.space", "https://localhost", "http://localhost"] if DEBUG else ["https://it-dev.space", "https://www.it-dev.space"],
+    default=["https://mudaroba.com", "https://www.mudaroba.com", "https://localhost", "http://localhost"] if DEBUG else ["https://mudaroba.com", "https://www.mudaroba.com"],
 )
 CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
