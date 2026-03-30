@@ -1183,27 +1183,43 @@ attributes = {
 
 ## Продакшен: после `git pull`
 
-После выката версии с новыми миграциями (в т.ч. `scrapers.0012` — поле `ScraperConfig.default_brand`):
+Файл `docker-compose.yml` задаёт проект **`pharmaturk`** (`name: pharmaturk`). Сервисы бэкенда: **`backend`**, **`celeryworker`**, **`celery_ai`**, **`celerybeat`** — у всех подключается корневой **`.env`** (`env_file`).
 
-1. Применить миграции Django (команда из **корня репозитория**, имя сервиса в `docker compose` подставьте свой — часто `backend`):
+### Entrypoint бэкенда (`docker-entrypoint.sh`)
 
-```bash
-docker compose exec backend python manage.py migrate
-```
+У контейнера **`backend`** точка входа — `backend/docker-entrypoint.sh`: при **каждом** старте контейнера выполняются `migrate --noinput`, `collectstatic`, затем gunicorn/runserver. То есть после `git pull` и **`docker compose up -d --build backend`** (или `restart backend`) миграции часто уже применятся сами.
 
-Если backend запускается без Docker — из каталога `backend` с настроенным `DJANGO_SETTINGS_MODULE`:
+Если нужно применить миграции **без** пересоздания backend (только команда внутри работающего контейнера), из **корня репозитория**:
 
 ```bash
-cd backend && python manage.py migrate
+docker compose exec backend poetry run python manage.py migrate
 ```
 
-2. Перезапустить воркеры Celery (чтобы подтянули код парсеров и задач):
+Без Docker — из каталога `backend` с настроенным окружением:
 
 ```bash
-docker compose restart celeryworker
+cd backend && poetry run python manage.py migrate
 ```
 
-При отдельном воркере для AI — при необходимости: `docker compose restart celery_ai`.
+### Celery после обновления кода
+
+Чтобы воркеры подхватили новый код парсеров и задач:
+
+```bash
+docker compose restart celeryworker celery_ai celerybeat
+```
+
+(достаточно только `celeryworker`, если менялись обычные парсеры, без очереди `ai`.)
+
+### Sentry
+
+В **`.env`** в корне репозитория задайте **`SENTRY_DSN`** (DSN проекта в Sentry). Пустое значение — мониторинг ошибок **выключен**.
+
+Переменная подхватывается сервисами с `env_file: .env` (**`backend`**, **`celeryworker`**, **`celery_ai`**, **`celerybeat`**): в `config/settings.py` вызывается `sentry_sdk.init(...)` только если `SENTRY_DSN` непустой. После смены DSN перезапустите соответствующие контейнеры.
+
+### Миграции, затронувшие парсеры
+
+Пример: **`scrapers.0012`** — поле `ScraperConfig.default_brand`. После выката убедитесь, что `migrate` прошёл (автоматически при старте `backend` или вручную командой выше).
 
 ---
 
