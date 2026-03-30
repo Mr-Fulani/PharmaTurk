@@ -174,13 +174,14 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                   }}
                 >
                   <img
-                    src="/telegram-icon.png"
+                    src="/telegram.svg"
                     alt="Telegram"
                     width="20"
                     height="20"
                     className="transition group-hover:scale-110"
                     style={{
-                      zIndex: 1
+                      zIndex: 1,
+                      filter: theme.theme === 'dark' ? 'invert(1)' : 'none'
                     }}
                   />
                 </a>
@@ -197,13 +198,14 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                   }}
                 >
                   <img
-                    src="/whatsapp-icon.png"
+                    src="/whatsapp.svg"
                     alt="WhatsApp"
                     width="20"
                     height="20"
                     className="transition group-hover:scale-110"
                     style={{
-                      zIndex: 1
+                      zIndex: 1,
+                      filter: theme.theme === 'dark' ? 'invert(1)' : 'none'
                     }}
                   />
                 </a>
@@ -220,13 +222,14 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                   }}
                 >
                   <img
-                    src="/vk_icon.png"
+                    src="/vk.svg"
                     alt="VK"
                     width="20"
                     height="20"
                     className="transition group-hover:scale-110"
                     style={{
-                      zIndex: 1
+                      zIndex: 1,
+                      filter: theme.theme === 'dark' ? 'invert(1)' : 'none'
                     }}
                   />
                 </a>
@@ -243,13 +246,14 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                   }}
                 >
                   <img
-                    src="/instagram-icon.png"
+                    src="/instagram.svg"
                     alt="Instagram"
                     width="20"
                     height="20"
                     className="transition group-hover:scale-110"
                     style={{
-                      zIndex: 1
+                      zIndex: 1,
+                      filter: theme.theme === 'dark' ? 'invert(1)' : 'none'
                     }}
                   />
                 </a>

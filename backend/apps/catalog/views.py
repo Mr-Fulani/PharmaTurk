@@ -2614,7 +2614,7 @@ def proxy_image(request):
                 ct = next((ext_map[e] for e in ['.webp', '.png', '.gif', '.jpeg', '.jpg'] if path_lower.endswith(e)), 'image/jpeg')
             cache.set(cache_key, response.content, 86400)
             django_response = HttpResponse(response.content, content_type=ct)
-            django_response['Cache-Control'] = 'public, max-age=86400'
+            django_response['Cache-Control'] = 'public, max-age=2592000, immutable'
             django_response['Access-Control-Allow-Origin'] = '*'
             return django_response
 
@@ -2759,7 +2759,7 @@ def proxy_media(request):
             response['Content-Length'] = str(size)
 
         response['Accept-Ranges'] = 'bytes'
-        response['Cache-Control'] = 'public, max-age=86400'
+        response['Cache-Control'] = 'public, max-age=2592000, immutable'
         response['Access-Control-Allow-Origin'] = '*'
         return response
 

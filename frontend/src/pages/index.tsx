@@ -142,6 +142,10 @@ export default function Home({ brands, categories }: HomePageProps) {
             <img
               src={youtubeThumb}
               alt={alt || ''}
+              loading="lazy"
+              decoding="async"
+              width={480}
+              height={360}
               className="absolute inset-0 h-full w-full object-cover"
             />
           )}
@@ -156,7 +160,7 @@ export default function Home({ brands, categories }: HomePageProps) {
               const el = e.currentTarget
               setTimeout(() => {
                 el.style.opacity = '1'
-              }, 3100) // прячем стартовые оверлеи YouTube
+              }, 3100)
             }}
             allowFullScreen={false}
           />
@@ -176,7 +180,7 @@ export default function Home({ brands, categories }: HomePageProps) {
           muted
           loop
           playsInline
-          preload="metadata"
+          preload="none"
           onError={(e) => {
             if (fallbackSrc) {
               const wrapper = e.currentTarget.parentElement
@@ -184,6 +188,9 @@ export default function Home({ brands, categories }: HomePageProps) {
                 const img = document.createElement('img')
                 img.src = fallbackSrc
                 img.alt = alt || ''
+                img.width = 400
+                img.height = 300
+                img.loading = 'lazy'
                 img.className = 'absolute inset-0 h-full w-full object-cover'
                 wrapper.replaceChildren(img)
               }
@@ -199,6 +206,10 @@ export default function Home({ brands, categories }: HomePageProps) {
       <img
         src={src}
         alt={alt || ''}
+        loading="lazy"
+        decoding="async"
+        width={400}
+        height={300}
         className="absolute inset-0 h-full w-full object-cover"
         onError={(e) => {
           if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {

@@ -336,12 +336,6 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
         key={media.id}
         data-banner-item
         className={styles.item}
-        style={{
-          backgroundImage:
-            (media.content_type === 'image' || media.content_type === 'gif') && fullUrl
-              ? `url(${fullUrl})`
-              : 'none',
-        }}
         onClick={index >= 1 ? handleThumbnailClick : handleLargeImageClick}
       >
         {/* Изображение / GIF как <img>, чтобы отлавливать ошибки и показывать плейсхолдер */}
@@ -360,6 +354,10 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
               }
               alt={title || banner?.title || 'Banner'}
               className={isPicsum ? styles.itemPicsumPlaceholder : styles.itemImage}
+              fetchPriority={isActive ? "high" : "auto"}
+              loading={isActive ? "eager" : "lazy"}
+              decoding="async"
+              sizes="(max-width: 768px) 100vw, 1200px"
               onError={(e) => {
                 setFallbackToPicsumIds((prev) => ({ ...prev, [media.id]: true }))
                 e.currentTarget.src = getPlaceholderImageUrl({

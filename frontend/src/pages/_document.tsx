@@ -34,9 +34,11 @@ class MyDocument extends Document<MyDocumentProps> {
         <Head>
           <meta charSet="utf-8" />
 
-          {/* Preconnect для шрифтов */}
+          {/* Preconnect для ресурсов */}
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+          <link rel="preconnect" href="https://i.pinimg.com" />
+          <link rel="preconnect" href="https://img.youtube.com" />
           <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&display=swap" />
 
           {/* Базовые мета-теги */}
