@@ -12,6 +12,49 @@ const nextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
+  images: {
+    formats: ['image/avif', 'image/webp'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'i.pinimg.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'fastly.picsum.photos',
+      },
+      {
+        protocol: 'https',
+        hostname: 'picsum.photos',
+      },
+      {
+        protocol: 'https',
+        hostname: 'img.youtube.com',
+      }
+    ],
+  },
+  async headers() {
+    return [
+      {
+        source: '/fonts/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/:path*.{png,jpg,jpeg,svg,webp,ico}',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, stale-while-revalidate=59',
+          },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     // Docker: INTERNAL_API_BASE=http://backend:8000. Локально с ngrok: INTERNAL_API_BASE=http://localhost:8000
     const apiDest = process.env.INTERNAL_API_BASE || 'http://backend:8000';

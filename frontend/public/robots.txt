@@ -1,9 +1,10 @@
 User-agent: *
 Allow: /
+
 Disallow: /api/
-Disallow: /profile
-Disallow: /cart
-Disallow: /checkout
+Disallow: /profile/
+Disallow: /cart/
+Disallow: /checkout/
 Disallow: /auth/
 Disallow: /_next/
 

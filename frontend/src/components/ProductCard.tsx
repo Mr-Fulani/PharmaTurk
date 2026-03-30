@@ -130,6 +130,10 @@ export default function ProductCard({
             <img
               src={resolvedImage}
               alt={localizedName}
+              loading="lazy"
+              decoding="async"
+              width={400}
+              height={400}
               className="w-full h-full rounded-md object-cover"
               onError={(e) => {
                 e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
@@ -140,6 +144,10 @@ export default function ProductCard({
             <img
               src={getPlaceholderImageUrl({ type: 'product', id })}
               alt="No image"
+              loading="lazy"
+              decoding="async"
+              width={400}
+              height={400}
               className="w-full h-full rounded-md object-cover"
               onError={(e) => {
                 e.currentTarget.src = '/product-placeholder.svg'
@@ -247,6 +255,10 @@ export default function ProductCard({
           <img
             src={resolvedImage}
             alt={localizedName}
+            loading="lazy"
+            decoding="async"
+            width={400}
+            height={500}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             onError={(e) => {
               e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
@@ -257,6 +269,10 @@ export default function ProductCard({
           <img
             src={getPlaceholderImageUrl({ type: 'product', id })}
             alt="No image"
+            loading="lazy"
+            decoding="async"
+            width={400}
+            height={500}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             onError={(e) => {
               e.currentTarget.src = '/product-placeholder.svg'

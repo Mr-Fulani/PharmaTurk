@@ -373,13 +373,21 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
       <div
         key={`banner-${banner.id}-pos-${index}`}
         className={styles.item}
-        style={{
-          backgroundImage: media && (media.content_type === 'image' || media.content_type === 'gif') 
-            ? `url(${fullUrl})` 
-            : 'none',
-        }}
         onClick={handleBannerClick}
       >
+        {/* Фоновое изображение через <img> для оптимизации LCP */}
+        {media && (media.content_type === 'image' || media.content_type === 'gif') && (
+          <img
+            src={fullUrl}
+            alt={banner.title || ''}
+            className={styles.itemImage}
+            fetchPriority={isActive ? "high" : "auto"}
+            loading={isActive ? "eager" : "lazy"}
+            decoding="async"
+            draggable={false}
+          />
+        )}
+
         {/* Видео контент */}
         {media && media.content_type === 'video' && embedUrl && (
           <iframe
@@ -395,6 +403,7 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
             loop
             muted
             playsInline
+            preload={isActive ? "auto" : "metadata"}
             className={styles.itemVideo}
           >
             <source src={fullUrl} type={media.content_mime_type || 'video/mp4'} />

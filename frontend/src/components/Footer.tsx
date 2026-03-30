@@ -117,7 +117,11 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
             <div className="group relative">
               <img
                 src="/footer-payments.png"
-                alt="payments"
+                alt={t('footer_payments', 'Способы оплаты')}
+                width={160}
+                height={112}
+                loading="lazy"
+                decoding="async"
                 className="h-28 w-auto transition-all duration-200 group-hover:scale-105 group-hover:brightness-110"
               />
               <div className="absolute -top-2 left-1/2 -translate-x-1/2 -translate-y-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
@@ -162,7 +166,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                   target={settings.telegram_url ? '_blank' : undefined}
                   rel={settings.telegram_url ? 'noopener noreferrer' : undefined}
                   className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md"
-                  aria-label="Telegram"
+                  aria-label={t('footer_telegram', 'Связаться через Telegram')}
+                  title={t('footer_telegram', 'Связаться через Telegram')}
                   style={{
                     borderColor: theme.theme === 'dark' ? '#9ca3af' : undefined,
                     backgroundColor: theme.theme === 'dark' ? '#4b5563' : undefined
@@ -184,7 +189,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                   target={settings.whatsapp_url ? '_blank' : undefined}
                   rel={settings.whatsapp_url ? 'noopener noreferrer' : undefined}
                   className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition-all duration-200 hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md"
-                  aria-label="WhatsApp"
+                  aria-label={t('footer_whatsapp', 'Связаться через WhatsApp')}
+                  title={t('footer_whatsapp', 'Связаться через WhatsApp')}
                   style={{
                     borderColor: theme.theme === 'dark' ? '#9ca3af' : undefined,
                     backgroundColor: theme.theme === 'dark' ? '#4b5563' : undefined
@@ -206,7 +212,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                   target={settings.vk_url ? '_blank' : undefined}
                   rel={settings.vk_url ? 'noopener noreferrer' : undefined}
                   className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition-all duration-200 hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md"
-                  aria-label="VK"
+                  aria-label={t('footer_vk', 'Мы ВКонтакте')}
+                  title={t('footer_vk', 'Мы ВКонтакте')}
                   style={{
                     borderColor: theme.theme === 'dark' ? '#9ca3af' : undefined,
                     backgroundColor: theme.theme === 'dark' ? '#4b5563' : undefined
@@ -228,7 +235,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                   target={settings.instagram_url ? '_blank' : undefined}
                   rel={settings.instagram_url ? 'noopener noreferrer' : undefined}
                   className="group relative inline-flex h-12 w-12 items-center justify-center rounded-full border border-main bg-surface transition-all duration-200 hover:-translate-y-0.5 hover:bg-surface/70 hover:shadow-md"
-                  aria-label="Instagram"
+                  aria-label={t('footer_instagram', 'Мы в Instagram')}
+                  title={t('footer_instagram', 'Мы в Instagram')}
                   style={{
                     borderColor: theme.theme === 'dark' ? '#9ca3af' : undefined,
                     backgroundColor: theme.theme === 'dark' ? '#4b5563' : undefined
