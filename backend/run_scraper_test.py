@@ -80,11 +80,15 @@ def run_test():
         # 3. Запускаем парсер
         print(f"Running parser: {parser_name}...")
         with parser_class(base_url=config.base_url) as parser:
-            scraped_product = parser.parse_product_detail(target_url)
-        
-        if not scraped_product:
+            detail_result = parser.parse_product_detail(target_url)
+
+        if not detail_result:
             print("❌ Parser returned None. Check logs.")
             return
+
+        scraped_product = detail_result[0] if isinstance(detail_result, list) else detail_result
+        if isinstance(detail_result, list) and len(detail_result) > 1:
+            print(f"ℹ️ Парсер вернул {len(detail_result)} вариантов; для теста обрабатывается первый.")
 
         print("\n--- Scraped Data ---")
         print(f"Name: {scraped_product.name}")

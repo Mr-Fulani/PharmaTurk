@@ -524,6 +524,25 @@ parser_class = get_parser(task.url)    # → по домену из URL
 | `ilacfiyati` | `IlacFiyatiParser` | ilacfiyati.com, www.ilacfiyati.com |
 | `ikea` | `IkeaParser` | ikea.com.tr, www.ikea.com.tr |
 
+### 6.4. IKEA Turkey (`ikea.com.tr`)
+
+Парсер `IkeaParser` ходит во внутренний API (`IkeaService`).
+
+**Начальный URL в задаче (`SiteScraperTask.start_url`):**
+
+| Режим | Примеры URL |
+|-------|-------------|
+| Категория (листинг) | `https://www.ikea.com.tr/en/category/four-seats`, `https://www.ikea.com.tr/kategori/...` |
+| Одна карточка товара | `https://www.ikea.com.tr/urun/slug-80275887` **или** `https://www.ikea.com.tr/en/product/slug-39440475` |
+
+Артикул для API — **8 цифр** в конце слага (поддерживаются и `/urun/`, и английский `/en/product/`).
+
+**Категория и подкатегория в задаче:** в админке у `SiteScraperTask` можно задать **целевую категорию** и **подкатегорию**. При запуске через Celery в сессию подставляется категория с **наивысшим приоритетом: `target_subcategory`, если заполнена, иначе `target_category`**. Товары сохраняются в выбранную запись каталога (slug подкатегории уходит в маппинг как у обычной категории).
+
+**Мебель и цветовые варианты:** при парсинге **листинга** и **одной ссылки** собираются все цвета из `colorOptions` API; в `attributes` передаётся `furniture_variants`, по ним создаются записи `FurnitureVariant` и галереи вариантов. В листинге несколько `sprCode` одной модели не порождают дубликаты карточек — учитывается одно «семейство» вариантов.
+
+**Бренд:** в `ScraperConfig` доступно поле **`default_brand`** (миграция `scrapers.0012_scraperconfig_default_brand`). Если задано, оно имеет приоритет над строкой бренда из парсера; для IKEA без поля в конфиге по-прежнему подставляется `IKEA` из кода парсера.
+
 ---
 
 ## 7. Модели данных
@@ -638,8 +657,9 @@ class ScrapedProductLog(models.Model):
 
 Ключ — URL категории сайта, значение — название категории в нашей системе.
 
-> Если при этом у `SiteScraperTask` задан `target_category`, он имеет приоритет
-> над `category_mapping`.
+> Если при этом у `SiteScraperTask` заданы категории, приоритет такой:
+> **`target_subcategory` → `target_category`** — выше, чем `category_mapping`
+> и `default_category` у конфига (см. также раздел 6.4 про IKEA).
 
 ---
 
@@ -1099,10 +1119,14 @@ attributes = {
 
 ### Порядок приоритетов для категории
 
+При старте из **SiteScraperTask** в `ScrapingSession.target_category` попадает
+уже **разрешённая** категория: сначала подкатегория задачи, если указана.
+
 ```
-1. SiteScraperTask.target_category    ← высший приоритет
-2. ScrapingSession.target_category
-3. ScraperConfig.category_mapping[task.url]
+1. SiteScraperTask.target_subcategory  ← если задана (узкая категория)
+2. SiteScraperTask.target_category
+   → записывается в ScrapingSession.target_category при запуске Celery
+3. ScraperConfig.category_mapping (не используется, если п.1–2 задали категорию)
 4. ScraperConfig.default_category     ← низший приоритет
 ```
 
@@ -1119,7 +1143,8 @@ attributes = {
 
 ### Товары попадают не в ту категорию
 
-1. Убедиться что у `SiteScraperTask` задан `target_category`
+1. Проверить **`target_subcategory`** и **`target_category`** у `SiteScraperTask`
+   (подкатегория важнее; для Celery-запуска обе учитываются в `run_scraper_task`)
 2. Проверить что категория существует в `/admin/catalog/category/`
 3. Проверить `category_mapping` в `ScraperConfig`
 
@@ -1153,6 +1178,32 @@ attributes = {
 - Если значение уже есть — AI не перезаписывает
 - Проверить `domain_sync.py` — `stock_quantity` из базового Product не должен
   перезаписывать доменный product если базовый = None
+
+---
+
+## Продакшен: после `git pull`
+
+После выката версии с новыми миграциями (в т.ч. `scrapers.0012` — поле `ScraperConfig.default_brand`):
+
+1. Применить миграции Django (команда из **корня репозитория**, имя сервиса в `docker compose` подставьте свой — часто `backend`):
+
+```bash
+docker compose exec backend python manage.py migrate
+```
+
+Если backend запускается без Docker — из каталога `backend` с настроенным `DJANGO_SETTINGS_MODULE`:
+
+```bash
+cd backend && python manage.py migrate
+```
+
+2. Перезапустить воркеры Celery (чтобы подтянули код парсеров и задач):
+
+```bash
+docker compose restart celeryworker
+```
+
+При отдельном воркере для AI — при необходимости: `docker compose restart celery_ai`.
 
 ---
 

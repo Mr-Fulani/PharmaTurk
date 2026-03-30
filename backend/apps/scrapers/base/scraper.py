@@ -77,6 +77,10 @@ class ScrapedProduct:
         }
 
 
+# Один товар или несколько (например цветовые варианты IKEA)
+ScrapedProductDetailResult = Union[Optional[ScrapedProduct], List[ScrapedProduct]]
+
+
 class BaseScraper(ABC):
     """Базовый абстрактный класс для всех парсеров."""
     
@@ -230,14 +234,14 @@ class BaseScraper(ABC):
         pass
     
     @abstractmethod
-    def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
+    def parse_product_detail(self, product_url: str) -> ScrapedProductDetailResult:
         """Парсит детальную страницу товара.
         
         Args:
             product_url: URL товара
             
         Returns:
-            Спарсенный товар или None
+            Один спарсенный товар, список товаров (варианты) или None
         """
         pass
     

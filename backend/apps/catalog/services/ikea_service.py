@@ -1,7 +1,9 @@
 import httpx
+import re
 import time
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 from django.conf import settings
 from django.utils.text import slugify
 from django.utils import timezone
@@ -15,6 +17,34 @@ from apps.catalog.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def extract_ikea_color_from_variant_info(variant_info: Any) -> str:
+    """
+    Значение цвета из variantInfo ответа IKEA TR.
+    Часто приходит как dict: {"color": {"name": "Renk", "value": "bej-beyaz"}, ...},
+    реже как список словарей {name, value}.
+    """
+    if not variant_info:
+        return ""
+    if isinstance(variant_info, dict):
+        c = variant_info.get("color")
+        if isinstance(c, dict):
+            val = (c.get("value") or "").strip()
+            return val[:50] if val else ""
+        if isinstance(c, str) and c.strip():
+            return c.strip()[:50]
+        return ""
+    if isinstance(variant_info, list):
+        for v in variant_info:
+            if not isinstance(v, dict):
+                continue
+            name = (v.get("name") or "").lower()
+            if "renk" in name or "color" in name:
+                val = (v.get("value") or "").strip()
+                if val:
+                    return val[:50]
+    return ""
 
 
 class IkeaService:
@@ -49,6 +79,68 @@ class IkeaService:
         )
         return brand
 
+    @staticmethod
+    def _extract_item_code(url: str) -> Optional[str]:
+        """
+        Артикул из URL карточки товара ikea.com.tr.
+
+        Поддержка:
+        - /urun/slug-80275887 (турецкая витрина)
+        - /en/product/slug-39440475, /tr/product/... (англ./локаль перед product)
+        """
+        if not url or not isinstance(url, str):
+            return None
+        path = urlparse(url.strip()).path.strip("/")
+        if not path:
+            return None
+        segments = [s for s in path.split("/") if s]
+        if not segments:
+            return None
+
+        last: Optional[str] = None
+        # /urun/slug — не путать с /urun-gruplari/
+        if segments[0] == "urun" and len(segments) >= 2:
+            last = segments[-1].split("?")[0]
+        # /en/product/slug или /tr/product/slug
+        elif "product" in segments:
+            idx = segments.index("product")
+            if idx + 1 < len(segments):
+                last = segments[idx + 1].split("?")[0]
+        if not last:
+            return None
+
+        m = re.search(r"(\d{8})$", last)
+        if m:
+            return m.group(1)
+        digits_only = re.sub(r"\D", "", last)
+        if len(digits_only) >= 8:
+            return digits_only[-8:]
+        found = re.findall(r"\d{8}", path.replace(".", ""))
+        return found[-1] if found else None
+
+    @staticmethod
+    def parse_category_list_url(category_url: str) -> Tuple[str, str]:
+        """
+        Слаг категории и язык для API поиска.
+
+        Примеры:
+        - https://www.ikea.com.tr/en/category/four-seats → (four-seats, en)
+        - https://www.ikea.com.tr/kategori/acik-kitapliklar → (acik-kitapliklar, tr)
+        """
+        if not category_url or not isinstance(category_url, str):
+            return "", "tr"
+        path = urlparse(category_url.strip()).path.strip("/")
+        parts = [p for p in path.split("/") if p]
+        if not parts:
+            return "", "tr"
+        # /en/category/foo или /tr/category/foo
+        if len(parts) >= 3 and parts[1] == "category" and parts[0] in ("en", "tr"):
+            return parts[2], parts[0]
+        # /kategori/foo-bar
+        if parts[0] == "kategori" and len(parts) >= 2:
+            return parts[1], "tr"
+        return parts[-1], "tr"
+
     def fetch_item_details(self, item_code: str) -> Optional[Dict]:
         """Получает детальную информацию об одном товаре."""
         clean_code = str(item_code).replace(".", "").strip()
@@ -75,70 +167,188 @@ class IkeaService:
             time.sleep(0.5)
         return results
 
-    def search_items(self, query: str, category: str = None, limit: int = 24) -> List[Dict]:
+    @staticmethod
+    def _clean_spr_code(code: Optional[str]) -> str:
+        return str(code or "").replace(".", "").strip()
+
+    def collect_color_variant_details(self, main_detail: Dict) -> List[Dict]:
+        """Полные деталки по каждому цветовому варианту (options.colorOptions)."""
+        if not main_detail:
+            return []
+        opts = main_detail.get("options") or {}
+        color_opts = opts.get("colorOptions") or []
+        if not color_opts or not isinstance(color_opts, list):
+            return [main_detail]
+
+        codes_ordered: List[str] = []
+        seen: set[str] = set()
+        for entry in color_opts:
+            if not isinstance(entry, dict):
+                continue
+            clean = self._clean_spr_code(entry.get("sprCode"))
+            if not clean or clean in seen:
+                continue
+            seen.add(clean)
+            codes_ordered.append(clean)
+
+        if len(codes_ordered) <= 1:
+            return [main_detail]
+
+        main_code = self._clean_spr_code(main_detail.get("sprCode") or main_detail.get("id"))
+        out: List[Dict] = []
+        for clean in codes_ordered:
+            if clean == main_code:
+                out.append(main_detail)
+                continue
+            time.sleep(0.45)
+            other = self.fetch_item_details(clean)
+            if other:
+                out.append(other)
+        return out if out else [main_detail]
+
+    @staticmethod
+    def _resolve_public_url(item: Dict, item_no: str) -> str:
+        """Канонический URL карточки (slug), если есть в options."""
+        plain = str(item_no).replace(".", "").strip()
+        opts = item.get("options") or {}
+        for key in ("colorOptions", "functionOptions", "variant1Options"):
+            for o in opts.get(key) or []:
+                if not isinstance(o, dict):
+                    continue
+                if IkeaService._clean_spr_code(o.get("sprCode")) != plain:
+                    continue
+                full = o.get("fullUrl")
+                if full and isinstance(full, str) and full.startswith("http"):
+                    return full
+                path = o.get("urlPath")
+                if path and isinstance(path, str):
+                    return f"https://www.ikea.com.tr/{path.lstrip('/')}"
+                break
+        return f"https://www.ikea.com.tr/urun/{plain}"
+
+    @staticmethod
+    def _resolve_stock_and_availability(item: Dict) -> Tuple[Optional[int], bool]:
+        """Остаток с сайта (>0) или None под дефолт парсера (3 шт); доступность для витрины."""
+        raw = item.get("stockCount")
+        if raw is None:
+            raw = item.get("stock")
+        try:
+            stock_int = int(raw) if raw is not None and raw != "" else 0
+        except (TypeError, ValueError):
+            stock_int = 0
+
+        is_sellable = bool(item.get("isSellable", True))
+        is_active = bool(item.get("isActive", True))
+        # Нет в продаже / выведен
+        if not is_sellable or not is_active:
+            return 0, False
+        # Явный положительный остаток
+        if stock_int > 0:
+            return stock_int, True
+        # IKEA часто отдаёт stockCount=0 и onlineStockStatus=NoStock при онлайн-заказе;
+        # количество тогда задаётся в scrapers (дефолт 3 шт).
+        return None, True
+
+    def search_items(
+        self,
+        query: str,
+        category: str = None,
+        limit: int = 24,
+        *,
+        language: str = "tr",
+    ) -> List[Dict]:
         """Ищет товары по запросу или категории."""
         url = f"{self.BASE_URL}/search/products"
         params = {
             "storeCode": "331",
             "includeSuggestions": "true",
             "searchIn": "All",
-            "language": "tr",
-            "size": limit
+            "language": language,
+            "size": limit,
         }
         if query:
             params["keyword"] = query
         if category:
             params["Category"] = category
-            
+
+        headers = {**self.HEADERS, "x-bone-language": language}
+
         try:
-            response = self.client.get(url, params=params)
+            response = self.client.get(url, params=params, headers=headers)
             if response.status_code == 200:
                 data = response.json()
                 return data.get("products", [])
             else:
-                logger.warning(f"IKEA Search returned {response.status_code} for q='{query}', cat='{category}'")
+                logger.warning(
+                    f"IKEA Search returned {response.status_code} for q='{query}', "
+                    f"cat='{category}', lang='{language}'"
+                )
                 return []
         except Exception as e:
-            logger.error(f"Error searching IKEA for q='{query}', cat='{category}': {str(e)}")
+            logger.error(
+                f"Error searching IKEA for q='{query}', cat='{category}', lang='{language}': {str(e)}"
+            )
             return []
 
-    def get_category_products(self, category_slug: str, limit: int = 24) -> List[Dict]:
+    def get_category_products(
+        self,
+        category_slug: str,
+        limit: int = 24,
+        *,
+        language: str = "tr",
+    ) -> List[Dict]:
         """Получает товары конкретной категории по её слагу."""
         # Исследование показало, что API IKEA ожидает весьма специфическую нормализацию:
         # Например, для URL https://www.ikea.com.tr/kategori/acik-kitapliklar
         # API ожидает Category=açik-kitapliklar (с турецкой ç, но ОБЫЧНОЙ i вместо ı)
-        
-        # Попробуем сначала оригинальный слаг
-        products = self.search_items(query=None, category=category_slug, limit=limit)
-        
-        # Если пусто, пробуем "гибридную" нормализацию (ç -> c, но i остается i)
+        #
+        # Английские URL (/en/category/four-seats) с language=tr часто дают 404 — пробуем en + tr.
+
+        def try_langs(slug: str) -> List[Dict]:
+            order: List[str] = []
+            for lang in (language, "tr", "en"):
+                if lang not in order:
+                    order.append(lang)
+            for lang in order:
+                found = self.search_items(query=None, category=slug, limit=limit, language=lang)
+                if found:
+                    return found
+            return []
+
+        products = try_langs(category_slug)
+
+        # Если пусто, пробуем «гибридную» нормализацию турецких слагов в URL
         if not products:
-            # Заменяем только c на ç и s на ş, g на ğ (наиболее частые случаи в навигации ИКЕА)
             hybrid_slug = category_slug.replace("acik", "açik").replace("kitapliklar", "kitapliklar")
-            # На самом деле, просто попробуем наиболее вероятные замены для IKEA TR
             if hybrid_slug != category_slug:
-                products = self.search_items(query=None, category=hybrid_slug, limit=limit)
-        
-        # Если все еще пусто, пробуем еще варианты (добавление параметров, которые видел subagent)
+                products = try_langs(hybrid_slug)
+
+        # Расширенный запрос (как на витрине категории)
         if not products:
             url = f"{self.BASE_URL}/search/products"
-            params = {
-                "language": "tr",
-                "Category": category_slug.replace("acik", "açik"), # Самый частый случай
-                "IncludeFilters": "true",
-                "StoreCode": "331",
-                "sortby": "None",
-                "size": limit,
-                "SearchFrom": "Category",
-                "IncludeColorVariants": "true"
-            }
-            try:
-                response = self.client.get(url, params=params)
-                if response.status_code == 200:
-                    products = response.json().get("products", [])
-            except Exception as e:
-                logger.error(f"Error in fallback category search: {e}")
-                
+            for lang in (language, "tr", "en"):
+                if lang not in ("tr", "en"):
+                    continue
+                params = {
+                    "language": lang,
+                    "Category": category_slug.replace("acik", "açik"),
+                    "IncludeFilters": "true",
+                    "StoreCode": "331",
+                    "sortby": "None",
+                    "size": limit,
+                    "SearchFrom": "Category",
+                    "IncludeColorVariants": "true",
+                }
+                headers = {**self.HEADERS, "x-bone-language": lang}
+                try:
+                    response = self.client.get(url, params=params, headers=headers)
+                    if response.status_code == 200:
+                        products = response.json().get("products", [])
+                        if products:
+                            break
+                except Exception as e:
+                    logger.error(f"Error in fallback category search (lang={lang}): {e}")
+
         return products
 
     def _normalize_item_data(self, item: Dict) -> Dict:
@@ -230,15 +440,8 @@ class IkeaService:
              if val and isinstance(val, str) and val not in images:
                  images.append(val)
 
-        # Варианты / характеристики
-        color = ""
-        variant_info = item.get("variantInfo", [])
-        if variant_info and isinstance(variant_info, list):
-            # Ищем цвет
-            for v in variant_info:
-                if "renk" in v.get("name", "").lower() or "color" in v.get("name", "").lower():
-                    color = v.get("value", "")
-                    break
+        # Варианты / характеристики (цвет из variantInfo — list или nested dict)
+        color = extract_ikea_color_from_variant_info(item.get("variantInfo"))
 
         dimensions = item.get("dimensionsDetail", "") or item.get("dimensions", "")
         material = item.get("materialDetail", "") or item.get("material", "")
@@ -250,17 +453,22 @@ class IkeaService:
             video_url = video_data.get("url") or video_data.get("videoUrl") or ""
         elif isinstance(video_data, str):
             video_url = video_data
-            
-        stock = item.get("stockCount", 0) or item.get("stock", 0)
-        
+
+        stock, listing_available = self._resolve_stock_and_availability(item)
+
         # Тип мебели из функции
         furniture_type = ""
         func_data = item.get("function")
         if isinstance(func_data, dict):
             furniture_type = func_data.get("name", "")
 
-        logger.info(f"Normalized IKEA item {item_no}: Name={name}, Price={price}, DescLen={len(desc)}, Images={len(images)}")
-        
+        public_url = self._resolve_public_url(item, str(item_no))
+
+        logger.info(
+            f"Normalized IKEA item {item_no}: Name={name}, Price={price}, "
+            f"DescLen={len(desc)}, Images={len(images)}, stock={stock!r}, available={listing_available}"
+        )
+
         return {
             "item_no": str(item_no),
             "name": name,
@@ -273,45 +481,12 @@ class IkeaService:
             "material": material,
             "video_url": video_url,
             "stock": stock,
+            "listing_available": listing_available,
             "furniture_type": furniture_type,
             "category_name": category_name,
             "raw_item": item,
-            "url": f"https://www.ikea.com.tr/urun/{item_no}"
+            "url": public_url,
         }
-
-    def _sync_gallery(self, product: FurnitureProduct, images: List[str]):
-        """Синхронизирует галерею изображений товара."""
-        if not images:
-            return
-            
-        from apps.catalog.models import FurnitureProductImage
-        
-        # Для простоты: удаляем старые и создаем новые (или ищем по URL)
-        # В реальном проекте лучше не удалять, а сравнивать.
-        
-        existing_images = list(product.images.all())
-        existing_filenames = []
-        for img in existing_images:
-            if img.image_url:
-                # Берем имя файла из URL (последняя часть после /)
-                fname = img.image_url.split('/')[-1].split('?')[0]
-                existing_filenames.append(fname)
-
-        for idx, img_url in enumerate(images):
-            # Извлекаем имя файла из входящего URL (например, PE928093.jpg)
-            incoming_fname = img_url.split('/')[-1].split('?')[0]
-            
-            if incoming_fname not in existing_filenames:
-                FurnitureProductImage.objects.create(
-                    product=product,
-                    image_url=img_url,
-                    sort_order=idx
-                )
-                
-        # Обновляем основное изображение, если его нет
-        if not product.main_image and images:
-            product.main_image = images[0]
-            product.save(update_fields=["main_image"])
 
     def upsert_furniture_product(self, item_data: Dict) -> Optional[FurnitureProduct]:
         """Создает или обновляет товар в БД."""
@@ -333,7 +508,15 @@ class IkeaService:
         
         price = normalized.get("price", 0)
         currency = normalized.get("currency", "TRY")
-        
+        listing_ok = normalized.get("listing_available", True)
+        raw_stock = normalized.get("stock")
+        if raw_stock is not None:
+            eff_stock = int(raw_stock)
+        elif listing_ok:
+            eff_stock = 3
+        else:
+            eff_stock = 0
+
         # 1. FurnitureProduct
         product, created = FurnitureProduct.objects.get_or_create(
             external_id=item_no,
@@ -343,7 +526,7 @@ class IkeaService:
                 "description": normalized.get("description", ""),
                 "price": price,
                 "currency": currency,
-                "brand": self.brand,
+                "brand": self.brand, # Для новых товаров
                 "category": self.default_category,
                 "dimensions": normalized.get("dimensions", "")[:500],
                 "material": normalized.get("material", "")[:500],
@@ -352,20 +535,28 @@ class IkeaService:
                 "video_url": normalized.get("video_url", ""),
                 "external_url": normalized.get("url", ""),
                 "external_data": {"source": "ikea_tr_direct", "raw": normalized.get("raw_item", {})},
-                "stock_quantity": normalized.get("stock", 0),
-                "is_available": normalized.get("stock", 0) > 0,
+                "stock_quantity": eff_stock,
+                "is_available": listing_ok and eff_stock > 0,
                 "is_active": True
             }
         )
+        
+        # Принудительная установка бренда и категории (если они пустые или изменились)
+        if not product.brand and self.brand:
+            product.brand = self.brand
+            product.save(update_fields=["brand"])
+            
+        if not product.category and self.default_category:
+            product.category = self.default_category
+            product.save(update_fields=["category"])
         
         # Сохраняем видео, если оно есть (даже для существующего товара)
         if normalized.get("video_url") and product.video_url != normalized["video_url"]:
              product.video_url = normalized["video_url"]
              product.save(update_fields=["video_url"])
              
-        # Сохраняем галерею
-        self._sync_gallery(product, normalized.get("images", []))
-        
+        # Галерея товара не дублируется: изображения только у FurnitureVariant (см. блок ниже).
+
         if not created:
             updated = False
             # Обновляем поля, если они изменились или были пусты
@@ -379,8 +570,13 @@ class IkeaService:
                 updated = True
                 
             # Обновляем характеристики
-            for attr in ["dimensions", "material", "furniture_type", "color", "main_image", "video_url"]:
+            for attr in ["dimensions", "material", "furniture_type", "color", "main_image", "video_url", "brand", "category"]:
                 new_val = normalized.get(attr, "")
+                if not new_val and attr == "brand":
+                     new_val = self.brand
+                if not new_val and attr == "category":
+                     new_val = self.default_category
+                     
                 if new_val and getattr(product, attr, "") != new_val:
                     setattr(product, attr, new_val)
                     updated = True

@@ -29,6 +29,51 @@ SYNC_METADATA_HANDLER_NAMES = {
 }
 
 
+def _furniture_variant_galleries_present(attrs: Optional[Dict[str, Any]]) -> bool:
+    """Проверяет, есть ли у цветовых вариантов мебели свои изображения (галерея на FurnitureVariant)."""
+    if not isinstance(attrs, dict):
+        return False
+    fv = attrs.get("furniture_variants")
+    if not isinstance(fv, list) or not fv:
+        return False
+    for spec in fv:
+        if not isinstance(spec, dict):
+            continue
+        raw = spec.get("images") or []
+        if any(isinstance(u, str) and u.strip() for u in raw):
+            return True
+    return False
+
+
+def _furniture_skip_shared_product_gallery(product: Product, attrs: Optional[Dict[str, Any]]) -> bool:
+    """
+    Не мержить корневой список изображений в FurnitureProductImage: галерея только у вариантов.
+
+    Учитывает парсинг категории без furniture_variants в JSON — тогда смотрим уже сохранённые варианты в БД.
+    """
+    if getattr(product, "product_type", None) != "furniture":
+        return False
+    ad = attrs if isinstance(attrs, dict) else {}
+
+    if _furniture_variant_galleries_present(ad):
+        return True
+
+    fv = ad.get("furniture_variants")
+    if isinstance(fv, list) and len(fv) > 1:
+        return True
+
+    furniture_item = getattr(product, "furniture_item", None)
+    if not furniture_item:
+        return False
+
+    active = list(furniture_item.variants.filter(is_active=True))
+    if len(active) > 1:
+        return True
+    if any(v.images.exists() for v in active):
+        return True
+    return False
+
+
 class CatalogNormalizer:
     """Сервис для нормализации данных из API парсера в модели БД."""
     
@@ -306,23 +351,44 @@ class CatalogNormalizer:
             return
             
         updated = False
-        
-        # Основные поля из атрибутов
+
+        # Только поля, реально существующие на FurnitureProduct / AbstractDomainProduct.
+        # Цвет хранится на FurnitureVariant; item_no/designer в модели мебели отсутствуют.
         fields_map = {
-            "color": ("color", 100),
-            "material": ("material", 500),
-            "dimensions": ("dimensions", 200),
-            "item_no": ("item_no", 50),
-            "designer": ("designer", 255),
-            "video_url": ("video_url", 500),
+            "material": ("material", 1000),
+            "dimensions": ("dimensions", 500),
+            "furniture_type": ("furniture_type", 255),
+            "video_url": ("video_url", 2000),
         }
-        
+
         for attr_key, (model_field, max_len) in fields_map.items():
             if attr_key in attrs and attrs[attr_key]:
                 val = str(attrs[attr_key]).strip()[:max_len]
                 if val != (getattr(furniture_product, model_field) or ""):
                     setattr(furniture_product, model_field, val)
                     updated = True
+
+        if "item_no" in attrs and attrs["item_no"]:
+            val = str(attrs["item_no"]).strip()[:500]
+            if val != (furniture_product.external_id or ""):
+                furniture_product.external_id = val
+                updated = True
+
+        ed_patch: Dict[str, Any] = {}
+        if "designer" in attrs and attrs["designer"]:
+            ed_patch["designer"] = str(attrs["designer"]).strip()
+        if "color" in attrs and attrs["color"]:
+            ed_patch["primary_color"] = str(attrs["color"]).strip()[:200]
+        if ed_patch:
+            ed = (
+                furniture_product.external_data
+                if isinstance(furniture_product.external_data, dict)
+                else {}
+            )
+            need = any(ed.get(k) != v for k, v in ed_patch.items())
+            if need:
+                furniture_product.external_data = {**ed, **ed_patch}
+                updated = True
         
         # Габариты (ширина, высота, глубина)
         for dim in ["width", "height", "depth"]:
@@ -338,18 +404,19 @@ class CatalogNormalizer:
         if updated:
             furniture_product.save()
             
-        # Галерея изображений (FurnitureProductImage)
+        # Галерея изображений (FurnitureProductImage) — не заполняем из корня, если галереи на вариантах
         images = attrs.get("images")
-        if isinstance(images, list) and images:
-             from apps.catalog.models import FurnitureProductImage
-             existing_urls = set(furniture_product.images.values_list('image_url', flat=True))
-             for idx, url in enumerate(images):
-                 if url and url not in existing_urls:
-                     FurnitureProductImage.objects.create(
-                         product=furniture_product,
-                         image_url=url,
-                         sort_order=idx
-                     )
+        if isinstance(images, list) and images and not _furniture_skip_shared_product_gallery(product, attrs):
+            from apps.catalog.models import FurnitureProductImage
+
+            existing_urls = set(furniture_product.images.values_list("image_url", flat=True))
+            for idx, url in enumerate(images):
+                if url and url not in existing_urls:
+                    FurnitureProductImage.objects.create(
+                        product=furniture_product,
+                        image_url=url,
+                        sort_order=idx,
+                    )
 
     def _sync_product_fields_from_metadata(self, product: Product, metadata: Dict[str, Any]) -> None:
         attrs = (metadata or {}).get("attributes") or {}
@@ -576,18 +643,20 @@ class CatalogNormalizer:
                     product.category = category
                     product.save()
 
+        # Бренд до синхронизации метаданных домена: при ошибке в _sync_* товар уже с корректным брендом
+        if product_data.brand and not product.brand:
+            raw = str(product_data.brand).strip()
+            if raw:
+                brand = Brand.objects.filter(external_id=raw).first()
+                if not brand:
+                    brand = Brand.objects.filter(name__iexact=raw).first()
+                if brand:
+                    product.brand = brand
+                    product.save(update_fields=["brand"])
+
         # Синхронизируем книжные поля ПОСЛЕ того, как product_type установлен сигналом
         if hasattr(product_data, "metadata") and product_data.metadata:
             self._sync_product_fields_from_metadata(product, product_data.metadata)
-
-        # Обрабатываем бренд
-        if product_data.brand and not product.brand:
-            brand = Brand.objects.filter(
-                external_id=product_data.brand
-            ).first()
-            if brand:
-                product.brand = brand
-                product.save()
 
         # Обрабатываем изображения
         self._normalize_product_images(product, product_data.images)
@@ -602,6 +671,12 @@ class CatalogNormalizer:
         if not image_urls:
             return
 
+        metadata = product.external_data if isinstance(product.external_data, dict) else {}
+        attrs = metadata.get("attributes") if isinstance(metadata.get("attributes"), dict) else {}
+        if _furniture_skip_shared_product_gallery(product, attrs):
+            # Не дублируем корневую галерею на FurnitureProduct — картинки только у вариантов.
+            return
+
         # Используем максимально специфичный объект (BookProduct и т.д.) для сохранения изображений
         target = product.domain_item
         image_manager_name = "images"
@@ -614,9 +689,7 @@ class CatalogNormalizer:
                 
         is_domain = target != product
         image_manager = getattr(target, image_manager_name)
-        
-        metadata = product.external_data if isinstance(product.external_data, dict) else {}
-        attrs = metadata.get("attributes") if isinstance(metadata.get("attributes"), dict) else {}
+
         source = metadata.get("source") or attrs.get("source")
         gallery_video_url = next(
             (url for url in image_urls if self._resolve_media_type(url) == "video"),

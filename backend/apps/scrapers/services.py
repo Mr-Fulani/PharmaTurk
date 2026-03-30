@@ -6,6 +6,7 @@ import hashlib
 import threading
 from contextlib import contextmanager
 from urllib.parse import urlparse
+from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Any, Tuple
 from django.utils import timezone
 from django.db import transaction
@@ -204,6 +205,16 @@ class ScraperIntegrationService:
 
         return session
 
+    @staticmethod
+    def _extend_from_product_detail(scraped_products: List[ScrapedProduct], detail_result) -> None:
+        """Результат parse_product_detail: один товар, список вариантов (IKEA) или None."""
+        if detail_result is None:
+            return
+        if isinstance(detail_result, list):
+            scraped_products.extend(p for p in detail_result if p is not None)
+        else:
+            scraped_products.append(detail_result)
+
     def _run_parser_scraping(
         self, parser, session: ScrapingSession, start_url: str
     ) -> List[ScrapedProduct]:
@@ -215,15 +226,25 @@ class ScraperIntegrationService:
             parsed_url = urlparse(start_url)
             path_parts = [p for p in parsed_url.path.strip('/').split('/') if p]
             
+            host = (parsed_url.netloc or "").lower()
+            is_ikea_host = host == "ikea.com.tr" or host.endswith(".ikea.com.tr")
+
             is_category = (
                 "/category/" in start_url or "/kategori/" in start_url or 
                 (len(path_parts) == 1 and path_parts[0] in ('ilaclar', 'takviye-edici-gida'))
             )
             is_search = "/search" in start_url or "/arama" in start_url
+            # IKEA TR: карточка товара — /urun/slug (не /urun-gruplari/, где первый сегмент другой)
+            is_ikea_product = (
+                is_ikea_host
+                and len(path_parts) >= 2
+                and path_parts[0] == "urun"
+            )
             is_product = (
                 "/product/" in start_url or 
                 ("/p/" in start_url and "instagram.com" not in start_url) or
-                (len(path_parts) >= 2 and path_parts[0] in ('ilaclar', 'takviye-edici-gida'))
+                (len(path_parts) >= 2 and path_parts[0] in ('ilaclar', 'takviye-edici-gida')) or
+                is_ikea_product
             )
 
             # Определяем тип парсинга по URL
@@ -242,10 +263,9 @@ class ScraperIntegrationService:
                     session.pages_processed += 1
 
             elif is_product:
-                # Парсинг отдельного товара (не Instagram)
-                product = parser.parse_product_detail(start_url)
-                if product:
-                    scraped_products.append(product)
+                # Парсинг отдельного товара (не Instagram); IKEA может вернуть список цветов
+                detail_result = parser.parse_product_detail(start_url)
+                self._extend_from_product_detail(scraped_products, detail_result)
                 session.pages_processed += 1
 
             elif "instagram.com" in start_url:
@@ -257,9 +277,8 @@ class ScraperIntegrationService:
                 if "/p/" in start_url or "/reel/" in start_url:
                     # Парсим один пост
                     self.logger.info("Instagram: парсинг отдельного поста %s", start_url)
-                    product = parser.parse_product_detail(start_url)
-                    if product:
-                        scraped_products.append(product)
+                    detail_result = parser.parse_product_detail(start_url)
+                    self._extend_from_product_detail(scraped_products, detail_result)
                 else:
                     # Парсим профиль или хештег — возвращает список постов
                     self.logger.info(
@@ -312,6 +331,7 @@ class ScraperIntegrationService:
         for scraped_product in products:
             try:
                 self._apply_category_mapping(session, scraped_product)
+                self._apply_brand_mapping(session, scraped_product)
                 self._normalize_scraped_media(session, scraped_product)
                 # Блокируем авто-запуск AI во время сохранения — используем потоковый контекст
                 with scraping_in_progress_context():
@@ -373,11 +393,63 @@ class ScraperIntegrationService:
         if category:
             scraped_product.category = category.slug or category.name
 
+    def _apply_brand_mapping(
+        self, session: ScrapingSession, scraped_product: ScrapedProduct
+    ) -> None:
+        """
+        Устанавливает бренд товара.
+        Приоритет:
+        1. scraper_config.default_brand — бренд по умолчанию из конфигурации (самый надежный)
+        2. scraped_product.brand — бренд, найденный парсером на странице
+        """
+        # Приоритет 1: бренд из конфигурации парсера
+        default_brand = session.scraper_config.default_brand
+        
+        if default_brand:
+            scraped_product.brand = default_brand.name
+        # Если в конфигурации пусто, используем то что нашел парсер (уже в scraped_product.brand)
+
     def _get_first_image_url(self, media_urls: List[str]) -> Optional[str]:
         for media_url in media_urls or []:
             if self.catalog_normalizer._resolve_media_type(media_url) == "image":
                 return media_url
         return media_urls[0] if media_urls else None
+
+    def _download_parsed_media_urls(
+        self,
+        session: ScrapingSession,
+        *,
+        source_urls: List[str],
+        parser_name: str,
+        product_id: str,
+        sub_folder: Optional[str],
+    ) -> List[str]:
+        """Скачивает внешние URL в хранилище parsed-медиа (как у основной карточки)."""
+        scraper_config = session.scraper_config
+        max_images = session.max_images_per_product or scraper_config.max_images_per_product or 0
+        urls = source_urls[:max_images] if max_images else list(source_urls)
+        headers = dict(scraper_config.headers or {})
+        if scraper_config.user_agent:
+            headers.setdefault("User-Agent", scraper_config.user_agent)
+        out: List[str] = []
+        for index, url in enumerate(urls):
+            if not isinstance(url, str) or not url:
+                continue
+            parsed = urlparse(url)
+            if "/products/parsed/" in parsed.path:
+                out.append(url)
+                continue
+            r2_url = download_and_optimize_parsed_media(
+                url=url,
+                parser_name=parser_name,
+                product_id=product_id,
+                index=index,
+                headers=headers or None,
+                sub_folder=sub_folder,
+            )
+            if r2_url:
+                out.append(r2_url)
+        return out
 
     def _normalize_scraped_media(
         self, session: ScrapingSession, scraped_product: ScrapedProduct
@@ -411,9 +483,6 @@ class ScraperIntegrationService:
             seen_urls.add(url)
         media_urls = unique_media_urls
 
-        if not media_urls:
-            return
-
         # Определяем sub_folder для группировки медиа
         sub_folder = None
         if isinstance(scraped_product.attributes, dict):
@@ -426,12 +495,6 @@ class ScraperIntegrationService:
 
         scraper_config = session.scraper_config
         parser_name = scraped_product.source or scraper_config.parser_class
-        max_images = session.max_images_per_product or scraper_config.max_images_per_product or 0
-        images = media_urls[:max_images] if max_images else media_urls
-
-        headers = dict(scraper_config.headers or {})
-        if scraper_config.user_agent:
-            headers.setdefault("User-Agent", scraper_config.user_agent)
 
         product_id = scraped_product.external_id or ""
         if not product_id:
@@ -445,25 +508,32 @@ class ScraperIntegrationService:
                 ).hexdigest()
                 product_id = raw_hash[:12]
 
-        normalized_images = []
-        for index, url in enumerate(images):
-            parsed = urlparse(url or "")
-            if "/products/parsed/" in parsed.path:
-                normalized_images.append(url)
-                continue
-            r2_url = download_and_optimize_parsed_media(
-                url=url,
+        if media_urls:
+            scraped_product.images = self._download_parsed_media_urls(
+                session,
+                source_urls=media_urls,
                 parser_name=parser_name,
                 product_id=product_id,
-                index=index,
-                headers=headers or None,
                 sub_folder=sub_folder,
             )
-            if r2_url:
-                normalized_images.append(r2_url)
 
-        if normalized_images:
-            scraped_product.images = normalized_images
+        # Медиа цветовых вариантов IKEA (отдельные sprCode, одна карточка FurnitureProduct)
+        fv = attributes.get("furniture_variants")
+        if isinstance(fv, list):
+            for spec in fv:
+                if not isinstance(spec, dict):
+                    continue
+                vid = str(spec.get("external_id") or product_id).strip() or product_id
+                raw_imgs = spec.get("images") or []
+                if not raw_imgs:
+                    continue
+                spec["images"] = self._download_parsed_media_urls(
+                    session,
+                    source_urls=list(raw_imgs),
+                    parser_name=parser_name,
+                    product_id=vid,
+                    sub_folder=sub_folder,
+                )
 
     def _process_single_product(
         self, session: ScrapingSession, scraped_product: ScrapedProduct
@@ -658,11 +728,199 @@ class ScraperIntegrationService:
         product.furniture_item = item
         return item
 
-    def _update_furniture_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
+    def _safe_decimal(self, val: Any) -> Optional[Decimal]:
+        if val is None:
+            return None
+        try:
+            return Decimal(str(val))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    def _sync_furniture_color_variants(
+        self, furniture_product: "FurnitureProduct", product: Product, variants: List[Dict[str, Any]]
+    ) -> bool:
+        """Создаёт/обновляет FurnitureVariant (цвета) под одной карточкой мебели — как при ручном вводе."""
+        from apps.catalog.models import FurnitureProductImage, FurnitureVariant, FurnitureVariantImage
+
+        changed = False
+        for spec in variants:
+            if not isinstance(spec, dict):
+                continue
+            ext = str(spec.get("external_id") or "").strip()
+            if not ext:
+                continue
+            avail = bool(spec.get("is_available", True))
+            raw_sq = spec.get("stock_quantity")
+            if raw_sq is not None:
+                try:
+                    v_stock = int(raw_sq)
+                except (TypeError, ValueError):
+                    v_stock = 3 if avail else 0
+            else:
+                v_stock = 3 if avail else 0
+
+            price_dec = self._safe_decimal(spec.get("price"))
+            raw_color = (spec.get("color") or "").strip()
+            if not raw_color:
+                from apps.catalog.services.ikea_service import extract_ikea_color_from_variant_info
+
+                raw_color = extract_ikea_color_from_variant_info(spec.get("variant_info"))
+            defaults = {
+                "name": (spec.get("display_name") or furniture_product.name or "")[:500],
+                "color": raw_color[:50],
+                "sku": ext[:100],
+                "price": price_dec,
+                "currency": (spec.get("currency") or furniture_product.currency or "TRY")[:5],
+                "external_url": (spec.get("external_url") or "")[:2000],
+                "sort_order": int(spec.get("sort_order") or 0),
+                "stock_quantity": v_stock,
+                "is_available": bool(avail and v_stock > 0),
+                "is_active": True,
+            }
+
+            variant, created = FurnitureVariant.objects.get_or_create(
+                product=furniture_product,
+                external_id=ext,
+                defaults=defaults,
+            )
+            if not created:
+                for field in (
+                    "name",
+                    "color",
+                    "sku",
+                    "price",
+                    "currency",
+                    "external_url",
+                    "sort_order",
+                    "is_available",
+                    "stock_quantity",
+                    "is_active",
+                ):
+                    nv = defaults.get(field)
+                    if nv is not None and getattr(variant, field) != nv:
+                        setattr(variant, field, nv)
+                        changed = True
+                variant.save()
+
+            imgs = [u for u in (spec.get("images") or []) if isinstance(u, str) and u]
+            if imgs:
+                variant.images.all().delete()
+                bulk = [
+                    FurnitureVariantImage(
+                        variant=variant,
+                        image_url=u,
+                        sort_order=i,
+                        is_main=(i == 0),
+                    )
+                    for i, u in enumerate(imgs)
+                ]
+                FurnitureVariantImage.objects.bulk_create(bulk)
+                if variant.main_image != imgs[0]:
+                    variant.main_image = imgs[0]
+                    variant.save(update_fields=["main_image"])
+                changed = True
+
+            vinfo = spec.get("variant_info")
+            if vinfo is not None:
+                ed = dict(variant.external_data) if isinstance(variant.external_data, dict) else {}
+                if ed.get("ikea_variant_info") != vinfo:
+                    ed["ikea_variant_info"] = vinfo
+                    variant.external_data = ed
+                    variant.save(update_fields=["external_data"])
+                    changed = True
+
+            changed = changed or created
+
+        # Дубликат галереи на товаре: убираем строки с теми же URL, что уже на вариантах (в т.ч. без /products/parsed/).
+        qs = furniture_product.variants.filter(is_active=True)
+        variant_urls = set()
+        for v in qs:
+            for u in v.images.values_list("image_url", flat=True):
+                s = (u or "").strip()
+                if s:
+                    variant_urls.add(s)
+        n_rm = 0
+        if variant_urls:
+            n_rm, _ = FurnitureProductImage.objects.filter(
+                product=furniture_product,
+                image_url__in=list(variant_urls),
+            ).delete()
+        elif any(v.images.exists() for v in qs):
+            n_rm, _ = FurnitureProductImage.objects.filter(
+                product=furniture_product,
+                image_url__contains="/products/parsed/",
+            ).delete()
+        if n_rm:
+            changed = True
+
+        default_v = qs.order_by("sort_order", "id").first()
+        if default_v:
+            if furniture_product.price != default_v.price:
+                furniture_product.price = default_v.price
+                changed = True
+            if (default_v.currency or "") and furniture_product.currency != default_v.currency:
+                furniture_product.currency = default_v.currency
+                changed = True
+            if default_v.main_image and furniture_product.main_image != default_v.main_image:
+                furniture_product.main_image = default_v.main_image
+                changed = True
+
+        any_avail = qs.filter(is_available=True).exists()
+        total_stock = sum((v.stock_quantity or 0) for v in qs if v.stock_quantity)
+        if furniture_product.is_available != any_avail:
+            furniture_product.is_available = any_avail
+            changed = True
+        new_sq = total_stock if total_stock > 0 else None
+        if default_v and new_sq is None and default_v.stock_quantity:
+            new_sq = default_v.stock_quantity
+        if furniture_product.stock_quantity != new_sq:
+            furniture_product.stock_quantity = new_sq
+            changed = True
+
+        if changed:
+            furniture_product.save()
+        product_dirty = False
+        if product.price != furniture_product.price:
+            product.price = furniture_product.price
+            product_dirty = True
+        if product.currency != furniture_product.currency:
+            product.currency = furniture_product.currency
+            product_dirty = True
+        if product.is_available != furniture_product.is_available:
+            product.is_available = furniture_product.is_available
+            product_dirty = True
+        if product.stock_quantity != furniture_product.stock_quantity:
+            product.stock_quantity = furniture_product.stock_quantity
+            product_dirty = True
+        if furniture_product.main_image and product.main_image != furniture_product.main_image:
+            product.main_image = furniture_product.main_image
+            product_dirty = True
+        if product_dirty:
+            product.save()
+        return changed or product_dirty
+
+    def _update_furniture_attributes(
+        self,
+        product: Product,
+        attrs: Dict[str, Any],
+        *,
+        session: Optional[ScrapingSession] = None,  # зарезервировано для единообразия вызова
+    ) -> bool:
         """Обновляет специфичные поля FurnitureProduct из атрибутов парсера."""
         item = self._get_furniture_product(product)
         updated = False
-        
+        has_color_variants = bool(
+            isinstance(attrs.get("furniture_variants"), list) and attrs.get("furniture_variants")
+        )
+
+        # Синхронизация базовых полей, которые могли измениться в Product (через default_brand или парсер)
+        if product.brand != item.brand:
+            item.brand = product.brand
+            updated = True
+        if product.category != item.category:
+            item.category = product.category
+            updated = True
+
         if "dimensions" in attrs and attrs["dimensions"] and attrs["dimensions"] != item.dimensions:
             item.dimensions = attrs["dimensions"]
             updated = True
@@ -672,16 +930,17 @@ class ScraperIntegrationService:
         if "furniture_type" in attrs and attrs["furniture_type"] and attrs["furniture_type"] != item.furniture_type:
             item.furniture_type = attrs["furniture_type"]
             updated = True
-            
-        # Обновляем остатки и доступность в доменной модели тоже
-        if product.is_available != item.is_available:
-            item.is_available = product.is_available
-            updated = True
-        if product.stock_quantity != item.stock_quantity:
-            item.stock_quantity = product.stock_quantity
-            item.is_available = (item.stock_quantity or 0) > 0
-            updated = True
-            
+
+        # Остаток с shadow Product — только если нет цветовых вариантов (иначе считаем из вариантов)
+        if not has_color_variants:
+            if product.is_available != item.is_available:
+                item.is_available = product.is_available
+                updated = True
+            if product.stock_quantity != item.stock_quantity:
+                item.stock_quantity = product.stock_quantity
+                item.is_available = (item.stock_quantity or 0) > 0
+                updated = True
+
         # Если есть видео
         if "video_url" in attrs and attrs["video_url"]:
             # Сохраняем в external_data или если есть поле video_url в модели
@@ -696,9 +955,14 @@ class ScraperIntegrationService:
             if "variants" not in item.external_data:
                 item.external_data["variants"] = attrs["variant_info"]
                 updated = True
-            
+
         if updated:
             item.save()
+
+        if has_color_variants:
+            if self._sync_furniture_color_variants(item, product, attrs["furniture_variants"]):
+                updated = True
+
         return updated
 
     def _update_existing_product(
@@ -727,6 +991,15 @@ class ScraperIntegrationService:
             existing_product.stock_quantity = scraped_product.stock_quantity
             existing_product.is_available = (existing_product.stock_quantity or 0) > 0
             updated = True
+
+        # Обновляем бренд, если его нет или он изменился
+        if scraped_product.brand:
+            from apps.catalog.models import Brand
+            brand_name = scraped_product.brand.strip()
+            if not existing_product.brand or existing_product.brand.name.lower() != brand_name.lower():
+                brand, _ = Brand.objects.get_or_create(name=brand_name)
+                existing_product.brand = brand
+                updated = True
 
         # Обновляем изображения, если их нет
         if not existing_product.main_image and scraped_product.images:
@@ -777,7 +1050,9 @@ class ScraperIntegrationService:
 
         # Обновляем атрибуты книги (ISBN, издательство, страницы и т.д.)
         if scraped_product.attributes:
-            if self._update_product_attributes(existing_product, scraped_product.attributes):
+            if self._update_product_attributes(
+                existing_product, scraped_product.attributes, session=session
+            ):
                 updated = True
 
         if updated:
@@ -928,7 +1203,9 @@ class ScraperIntegrationService:
         product.medicine_item = medicine
         return medicine
 
-    def _update_book_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
+    def _update_book_attributes(
+        self, product: Product, attrs: Dict[str, Any], *, session: Optional[ScrapingSession] = None
+    ) -> bool:
         """Обновляет книжные атрибуты в BookProduct."""
         if not any(
             k in attrs
@@ -977,7 +1254,9 @@ class ScraperIntegrationService:
             book_product.save()
         return updated
 
-    def _update_jewelry_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
+    def _update_jewelry_attributes(
+        self, product: Product, attrs: Dict[str, Any], *, session: Optional[ScrapingSession] = None
+    ) -> bool:
         """Обновляет атрибуты украшений в JewelryProduct."""
         if not any(
             k in attrs
@@ -1041,7 +1320,9 @@ class ScraperIntegrationService:
             jewelry_product.save()
         return updated
 
-    def _update_medicine_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
+    def _update_medicine_attributes(
+        self, product: Product, attrs: Dict[str, Any], *, session: Optional[ScrapingSession] = None
+    ) -> bool:
         """Обновляет медицинские атрибуты в MedicineProduct."""
         medicine_keys = (
             "dosage_form", "active_ingredient", "prescription_required", "volume", 
@@ -1087,7 +1368,13 @@ class ScraperIntegrationService:
             medicine_product.save()
         return updated
 
-    def _update_product_attributes(self, product: Product, attrs: Dict[str, Any]) -> bool:
+    def _update_product_attributes(
+        self,
+        product: Product,
+        attrs: Dict[str, Any],
+        *,
+        session: Optional[ScrapingSession] = None,
+    ) -> bool:
         """Обновляет атрибуты товара из словаря.
 
         Специфичные поля типа (книги, украшения) — через реестр _ATTRIBUTE_UPDATE_HANDLER_NAMES.
@@ -1098,7 +1385,7 @@ class ScraperIntegrationService:
         if handler_name:
             handler = getattr(self, handler_name, None)
             if handler:
-                updated = handler(product, attrs)
+                updated = handler(product, attrs, session=session)
 
         # --- Общие поля → Product ---
 
@@ -1198,8 +1485,8 @@ class ScraperIntegrationService:
             product.is_new = True
             product.save(update_fields=["is_new"])
 
-        # Количество на складе по умолчанию = 3 (если не задано парсером)
-        if not product.stock_quantity:
+        # Количество по умолчанию = 3 только для доступных товаров, если парсер не передал остаток
+        if product.is_available and not product.stock_quantity:
             product.stock_quantity = 3
             product.save(update_fields=["stock_quantity"])
 
@@ -1213,7 +1500,7 @@ class ScraperIntegrationService:
         # _update_product_attributes дополнительно заполняет SEO поля и вес,
         # а также создаёт доменные объекты (BookProduct, JewelryProduct и т.д.).
         if scraped_product.attributes:
-            if self._update_product_attributes(product, scraped_product.attributes):
+            if self._update_product_attributes(product, scraped_product.attributes, session=session):
                 product.save()
 
         # После создания доменной модели нужно переназначить галерею на неё, а не на Product.

@@ -73,7 +73,7 @@ class ScraperConfigAdmin(admin.ModelAdmin):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     fieldsets = [
-        ("Основная информация", {"fields": ["name", "parser_class", "base_url", "description", "default_category"]}),
+        ("Основная информация", {"fields": ["name", "parser_class", "base_url", "description", "default_category", "default_brand"]}),
         ("Статус и настройки", {"fields": ["status", "is_enabled", "priority"]}),
         (
             "Параметры парсинга",
@@ -277,7 +277,8 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
     list_filter = ["status", "scraper_config", "target_category", "created_at"]
     search_fields = ["scraper_config__name", "start_url", "error_message"]
     ordering = ["-created_at"]
-    raw_id_fields = ["target_category"]
+    # Как у целевой категории: всплывающее окно с поиском и иерархией, без гигантского <select>.
+    raw_id_fields = ["target_category", "target_subcategory"]
 
     fieldsets = [
         (
@@ -882,6 +883,7 @@ class InstagramScraperTaskAdmin(admin.ModelAdmin):
     list_filter = ["status", "target_category", "category", "created_at"]
     search_fields = ["instagram_username", "post_url", "error_message"]
     ordering = ["-created_at"]
+    raw_id_fields = ["target_category", "target_subcategory"]
 
     fieldsets = [
         (

@@ -26,6 +26,14 @@ class ScraperConfig(models.Model):
         verbose_name=_("Категория по умолчанию"),
         help_text=_("Категория-домен для всех товаров этого парсера (обязательно)"),
     )
+    default_brand = models.ForeignKey(
+        "catalog.Brand",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name=_("Бренд по умолчанию"),
+        help_text=_("Бренд для всех товаров этого парсера (например, IKEA). Приоритетнее чем данные парсера."),
+    )
 
     # Статус и настройки
     status = models.CharField(_("Статус"), max_length=20, choices=STATUS_CHOICES, default="active")

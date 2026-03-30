@@ -90,7 +90,11 @@ def run_scraper_task(self,
             site_task.refresh_from_db()
             if max_images_per_product is None:
                 max_images_per_product = site_task.max_images_per_product
-            target_category = site_task.target_category
+            # Как в админке Instagram/Site: подкатегория приоритетнее корневой целевой категории
+            if getattr(site_task, "target_subcategory_id", None):
+                target_category = site_task.target_subcategory
+            elif site_task.target_category_id:
+                target_category = site_task.target_category
 
         # Запускаем парсер
         integration_service = ScraperIntegrationService()

@@ -2607,6 +2607,8 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
     price = serializers.SerializerMethodField()
     old_price = serializers.SerializerMethodField()
     currency = serializers.SerializerMethodField()
+    size_display = serializers.SerializerMethodField()
+    color_display = serializers.SerializerMethodField()
 
     class Meta:
         model = FurnitureVariant
@@ -2616,7 +2618,7 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
             'is_available', 'stock_quantity',
             'main_image', 'images',
             'sku', 'barcode', 'gtin', 'mpn',
-            'is_active', 'sort_order',
+            'is_active', 'sort_order', 'size_display', 'color_display',
         ]
         read_only_fields = ['id', 'slug', 'sort_order']
 
@@ -2697,6 +2699,33 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
             return []
         return FurnitureVariantImageSerializer(gallery.all().order_by("sort_order"), many=True).data
 
+    def get_size_display(self, obj):
+        """Краткий размер из IKEA variant1 (например 120x70 cm) для карточки у цены."""
+        ed = obj.external_data if isinstance(obj.external_data, dict) else {}
+        info = ed.get("ikea_variant_info")
+        if isinstance(info, dict):
+            v1 = info.get("variant1")
+            if isinstance(v1, dict):
+                val = (v1.get("value") or "").strip()
+                if val:
+                    return val
+        return ""
+
+    def get_color_display(self, obj):
+        """Подпись цвета для витрины: поле color или value из ikea_variant_info."""
+        raw = (getattr(obj, "color", None) or "").strip()
+        if raw:
+            return raw
+        ed = obj.external_data if isinstance(obj.external_data, dict) else {}
+        info = ed.get("ikea_variant_info")
+        if isinstance(info, dict):
+            c = info.get("color")
+            if isinstance(c, dict):
+                val = (c.get("value") or "").strip()
+                if val:
+                    return val
+        return ""
+
 
 class FurnitureProductSerializer(serializers.ModelSerializer):
     """Сериализатор для товаров мебели (краткая информация)."""
@@ -2730,6 +2759,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         model = FurnitureProduct
         fields = [
             'id', 'name', 'slug', 'description', 'category', 'brand',
+            'external_id',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'material', 'furniture_type', 'dimensions',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',

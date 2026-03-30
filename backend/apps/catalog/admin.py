@@ -773,7 +773,7 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     )
     search_fields = (
         'name', 'slug', 'description',
-        'sku', 'barcode', 'gtin', 'mpn', 'meta_title'
+        'sku', 'barcode', 'gtin', 'mpn', 'meta_title', 'external_id'
     )
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
@@ -1863,7 +1863,7 @@ class FurnitureVariantAdmin(admin.ModelAdmin):
     """Отдельная админка варианта мебели (для картинок)."""
     list_display = ('name', 'product', 'color', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'color', 'currency', 'created_at')
-    search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
+    search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn', 'external_id')
     ordering = ('product', 'sort_order', '-created_at')
     readonly_fields = ('slug',)
     actions = [activate_variants, deactivate_variants]
@@ -1889,7 +1889,7 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Mod
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'get_ai_status', 'category', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
     list_filter = (AIStatusFilter, 'is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'furniture_type', 'currency', 'created_at')
-    search_fields = ('name', 'slug', 'description', 'material', 'furniture_type')
+    search_fields = ('name', 'slug', 'description', 'material', 'furniture_type', 'external_id')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
     

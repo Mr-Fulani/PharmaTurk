@@ -129,6 +129,57 @@ const normalizeMediaValue = (value?: string | null) => {
   return trimmed
 }
 
+/** Краткая строка под названием мебели (тип, цвет, размер) — без HTML из админки */
+const stripHtmlToPlainText = (html: string) => {
+  if (!html) return ''
+  return String(html)
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Фрагмент описания для одного раскрывающегося блока */
+type DescriptionSection = { title: string; html: string }
+
+/**
+ * Делит HTML описания по заголовкам h2–h4 (несколько блоков для вертикального аккордеона).
+ * Без заголовков — один блок на всё содержимое.
+ */
+function splitDescriptionIntoSections(html: string): DescriptionSection[] {
+  const trimmed = String(html || '').trim()
+  if (!trimmed) return []
+
+  const re = /<h([2-4])[^>]*>([\s\S]*?)<\/h\1>/gi
+  const matches: { start: number; title: string }[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(trimmed)) !== null) {
+    const title = stripHtmlToPlainText(m[2] || '').trim()
+    matches.push({ start: m.index, title })
+  }
+
+  if (matches.length === 0) {
+    return [{ title: '', html: trimmed }]
+  }
+
+  const sections: DescriptionSection[] = []
+  if (matches[0].start > 0) {
+    const pre = trimmed.slice(0, matches[0].start).trim()
+    if (pre) sections.push({ title: '', html: pre })
+  }
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i].start
+    const end = i + 1 < matches.length ? matches[i + 1].start : trimmed.length
+    const chunk = trimmed.slice(start, end).trim()
+    if (chunk) {
+      sections.push({ title: matches[i].title, html: chunk })
+    }
+  }
+
+  return sections.length > 0 ? sections : [{ title: '', html: trimmed }]
+}
+
 const getAdministrationRouteLabel = (value: string | null | undefined, t: any) => {
   if (!value) return null
   const routeLabels: Record<string, string> = {
@@ -293,6 +344,8 @@ interface Product {
   height?: number | string | null
   dimensions_unit?: string | null
   sku?: string | null
+  /** Артикул поставщика / IKEA item no (не из slug) */
+  external_id?: string | null
   product_code?: string | null
   release_form?: string | null
   dosage?: string | null
@@ -308,6 +361,9 @@ interface Product {
   gallery?: { id: number; image_url: string; alt_text?: string; sort_order?: number }[]
   service_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
   dynamic_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
+  furniture_type?: string | null
+  dimensions?: string | null
+  material?: string | null
 }
 
 interface FooterSettings {
@@ -323,6 +379,7 @@ interface Variant {
   slug: string
   name?: string
   color?: string
+  sku?: string
   price?: number | string | null
   old_price?: number | string | null
   currency?: string
@@ -332,6 +389,10 @@ interface Variant {
   images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
   sizes?: SizeItem[]
   active_variant_currency?: string | null
+  /** Размер варианта (IKEA variant1), напр. 120x70 cm */
+  size_display?: string | null
+  /** Подпись цвета (поле color или ikea_variant_info) */
+  color_display?: string | null
 }
 
 const resolveAvailableStock = (
@@ -428,17 +489,50 @@ export default function ProductPage({
   const [selectedVariantSlug, setSelectedVariantSlug] = useState<string | null>(initialVariant?.slug || null)
   const selectedVariant = variants.find((v) => v.slug === selectedVariantSlug) || initialVariant
 
+  /** IKEA и др.: варианты есть, но color не заполнен — фолбэк на slug/sku для селектора */
+  const furnitureVariantPickerBySlug =
+    productType === 'furniture' &&
+    variants.length > 1 &&
+    variants.every((v) => !String(v.color || '').trim())
+
+  const colorPickerValues: string[] = furnitureVariantPickerBySlug
+    ? (variants.map((v) => v.slug).filter(Boolean) as string[])
+    : Array.from(new Set((variants.map((v) => v.color).filter(Boolean) as string[])))
+
+  const resolveVariantByPickerValue = (key: string) =>
+    furnitureVariantPickerBySlug
+      ? variants.find((v) => v.slug === key)
+      : variants.find((v) => v.color === key)
+
+  const pickerLabel = (key: string) => {
+    if (furnitureVariantPickerBySlug) {
+      const v = variants.find((x) => x.slug === key)
+      const cd = String(v?.color_display || v?.color || '').trim()
+      if (cd) return cd
+      if (v?.sku) return String(v.sku)
+      return v?.name || key
+    }
+    return getLocalizedColor(key, t)
+  }
+
+  // Ключ выбора в сетке «цветов»: реальный color или slug (мебель без color)
+  const defaultPickerKey = furnitureVariantPickerBySlug
+    ? (initialVariant?.slug || undefined)
+    : (initialVariant?.color || undefined)
+
   // Цвет и размер исходя из выбранного варианта
-  const [selectedColor, setSelectedColor] = useState<string | undefined>(selectedVariant?.color)
+  const [selectedColor, setSelectedColor] = useState<string | undefined>(defaultPickerKey)
   // По умолчанию размер не выбран — пользователь должен выбрать вручную
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined)
   // Количество товара
   const [quantity, setQuantity] = useState(1)
-  // Состояние раскрытия описания
-  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
+  /** Раскрытие блоков описания по индексу (вертикальный аккордеон) */
+  const [descriptionAccordionOpen, setDescriptionAccordionOpen] = useState<Record<number, boolean>>({})
 
-  // Список цветов
-  const colors = Array.from(new Set((variants.map((v) => v.color).filter(Boolean) as string[])))
+  useEffect(() => {
+    const next = furnitureVariantPickerBySlug ? initialVariant?.slug : initialVariant?.color
+    if (next) setSelectedColor(next)
+  }, [product?.slug, furnitureVariantPickerBySlug, initialVariant?.slug, initialVariant?.color])
 
   // Список размеров для выбранного цвета (берем из выбранного варианта-цвета)
   const sizesForColor = (selectedVariant?.sizes && selectedVariant.sizes.length > 0)
@@ -451,6 +545,78 @@ export default function ProductPage({
       return { ...s, sizeValue, sizeLabel, sizeKey: sizeValue || String(index) }
     })
     .filter((s) => Boolean(s.sizeLabel))
+
+  const furnitureSizeDisplay =
+    productType === 'furniture' && selectedVariant?.size_display
+      ? String(selectedVariant.size_display).trim()
+      : null
+
+  /** Подзаголовок в стиле IKEA: тип, цвет/артикул, размер */
+  const furnitureDescriptorLine = useMemo(() => {
+    if (productType !== 'furniture' || !product) return null
+    const parts: string[] = []
+    const ft = stripHtmlToPlainText(String(product.furniture_type || ''))
+    if (ft) parts.push(ft)
+    const col = String(selectedVariant?.color_display || selectedVariant?.color || '').trim()
+    if (col) parts.push(col)
+    else if (furnitureVariantPickerBySlug && selectedVariant?.sku)
+      parts.push(String(selectedVariant.sku))
+    const sz = String(selectedVariant?.size_display || '').trim()
+    if (sz) parts.push(sz)
+    if (parts.length === 0) return null
+    return parts.join(', ').toLowerCase()
+  }, [
+    productType,
+    product,
+    product?.furniture_type,
+    furnitureVariantPickerBySlug,
+    selectedVariant?.color_display,
+    selectedVariant?.color,
+    selectedVariant?.sku,
+    selectedVariant?.size_display,
+  ])
+
+  /** Артикул у цены: SKU варианта (IKEA) или external_id товара — не зависит от slug после ИИ */
+  const furnitureArticleDisplay = useMemo(() => {
+    if (productType !== 'furniture' || !product) return null
+    const vSku = String(selectedVariant?.sku || '').trim()
+    if (vSku) return vSku
+    const ext = String(product.external_id || '').trim()
+    if (ext) return ext
+    return String(product.sku || product.product_code || '').trim() || null
+  }, [
+    productType,
+    product,
+    product?.external_id,
+    product?.sku,
+    product?.product_code,
+    selectedVariant?.sku,
+  ])
+
+  const showFurnitureVariantsNearPrice =
+    productType === 'furniture' &&
+    (colorPickerValues.length > 0 ||
+      Boolean(furnitureSizeDisplay) ||
+      Boolean(furnitureArticleDisplay))
+
+  const localizedDescriptionHtml = useMemo(() => {
+    if (!product) return ''
+    return getLocalizedProductDescription(
+      product.description,
+      t,
+      product.translations,
+      router.locale
+    )
+  }, [product, t, router.locale])
+
+  const descriptionSections = useMemo(
+    () => splitDescriptionIntoSections(localizedDescriptionHtml),
+    [localizedDescriptionHtml]
+  )
+
+  useEffect(() => {
+    setDescriptionAccordionOpen({})
+  }, [product?.slug])
 
   const maxAvailable = product ? resolveAvailableStock(product, selectedVariant, selectedSize) : null
   const sizeHintMessage = t(
@@ -529,12 +695,16 @@ export default function ProductPage({
     }
   }, [selectedVariantSlug, productType, productSlug, isBaseProduct])
 
-  // Подбор варианта при смене цвета
-  const pickVariant = (color?: string) => {
-    const found = variants.find((v) => v.color === color) || variants[0]
+  // Подбор варианта при смене цвета (или slug для мебели IKEA без поля color)
+  const pickVariant = (key?: string) => {
+    if (!key) return
+    const found =
+      (furnitureVariantPickerBySlug
+        ? variants.find((v) => v.slug === key)
+        : variants.find((v) => v.color === key)) || variants[0]
     if (found) {
       setSelectedVariantSlug(found.slug)
-      setSelectedColor(found.color)
+      setSelectedColor(furnitureVariantPickerBySlug ? found.slug : (found.color || key))
       // Сброс выбора размера — пользователь должен выбрать вручную
       setSelectedSize(undefined)
       const gallerySourceLocal = found.images?.length ? found.images : product.images || []
@@ -740,11 +910,15 @@ export default function ProductPage({
     product.currency ||
     'USD'
 
+  // Старая цена: как и price — сначала выбранный вариант; active_variant_* с API — только дефолтный slug.
   const oldPriceSource =
-    product.active_variant_old_price_formatted ||
-    product.old_price_formatted ||
-    selectedVariant?.old_price ||
-    product.old_price
+    variants.length > 0 && selectedVariant
+      ? (selectedVariant.old_price != null && selectedVariant.old_price !== ''
+        ? selectedVariant.old_price
+        : null)
+      : (product.active_variant_old_price_formatted ||
+        product.old_price_formatted ||
+        product.old_price)
   const { price: parsedOldPrice, currency: parsedOldCurrency } = parsePriceWithCurrency(
     oldPriceSource !== null && typeof oldPriceSource !== 'undefined' ? String(oldPriceSource) : null
   )
@@ -1100,6 +1274,14 @@ export default function ProductPage({
             >
               {displayProductName || product.name}
             </h1>
+            {productType === 'furniture' && furnitureDescriptorLine && (
+              <p
+                className="mt-2 text-base leading-snug"
+                style={{ color: theme === 'dark' ? '#9CA3AF' : '#4B5563' }}
+              >
+                {furnitureDescriptorLine}
+              </p>
+            )}
             {/* Основные характеристики (Бренд и Артикул) */}
             {productType !== 'uslugi' && product.product_type !== 'uslugi' && productType !== 'books' && (
               <div
@@ -1370,6 +1552,126 @@ export default function ProductPage({
                 )}
               </div>
             )}
+            {showFurnitureVariantsNearPrice && (
+              <div
+                className="mt-5 flex flex-col gap-5 border-t border-b py-4"
+                style={{
+                  borderColor: theme === 'dark' ? 'rgba(75,85,99,0.5)' : 'rgba(229,231,235,1)',
+                }}
+              >
+                {furnitureArticleDisplay && (
+                  <div className="flex flex-col gap-1">
+                    <span
+                      className="text-sm font-semibold"
+                      style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
+                    >
+                      {t('article_number', 'Артикул')}
+                    </span>
+                    <p
+                      className="text-sm"
+                      style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+                    >
+                      {furnitureArticleDisplay}
+                    </p>
+                  </div>
+                )}
+                {colorPickerValues.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <span
+                      className="text-sm font-semibold"
+                      style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
+                    >
+                      {furnitureVariantPickerBySlug
+                        ? t('product_variant', 'Вариант')
+                        : t('color', 'Цвет')}
+                    </span>
+                    <div className="flex flex-wrap gap-4">
+                      {colorPickerValues.map((c) => {
+                        const isActive = c === selectedColor
+                        const label = pickerLabel(c)
+                        const variantForColor = resolveVariantByPickerValue(c) || null
+                        const rawThumb =
+                          normalizeMediaValue(variantForColor?.main_image) ||
+                          normalizeMediaValue(variantForColor?.images?.find((img) => img.is_main)?.image_url) ||
+                          normalizeMediaValue(variantForColor?.images?.[0]?.image_url) ||
+                          normalizeMediaValue(product?.active_variant_main_image_url) ||
+                          normalizeMediaValue(product?.main_image_url) ||
+                          normalizeMediaValue(product?.main_image) ||
+                          null
+                        const placeholder = getPlaceholderImageUrl({
+                          type: 'product',
+                          seed: `${product?.slug || 'product'}-${c}`,
+                          width: 200,
+                          height: 200,
+                        })
+                        const thumbSrc = rawThumb ? resolveMediaUrl(rawThumb) : placeholder
+                        const rawCd = String(
+                          variantForColor?.color_display || variantForColor?.color || ''
+                        ).trim()
+                        const colorText = rawCd
+                          ? getLocalizedColor(rawCd, t)
+                          : label
+                        return (
+                          <div key={c} className="flex max-w-[5.5rem] flex-col items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedColor(c)
+                                pickVariant(c)
+                              }}
+                              title={colorText}
+                              aria-label={colorText}
+                              aria-pressed={isActive}
+                              className={`h-16 w-16 shrink-0 overflow-hidden rounded-md border bg-white transition ${isActive
+                                ? 'border-violet-600 ring-2 ring-violet-200'
+                                : 'border-gray-300 hover:border-violet-400'
+                                }`}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={thumbSrc}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                data-fallback={placeholder}
+                                onError={(event) => {
+                                  const target = event.currentTarget
+                                  const fallback = target.dataset.fallback
+                                  if (fallback && target.src !== fallback) {
+                                    target.src = fallback
+                                  }
+                                }}
+                              />
+                            </button>
+                            <span
+                              className="w-full text-center text-xs leading-tight break-words"
+                              style={{ color: theme === 'dark' ? '#D1D5DB' : '#374151' }}
+                            >
+                              {colorText}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                {furnitureSizeDisplay && (
+                  <div className="flex flex-col gap-1">
+                    <span
+                      className="text-sm font-semibold"
+                      style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
+                    >
+                      {t('size', 'Размер')}
+                    </span>
+                    <p
+                      className="text-sm"
+                      style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+                    >
+                      {furnitureSizeDisplay}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
             {(productType === 'medicines' || product.product_type === 'medicines') && (
               <div
                 className="mt-2 text-xs leading-relaxed"
@@ -1382,21 +1684,23 @@ export default function ProductPage({
                 <p>{t('medicine_disclaimer_line5', 'Цены могут быть неактуальными.')}</p>
               </div>
             )}
-            {(colors.length > 0 || sizesForColor.length > 0) && (
+            {productType !== 'furniture' && (colorPickerValues.length > 0 || sizesForColor.length > 0) && (
               <div className="mt-4 flex flex-col gap-4">
-                {colors.length > 0 && (
+                {colorPickerValues.length > 0 && (
                   <div className="flex flex-col gap-2">
                     <span
                       className="text-sm font-semibold"
                       style={{ color: theme === 'dark' ? '#e5e7eb' : '#111827' }}
                     >
-                      {t('color', 'Цвет')}
+                      {furnitureVariantPickerBySlug
+                        ? t('product_variant', 'Вариант')
+                        : t('color', 'Цвет')}
                     </span>
                     <div className="flex flex-wrap gap-2">
-                      {colors.map((c) => {
+                      {colorPickerValues.map((c) => {
                         const isActive = c === selectedColor
-                        const label = getLocalizedColor(c, t)
-                        const variantForColor = variants.find((v) => v.color === c) || null
+                        const label = pickerLabel(c)
+                        const variantForColor = resolveVariantByPickerValue(c) || null
                         const rawThumb =
                           normalizeMediaValue(variantForColor?.main_image) ||
                           normalizeMediaValue(variantForColor?.images?.find((img) => img.is_main)?.image_url) ||
@@ -1419,6 +1723,7 @@ export default function ProductPage({
                               setSelectedColor(c)
                               pickVariant(c)
                             }}
+                            type="button"
                             title={label}
                             aria-label={label}
                             className={`h-16 w-16 overflow-hidden rounded-md border bg-white transition ${isActive
@@ -1629,62 +1934,83 @@ export default function ProductPage({
           </div>
         </div>
 
-        {/* Описание товара - на всю ширину */}
-        <div
-          className="mt-6 rounded-lg border dark:border-gray-700 overflow-hidden w-full"
-          style={{
-            borderColor: theme === 'dark' ? '#374151' : '#E5E7EB',
-            backgroundColor: theme === 'dark' ? '#1F2937' : '#FFF8E7'
-          }}
-        >
-          <button
-            onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-            className="w-full flex items-center justify-between p-4 text-left transition-colors"
-            style={{
-              backgroundColor: 'transparent'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = theme === 'dark' ? '#374151' : '#FFF5DC'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent'
-            }}
-          >
-            <span
-              className="font-medium"
-              style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
-            >
-              {t('description', 'Описание')}
-            </span>
-            <svg
-              className={`w-5 h-5 transition-transform ${isDescriptionExpanded ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {isDescriptionExpanded && (
-            <div
-              className="border-t dark:border-gray-700 p-6"
-              style={{
-                borderTopColor: theme === 'dark' ? '#374151' : '#E5E7EB',
-                backgroundColor: theme === 'dark' ? '#111827' : '#FFFBF0'
-              }}
-            >
-              <div className="prose max-w-none dark:prose-invert">
+        {/* Описание: блоки друг под другом, как у лекарств (раскрывающийся список) */}
+        {descriptionSections.length > 0 && (
+          <div className="mt-6 flex w-full flex-col gap-4">
+            {descriptionSections.map((sec, idx) => {
+              const body = sec.html.trim()
+              if (!body) return null
+              const sectionTitle = sec.title.trim()
+                ? sec.title
+                : idx === 0
+                  ? t('description', 'Описание')
+                  : `${t('description', 'Описание')} (${idx + 1})`
+              const isExpanded = Boolean(descriptionAccordionOpen[idx])
+              return (
                 <div
-                  className="whitespace-pre-wrap leading-relaxed text-base"
-                  style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
-                  dangerouslySetInnerHTML={{ __html: getLocalizedProductDescription(product.description, t, product.translations, router.locale) }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
+                  key={idx}
+                  className="w-full overflow-hidden rounded-lg border dark:border-gray-700"
+                  style={{
+                    borderColor: theme === 'dark' ? '#374151' : '#E5E7EB',
+                    backgroundColor: theme === 'dark' ? '#1F2937' : '#FFF8E7',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDescriptionAccordionOpen((prev) => ({
+                        ...prev,
+                        [idx]: !prev[idx],
+                      }))
+                    }}
+                    className="flex w-full items-center justify-between p-4 text-left transition-colors"
+                    style={{ backgroundColor: 'transparent' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = theme === 'dark' ? '#374151' : '#FFF5DC'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'transparent'
+                    }}
+                    aria-expanded={isExpanded}
+                  >
+                    <span
+                      className="font-medium"
+                      style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
+                    >
+                      {sectionTitle}
+                    </span>
+                    <svg
+                      className={`h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {isExpanded && (
+                    <div
+                      className="border-t p-6 dark:border-gray-700"
+                      style={{
+                        borderTopColor: theme === 'dark' ? '#374151' : '#E5E7EB',
+                        backgroundColor: theme === 'dark' ? '#111827' : '#FFFBF0',
+                      }}
+                    >
+                      <div className="prose max-w-none dark:prose-invert">
+                        <div
+                          className="whitespace-pre-wrap text-base leading-relaxed"
+                          style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
+                          dangerouslySetInnerHTML={{ __html: body }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Дополнительные секции для лекарств */}
         {(productType === 'medicines' || product.product_type === 'medicines') && (
