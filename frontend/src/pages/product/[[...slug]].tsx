@@ -363,7 +363,6 @@ interface Product {
   dynamic_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
   furniture_type?: string | null
   dimensions?: string | null
-  material?: string | null
 }
 
 interface FooterSettings {
