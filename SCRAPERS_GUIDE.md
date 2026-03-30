@@ -1221,6 +1221,25 @@ docker compose restart celeryworker celery_ai celerybeat
 
 Пример: **`scrapers.0012`** — поле `ScraperConfig.default_brand`. После выката убедитесь, что `migrate` прошёл (автоматически при старте `backend` или вручную командой выше).
 
+### Если `service "backend" is not running` или `No such image: mudaroba-backend`
+
+Образ **`mudaroba-backend`** в `docker-compose.yml` собирается локально (`build`), в реестр публично не выкладывается. Режим **`./restart.sh --fast` / `--quick`** **не** вызывает `docker compose build` и передаёт **`--no-build`**: на чистом сервере или после `prune` образа не будет — контейнеры не поднимутся.
+
+**Что сделать на проде (из корня репозитория, с нужными `-f`, например prod-override):**
+
+```bash
+# Один раз после clone / потери образов — со сборкой (без --fast):
+./restart.sh --logs
+
+# Или только сборка backend, затем up:
+docker compose -p pharmaturk -f docker-compose.yml -f docker-compose.prod.yml build backend
+docker compose -p pharmaturk -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+Дальше, когда образ уже есть на машине, для быстрого рестарта можно снова использовать **`--fast`**.
+
+Команда **`docker compose exec backend ...`** работает только при **запущенном** контейнере `backend`; сначала нужен успешный **`up`**.
+
 ---
 
 ## Краткая справка по файлам

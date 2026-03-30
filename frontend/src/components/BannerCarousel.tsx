@@ -362,7 +362,7 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
         // Если кликнули на активный элемент с ссылкой, переходим по ссылке
         const isExternal = /^https?:\/\//.test(banner.link_url)
         if (isExternal) {
-          window.open(banner.link_url, '_blank', 'noopener, noreferrer')
+          window.location.href = banner.link_url
         } else {
           router.push(banner.link_url)
         }
@@ -416,7 +416,7 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
                 e.stopPropagation() // Предотвращаем всплытие клика на родительский элемент
                 const isExternal = /^https?:\/\//.test(banner.link_url!)
                 if (isExternal) {
-                  window.open(banner.link_url, '_blank', 'noopener, noreferrer')
+                  window.location.href = banner.link_url!
                 } else {
                   router.push(banner.link_url!)
                 }

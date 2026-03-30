@@ -74,7 +74,7 @@ export default function ImageSlider({
     
     const isExternal = /^https?:\/\//.test(item.linkUrl)
     if (isExternal) {
-      window.open(item.linkUrl, '_blank', 'noopener, noreferrer')
+      window.location.href = item.linkUrl
     } else {
       router.push(item.linkUrl)
     }

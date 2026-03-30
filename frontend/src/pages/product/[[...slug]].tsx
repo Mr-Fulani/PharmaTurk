@@ -270,7 +270,7 @@ interface Product {
   main_image?: string
   main_image_url?: string
   video_url?: string
-  images?: { id: number; image_url: string; video_url?: string | null; alt_text?: string; is_main?: boolean }[]
+  images?: { id: number; image_url: string; video_url?: string | null; alt_text?: string; is_main?: boolean; sort_order?: number }[]
   sizes?: SizeItem[]
   variants?: Variant[]
   default_variant_slug?: string | null
@@ -358,7 +358,7 @@ interface Product {
   // Services
   main_video_url?: string | null
   main_gif_url?: string | null
-  gallery?: { id: number; image_url: string; alt_text?: string; sort_order?: number }[]
+  gallery?: { id: number; image_url: string; video_url?: string | null; alt_text?: string; is_main?: boolean; sort_order?: number }[]
   service_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
   dynamic_attributes?: { id: number; key: string; key_display: string; value: string; sort_order: number }[]
   furniture_type?: string | null
@@ -385,7 +385,7 @@ interface Variant {
   is_available?: boolean
   stock_quantity?: number | null
   main_image?: string
-  images?: { id: number; image_url: string; alt_text?: string; is_main?: boolean }[]
+  images?: { id: number; image_url: string; video_url?: string | null; alt_text?: string; is_main?: boolean; sort_order?: number }[]
   sizes?: SizeItem[]
   active_variant_currency?: string | null
   /** Размер варианта (IKEA variant1), напр. 120x70 cm */
@@ -439,6 +439,42 @@ export default function ProductPage({
   const router = useRouter()
   const { theme } = useTheme()
   const [product, setProduct] = useState<Product | null>(initialProduct)
+
+  const getVideoEmbedUrl = useCallback((url: string): string | null => {
+    if (!url) return null
+    
+    // YouTube
+    if (url.includes('youtube.com/embed/')) {
+      return url.includes('?') ? url : `${url}?autoplay=0&controls=1&rel=0`
+    }
+    
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      const standardRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})/
+      let match = url.match(standardRegex)
+      if (!match) {
+        const shortsRegex = /(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)/
+        match = url.match(shortsRegex)
+      }
+      
+      if (match && match[1]) {
+        const videoId = match[1]
+        return `https://www.youtube.com/embed/${videoId}?autoplay=0&controls=1&rel=0`
+      }
+    }
+    
+    // Vimeo
+    if (url.includes('player.vimeo.com/video/')) {
+      return url.includes('?') ? url : `${url}?autoplay=0&muted=0`
+    }
+    
+    const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
+    const vimeoMatch = url.match(vimeoRegex)
+    if (vimeoMatch && vimeoMatch[1]) {
+      return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=0&muted=0`
+    }
+    
+    return null
+  }, [])
   useEffect(() => {
     setProduct(initialProduct)
   }, [initialProduct])
@@ -728,50 +764,58 @@ export default function ProductPage({
   const buildGallerySource = useCallback((): GalleryItem[] => {
     if (!product) return []
     const variantImages = selectedVariant?.images || []
-    const productImages = product.images || []
+    const productImages = (product.images && product.images.length > 0) ? product.images : (product.gallery || [])
+    
     const mergedImages = productType === 'jewelry'
       ? [...variantImages, ...productImages]
       : (variantImages.length > 0 ? variantImages : productImages)
+
     const mainImageRaw = normalizeMediaValue(selectedVariant?.main_image) ||
       normalizeMediaValue(product.main_image_url) ||
       normalizeMediaValue(product.main_image)
     const mainImageUrl = resolveMediaUrl(mainImageRaw)
+
     const normalizedProductVideoUrl = normalizeMediaValue(product.video_url || product.main_video_url)
     const normalizedProductGifUrl = normalizeMediaValue(product.main_gif_url)
     const hasVideo = Boolean(normalizedProductVideoUrl && isVideoUrl(normalizedProductVideoUrl))
     const hasGif = Boolean(normalizedProductGifUrl)
+
     const seenVideoUrls = new Set<string>()
     const seenImageUrls = new Set<string>()
 
     const baseImages: GalleryItem[] = mergedImages.flatMap((img) => {
       const imageUrl = normalizeMediaValue(img.image_url)
-      const videoUrl = normalizeMediaValue((img as { video_url?: string | null }).video_url)
-      // Если у элемента есть video_url — не добавляем отдельную «превью»-картинку в галерею,
-      // само видео будет отображаться через product.video_url / main-video.
+      const possibleVideoUrl = (img as any).video_url || (imageUrl && isVideoUrl(imageUrl) ? imageUrl : null)
+      const videoUrl = normalizeMediaValue(possibleVideoUrl)
+
+      // Если это видео
       if (videoUrl && isVideoUrl(videoUrl)) {
-        if (seenVideoUrls.has(videoUrl)) {
-          return []
-        }
+        if (seenVideoUrls.has(videoUrl)) return []
         seenVideoUrls.add(videoUrl)
-        return []
+        return [{
+          id: img.id,
+          image_url: imageUrl && !isVideoUrl(imageUrl) ? imageUrl : '',
+          video_url: videoUrl,
+          alt_text: img.alt_text || 'Video',
+          isVideo: true,
+          sort_order: (img as any).sort_order || 0,
+        } as GalleryItem]
       }
-      if (!imageUrl) {
-        return []
-      }
-      if (seenImageUrls.has(imageUrl)) {
-        return []
-      }
+
+      if (!imageUrl || seenImageUrls.has(imageUrl)) return []
       seenImageUrls.add(imageUrl)
+      
       return [{
         id: img.id,
         image_url: imageUrl,
         alt_text: img.alt_text,
         is_main: img.is_main,
-        sort_order: (img as { sort_order?: number }).sort_order,
+        sort_order: (img as any).sort_order || 0,
       } as GalleryItem]
     })
+
     let list: GalleryItem[] = []
-    const hasMainInBase = baseImages.some((img) => img.is_main || resolveMediaUrl(img.image_url) === mainImageUrl)
+    const hasMainInBase = baseImages.some((img) => !img.isVideo && (img.is_main || resolveMediaUrl(img.image_url) === mainImageUrl))
 
     if (mainImageRaw && !hasMainInBase) {
       list = [{ id: 0, image_url: mainImageRaw, alt_text: product.name, is_main: true, sort_order: -1 }, ...baseImages]
@@ -1050,14 +1094,30 @@ export default function ProductPage({
                 return (
                   <div key={thumbKey} className="relative shrink-0 w-full aspect-[4/5] snap-center rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
                     {isVideoItem && img.video_url ? (
-                      <video
-                        src={resolveMediaUrl(img.video_url)}
-                        controls
-                        playsInline
-                        muted
-                        preload="metadata"
-                        className="w-full h-full object-contain"
-                      />
+                      (() => {
+                        const embedUrl = getVideoEmbedUrl(img.video_url)
+                        if (embedUrl) {
+                          return (
+                            <iframe
+                              src={embedUrl}
+                              className="w-full h-full border-0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                              title={img.alt_text || displayProductName}
+                            />
+                          )
+                        }
+                        return (
+                          <video
+                            src={resolveMediaUrl(img.video_url)}
+                            controls
+                            playsInline
+                            muted
+                            preload="metadata"
+                            className="w-full h-full object-contain"
+                          />
+                        )
+                      })()
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -1134,14 +1194,28 @@ export default function ProductPage({
                       }}
                     >
                       {isVideoItem && img.video_url ? (
-                        <video
-                          src={resolveMediaUrl(img.video_url)}
-                          muted
-                          playsInline
-                          preload="metadata"
-                          className="w-full h-full object-cover pointer-events-none"
-                          aria-label={img.alt_text || displayProductName || product.name}
-                        />
+                        (() => {
+                          const embedUrl = getVideoEmbedUrl(img.video_url)
+                          if (embedUrl) {
+                            return (
+                              <div className="w-full h-full bg-black flex items-center justify-center">
+                                <svg className="w-8 h-8 text-white/80" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </div>
+                            )
+                          }
+                          return (
+                            <video
+                              src={resolveMediaUrl(img.video_url)}
+                              muted
+                              playsInline
+                              preload="metadata"
+                              className="w-full h-full object-cover pointer-events-none"
+                              aria-label={img.alt_text || displayProductName || product.name}
+                            />
+                          )
+                        })()
                       ) : (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img
@@ -1169,15 +1243,31 @@ export default function ProductPage({
             {/* Главная область (Десктоп): видео или выбранное фото */}
             <div className="hidden md:flex flex-1 h-full items-start justify-start rounded-xl relative">
               {activeMediaType === 'video' && activeVideoUrl && isVideoUrl(activeVideoUrl) ? (
-                <video
-                  key="product-video"
-                  src={resolveMediaUrl(activeVideoUrl)}
-                  controls
-                  playsInline
-                  muted
-                  preload="metadata"
-                  className="max-w-full max-h-full rounded-xl object-contain"
-                />
+                (() => {
+                  const embedUrl = getVideoEmbedUrl(activeVideoUrl)
+                  if (embedUrl) {
+                    return (
+                      <iframe
+                        src={embedUrl}
+                        className="w-full aspect-video rounded-xl border-0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        title="Product Video"
+                      />
+                    )
+                  }
+                  return (
+                    <video
+                      key="product-video"
+                      src={resolveMediaUrl(activeVideoUrl)}
+                      controls
+                      playsInline
+                      muted
+                      preload="metadata"
+                      className="max-w-full max-h-full rounded-xl object-contain"
+                    />
+                  )
+                })()
               ) : activeImage ? (
                 <div className="relative w-full h-full min-h-[200px]">
                   {mainImageLoading && (
@@ -2091,14 +2181,16 @@ export default function ProductPage({
         )}
 
         {/* Похожие товары (RecSys когда доступен) */}
-        <SimilarProducts
-          productType={productType}
-          currentProductId={product.id}
-          currentBaseProductId={product.base_product_id}
-          currentProductSlug={product.slug}
-          limit={8}
-          useRecsys={true}
-        />
+        {!isService && (
+          <SimilarProducts
+            productType={productType}
+            currentProductId={product.id}
+            currentBaseProductId={product.base_product_id}
+            currentProductSlug={product.slug}
+            limit={8}
+            useRecsys={true}
+          />
+        )}
       </main >
     </>
   )

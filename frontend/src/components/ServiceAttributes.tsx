@@ -32,7 +32,17 @@ const ServiceAttributes: React.FC<ServiceAttributesProps> = ({ attributes, title
                         <div className="flex items-center gap-3">
                             <div className="h-2 w-2 rounded-full bg-blue-600 dark:bg-blue-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                             <span className="text-base font-medium text-gray-900 dark:text-gray-100 leading-snug">
-                                {attr.value}
+                                {attr.value && (attr.value.startsWith('http://') || attr.value.startsWith('https://')) ? (
+                                    <a
+                                        href={attr.value}
+                                        target="_self"
+                                        className="text-blue-600 dark:text-blue-400 hover:underline break-all"
+                                    >
+                                        {attr.value}
+                                    </a>
+                                ) : (
+                                    attr.value
+                                )}
                             </span>
                         </div>
                     </div>

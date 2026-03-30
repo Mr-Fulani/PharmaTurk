@@ -441,7 +441,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
                   e.stopPropagation()
                   const isExternal = /^https?:\/\//.test(linkUrl)
                   if (isExternal) {
-                    window.open(linkUrl, '_blank', 'noopener, noreferrer')
+                    window.location.href = linkUrl
                   } else {
                     router.push(linkUrl)
                   }
