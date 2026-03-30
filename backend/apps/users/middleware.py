@@ -1,6 +1,9 @@
+import logging
 from django.utils import translation
 from django.utils.deprecation import MiddlewareMixin
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 class LanguageMiddleware(MiddlewareMixin):
@@ -11,6 +14,7 @@ class LanguageMiddleware(MiddlewareMixin):
     
     def process_request(self, request):
         """Определение языка из заголовков"""
+        accept_lang = request.META.get('HTTP_ACCEPT_LANGUAGE', 'N/A')
         # Приоритет определения языка:
         # 1. Заголовок X-Language (для мобильных приложений)
         # 2. Accept-Language (стандартный браузерный заголовок)

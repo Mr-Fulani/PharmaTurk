@@ -2,10 +2,13 @@
 
 from urllib.parse import quote, urlparse
 import re
+import logging
 from decimal import Decimal
 from django.conf import settings
 from django.db.models import Count
 from rest_framework import serializers
+
+logger = logging.getLogger(__name__)
 from .models import (
     Category, CategoryTranslation, Brand, BrandTranslation, Product, ProductTranslation, ProductImage, PriceHistory, Favorite,
     ClothingProduct, ClothingProductTranslation, ClothingProductImage, ClothingVariant, ClothingVariantImage, ClothingVariantSize, ClothingProductSize,
@@ -662,6 +665,8 @@ class BookVariantSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     """Сериализатор для товаров (краткая информация)."""
     
+    name = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
@@ -723,6 +728,64 @@ class ProductSerializer(serializers.ModelSerializer):
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_name(self, obj):
+        """Локализованное название."""
+        request = self.context.get('request')
+        lang = getattr(request, 'LANGUAGE_CODE', 'en') if request else 'en'
+        if lang == 'ru':
+            return obj.name
+        
+        # Сначала ищем в собственных переводах Product
+        if hasattr(obj, 'translations'):
+            # Если это QuerySet, проверяем его через filter
+            if hasattr(obj.translations, 'filter'):
+                trans = obj.translations.filter(locale=lang).first()
+                if trans and trans.name:
+                    return trans.name
+            # Если это уже список (prefetch)
+            elif isinstance(obj.translations, list):
+                trans = next((t for t in obj.translations if t.locale == lang), None)
+                if trans and trans.name:
+                    return trans.name
+
+        # Fallback к доменным моделям
+        try:
+            if hasattr(obj, 'domain_item') and obj.domain_item != obj:
+                dt = obj.domain_item.translations.filter(locale=lang).first()
+                if dt and dt.name:
+                    return dt.name
+        except Exception:
+            pass
+            
+        return obj.name
+
+    def get_description(self, obj):
+        """Локализованное описание."""
+        request = self.context.get('request')
+        lang = getattr(request, 'LANGUAGE_CODE', 'en') if request else 'en'
+        if lang == 'ru':
+            return obj.description
+            
+        if hasattr(obj, 'translations'):
+            if hasattr(obj.translations, 'filter'):
+                trans = obj.translations.filter(locale=lang).first()
+                if trans and trans.description:
+                    return trans.description
+            elif isinstance(obj.translations, list):
+                trans = next((t for t in obj.translations if t.locale == lang), None)
+                if trans and trans.description:
+                    return trans.description
+
+        try:
+            if hasattr(obj, 'domain_item') and obj.domain_item != obj:
+                dt = obj.domain_item.translations.filter(locale=lang).first()
+                if dt and dt.description:
+                    return dt.description
+        except Exception:
+            pass
+
+        return obj.description
 
     def get_translations(self, obj):
         # Retrieve pre-fetched translations if any
@@ -3665,6 +3728,8 @@ class ServiceAttributeSerializer(serializers.ModelSerializer):
 class ServiceSerializer(serializers.ModelSerializer):
     """Сериализатор для услуг."""
     
+    name = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
     category = CategorySerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
     main_video_url = serializers.SerializerMethodField()
@@ -3690,6 +3755,28 @@ class ServiceSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
+    def get_name(self, obj):
+        """Локализованное название."""
+        request = self.context.get('request')
+        lang = getattr(request, 'LANGUAGE_CODE', 'en') if request else 'en'
+        if lang == 'ru':
+            return obj.name
+        translation = obj.translations.filter(locale=lang).first()
+        if translation and translation.name:
+            return translation.name
+        return obj.name
+
+    def get_description(self, obj):
+        """Локализованное описание."""
+        request = self.context.get('request')
+        lang = getattr(request, 'LANGUAGE_CODE', 'en') if request else 'en'
+        if lang == 'ru':
+            return obj.description
+        translation = obj.translations.filter(locale=lang).first()
+        if translation and translation.description:
+            return translation.description
+        return obj.description
+
     def get_main_image_url(self, obj):
         """URL главного изображения."""
         if obj.main_image_file:

@@ -116,8 +116,9 @@ export default function Header() {
 
   const toggleLocale = () => {
     const next = router.locale === 'ru' ? 'en' : 'ru'
+    // Сохраняем выбор в куки, чтобы api.ts подхватил его
+    Cookies.set('NEXT_LOCALE', next, { expires: 365, path: '/' })
     // Используем replace вместо push для более быстрого переключения без добавления в историю
-    // Меняем только pathname + locale, без asPath (чтобы сработал перевод и SSR словарей)
     router.replace({ pathname: router.pathname, query: router.query }, undefined, { locale: next, scroll: false })
   }
 
@@ -136,18 +137,17 @@ export default function Header() {
     const id = setTimeout(async () => {
       setLoadingSuggest(true)
       try {
-        let data: any[] = []
-        try {
-          const rList = await api.get('/catalog/products', { params: { search: q, page_size: 6 } })
-          data = Array.isArray(rList.data) ? rList.data : (rList.data.results || [])
-        } catch { }
-        if (!data || data.length === 0) {
-          try {
-            const rAct = await api.get('/catalog/products/search', { params: { q, limit: 6 } })
-            data = Array.isArray(rAct.data) ? rAct.data : (rAct.data.results || [])
-          } catch { }
-        }
-        setSuggestions(data)
+        // Параллельно запрашиваем товары и услуги для подсказок
+        const [productsRes, servicesRes] = await Promise.all([
+          api.get('/catalog/products', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] })),
+          api.get('/catalog/services', { params: { search: q, page_size: 6 } }).catch(() => ({ data: [] }))
+        ])
+
+        const products = Array.isArray(productsRes.data) ? productsRes.data : (productsRes.data.results || [])
+        const services = (Array.isArray(servicesRes.data) ? servicesRes.data : (servicesRes.data.results || []))
+          .map((s: any) => ({ ...s, is_service: true }))
+
+        setSuggestions([...products, ...services].slice(0, 10))
       } catch {
         setSuggestions([])
       } finally {
@@ -187,7 +187,14 @@ export default function Header() {
                   ) : suggestions.map((p) => (
                     <button
                       key={p.id}
-                      onClick={() => { setShowSuggestions(false); router.push(`/product/${p.slug}`) }}
+                      onClick={() => { 
+                        setShowSuggestions(false); 
+                        if (p.is_service) {
+                          router.push(`/product/uslugi/${p.slug}`)
+                        } else {
+                          router.push(`/product/${p.slug}`)
+                        }
+                      }}
                       className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors duration-200 ${isDark ? 'text-slate-100 hover:bg-slate-700' : 'text-gray-800 hover:bg-red-50'}`}
                     >
                       <span className="line-clamp-1 pr-2">{p.name}</span>

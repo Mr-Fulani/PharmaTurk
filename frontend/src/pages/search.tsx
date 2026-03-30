@@ -10,29 +10,39 @@ import { useTranslation } from 'next-i18next'
 
 export default function SearchPage() {
   const router = useRouter()
-  const q = (router.query.query as string) || ''
+  const q = ((router.query.query || router.query.q || '') as string).trim()
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const { t, i18n } = useTranslation('common')
 
   useEffect(() => {
+    if (!router.isReady || !q) return
     const run = async () => {
-      if (!q) return
       setLoading(true)
       try {
-        const r = await api.get('/catalog/products', { params: { search: q, page_size: 24 } })
-        const data = Array.isArray(r.data) ? r.data : (r.data.results || [])
-        setItems(data)
+        // Запрашиваем товары и услуги параллельно
+        const [productsRes, servicesRes] = await Promise.all([
+          api.get('/catalog/products', { params: { search: q, page_size: 24 } }),
+          api.get('/catalog/services', { params: { search: q, page_size: 24 } })
+        ])
+
+        const products = Array.isArray(productsRes.data) ? productsRes.data : (productsRes.data.results || [])
+        // Помечаем услуги, чтобы ProductCard понимал какой тип ссылки строить
+        const services = (Array.isArray(servicesRes.data) ? servicesRes.data : (servicesRes.data.results || []))
+          .map((s: any) => ({ ...s, product_type: s.product_type || 'uslugi' }))
+
+        // Объединяем результаты
+        setItems([...products, ...services])
       } finally {
         setLoading(false)
       }
     }
     run()
-  }, [q])
+  }, [q, router.isReady])
 
   return (
     <>
-      <Head><title>{t('search_results', 'Результаты поиска')} — {q}</title></Head>
+      <Head><title>{`${t('search_results', 'Результаты поиска')} — ${q}`}</title></Head>
       <main className="mx-auto max-w-6xl px-3 pt-0 pb-6 sm:p-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('search_results', 'Результаты поиска')}</h1>
         <div className="mt-1 text-sm text-gray-600 dark:text-gray-400">{q ? `${t('search_for', 'По запросу')}: "${q}"` : t('search_placeholder')}</div>
@@ -53,7 +63,7 @@ export default function SearchPage() {
                   price={p.price}
                   currency={p.currency}
                   imageUrl={p.main_image_url || p.main_image}
-                  videoUrl={p.video_url}
+                  videoUrl={p.main_video_url || p.video_url}
                   productType={pt}
                   isBaseProduct={isBaseProductType(pt)}
                   isNew={(p as { is_new?: boolean }).is_new}

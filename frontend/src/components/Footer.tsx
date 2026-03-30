@@ -60,7 +60,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
         initialSettings?.vk_url || initialSettings?.instagram_url
       if (hasSocialFromSSR) return // Не перезаписываем — SSR уже передал данные (работает локально без CORS)
 
-      api.get('/settings/footer-settings/')
+      api.get('/settings/footer-settings')
         .then(response => {
           const data = response.data || {}
           const rawLocation = (data.location || '').trim()

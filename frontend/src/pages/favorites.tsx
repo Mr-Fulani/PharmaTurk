@@ -50,7 +50,7 @@ export default function FavoritesPage() {
   return (
     <>
       <Head>
-        <title>{t('favorites_title', 'Избранное')} — Turk-Export</title>
+        <title>{`${t('favorites_title', 'Избранное')} — Turk-Export`}</title>
       </Head>
       <main className="mx-auto max-w-6xl px-3 pt-4 pb-6 sm:p-6">
         <h1 className="mb-6 text-3xl font-bold text-gray-900">
@@ -128,7 +128,7 @@ export default function FavoritesPage() {
                   currency={displayCurrency || undefined}
                   oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                   imageUrl={product.main_image_url}
-                  videoUrl={product.video_url}
+                  videoUrl={(product as any).main_video_url || product.video_url}
                   href={productHref}
                   productType={productType}
                   isBaseProduct={isBaseProduct}

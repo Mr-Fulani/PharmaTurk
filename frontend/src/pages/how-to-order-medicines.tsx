@@ -89,7 +89,7 @@ export default function HowToOrderMedicinesPage({ footerSettings }: { footerSett
 export const getServerSideProps: GetServerSideProps = async (ctx) => {
   let footerSettings = { phone: '', email: '', location: '', telegram_url: '', whatsapp_url: '', vk_url: '', instagram_url: '', crypto_payment_text: '' }
   try {
-    const res = await axios.get(getInternalApiUrl('settings/footer-settings/'))
+    const res = await axios.get(getInternalApiUrl('settings/footer-settings'))
     const data = res.data || {}
     footerSettings = {
       phone: data.phone || '',

@@ -19,7 +19,9 @@ interface Product {
   old_price?: string | number | null
   old_price_formatted?: string
   currency: string
-  main_image_url?: string | null
+  main_image_url?: string
+  video_url?: string
+  main_video_url?: string
   meta_title?: string | null
   meta_description?: string | null
   meta_keywords?: string | null
@@ -272,7 +274,7 @@ export default function BrandPage({
                     price={p.price}
                     currency={p.currency}
                     imageUrl={p.main_image_url}
-                    videoUrl={(p as { video_url?: string }).video_url}
+                    videoUrl={p.main_video_url || p.video_url}
                     productType={pt}
                     isBaseProduct={isBaseProductType(pt)}
                     isNew={(p as { is_new?: boolean }).is_new}

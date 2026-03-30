@@ -33,6 +33,7 @@ interface Product {
   main_image?: string
   main_image_url?: string
   video_url?: string
+  main_video_url?: string
   is_available: boolean
   is_featured: boolean
   is_new?: boolean
@@ -1628,7 +1629,7 @@ export default function CategoryPage({
                         currency={displayCurrency}
                         oldPrice={displayOldPriceFormatted ? String(displayOldPriceFormatted) : null}
                         imageUrl={product.main_image_url || product.main_image}
-                        videoUrl={product.video_url}
+                        videoUrl={product.main_video_url || product.video_url}
                         badge={product.is_featured ? t('product_featured', 'Хит') : null}
                         viewMode={viewMode}
                         description={product.description}

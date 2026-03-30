@@ -91,8 +91,11 @@ api.interceptors.request.use((config) => {
   }
 
   // Прокидываем язык для локализации ответов DRF/Django
-  const locale = Cookies.get('NEXT_LOCALE') || (typeof navigator !== 'undefined' ? (navigator.language?.split('-')[0] || 'en') : 'en')
+  // Приоритет: Кука -> Путь в URL -> Язык браузера -> Английский
+  const locale = Cookies.get('NEXT_LOCALE') || 
+    (typeof window !== 'undefined' ? (window.location.pathname.startsWith('/en') ? 'en' : (window.location.pathname.startsWith('/ru') ? 'ru' : (navigator.language?.split('-')[0] || 'en'))) : 'en')
     ; (config.headers as AxiosRequestHeaders)['Accept-Language'] = locale
+    ; (config.headers as AxiosRequestHeaders)['X-Language'] = locale
 
   const storedCurrency = Cookies.get('currency')
   // для авторизованных пользователей: берём из cookie, иначе из preferredCurrency, иначе fallback RUB

@@ -32,17 +32,25 @@ const ServiceAttributes: React.FC<ServiceAttributesProps> = ({ attributes, title
                         <div className="flex items-center gap-3">
                             <div className="h-2 w-2 rounded-full bg-blue-600 dark:bg-blue-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                             <span className="text-base font-medium text-gray-900 dark:text-gray-100 leading-snug">
-                                {attr.value && (attr.value.startsWith('http://') || attr.value.startsWith('https://')) ? (
-                                    <a
-                                        href={attr.value}
-                                        target="_self"
-                                        className="text-blue-600 dark:text-blue-400 hover:underline break-all"
-                                    >
-                                        {attr.value}
-                                    </a>
-                                ) : (
-                                    attr.value
-                                )}
+                                {(() => {
+                                    const rawVal = (attr.value || '').trim();
+                                    const isHttp = rawVal.startsWith('http://') || rawVal.startsWith('https://');
+                                    const isWww = rawVal.startsWith('www.');
+                                    
+                                    if (isHttp || isWww) {
+                                        const href = isWww ? `https://${rawVal}` : rawVal;
+                                        return (
+                                            <a
+                                                href={href}
+                                                target="_self"
+                                                className="text-red-600 dark:text-red-500 font-medium hover:underline break-all"
+                                            >
+                                                {rawVal}
+                                            </a>
+                                        );
+                                    }
+                                    return attr.value;
+                                })()}
                             </span>
                         </div>
                     </div>

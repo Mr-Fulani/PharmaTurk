@@ -29,7 +29,7 @@ const DEFAULT_FOOTER: FooterSettingsData = {
 
 export async function fetchFooterSettings(): Promise<FooterSettingsData> {
   try {
-    const res = await axios.get(getInternalApiUrl('settings/footer-settings/'))
+    const res = await axios.get(getInternalApiUrl('settings/footer-settings'))
     const data = res.data || {}
     return {
       phone: data.phone ?? DEFAULT_FOOTER.phone,

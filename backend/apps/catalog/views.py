@@ -14,7 +14,7 @@ from django.http import HttpResponse, JsonResponse, Http404
 from django.views.decorators.http import require_GET
 from django.core.cache import cache
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
@@ -2140,11 +2140,21 @@ class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
         if service_type:
             queryset = queryset.filter(service_type__icontains=service_type)
         
-        # Фильтр по поиску
+        # Фильтр по поиску (включая переводы и характеристики)
         search = self.request.query_params.get('search')
         if search:
-            queryset = queryset.filter(name__icontains=search)
-            
+            logger.info(f"Searching services for query: {search}")
+            queryset = queryset.filter(
+                Q(name__icontains=search) |
+                Q(description__icontains=search) |
+                Q(translations__name__icontains=search) |
+                Q(translations__description__icontains=search) |
+                Q(service_attributes__attribute_key__slug__icontains=search) |
+                Q(service_attributes__attribute_key__translations__name__icontains=search) |
+                Q(service_attributes__value__icontains=search)
+            ).distinct()
+            logger.info(f"Found {queryset.count()} services match")
+        
         # Фильтр по цене
         queryset = _apply_price_filter(queryset, self.request)
         

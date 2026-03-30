@@ -159,7 +159,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         console.error('Failed to fetch static page: delivery')
     }
     try {
-        const res = await axios.get(getInternalApiUrl('settings/footer-settings/'))
+        const res = await axios.get(getInternalApiUrl('settings/footer-settings'))
         const data = res.data || {}
         footerSettings = {
             phone: data.phone || '',

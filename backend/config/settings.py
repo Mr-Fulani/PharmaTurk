@@ -340,6 +340,8 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
     'x-cart-session',  # Разрешаем заголовок для корзины
     'x-currency',  # Разрешаем заголовок для валюты
+    'accept-language',  # Разрешаем заголовок для локализации
+    'x-language',  # Разрешаем заголовок для локализации
 ]
 
 

@@ -23,6 +23,7 @@ export const isVideoUrl = (url?: string | null): boolean => {
       // ignore
     }
   }
+  if (/proxy-media/i.test(url) || url.includes('/video/') || url.includes('main_video')) return true;
   if (/youtube\.com|youtu\.be|vimeo\.com/i.test(url)) return true
   return false
 }

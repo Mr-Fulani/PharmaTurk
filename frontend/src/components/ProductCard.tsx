@@ -91,9 +91,9 @@ export default function ProductCard({
 
   const resolvedImage =
     imageUrl && !isVideoUrl(imageUrl) ? resolveMediaUrl(imageUrl) : null
-  const resolvedVideoUrl = videoUrl && isVideoUrl(videoUrl)
+  const resolvedVideoUrl = (videoUrl && isVideoUrl(videoUrl))
     ? resolveMediaUrl(videoUrl)
-    : imageUrl && isVideoUrl(imageUrl)
+    : (imageUrl && isVideoUrl(imageUrl))
       ? resolveMediaUrl(imageUrl)
       : null
   const showVideo = Boolean(resolvedVideoUrl)

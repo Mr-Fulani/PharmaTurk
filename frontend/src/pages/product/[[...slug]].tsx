@@ -497,7 +497,7 @@ export default function ProductPage({
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      api.get('/settings/footer-settings/')
+      api.get('/settings/footer-settings')
         .then(response => {
           if (response.data) {
             setFooterSettings({
@@ -761,92 +761,88 @@ export default function ProductPage({
 
   // Элемент галереи: обычное фото или плейсхолдер «Видео»
   type GalleryItem = { id: number | string; image_url: string; video_url?: string | null; alt_text?: string; is_main?: boolean; sort_order?: number; isVideo?: boolean }
-  const buildGallerySource = useCallback((): GalleryItem[] => {
-    if (!product) return []
-    const variantImages = selectedVariant?.images || []
-    const productImages = (product.images && product.images.length > 0) ? product.images : (product.gallery || [])
-    
-    const mergedImages = productType === 'jewelry'
-      ? [...variantImages, ...productImages]
-      : (variantImages.length > 0 ? variantImages : productImages)
-
-    const mainImageRaw = normalizeMediaValue(selectedVariant?.main_image) ||
-      normalizeMediaValue(product.main_image_url) ||
-      normalizeMediaValue(product.main_image)
-    const mainImageUrl = resolveMediaUrl(mainImageRaw)
-
-    const normalizedProductVideoUrl = normalizeMediaValue(product.video_url || product.main_video_url)
-    const normalizedProductGifUrl = normalizeMediaValue(product.main_gif_url)
-    const hasVideo = Boolean(normalizedProductVideoUrl && isVideoUrl(normalizedProductVideoUrl))
-    const hasGif = Boolean(normalizedProductGifUrl)
-
-    const seenVideoUrls = new Set<string>()
-    const seenImageUrls = new Set<string>()
-
-    const baseImages: GalleryItem[] = mergedImages.flatMap((img) => {
-      const imageUrl = normalizeMediaValue(img.image_url)
-      const possibleVideoUrl = (img as any).video_url || (imageUrl && isVideoUrl(imageUrl) ? imageUrl : null)
-      const videoUrl = normalizeMediaValue(possibleVideoUrl)
-
-      // Если это видео
-      if (videoUrl && isVideoUrl(videoUrl)) {
-        if (seenVideoUrls.has(videoUrl)) return []
-        seenVideoUrls.add(videoUrl)
+    const buildGallerySource = useCallback((): GalleryItem[] => {
+      if (!product) return []
+      const variantImages = selectedVariant?.images || []
+      const productImages = (product.images && product.images.length > 0) ? product.images : (product.gallery || [])
+      
+      const mergedImages = productType === 'jewelry'
+        ? [...variantImages, ...productImages]
+        : (variantImages.length > 0 ? variantImages : productImages)
+  
+      const mainImageRaw = normalizeMediaValue(selectedVariant?.main_image || product.main_image_url || product.main_image)
+  
+      const normalizedProductVideoUrl = normalizeMediaValue(product.main_video_url || product.video_url)
+      const normalizedProductGifUrl = normalizeMediaValue(product.main_gif_url)
+  
+      const seenVideoUrls = new Set<string>()
+      const seenImageUrls = new Set<string>()
+  
+      const baseImages: GalleryItem[] = mergedImages.flatMap((img) => {
+        const imageUrl = normalizeMediaValue(img.image_url)
+        const possibleVideoUrl = (img as any).video_url || (imageUrl && isVideoUrl(imageUrl) ? imageUrl : null)
+        const videoUrl = normalizeMediaValue(possibleVideoUrl)
+  
+        // Если это видео
+        if (videoUrl && isVideoUrl(videoUrl)) {
+          if (seenVideoUrls.has(videoUrl)) return []
+          seenVideoUrls.add(videoUrl)
+          return [{
+            id: img.id,
+            image_url: imageUrl && !isVideoUrl(imageUrl) ? imageUrl : '',
+            video_url: videoUrl,
+            alt_text: img.alt_text || 'Video',
+            isVideo: true,
+            is_main: img.is_main,
+            sort_order: (img as any).sort_order || 0,
+          } as GalleryItem]
+        }
+  
+        if (!imageUrl || seenImageUrls.has(imageUrl)) return []
+        seenImageUrls.add(imageUrl)
+        
         return [{
           id: img.id,
-          image_url: imageUrl && !isVideoUrl(imageUrl) ? imageUrl : '',
-          video_url: videoUrl,
-          alt_text: img.alt_text || 'Video',
-          isVideo: true,
+          image_url: imageUrl,
+          alt_text: img.alt_text,
+          is_main: img.is_main,
           sort_order: (img as any).sort_order || 0,
         } as GalleryItem]
-      }
-
-      if (!imageUrl || seenImageUrls.has(imageUrl)) return []
-      seenImageUrls.add(imageUrl)
+      })
+  
+      let list: GalleryItem[] = [...baseImages]
       
-      return [{
-        id: img.id,
-        image_url: imageUrl,
-        alt_text: img.alt_text,
-        is_main: img.is_main,
-        sort_order: (img as any).sort_order || 0,
-      } as GalleryItem]
-    })
-
-    let list: GalleryItem[] = []
-    const hasMainInBase = baseImages.some((img) => !img.isVideo && (img.is_main || resolveMediaUrl(img.image_url) === mainImageUrl))
-
-    if (mainImageRaw && !hasMainInBase) {
-      list = [{ id: 0, image_url: mainImageRaw, alt_text: product.name, is_main: true, sort_order: -1 }, ...baseImages]
-    } else {
-      list = baseImages
-    }
-    if (hasVideo && normalizedProductVideoUrl && !seenVideoUrls.has(normalizedProductVideoUrl)) {
-      list = [{ id: 'main-video', image_url: '', video_url: normalizedProductVideoUrl, alt_text: 'Видео', isVideo: true, sort_order: -2 }, ...list]
-    }
-    if (hasGif && normalizedProductGifUrl) {
-      list = [{ id: 'main-gif', image_url: normalizedProductGifUrl, alt_text: 'GIF', sort_order: -1.5 }, ...list]
-    }
-    const sortPriority = (item: GalleryItem) => {
-      if (item.isVideo && normalizedProductVideoUrl && item.video_url === normalizedProductVideoUrl) {
-        return 0
+      // Добавляем мейн-поля, если они еще не в списке
+      if (normalizedProductVideoUrl && !seenVideoUrls.has(normalizedProductVideoUrl)) {
+        list.push({ id: 'main-v', image_url: '', video_url: normalizedProductVideoUrl, alt_text: 'Видео', isVideo: true, is_main: !list.some(i => i.is_main), sort_order: -50 })
       }
-      if (item.is_main) {
-        return 1
+      if (normalizedProductGifUrl && !seenImageUrls.has(normalizedProductGifUrl)) {
+        list.push({ id: 'main-g', image_url: normalizedProductGifUrl, alt_text: 'GIF', is_main: !list.some(i => i.is_main), sort_order: -40 })
       }
-      return 2
-    }
-    return [...list].sort((a, b) => {
-      const prioA = sortPriority(a)
-      const prioB = sortPriority(b)
-      if (prioA !== prioB) return prioA - prioB
-      const orderA = a.sort_order ?? 999
-      const orderB = b.sort_order ?? 999
-      if (orderA !== orderB) return orderA - orderB
-      return String(a.id).localeCompare(String(b.id), 'ru')
-    })
-  }, [product, productType, selectedVariant])
+      if (mainImageRaw && !seenImageUrls.has(mainImageRaw)) {
+        list.push({ id: 'main-i', image_url: mainImageRaw, alt_text: product.name, is_main: !list.some(i => i.is_main), sort_order: -30 })
+      }
+  
+      const sortPriority = (item: GalleryItem) => {
+        // Услуги: видео-анкор (is_main) -> 0, любое видео -> 1, главная картинка -> 2, остальное -> 3
+        if (item.is_main && item.isVideo) return 0
+        if (item.is_main) return 1
+        if (item.isVideo) return 2
+        return 3
+      }
+  
+      return [...list].sort((a, b) => {
+        const prioA = sortPriority(a)
+        const prioB = sortPriority(b)
+        if (prioA !== prioB) return prioA - prioB
+        
+        const orderA = a.sort_order ?? 999
+        const orderB = b.sort_order ?? 999
+        if (orderA !== orderB) return orderA - orderB
+        
+        return String(a.id).localeCompare(String(b.id), 'ru')
+      })
+    }, [product, productType, selectedVariant])
 
   const gallerySource = useMemo(() => buildGallerySource(), [buildGallerySource])
   const galleryMainImageUrl = normalizeMediaValue(
@@ -877,13 +873,28 @@ export default function ProductPage({
   /** Для миниатюр с битой ссылкой: по id храним URL плейсхолдера, чтобы по клику показывать его в главной области */
   const [thumbPlaceholderByKey, setThumbPlaceholderByKey] = useState<Record<string, string>>({})
   const initialVideoUrl =
+    (product?.main_video_url && isVideoUrl(product.main_video_url) ? product.main_video_url : null) ||
     (product?.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
     gallerySource.find((item) => item.isVideo && item.video_url)?.video_url ||
     null
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(initialVideoUrl)
-  const [activeMediaType, setActiveMediaType] = useState<'video' | 'image'>(() =>
+  const [activeMediaType, setActiveMediaType] = useState<'video' | 'image'>(
     initialVideoUrl ? 'video' : 'image'
   )
+
+  // ПРИНУДИТЕЛЬНО ПЕРЕКЛЮЧАЕМ НА ВИДЕО, ЕСЛИ ОНО ПЕРВОЕ В ГАЛЕРЕЕ
+  useEffect(() => {
+    if (gallerySource.length > 0) {
+      const first = gallerySource[0]
+      if (first.isVideo && first.video_url) {
+        setActiveMediaType('video')
+        setActiveVideoUrl(first.video_url)
+      } else if (first.image_url) {
+        setActiveMediaType('image')
+        setActiveImage(resolveMediaUrl(first.image_url))
+      }
+    }
+  }, [gallerySource])
 
   // Обновляем главную картинку при изменении товара или варианта
   useEffect(() => {
@@ -898,7 +909,6 @@ export default function ProductPage({
         normalizeMediaValue(selectedVariant?.main_image) ||
         normalizeMediaValue(selectedVariant?.images?.find((img) => img.is_main)?.image_url) ||
         normalizeMediaValue(selectedVariant?.images?.[0]?.image_url) ||
-        normalizeMediaValue(product.active_variant_main_image_url || null) ||
         normalizeMediaValue(product.main_image_url || null) ||
         normalizeMediaValue(product.main_image || null) ||
         normalizeMediaValue(currentGallerySource.find((img) => !img.isVideo && img.image_url)?.image_url) ||
@@ -906,19 +916,24 @@ export default function ProductPage({
       ) || null
     setActiveImage(newImage)
     setMainImageLoading(false)
+
     const freshVideoUrl =
+      (product.main_video_url && isVideoUrl(product.main_video_url) ? product.main_video_url : null) ||
       (product.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
       currentGallerySource.find((item) => item.isVideo && item.video_url)?.video_url ||
       null
+    
     setActiveVideoUrl(freshVideoUrl)
-    const hasImages = Boolean(
-      normalizeMediaValue(selectedVariant?.main_image) ||
-      selectedVariant?.images?.some((img) => normalizeMediaValue(img.image_url)) ||
-      normalizeMediaValue(product.main_image_url || null) ||
-      normalizeMediaValue(product.main_image || null) ||
-      currentGallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
-    )
-    setActiveMediaType(freshVideoUrl ? 'video' : (hasImages ? 'image' : 'image'))
+    
+    const hasImages = currentGallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
+    
+    // Если первым элементом в галерее идет видео - принудительно ставим тип 'video'
+    if (currentGallerySource[0]?.isVideo && currentGallerySource[0]?.video_url) {
+      setActiveMediaType('video')
+      setActiveVideoUrl(currentGallerySource[0].video_url)
+    } else if (hasImages) {
+      setActiveMediaType(freshVideoUrl ? 'video' : 'image')
+    }
   }, [buildGallerySource, product, selectedVariant, router.asPath])
 
   if (!product) {
@@ -2027,8 +2042,16 @@ export default function ProductPage({
         {descriptionSections.length > 0 && (
           <div className="mt-6 flex w-full flex-col gap-4">
             {descriptionSections.map((sec, idx) => {
-              const body = sec.html.trim()
-              if (!body) return null
+              const rawBody = sec.html.trim()
+              if (!rawBody) return null
+              
+              // Linkify
+              const urlRegex = /((https?:\/\/[^\s<"']+)|(www\.[^\s<"']+))/gi;
+              const body = rawBody.replace(urlRegex, (url) => {
+                const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+                return `<a href="${href}" target="_self" class="text-red-500 hover:text-red-700 font-semibold underline underline-offset-2 transition-colors duration-200 break-all">${url}</a>`;
+              });
+
               const sectionTitle = sec.title.trim()
                 ? sec.title
                 : idx === 0
@@ -2169,7 +2192,17 @@ export default function ProductPage({
                         <div
                           className="whitespace-pre-wrap leading-relaxed text-base"
                           style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
-                          dangerouslySetInnerHTML={{ __html: getLocalizedProductDescription(section.content, t, product.translations, router.locale, section.fieldName) }}
+                          dangerouslySetInnerHTML={{ 
+                            __html: (() => {
+                              const content = section.html;
+                              if (!content) return '';
+                              const urlRegex = /((https?:\/\/[^\s<"']+)|(www\.[^\s<"']+))/gi;
+                              return content.replace(urlRegex, (url) => {
+                                const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+                                return `<a href="${href}" target="_self" style="color: #EF4444; font-weight: 600; text-decoration: underline; word-break: break-all;">${url}</a>`;
+                              });
+                            })()
+                          }}
                         />
                       </div>
                     </div>
