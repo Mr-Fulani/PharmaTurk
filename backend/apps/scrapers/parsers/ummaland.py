@@ -520,11 +520,13 @@ class UmmalandParser(BaseScraper):
                         # data-video / data-video-* всегда считаем ссылкой на видео
                         video_urls.append(val)
                         # если это <img> с превью, его src/data-src считаем постером видео
-                        if elem.name == 'img':
+                        # Если это другой тег (например <div>), ищем <img> внутри него
+                        img_elem = elem if elem.name == 'img' else elem.select_one('img')
+                        if img_elem:
                             poster_src = (
-                                elem.get('data-src')
-                                or elem.get('src')
-                                or elem.get('data-large_image')
+                                img_elem.get('data-src')
+                                or img_elem.get('src')
+                                or img_elem.get('data-large_image')
                             )
                             if poster_src:
                                 video_posters.append(poster_src)

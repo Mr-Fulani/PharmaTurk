@@ -1630,6 +1630,7 @@ export default function CategoryPage({
                         oldPrice={displayOldPriceFormatted ? String(displayOldPriceFormatted) : null}
                         imageUrl={product.main_image_url || product.main_image}
                         videoUrl={product.main_video_url || product.video_url}
+                        hasManualMainImage={(product as any).has_manual_main_image}
                         badge={product.is_featured ? t('product_featured', 'Хит') : null}
                         viewMode={viewMode}
                         description={product.description}

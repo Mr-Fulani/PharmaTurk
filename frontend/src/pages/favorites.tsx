@@ -129,6 +129,7 @@ export default function FavoritesPage() {
                   oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                   imageUrl={product.main_image_url}
                   videoUrl={(product as any).main_video_url || product.video_url}
+                  hasManualMainImage={(product as any).has_manual_main_image}
                   href={productHref}
                   productType={productType}
                   isBaseProduct={isBaseProduct}

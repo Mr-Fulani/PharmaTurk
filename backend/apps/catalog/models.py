@@ -866,6 +866,15 @@ class AbstractDomainProduct(models.Model):
             return translation.description
         return self.description or ""
 
+    @property
+    def has_manual_main_image(self):
+        """Проверяет, было ли главное изображение задано вручную (чекбокс или файл)."""
+        if bool(self.main_image_file and getattr(self.main_image_file, "name", None)):
+            return True
+        if hasattr(self, 'images') and self.images.filter(is_main=True).exists():
+            return True
+        return False
+
     def _sync_to_base_product(self):
         """Синхронизирует данные с shadow-копией в Product.
 
@@ -948,10 +957,41 @@ class AbstractDomainProduct(models.Model):
         product.external_url = self.external_url
         product.external_data = self.external_data
         
-        # Видео
-        product.video_url = self.video_url
-        product.main_video_file = self.main_video_file
+        # Видео: не затираем main_video_file и video_url на Product, если на домене файла/ссылки нет.
+        domain_has_vf = self.main_video_file and getattr(self.main_video_file, "name", None)
+        domain_vu = (self.video_url or "").strip()
         
+        if domain_vu:
+            product.video_url = self.video_url
+        if domain_has_vf:
+            product.main_video_file = self.main_video_file
+        elif domain_vu == "" and not domain_has_vf:
+            # Если в админке явно удалили видео на доменном товаре, то нужно удалить и на базовом.
+            # Но при авто-синхронизации (когда domain_item только создался) мы не должны затирать
+            # уже скачанный файл. Поэтому мы затираем ТОЛЬКО если доменная модель явно "пустая",
+            # но это опасно для скраперов. Оставим безопасный вариант:
+            pass
+
+        domain_has_imgf = self.main_image_file and getattr(self.main_image_file, "name", None)
+        domain_main_u = (self.main_image or "").strip()
+
+        update_fields = [
+            "name", "slug", "description", "category", "gender", "brand",
+            "price", "currency", "old_price", "is_available", "stock_quantity",
+            "external_id", "external_url", "external_data", "product_type",
+            "gtin", "mpn", "weight_value", "weight_unit", "length", "width", "height", "dimensions_unit",
+            "seo_title", "seo_description", "keywords", "meta_title", "meta_description",
+            "meta_keywords", "og_title", "og_description", "og_image_url",
+            "is_active", "is_new", "is_featured"
+        ]
+
+        if domain_vu:
+            product.video_url = self.video_url
+            update_fields.append("video_url")
+        if domain_has_vf:
+            product.main_video_file = self.main_video_file
+            update_fields.append("main_video_file")
+
         # Габариты
         product.gtin = self.gtin
         product.mpn = self.mpn
@@ -974,7 +1014,9 @@ class AbstractDomainProduct(models.Model):
         product.og_image_url = self.og_image_url
         
         product.main_image = self.main_image
-        product.main_image_file = self.main_image_file
+        if domain_has_imgf or not domain_main_u:
+            product.main_image_file = self.main_image_file
+        # main_image_file при «URL есть, файла на домене нет» не трогаем — см. комментарий к видео выше.
         product.is_active = self.is_active
         product.is_new = self.is_new
         product.is_featured = self.is_featured
@@ -1000,13 +1042,13 @@ class AbstractDomainProduct(models.Model):
         product.is_new = self.is_new
         product.is_featured = self.is_featured
         product.main_image = self.main_image
-        product.main_image_file = self.main_image_file
-        if hasattr(self, 'video_url'):
-            product.video_url = self.video_url
-        if hasattr(self, 'main_video_file'):
-            product.main_video_file = self.main_video_file
-            
-        product.save()
+        if domain_has_imgf or not domain_main_u:
+            product.main_image_file = self.main_image_file
+            update_fields.append("main_image_file")
+        if domain_main_u:
+            update_fields.append("main_image")
+
+        product.save(update_fields=list(set(update_fields)))
 
 
 class Product(models.Model):
@@ -1269,6 +1311,21 @@ class Product(models.Model):
             models.Index(fields=["availability_status"]),
             models.Index(fields=["country_of_origin"]),
         ]
+
+    @property
+    def has_manual_main_image(self):
+        """Проверяет, было ли главное изображение задано вручную (чекбокс или файл)."""
+        if bool(self.main_image_file and getattr(self.main_image_file, "name", None)):
+            return True
+        if hasattr(self, 'images') and self.images.filter(is_main=True).exists():
+            return True
+        domain = self.domain_item
+        if domain and domain != self:
+            if bool(domain.main_image_file and getattr(domain.main_image_file, "name", None)):
+                return True
+            if hasattr(domain, 'images') and domain.images.filter(is_main=True).exists():
+                return True
+        return False
 
     @property
     def domain_item(self):

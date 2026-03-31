@@ -74,19 +74,19 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
       ].join('&')
       const embedUrl = `${base}?${params}`
       return (
-        <div className="absolute inset-0 h-full w-full overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 h-full w-full overflow-hidden">
           {youtubeThumb && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={youtubeThumb}
               alt={alt || ''}
-              className="absolute inset-0 h-full w-full object-cover"
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
             />
           )}
           <iframe
             src={embedUrl}
             title={alt || 'YouTube'}
-            className="absolute inset-0 h-full w-full object-cover"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
             allow="autoplay; encrypted-media; picture-in-picture"
             loading="lazy"
             style={{ opacity: 0, transition: 'opacity 0.4s ease' }}
@@ -109,7 +109,7 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
     if (isVideoUrl(mediaUrl || src)) {
       return (
         <video
-          className="absolute inset-0 h-full w-full object-cover"
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
           autoPlay
           muted
           loop
@@ -123,7 +123,7 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
                 const img = document.createElement('img')
                 img.src = placeholder
                 img.alt = alt || ''
-                img.className = 'absolute inset-0 h-full w-full object-cover'
+                img.className = 'pointer-events-none absolute inset-0 h-full w-full object-cover'
                 wrapper.replaceChildren(img)
               }
             }
@@ -138,7 +138,7 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
       <img
         src={src}
         alt={alt || ''}
-        className="absolute inset-0 h-full w-full object-cover"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
         onError={(e) => {
           const placeholder = id ? getPlaceholderImageUrl({ type: 'category', id }) : null
           if (placeholder && e.currentTarget.src !== placeholder) {
@@ -189,15 +189,17 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
                   key={c.id}
                   href={`/categories/${hrefSlug}`}
                   style={{ height: cardHeight }}
-                  className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-[var(--surface)]"
+                  className="relative isolate rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-[var(--surface)]"
                 >
-                  {renderMedia(
-                    c.card_media_url,
-                    getLocalizedCategoryName(c.slug, c.name, t, c.translations, locale),
-                    c.id
-                  )}
-                  <div className="absolute inset-0 bg-[var(--text-strong)]/20" />
-                  <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
+                  <div className="absolute inset-0 z-0 overflow-hidden">
+                    {renderMedia(
+                      c.card_media_url,
+                      getLocalizedCategoryName(c.slug, c.name, t, c.translations, locale),
+                      c.id
+                    )}
+                  </div>
+                  <div className="absolute inset-0 z-[1] bg-[var(--text-strong)]/20" />
+                  <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
                     <div className="text-center text-white drop-shadow">
                       <h3 className="text-xl font-bold mb-1">{getLocalizedCategoryName(c.slug, c.name, t, c.translations, locale)}</h3>
                       {getLocalizedCategoryDescription(c.slug, c.description, t, c.translations, locale) ? (

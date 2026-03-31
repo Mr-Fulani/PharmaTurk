@@ -4,6 +4,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin, urlparse
 
@@ -13,6 +14,17 @@ from fake_useragent import UserAgent
 
 from .selectors import DataSelector, SelectorConfig
 from .utils import clean_text, normalize_price, extract_currency
+
+
+def _json_safe_scraped_value(value: Any) -> Any:
+    """Приводит значения к типам, допустимым для JSON (логи ScrapedProductLog)."""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: _json_safe_scraped_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_scraped_value(v) for v in value]
+    return value
 
 
 @dataclass
@@ -51,10 +63,14 @@ class ScrapedProduct:
     
     def to_dict(self) -> Dict[str, Any]:
         """Преобразует объект в словарь."""
+        safe_attrs = _json_safe_scraped_value(self.attributes)
+        price_out = (
+            float(self.price) if self.price is not None else None
+        )
         return {
             'name': self.name,
             'description': self.description,
-            'price': float(self.price) if self.price is not None else None,
+            'price': price_out,
             'currency': self.currency,
             'url': self.url,
             'images': self.images,
@@ -65,14 +81,14 @@ class ScrapedProduct:
             'barcode': self.barcode,
             'is_available': self.is_available,
             'stock_quantity': self.stock_quantity,
-            'attributes': self.attributes,
+            'attributes': safe_attrs,
             'source': self.source,
             'scraped_at': self.scraped_at,
             'metadata': {
                 'stock_quantity': self.stock_quantity,
                 'source': self.source,
                 'scraped_at': self.scraped_at,
-                'attributes': self.attributes
+                'attributes': safe_attrs,
             }
         }
 

@@ -73,6 +73,7 @@ def _base_product_to_domain_kwargs(product):
         "currency": product.currency or "RUB",
         "is_available": getattr(product, "is_available", True),
         "main_image": product.main_image or "",
+        "video_url": product.video_url or "",
         "external_id": getattr(product, "external_id", "") or "",
         "external_url": getattr(product, "external_url", "") or "",
         "external_data": getattr(product, "external_data", {}) or {},
@@ -97,7 +98,7 @@ def _enrich_domain_kwargs_from_product(kwargs, product, DomainModel):
 # Поля, которые синхронизируем из Product в домен при создании и при обновлении
 DOMAIN_SYNC_FIELDS = (
     "name", "slug", "description", "category_id", "brand_id",
-    "price", "old_price", "currency", "is_available", "main_image",
+    "price", "old_price", "currency", "is_available", "main_image", "video_url",
     "external_id", "external_url", "external_data",
     "is_active", "is_new", "is_featured",
 )

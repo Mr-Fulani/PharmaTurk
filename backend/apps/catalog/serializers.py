@@ -117,6 +117,33 @@ def _resolve_file_url(file_field, request):
     return None
 
 
+def _resolve_file_url_if_stored(file_field, request):
+    """Как _resolve_file_url, но только если объект реально есть в storage (иначе 404 на proxy-media).
+
+    Ключ в БД может быть без R2_PREFIX (products/...), а объект в бакете — с префиксом (dev/products/...);
+    proxy-media перебирает кандидатов, здесь делаем то же самое.
+    """
+    if not file_field or not getattr(file_field, "name", None):
+        return None
+    from django.core.files.storage import default_storage
+
+    from apps.catalog.utils.media_path import resolve_existing_media_storage_key
+
+    try:
+        resolved_key = resolve_existing_media_storage_key(file_field.name)
+        if not resolved_key:
+            return None
+        raw_url = default_storage.url(resolved_key)
+    except Exception:
+        return None
+    if request:
+        raw_url = request.build_absolute_uri(raw_url)
+    proxy = _r2_proxy_url(raw_url, request)
+    if proxy:
+        return proxy
+    return raw_url
+
+
 def serialize_product_for_card(product, request):
     """
     Сериализует товар для карточки с учётом типа (shoes, clothing и т.д.).
@@ -703,6 +730,7 @@ class ProductSerializer(serializers.ModelSerializer):
     rating = serializers.SerializerMethodField()
     reviews_count = serializers.SerializerMethodField()
     is_bestseller = serializers.SerializerMethodField()
+    has_manual_main_image = serializers.BooleanField(read_only=True)
     
     class Meta:
         model = Product
@@ -724,7 +752,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'book_authors', 'book_genres', 'book_attributes', 'dynamic_attributes',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
-            'main_image_url', 'video_url',
+            'main_image_url', 'video_url', 'has_manual_main_image',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -891,10 +919,12 @@ class ProductSerializer(serializers.ModelSerializer):
         """URL видео товара (Generic). Приоритет загруженному файлу."""
         request = self.context.get('request')
         
-        # 1. Приоритет файлу из R2/Media (проксированный)
+        # 1. Приоритет файлу из R2/Media (проксированный), только если файл существует
         file_field = getattr(obj, "main_video_file", None)
         if file_field and getattr(file_field, "name", None):
-            return _resolve_file_url(file_field, request)
+            resolved = _resolve_file_url_if_stored(file_field, request)
+            if resolved:
+                return resolved
             
         # 2. Фолбэк на внешний URL
         raw_url = getattr(obj, "video_url", None) or ""
@@ -1774,14 +1804,18 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         # 1. Приоритет файлу в ClothingProduct
         file_field = getattr(obj, "main_video_file", None)
         if file_field and getattr(file_field, "name", None):
-            return _resolve_file_url(file_field, request)
+            resolved = _resolve_file_url_if_stored(file_field, request)
+            if resolved:
+                return resolved
 
         # 2. Проверка shadow-копии (Product)
         base_product = getattr(obj, "base_product", None)
         if base_product:
             file_field = getattr(base_product, "main_video_file", None)
             if file_field and getattr(file_field, "name", None):
-                return _resolve_file_url(file_field, request)
+                resolved = _resolve_file_url_if_stored(file_field, request)
+                if resolved:
+                    return resolved
 
         # 3. Фолбэк на внешний URL
         raw_url = getattr(obj, "video_url", None) or ""
@@ -2097,14 +2131,18 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         # 1. Приоритет файлу в ShoeProduct
         file_field = getattr(obj, "main_video_file", None)
         if file_field and getattr(file_field, "name", None):
-            return _resolve_file_url(file_field, request)
+            resolved = _resolve_file_url_if_stored(file_field, request)
+            if resolved:
+                return resolved
 
         # 2. Проверка shadow-копии (Product)
         base_product = getattr(obj, "base_product", None)
         if base_product:
             file_field = getattr(base_product, "main_video_file", None)
             if file_field and getattr(file_field, "name", None):
-                return _resolve_file_url(file_field, request)
+                resolved = _resolve_file_url_if_stored(file_field, request)
+                if resolved:
+                    return resolved
 
         # 3. Фолбэк на внешний URL
         raw_url = getattr(obj, "video_url", None) or ""
@@ -2874,14 +2912,18 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         # 1. Приоритет файлу в FurnitureProduct
         file_field = getattr(obj, "main_video_file", None)
         if file_field and getattr(file_field, "name", None):
-            return _resolve_file_url(file_field, request)
+            resolved = _resolve_file_url_if_stored(file_field, request)
+            if resolved:
+                return resolved
 
         # 2. Проверка shadow-копии (Product), т.к. enrichment часто обновляет только её
         base_product = getattr(obj, "base_product", None)
         if base_product:
             file_field = getattr(base_product, "main_video_file", None)
             if file_field and getattr(file_field, "name", None):
-                return _resolve_file_url(file_field, request)
+                resolved = _resolve_file_url_if_stored(file_field, request)
+                if resolved:
+                    return resolved
 
         # 3. Фолбэк на внешний URL
         raw_url = getattr(obj, "video_url", None) or ""
@@ -3416,14 +3458,18 @@ class JewelryProductSerializer(serializers.ModelSerializer):
         # 1. Приоритет файлу в JewelryProduct
         file_field = getattr(obj, "main_video_file", None)
         if file_field and getattr(file_field, "name", None):
-            return _resolve_file_url(file_field, request)
+            resolved = _resolve_file_url_if_stored(file_field, request)
+            if resolved:
+                return resolved
 
         # 2. Проверка shadow-копии (Product)
         base_product = getattr(obj, "base_product", None)
         if base_product:
             file_field = getattr(base_product, "main_video_file", None)
             if file_field and getattr(file_field, "name", None):
-                return _resolve_file_url(file_field, request)
+                resolved = _resolve_file_url_if_stored(file_field, request)
+                if resolved:
+                    return resolved
 
         # 3. Фолбэк на внешний URL
         raw_url = getattr(obj, "video_url", None) or ""
@@ -3965,8 +4011,10 @@ class BookProductSerializer(serializers.ModelSerializer):
     meta_keywords = serializers.SerializerMethodField()
     og_title = serializers.SerializerMethodField()
     video_url = serializers.SerializerMethodField()
+    main_video_url = serializers.SerializerMethodField()
     book_attributes = serializers.SerializerMethodField()
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
+    has_manual_main_image = serializers.BooleanField(read_only=True)
 
     def get_book_attributes(self, obj):
         data = getattr(obj.base_product, 'external_data', None) or {}
@@ -3988,7 +4036,7 @@ class BookProductSerializer(serializers.ModelSerializer):
             'isbn', 'publisher', 'publication_date', 'pages', 'language',
             'cover_type', 'rating', 'reviews_count', 'is_bestseller',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
-            'video_url',
+            'video_url', 'main_video_url', 'has_manual_main_image',
             'images',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
@@ -4043,27 +4091,39 @@ class BookProductSerializer(serializers.ModelSerializer):
         return None
 
     def get_video_url(self, obj):
-        """URL видео: у книги или у базового Product (видео часто сохраняется в base_product)."""
+        """URL видео: как у ProductSerializer — сначала загруженный файл, потом внешний URL.
+
+        Иначе при наличии main_video_file на base_product отдавался бы сырой umma-land .mov,
+        который в <video> часто не играет (CORS/хостинг), хотя копия в хранилище уже есть.
+        """
         request = self.context.get('request')
-        raw_url = getattr(obj, "video_url", None) or ""
-        if raw_url and raw_url.strip():
-            path_lower = raw_url.split("?")[0].lower()
-            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
-                return _resolve_media_url(raw_url, request)
-        file_field = getattr(obj, "main_video_file", None)
-        if file_field and getattr(file_field, "name", None):
-            return _resolve_file_url(file_field, request)
-        base = getattr(obj, "base_product", None)
-        if base:
-            raw_url = getattr(base, "video_url", None) or ""
-            if raw_url and raw_url.strip():
-                path_lower = raw_url.split("?")[0].lower()
+
+        def _url_for_book_entity(entity):
+            if not entity:
+                return None
+            ff = getattr(entity, "main_video_file", None)
+            if ff and getattr(ff, "name", None):
+                resolved = _resolve_file_url_if_stored(ff, request)
+                if resolved:
+                    return resolved
+            raw = getattr(entity, "video_url", None) or ""
+            if raw and raw.strip():
+                path_lower = raw.split("?")[0].lower()
                 if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
-                    return _resolve_media_url(raw_url, request)
-            file_field = getattr(base, "main_video_file", None)
-            if file_field and getattr(file_field, "name", None):
-                return _resolve_file_url(file_field, request)
+                    return _resolve_media_url(raw, request)
+            return None
+
+        # Сначала base_product: скачанное видео сидит на shadow Product, у BookProduct часто только внешний URL.
+        base = getattr(obj, "base_product", None)
+        for entity in (base, obj):
+            u = _url_for_book_entity(entity)
+            if u:
+                return u
         return None
+
+    def get_main_video_url(self, obj):
+        """Тот же URL, что video_url (для фронта: main_video_url || video_url)."""
+        return self.get_video_url(obj)
 
     def get_price(self, obj):
         """Конвертированная цена с маржой (вариант или базовый товар)."""

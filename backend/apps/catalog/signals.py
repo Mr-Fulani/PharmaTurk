@@ -6,6 +6,7 @@ from django.dispatch import receiver
 
 from .models import (
     BannerMedia,
+    BookProduct,
     BookProductImage,
     BookVariantImage,
     Brand,
@@ -523,6 +524,32 @@ def ensure_domain_product_for_base_product(sender, instance, **kwargs):
     """
     from .domain_sync import ensure_domain_product_for_base
     ensure_domain_product_for_base(instance)
+
+
+@receiver(post_save, sender=Product)
+def sync_downloaded_video_to_book_product(sender, instance, **kwargs):
+    """
+    После скачивания видео на shadow Product путь main_video_file на BookProduct
+    может указывать на отсутствующий объект в R2 (старая запись), а API отдаёт
+    proxy-media → 404. Копируем реальный файл с Product на книгу, если у книги
+    нет валидного файла в storage (админский загруженный файл не трогаем).
+    """
+    if instance.product_type != "books":
+        return
+    if not instance.main_video_file or not getattr(instance.main_video_file, "name", None):
+        return
+    from apps.catalog.utils.media_path import resolve_existing_media_storage_key
+
+    if not resolve_existing_media_storage_key(instance.main_video_file.name):
+        return
+    book = BookProduct.objects.filter(base_product=instance).first()
+    if not book:
+        return
+    bn = getattr(book.main_video_file, "name", None) or ""
+    if bn and resolve_existing_media_storage_key(bn):
+        return
+    book.main_video_file = instance.main_video_file
+    book.save(update_fields=["main_video_file"])
 
 
 @receiver(post_save, sender=Product)

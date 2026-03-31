@@ -3,7 +3,7 @@ import { useTranslation } from 'next-i18next'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
-import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../lib/media'
+import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import { useState, useEffect } from 'react'
@@ -43,6 +43,7 @@ interface ProductCardProps {
   og_title?: string | null
   og_description?: string | null
   og_image_url?: string | null
+  hasManualMainImage?: boolean
 }
 
 export default function ProductCard({
@@ -72,7 +73,8 @@ export default function ProductCard({
   reviewsCount,
   isBestseller,
   isNew,
-  isFeatured
+  isFeatured,
+  hasManualMainImage = false
 }: ProductCardProps) {
   const { t, i18n } = useTranslation('common')
   const [isMounted, setIsMounted] = useState(false)
@@ -96,7 +98,8 @@ export default function ProductCard({
     : (imageUrl && isVideoUrl(imageUrl))
       ? resolveMediaUrl(imageUrl)
       : null
-  const showVideo = Boolean(resolvedVideoUrl)
+  const showVideo = Boolean(resolvedVideoUrl) && !hasManualMainImage
+  const youtubeIframeSrc = (showVideo && resolvedVideoUrl) ? getVideoEmbedUrl(resolvedVideoUrl, 'player') : null
   const parseNumber = (value: string | number | null | undefined) => {
     if (value === null || typeof value === 'undefined') return null
     const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
@@ -114,7 +117,15 @@ export default function ProductCard({
     return (
       <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
         <div className="relative w-full sm:w-48 h-48 flex-shrink-0">
-          {showVideo ? (
+          {youtubeIframeSrc ? (
+            <iframe
+              src={youtubeIframeSrc}
+              title=""
+              className="pointer-events-none h-full w-full rounded-md object-cover"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          ) : showVideo ? (
             <video
               src={resolvedVideoUrl!}
               poster={resolvedImage || undefined}
@@ -239,7 +250,15 @@ export default function ProductCard({
         href={href || buildProductUrl(productType, slug)}
         className="relative block w-full aspect-[4/5] rounded-xl overflow-hidden bg-gray-100/50"
       >
-        {showVideo ? (
+        {youtubeIframeSrc ? (
+          <iframe
+            src={youtubeIframeSrc}
+            title=""
+            className="pointer-events-none h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        ) : showVideo ? (
           <video
             src={resolvedVideoUrl!}
             poster={resolvedImage || undefined}

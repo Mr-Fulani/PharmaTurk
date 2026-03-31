@@ -33,7 +33,7 @@ def scraping_in_progress_context():
 
 from .models import ScraperConfig, ScrapingSession, ScrapedProductLog
 from .parsers.registry import get_parser
-from .base.scraper import ScrapedProduct
+from .base.scraper import ScrapedProduct, _json_safe_scraped_value
 from apps.catalog.services import CatalogNormalizer
 from apps.catalog.models import (
     Product,
@@ -722,6 +722,7 @@ class ScraperIntegrationService:
             is_active=product.is_active,
             is_available=product.is_available,
             main_image=product.main_image or "",
+            video_url=product.video_url or "",
         )
         item.save()
         # Обновляем кеш
@@ -1008,6 +1009,12 @@ class ScraperIntegrationService:
                 existing_product.main_image = main_image_url
                 updated = True
 
+        # Обновляем video_url, если его нет
+        if scraped_product.attributes and scraped_product.attributes.get('video_url') and not existing_product.video_url:
+            existing_product.video_url = scraped_product.attributes['video_url']
+            updated = True
+            self.logger.info(f"Updated video_url for existing product {existing_product.id} to {existing_product.video_url}")
+
         if scraped_product.category and not existing_product.category:
             category, product_type = resolve_category_and_product_type(scraped_product.category)
             if category is not None:
@@ -1035,12 +1042,17 @@ class ScraperIntegrationService:
         if scraped_product.scraped_at:
             existing_product.external_data["scraped_at"] = scraped_product.scraped_at
         if isinstance(scraped_product.attributes, dict):
-            existing_product.external_data["attributes"] = scraped_product.attributes
+            existing_product.external_data["attributes"] = _json_safe_scraped_value(
+                scraped_product.attributes
+            )
 
         source_info = {
             "source": scraped_product.source,
             "url": scraped_product.url,
-            "price": scraped_product.price,
+            # Цена из normalize_price() может быть Decimal — JSONField не сериализует её.
+            "price": float(scraped_product.price)
+            if scraped_product.price is not None
+            else None,
             "last_updated": timezone.now().isoformat(),
         }
 
@@ -1126,6 +1138,7 @@ class ScraperIntegrationService:
             is_active=product.is_active,
             is_available=product.is_available,
             main_image=product.main_image or "",
+            video_url=product.video_url or "",
         )
         book.save()
         # Обновляем кеш, чтобы product.book_item возвращал созданный объект
@@ -1161,6 +1174,7 @@ class ScraperIntegrationService:
             is_active=product.is_active,
             is_available=product.is_available,
             main_image=product.main_image or "",
+            video_url=product.video_url or "",
         )
         jewelry.save()
         product.jewelry_item = jewelry
@@ -1198,6 +1212,7 @@ class ScraperIntegrationService:
             is_active=product.is_active,
             is_available=product.is_available,
             main_image=product.main_image or "",
+            video_url=product.video_url or "",
         )
         medicine.save()
         product.medicine_item = medicine

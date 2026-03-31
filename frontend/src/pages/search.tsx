@@ -64,6 +64,7 @@ export default function SearchPage() {
                   currency={p.currency}
                   imageUrl={p.main_image_url || p.main_image}
                   videoUrl={p.main_video_url || p.video_url}
+                  hasManualMainImage={(p as any).has_manual_main_image}
                   productType={pt}
                   isBaseProduct={isBaseProductType(pt)}
                   isNew={(p as { is_new?: boolean }).is_new}

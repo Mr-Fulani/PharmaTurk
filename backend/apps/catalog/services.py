@@ -20,6 +20,18 @@ from apps.catalog.utils.storage_paths import detect_media_type
 
 logger = logging.getLogger(__name__)
 
+
+def _json_safe_for_external_data(value: Any) -> Any:
+    """Рекурсивно приводит значения к типам, допустимым для JSONField (в т.ч. без Decimal)."""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: _json_safe_for_external_data(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_for_external_data(v) for v in value]
+    return value
+
+
 # Реестр: product_type → имя метода CatalogNormalizer для синхронизации атрибутов в доменную модель
 SYNC_METADATA_HANDLER_NAMES = {
     "books": "_sync_books_metadata",
@@ -527,6 +539,10 @@ class CatalogNormalizer:
     def normalize_product(self, product_data: ProductData) -> Product:
         """Нормализует данные товара из API."""
         external_id = str(product_data.id).strip() if product_data.id is not None else ""
+        raw_meta: Dict[str, Any] = (
+            product_data.metadata if isinstance(product_data.metadata, dict) else {}
+        )
+        safe_external_meta = _json_safe_for_external_data(raw_meta)
 
         # Разрешаем категорию и product_type до создания Product (единый маппинг)
         resolved_category = None
@@ -567,7 +583,7 @@ class CatalogNormalizer:
             "is_available": product_data.availability,
             "main_image": main_image_url,
             "external_url": product_data.url or "",
-            "external_data": product_data.metadata,
+            "external_data": safe_external_meta,
         }
         if resolved_category is not None:
             defaults["category_id"] = resolved_category.pk
@@ -595,7 +611,10 @@ class CatalogNormalizer:
             attributes = product_data.metadata.get('attributes', {})
             if attributes.get('video_url') and not product.video_url:
                 product.video_url = attributes['video_url']
-                product.save(update_fields=['video_url'])
+                # Нельзя save(update_fields=['video_url']): pre_save скачивает видео в main_video_file,
+                # а при ограниченном update_fields Django не пишет FileField — файл не попадает в R2/БД
+                # (для только что созданного товара полного save() ниже по коду нет).
+                product.save()
 
         if not created:
             # Обновляем существующий товар
@@ -606,7 +625,7 @@ class CatalogNormalizer:
                 product.description = product_data.description
             
             product.is_available = product_data.availability
-            product.external_data = product_data.metadata
+            product.external_data = safe_external_meta
             product.last_synced_at = timezone.now()
             
             # Обновляем цену и сохраняем историю
@@ -767,6 +786,8 @@ class CatalogNormalizer:
             # Если это загруженная парсером картинка, мы не считаем её "ручной"
             if '/products/parsed/' not in product.main_image:
                 has_manual_main = True
+                
+        has_video = bool(getattr(product, 'video_url', None) or getattr(product, 'main_video_file', None))
         
         # Добавляем новые изображения
         main_image_url = None
@@ -785,8 +806,11 @@ class CatalogNormalizer:
                     if media_type == "video" and image_url == preferred_main_video_url:
                         desired_is_main = True
                 elif media_type == "image" and main_image_url is None:
-                    desired_is_main = True
                     main_image_url = image_url
+                    # По просьбе пользователя: при парсинге никогда не отмечаем картинку
+                    # чекбоксом "Главное изображение" (is_main=True).
+                    # Приоритеты выстроены на фронтенде: видео > гифки > картинки,
+                    # а чекбокс (если проставлен вручную в админке) имеет наивысший приоритет.
             
             if existing_item:
                 updates: Dict[str, Any] = {}
@@ -816,6 +840,10 @@ class CatalogNormalizer:
             }
             if hasattr(image_manager.model, 'video_url'):
                 create_kwargs["video_url"] = image_url if media_type == "video" else ""
+            elif media_type == "video":
+                # Если модель галереи (например BookProductImage) не поддерживает video_url,
+                # просто пропускаем видео-элемент, иначе он сохранится как пустая картинка.
+                continue
             
             create_kwargs["product"] = target
             image_manager.model.objects.create(**create_kwargs)

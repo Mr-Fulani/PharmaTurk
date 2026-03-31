@@ -2640,17 +2640,6 @@ _PROXY_MEDIA_TYPES = {
 }
 
 
-def _expand_path_for_legacy_duplicated(path):
-    """
-    Для старых записей: файл мог сохраниться по пути с дублированным префиксом.
-    Возвращает список кандидатов: path с префиксом, «раздутым» после 1, 2, 3, ... сегментов.
-    """
-    if not path or '/' not in path:
-        return []
-    parts = path.split('/')
-    return ['/'.join(parts[:i] + parts) for i in range(1, len(parts))]
-
-
 @require_GET
 def proxy_media(request):
     """
@@ -2694,29 +2683,10 @@ def proxy_media(request):
     if not r2_public:
         return JsonResponse({'error': 'R2 proxy not configured'}, status=503)
 
-    from apps.catalog.utils.media_path import normalize_duplicated_media_path
+    from apps.catalog.utils.media_path import iter_storage_path_candidates, resolve_existing_media_storage_key
 
-    candidates = [path]
-    path_alt = normalize_duplicated_media_path(path)
-    if path_alt != path:
-        candidates.append(path_alt)
-    candidates.extend(_expand_path_for_legacy_duplicated(path))
-    if path.startswith('media/'):
-        candidates.append(path[len('media/'):])
-    else:
-        candidates.append(f"media/{path}")
-    # R2_PREFIX: путь может быть с префиксом (dev/...) или без
-    r2_prefix = (getattr(settings, 'R2_PREFIX', '') or '').strip('/')
-    if r2_prefix and path.startswith(f"{r2_prefix}/"):
-        candidates.append(path[len(r2_prefix) + 1:])
-    elif r2_prefix and not path.startswith(r2_prefix):
-        candidates.append(f"{r2_prefix}/{path}")
-
-    resolved_path = None
-    for candidate in candidates:
-        if default_storage.exists(candidate):
-            resolved_path = candidate
-            break
+    resolved_path = resolve_existing_media_storage_key(path)
+    candidates = iter_storage_path_candidates(path)
 
     if not resolved_path:
         # Пытаемся найти в локальной медиа-папке (fallback)
@@ -2759,8 +2729,10 @@ def proxy_media(request):
             response['Content-Length'] = str(size)
 
         response['Accept-Ranges'] = 'bytes'
+        # Долгий кэш как в оптимизации PageSpeed; без дублирования CORS — его выставляет CorsMiddleware
         response['Cache-Control'] = 'public, max-age=2592000, immutable'
-        response['Access-Control-Allow-Origin'] = '*'
+        # Отключаем буферизацию Nginx для потокового видео
+        response['X-Accel-Buffering'] = 'no'
         return response
 
     except Exception as e:
@@ -2793,7 +2765,9 @@ class BookProductViewSet(viewsets.ReadOnlyModelViewSet):
         return ordering_map.get(ordering, ordering)
 
     def get_queryset(self):
-        queryset = BookProduct.objects.filter(is_active=True)
+        queryset = BookProduct.objects.filter(is_active=True).select_related(
+            "base_product", "category", "brand"
+        )
 
         # Фильтр по категории
         category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')

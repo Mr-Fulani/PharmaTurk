@@ -135,6 +135,7 @@ export default function PersonalizedRecommendations() {
                 oldPrice={displayOldPrice != null ? String(displayOldPrice) : null}
                 imageUrl={product.main_image_url || product.main_image}
                 videoUrl={product.video_url}
+                hasManualMainImage={(product as any).has_manual_main_image}
                 productType={pt}
                 isBaseProduct={isBaseProductType(pt)}
                 isNew={product.is_new}

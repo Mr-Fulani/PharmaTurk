@@ -275,6 +275,7 @@ export default function BrandPage({
                     currency={p.currency}
                     imageUrl={p.main_image_url}
                     videoUrl={p.main_video_url || p.video_url}
+                    hasManualMainImage={(p as any).has_manual_main_image}
                     productType={pt}
                     isBaseProduct={isBaseProductType(pt)}
                     isNew={(p as { is_new?: boolean }).is_new}

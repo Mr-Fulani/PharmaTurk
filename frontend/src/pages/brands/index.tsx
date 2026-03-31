@@ -66,19 +66,19 @@ const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
     ].join('&')
     const embedUrl = `${base}?${params}`
     return (
-      <div className="absolute inset-0 h-full w-full overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 h-full w-full overflow-hidden">
         {youtubeThumb && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={youtubeThumb}
             alt={alt || ''}
-            className="absolute inset-0 h-full w-full object-cover"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
           />
         )}
         <iframe
           src={embedUrl}
           title={alt || 'YouTube'}
-          className="absolute inset-0 h-full w-full object-cover"
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
           allow="autoplay; encrypted-media; picture-in-picture"
           loading="lazy"
           style={{ opacity: 0, transition: 'opacity 0.4s ease' }}
@@ -100,7 +100,7 @@ const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
   if (isVideoUrl(mediaUrl || src)) {
     return (
       <video
-        className="absolute inset-0 h-full w-full object-cover"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
         autoPlay
         muted
         loop
@@ -114,7 +114,7 @@ const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
               const img = document.createElement('img')
               img.src = placeholder
               img.alt = alt || ''
-              img.className = 'absolute inset-0 h-full w-full object-cover'
+              img.className = 'pointer-events-none absolute inset-0 h-full w-full object-cover'
               wrapper.replaceChildren(img)
             }
           }
@@ -130,7 +130,7 @@ const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
     <img
       src={src}
       alt={alt || ''}
-      className="absolute inset-0 h-full w-full object-cover"
+      className="pointer-events-none absolute inset-0 h-full w-full object-cover"
       onError={(e) => {
         const placeholder = id ? getPlaceholderImageUrl({ type: 'brand', id }) : null
         if (placeholder && e.currentTarget.src !== placeholder) {
@@ -199,11 +199,13 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
                   key={brand.id}
                   href={href}
                   style={{ height: cardHeight }}
-                  className="relative rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-gray-900/10 group"
+                  className="relative isolate rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-gray-900/10 group"
                 >
-                  {renderMedia(brand.card_media_url || brand.logo, brand.name, brand.id)}
-                  <div className="absolute inset-0 bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
-                  <div className="absolute inset-0 flex items-center justify-center p-4 z-10 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
+                  <div className="absolute inset-0 z-0 overflow-hidden">
+                    {renderMedia(brand.card_media_url || brand.logo, brand.name, brand.id)}
+                  </div>
+                  <div className="absolute inset-0 z-[1] bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
+                  <div className="absolute inset-0 z-10 flex items-center justify-center p-4 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
                     <div className="text-center text-white drop-shadow">
                       <h3 className="text-xl font-bold mb-1">
                         {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}

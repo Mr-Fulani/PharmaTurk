@@ -245,6 +245,7 @@ const BookHavenPage: React.FC = () => {
                   oldPrice={displayOldPrice}
                   imageUrl={book.main_image_url || book.main_image}
                   videoUrl={book.main_video_url || book.video_url}
+                  hasManualMainImage={(book as any).has_manual_main_image}
                   badge={book.is_featured ? t('product_featured', 'Хит') : null}
                   viewMode={viewMode}
                   description={book.description}

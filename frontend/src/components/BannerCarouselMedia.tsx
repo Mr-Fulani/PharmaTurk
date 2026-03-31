@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
-import { resolveMediaUrl, getPlaceholderImageUrl } from '../lib/media'
+import { resolveMediaUrl, getPlaceholderImageUrl, getVideoEmbedUrl } from '../lib/media'
 
 interface BannerMedia {
   id: number
@@ -208,33 +208,6 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     })
   }
 
-  const getVideoEmbedUrl = (url: string): string | null => {
-    if (!url) return null
-    
-    if (url.includes('youtube.com/embed/')) {
-      if (!url.includes('?')) {
-        return `${url}?autoplay=1&loop=1&muted=1&controls=0&showinfo=0&rel=0`
-      }
-      return url
-    }
-    
-    if (url.includes('youtube.com') || url.includes('youtu.be')) {
-      const standardRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})/
-      let match = url.match(standardRegex)
-      
-      if (!match) {
-        const shortsRegex = /(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)/
-        match = url.match(shortsRegex)
-      }
-      
-      if (match && match[1]) {
-        return `https://www.youtube.com/embed/${match[1]}?autoplay=1&loop=1&muted=1&playlist=${match[1]}&controls=0&showinfo=0&rel=0`
-      }
-    }
-    
-    return null
-  }
-
   const renderMediaItem = (media: BannerMedia, index: number) => {
     // Активный слайд — всегда первый (index 0), чтобы картинка и текст совпадали
     const isActive =
@@ -243,7 +216,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
         : index === 0
     
     const fullUrl = media.content_url ? resolveMediaUrl(media.content_url) : ''
-    const embedUrl = media.content_type === 'video' ? getVideoEmbedUrl(fullUrl) : null
+    const embedUrl = media.content_type === 'video' ? getVideoEmbedUrl(fullUrl, 'ambient') : null
 
     const handleThumbnailClick = () => {
       // Если кликнули на миниатюру (index >= 1, так как активный на позиции 0), делаем её активной

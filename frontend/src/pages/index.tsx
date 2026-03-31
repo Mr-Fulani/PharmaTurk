@@ -136,7 +136,7 @@ export default function Home({ brands, categories }: HomePageProps) {
       ].join('&')
       const embedUrl = `${base}?${params}`
       return (
-        <div className="absolute inset-0 h-full w-full overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 h-full w-full overflow-hidden">
           {youtubeThumb && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -146,13 +146,13 @@ export default function Home({ brands, categories }: HomePageProps) {
               decoding="async"
               width={480}
               height={360}
-              className="absolute inset-0 h-full w-full object-cover"
+              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
             />
           )}
           <iframe
             src={embedUrl}
             title={alt || 'YouTube'}
-            className="absolute inset-0 h-full w-full object-cover"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
             allow="autoplay; encrypted-media; picture-in-picture"
             loading="lazy"
             style={{ opacity: 0, transition: 'opacity 0.4s ease' }}
@@ -175,7 +175,7 @@ export default function Home({ brands, categories }: HomePageProps) {
     if (isVideoUrl(mediaUrl || src)) {
       return (
         <video
-          className="absolute inset-0 h-full w-full object-cover"
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
           autoPlay
           muted
           loop
@@ -191,7 +191,7 @@ export default function Home({ brands, categories }: HomePageProps) {
                 img.width = 400
                 img.height = 300
                 img.loading = 'lazy'
-                img.className = 'absolute inset-0 h-full w-full object-cover'
+                img.className = 'pointer-events-none absolute inset-0 h-full w-full object-cover'
                 wrapper.replaceChildren(img)
               }
             }
@@ -210,7 +210,7 @@ export default function Home({ brands, categories }: HomePageProps) {
         decoding="async"
         width={400}
         height={300}
-        className="absolute inset-0 h-full w-full object-cover"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
         onError={(e) => {
           if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
             e.currentTarget.src = fallbackSrc
@@ -302,7 +302,7 @@ export default function Home({ brands, categories }: HomePageProps) {
                             <img
                               src={resolveMediaUrl(brand.logo)}
                               alt={brand.name}
-                              className="max-h-[36px] w-full object-contain filter brightness-0 invert"
+                              className="pointer-events-none max-h-[36px] w-full object-contain filter brightness-0 invert"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none'
                               }}
@@ -349,18 +349,20 @@ export default function Home({ brands, categories }: HomePageProps) {
                     key={brand.id}
                     onClick={() => handleBrandClick(brand)}
                     style={{ height: cardHeight }}
-                    className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
+                    className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
                   >
-                    {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
-                    <div className="absolute inset-0 bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
-                    <div className="absolute inset-0 flex items-center justify-center p-4 md:p-6 z-10 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
+                    <div className="absolute inset-0 z-0 overflow-hidden">
+                      {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
+                    </div>
+                    <div className="absolute inset-0 z-[1] bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
+                    <div className="absolute inset-0 z-10 flex items-center justify-center p-4 md:p-6 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
                       <div className="text-center text-white drop-shadow">
                         {brand.logo && (
                           <div className="mb-2 md:mb-3 flex justify-center">
                             <img
                               src={resolveMediaUrl(brand.logo)}
                               alt={brand.name}
-                              className="h-8 md:h-12 w-auto object-contain filter brightness-0 invert"
+                              className="pointer-events-none h-8 md:h-12 w-auto object-contain filter brightness-0 invert"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none'
                               }}
@@ -410,15 +412,17 @@ export default function Home({ brands, categories }: HomePageProps) {
                     key={category.id}
                     onClick={() => handleCategoryClick(category)}
                     style={{ height: cardHeight }}
-                    className="relative rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
+                    className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10"
                   >
-                    {renderMedia(
-                      mediaUrl || placeholderUrl,
-                      getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale),
-                      placeholderUrl
-                    )}
-                    <div className="absolute inset-0 bg-black/35" />
-                    <div className="absolute inset-0 flex items-center justify-center p-4 z-10">
+                    <div className="absolute inset-0 z-0 overflow-hidden">
+                      {renderMedia(
+                        mediaUrl || placeholderUrl,
+                        getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale),
+                        placeholderUrl
+                      )}
+                    </div>
+                    <div className="absolute inset-0 z-[1] bg-black/35" />
+                    <div className="absolute inset-0 z-10 flex items-center justify-center p-4">
                       <div className="text-center text-white drop-shadow">
                         <h3 className="text-xl font-bold mb-1">
                           {getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale)}

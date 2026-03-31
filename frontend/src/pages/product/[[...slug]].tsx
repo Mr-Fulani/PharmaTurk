@@ -15,7 +15,7 @@ import SimilarProducts from '../../components/SimilarProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
-import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl } from '../../lib/media'
+import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl, pickPreferredVideoUrl } from '../../lib/media'
 import { getSiteOrigin } from '../../lib/urls'
 import { isBaseProductType } from '../../lib/product'
 import { useTheme } from '../../context/ThemeContext'
@@ -440,41 +440,6 @@ export default function ProductPage({
   const { theme } = useTheme()
   const [product, setProduct] = useState<Product | null>(initialProduct)
 
-  const getVideoEmbedUrl = useCallback((url: string): string | null => {
-    if (!url) return null
-    
-    // YouTube
-    if (url.includes('youtube.com/embed/')) {
-      return url.includes('?') ? url : `${url}?autoplay=0&controls=1&rel=0`
-    }
-    
-    if (url.includes('youtube.com') || url.includes('youtu.be')) {
-      const standardRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})/
-      let match = url.match(standardRegex)
-      if (!match) {
-        const shortsRegex = /(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)/
-        match = url.match(shortsRegex)
-      }
-      
-      if (match && match[1]) {
-        const videoId = match[1]
-        return `https://www.youtube.com/embed/${videoId}?autoplay=0&controls=1&rel=0`
-      }
-    }
-    
-    // Vimeo
-    if (url.includes('player.vimeo.com/video/')) {
-      return url.includes('?') ? url : `${url}?autoplay=0&muted=0`
-    }
-    
-    const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
-    const vimeoMatch = url.match(vimeoRegex)
-    if (vimeoMatch && vimeoMatch[1]) {
-      return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=0&muted=0`
-    }
-    
-    return null
-  }, [])
   useEffect(() => {
     setProduct(initialProduct)
   }, [initialProduct])
@@ -831,7 +796,7 @@ export default function ProductPage({
         return 3
       }
   
-      return [...list].sort((a, b) => {
+      const sorted = [...list].sort((a, b) => {
         const prioA = sortPriority(a)
         const prioB = sortPriority(b)
         if (prioA !== prioB) return prioA - prioB
@@ -842,6 +807,17 @@ export default function ProductPage({
         
         return String(a.id).localeCompare(String(b.id), 'ru')
       })
+
+      const hasProxyVideo = sorted.some((i) => i.isVideo && i.video_url && /proxy-media/i.test(i.video_url))
+      if (hasProxyVideo) {
+        return sorted.filter((i) => {
+          if (!i.isVideo || !i.video_url) return true
+          if (/proxy-media/i.test(i.video_url)) return true
+          if (/^https?:\/\//i.test(i.video_url)) return false
+          return true
+        })
+      }
+      return sorted
     }, [product, productType, selectedVariant])
 
   const gallerySource = useMemo(() => buildGallerySource(), [buildGallerySource])
@@ -872,29 +848,37 @@ export default function ProductPage({
   const [mainImageLoading, setMainImageLoading] = useState(false)
   /** Для миниатюр с битой ссылкой: по id храним URL плейсхолдера, чтобы по клику показывать его в главной области */
   const [thumbPlaceholderByKey, setThumbPlaceholderByKey] = useState<Record<string, string>>({})
-  const initialVideoUrl =
-    (product?.main_video_url && isVideoUrl(product.main_video_url) ? product.main_video_url : null) ||
-    (product?.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
-    gallerySource.find((item) => item.isVideo && item.video_url)?.video_url ||
-    null
+  const initialVideoUrl = product
+    ? pickPreferredVideoUrl([
+      product.main_video_url,
+      product.video_url,
+      ...gallerySource.filter((item) => item.isVideo && item.video_url).map((item) => item.video_url),
+    ])
+    : null
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(initialVideoUrl)
   const [activeMediaType, setActiveMediaType] = useState<'video' | 'image'>(
     initialVideoUrl ? 'video' : 'image'
   )
 
-  // ПРИНУДИТЕЛЬНО ПЕРЕКЛЮЧАЕМ НА ВИДЕО, ЕСЛИ ОНО ПЕРВОЕ В ГАЛЕРЕЕ
+  // ПРИНУДИТЕЛЬНО ПЕРЕКЛЮЧАЕМ НА ВИДЕО, ЕСЛИ ОНО ПЕРВОЕ В ГАЛЕРЕЕ (URL — с приоритетом proxy-media)
   useEffect(() => {
     if (gallerySource.length > 0) {
       const first = gallerySource[0]
       if (first.isVideo && first.video_url) {
         setActiveMediaType('video')
-        setActiveVideoUrl(first.video_url)
+        setActiveVideoUrl(
+          pickPreferredVideoUrl([
+            product?.main_video_url,
+            product?.video_url,
+            first.video_url,
+          ]) || first.video_url
+        )
       } else if (first.image_url) {
         setActiveMediaType('image')
         setActiveImage(resolveMediaUrl(first.image_url))
       }
     }
-  }, [gallerySource])
+  }, [gallerySource, product?.main_video_url, product?.video_url])
 
   // Обновляем главную картинку при изменении товара или варианта
   useEffect(() => {
@@ -917,20 +901,22 @@ export default function ProductPage({
     setActiveImage(newImage)
     setMainImageLoading(false)
 
-    const freshVideoUrl =
-      (product.main_video_url && isVideoUrl(product.main_video_url) ? product.main_video_url : null) ||
-      (product.video_url && isVideoUrl(product.video_url) ? product.video_url : null) ||
-      currentGallerySource.find((item) => item.isVideo && item.video_url)?.video_url ||
-      null
-    
+    const freshVideoUrl = pickPreferredVideoUrl([
+      product.main_video_url,
+      product.video_url,
+      ...currentGallerySource.filter((item) => item.isVideo && item.video_url).map((item) => item.video_url),
+    ])
+
     setActiveVideoUrl(freshVideoUrl)
     
     const hasImages = currentGallerySource.some((img) => !img.isVideo && normalizeMediaValue(img.image_url))
     
-    // Если первым элементом в галерее идет видео - принудительно ставим тип 'video'
+    // Если первым элементом в галерее идет видео — не затираем freshVideoUrl внешним .mov
     if (currentGallerySource[0]?.isVideo && currentGallerySource[0]?.video_url) {
       setActiveMediaType('video')
-      setActiveVideoUrl(currentGallerySource[0].video_url)
+      setActiveVideoUrl(
+        pickPreferredVideoUrl([freshVideoUrl, currentGallerySource[0].video_url]) || currentGallerySource[0].video_url
+      )
     } else if (hasImages) {
       setActiveMediaType(freshVideoUrl ? 'video' : 'image')
     }
@@ -1273,7 +1259,7 @@ export default function ProductPage({
                   }
                   return (
                     <video
-                      key="product-video"
+                      key={activeVideoUrl || 'product-video'}
                       src={resolveMediaUrl(activeVideoUrl)}
                       controls
                       playsInline

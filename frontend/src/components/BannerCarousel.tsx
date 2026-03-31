@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
-import { resolveMediaUrl } from '../lib/media'
+import { resolveMediaUrl, getVideoEmbedUrl } from '../lib/media'
 
 interface BannerMedia {
   id: number
@@ -232,69 +232,6 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
     return null
   }
 
-  // Функция для определения типа видео URL (YouTube, Vimeo, прямой файл)
-  const getVideoEmbedUrl = (url: string): string | null => {
-    if (!url) return null
-    
-    // YouTube - проверяем, является ли URL уже embed URL
-    if (url.includes('youtube.com/embed/')) {
-      // Уже embed URL, просто добавляем параметры если их нет
-      if (!url.includes('?')) {
-        return `${url}?autoplay=1&loop=1&muted=1&controls=0&showinfo=0&rel=0`
-      } else if (!url.includes('autoplay')) {
-        return `${url}&autoplay=1&loop=1&muted=1&controls=0&showinfo=0&rel=0`
-      }
-      return url
-    }
-    
-    // Извлекаем ID из любого формата YouTube URL (включая мобильные версии и Shorts)
-    if (url.includes('youtube.com') || url.includes('youtu.be')) {
-      // Поддерживаем: /watch?v=, /embed/, /shorts/, youtu.be/, m.youtube.com/
-      // Для обычных видео ID всегда 11 символов, для Shorts может быть разной длины
-      let videoId = null
-      
-      // Сначала пробуем стандартный формат (11 символов)
-      const standardRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?\/\s]{11})/
-      let match = url.match(standardRegex)
-      
-      // Если не нашли, пробуем формат Shorts (может быть разной длины)
-      if (!match) {
-        const shortsRegex = /(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?\/\s]+)/
-        match = url.match(shortsRegex)
-      }
-      
-      if (match && match[1]) {
-        videoId = match[1]
-        return `https://www.youtube.com/embed/${videoId}?autoplay=1&loop=1&muted=1&playlist=${videoId}&controls=0&showinfo=0&rel=0`
-      } else {
-        // Если не удалось извлечь ID, возвращаем null
-        console.warn('Invalid YouTube URL format:', url)
-        return null
-      }
-    }
-    
-    // Vimeo - проверяем, является ли URL уже player URL
-    if (url.includes('player.vimeo.com/video/')) {
-      // Уже player URL, просто добавляем параметры если их нет
-      if (!url.includes('?')) {
-        return `${url}?autoplay=1&loop=1&muted=1&background=1`
-      } else if (!url.includes('autoplay')) {
-        return `${url}&autoplay=1&loop=1&muted=1&background=1`
-      }
-      return url
-    }
-    
-    // Извлекаем ID из обычного Vimeo URL
-    const vimeoRegex = /(?:vimeo\.com\/)(\d+)/
-    const vimeoMatch = url.match(vimeoRegex)
-    if (vimeoMatch && vimeoMatch[1]) {
-      return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1&loop=1&muted=1&background=1`
-    }
-    
-    // Прямой файл - возвращаем как есть
-    return null
-  }
-
   const hasMultipleBanners = banners.length > 1
   // Активный баннер - второй элемент (index 1), как в оригинальном примере
   const activeIndex = 1
@@ -308,7 +245,7 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
     const mediaIndex = isActive ? currentMediaIndex : 0
     const media = banner.media_files[mediaIndex] || banner.media_files[0]
     const fullUrl = media ? resolveMediaUrl(media.content_url) : ''
-    const embedUrl = media && media.content_type === 'video' ? getVideoEmbedUrl(fullUrl) : null
+    const embedUrl = media && media.content_type === 'video' ? getVideoEmbedUrl(fullUrl, 'ambient') : null
 
     // Отладка для КАЖДОГО элемента
     if (typeof window !== 'undefined') {

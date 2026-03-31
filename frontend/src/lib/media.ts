@@ -13,19 +13,104 @@ export const isVideoUrl = (url?: string | null): boolean => {
   if (!url || typeof url !== 'string') return false
   const path = url.split('?')[0].toLowerCase()
   if (VIDEO_EXT_REGEX.test(path)) return true
-  // proxy-media: /api/catalog/proxy-media/?path=... или proxy-media?path=...
+  // proxy-media: /api/catalog/proxy-media/?path=... — тип файла только по path (иначе обложки книг ошибочно считались видео).
   if (/proxy-media/i.test(url) && url.includes('path=')) {
     try {
       const pathMatch = url.match(/[?&]path=([^&]+)/)
       const pathParam = pathMatch ? decodeURIComponent(pathMatch[1]) : ''
       if (pathParam && VIDEO_EXT_REGEX.test(pathParam)) return true
+      if (pathParam) return false
     } catch {
       // ignore
     }
   }
-  if (/proxy-media/i.test(url) || url.includes('/video/') || url.includes('main_video')) return true;
-  if (/youtube\.com|youtu\.be|vimeo\.com/i.test(url)) return true
+  if (url.includes('/video/') || url.includes('main_video')) return true
+  if (/youtube(?:-nocookie)?\.com|youtu\.be|vimeo\.com/i.test(url)) return true
   return false
+}
+
+/**
+ * Из нескольких URL выбирает лучший для воспроизведения: приоритет у proxy-media (файл в хранилище),
+ * иначе часто остаётся внешний .mov без воспроизведения в Chrome.
+ */
+export function pickPreferredVideoUrl(urls: (string | null | undefined)[]): string | null {
+  const cleaned: string[] = []
+  for (const u of urls) {
+    const t = u && String(u).trim()
+    if (t && isVideoUrl(t) && !cleaned.includes(t)) cleaned.push(t)
+  }
+  if (!cleaned.length) return null
+  const proxy = cleaned.find((x) => /proxy-media/i.test(x))
+  if (proxy) return proxy
+  return cleaned[0]
+}
+
+/** Режим встраивания: страница товара (с controls) или фон баннера (autoplay loop muted). */
+export type VideoEmbedMode = 'player' | 'ambient'
+
+const YOUTUBE_ID_STANDARD_RE =
+  /(?:youtube(?:-nocookie)?\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?/\s]{11})/
+
+const YOUTUBE_SHORTS_RE =
+  /(?:youtube(?:-nocookie)?\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?/\s]+)/
+
+function buildYouTubeEmbedUrl(videoId: string, mode: VideoEmbedMode): string {
+  const base = `https://www.youtube.com/embed/${videoId}`
+  if (mode === 'ambient') {
+    return `${base}?autoplay=1&loop=1&muted=1&playlist=${encodeURIComponent(videoId)}&controls=0&showinfo=0&rel=0`
+  }
+  return `${base}?autoplay=0&controls=1&rel=0`
+}
+
+/**
+ * URL для iframe YouTube/Vimeo. Поддерживает youtube-nocookie.com (иначе <video> не играет YouTube).
+ */
+export function getVideoEmbedUrl(url: string, mode: VideoEmbedMode = 'player'): string | null {
+  if (!url || typeof url !== 'string') return null
+  const trimmed = url.trim()
+  if (!trimmed) return null
+
+  if (/youtube(?:-nocookie)?\.com|youtu\.be|m\.youtube\.com/i.test(trimmed)) {
+    if (/\/embed\//i.test(trimmed) && /youtube(?:-nocookie)?\.com/i.test(trimmed)) {
+      const idMatch = trimmed.match(/\/embed\/([^/?&\s]+)/i)
+      if (idMatch?.[1]) {
+        if (mode === 'ambient' && /autoplay=1/i.test(trimmed)) {
+          return trimmed
+        }
+        return buildYouTubeEmbedUrl(idMatch[1], mode)
+      }
+    }
+
+    let match = trimmed.match(YOUTUBE_ID_STANDARD_RE)
+    if (!match) match = trimmed.match(YOUTUBE_SHORTS_RE)
+    if (match?.[1]) {
+      return buildYouTubeEmbedUrl(match[1], mode)
+    }
+  }
+
+  if (trimmed.includes('player.vimeo.com/video/')) {
+    if (mode === 'ambient') {
+      if (!trimmed.includes('?')) {
+        return `${trimmed}?autoplay=1&loop=1&muted=1&background=1`
+      }
+      if (!trimmed.includes('autoplay')) {
+        return `${trimmed}&autoplay=1&loop=1&muted=1&background=1`
+      }
+      return trimmed
+    }
+    return trimmed.includes('?') ? trimmed : `${trimmed}?autoplay=0&muted=0`
+  }
+
+  const vimeoMatch = trimmed.match(/(?:vimeo\.com\/)(\d+)/)
+  if (vimeoMatch?.[1]) {
+    const id = vimeoMatch[1]
+    if (mode === 'ambient') {
+      return `https://player.vimeo.com/video/${id}?autoplay=1&loop=1&muted=1&background=1`
+    }
+    return `https://player.vimeo.com/video/${id}?autoplay=0&muted=0`
+  }
+
+  return null
 }
 
 const stripTrailingSlash = (value?: string | null) => (value || '').replace(/\/+$/, '')

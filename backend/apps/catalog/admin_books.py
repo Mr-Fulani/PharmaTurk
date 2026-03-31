@@ -176,7 +176,11 @@ class BookProductAdmin(RunAIActionMixin, admin.ModelAdmin):
             'description': _("Англоязычные SEO-поля и OpenGraph.")
         }),
         (_('Медиа'), {
-            'fields': ('main_image', 'main_image_file')
+            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file'),
+            'description': _(
+                'Видео: можно указать URL; файл на shadow Product может подтянуться автоматически '
+                '(скачивание в фоне). Поля видео синхронизируются с базовым Product.'
+            ),
         }),
         (_('Внешние данные'), {
             'fields': ('external_id', 'external_url', 'external_data'),

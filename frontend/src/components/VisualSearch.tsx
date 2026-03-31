@@ -168,6 +168,7 @@ export default function VisualSearch() {
               oldPrice={r.product.old_price != null ? String(r.product.old_price) : null}
               imageUrl={r.product.main_image_url || r.product.main_image}
               videoUrl={r.product.video_url}
+              hasManualMainImage={(r.product as any).has_manual_main_image}
               productType={r.product.product_type || 'medicines'}
               isBaseProduct={isBaseProductType(r.product.product_type || 'medicines')}
               isBestseller={r.product.is_bestseller}

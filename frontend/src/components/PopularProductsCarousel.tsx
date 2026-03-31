@@ -5,7 +5,7 @@ import api from '../lib/api'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
-import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../lib/media'
+import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl, getVideoEmbedUrl } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
@@ -26,6 +26,7 @@ interface Product {
   rating?: number | null
   main_image_url?: string | null
   video_url?: string | null
+  has_manual_main_image?: boolean
   brand?: {
     id: number
     name: string
@@ -325,6 +326,11 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                 : null
 
               const localizedName = getLocalizedProductName(product.name, t, product.translations, i18n.language)
+              const carouselVideoSrc =
+                product.video_url && isVideoUrl(product.video_url) && !product.has_manual_main_image
+                  ? resolveMediaUrl(product.video_url)
+                  : null
+              const carouselYoutubeEmbed = carouselVideoSrc ? getVideoEmbedUrl(carouselVideoSrc, 'player') : null
               return (
                 <div
                   key={product.id}
@@ -334,9 +340,17 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                     href={buildProductUrl(product.product_type || 'medicines', product.slug)}
                     className="relative block w-full aspect-[4/5] overflow-hidden bg-gray-100/50 rounded-xl"
                   >
-                    {product.video_url && isVideoUrl(product.video_url) ? (
+                    {carouselYoutubeEmbed ? (
+                      <iframe
+                        src={carouselYoutubeEmbed}
+                        title=""
+                        className="pointer-events-none h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    ) : carouselVideoSrc ? (
                       <video
-                        src={resolveMediaUrl(product.video_url)}
+                        src={carouselVideoSrc}
                         poster={
                           (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
                           getPlaceholderImageUrl({ type: 'product', id: product.id })
