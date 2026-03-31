@@ -14,7 +14,7 @@ from .models import (
     AccessoryProduct, AccessoryProductTranslation, AccessoryProductImage,
     IncenseProduct, IncenseProductTranslation, IncenseProductImage,
 )
-from .admin_base import AIStatusFilter, RunAIActionMixin
+from .admin_base import AIStatusFilter, RunAIActionMixin, MediaEnrichmentStatusFilter, MediaEnrichmentMixin
 
 
 # ─────────────────────────────────────────────────────────────
@@ -161,7 +161,7 @@ class _SimpleDomainAdmin(RunAIActionMixin, admin.ModelAdmin):
 # ─────────────────────────────────────────────────────────────
 
 @admin.register(MedicineProduct)
-class MedicineProductAdmin(_SimpleDomainAdmin):
+class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     _category_type_slug = "medicines"
     _domain_fieldset = (_('Специфика медикамента'), {
         'fields': (
@@ -173,12 +173,12 @@ class MedicineProductAdmin(_SimpleDomainAdmin):
         ),
     })
     list_display = [
-        'name', 'get_ai_status', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code', 'nfc_code', 'sgk_public_no',
+        'name', 'get_ai_status', 'get_media_enrichment_status', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code', 'nfc_code', 'sgk_public_no',
         'prescription_required', 'price', 'old_price',
         'is_available', 'is_new', 'created_at',
     ]
     list_filter = [
-        AIStatusFilter, 'category', 'is_available', 'prescription_required',
+        AIStatusFilter, MediaEnrichmentStatusFilter, 'category', 'is_available', 'prescription_required',
         'dosage_form', 'is_new', 'created_at',
     ]
     inlines = [
@@ -197,24 +197,27 @@ class MedicineProductAdmin(_SimpleDomainAdmin):
         }),
     ]
 
+    actions = ["run_ai", "run_ai_auto_apply", "run_media_enrichment"]
+
 
 # ─────────────────────────────────────────────────────────────
 #  БАДы
 # ─────────────────────────────────────────────────────────────
 
 @admin.register(SupplementProduct)
-class SupplementProductAdmin(_SimpleDomainAdmin):
+class SupplementProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     _category_type_slug = "supplements"
     _domain_fieldset = (_('Специфика БАД'), {
         'fields': ('dosage_form', 'active_ingredient'),
     })
     list_display = [
-        'name', 'get_ai_status', 'category', 'dosage_form', 'active_ingredient',
+        'name', 'get_ai_status', 'get_media_enrichment_status', 'category', 'dosage_form', 'active_ingredient',
         'price', 'old_price', 'is_available', 'is_new', 'created_at',
     ]
     list_filter = [
-        AIStatusFilter, 'category', 'is_available', 'dosage_form', 'is_new', 'created_at',
+        AIStatusFilter, MediaEnrichmentStatusFilter, 'category', 'is_available', 'dosage_form', 'is_new', 'created_at',
     ]
+    actions = ["run_ai", "run_ai_auto_apply", "run_media_enrichment"]
     inlines = [
         _make_translation_inline(SupplementProductTranslation, extra_fields=(
             'dosage_form', 'active_ingredient', 'serving_size'

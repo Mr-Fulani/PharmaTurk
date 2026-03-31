@@ -4076,6 +4076,15 @@ DOSAGE_FORM_CHOICES = [
 ]
 
 
+
+class MediaEnrichmentStatus(models.TextChoices):
+    """Статусы процесса обогащения медиа (картинками)."""
+    PENDING = 'pending', _('В очереди')
+    PROCESSING = 'processing', _('Обработка')
+    COMPLETED = 'completed', _('Завершено')
+    FAILED = 'failed', _('Ошибка')
+
+
 class MedicineProduct(AbstractDomainProduct):
     """Товар — Медикамент."""
 
@@ -4151,6 +4160,24 @@ class MedicineProduct(AbstractDomainProduct):
     )
     sgk_public_no = models.CharField(
         _("SGK Kamu No"), max_length=100, blank=True,
+    )
+
+    # Статус обогащения медиа (по аналогии с AI)
+    media_enrichment_status = models.CharField(
+        _("Статус медиа"),
+        max_length=20,
+        choices=MediaEnrichmentStatus.choices,
+        default=MediaEnrichmentStatus.PENDING,
+    )
+    media_enrichment_error = models.TextField(
+        _("Ошибка обогащения"),
+        blank=True,
+        null=True,
+    )
+    media_enrichment_last_at = models.DateTimeField(
+        _("Дата последнего обогащения"),
+        blank=True,
+        null=True,
     )
 
     class Meta:
@@ -4305,6 +4332,24 @@ class SupplementProduct(AbstractDomainProduct):
         help_text=_("Например: '2 капсулы', '30мл'"),
     )
 
+    # Статус обогащения медиа (по аналогии с MedicineProduct)
+    media_enrichment_status = models.CharField(
+        _("Статус медиа"),
+        max_length=20,
+        choices=MediaEnrichmentStatus.choices,
+        default=MediaEnrichmentStatus.PENDING,
+    )
+    media_enrichment_error = models.TextField(
+        _("Ошибка обогащения"),
+        blank=True,
+        null=True,
+    )
+    media_enrichment_last_at = models.DateTimeField(
+        _("Дата последнего обогащения"),
+        blank=True,
+        null=True,
+    )
+
     class Meta:
         verbose_name = _("Товар — БАД")
         verbose_name_plural = _("Товары — БАДы")
@@ -4361,6 +4406,7 @@ class SupplementProductImage(models.Model):
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     is_main = models.BooleanField(_("Главное изображение"), default=False)
+    image_hash = models.CharField(_("Хэш изображения"), max_length=64, blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
 
     class Meta:

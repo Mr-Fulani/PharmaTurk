@@ -332,19 +332,33 @@ def enrich_medicine_media(
     self,
     product_ids: list[int] | None = None,
     max_images_per_product: int = 3,
+    ignore_cache: bool = False,
+    model_name: str = 'MedicineProduct',
 ) -> dict:
     """
-    Обогащение медиа для MedicineProduct.
+    Обогащение медиа для MedicineProduct и SupplementProduct.
     - product_ids=None  → все товары с медиа меньше max_images_per_product
     - product_ids=[...] → только указанные товары
     """
     try:
-        queryset = MedicineProduct.objects.annotate(
-            gallery_images_count=Count('gallery_images')
-        ).filter(gallery_images_count__lt=max_images_per_product)
+        from django.apps import apps
+        from apps.catalog.models import MediaEnrichmentStatus
         
+        ProductModel = apps.get_model('catalog', model_name)
+        
+        # Если product_ids переданы вручную (например из админки),
+        # мы хотим брать их все, независимо от текущего количества картинок
         if product_ids:
-            queryset = queryset.filter(id__in=product_ids)
+            queryset = ProductModel.objects.filter(id__in=product_ids)
+            # Отмечаем как "в обработке" сразу (для отображения в админке)
+            queryset.update(
+                media_enrichment_status=MediaEnrichmentStatus.PROCESSING,
+                media_enrichment_error=None
+            )
+        else:
+            queryset = ProductModel.objects.annotate(
+                gallery_images_count=Count('gallery_images')
+            ).filter(gallery_images_count__lt=max_images_per_product)
             
         enricher = MedicineMediaEnricher()
         
@@ -352,13 +366,21 @@ def enrich_medicine_media(
         images_added = 0
         errors = 0
         
-        for product in queryset.iterator():
+        # Используем .all() вместо .iterator() если queryset уже отфильтрован по ID, 
+        # но для большого ночного прохода .iterator() лучше.
+        # Т.к. queryset может быть разным, используем .all() для простоты или .iterator() если нет product_ids.
+        items = queryset.iterator() if not product_ids else queryset.all()
+
+        for product in items:
             try:
-                added = enricher.enrich(product, max_images_per_product)
+                added = enricher.enrich(product, max_images_per_product, ignore_cache=ignore_cache)
                 products_processed += 1
                 images_added += added
             except Exception as e:
-                logger.error("Failed to enrich media for product %s: %s", product.id, e)
+                logger.error("Failed to enrich media for product %s (%s): %s", product.id, model_name, e)
+                product.media_enrichment_status = MediaEnrichmentStatus.FAILED
+                product.media_enrichment_error = str(e)
+                product.save(update_fields=['media_enrichment_status', 'media_enrichment_error'])
                 errors += 1
                 
         return {

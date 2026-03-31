@@ -43,6 +43,21 @@ class AIStatusFilter(admin.SimpleListFilter):
         return queryset.filter(**{f"{id_field}__in": target_product_ids})
 
 
+class MediaEnrichmentStatusFilter(admin.SimpleListFilter):
+    """Фильтр товаров по статусу обогащения медиа."""
+    title = _("Статус медиа")
+    parameter_name = "media_status"
+
+    def lookups(self, request, model_admin):
+        from apps.catalog.models import MediaEnrichmentStatus
+        return MediaEnrichmentStatus.choices
+
+    def queryset(self, request, queryset):
+        if not self.value():
+            return queryset
+        return queryset.filter(media_enrichment_status=self.value())
+
+
 class RunAIActionMixin:
     """Общий миксин для запуска задач AI из админки."""
 
@@ -177,3 +192,57 @@ class RunAIActionMixin:
         color = status_colors.get(log.status, "black")
         return format_html('<span style="color: {};">{}</span>', color, log.get_status_display())
     get_ai_status.short_description = _("Статус AI")
+
+
+class MediaEnrichmentMixin:
+    """Миксин для ручного запуска обогащения медиа из админки."""
+
+    def run_media_enrichment(self, request, queryset):
+        """Запустить обогащение медиа для выбранных товаров."""
+        from apps.catalog.tasks import enrich_medicine_media
+        
+        # Берем только ID
+        product_ids = list(queryset.values_list("id", flat=True))
+        model_name = queryset.model.__name__
+        
+        # Запускаем задачу
+        enrich_medicine_media.delay(
+            product_ids=product_ids,
+            ignore_cache=True,  # При ручном запуске игнорируем кэш ошибок
+            model_name=model_name
+        )
+        
+        self.message_user(
+            request, 
+            _("Запущено обогащение медиа для %(count)s товаров.") % {"count": len(product_ids)},
+            level=messages.SUCCESS
+        )
+    run_media_enrichment.short_description = _("Обогатить медиа (картинки)")
+
+    def get_media_enrichment_status(self, obj):
+        """Отображение статуса медиа с цветовой индикацией."""
+        from apps.catalog.models import MediaEnrichmentStatus
+        
+        status = getattr(obj, 'media_enrichment_status', MediaEnrichmentStatus.PENDING)
+        color = "gray"
+        label = _("В очереди")
+        
+        if status == MediaEnrichmentStatus.PROCESSING:
+            color = "orange"
+            label = _("Обработка")
+        elif status == MediaEnrichmentStatus.COMPLETED:
+            color = "green"
+            label = _("Завершено")
+        elif status == MediaEnrichmentStatus.FAILED:
+            color = "red"
+            label = _("Ошибка")
+            
+        error = getattr(obj, 'media_enrichment_error', None)
+        title_attr = f' title="{error}"' if error else ""
+        
+        return format_html(
+            '<span style="color: {}; font-weight: bold;"{}>{}</span>',
+            color, title_attr, label
+        )
+    get_media_enrichment_status.short_description = _("Статус медиа")
+    get_media_enrichment_status.admin_order_field = "media_enrichment_status"

@@ -8,8 +8,10 @@ import imagehash
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.cache import cache
+from django.db import models
 
-from apps.catalog.models import MedicineProduct, MedicineProductImage
+from django.utils import timezone
+from apps.catalog.models import MediaEnrichmentStatus
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +103,7 @@ class MedicineMediaEnricher:
         self.min_width = settings.MEDICINE_MEDIA_MIN_WIDTH
         self.min_height = settings.MEDICINE_MEDIA_MIN_HEIGHT
         
-    def build_search_queries(self, product: MedicineProduct) -> List[str]:
+    def build_search_queries(self, product: models.Model) -> List[str]:
         queries = []
         name = product.name or ""
         active_ingredient = getattr(product, 'active_ingredient', "")
@@ -119,7 +121,7 @@ class MedicineMediaEnricher:
             
         return list(dict.fromkeys(queries))  # Remove duplicates preserving order
 
-    def fetch_candidates(self, product: MedicineProduct) -> List[str]:
+    def fetch_candidates(self, product: models.Model) -> List[str]:
         urls = []
         
         # 1. Open Food Facts
@@ -192,7 +194,7 @@ class MedicineMediaEnricher:
             logger.warning("Failed to calculate image hash: %s", e)
             return None
 
-    def download_and_save(self, product: MedicineProduct, url: str) -> Optional[MedicineProductImage]:
+    def download_and_save(self, product: models.Model, url: str) -> Optional[models.Model]:
         try:
             with httpx.Client(timeout=10.0, follow_redirects=True) as client:
                 response = client.get(url)
@@ -232,8 +234,10 @@ class MedicineMediaEnricher:
                 filename = url.split("/")[-1].split("?")[0]
                 if not filename or "." not in filename:
                     filename = f"product_{product.id}_image.jpg"
-                    
-                image_record = MedicineProductImage(
+                # Узнаем модель картинки из связанных полей
+                ImageModel = product.gallery_images.model
+                
+                image_record = ImageModel(
                     product=product,
                     image_url=url,
                     is_main=not has_main,
@@ -248,7 +252,7 @@ class MedicineMediaEnricher:
             logger.error("Failed to download and save image %s for product %s: %s", url, product.id, e)
             return None
 
-    def enrich(self, product: MedicineProduct, max_images: int) -> int:
+    def enrich(self, product: models.Model, max_images: int, ignore_cache: bool = False) -> int:
         logger.info("Starting enrichment for product ID: %s (Name: '%s')", product.id, product.name)
         current_count = product.gallery_images.count()
         if current_count >= max_images:
@@ -257,37 +261,64 @@ class MedicineMediaEnricher:
             
         # Check cache to avoid hitting APIs if we already tried and failed recently
         cache_key = f"medicine_media_enrich_failed_{product.id}"
-        if cache.get(cache_key):
+        if not ignore_cache and cache.get(cache_key):
             logger.info("Product %s is in failed cache (no images found recently). Skipping to save API limits.", product.id)
             return 0
             
-        candidates = self.fetch_candidates(product)
-        if not candidates:
-            logger.info("No candidates found for product %s. Caching failure for 7 days.", product.id)
-            # Cache the failure for 7 days (60 * 60 * 24 * 7 seconds)
-            cache.set(cache_key, True, timeout=604800)
-            return 0
-            
-        added_count = 0
+        from django.db import transaction
         
-        for url in candidates:
-            if current_count + added_count >= max_images:
-                logger.info("Reached target image count (%d) for product %s.", max_images, product.id)
-                break
-                
-            # Check if URL already exists for this product
-            if product.gallery_images.filter(image_url=url).exists():
-                logger.info("URL %s is already attached to product %s. Skipping.", url, product.id)
-                continue
-                
-            if self.validate_image(url):
-                saved_image = self.download_and_save(product, url)
-                if saved_image:
-                    added_count += 1
-                    
-        if added_count == 0:
-            logger.info("Candidates were found but none were valid/saved. Caching failure for 7 days.")
-            cache.set(cache_key, True, timeout=604800)
+        try:
+            with transaction.atomic():
+                product.media_enrichment_status = MediaEnrichmentStatus.PROCESSING
+                product.save(update_fields=['media_enrichment_status'])
+        except Exception as e:
+             logger.error("Failed to set early processing status for product %s: %s", product.id, e)
             
-        logger.info("Finished enrichment for product %s. Added %d new images.", product.id, added_count)
-        return added_count
+        try:
+            candidates = self.fetch_candidates(product)
+            if not candidates:
+                logger.info("No candidates found for product %s. Caching failure for 7 days.", product.id)
+                cache.set(cache_key, True, timeout=604800)
+                
+                product.media_enrichment_status = MediaEnrichmentStatus.COMPLETED
+                product.media_enrichment_last_at = timezone.now()
+                product.media_enrichment_error = "Изображений не найдено"
+                product.save(update_fields=['media_enrichment_status', 'media_enrichment_last_at', 'media_enrichment_error'])
+                return 0
+                
+            added_count = 0
+            for url in candidates:
+                if current_count + added_count >= max_images:
+                    logger.info("Reached target image count (%d) for product %s.", max_images, product.id)
+                    break
+                    
+                if product.gallery_images.filter(image_url=url).exists():
+                    logger.info("URL %s is already attached to product %s. Skipping.", url, product.id)
+                    continue
+                    
+                if self.validate_image(url):
+                    saved_image = self.download_and_save(product, url)
+                    if saved_image:
+                        added_count += 1
+                        
+            if added_count == 0:
+                logger.info("Candidates were found but none were valid/saved. Caching failure for 7 days.")
+                cache.set(cache_key, True, timeout=604800)
+                product.media_enrichment_error = "Valid candidates not found"
+            else:
+                product.media_enrichment_error = None
+                
+            product.media_enrichment_status = MediaEnrichmentStatus.COMPLETED
+            product.media_enrichment_last_at = timezone.now()
+            product.save(update_fields=['media_enrichment_status', 'media_enrichment_last_at', 'media_enrichment_error'])
+            
+            logger.info("Finished enrichment for product %s. Added %d new images.", product.id, added_count)
+            return added_count
+            
+        except Exception as e:
+            logger.exception("Catastrophic failure during enrichment for product %s: %s", product.id, e)
+            product.media_enrichment_status = MediaEnrichmentStatus.FAILED
+            product.media_enrichment_error = str(e)
+            product.media_enrichment_last_at = timezone.now()
+            product.save(update_fields=['media_enrichment_status', 'media_enrichment_last_at', 'media_enrichment_error'])
+            return 0
