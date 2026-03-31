@@ -10,7 +10,7 @@ export default function SecurityAndService() {
   const [isExpanded, setIsExpanded] = useState(false)
 
   return (
-    <div className="mt-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
+    <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[var(--surface)] overflow-hidden">
       {/* Заголовок с зеленым фоном */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
@@ -20,7 +20,7 @@ export default function SecurityAndService() {
           <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
-          <span className="font-medium text-green-700">{t('security_and_service', 'Безопасность и сервис')}</span>
+          <span className="font-medium text-green-700 dark:text-green-400">{t('security_and_service', 'Безопасность и сервис')}</span>
         </div>
         <svg
           className={`w-5 h-5 text-green-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -33,7 +33,7 @@ export default function SecurityAndService() {
       </button>
 
       {isExpanded && (
-        <div className="bg-stone-50 p-4">
+        <div className="bg-stone-50 dark:bg-[#0f1624] p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Безопасность платежей */}
             <div>
@@ -46,9 +46,9 @@ export default function SecurityAndService() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
                 </div>
-                <span className="text-sm font-medium text-gray-900">{t('payment_security', 'Безопасность платежей')}</span>
+                <span className="text-sm font-medium text-[var(--text-strong)]">{t('payment_security', 'Безопасность платежей')}</span>
               </div>
-              <p className="text-sm text-gray-600 pl-11">
+              <p className="text-sm text-gray-600 dark:text-gray-400 pl-11">
                 {t('payment_security_description', 'Мы гарантируем безопасность ваших платежей. Ваши платежные данные защищены и передаются только проверенным платежным системам.')}
               </p>
             </div>
@@ -64,10 +64,10 @@ export default function SecurityAndService() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
                 </div>
-                <span className="text-sm font-medium text-gray-900">{t('privacy_protection', 'Защита конфиденциальности')}</span>
+                <span className="text-sm font-medium text-[var(--text-strong)]">{t('privacy_protection', 'Защита конфиденциальности')}</span>
               </div>
-              <p className="text-sm text-gray-600 pl-11">
-                {t('privacy_protection_description', 'Мы используем современные методы шифрования для защиты ваших персональных данных. Ваша конфиденциальность - наш приоритет.')}
+              <p className="text-sm text-gray-600 dark:text-gray-400 pl-11">
+                {t('privacy_protection_description', 'Мы использовали современные методы шифрования для защиты ваших персональных данных. Ваша конфиденциальность - наш приоритет.')}
               </p>
             </div>
 
@@ -82,9 +82,9 @@ export default function SecurityAndService() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <span className="text-sm font-medium text-gray-900">{t('fast_safe_delivery', 'Быстрая и безопасная доставка')}</span>
+                <span className="text-sm font-medium text-[var(--text-strong)]">{t('fast_safe_delivery', 'Быстрая и безопасная доставка')}</span>
               </div>
-              <p className="text-sm text-gray-600 pl-11">
+              <p className="text-sm text-gray-600 dark:text-gray-400 pl-11">
                 {t('delivery_description', 'Мы обеспечиваем быструю и надежную доставку. Вы можете отслеживать статус заказа в реальном времени.')}
               </p>
             </div>
@@ -97,9 +97,9 @@ export default function SecurityAndService() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                   </svg>
                 </div>
-                <span className="text-sm font-medium text-gray-900">{t('customer_service', 'Служба поддержки')}</span>
+                <span className="text-sm font-medium text-[var(--text-strong)]">{t('customer_service', 'Служба поддержки')}</span>
               </div>
-              <p className="text-sm text-gray-600 pl-11">
+              <p className="text-sm text-gray-600 dark:text-gray-400 pl-11">
                 {t('customer_service_description', 'Наша служба поддержки готова помочь вам с любыми вопросами. Свяжитесь с нами в любое время.')}
               </p>
             </div>

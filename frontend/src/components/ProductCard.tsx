@@ -192,9 +192,9 @@ export default function ProductCard({
         </div>
         <div className="flex-1 flex flex-col justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2 hover-text-warm transition-colors">{localizedName}</h3>
+            <h3 className="text-lg font-semibold text-[var(--text-strong)] mb-2 hover-text-warm transition-colors">{localizedName}</h3>
             {localizedDescription && (
-              <p className="text-sm text-gray-600 line-clamp-2 mb-3">{localizedDescription}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-3">{localizedDescription}</p>
             )}
             <div className="flex items-center gap-4 mb-3">
               <div className="flex items-baseline gap-2">

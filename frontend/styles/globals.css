@@ -32,8 +32,10 @@
 .dark {
   --bg: #0f1624;
   --text: #e5e7eb;
+  --text-strong: #ffffff;
   --surface: #0b1420;
   --border: #1b2536;
+  --text-hover: #e9d8c7;
 }
 
 /* Пароль в тёмной теме: читаемые символы */

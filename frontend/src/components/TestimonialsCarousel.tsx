@@ -1110,7 +1110,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         </div>
 
         {testimonials.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-xl border border-gray-100 shadow-sm mb-8">
+          <div className="text-center py-12 bg-white dark:bg-[var(--surface)] rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm mb-8">
             <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
@@ -1152,7 +1152,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                   return (
                     <div
                       key={testimonial.id}
-                      className="flex-shrink-0 w-64 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 hover:scale-[1.02] flex flex-col"
+                      className="flex-shrink-0 w-64 bg-white dark:bg-[var(--surface)] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 hover:scale-[1.02] flex flex-col"
                     >
                       {testimonial.media && testimonial.media.length > 0 && (
                         <Link
@@ -1237,13 +1237,13 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                           }
                         }}
                       >
-                        <p className="text-gray-600 text-sm line-clamp-4">
+                        <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-4">
                           &quot;{testimonial.text}&quot;
                         </p>
                       </Link>
 
                       {/* Нижняя часть: аватарка + имя слева, звездочки справа */}
-                      <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 mt-auto">
+                      <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 dark:border-gray-700 mt-auto">
                         {testimonial.user_id != null && testimonial.user_username ? (
                           <button
                             type="button"
@@ -1278,7 +1278,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                                 }}
                               />
                             )}
-                            <div className="text-xs font-semibold text-gray-900 truncate pointer-events-none">
+                            <div className="text-xs font-semibold text-[var(--text-strong)] truncate pointer-events-none">
                               {testimonial.author_name}
                             </div>
                           </button>
@@ -1294,7 +1294,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                                 }}
                               />
                             )}
-                            <div className="text-xs font-semibold text-gray-900 truncate">
+                            <div className="text-xs font-semibold text-[var(--text-strong)] truncate">
                               {testimonial.author_name}
                             </div>
                           </div>
@@ -1332,7 +1332,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
                         height: pageIndex === currentPage ? '14px' : '10px',
                         borderRadius: '50%',
                         border: pageIndex === currentPage ? 'none' : '2px solid #9ca3af',
-                        backgroundColor: pageIndex === currentPage ? '#111827' : '#ffffff',
+                        backgroundColor: pageIndex === currentPage ? (document.documentElement.classList.contains('dark') ? '#ffffff' : '#111827') : 'transparent',
                         cursor: 'pointer',
                       }}
                       aria-label={`Перейти на страницу ${pageIndex + 1}`}

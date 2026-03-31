@@ -158,7 +158,7 @@ export default function SimilarProducts({
   if (loading) {
     return (
       <div className="mt-8">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+        <h2 className="text-2xl font-bold text-[var(--text-strong)] mb-6">
           {t('similar_products', 'Похожие товары')}
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -202,7 +202,7 @@ export default function SimilarProducts({
 
   return (
     <div className="mt-8">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+      <h2 className="text-2xl font-bold text-[var(--text-strong)] mb-6">
         {t('similar_products', 'Похожие товары')}
       </h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
