@@ -907,8 +907,13 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
                     q = Q()
                     if all_ids:
                         q |= Q(category_id__in=all_ids)
-                    if type_values:
-                        q |= Q(category_id__isnull=True, product_type__in=type_values)
+                    
+                    # Если категория не найдена по слагам, но слаг совпадает с типом товара (напр. 'headwear')
+                    # ищем товары этого типа без жесткой привязки к дереву категорий
+                    for s in slugs:
+                        pt = s.lower().replace('-', '_')
+                        q |= Q(product_type=pt)
+                        
                     if q:
                         queryset = queryset.filter(q)
         
