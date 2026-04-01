@@ -7,7 +7,8 @@ import Link from 'next/link'
 import Cookies from 'js-cookie'
 import { useFavoritesStore } from '../store/favorites'
 import ProductCard from '../components/ProductCard'
-import { isBaseProductType, needsTypeInPath } from '../lib/product'
+import { isBaseProductType } from '../lib/product'
+import { buildProductUrl } from '../lib/urls'
 
 const parseNumber = (value: string | number | null | undefined) => {
   if (value === null || typeof value === 'undefined') return null
@@ -95,11 +96,10 @@ export default function FavoritesPage() {
           <div className="grid grid-cols-2 gap-3 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {favorites.map((favorite) => {
               const product = favorite.product
-              const productType = product._product_type || 'medicines'
+              const rawType = product._product_type || 'medicines'
+              const productType = rawType.replace(/_/g, '-')
               const isBaseProduct = isBaseProductType(productType)
-              const productHref = needsTypeInPath(productType)
-                ? `/product/${productType}/${product.slug}`
-                : `/product/${product.slug}`
+              const productHref = buildProductUrl(productType, product.slug)
               const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
               
               // Используем ту же логику, что и в корзине для старой цены

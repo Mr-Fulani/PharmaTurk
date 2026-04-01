@@ -8,6 +8,8 @@ import Cookies from 'js-cookie'
 import api from '../lib/api'
 import { setPreferredCurrency } from '../lib/api'
 import { resolveMediaUrl, isVideoUrl } from '../lib/media'
+import { needsTypeInPath } from '../lib/product'
+import { buildProductUrl } from '../lib/urls'
 import { useAuth } from '../context/AuthContext'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
@@ -22,6 +24,7 @@ interface OrderItem {
   price: string
   quantity: number
   total: string
+  product_type?: string
 }
 
 interface Order {
@@ -959,15 +962,13 @@ export default function ProfilePage() {
                         </div>
                       </div>
 
-                      {/* Товары в заказе */}
-                      <div className="p-6">
-                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-4 uppercase tracking-wide">
-                          {t('profile_order_items')}:
-                        </h4>
-                        <div className="space-y-3">
-                          {order.items.map((item) => {
-                            const productLink = item.product_slug ? `/product/${item.product_slug}` : '#'
-                            const resolvedImage = item.product_image_url ? resolveMediaUrl(item.product_image_url) : null
+                          <div className="p-6">
+                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-4 uppercase tracking-wide">
+                              {t('profile_order_items')}:
+                            </h4>
+                            <div className="space-y-3">
+                              {order.items.map((item) => {
+                                const resolvedImage = item.product_image_url ? resolveMediaUrl(item.product_image_url) : null
                             const resolvedVideoUrl = item.product_video_url && isVideoUrl(item.product_video_url) ? resolveMediaUrl(item.product_video_url) : null
                             const showVideo = Boolean(resolvedVideoUrl)
                             const localizedName = getLocalizedProductName(
@@ -983,7 +984,7 @@ export default function ProfilePage() {
                               >
                                 {/* Главное медиа товара (видео или изображение) */}
                                 <Link
-                                  href={productLink}
+                                  href={item.product_slug ? buildProductUrl(item.product_type || 'medicines', item.product_slug) : '#'}
                                   className="relative w-full sm:w-24 h-24 flex-shrink-0 overflow-hidden rounded-lg bg-gray-200"
                                 >
                                   {showVideo ? (
@@ -1016,7 +1017,7 @@ export default function ProfilePage() {
                                 <div className="flex-1 flex flex-col justify-between min-w-0">
                                   <div>
                                     <Link
-                                      href={productLink}
+                                      href={item.product_slug ? buildProductUrl(item.product_type || 'medicines', item.product_slug) : '#'}
                                       className="block"
                                     >
                                       <h5 className="text-base font-semibold text-gray-900 dark:text-white hover-text-warm transition-colors line-clamp-2">

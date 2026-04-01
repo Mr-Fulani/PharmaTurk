@@ -7,6 +7,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useCartStore } from '../store/cart'
 import { resolveMediaUrl, getPlaceholderImageUrl, isVideoUrl } from '../lib/media'
 import { needsTypeInPath } from '../lib/product'
+import { buildProductUrl } from '../lib/urls'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface CartItem {
@@ -260,10 +261,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
 
   const getProductLink = (slug?: string, productId?: number, productType?: string) => {
     if (slug) {
-      if (productType && needsTypeInPath(productType)) {
-        return `/product/${productType}/${slug}`
-      }
-      return `/product/${slug}`
+      return buildProductUrl(productType || 'medicines', slug)
     }
     return `#`
   }

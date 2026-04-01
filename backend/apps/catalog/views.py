@@ -98,9 +98,78 @@ def _get_category_ids_with_descendants(slugs: list[str]) -> set[int]:
         children = list(Category.objects.filter(
             parent_id__in=current_ids, is_active=True
         ).values_list('id', flat=True))
-        current_ids = [c for c in children if c not in all_ids]
-        all_ids.update(current_ids)
+        if not children:
+            break
+        all_ids.update(children)
+        current_ids = children
     return all_ids
+
+
+class SmartSlugLookupMixin:
+    """
+    Mixin для умного поиска объекта по slug.
+    Поддерживает случаи, когда в БД слаг продублирован (напр. name-name),
+    а фронтенд прислал очищенную (короткую) версию, и наоборот.
+    Также обрабатывает доменные префиксы (напр. 'headwear-' + 'cap').
+    """
+    def get_object(self):
+        queryset = self.get_queryset()
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        slug = self.kwargs.get(lookup_url_kwarg)
+        
+        if not slug:
+            return super().get_object()
+
+        try:
+            # 1. Прямой поиск (как обычно)
+            return queryset.get(**{self.lookup_field: slug})
+        except queryset.model.DoesNotExist:
+            # 2. Если слаг продублирован в БД (ABC-ABC), а пришел короткий (ABC)
+            doubled_slug = f"{slug}-{slug}"
+            try:
+                return queryset.get(**{self.lookup_field: doubled_slug})
+            except queryset.model.DoesNotExist:
+                # 3. Если слаг "очищен" на фронте (отрезан префикс типа)
+                # Попробуем добавить префикс типа товара (напр. 'headwear-' + 'cap')
+                if hasattr(queryset.model, '_domain_product_type'):
+                    # Убираем подчеркивания, как это делает фронт
+                    prefix = f"{queryset.model._domain_product_type}-".lower().replace('_', '-')
+                    if not slug.lower().startswith(prefix):
+                        prefixed_slug = f"{prefix}{slug}"
+                        try:
+                            # Пробуем и префикс, и префикс + дубль
+                            return queryset.get(**{self.lookup_field: prefixed_slug})
+                        except queryset.model.DoesNotExist:
+                            doubled_prefixed = f"{prefixed_slug}-{prefixed_slug}"
+                            try:
+                                return queryset.get(**{self.lookup_field: doubled_prefixed})
+                            except queryset.model.DoesNotExist:
+                                pass
+
+                # 4. Если слаг продублирован в URL (ABC-ABC), а в БД он короткий (ABC)
+                if '-' in slug:
+                    parts = slug.split('-')
+                    if len(parts) >= 2 and len(parts) % 2 == 0:
+                        half = len(parts) // 2
+                        if parts[:half] == parts[half:]:
+                            short_slug = "-".join(parts[:half])
+                            try:
+                                return queryset.get(**{self.lookup_field: short_slug})
+                            except queryset.model.DoesNotExist:
+                                pass
+                
+                # 5. Если в URL префикс есть, а в базе его нет (экстремальный случай)
+                if hasattr(queryset.model, '_domain_product_type'):
+                    prefix = f"{queryset.model._domain_product_type}-".lower().replace('_', '-')
+                    if slug.lower().startswith(prefix):
+                        no_prefix_slug = slug[len(prefix):]
+                        try:
+                            return queryset.get(**{self.lookup_field: no_prefix_slug})
+                        except queryset.model.DoesNotExist:
+                            pass
+                                
+                # Если ничего не помогло - выбрасываем 404 через стандартный метод
+                return super().get_object()
 
 
 def _get_preferred_currency(request) -> str:
@@ -458,7 +527,7 @@ class CategoryPagination(PageNumberPagination):
     max_page_size = 500
 
 
-class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
+class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями."""
     
     queryset = Category.objects.filter(is_active=True).select_related('category_type').prefetch_related('translations')
@@ -585,7 +654,7 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class BrandViewSet(viewsets.ReadOnlyModelViewSet):
+class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с брендами."""
     
     queryset = Brand.objects.filter(is_active=True).prefetch_related('translations')
@@ -801,7 +870,7 @@ class BrandViewSet(viewsets.ReadOnlyModelViewSet):
         return super().retrieve(request, *args, **kwargs)
 
 
-class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
+class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами."""
     
     # Теневые варианты исключены на уровне класса (защита от случаев когда get_queryset не вызывается)
@@ -1350,7 +1419,7 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
 # API ДЛЯ ОДЕЖДЫ, ОБУВИ И ЭЛЕКТРОНИКИ
 # ============================================================================
 
-class ClothingCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+class ClothingCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями одежды."""
     
     queryset = Category.objects.filter(clothing_type__isnull=False).exclude(clothing_type='').filter(is_active=True)
@@ -1397,7 +1466,7 @@ class ClothingCategoryViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class ClothingProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
+class ClothingProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами одежды."""
     
     # Теневые варианты исключены на уровне класса
@@ -1554,7 +1623,7 @@ class ClothingProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelVie
         return Response(serializer.data)
 
 
-class ShoeCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+class ShoeCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями обуви. Использует иерархию (category_type), не shoe_type."""
 
     queryset = Category.objects.none()
@@ -1597,7 +1666,7 @@ class ShoeCategoryViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
+class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами обуви."""
     
     # Теневые варианты исключены на уровне класса
@@ -1754,7 +1823,7 @@ class ShoeProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet
         return Response(serializer.data)
 
 
-class ElectronicsCategoryViewSet(viewsets.ReadOnlyModelViewSet):
+class ElectronicsCategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями электроники."""
     
     queryset = Category.objects.filter(device_type__isnull=False).exclude(device_type='').filter(is_active=True)
@@ -1795,7 +1864,7 @@ class ElectronicsCategoryViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class ElectronicsProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
+class ElectronicsProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами электроники."""
     
     queryset = ElectronicsProduct.objects.filter(is_active=True)
@@ -1896,7 +1965,7 @@ class ElectronicsProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModel
         return Response(serializer.data)
 
 
-class JewelryProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
+class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для товаров украшений (с вариантами и размерами)."""
     queryset = JewelryProduct.objects.filter(is_active=True)
     serializer_class = JewelryProductSerializer
@@ -1991,7 +2060,7 @@ class JewelryProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelView
         return Response(serializer.data)
 
 
-class FurnitureProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
+class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами мебели."""
     
     queryset = FurnitureProduct.objects.filter(is_active=True)
@@ -2128,7 +2197,7 @@ class FurnitureProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelVi
         return Response(serializer.data)
 
 
-class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
+class ServiceViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с услугами."""
     
     queryset = Service.objects.filter(is_active=True)
@@ -2427,21 +2496,26 @@ class FavoriteViewSet(viewsets.ViewSet):
         from django.contrib.contenttypes.models import ContentType
         
         product_id = request.query_params.get('product_id')
-        product_type = request.query_params.get('product_type', 'medicines')
-        
+        product_type = (request.query_params.get('product_type') or 'medicines').strip().lower().replace('-', '_')
+        product_type = {
+            'medical_accessories': 'accessories',
+            'medical_accessory': 'accessories',
+            'accessory': 'accessories',
+        }.get(product_type, product_type)
+
         if not product_id:
             return Response(
                 {"detail": "Не указан product_id"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Определяем модель товара по типу (должно совпадать с AddToFavoriteSerializer)
         from .models import (
             Product, ClothingProduct, ShoeProduct, ElectronicsProduct,
             FurnitureProduct, JewelryProduct, Service,
             MedicineProduct, SupplementProduct,
         )
-        
+
         # Пробуем импортировать другие доменные модели (могут отсутствовать)
         try:
             from .models import MedicalEquipmentProduct
@@ -2456,13 +2530,16 @@ class FavoriteViewSet(viewsets.ViewSet):
             'accessories': Product,
             'jewelry': JewelryProduct,
             'perfumery': Product,
+            'headwear': Product,
+            'underwear': Product,
+            'islamic_clothing': Product,
             'clothing': ClothingProduct,
             'shoes': ShoeProduct,
             'electronics': ElectronicsProduct,
             'furniture': FurnitureProduct,
             'uslugi': Service,
         }
-        
+
         model_class = PRODUCT_MODEL_MAP.get(product_type)
         if not model_class:
             return Response({"is_favorite": False})
@@ -2522,7 +2599,7 @@ class FavoriteViewSet(viewsets.ViewSet):
         return Response({"count": count})
 
 
-class BannerViewSet(viewsets.ReadOnlyModelViewSet):
+class BannerViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с баннерами."""
     
     queryset = Banner.objects.filter(
@@ -2778,7 +2855,7 @@ def proxy_media(request):
 #                     BOOK PRODUCT
 # ─────────────────────────────────────────────────────────────
 
-class BookProductViewSet(viewsets.ReadOnlyModelViewSet):
+class BookProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами-книгами."""
 
     queryset = BookProduct.objects.filter(is_active=True)
@@ -2894,7 +2971,7 @@ class BookProductViewSet(viewsets.ReadOnlyModelViewSet):
 #                    PERFUMERY PRODUCT
 # ─────────────────────────────────────────────────────────────
 
-class PerfumeryProductViewSet(viewsets.ReadOnlyModelViewSet):
+class PerfumeryProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с товарами парфюмерии."""
 
     queryset = PerfumeryProduct.objects.filter(is_active=True)
@@ -3011,7 +3088,7 @@ class PerfumeryProductViewSet(viewsets.ReadOnlyModelViewSet):
 #        ПРОСТЫЕ ДОМЕНЫ (Волна 2) — ViewSets
 # ─────────────────────────────────────────────────────────────
 
-class _SimpleDomainViewSet(viewsets.ReadOnlyModelViewSet):
+class _SimpleDomainViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """Базовый ViewSet для простых доменов без вариантов."""
     pagination_class = StandardPagination
     lookup_field = 'slug'
@@ -3028,42 +3105,6 @@ class _SimpleDomainViewSet(viewsets.ReadOnlyModelViewSet):
     def _normalize_ordering(self, ordering: str) -> str:
         return self._ORDERING_MAP.get(ordering, ordering)
 
-    def get_object(self):
-        """
-        Умный поиск объекта по slug.
-        Поддерживает случаи, когда в БД слаг продублирован (напр. name-name),
-        а фронтенд прислал очищенную (короткую) версию, и наоборот.
-        """
-        queryset = self.get_queryset()
-        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-        slug = self.kwargs.get(lookup_url_kwarg)
-        
-        if not slug:
-            return super().get_object()
-
-        try:
-            # 1. Прямой поиск (как обычно)
-            return queryset.get(**{self.lookup_field: slug})
-        except queryset.model.DoesNotExist:
-            # 2. Если слаг продублирован в БД (ABC-ABC), а пришел короткий (ABC)
-            doubled_slug = f"{slug}-{slug}"
-            try:
-                return queryset.get(**{self.lookup_field: doubled_slug})
-            except queryset.model.DoesNotExist:
-                # 3. Если слаг продублирован в URL (ABC-ABC), а в БД он короткий (ABC)
-                if '-' in slug:
-                    parts = slug.split('-')
-                    if len(parts) >= 2 and len(parts) % 2 == 0:
-                        half = len(parts) // 2
-                        if parts[:half] == parts[half:]:
-                            short_slug = "-".join(parts[:half])
-                            try:
-                                return queryset.get(**{self.lookup_field: short_slug})
-                            except queryset.model.DoesNotExist:
-                                pass
-                # Если ничего не помогло - выбрасываем 404 через стандартный метод
-                from django.http import Http404
-                raise Http404("No product found matching the slug (even with smart fallback).")
 
     def _base_queryset(self):
         return self.queryset.all()

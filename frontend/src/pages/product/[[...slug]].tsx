@@ -17,7 +17,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl, pickPreferredVideoUrl } from '../../lib/media'
 import { getSiteOrigin } from '../../lib/urls'
-import { isBaseProductType } from '../../lib/product'
+import { isBaseProductType, needsTypeInPath } from '../../lib/product'
 import { useTheme } from '../../context/ThemeContext'
 
 type CategoryType = string
@@ -39,7 +39,7 @@ const CATEGORY_ALIASES: Record<string, CategoryType> = {
 
 const normalizeCategoryType = (value?: string): CategoryType => {
   if (!value) return 'medicines'
-  const lower = value.toLowerCase()
+  const lower = value.toLowerCase().replace(/_/g, '-')
   // Если есть алиас - возвращаем его, иначе возвращаем как есть (для поддержки новых категорий)
   return CATEGORY_ALIASES[lower] || lower
 }
@@ -2273,6 +2273,20 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
       }
     })
 
+  /** Товар только в generic Product (листинг по category_slug), без строки в доменной таблице — доменный detail даёт 404. */
+  const tryFetchGenericProductBySlug = async (slug: string) => {
+    try {
+      return await axios.get(getInternalApiUrl(`catalog/products/${slug}`), {
+        headers: {
+          'X-Currency': currency,
+          'Accept-Language': ctx.locale || 'en'
+        }
+      })
+    } catch {
+      return null
+    }
+  }
+
   const buildProps = async (res: any, type: CategoryType) => ({
     props: {
       ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
@@ -2284,42 +2298,62 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   })
 
   if (slugParts.length === 1) {
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery', 'supplements', 'medical-equipment']
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery', 'supplements', 'medical-equipment', 'tableware', 'accessories', 'incense', 'sports', 'auto-parts', 'headwear', 'underwear', 'islamic-clothing', 'uslugi']
     for (const t of probeTypes) {
       try {
         const res = await fetchProduct(t, productSlug)
         const product = res.data
-        const actualType = product.product_type || t
+        const actualType = normalizeCategoryType(product.product_type || t)
 
-        if (actualType !== 'medicines') {
+        if (needsTypeInPath(actualType)) {
           return {
             redirect: {
-              destination: `${localePrefix}/product/${actualType}/${productSlug}`,
+              destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
               permanent: false,
             },
           }
         }
-        return buildProps(res, 'medicines')
+        return buildProps(res, actualType)
       } catch {
         continue
       }
     }
+
+    const genericRes = await tryFetchGenericProductBySlug(productSlug)
+    if (genericRes) {
+      const product = genericRes.data
+      const actualType = normalizeCategoryType(product.product_type)
+      if (needsTypeInPath(actualType)) {
+        return {
+          redirect: {
+            destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
+            permanent: false,
+          },
+        }
+      }
+      return buildProps(genericRes, actualType || 'medicines')
+    }
+
     return { notFound: true }
   }
 
   try {
     const res = await fetchProduct(categoryType, productSlug)
     const product = res.data
-    const actualType = product.product_type
+    const normalizedCategoryType = normalizeCategoryType(categoryType)
+    const rawPt = product?.product_type
 
-    // Редирект на канонический URL, если тип в URL не совпадает с реальным product_type
-    // (напр. /product/medicines/kolco-s-kamnem → /product/jewelry/kolco-s-kamnem)
-    if (actualType && actualType !== categoryType) {
-      return {
-        redirect: {
-          destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
-          permanent: false,
-        },
+    // Редирект только если API явно отдал product_type и он расходится с URL.
+    // Иначе (поле отсутствует в JSON доменного сериализатора) normalizeCategoryType дал бы medicines → ping-pong с generic fallback.
+    if (rawPt != null && String(rawPt).trim() !== '') {
+      const actualType = normalizeCategoryType(String(rawPt))
+      if (actualType !== normalizedCategoryType) {
+        return {
+          redirect: {
+            destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
+            permanent: false,
+          },
+        }
       }
     }
 
@@ -2335,7 +2369,28 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     }
     return buildProps(res, categoryType)
   } catch (error) {
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery']
+    const normalizedCategoryType = normalizeCategoryType(categoryType)
+
+    // Сначала общий каталог: листинг по category_slug часто отдаёт только Product без доменной строки.
+    const genericEarly = await tryFetchGenericProductBySlug(productSlug)
+    if (genericEarly) {
+      const product = genericEarly.data
+      const rawPt = product?.product_type
+      if (rawPt != null && String(rawPt).trim() !== '') {
+        const actualType = normalizeCategoryType(String(rawPt))
+        if (actualType !== normalizedCategoryType) {
+          return {
+            redirect: {
+              destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
+              permanent: false,
+            },
+          }
+        }
+      }
+      return buildProps(genericEarly, normalizedCategoryType)
+    }
+
+    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery', 'supplements', 'medical-equipment', 'tableware', 'accessories', 'incense', 'sports', 'auto-parts', 'headwear', 'underwear', 'islamic-clothing', 'uslugi']
     const typesToTry = probeTypes.filter((t) => t !== categoryType)
 
     for (const t of typesToTry) {
@@ -2348,15 +2403,15 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
           }
         })
         const product = res.data
-        const actualType = product.product_type || t
+        const actualType = normalizeCategoryType(product.product_type || t)
 
-        if (actualType === categoryType) {
-          return buildProps(res, categoryType)
+        if (actualType === normalizedCategoryType) {
+          return buildProps(res, normalizedCategoryType)
         }
 
         return {
           redirect: {
-            destination: `${localePrefix}/product/${actualType}/${productSlug}`,
+            destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
             permanent: false,
           },
         }

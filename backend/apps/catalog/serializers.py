@@ -765,6 +765,9 @@ class ProductSerializer(serializers.ModelSerializer):
     reviews_count = serializers.SerializerMethodField()
     is_bestseller = serializers.SerializerMethodField()
     has_manual_main_image = serializers.BooleanField(read_only=True)
+    # Для shadow Product с доменом slug на доменной модели может отличаться от Product.slug (коллизии) —
+    # фронт строит /product/{type}/{slug} по доменному API.
+    slug = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
@@ -783,13 +786,35 @@ class ProductSerializer(serializers.ModelSerializer):
             # Поля специфичные для книг
             'isbn', 'publisher', 'publication_date', 'pages', 'language',
             'cover_type', 'rating', 'reviews_count', 'is_bestseller', 'is_new',
-            'book_authors', 'book_genres', 'book_attributes', 'dynamic_attributes',
+            'book_authors', 'book_genres', 'book_attributes', 'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
             'main_image_url', 'video_url', 'has_manual_main_image',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_slug(self, obj):
+        """Слаг для ссылок на доменный detail API (если есть связанная доменная запись)."""
+        from .models import HeadwearProduct, UnderwearProduct, IslamicClothingProduct
+
+        pt = (getattr(obj, 'product_type', None) or '').strip().lower().replace('-', '_')
+        try:
+            if pt == 'headwear':
+                dom = HeadwearProduct.objects.filter(base_product_id=obj.pk).only('slug').first()
+                if dom and dom.slug:
+                    return dom.slug
+            elif pt == 'underwear':
+                dom = UnderwearProduct.objects.filter(base_product_id=obj.pk).only('slug').first()
+                if dom and dom.slug:
+                    return dom.slug
+            elif pt == 'islamic_clothing':
+                dom = IslamicClothingProduct.objects.filter(base_product_id=obj.pk).only('slug').first()
+                if dom and dom.slug:
+                    return dom.slug
+        except Exception:
+            pass
+        return obj.slug
 
     def get_name(self, obj):
         """Локализованное название."""
@@ -1469,9 +1494,17 @@ class FavoriteSerializer(serializers.ModelSerializer):
     
     def get_product(self, obj):
         """Сериализация товара в зависимости от его типа."""
+        from .models import HeadwearProduct, UnderwearProduct, IslamicClothingProduct
+
         product = obj.product
         request = self.context.get('request')
-        
+
+        def _pin_base_product_fields(data: dict, base_pk: int) -> dict:
+            """ID в избранном всегда совпадает с object_id (shadow Product)."""
+            data['id'] = base_pk
+            data['base_product_id'] = base_pk
+            return data
+
         # Определяем тип товара по модели
         product_type = 'medicines'  # По умолчанию
         if isinstance(product, ClothingProduct):
@@ -1489,9 +1522,51 @@ class FavoriteSerializer(serializers.ModelSerializer):
         elif isinstance(product, JewelryProduct):
             product_type = 'jewelry'
             product_data = JewelryProductSerializer(product, context={'request': request}).data
+        elif isinstance(product, HeadwearProduct):
+            product_type = 'headwear'
+            product_data = HeadwearProductSerializer(product, context={'request': request}).data
+            if product.base_product_id:
+                _pin_base_product_fields(product_data, product.base_product_id)
+        elif isinstance(product, UnderwearProduct):
+            product_type = 'underwear'
+            product_data = UnderwearProductSerializer(product, context={'request': request}).data
+            if product.base_product_id:
+                _pin_base_product_fields(product_data, product.base_product_id)
+        elif isinstance(product, IslamicClothingProduct):
+            product_type = 'islamic_clothing'
+            product_data = IslamicClothingProductSerializer(product, context={'request': request}).data
+            if product.base_product_id:
+                _pin_base_product_fields(product_data, product.base_product_id)
         elif isinstance(product, Product):
-            product_type = getattr(product, 'product_type', None) or 'medicines'
-            product_data = ProductSerializer(product, context={'request': request}).data
+            raw_pt = getattr(product, 'product_type', None) or 'medicines'
+            product_type = str(raw_pt).strip().lower().replace('-', '_')
+            hw_item = uw_item = ic_item = None
+            if product_type == 'headwear':
+                try:
+                    hw_item = product.headwear_item
+                except HeadwearProduct.DoesNotExist:
+                    hw_item = None
+            if product_type == 'underwear':
+                try:
+                    uw_item = product.underwear_item
+                except UnderwearProduct.DoesNotExist:
+                    uw_item = None
+            if product_type in ('islamic_clothing', 'islamic-clothing'):
+                try:
+                    ic_item = product.islamic_clothing_item
+                except IslamicClothingProduct.DoesNotExist:
+                    ic_item = None
+            if hw_item is not None:
+                product_data = HeadwearProductSerializer(hw_item, context={'request': request}).data
+                _pin_base_product_fields(product_data, product.id)
+            elif uw_item is not None:
+                product_data = UnderwearProductSerializer(uw_item, context={'request': request}).data
+                _pin_base_product_fields(product_data, product.id)
+            elif ic_item is not None:
+                product_data = IslamicClothingProductSerializer(ic_item, context={'request': request}).data
+                _pin_base_product_fields(product_data, product.id)
+            else:
+                product_data = ProductSerializer(product, context={'request': request}).data
         elif isinstance(product, Service):
             product_type = 'uslugi'
             product_data = ServiceSerializer(product, context={'request': request}).data
@@ -1506,9 +1581,10 @@ class FavoriteSerializer(serializers.ModelSerializer):
                 'main_image_url': getattr(product, 'main_image', None) or getattr(product, 'main_image_url', None),
                 'video_url': getattr(product, 'video_url', None) or getattr(product, 'main_video_url', None) or getattr(product, 'main_video', None)
             }
-        
-        # Добавляем тип товара в данные
-        product_data['_product_type'] = product_type
+
+        # Тип для фронта: дефисы (как в URL и TYPES_NEEDING_PATH)
+        api_pt = str(product_type).replace('_', '-')
+        product_data['_product_type'] = api_pt
         return product_data
 
 
@@ -1535,17 +1611,18 @@ class AddToFavoriteSerializer(serializers.Serializer):
             FurnitureProduct, JewelryProduct, Service,
             MedicineProduct, SupplementProduct,
         )
-        
+
         # Пробуем импортировать другие доменные модели (могут отсутствовать)
         try:
             from .models import MedicalEquipmentProduct
         except ImportError:
             MedicalEquipmentProduct = None
-        
+
         domain_maps = {}
         if MedicalEquipmentProduct:
             domain_maps['medical_equipment'] = MedicalEquipmentProduct
-        
+
+        # headwear / underwear / islamic_clothing хранятся в избранном как shadow Product (единый object_id)
         PRODUCT_MODEL_MAP = {
             'medicines': MedicineProduct,
             'supplements': SupplementProduct if SupplementProduct else Product,
@@ -1554,8 +1631,9 @@ class AddToFavoriteSerializer(serializers.Serializer):
             'accessories': Product,
             'jewelry': JewelryProduct,
             'perfumery': Product,
-            'underwear': Product,
             'headwear': Product,
+            'underwear': Product,
+            'islamic_clothing': Product,
             'books': Product,
             'clothing': ClothingProduct,
             'shoes': ShoeProduct,
@@ -1795,9 +1873,13 @@ class ClothingProductSerializer(serializers.ModelSerializer):
     og_title = serializers.SerializerMethodField()
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
-    product_type = serializers.CharField(source='_domain_product_type', read_only=True)
+    product_type = serializers.SerializerMethodField(read_only=True)
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     
+    def get_product_type(self, obj):
+        raw = getattr(type(obj), '_domain_product_type', None)
+        return str(raw).replace('_', '-') if raw else None
+
     class Meta:
         model = ClothingProduct
         fields = [
@@ -2196,7 +2278,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     video_url = serializers.SerializerMethodField()
     translations = ShoeProductTranslationSerializer(many=True, read_only=True)
-    product_type = serializers.CharField(source='_domain_product_type', read_only=True)
+    product_type = serializers.SerializerMethodField(read_only=True)
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
@@ -2221,6 +2303,10 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_product_type(self, obj):
+        raw = getattr(type(obj), '_domain_product_type', None)
+        return str(raw).replace('_', '-') if raw else None
     
     def get_video_url(self, obj):
         """URL видео товара (Shoes). Приоритет загруженному файлу."""
@@ -2655,7 +2741,7 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
     translations = ElectronicsProductTranslationSerializer(many=True, read_only=True)
-    product_type = serializers.CharField(source='_domain_product_type', read_only=True)
+    product_type = serializers.SerializerMethodField(read_only=True)
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
@@ -2677,6 +2763,10 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
             'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_product_type(self, obj):
+        raw = getattr(type(obj), '_domain_product_type', None)
+        return str(raw).replace('_', '-') if raw else None
     
     def get_main_image_url(self, obj):
         """URL главного изображения.
@@ -2962,7 +3052,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'material', 'furniture_type', 'dimensions',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
-            'images', 'dynamic_attributes',
+            'images', 'dynamic_attributes', 'product_type',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
@@ -3494,7 +3584,7 @@ class JewelryProductSerializer(serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'jewelry_type', 'material', 'metal_purity', 'stone_type', 'carat_weight', 'gender',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
-            'images', 'dynamic_attributes',
+            'images', 'dynamic_attributes', 'product_type',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
@@ -3875,6 +3965,7 @@ class ServiceSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
     category = CategorySerializer(read_only=True)
+    product_type = serializers.ReadOnlyField(default='uslugi')
     main_image_url = serializers.SerializerMethodField()
     main_video_url = serializers.SerializerMethodField()
     main_gif_url = serializers.SerializerMethodField()
@@ -3890,14 +3981,14 @@ class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
         fields = [
-            'id', 'name', 'slug', 'description', 'category',
+            'id', 'name', 'slug', 'description', 'category', 'product_type',
             'price', 'price_formatted', 'currency', 'prices_info',
             'main_image', 'main_image_url', 'video_url', 'main_video_url', 'main_gif_url',
             'gallery', 'images',
             'service_attributes',
             'is_active', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'product_type']
     
     def get_name(self, obj):
         """Локализованное название."""
@@ -4139,7 +4230,7 @@ class BookProductSerializer(serializers.ModelSerializer):
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
-            'book_authors', 'book_genres', 'book_attributes', 'dynamic_attributes',
+            'book_authors', 'book_genres', 'book_attributes', 'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
@@ -4751,8 +4842,13 @@ class PerfumeryProductSerializer(serializers.ModelSerializer):
 
 # ─── Базовый миксин для простых доменов (без вариантов) ───
 
-class _SimpleDomainMixin:
-    """Общие helper-методы для доменных сериализаторов без вариантов."""
+class _SimpleDomainMixin(serializers.Serializer):
+    """Общие поля и методы для доменных ModelSerializer.
+
+    Важно: наследуемся от serializers.Serializer, чтобы SerializerMetaclass
+    заполнил _declared_fields — иначе поля миксина (в т.ч. product_type) не
+    попадают в дочерний ModelSerializer и DRF пытается взять их с модели.
+    """
 
     main_image_url = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()
@@ -4767,6 +4863,17 @@ class _SimpleDomainMixin:
     og_title = serializers.SerializerMethodField()
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
+    # _domain_product_type на модели — атрибут класса, не поле БД; CharField(source=...) ломает ModelSerializer.
+    product_type = serializers.SerializerMethodField(read_only=True)
+
+    def get_product_type(self, obj):
+        raw = getattr(type(obj), '_domain_product_type', None)
+        if raw:
+            return str(raw).replace('_', '-')
+        pt = getattr(obj, 'product_type', None)
+        if pt is not None and str(pt).strip() != '':
+            return str(pt).replace('_', '-')
+        return None
 
     def _get_preferred_currency(self, obj):
         request = self.context.get('request')
@@ -4947,7 +5054,6 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     og_title = serializers.SerializerMethodField()
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
-    product_type = serializers.CharField(source='_domain_product_type', read_only=True)
     
     usage_instructions = serializers.SerializerMethodField()
     side_effects = serializers.SerializerMethodField()
@@ -5087,7 +5193,6 @@ class SupplementProductSerializer(_SimpleDomainMixin, serializers.ModelSerialize
     og_title = serializers.SerializerMethodField()
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
-    product_type = serializers.CharField(source='_domain_product_type', read_only=True)
 
     dosage_form = serializers.SerializerMethodField()
     active_ingredient = serializers.SerializerMethodField()
@@ -5185,7 +5290,7 @@ class MedicalEquipmentProductSerializer(_SimpleDomainMixin, serializers.ModelSer
             'equipment_type', 'warranty_months',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
-            'base_product_id',
+            'base_product_id', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
         ]
@@ -5241,7 +5346,7 @@ class TablewareProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             'material', 'set_pieces_count',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
-            'base_product_id',
+            'base_product_id', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
         ]
@@ -5297,7 +5402,7 @@ class AccessoryProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             'accessory_type', 'material',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
-            'base_product_id',
+            'base_product_id', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
         ]
@@ -5353,7 +5458,7 @@ class IncenseProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
             'scent_type', 'burn_time', 'weight_grams',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
-            'base_product_id',
+            'base_product_id', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
         ]
@@ -5434,7 +5539,7 @@ class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
         fields = [
             'id', 'slug', 'name', 'price', 'old_price', 'currency', 
             'is_available', 'is_new', 'is_featured', 'main_image', 'main_image_url',
-            'sport_type', 'equipment_type',
+            'sport_type', 'equipment_type', 'product_type',
             'price_formatted', 'old_price_formatted',
             'variants',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -5473,7 +5578,7 @@ class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeriali
             'created_at', 'updated_at',
             'category', 'brand', 'main_image', 'main_image_url',
             'translations', 'images', 'variants',
-            'sport_type', 'equipment_type', 'material', 
+            'sport_type', 'equipment_type', 'material', 'product_type',
             'price_formatted', 'old_price_formatted', 
             'similar_products',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -5547,7 +5652,7 @@ class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
         fields = [
             'id', 'slug', 'name', 'price', 'old_price', 'currency', 
             'is_available', 'is_new', 'is_featured', 'main_image', 'main_image_url',
-            'part_number', 'car_brand', 'car_model',
+            'part_number', 'car_brand', 'car_model', 'product_type',
             'price_formatted', 'old_price_formatted',
             'variants',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -5586,7 +5691,7 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
             'created_at', 'updated_at',
             'category', 'brand', 'main_image', 'main_image_url',
             'translations', 'images', 'variants',
-            'part_number', 'car_brand', 'car_model', 'compatibility_years',
+            'part_number', 'car_brand', 'car_model', 'compatibility_years', 'product_type',
             'price_formatted', 'old_price_formatted', 
             'similar_products',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -5640,6 +5745,8 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     
     dynamic_attributes = serializers.SerializerMethodField()
     sizes = HeadwearProductSizeSerializer(many=True, read_only=True)
+    # Явно: при множественных переопределениях полей миксина надёжнее не полагаться только на merge.
+    product_type = serializers.SerializerMethodField(read_only=True)
 
     _image_serializer_class = HeadwearProductImageSerializer
 
@@ -5651,7 +5758,7 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
             'size', 'color', 'video_url', 'sizes', 
-            'dynamic_attributes',
+            'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url'
         ]
@@ -5686,6 +5793,10 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             return ProductDynamicAttributeSerializer(obj.dynamic_attributes.all(), many=True, context=self.context).data
         except Exception:
             return []
+
+    def get_product_type(self, obj):
+        return _SimpleDomainMixin.get_product_type(self, obj)
+
 
 class UnderwearProductImageSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
@@ -5721,6 +5832,7 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
     
     dynamic_attributes = serializers.SerializerMethodField()
     sizes = UnderwearProductSizeSerializer(many=True, read_only=True)
+    product_type = serializers.SerializerMethodField(read_only=True)
 
     _image_serializer_class = UnderwearProductImageSerializer
 
@@ -5732,7 +5844,7 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
             'size', 'color', 'video_url', 'sizes', 
-            'dynamic_attributes',
+            'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url'
         ]
@@ -5767,6 +5879,10 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             return ProductDynamicAttributeSerializer(obj.dynamic_attributes.all(), many=True, context=self.context).data
         except Exception:
             return []
+
+    def get_product_type(self, obj):
+        return _SimpleDomainMixin.get_product_type(self, obj)
+
 
 class IslamicClothingProductImageSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
@@ -5802,6 +5918,7 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
     
     dynamic_attributes = serializers.SerializerMethodField()
     sizes = IslamicClothingProductSizeSerializer(many=True, read_only=True)
+    product_type = serializers.SerializerMethodField(read_only=True)
 
     _image_serializer_class = IslamicClothingProductImageSerializer
 
@@ -5813,7 +5930,7 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
             'size', 'color', 'video_url', 'sizes', 
-            'dynamic_attributes',
+            'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url'
         ]
@@ -5848,3 +5965,6 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
             return ProductDynamicAttributeSerializer(obj.dynamic_attributes.all(), many=True, context=self.context).data
         except Exception:
             return []
+
+    def get_product_type(self, obj):
+        return _SimpleDomainMixin.get_product_type(self, obj)

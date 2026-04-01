@@ -239,12 +239,16 @@ const resolveCategoryTypeFromSlug = (slugRaw: string | string[] | undefined): st
 // Типы с выделенным доменным вьюсетом используют свой эндпоинт;
 // все остальные — универсальный /api/catalog/products с фильтром category_slug.
 const resolveProductsEndpoint = (categoryType: string) => {
-  switch (categoryType) {
+  const t = (categoryType || '').toLowerCase().replace(/_/g, '-')
+  switch (t) {
     case 'clothing': return '/api/catalog/clothing/products'
     case 'shoes': return '/api/catalog/shoes/products'
     case 'electronics': return '/api/catalog/electronics/products'
     case 'furniture': return '/api/catalog/furniture/products'
     case 'jewelry': return '/api/catalog/jewelry/products'
+    case 'headwear': return '/api/catalog/headwear/products'
+    case 'underwear': return '/api/catalog/underwear/products'
+    case 'islamic-clothing': return '/api/catalog/islamic-clothing/products'
     case 'uslugi': return '/api/catalog/services'
     default: return '/api/catalog/products'
   }

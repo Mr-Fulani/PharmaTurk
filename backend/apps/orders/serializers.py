@@ -1491,6 +1491,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
     Сериализатор позиции заказа
     """
     product_slug = serializers.CharField(source='product.slug', read_only=True)
+    product_type = serializers.CharField(source='product.product_type', read_only=True)
     product_image_url = serializers.SerializerMethodField()
     product_video_url = serializers.SerializerMethodField()
     product_translations = serializers.SerializerMethodField()
@@ -1499,8 +1500,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'product_name', 'product_slug', 'product_image_url', 'product_video_url', 'product_translations', 'chosen_size', 'price', 'quantity', 'total']
-        read_only_fields = ['product_name', 'price', 'total', 'product_slug', 'product_image_url', 'product_video_url', 'product_translations']
+        fields = ['id', 'product', 'product_name', 'product_slug', 'product_type', 'product_image_url', 'product_video_url', 'product_translations', 'chosen_size', 'price', 'quantity', 'total']
+        read_only_fields = ['product_name', 'price', 'total', 'product_slug', 'product_type', 'product_image_url', 'product_video_url', 'product_translations']
 
     def _get_preferred_currency(self, request, fallback: str = 'RUB') -> str:
         if not request:

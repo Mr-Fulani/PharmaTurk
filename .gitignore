@@ -62,6 +62,8 @@ coverage/
 # Cursor
 # .cursor/
 .cursorrules
+# Локальные правила редактора (не в репозитории)
+.cursor/rules/ru-rules.mdc
 
 # Pyright
 pyrightconfig.json
