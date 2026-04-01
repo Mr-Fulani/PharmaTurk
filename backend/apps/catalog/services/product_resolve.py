@@ -8,11 +8,11 @@
   - source: str — откуда взят объект (отладка): generic_product, domain_clothing, ...
 
 Порядок поиска (зафиксирован; при смене — обновить тесты и комментарий):
-  1) Product (generic каталог): активные, без теневых вариантов в external_data,
-     с тем же queryset, что у ProductViewSet (включая исключение jewelry из списка
-     — для retrieve get_queryset тоже исключает jewelry).
-  2) Доменные ViewSet в порядке, согласованном с urls.py (один slug — один владелец
-     в типичном кейсе; коллизии slug между доменами разрешаются первым совпадением).
+  1) Доменные ViewSet в порядке, согласованном с urls.py. Важно: раньше generic Product
+     шёл первым и shadow-строка с тем же slug перекрывала ShoeProduct/ClothingProduct —
+     в payload не попадали variants / размерные ряды.
+  2) Product (generic каталог): активные, без теневых вариантов в external_data,
+     с тем же queryset, что у ProductViewSet.
   3) Service (uslugi).
 
 Query-параметры пробрасываются через исходный request (в т.ч. active_variant_slug
@@ -181,20 +181,20 @@ def resolve_product_payload(request: HttpRequest | DrfRequest, slug: str) -> tup
 
     slug = str(slug).strip()
 
-    # 1) Generic Product
     from apps.catalog.views import ProductViewSet, ServiceViewSet
 
-    data = _dispatch_retrieve(ProductViewSet, request, slug)
-    if data is not None:
-        pt = _normalize_pt(data.get("product_type"))
-        return data, "generic_product", pt
-
-    # 2) Домены
+    # 1) Домены — полный detail (варианты цвета, размеры и т.д. у обуви/одежды).
     for view_cls, source_key in _domain_viewsets_order():
         data = _dispatch_retrieve(view_cls, request, slug)
         if data is not None:
             pt = _normalize_pt(data.get("product_type"))
             return data, source_key, pt
+
+    # 2) Generic Product (нет отдельной доменной строки с этим slug)
+    data = _dispatch_retrieve(ProductViewSet, request, slug)
+    if data is not None:
+        pt = _normalize_pt(data.get("product_type"))
+        return data, "generic_product", pt
 
     # 3) Услуги (URL в каталоге: /services/{slug}/)
     data = _dispatch_retrieve(ServiceViewSet, request, slug)

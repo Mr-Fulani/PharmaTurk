@@ -88,7 +88,15 @@
 
 ---
 
-## 7. Файлы кода (ориентир)
+## 7. `GET /api/catalog/products/resolve/{slug}` и варианты обуви
+
+Страница товара (`frontend/src/pages/product/[[...slug]].tsx`) берёт данные через **resolve**, а не напрямую из `shoes/products/...`.
+
+**Порядок в `resolve_product_payload`** (`backend/apps/catalog/services/product_resolve.py`): сначала перебираются **доменные** ViewSet (в т.ч. `ShoeProductViewSet`), затем generic **`ProductViewSet`**. Если делать наоборот, shadow `Product` с тем же `slug`, что и родительская пара обуви, отдавался бы **`ProductSerializer`** без поля **`variants`** — на фронте пропадали цвета, размерные ряды и часть медиа. Доменная строка `ShoeProduct` должна выигрывать при совпадении slug.
+
+---
+
+## 8. Файлы кода (ориентир)
 
 | Область | Файлы |
 |--------|--------|
@@ -98,11 +106,13 @@
 | Стор и кнопка | `frontend/src/store/favorites.ts`, `frontend/src/components/FavoriteButton.tsx` |
 | Карточки | `frontend/src/components/ProductCard.tsx`, `frontend/src/pages/categories/[slug].tsx` |
 | R2 / proxy | `backend/config/settings.py`, `frontend/next.config.js` |
+| Resolve карточки (SSR/клиент) | `backend/apps/catalog/services/product_resolve.py` |
 
 ---
 
-## 8. Что проверять после изменений в каталоге
+## 9. Что проверять после изменений в каталоге
 
 - Новый доменный тип с shadow `Product`: нужны ли он в `resolve_product_for_favorites_api`, в `FavoriteSerializer.get_product`, и отдаётся ли в листинге **`base_product_id`**, если в избранном пинится base id.
 - Любое изменение `_product_type` в API — синхронизировать нормализацию на фронте (`favoriteApiProductId`, `isFavorite`).
 - При добавлении путей прокси медиа — следить за пулом соединений к R2 и таймаутом Next.
+- Не возвращать **generic Product** раньше домена для slug, по которому существует `ShoeProduct` / `ClothingProduct` с вариантами — иначе сломается страница товара.
