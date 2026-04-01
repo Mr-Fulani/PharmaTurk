@@ -138,6 +138,8 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
       <img
         src={src}
         alt={alt || ''}
+        loading="lazy"
+        decoding="async"
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
         onError={(e) => {
           const placeholder = id ? getPlaceholderImageUrl({ type: 'category', id }) : null

@@ -7,6 +7,10 @@ const { i18n } = require('./next-i18next.config')
 const nextConfig = {
   reactStrictMode: true,
   i18n,
+  // Таймаут прокси rewrites → backend (длинные ответы proxy-media / видео). В мс; в проде за фронтом обычно nginx.
+  experimental: {
+    proxyTimeout: Number(process.env.NEXT_PROXY_TIMEOUT_MS || 180000),
+  },
   // Оптимизация производительности
   swcMinify: true,
   compiler: {

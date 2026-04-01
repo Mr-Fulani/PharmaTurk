@@ -259,6 +259,18 @@ USE_R2 = env.bool("USE_R2", default=bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and 
 R2_PREFIX = env("R2_PREFIX", default="dev/" if DEBUG else "").strip("/")
 
 if USE_R2:
+    # Пул соединений urllib3/botocore к R2: при множестве параллельных proxy_media не заполнять пул (предупреждение «pool is full»).
+    from botocore.config import Config as BotoCoreConfig
+
+    R2_BOTO_MAX_POOL_CONNECTIONS = env.int("R2_BOTO_MAX_POOL_CONNECTIONS", default=64)
+    _r2_s3_client_config = BotoCoreConfig().merge(
+        BotoCoreConfig(
+            max_pool_connections=R2_BOTO_MAX_POOL_CONNECTIONS,
+            connect_timeout=10,
+            read_timeout=300,
+        )
+    )
+
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
@@ -274,6 +286,7 @@ if USE_R2:
                 ),
                 "querystring_auth": False,
                 "location": R2_PREFIX,
+                "client_config": _r2_s3_client_config,
             },
         },
         "staticfiles": {
