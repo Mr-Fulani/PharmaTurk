@@ -17,7 +17,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl, pickPreferredVideoUrl } from '../../lib/media'
 import { getSiteOrigin } from '../../lib/urls'
-import { isBaseProductType, needsTypeInPath } from '../../lib/product'
+import { isBaseProductType } from '../../lib/product'
 import { useTheme } from '../../context/ThemeContext'
 
 type CategoryType = string
@@ -42,52 +42,6 @@ const normalizeCategoryType = (value?: string): CategoryType => {
   const lower = value.toLowerCase().replace(/_/g, '-')
   // Если есть алиас - возвращаем его, иначе возвращаем как есть (для поддержки новых категорий)
   return CATEGORY_ALIASES[lower] || lower
-}
-
-const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
-  switch (type) {
-    case 'clothing':
-      return `/api/catalog/clothing/products/${slug}`
-    case 'shoes':
-      return `/api/catalog/shoes/products/${slug}`
-    case 'electronics':
-      return `/api/catalog/electronics/products/${slug}`
-    case 'furniture':
-      return `/api/catalog/furniture/products/${slug}`
-    case 'jewelry':
-      return `/api/catalog/jewelry/products/${slug}`
-    case 'books':
-      return `/api/catalog/books/products/${slug}`
-    case 'perfumery':
-      return `/api/catalog/perfumery/products/${slug}`
-    case 'uslugi':
-      return `/api/catalog/services/${slug}`
-    case 'medicines':
-      return `/api/catalog/medicines/products/${slug}`
-    case 'supplements':
-      return `/api/catalog/supplements/products/${slug}`
-    case 'medical-equipment':
-      return `/api/catalog/medical-equipment/products/${slug}`
-    case 'tableware':
-      return `/api/catalog/tableware/products/${slug}`
-    case 'accessories':
-      return `/api/catalog/accessories/products/${slug}`
-    case 'incense':
-      return `/api/catalog/incense/products/${slug}`
-    case 'sports':
-      return `/api/catalog/sports/products/${slug}`
-    case 'auto-parts':
-      return `/api/catalog/auto-parts/products/${slug}`
-    case 'headwear':
-      return `/api/catalog/headwear/products/${slug}`
-    case 'underwear':
-      return `/api/catalog/underwear/products/${slug}`
-    case 'islamic-clothing':
-      return `/api/catalog/islamic-clothing/products/${slug}`
-    default:
-      // Для всех остальных категорий (включая новые динамические) используем общий эндпоинт
-      return `/api/catalog/products/${slug}`
-  }
 }
 
 const parsePriceWithCurrency = (value?: string | number | null) => {
@@ -707,12 +661,12 @@ export default function ProductPage({
     let cancelled = false
     const loadVariantDetails = async () => {
       try {
-        const endpoint = resolveDetailEndpoint(productType, productSlug).replace(/^\/api\//, '')
-        const res = await api.get(endpoint, {
-          params: { active_variant_slug: selectedVariantSlug }
+        const res = await api.get(`catalog/products/resolve/${encodeURIComponent(productSlug)}`, {
+          params: { active_variant_slug: selectedVariantSlug },
         })
-        if (!cancelled && res?.data) {
-          setProduct(res.data)
+        const payload = res?.data?.payload
+        if (!cancelled && payload) {
+          setProduct(payload)
         }
       } catch { }
     }
@@ -2258,168 +2212,93 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     productSlug = slugParts[1]
   }
 
-  const { getInternalApiUrl } = await import('../../lib/urls')
-  // Извлекаем валюту из cookie
+  const { getInternalApiUrl, buildProductUrl } = await import('../../lib/urls')
   const cookieHeader: string = ctx.req.headers.cookie || ''
   const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
   const currency = currencyMatch ? currencyMatch[1] : 'RUB'
 
   const localePrefix = ctx.locale ? `/${ctx.locale}` : ''
-  const fetchProduct = (type: CategoryType, slug: string) =>
-    axios.get(getInternalApiUrl(resolveDetailEndpoint(type, slug).replace(/^\/api\//, '')), {
-      headers: {
-        'X-Currency': currency,
-        'Accept-Language': ctx.locale || 'en'
-      }
-    })
 
-  /** Товар только в generic Product (листинг по category_slug), без строки в доменной таблице — доменный detail даёт 404. */
-  const tryFetchGenericProductBySlug = async (slug: string) => {
-    try {
-      return await axios.get(getInternalApiUrl(`catalog/products/${slug}`), {
-        headers: {
-          'X-Currency': currency,
-          'Accept-Language': ctx.locale || 'en'
-        }
-      })
-    } catch {
-      return null
-    }
-  }
+  const activeVariantFromQuery =
+    typeof ctx.query.active_variant_slug === 'string'
+      ? ctx.query.active_variant_slug
+      : Array.isArray(ctx.query.active_variant_slug)
+        ? ctx.query.active_variant_slug[0]
+        : undefined
 
-  const buildProps = async (res: any, type: CategoryType) => ({
-    props: {
-      ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
-      product: res.data,
-      productType: type,
-      isBaseProduct: isBaseProductType(type),
-      preferredCurrency: currency,
-    },
-  })
-
-  if (slugParts.length === 1) {
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery', 'supplements', 'medical-equipment', 'tableware', 'accessories', 'incense', 'sports', 'auto-parts', 'headwear', 'underwear', 'islamic-clothing', 'uslugi']
-    for (const t of probeTypes) {
-      try {
-        const res = await fetchProduct(t, productSlug)
-        const product = res.data
-        const actualType = normalizeCategoryType(product.product_type || t)
-
-        if (needsTypeInPath(actualType)) {
-          return {
-            redirect: {
-              destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
-              permanent: false,
-            },
-          }
-        }
-        return buildProps(res, actualType)
-      } catch {
-        continue
-      }
-    }
-
-    const genericRes = await tryFetchGenericProductBySlug(productSlug)
-    if (genericRes) {
-      const product = genericRes.data
-      const actualType = normalizeCategoryType(product.product_type)
-      if (needsTypeInPath(actualType)) {
-        return {
-          redirect: {
-            destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
-            permanent: false,
-          },
-        }
-      }
-      return buildProps(genericRes, actualType || 'medicines')
-    }
-
-    return { notFound: true }
-  }
+  const resolvePath = `catalog/products/resolve/${encodeURIComponent(productSlug)}`
 
   try {
-    const res = await fetchProduct(categoryType, productSlug)
-    const product = res.data
-    const normalizedCategoryType = normalizeCategoryType(categoryType)
-    const rawPt = product?.product_type
+    const res = await axios.get(getInternalApiUrl(resolvePath), {
+      headers: {
+        'X-Currency': currency,
+        'Accept-Language': ctx.locale || 'en',
+      },
+      params: activeVariantFromQuery ? { active_variant_slug: activeVariantFromQuery } : undefined,
+    })
 
-    // Редирект только если API явно отдал product_type и он расходится с URL.
-    // Иначе (поле отсутствует в JSON доменного сериализатора) normalizeCategoryType дал бы medicines → ping-pong с generic fallback.
-    if (rawPt != null && String(rawPt).trim() !== '') {
-      const actualType = normalizeCategoryType(String(rawPt))
-      if (actualType !== normalizedCategoryType) {
-        return {
-          redirect: {
-            destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
-            permanent: false,
-          },
-        }
-      }
+    const body = res.data
+    const payload = body?.payload
+    if (!payload || typeof payload !== 'object') {
+      return { notFound: true }
     }
 
-    const activeVariantSlug = res.data?.active_variant_slug
-    const baseSlug = res.data?.slug
-    if (activeVariantSlug && baseSlug && activeVariantSlug === productSlug && baseSlug !== productSlug) {
+    const actualType = normalizeCategoryType(body.product_type || payload.product_type)
+    const canonicalPath = String(body.canonical_path || '').trim()
+    const currentProductPath = `/product/${slugParts.join('/')}`
+
+    if (canonicalPath && currentProductPath !== canonicalPath) {
       return {
         redirect: {
-          destination: `${localePrefix}/product/${categoryType}/${baseSlug}`,
+          destination: `${localePrefix}${canonicalPath}`,
           permanent: false,
         },
       }
     }
-    return buildProps(res, categoryType)
-  } catch (error) {
-    const normalizedCategoryType = normalizeCategoryType(categoryType)
 
-    // Сначала общий каталог: листинг по category_slug часто отдаёт только Product без доменной строки.
-    const genericEarly = await tryFetchGenericProductBySlug(productSlug)
-    if (genericEarly) {
-      const product = genericEarly.data
-      const rawPt = product?.product_type
+    if (slugParts.length === 2) {
+      const normalizedCategoryType = normalizeCategoryType(categoryType)
+      const rawPt = payload?.product_type
       if (rawPt != null && String(rawPt).trim() !== '') {
-        const actualType = normalizeCategoryType(String(rawPt))
-        if (actualType !== normalizedCategoryType) {
+        const fromApi = normalizeCategoryType(String(rawPt))
+        if (fromApi !== normalizedCategoryType) {
           return {
             redirect: {
-              destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
+              destination: `${localePrefix}${buildProductUrl(fromApi, String(payload.slug || productSlug))}`,
               permanent: false,
             },
           }
         }
       }
-      return buildProps(genericEarly, normalizedCategoryType)
     }
 
-    const probeTypes: CategoryType[] = ['clothing', 'shoes', 'electronics', 'jewelry', 'furniture', 'medicines', 'books', 'perfumery', 'supplements', 'medical-equipment', 'tableware', 'accessories', 'incense', 'sports', 'auto-parts', 'headwear', 'underwear', 'islamic-clothing', 'uslugi']
-    const typesToTry = probeTypes.filter((t) => t !== categoryType)
-
-    for (const t of typesToTry) {
-      const probeEndpoint = resolveDetailEndpoint(t, productSlug)
-      try {
-        const res = await axios.get(getInternalApiUrl(probeEndpoint.replace(/^\/api\//, '')), {
-          headers: {
-            'X-Currency': currency,
-            'Accept-Language': ctx.locale || 'en'
-          }
-        })
-        const product = res.data
-        const actualType = normalizeCategoryType(product.product_type || t)
-
-        if (actualType === normalizedCategoryType) {
-          return buildProps(res, normalizedCategoryType)
-        }
-
-        return {
-          redirect: {
-            destination: `${localePrefix}/product/${actualType}/${product.slug || productSlug}`,
-            permanent: false,
-          },
-        }
-      } catch {
-        continue
+    const activeVariantSlug = payload?.active_variant_slug
+    const baseSlug = payload?.slug
+    if (
+      slugParts.length === 2 &&
+      activeVariantSlug &&
+      baseSlug &&
+      activeVariantSlug === productSlug &&
+      baseSlug !== productSlug
+    ) {
+      return {
+        redirect: {
+          destination: `${localePrefix}${buildProductUrl(actualType, baseSlug)}`,
+          permanent: false,
+        },
       }
     }
 
+    return {
+      props: {
+        ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
+        product: payload,
+        productType: actualType,
+        isBaseProduct: isBaseProductType(actualType),
+        preferredCurrency: currency,
+      },
+    }
+  } catch {
     return { notFound: true }
   }
 }

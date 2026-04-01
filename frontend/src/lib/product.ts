@@ -13,6 +13,9 @@
  * - ProductCard, cart getProductLink, favorites и т.д.
  *
  * При добавлении нового типа в backend — добавить сюда, если он идёт через generic Product.
+ *
+ * Синхронизация с серверным canonical resolve: `backend/apps/catalog/services/product_resolve.py`
+ * (константы BASE_PRODUCT_TYPES и TYPES_NEEDING_PATH).
  */
 export const BASE_PRODUCT_TYPES = [
   'medicines',

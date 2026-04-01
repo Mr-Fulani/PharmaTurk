@@ -1136,6 +1136,40 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         serializer = self.get_serializer(product)
         return Response(serializer.data)
 
+    @action(
+        detail=False,
+        methods=['get'],
+        url_path=r'resolve/(?P<product_slug>[^/.]+)',
+    )
+    @extend_schema(
+        summary='Единая резолюция товара или услуги по slug',
+        description=(
+            'Один запрос: поиск в generic Product, затем в доменных каталогах, затем в услугах. '
+            'Тело payload совпадает с соответствующим detail. Query-параметры (например active_variant_slug) '
+            'пробрасываются как у обычного retrieve.'
+        ),
+        parameters=[
+            OpenApiParameter(
+                name='product_slug',
+                type=str,
+                location=OpenApiParameter.PATH,
+                required=True,
+                description='Slug товара или услуги',
+            ),
+            OpenApiParameter(
+                name='active_variant_slug',
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description='Slug активного варианта (где поддерживается в detail)',
+            ),
+        ],
+    )
+    def resolve_product(self, request, product_slug=None, **kwargs):
+        from apps.catalog.services.product_resolve import build_resolve_response
+
+        return build_resolve_response(request, (product_slug or '').strip())
+
     @action(detail=False, methods=['get'], url_path='book-filters')
     @extend_schema(
         summary="Фильтры для книг",
