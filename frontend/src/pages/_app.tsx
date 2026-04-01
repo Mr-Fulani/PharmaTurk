@@ -131,7 +131,7 @@ ym(${YM_ID},'init',{
         ) : (
           <div className="min-h-screen flex flex-col">
             <Header />
-            <div className="flex-1">
+            <div className="flex-1 pt-[108px] md:pt-[72px]">
               <Component {...pageProps} />
             </div>
             <Footer initialSettings={(pageProps as Record<string, unknown>)?.footerSettings} />

@@ -900,14 +900,14 @@ export default function ProfilePage() {
                   {(showAllOrders ? orders : orders.slice(0, 1)).map((order) => (
                     <div
                       key={order.id}
-                      className="group rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden"
+                      className="group rounded-xl border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden"
                     >
                       {/* Заголовок заказа */}
                       <div className="bg-[var(--surface)] px-6 py-4 border-b border-[var(--border)]">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
-                              <h3 className="text-xl font-bold text-gray-900">
+                              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
                                 {t('profile_order_number')} #{order.number}
                               </h3>
                               <span
@@ -918,7 +918,7 @@ export default function ProfilePage() {
                                 {getOrderStatusText(order.status)}
                               </span>
                             </div>
-                            <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                            <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
                               <div className="flex items-center gap-1">
                                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -952,7 +952,7 @@ export default function ProfilePage() {
                             <div className="text-2xl font-bold text-[var(--text-strong)] mb-1">
                               {order.total_amount} {order.currency}
                             </div>
-                            <div className="text-sm text-gray-600">
+                            <div className="text-sm text-gray-600 dark:text-gray-300">
                               {order.items.length} {order.items.length === 1 ? 'товар' : order.items.length < 5 ? 'товара' : 'товаров'}
                             </div>
                           </div>
@@ -961,7 +961,7 @@ export default function ProfilePage() {
 
                       {/* Товары в заказе */}
                       <div className="p-6">
-                        <h4 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide">
+                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-4 uppercase tracking-wide">
                           {t('profile_order_items')}:
                         </h4>
                         <div className="space-y-3">
@@ -979,7 +979,7 @@ export default function ProfilePage() {
                             return (
                               <div
                                 key={item.id}
-                                className="group/item flex flex-col sm:flex-row gap-4 rounded-lg border border-gray-100 bg-gray-50 p-4 hover:bg-white hover:border-gray-200 transition-all duration-200"
+                                className="group/item flex flex-col sm:flex-row gap-4 rounded-lg border border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-800/50 p-4 hover:bg-white dark:hover:bg-slate-800 hover:border-gray-200 dark:hover:border-slate-700 transition-all duration-200"
                               >
                                 {/* Главное медиа товара (видео или изображение) */}
                                 <Link
@@ -1019,11 +1019,11 @@ export default function ProfilePage() {
                                       href={productLink}
                                       className="block"
                                     >
-                                      <h5 className="text-base font-semibold text-gray-900 hover-text-warm transition-colors line-clamp-2">
+                                      <h5 className="text-base font-semibold text-gray-900 dark:text-white hover-text-warm transition-colors line-clamp-2">
                                         {localizedName}
                                       </h5>
                                     </Link>
-                                    <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
+                                    <div className="mt-2 flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
                                       <span className="font-medium">
                                         {t('cart_item_quantity', 'Количество')}: {item.quantity}
                                       </span>
@@ -1037,8 +1037,8 @@ export default function ProfilePage() {
                                 {/* Итого по товару */}
                                 <div className="flex flex-col justify-between items-end sm:items-end">
                                   <div className="text-right">
-                                    <div className="text-xs text-gray-500 mb-1">{t('cart_item_total', 'Итого')}</div>
-                                    <div className="text-lg font-bold text-gray-900">
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('cart_item_total', 'Итого')}</div>
+                                    <div className="text-lg font-bold text-gray-900 dark:text-white">
                                       {item.total} {order.currency}
                                     </div>
                                   </div>
