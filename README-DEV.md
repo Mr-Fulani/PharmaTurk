@@ -223,6 +223,13 @@ docker system prune -f
 docker image prune -a -f
 ```
 
+## Документация по подсистемам (`docs/`)
+
+- **[Избранное, доменные id, proxy-медиа, R2](docs/CATALOG_FAVORITES_PROXY_MEDIA.md)** — контракт избранного (headwear/underwear/islamic), `base_product_id`, дедупликация списка, настройки R2 и Next proxy.
+- [Гидрация Next.js](docs/HYDRATION_ERRORS_GUIDE.md)
+- [Уведомления и чеки](docs/notifications-and-receipts.md)
+- [OAuth в продакшене](docs/SOCIAL_AUTH_PRODUCTION.md)
+
 ## SEO/медиа памятка
 
 - Карточка категории/бренда: в админке `Catalog -> Category/Brand` заполнить поле `card_media_url` (можно загрузить файл в медиа и вставить URL). Рекомендации: формат webp/avif, до 300–400 КБ, пропорции 4:3 или 1:1; для видео — короткие mp4/webm.
