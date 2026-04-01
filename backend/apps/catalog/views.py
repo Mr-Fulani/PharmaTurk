@@ -3328,5 +3328,48 @@ class AutoPartProductViewSet(_SimpleDomainViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
+# ============================================================================
+# ДОМЕН Headwear
+# ============================================================================
 
+from .models import HeadwearProduct, UnderwearProduct, IslamicClothingProduct
+from .serializers import HeadwearProductSerializer, UnderwearProductSerializer, IslamicClothingProductSerializer
 
+class HeadwearProductViewSet(_SimpleDomainViewSet):
+    """API для работы с головными уборами."""
+    queryset = HeadwearProduct.objects.filter(is_active=True).order_by('-created_at')
+    serializer_class = HeadwearProductSerializer
+
+    @extend_schema(summary="Получить список головных уборов")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить детали головного убора")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+class UnderwearProductViewSet(_SimpleDomainViewSet):
+    """API для работы с нижним бельем."""
+    queryset = UnderwearProduct.objects.filter(is_active=True).order_by('-created_at')
+    serializer_class = UnderwearProductSerializer
+
+    @extend_schema(summary="Получить список нижнего белья")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить детали нижнего белья")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+class IslamicClothingProductViewSet(_SimpleDomainViewSet):
+    """API для работы с исламской одеждой."""
+    queryset = IslamicClothingProduct.objects.filter(is_active=True).order_by('-created_at')
+    serializer_class = IslamicClothingProductSerializer
+
+    @extend_schema(summary="Получить список исламской одежды")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Получить детали исламской одежды")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)

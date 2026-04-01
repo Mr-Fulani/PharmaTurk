@@ -5497,3 +5497,250 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
 
     def get_similar_products(self, obj):
         return []
+
+# ============================================================================
+# ДОМЕН Headwear
+# ============================================================================
+
+from .models import (
+    HeadwearProduct, HeadwearProductImage, HeadwearProductSize, HeadwearVariant,
+    UnderwearProduct, UnderwearProductImage, UnderwearProductSize, UnderwearVariant,
+    IslamicClothingProduct, IslamicClothingProductImage, IslamicClothingProductSize, IslamicClothingVariant
+)
+
+class HeadwearProductImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    class Meta:
+        model = HeadwearProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image_file:
+            return _resolve_file_url(obj.image_file, request)
+        return _resolve_media_url(obj.image_url, request)
+
+class HeadwearProductSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HeadwearProductSize
+        fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
+
+class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    category_slug = serializers.CharField(source='category.slug', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    brand_name = serializers.CharField(source='brand.name', read_only=True)
+    brand_slug = serializers.CharField(source='brand.slug', read_only=True)
+    
+    main_image_url = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    
+    dynamic_attributes = serializers.SerializerMethodField()
+    sizes = HeadwearProductSizeSerializer(many=True, read_only=True)
+
+    _image_serializer_class = HeadwearProductImageSerializer
+
+    class Meta:
+        model = HeadwearProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
+            'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
+            'stock_quantity', 'category', 'category_slug', 'category_name', 
+            'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
+            'size', 'color', 'video_url', 'sizes', 
+            'dynamic_attributes',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url'
+        ]
+
+    def get_main_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if obj.main_image:
+            return _resolve_media_url(obj.main_image, request)
+        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        if img:
+            file_url = _resolve_file_url(getattr(img, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(img.image_url, request)
+        return _SimpleDomainMixin.get_main_image_url(self, obj)
+
+    def get_images(self, obj):
+        from_context = self.context
+        imgs = list(obj.images.all())
+        image_serializer = self._image_serializer_class
+        if not imgs:
+            base = getattr(obj, "base_product", None)
+            if base:
+                return ProductImageSerializer(base.images.all(), many=True, context=from_context).data
+        return image_serializer(imgs, many=True, context=from_context).data
+
+    def get_dynamic_attributes(self, obj):
+        try:
+            return ProductDynamicAttributeSerializer(obj.dynamic_attributes.all(), many=True, context=self.context).data
+        except Exception:
+            return []
+
+class UnderwearProductImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    class Meta:
+        model = UnderwearProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image_file:
+            return _resolve_file_url(obj.image_file, request)
+        return _resolve_media_url(obj.image_url, request)
+
+class UnderwearProductSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UnderwearProductSize
+        fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
+
+class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    category_slug = serializers.CharField(source='category.slug', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    brand_name = serializers.CharField(source='brand.name', read_only=True)
+    brand_slug = serializers.CharField(source='brand.slug', read_only=True)
+    
+    main_image_url = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    
+    dynamic_attributes = serializers.SerializerMethodField()
+    sizes = UnderwearProductSizeSerializer(many=True, read_only=True)
+
+    _image_serializer_class = UnderwearProductImageSerializer
+
+    class Meta:
+        model = UnderwearProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
+            'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
+            'stock_quantity', 'category', 'category_slug', 'category_name', 
+            'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
+            'size', 'color', 'video_url', 'sizes', 
+            'dynamic_attributes',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url'
+        ]
+
+    def get_main_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if obj.main_image:
+            return _resolve_media_url(obj.main_image, request)
+        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        if img:
+            file_url = _resolve_file_url(getattr(img, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(img.image_url, request)
+        return _SimpleDomainMixin.get_main_image_url(self, obj)
+
+    def get_images(self, obj):
+        from_context = self.context
+        imgs = list(obj.images.all())
+        image_serializer = self._image_serializer_class
+        if not imgs:
+            base = getattr(obj, "base_product", None)
+            if base:
+                return ProductImageSerializer(base.images.all(), many=True, context=from_context).data
+        return image_serializer(imgs, many=True, context=from_context).data
+
+    def get_dynamic_attributes(self, obj):
+        try:
+            return ProductDynamicAttributeSerializer(obj.dynamic_attributes.all(), many=True, context=self.context).data
+        except Exception:
+            return []
+
+class IslamicClothingProductImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    class Meta:
+        model = IslamicClothingProductImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image_file:
+            return _resolve_file_url(obj.image_file, request)
+        return _resolve_media_url(obj.image_url, request)
+
+class IslamicClothingProductSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IslamicClothingProductSize
+        fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
+
+class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    category_slug = serializers.CharField(source='category.slug', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    brand_name = serializers.CharField(source='brand.name', read_only=True)
+    brand_slug = serializers.CharField(source='brand.slug', read_only=True)
+    
+    main_image_url = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
+    price_formatted = serializers.SerializerMethodField()
+    old_price_formatted = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
+    
+    dynamic_attributes = serializers.SerializerMethodField()
+    sizes = IslamicClothingProductSizeSerializer(many=True, read_only=True)
+
+    _image_serializer_class = IslamicClothingProductImageSerializer
+
+    class Meta:
+        model = IslamicClothingProduct
+        fields = [
+            'id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
+            'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
+            'stock_quantity', 'category', 'category_slug', 'category_name', 
+            'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
+            'size', 'color', 'video_url', 'sizes', 
+            'dynamic_attributes',
+            'meta_title', 'meta_description', 'meta_keywords',
+            'og_title', 'og_description', 'og_image_url'
+        ]
+
+    def get_main_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if obj.main_image:
+            return _resolve_media_url(obj.main_image, request)
+        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        if img:
+            file_url = _resolve_file_url(getattr(img, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(img.image_url, request)
+        return _SimpleDomainMixin.get_main_image_url(self, obj)
+
+    def get_images(self, obj):
+        from_context = self.context
+        imgs = list(obj.images.all())
+        image_serializer = self._image_serializer_class
+        if not imgs:
+            base = getattr(obj, "base_product", None)
+            if base:
+                return ProductImageSerializer(base.images.all(), many=True, context=from_context).data
+        return image_serializer(imgs, many=True, context=from_context).data
+
+    def get_dynamic_attributes(self, obj):
+        try:
+            return ProductDynamicAttributeSerializer(obj.dynamic_attributes.all(), many=True, context=self.context).data
+        except Exception:
+            return []

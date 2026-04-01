@@ -78,6 +78,12 @@ const resolveDetailEndpoint = (type: CategoryType, slug: string) => {
       return `/api/catalog/sports/products/${slug}`
     case 'auto-parts':
       return `/api/catalog/auto-parts/products/${slug}`
+    case 'headwear':
+      return `/api/catalog/headwear/products/${slug}`
+    case 'underwear':
+      return `/api/catalog/underwear/products/${slug}`
+    case 'islamic-clothing':
+      return `/api/catalog/islamic-clothing/products/${slug}`
     default:
       // Для всех остальных категорий (включая новые динамические) используем общий эндпоинт
       return `/api/catalog/products/${slug}`

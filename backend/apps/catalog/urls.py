@@ -22,6 +22,7 @@ from .views import (
     BannerViewSet,
     SportsProductViewSet,
     AutoPartProductViewSet,
+    HeadwearProductViewSet, UnderwearProductViewSet, IslamicClothingProductViewSet,
     proxy_image,
     proxy_media,
 )
@@ -101,6 +102,18 @@ auto_parts_router.register(r'products', AutoPartProductViewSet, basename='auto-p
 services_router = DefaultRouter(trailing_slash=False)
 services_router.register(r'services', ServiceViewSet, basename='service')
 
+# Роутер для головных уборов
+headwear_router = DefaultRouter(trailing_slash=False)
+headwear_router.register(r'products', HeadwearProductViewSet, basename='headwear-product')
+
+# Роутер для нижнего белья
+underwear_router = DefaultRouter(trailing_slash=False)
+underwear_router.register(r'products', UnderwearProductViewSet, basename='underwear-product')
+
+# Роутер для исламской одежды
+islamic_clothing_router = DefaultRouter(trailing_slash=False)
+islamic_clothing_router.register(r'products', IslamicClothingProductViewSet, basename='islamic-clothing-product')
+
 urlpatterns = [
     # Основные маршруты для медикаментов
     path('', include(router.urls)),
@@ -152,6 +165,11 @@ urlpatterns = [
 
     # Маршруты для услуг
     path('', include(services_router.urls)),
+
+    # Маршруты для новых доменов
+    path('headwear/', include(headwear_router.urls)),
+    path('underwear/', include(underwear_router.urls)),
+    path('islamic-clothing/', include(islamic_clothing_router.urls)),
     
     # Прокси для Instagram/CDN изображений (с/без slash — APPEND_SLASH=False)
     path('proxy-image/', proxy_image, name='proxy_image'),

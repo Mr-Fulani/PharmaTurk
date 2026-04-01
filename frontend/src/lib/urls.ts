@@ -49,15 +49,21 @@ export function getSiteOrigin(): string {
   return url.replace(/\/+$/, '')
 }
 
+import { isBaseProductType } from './product'
+
 export function buildProductUrl(productType: string, slug: string): string {
   const normalizedType = (productType || 'medicines').toString().trim().replace(/_/g, '-')
   const normalizedSlug = (slug || '').toString().trim().replace(/_/g, '-')
+  
+  // Для сервисов
+  if (normalizedType === 'uslugi') {
+    return `/product/uslugi/${normalizedSlug}`
+  }
+
+  // Обработка всех товаров: используем категориальный путь /product/type/slug
+  // Пытаемся избежать дублирования типа в самом sluge (например, /product/clothing/clothing-tshirt -> /product/clothing/tshirt)
   const prefix = `${normalizedType}-`
   const cleanedSlug = normalizedSlug.startsWith(prefix) ? normalizedSlug.slice(prefix.length) : normalizedSlug
-
-  if (normalizedType === 'uslugi') {
-    return `/product/uslugi/${cleanedSlug || normalizedSlug}`
-  }
 
   return `/product/${normalizedType}/${cleanedSlug || normalizedSlug}`
 }
