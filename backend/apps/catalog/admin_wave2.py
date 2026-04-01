@@ -292,7 +292,15 @@ class AccessoryProductAdmin(_SimpleDomainAdmin):
     inlines = [
         _make_translation_inline(AccessoryProductTranslation),
         _make_image_inline(AccessoryProductImage),
+        # Here we import the inline from admin.py to avoid circular imports if needed, 
+        # but since we're in admin_wave2.py which is imported in admin.py, we should be careful.
+        # Actually, ProductAttributeValueInline is defined in admin.py.
     ]
+
+    def get_inlines(self, request, obj):
+        from .admin import ProductAttributeValueInline
+        return self.inlines + [ProductAttributeValueInline]
+
 
 
 # ─────────────────────────────────────────────────────────────

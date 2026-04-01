@@ -5626,3 +5626,480 @@ class AutoPartVariantImage(models.Model):
     class Meta:
         verbose_name = _("Изображение варианта")
         verbose_name_plural = _("Изображения вариантов")
+
+# ============================================================================
+# ДОМЕН Headwear
+# ============================================================================
+
+class HeadwearProduct(AbstractDomainProduct):
+    """Головной убор."""
+    _domain_product_type = "headwear"
+    base_product = models.OneToOneField(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name="headwear_item", verbose_name=_("Базовый товар (shadow)"))
+    size = models.CharField(_("Размер"), max_length=20, blank=True)
+    color = models.CharField(_("Цвет"), max_length=50, blank=True)
+    video_url = models.URLField(_("URL видео"), max_length=2000, blank=True)
+    main_video_file = models.FileField(_("Главное видео (файл)"), upload_to="products/headwear/main/", blank=True, null=True)
+
+    class Meta:
+        verbose_name = _("Головной убор")
+        verbose_name_plural = _("Товары — Головные уборы")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+class HeadwearProductSize(models.Model):
+    product = models.ForeignKey(HeadwearProduct, on_delete=models.CASCADE, related_name="sizes", verbose_name=_("Головной убор"))
+    size = models.CharField(_("Размер"), max_length=50, blank=True)
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Размер товара: Головной убор")
+        verbose_name_plural = _("Размеры: Головные уборы")
+        ordering = ["product", "sort_order", "size"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["product", "size"]),
+        ]
+
+class HeadwearProductTranslation(models.Model):
+    product = models.ForeignKey(HeadwearProduct, on_delete=models.CASCADE, related_name='translations', verbose_name=_("Головной убор"))
+    locale = models.CharField(_("Язык"), max_length=10, choices=[('ru', _('Русский')), ('en', _('Английский'))], default='ru', db_index=True)
+    name = models.CharField(_("Название"), max_length=500, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Перевод: Головной убор")
+        verbose_name_plural = _("Переводы: Головные уборы")
+        unique_together = [['product', 'locale']]
+        ordering = ['product', 'locale']
+
+class HeadwearProductImage(models.Model):
+    product = models.ForeignKey(HeadwearProduct, on_delete=models.CASCADE, related_name="images", verbose_name=_("Головной убор"))
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to="products/headwear/gallery/", blank=True, null=True)
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение Головной убор")
+        verbose_name_plural = _("Изображения Головные уборы")
+        ordering = ["sort_order", "created_at"]
+
+class HeadwearVariant(models.Model):
+    product = models.ForeignKey(HeadwearProduct, on_delete=models.CASCADE, related_name="variants", verbose_name=_("Головной убор (родитель)"))
+    name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    name_en = models.CharField(_("Название (англ.)"), max_length=500, blank=True)
+    slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True)
+    color = models.CharField(_("Цвет"), max_length=50, blank=True)
+    size = models.CharField(_("Размер (устарело)"), max_length=50, blank=True)
+    sku = models.CharField(_("SKU"), max_length=100, blank=True)
+    barcode = models.CharField(_("Штрихкод"), max_length=100, blank=True)
+    gtin = models.CharField(_("GTIN"), max_length=100, blank=True)
+    mpn = models.CharField(_("MPN"), max_length=100, blank=True)
+    price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    currency = models.CharField(_("Валюта"), max_length=5, choices=CURRENCY_CHOICES, default="RUB")
+    old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to="products/headwear/variants/", blank=True, null=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Вариант: Головной убор")
+        verbose_name_plural = _("Варианты: Головные уборы")
+        ordering = ["product", "sort_order", "-created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["slug"]),
+            models.Index(fields=["is_active", "is_available"]),
+        ]
+
+    def __str__(self):
+        base = self.name or self.product.name
+        attrs = f"{self.color or ''} {self.size or ''}".strip()
+        return f"{base} ({attrs})" if attrs else base
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_name = self.name or self.product.name
+            composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+class HeadwearVariantSize(models.Model):
+    variant = models.ForeignKey(HeadwearVariant, on_delete=models.CASCADE, related_name="sizes", verbose_name=_("Вариант"))
+    size = models.CharField(_("Размер"), max_length=50, blank=True)
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Размер варианта: Головной убор")
+        verbose_name_plural = _("Размеры вариантов: Головные уборы")
+        ordering = ["variant", "sort_order", "size"]
+
+class HeadwearVariantImage(models.Model):
+    variant = models.ForeignKey(HeadwearVariant, on_delete=models.CASCADE, related_name="images", verbose_name=_("Вариант"))
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to="products/headwear/variants/gallery/", blank=True, null=True)
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение варианта: Головной убор")
+        verbose_name_plural = _("Изображения вариантов: Головные уборы")
+        ordering = ["sort_order", "created_at"]
+
+# ============================================================================
+# ДОМЕН Underwear
+# ============================================================================
+
+class UnderwearProduct(AbstractDomainProduct):
+    """Нижнее бельё (товар)."""
+    _domain_product_type = "underwear"
+    base_product = models.OneToOneField(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name="underwear_item", verbose_name=_("Базовый товар (shadow)"))
+    size = models.CharField(_("Размер"), max_length=20, blank=True)
+    color = models.CharField(_("Цвет"), max_length=50, blank=True)
+    video_url = models.URLField(_("URL видео"), max_length=2000, blank=True)
+    main_video_file = models.FileField(_("Главное видео (файл)"), upload_to="products/underwear/main/", blank=True, null=True)
+
+    class Meta:
+        verbose_name = _("Нижнее бельё (товар)")
+        verbose_name_plural = _("Товары — Нижнее бельё")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+class UnderwearProductSize(models.Model):
+    product = models.ForeignKey(UnderwearProduct, on_delete=models.CASCADE, related_name="sizes", verbose_name=_("Нижнее бельё (товар)"))
+    size = models.CharField(_("Размер"), max_length=50, blank=True)
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Размер товара: Нижнее бельё (товар)")
+        verbose_name_plural = _("Размеры: Нижнее бельё")
+        ordering = ["product", "sort_order", "size"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["product", "size"]),
+        ]
+
+class UnderwearProductTranslation(models.Model):
+    product = models.ForeignKey(UnderwearProduct, on_delete=models.CASCADE, related_name='translations', verbose_name=_("Нижнее бельё (товар)"))
+    locale = models.CharField(_("Язык"), max_length=10, choices=[('ru', _('Русский')), ('en', _('Английский'))], default='ru', db_index=True)
+    name = models.CharField(_("Название"), max_length=500, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Перевод: Нижнее бельё (товар)")
+        verbose_name_plural = _("Переводы: Нижнее бельё")
+        unique_together = [['product', 'locale']]
+        ordering = ['product', 'locale']
+
+class UnderwearProductImage(models.Model):
+    product = models.ForeignKey(UnderwearProduct, on_delete=models.CASCADE, related_name="images", verbose_name=_("Нижнее бельё (товар)"))
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to="products/underwear/gallery/", blank=True, null=True)
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение Нижнее бельё (товар)")
+        verbose_name_plural = _("Изображения Нижнее бельё")
+        ordering = ["sort_order", "created_at"]
+
+class UnderwearVariant(models.Model):
+    product = models.ForeignKey(UnderwearProduct, on_delete=models.CASCADE, related_name="variants", verbose_name=_("Нижнее бельё (товар) (родитель)"))
+    name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    name_en = models.CharField(_("Название (англ.)"), max_length=500, blank=True)
+    slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True)
+    color = models.CharField(_("Цвет"), max_length=50, blank=True)
+    size = models.CharField(_("Размер (устарело)"), max_length=50, blank=True)
+    sku = models.CharField(_("SKU"), max_length=100, blank=True)
+    barcode = models.CharField(_("Штрихкод"), max_length=100, blank=True)
+    gtin = models.CharField(_("GTIN"), max_length=100, blank=True)
+    mpn = models.CharField(_("MPN"), max_length=100, blank=True)
+    price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    currency = models.CharField(_("Валюта"), max_length=5, choices=CURRENCY_CHOICES, default="RUB")
+    old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to="products/underwear/variants/", blank=True, null=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Вариант: Нижнее бельё (товар)")
+        verbose_name_plural = _("Варианты: Нижнее бельё")
+        ordering = ["product", "sort_order", "-created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["slug"]),
+            models.Index(fields=["is_active", "is_available"]),
+        ]
+
+    def __str__(self):
+        base = self.name or self.product.name
+        attrs = f"{self.color or ''} {self.size or ''}".strip()
+        return f"{base} ({attrs})" if attrs else base
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_name = self.name or self.product.name
+            composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+class UnderwearVariantSize(models.Model):
+    variant = models.ForeignKey(UnderwearVariant, on_delete=models.CASCADE, related_name="sizes", verbose_name=_("Вариант"))
+    size = models.CharField(_("Размер"), max_length=50, blank=True)
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Размер варианта: Нижнее бельё (товар)")
+        verbose_name_plural = _("Размеры вариантов: Нижнее бельё")
+        ordering = ["variant", "sort_order", "size"]
+
+class UnderwearVariantImage(models.Model):
+    variant = models.ForeignKey(UnderwearVariant, on_delete=models.CASCADE, related_name="images", verbose_name=_("Вариант"))
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to="products/underwear/variants/gallery/", blank=True, null=True)
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение варианта: Нижнее бельё (товар)")
+        verbose_name_plural = _("Изображения вариантов: Нижнее бельё")
+        ordering = ["sort_order", "created_at"]
+
+# ============================================================================
+# ДОМЕН IslamicClothing
+# ============================================================================
+
+class IslamicClothingProduct(AbstractDomainProduct):
+    """Исламская одежда."""
+    _domain_product_type = "islamic_clothing"
+    base_product = models.OneToOneField(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name="islamic_clothing_item", verbose_name=_("Базовый товар (shadow)"))
+    size = models.CharField(_("Размер"), max_length=20, blank=True)
+    color = models.CharField(_("Цвет"), max_length=50, blank=True)
+    video_url = models.URLField(_("URL видео"), max_length=2000, blank=True)
+    main_video_file = models.FileField(_("Главное видео (файл)"), upload_to="products/islamic_clothing/main/", blank=True, null=True)
+
+    class Meta:
+        verbose_name = _("Исламская одежда")
+        verbose_name_plural = _("Товары — Исламская одежда")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["external_id"]),
+            models.Index(fields=["is_active", "is_available"]),
+            models.Index(fields=["category", "brand"]),
+            models.Index(fields=["price"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self._sync_to_base_product()
+
+class IslamicClothingProductSize(models.Model):
+    product = models.ForeignKey(IslamicClothingProduct, on_delete=models.CASCADE, related_name="sizes", verbose_name=_("Исламская одежда"))
+    size = models.CharField(_("Размер"), max_length=50, blank=True)
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Размер товара: Исламская одежда")
+        verbose_name_plural = _("Размеры: Исламская одежда")
+        ordering = ["product", "sort_order", "size"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["product", "size"]),
+        ]
+
+class IslamicClothingProductTranslation(models.Model):
+    product = models.ForeignKey(IslamicClothingProduct, on_delete=models.CASCADE, related_name='translations', verbose_name=_("Исламская одежда"))
+    locale = models.CharField(_("Язык"), max_length=10, choices=[('ru', _('Русский')), ('en', _('Английский'))], default='ru', db_index=True)
+    name = models.CharField(_("Название"), max_length=500, blank=True)
+    description = models.TextField(_("Описание"), blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = _("Перевод: Исламская одежда")
+        verbose_name_plural = _("Переводы: Исламская одежда")
+        unique_together = [['product', 'locale']]
+        ordering = ['product', 'locale']
+
+class IslamicClothingProductImage(models.Model):
+    product = models.ForeignKey(IslamicClothingProduct, on_delete=models.CASCADE, related_name="images", verbose_name=_("Исламская одежда"))
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to="products/islamic_clothing/gallery/", blank=True, null=True)
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение Исламская одежда")
+        verbose_name_plural = _("Изображения Исламская одежда")
+        ordering = ["sort_order", "created_at"]
+
+class IslamicClothingVariant(models.Model):
+    product = models.ForeignKey(IslamicClothingProduct, on_delete=models.CASCADE, related_name="variants", verbose_name=_("Исламская одежда (родитель)"))
+    name = models.CharField(_("Название варианта"), max_length=500, blank=True)
+    name_en = models.CharField(_("Название (англ.)"), max_length=500, blank=True)
+    slug = models.SlugField(_("Slug варианта"), max_length=600, unique=True)
+    color = models.CharField(_("Цвет"), max_length=50, blank=True)
+    size = models.CharField(_("Размер (устарело)"), max_length=50, blank=True)
+    sku = models.CharField(_("SKU"), max_length=100, blank=True)
+    barcode = models.CharField(_("Штрихкод"), max_length=100, blank=True)
+    gtin = models.CharField(_("GTIN"), max_length=100, blank=True)
+    mpn = models.CharField(_("MPN"), max_length=100, blank=True)
+    price = models.DecimalField(_("Цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    currency = models.CharField(_("Валюта"), max_length=5, choices=CURRENCY_CHOICES, default="RUB")
+    old_price = models.DecimalField(_("Старая цена"), max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    is_available = models.BooleanField(_("В наличии"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Количество на складе"), null=True, blank=True)
+    main_image = models.URLField(_("Главное изображение варианта"), blank=True)
+    main_image_file = models.ImageField(_("Главное изображение варианта (файл)"), upload_to="products/islamic_clothing/variants/", blank=True, null=True)
+    external_id = models.CharField(_("Внешний ID"), max_length=500, blank=True)
+    external_url = models.URLField(_("Внешняя ссылка"), blank=True, max_length=2000)
+    external_data = models.JSONField(_("Внешние данные"), default=dict, blank=True)
+    is_active = models.BooleanField(_("Активен"), default=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Вариант: Исламская одежда")
+        verbose_name_plural = _("Варианты: Исламская одежда")
+        ordering = ["product", "sort_order", "-created_at"]
+        indexes = [
+            models.Index(fields=["product", "sort_order"]),
+            models.Index(fields=["slug"]),
+            models.Index(fields=["is_active", "is_available"]),
+        ]
+
+    def __str__(self):
+        base = self.name or self.product.name
+        attrs = f"{self.color or ''} {self.size or ''}".strip()
+        return f"{base} ({attrs})" if attrs else base
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_name = self.name or self.product.name
+            composed = f"{base_name}-{self.color or ''}-{self.size or ''}".strip()
+            base_slug = (slugify(composed)[:580] or slugify(base_name)[:580]).strip('-')
+            if not base_slug:
+                base_slug = f"v-{uuid.uuid4().hex[:12]}"
+            slug = base_slug
+            i = 2
+            while self.__class__.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{i}"
+                slug = f"{base_slug[:580 - len(suffix)]}{suffix}"
+                i += 1
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+class IslamicClothingVariantSize(models.Model):
+    variant = models.ForeignKey(IslamicClothingVariant, on_delete=models.CASCADE, related_name="sizes", verbose_name=_("Вариант"))
+    size = models.CharField(_("Размер"), max_length=50, blank=True)
+    is_available = models.BooleanField(_("Доступен"), default=True)
+    stock_quantity = models.PositiveIntegerField(_("Остаток"), null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("Размер варианта: Исламская одежда")
+        verbose_name_plural = _("Размеры вариантов: Исламская одежда")
+        ordering = ["variant", "sort_order", "size"]
+
+class IslamicClothingVariantImage(models.Model):
+    variant = models.ForeignKey(IslamicClothingVariant, on_delete=models.CASCADE, related_name="images", verbose_name=_("Вариант"))
+    image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
+    image_file = models.ImageField(_("Изображение (файл)"), upload_to="products/islamic_clothing/variants/gallery/", blank=True, null=True)
+    alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_main = models.BooleanField(_("Главное изображение"), default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Изображение варианта: Исламская одежда")
+        verbose_name_plural = _("Изображения вариантов: Исламская одежда")
+        ordering = ["sort_order", "created_at"]

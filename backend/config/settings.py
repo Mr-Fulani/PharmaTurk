@@ -504,3 +504,7 @@ GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", default="")
 # VK OAuth (VK ID SDK)
 VK_APP_ID = env("VK_APP_ID", default="")
 VK_APP_SECRET = env("VK_APP_SECRET", default="")
+
+# Increase data upload fields because admin uses filter_horizontal for thousands of categories
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
+

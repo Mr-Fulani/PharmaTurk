@@ -27,12 +27,22 @@ class OpenFoodFactsClient:
             
         url = self.BASE_URL.format(barcode=barcode)
         try:
-            with httpx.Client(timeout=10.0) as client:
+            import time
+            with httpx.Client(timeout=15.0) as client:
                 response = client.get(url)
+                
+                # Обработка лимитов (Error 429)
+                if response.status_code == 429:
+                    retry_after = int(response.headers.get("Retry-After", 5))
+                    logger.warning("Open Food Facts rate limit reached. Waiting %d seconds...", retry_after)
+                    time.sleep(retry_after)
+                    response = client.get(url) # Retry once
+                
                 response.raise_for_status()
                 data = response.json()
                 
                 if data.get("status") != 1:
+                    logger.info("Product with barcode %s not found in Open Food Facts", barcode)
                     return []
                     
                 product_data = data.get("product", {})
@@ -135,18 +145,23 @@ class MedicineMediaEnricher:
             logger.info("Product %s has no barcode. Skipping Open Food Facts.", product.id)
             
         # 2. Serper Image Search
-        if settings.SERPER_API_KEY:
+        serper_key = getattr(settings, 'SERPER_API_KEY', None)
+        if serper_key:
             queries = self.build_search_queries(product)
             logger.info("Searching in Serper Image Search with queries: %s", queries)
             for query in queries:
-                serper_urls = self.serper_client.fetch_images(query)
-                logger.info("Serper Image Search returned %d candidates for query '%s'.", len(serper_urls), query)
-                urls.extend(serper_urls)
+                try:
+                    serper_urls = self.serper_client.fetch_images(query)
+                    logger.info("Serper Image Search returned %d candidates for query '%s'.", len(serper_urls), query)
+                    urls.extend(serper_urls)
+                except Exception as e:
+                    logger.error("Serper API error for query '%s': %s", query, e)
+                
                 if len(urls) >= 10:  # Cap candidates to avoid excessive requests
                     logger.info("Reached maximum candidate limit (10). Stopping Serper search.")
                     break
         else:
-            logger.info("SERPER_API_KEY is not set. Skipping Serper Image Search.")
+            logger.warning("SERPER_API_KEY is not set or empty in settings. Serper search disabled.")
                     
         return list(dict.fromkeys(urls))
 
@@ -155,10 +170,10 @@ class MedicineMediaEnricher:
         try:
             with httpx.Client(timeout=10.0, follow_redirects=True) as client:
                 with client.stream("GET", url) as response:
-                    # Check Content-Length if available
+                    # Check Content-Length if available to prevent OOM
                     content_length = response.headers.get("Content-Length")
-                    if content_length and int(content_length) > 10 * 1024 * 1024:  # 10 MB limit
-                        logger.warning("Image %s is too large (%s bytes). Max allowed is 10MB.", url, content_length)
+                    if content_length and int(content_length) > 5 * 1024 * 1024:  # 5 MB limit (reduced from 10)
+                        logger.warning("Image %s is too heavy (%s bytes). Skipping to prevent OOM.", url, content_length)
                         return False
                     
                     response.read()

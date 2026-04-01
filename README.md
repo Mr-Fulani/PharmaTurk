@@ -202,11 +202,23 @@ poetry run python manage.py migrate
 poetry run python manage.py runserver
 ```
 
-### Создание миграций
+### Управление миграциями
 
+**Локально (через Docker Compose):**
 ```bash
 docker compose exec backend poetry run python manage.py makemigrations
 docker compose exec backend poetry run python manage.py migrate
+```
+
+**На продакшене (через прямой docker exec):**
+> Используйте этот способ, если `docker compose exec` выдает ошибку "service not running".
+
+```bash
+# Посмотреть статус всех миграций
+docker exec -it pharmaturk-backend-1 poetry run python manage.py showmigrations
+
+# Применить миграции вручную
+docker exec -it pharmaturk-backend-1 poetry run python manage.py migrate
 ```
 
 ### Создание суперпользователя

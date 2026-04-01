@@ -154,6 +154,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backend fr
 | Действие | Команда |
 |----------|---------|
 | Логи всех сервисов | `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f` |
+| Проверка статуса миграций | `docker exec -it pharmaturk-backend-1 poetry run python manage.py showmigrations` |
+| Запуск миграций вручную | `docker exec -it pharmaturk-backend-1 poetry run python manage.py migrate` |
 | Логи backend | `docker compose ... logs -f backend` |
 | Seed каталога (категории, бренды) | `docker compose ... exec backend poetry run python manage.py seed_catalog_data` |
 | Статистика рекомендаций | `docker compose ... exec backend poetry run python manage.py recsys_stats` |

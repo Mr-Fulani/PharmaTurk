@@ -317,9 +317,23 @@ class ServiceAttributeInline(admin.TabularInline):
     verbose_name = _("🛠️ Атрибут услуги")
     verbose_name_plural = _("🛠️ Атрибуты услуг (динамические)")
 
+    def get_formset(self, request, obj=None, **kwargs):
+        request._current_obj = obj
+        return super().get_formset(request, obj, **kwargs)
+
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "attribute_key":
-            kwargs["queryset"] = GlobalAttributeKey.objects.all().order_by('sort_order', 'slug')
+            from django.db.models import Q
+            qs = GlobalAttributeKey.objects.all().order_by('sort_order', 'slug')
+            obj = getattr(request, '_current_obj', None)
+            if obj and hasattr(obj, 'category') and obj.category_id:
+                cat_ids = []
+                current = obj.category
+                while current:
+                    cat_ids.append(current.id)
+                    current = current.parent
+                qs = qs.filter(Q(categories__in=cat_ids) | Q(categories__isnull=True)).distinct()
+            kwargs["queryset"] = qs
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 class ProductAttributeValueInline(GenericTabularInline):
@@ -330,9 +344,23 @@ class ProductAttributeValueInline(GenericTabularInline):
     verbose_name = _("🛠️ Динамический атрибут")
     verbose_name_plural = _("🛠️ Динамические атрибуты товаров")
 
+    def get_formset(self, request, obj=None, **kwargs):
+        request._current_obj = obj
+        return super().get_formset(request, obj, **kwargs)
+
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "attribute_key":
-            kwargs["queryset"] = GlobalAttributeKey.objects.all().order_by('sort_order', 'slug')
+            from django.db.models import Q
+            qs = GlobalAttributeKey.objects.all().order_by('sort_order', 'slug')
+            obj = getattr(request, '_current_obj', None)
+            if obj and hasattr(obj, 'category') and obj.category_id:
+                cat_ids = []
+                current = obj.category
+                while current:
+                    cat_ids.append(current.id)
+                    current = current.parent
+                qs = qs.filter(Q(categories__in=cat_ids) | Q(categories__isnull=True)).distinct()
+            kwargs["queryset"] = qs
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
@@ -2623,3 +2651,8 @@ from .admin_wave3 import *
 
 # Импортируем и регистрируем админки для валютных моделей
 from .admin_currency import *
+
+# Админки для новых доменных моделей с вариантами
+from .admin_headwear import *
+from .admin_underwear import *
+from .admin_islamic_clothing import *
