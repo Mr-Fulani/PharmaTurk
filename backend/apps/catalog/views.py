@@ -2305,6 +2305,38 @@ class ServiceViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         return queryset
 
 
+def _dedupe_favorites_serialized_rows(serialized_list):
+    """
+    Убирает дубликаты одной витринной позиции в ответе списка избранного.
+
+    В БД могут сосуществовать несколько Favorite на один и тот же товар разными путями
+    (например shadow Product и ShoeProduct с одним slug), в т.ч. после старых багов с id.
+    Ключ совпадает с тем, как фронт строит ссылку на карточку: slug + тип.
+    Оставляем самую свежую запись по created_at.
+    """
+    def _norm_type(raw):
+        return (raw or 'medicines').replace('_', '-').strip().lower()
+
+    rows = sorted(
+        serialized_list,
+        key=lambda x: x.get('created_at') or '',
+        reverse=True,
+    )
+    seen = set()
+    out = []
+    for row in rows:
+        p = row.get('product') or {}
+        slug = (p.get('slug') or '').strip().lower()
+        ptype = _norm_type(p.get('_product_type'))
+        pid = p.get('id')
+        key = (slug, ptype) if slug else (str(pid or ''), ptype)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
+
+
 class FavoriteViewSet(viewsets.ViewSet):
     """API для работы с избранным."""
     from rest_framework.permissions import AllowAny
@@ -2389,7 +2421,7 @@ class FavoriteViewSet(viewsets.ViewSet):
             favorites = Favorite.objects.none()
         
         serializer = FavoriteSerializer(favorites, many=True, context={'request': request})
-        return Response(serializer.data)
+        return Response(_dedupe_favorites_serialized_rows(serializer.data))
     
     @extend_schema(
         summary="Добавить товар в избранное",
@@ -2624,12 +2656,14 @@ class FavoriteViewSet(viewsets.ViewSet):
             self._merge_session_favorites(user, session_key)
         
         if user:
-            count = Favorite.objects.filter(user=user).count()
+            favorites = Favorite.objects.filter(user=user).select_related('content_type')
         elif session_key:
-            count = Favorite.objects.filter(session_key=session_key).count()
+            favorites = Favorite.objects.filter(session_key=session_key).select_related('content_type')
         else:
-            count = 0
-        
+            favorites = Favorite.objects.none()
+
+        serializer = FavoriteSerializer(favorites, many=True, context={'request': request})
+        count = len(_dedupe_favorites_serialized_rows(serializer.data))
         return Response({"count": count})
 
 

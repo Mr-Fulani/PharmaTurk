@@ -5795,7 +5795,7 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     class Meta:
         model = HeadwearProduct
         fields = [
-            'id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
+            'id', 'base_product_id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
             'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
@@ -5881,7 +5881,7 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
     class Meta:
         model = UnderwearProduct
         fields = [
-            'id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
+            'id', 'base_product_id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
             'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
@@ -5967,7 +5967,7 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
     class Meta:
         model = IslamicClothingProduct
         fields = [
-            'id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
+            'id', 'base_product_id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
             'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',

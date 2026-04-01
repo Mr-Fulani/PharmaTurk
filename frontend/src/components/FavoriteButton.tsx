@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'next-i18next'
+import { shallow } from 'zustand/shallow'
 import { useFavoritesStore } from '../store/favorites'
 
 interface FavoriteButtonProps {
@@ -19,9 +20,18 @@ export default function FavoriteButton({
   cornerIcon = false,
 }: FavoriteButtonProps) {
   const [loading, setLoading] = useState(false)
-  const { isFavorite, add, remove } = useFavoritesStore()
+  const { favorites, isFavorite: isFavoriteFn, add, remove, refresh } = useFavoritesStore(
+    (s) => ({
+      favorites: s.favorites,
+      isFavorite: s.isFavorite,
+      add: s.add,
+      remove: s.remove,
+      refresh: s.refresh,
+    }),
+    shallow
+  )
   const { t } = useTranslation('common')
-  const favorite = isFavorite(productId, productType)
+  const favorite = isFavoriteFn(productId, productType)
 
   const toggle = async (e?: React.MouseEvent) => {
     if (e) {
@@ -36,6 +46,15 @@ export default function FavoriteButton({
         await add(productId, productType)
       }
     } catch (error: any) {
+      const msg = String(error?.message || '')
+      const already =
+        /уже в избранном/i.test(msg) ||
+        /already in favorites/i.test(msg) ||
+        error?.response?.data?.detail === 'Товар уже в избранном'
+      if (!favorite && already) {
+        await refresh()
+        return
+      }
       alert(error.message || t('favorite_error', 'Ошибка при работе с избранным'))
     } finally {
       setLoading(false)
