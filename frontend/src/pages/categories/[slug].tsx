@@ -13,6 +13,7 @@ import api, { getApiForCategory } from '../../lib/api'
 import ProductCard from '../../components/ProductCard'
 import CategorySidebar, { FilterState, SidebarTreeItem, SidebarTreeSection, AvailableAttribute } from '../../components/CategorySidebar'
 import Pagination from '../../components/Pagination'
+import CategoryHero from '../../components/CategoryHero'
 
 interface Product {
   id: number
@@ -1438,26 +1439,14 @@ export default function CategoryPage({
       </Head>
 
       {/* Hero Section */}
-      <div className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
-        <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl md:text-5xl font-bold mb-4">{localizedCategoryName}</h1>
-              {(() => {
-                const localizedDesc = currentCategory
-                  ? getLocalizedCategoryDescription(currentCategory.slug, currentCategory.description, t, currentCategory.translations, router.locale)
-                  : categoryDescription
-                return localizedDesc ? (
-                  <p className="text-lg md:text-xl opacity-90 max-w-2xl">{localizedDesc}</p>
-                ) : null
-              })()}
-              <p className="mt-4 text-sm opacity-80">
-                {t('products_found', 'Найдено товаров')}: <span suppressHydrationWarning className="font-semibold">{totalCount}</span>
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <CategoryHero 
+        title={titleText}
+        description={currentCategory
+          ? getLocalizedCategoryDescription(currentCategory.slug, currentCategory.description, t, currentCategory.translations, router.locale)
+          : categoryDescription}
+        totalCount={totalCount}
+        categorySlug={routeSlug}
+      />
 
       {/* Breadcrumbs & View Toggles (Desktop) */}
       <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 pt-3 pb-0 sm:py-3 flex items-center justify-between">
