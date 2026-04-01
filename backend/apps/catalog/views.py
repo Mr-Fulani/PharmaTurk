@@ -813,6 +813,35 @@ class ProductViewSet(FacetedModelViewSetMixin, viewsets.ReadOnlyModelViewSet):
     pagination_class = StandardPagination
     lookup_field = 'slug'
     
+    def get_object(self):
+        """Умный поиск объекта по slug для базовой модели Product."""
+        queryset = self.get_queryset()
+        slug = self.kwargs.get(self.lookup_field)
+        if not slug:
+            return super().get_object()
+
+        try:
+            return queryset.get(slug=slug)
+        except Product.DoesNotExist:
+            # Fallback 1: В БД дубль (A-A), пришел короткий (A)
+            doubled_slug = f"{slug}-{slug}"
+            try:
+                return queryset.get(slug=doubled_slug)
+            except Product.DoesNotExist:
+                # Fallback 2: В URL дубль (A-A), в БД короткий (A)
+                if '-' in slug:
+                    parts = slug.split('-')
+                    if len(parts) >= 2 and len(parts) % 2 == 0:
+                        half = len(parts) // 2
+                        if parts[:half] == parts[half:]:
+                            short_slug = "-".join(parts[:half])
+                            try:
+                                return queryset.get(slug=short_slug)
+                            except Product.DoesNotExist:
+                                pass
+                from django.http import Http404
+                raise Http404("Product not found.")
+    
     def _normalize_ordering(self, ordering: str) -> str:
         """Преобразует формат сортировки из фронтенда в формат Django.
         
@@ -2993,6 +3022,43 @@ class _SimpleDomainViewSet(viewsets.ReadOnlyModelViewSet):
 
     def _normalize_ordering(self, ordering: str) -> str:
         return self._ORDERING_MAP.get(ordering, ordering)
+
+    def get_object(self):
+        """
+        Умный поиск объекта по slug.
+        Поддерживает случаи, когда в БД слаг продублирован (напр. name-name),
+        а фронтенд прислал очищенную (короткую) версию, и наоборот.
+        """
+        queryset = self.get_queryset()
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        slug = self.kwargs.get(lookup_url_kwarg)
+        
+        if not slug:
+            return super().get_object()
+
+        try:
+            # 1. Прямой поиск (как обычно)
+            return queryset.get(**{self.lookup_field: slug})
+        except queryset.model.DoesNotExist:
+            # 2. Если слаг продублирован в БД (ABC-ABC), а пришел короткий (ABC)
+            doubled_slug = f"{slug}-{slug}"
+            try:
+                return queryset.get(**{self.lookup_field: doubled_slug})
+            except queryset.model.DoesNotExist:
+                # 3. Если слаг продублирован в URL (ABC-ABC), а в БД он короткий (ABC)
+                if '-' in slug:
+                    parts = slug.split('-')
+                    if len(parts) >= 2 and len(parts) % 2 == 0:
+                        half = len(parts) // 2
+                        if parts[:half] == parts[half:]:
+                            short_slug = "-".join(parts[:half])
+                            try:
+                                return queryset.get(**{self.lookup_field: short_slug})
+                            except queryset.model.DoesNotExist:
+                                pass
+                # Если ничего не помогло - выбрасываем 404 через стандартный метод
+                from django.http import Http404
+                raise Http404("No product found matching the slug (even with smart fallback).")
 
     def _base_queryset(self):
         return self.queryset.all()

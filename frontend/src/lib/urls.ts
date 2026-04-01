@@ -51,21 +51,41 @@ export function getSiteOrigin(): string {
 
 import { isBaseProductType } from './product'
 
+function deduplicateSlug(slug: string): string {
+  if (!slug) return ''
+  const normalized = slug.toString().trim().replace(/_/g, '-')
+  const parts = normalized.split('-')
+  
+  // Если слаг состоит из двух одинаковых половин (например, name-name)
+  if (parts.length >= 4 && parts.length % 2 === 0) {
+    const half = parts.length / 2
+    const firstHalf = parts.slice(0, half).join('-')
+    const secondHalf = parts.slice(half).join('-')
+    if (firstHalf === secondHalf) {
+      return firstHalf
+    }
+  }
+  return normalized
+}
+
 export function buildProductUrl(productType: string, slug: string): string {
   const normalizedType = (productType || 'medicines').toString().trim().replace(/_/g, '-')
-  const normalizedSlug = (slug || '').toString().trim().replace(/_/g, '-')
+  const rawSlug = (slug || '').toString().trim()
+  
+  // Убираем дублирование в самом слаге (напр. medicago-q10-medicago-q10 -> medicago-q10)
+  const deduplicatedSlug = deduplicateSlug(rawSlug)
   
   // Для сервисов
   if (normalizedType === 'uslugi') {
-    return `/product/uslugi/${normalizedSlug}`
+    return `/product/uslugi/${deduplicatedSlug}`
   }
 
   // Обработка всех товаров: используем категориальный путь /product/type/slug
   // Пытаемся избежать дублирования типа в самом sluge (например, /product/clothing/clothing-tshirt -> /product/clothing/tshirt)
   const prefix = `${normalizedType}-`
-  const cleanedSlug = normalizedSlug.startsWith(prefix) ? normalizedSlug.slice(prefix.length) : normalizedSlug
+  const cleanedSlug = deduplicatedSlug.startsWith(prefix) ? deduplicatedSlug.slice(prefix.length) : deduplicatedSlug
 
-  return `/product/${normalizedType}/${cleanedSlug || normalizedSlug}`
+  return `/product/${normalizedType}/${cleanedSlug || deduplicatedSlug}`
 }
 
 /**
