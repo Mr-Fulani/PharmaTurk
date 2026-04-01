@@ -56,3 +56,26 @@ export function needsTypeInPath(productType?: string | null): boolean {
   const normalized = normalizeProductType(productType)
   return Boolean(normalized && TYPES_NEEDING_PATH.includes(normalized as (typeof TYPES_NEEDING_PATH)[number]))
 }
+
+/**
+ * ID для API избранного (add/remove/check и сопоставление со списком /favorites).
+ * Для headwear / underwear / islamic-clothing в ответе избранного id = shadow Product,
+ * а в листингах карточка часто несёт доменный id — без base совпадение ломается.
+ */
+const FAVORITE_API_USES_BASE_PRODUCT_ID = new Set([
+  'headwear',
+  'underwear',
+  'islamic-clothing',
+])
+
+export function favoriteApiProductId(
+  product: { id: number; base_product_id?: number | null },
+  productType?: string | null
+): number {
+  const norm = normalizeProductType(productType)
+  const base = product.base_product_id
+  if (base != null && FAVORITE_API_USES_BASE_PRODUCT_ID.has(norm)) {
+    return base
+  }
+  return product.id
+}

@@ -7,6 +7,7 @@ import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
 import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl, getVideoEmbedUrl } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
+import { favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 interface Product {
@@ -402,7 +403,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                       }}
                     >
                       <FavoriteButton
-                        productId={product.id}
+                        productId={favoriteApiProductId(product, product.product_type)}
                         productType={product.product_type || 'medicines'}
                         cornerIcon={true}
                       />

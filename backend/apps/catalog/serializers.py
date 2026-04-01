@@ -1588,6 +1588,112 @@ class FavoriteSerializer(serializers.ModelSerializer):
         return product_data
 
 
+def resolve_product_for_favorites_api(product_id, product_type_raw):
+    """
+    Единая резолвация товара для add/remove/check избранного.
+
+    Для headwear / underwear / islamic_clothing допускается id доменной строки или id shadow Product
+    (как в листингах и карточках). Избранное хранится на доменной модели; ответ списка по-прежнему
+    отдаёт id shadow Product в поле id (см. FavoriteSerializer).
+    """
+    from django.core.exceptions import ObjectDoesNotExist
+
+    from .models import (
+        ClothingProduct,
+        ShoeProduct,
+        ElectronicsProduct,
+        FurnitureProduct,
+        JewelryProduct,
+        Service,
+        MedicineProduct,
+        SupplementProduct,
+        HeadwearProduct,
+        UnderwearProduct,
+        IslamicClothingProduct,
+    )
+
+    try:
+        pid = int(product_id)
+    except (TypeError, ValueError):
+        raise serializers.ValidationError({"product_id": "Некорректный product_id"})
+
+    product_type = (product_type_raw or 'medicines').strip().lower().replace('-', '_')
+    product_type = {
+        'medical_accessories': 'accessories',
+        'medical_accessory': 'accessories',
+        'accessory': 'accessories',
+    }.get(product_type, product_type)
+
+    def _ensure_active(obj):
+        if hasattr(obj, 'is_active') and not obj.is_active:
+            raise serializers.ValidationError({"product_id": "Товар неактивен"})
+        return obj
+
+    def _resolve_domain_triplet(model_cls, reverse_attr):
+        try:
+            return _ensure_active(model_cls.objects.get(id=pid))
+        except model_cls.DoesNotExist:
+            pass
+        row = model_cls.objects.filter(base_product_id=pid).first()
+        if row:
+            return _ensure_active(row)
+        try:
+            p = Product.objects.get(id=pid)
+        except Product.DoesNotExist:
+            raise serializers.ValidationError({"product_id": "Товар не найден"})
+        try:
+            dom = getattr(p, reverse_attr)
+        except ObjectDoesNotExist:
+            raise serializers.ValidationError({"product_id": "Товар не найден"})
+        return _ensure_active(dom)
+
+    if product_type == 'headwear':
+        return _resolve_domain_triplet(HeadwearProduct, 'headwear_item'), product_type
+    if product_type == 'underwear':
+        return _resolve_domain_triplet(UnderwearProduct, 'underwear_item'), product_type
+    if product_type == 'islamic_clothing':
+        return _resolve_domain_triplet(IslamicClothingProduct, 'islamic_clothing_item'), product_type
+
+    try:
+        from .models import MedicalEquipmentProduct
+    except ImportError:
+        MedicalEquipmentProduct = None
+
+    domain_maps = {}
+    if MedicalEquipmentProduct:
+        domain_maps['medical_equipment'] = MedicalEquipmentProduct
+
+    PRODUCT_MODEL_MAP = {
+        'medicines': MedicineProduct,
+        'supplements': SupplementProduct if SupplementProduct else Product,
+        'medical_equipment': domain_maps.get('medical_equipment', Product),
+        'tableware': Product,
+        'accessories': Product,
+        'jewelry': JewelryProduct,
+        'perfumery': Product,
+        'books': Product,
+        'clothing': ClothingProduct,
+        'shoes': ShoeProduct,
+        'electronics': ElectronicsProduct,
+        'furniture': FurnitureProduct,
+        'uslugi': Service,
+    }
+
+    model_class = PRODUCT_MODEL_MAP.get(product_type) or Product
+
+    try:
+        product = model_class.objects.get(id=pid)
+        return _ensure_active(product), product_type
+    except model_class.DoesNotExist:
+        if model_class is not Product:
+            try:
+                product = Product.objects.get(id=pid)
+                return _ensure_active(product), product_type
+            except Product.DoesNotExist:
+                raise serializers.ValidationError({"product_id": "Товар не найден"})
+        raise serializers.ValidationError({"product_id": "Товар не найден"})
+
+
 class AddToFavoriteSerializer(serializers.Serializer):
     """Сериализатор для добавления товара в избранное."""
     
@@ -1596,76 +1702,12 @@ class AddToFavoriteSerializer(serializers.Serializer):
     
     def validate(self, attrs):
         """Проверка существования товара в зависимости от типа."""
-        product_id = attrs.get('product_id')
-        product_type = (attrs.get('product_type') or 'medicines').strip().lower()
-        product_type = product_type.replace('-', '_')
-        product_type = {
-            'medical_accessories': 'accessories',
-            'medical_accessory': 'accessories',
-            'accessory': 'accessories',
-        }.get(product_type, product_type)
-        
-        # Маппинг типов товаров на модели
-        from .models import (
-            Product, ClothingProduct, ShoeProduct, ElectronicsProduct,
-            FurnitureProduct, JewelryProduct, Service,
-            MedicineProduct, SupplementProduct,
+        product, norm_type = resolve_product_for_favorites_api(
+            attrs.get('product_id'),
+            attrs.get('product_type'),
         )
-
-        # Пробуем импортировать другие доменные модели (могут отсутствовать)
-        try:
-            from .models import MedicalEquipmentProduct
-        except ImportError:
-            MedicalEquipmentProduct = None
-
-        domain_maps = {}
-        if MedicalEquipmentProduct:
-            domain_maps['medical_equipment'] = MedicalEquipmentProduct
-
-        # headwear / underwear / islamic_clothing хранятся в избранном как shadow Product (единый object_id)
-        PRODUCT_MODEL_MAP = {
-            'medicines': MedicineProduct,
-            'supplements': SupplementProduct if SupplementProduct else Product,
-            'medical_equipment': domain_maps.get('medical_equipment', Product),
-            'tableware': Product,
-            'accessories': Product,
-            'jewelry': JewelryProduct,
-            'perfumery': Product,
-            'headwear': Product,
-            'underwear': Product,
-            'islamic_clothing': Product,
-            'books': Product,
-            'clothing': ClothingProduct,
-            'shoes': ShoeProduct,
-            'electronics': ElectronicsProduct,
-            'furniture': FurnitureProduct,
-            'uslugi': Service,
-        }
-        
-        model_class = PRODUCT_MODEL_MAP.get(product_type)
-        if not model_class:
-            # Попробуем найти в Product как fallback
-            model_class = Product
-        
-        try:
-            product = model_class.objects.get(id=product_id)
-            # Проверяем is_active, если поле существует
-            if hasattr(product, 'is_active') and not product.is_active:
-                raise serializers.ValidationError({"product_id": "Товар неактивен"})
-        except model_class.DoesNotExist:
-            # Для специализированных моделей пробуем fallback на базовый Product
-            if model_class is not Product:
-                try:
-                    product = Product.objects.get(id=product_id)
-                    if hasattr(product, 'is_active') and not product.is_active:
-                        raise serializers.ValidationError({"product_id": "Товар неактивен"})
-                except Product.DoesNotExist:
-                    raise serializers.ValidationError({"product_id": "Товар не найден"})
-            else:
-                raise serializers.ValidationError({"product_id": "Товар не найден"})
-        
         attrs['_product'] = product
-        attrs['_product_type'] = product_type
+        attrs['_product_type'] = norm_type
         return attrs
 
 

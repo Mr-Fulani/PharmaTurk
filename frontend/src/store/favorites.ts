@@ -96,12 +96,14 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
 
   isFavorite: (productId: number, productType?: string) => {
     const { favorites } = get()
+    const normType = (t: string | undefined) =>
+      (t || '').toString().trim().replace(/_/g, '-').toLowerCase()
+    const want = normType(productType)
     return favorites.some(fav => {
       const sameId = fav.product.id === productId
       if (!productType) return sameId
-      // Если тип указан, проверяем и его
-      const type = fav.product._product_type || 'medicines'
-      return sameId && type === productType
+      const type = normType(fav.product._product_type || 'medicines')
+      return sameId && type === want
     })
   },
 }))

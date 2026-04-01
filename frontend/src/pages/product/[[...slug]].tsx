@@ -17,7 +17,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl, pickPreferredVideoUrl } from '../../lib/media'
 import { getSiteOrigin } from '../../lib/urls'
-import { isBaseProductType } from '../../lib/product'
+import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { useTheme } from '../../context/ThemeContext'
 
 type CategoryType = string
@@ -1117,7 +1117,7 @@ export default function ProductPage({
                     </div>
                     
                     <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
-                      <FavoriteButton productId={product.id} productType={productType} cornerIcon={true} />
+                      <FavoriteButton productId={favoriteApiProductId(product, productType)} productType={productType} cornerIcon={true} />
                       <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
                     </div>
                   </div>
@@ -1132,7 +1132,7 @@ export default function ProductPage({
                     onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
                   />
                   <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
-                    <FavoriteButton productId={product.id} productType={productType} cornerIcon={true} />
+                    <FavoriteButton productId={favoriteApiProductId(product, productType)} productType={productType} cornerIcon={true} />
                     <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
                   </div>
                 </div>
@@ -1283,7 +1283,7 @@ export default function ProductPage({
                     onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
                   >
                     <FavoriteButton
-                      productId={product.id}
+                      productId={favoriteApiProductId(product, productType)}
                       productType={productType}
                       cornerIcon={true}
                     />
@@ -1320,7 +1320,7 @@ export default function ProductPage({
                     onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
                   >
                     <FavoriteButton
-                      productId={product.id}
+                      productId={favoriteApiProductId(product, productType)}
                       productType={productType}
                       cornerIcon={true}
                     />

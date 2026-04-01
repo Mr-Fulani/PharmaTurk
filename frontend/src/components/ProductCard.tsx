@@ -5,6 +5,7 @@ import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
+import { favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import { useState, useEffect } from 'react'
 
@@ -113,6 +114,11 @@ export default function ProductCard({
     ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
     : null
 
+  const favoriteProductId = favoriteApiProductId(
+    { id, base_product_id: baseProductId },
+    productType
+  )
+
   if (viewMode === 'list') {
     return (
       <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
@@ -176,7 +182,7 @@ export default function ProductCard({
             onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
           >
             <FavoriteButton
-              productId={id}
+              productId={favoriteProductId}
               productType={productType}
               cornerIcon={true}
             />
@@ -338,7 +344,7 @@ export default function ProductCard({
           onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
         >
           <FavoriteButton
-            productId={id}
+            productId={favoriteProductId}
             productType={productType}
             cornerIcon={true}
           />

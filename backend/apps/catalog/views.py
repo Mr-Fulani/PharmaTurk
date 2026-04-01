@@ -17,6 +17,7 @@ from django.utils import timezone
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.serializers import ValidationError as FavoriteResolveValidationError
 from rest_framework.pagination import PageNumberPagination
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 import logging
@@ -59,6 +60,7 @@ from .serializers import (
     PriceHistorySerializer,
     FavoriteSerializer,
     AddToFavoriteSerializer,
+    resolve_product_for_favorites_api,
     ClothingCategorySerializer,
     ClothingProductSerializer,
     ShoeCategorySerializer,
@@ -2436,6 +2438,17 @@ class FavoriteViewSet(viewsets.ViewSet):
                 {"detail": "Требуется авторизация или сессия"},
                 status=status.HTTP_401_UNAUTHORIZED
             )
+
+        # Старые записи избранного по shadow Product для того же headwear/underwear/islamic
+        base_pk = getattr(product, 'base_product_id', None)
+        if base_pk and product.__class__.__name__ in (
+            'HeadwearProduct', 'UnderwearProduct', 'IslamicClothingProduct',
+        ):
+            pct = ContentType.objects.get_for_model(Product)
+            if user:
+                Favorite.objects.filter(user=user, content_type=pct, object_id=base_pk).delete()
+            else:
+                Favorite.objects.filter(session_key=session_key, content_type=pct, object_id=base_pk).delete()
         
         # Проверяем, не добавлен ли уже товар
         if user:
@@ -2494,19 +2507,33 @@ class FavoriteViewSet(viewsets.ViewSet):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
-        # Удаляем товар из избранного
+        # Удаляем товар из избранного (и устаревшую запись по shadow Product, если была)
+        base_pk = getattr(product, 'base_product_id', None)
+        legacy_domain = product.__class__.__name__ in (
+            'HeadwearProduct', 'UnderwearProduct', 'IslamicClothingProduct',
+        )
         if user:
             deleted = Favorite.objects.filter(
                 user=user,
                 content_type=content_type,
                 object_id=product.id
             ).delete()[0]
+            if legacy_domain and base_pk:
+                pct = ContentType.objects.get_for_model(Product)
+                deleted += Favorite.objects.filter(
+                    user=user, content_type=pct, object_id=base_pk
+                ).delete()[0]
         else:
             deleted = Favorite.objects.filter(
                 session_key=session_key,
                 content_type=content_type,
                 object_id=product.id
             ).delete()[0]
+            if legacy_domain and base_pk:
+                pct = ContentType.objects.get_for_model(Product)
+                deleted += Favorite.objects.filter(
+                    session_key=session_key, content_type=pct, object_id=base_pk
+                ).delete()[0]
         
         if not deleted:
             return Response(
@@ -2530,12 +2557,7 @@ class FavoriteViewSet(viewsets.ViewSet):
         from django.contrib.contenttypes.models import ContentType
         
         product_id = request.query_params.get('product_id')
-        product_type = (request.query_params.get('product_type') or 'medicines').strip().lower().replace('-', '_')
-        product_type = {
-            'medical_accessories': 'accessories',
-            'medical_accessory': 'accessories',
-            'accessory': 'accessories',
-        }.get(product_type, product_type)
+        product_type_param = request.query_params.get('product_type') or 'medicines'
 
         if not product_id:
             return Response(
@@ -2543,47 +2565,17 @@ class FavoriteViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Определяем модель товара по типу (должно совпадать с AddToFavoriteSerializer)
-        from .models import (
-            Product, ClothingProduct, ShoeProduct, ElectronicsProduct,
-            FurnitureProduct, JewelryProduct, Service,
-            MedicineProduct, SupplementProduct,
-        )
-
-        # Пробуем импортировать другие доменные модели (могут отсутствовать)
         try:
-            from .models import MedicalEquipmentProduct
-        except ImportError:
-            MedicalEquipmentProduct = None
-
-        PRODUCT_MODEL_MAP = {
-            'medicines': MedicineProduct,
-            'supplements': SupplementProduct if SupplementProduct else Product,
-            'medical_equipment': MedicalEquipmentProduct if MedicalEquipmentProduct else Product,
-            'tableware': Product,
-            'accessories': Product,
-            'jewelry': JewelryProduct,
-            'perfumery': Product,
-            'headwear': Product,
-            'underwear': Product,
-            'islamic_clothing': Product,
-            'clothing': ClothingProduct,
-            'shoes': ShoeProduct,
-            'electronics': ElectronicsProduct,
-            'furniture': FurnitureProduct,
-            'uslugi': Service,
-        }
-
-        model_class = PRODUCT_MODEL_MAP.get(product_type)
-        if not model_class:
-            return Response({"is_favorite": False})
-        
-        try:
-            product = model_class.objects.get(id=product_id)
-        except model_class.DoesNotExist:
+            product, _ = resolve_product_for_favorites_api(product_id, product_type_param)
+        except FavoriteResolveValidationError:
             return Response({"is_favorite": False})
         
         content_type = ContentType.objects.get_for_model(product)
+        base_pk = getattr(product, 'base_product_id', None)
+        legacy_domain = product.__class__.__name__ in (
+            'HeadwearProduct', 'UnderwearProduct', 'IslamicClothingProduct',
+        )
+        pct_product = ContentType.objects.get_for_model(Product) if legacy_domain and base_pk else None
         
         user = request.user if request.user.is_authenticated else None
         session_key = self._get_session_key(request)
@@ -2600,12 +2592,20 @@ class FavoriteViewSet(viewsets.ViewSet):
                 content_type=content_type,
                 object_id=product.id
             ).exists()
+            if not is_favorite and pct_product:
+                is_favorite = Favorite.objects.filter(
+                    user=user, content_type=pct_product, object_id=base_pk
+                ).exists()
         else:
             is_favorite = Favorite.objects.filter(
                 session_key=session_key,
                 content_type=content_type,
                 object_id=product.id
             ).exists()
+            if not is_favorite and pct_product:
+                is_favorite = Favorite.objects.filter(
+                    session_key=session_key, content_type=pct_product, object_id=base_pk
+                ).exists()
         
         return Response({"is_favorite": is_favorite})
     
