@@ -90,6 +90,7 @@ interface Category {
   clothing_type?: string
   translations?: CategoryTranslation[]
   device_type?: string
+  ancestors?: Array<{ id: number; name: string; slug: string }>
 }
 
 interface Brand {
@@ -1381,13 +1382,36 @@ export default function CategoryPage({
     const items = [
       { href: '/', label: t('breadcrumb_home', 'Главная') },
       { href: '/categories', label: t('breadcrumb_categories', 'Категории') },
-      { href: `/categories/${routeSlug}`, label: localizedCategoryName || t('category', 'Категория') },
     ]
+
+    // Добавляем предков, если они есть
+    if (currentCategory?.ancestors && currentCategory.ancestors.length > 0) {
+      currentCategory.ancestors.forEach(ancestor => {
+        const ancestorName = getLocalizedCategoryName(
+          ancestor.slug,
+          ancestor.name,
+          t,
+          undefined,
+          router.locale
+        )
+        items.push({
+          href: `/categories/${ancestor.slug}`,
+          label: ancestorName
+        })
+      })
+    }
+
+    // Сама текущая категория
+    items.push({
+      href: `/categories/${routeSlug}`,
+      label: localizedCategoryName || t('category', 'Категория')
+    })
+
     if (brandLabel) {
       items.push({ href: router.asPath, label: brandLabel })
     }
     return items
-  }, [brandLabel, localizedCategoryName, routeSlug, router.asPath, t])
+  }, [brandLabel, localizedCategoryName, routeSlug, router.asPath, t, currentCategory, router.locale])
 
   const siteUrl = useMemo(() => getSiteOrigin(), [])
   const canonicalUrl = useMemo(() => `${siteUrl}/categories/${routeSlug || categoryType}`, [siteUrl, routeSlug, categoryType])

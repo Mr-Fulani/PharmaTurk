@@ -296,7 +296,7 @@ interface Product {
   og_image_url?: string | null
   // Common Attributes
   brand?: { id: number; name: string; slug?: string; translations?: BrandTranslation[] } | null
-  category?: { id: number; name: string; slug: string } | null
+  category?: { id: number; name: string; slug: string; ancestors?: { id: number; name: string; slug: string }[] } | null
   is_new?: boolean
   is_featured?: boolean
   is_bestseller?: boolean
@@ -634,15 +634,36 @@ export default function ProductPage({
   const productSlug = product?.slug
 
   const breadcrumbs = useMemo(() => {
-    const list = [{ label: t('breadcrumb_home', 'Главная'), href: '/' }]
-    
-    // Если есть категория, добавляем её
+    const list = [
+      { label: t('breadcrumb_home', 'Главная'), href: '/' },
+      { label: t('breadcrumb_categories', 'Категории'), href: '/categories' }
+    ]
+
+    // Если есть категория, добавляем её и всех её предков
     if (product?.category) {
+      // Сначала предки (от корня вниз)
+      if (product.category.ancestors && product.category.ancestors.length > 0) {
+        product.category.ancestors.forEach(ancestor => {
+          const ancestorName = getLocalizedCategoryName(
+            ancestor.slug,
+            ancestor.name,
+            t,
+            undefined,
+            router.locale
+          )
+          list.push({
+            label: ancestorName,
+            href: `/categories/${ancestor.slug}`
+          })
+        })
+      }
+
+      // Сама категория товара
       const categoryName = getLocalizedCategoryName(
         product.category.slug,
         product.category.name,
         t,
-        undefined, // У нас в интерфейсе Product.category нет translations, используем slug для поиска в JSON
+        undefined,
         router.locale
       )
       list.push({

@@ -259,11 +259,12 @@ class CategorySerializer(serializers.ModelSerializer):
     category_type_slug = serializers.SerializerMethodField()
     gender_display = serializers.SerializerMethodField()
     translations = CategoryTranslationSerializer(many=True, read_only=True)
+    ancestors = serializers.SerializerMethodField()
     
     class Meta:
         model = Category
         fields = [
-            'id', 'name', 'slug', 'description', 'card_media_url', 'parent',
+            'id', 'name', 'slug', 'description', 'card_media_url', 'parent', 'ancestors',
             'external_id', 'is_active', 'sort_order',
             'children_count', 'products_count', 'created_at', 'updated_at',
             'category_type', 'category_type_slug', 'translations',
@@ -345,6 +346,39 @@ class CategorySerializer(serializers.ModelSerializer):
         if obj.gender:
             return obj.get_gender_display()
         return None
+
+    def get_ancestors(self, obj):
+        """Возвращает список родительских категорий (снизу вверх) с именами и слагами."""
+        from django.utils import translation
+        request = self.context.get('request')
+        lang = getattr(request, 'LANGUAGE_CODE', None) if request else None
+        if not lang:
+            lang = translation.get_language() or 'ru'
+            
+        ancestors_list = []
+        curr = obj.parent
+        while curr:
+            name = curr.name
+            # Попытка локализации родителя
+            if hasattr(curr, 'translations'):
+                try:
+                    # Поиск в префетченной коллекции если возможно, иначе запрос
+                    t = curr.translations.filter(locale=lang).first()
+                    if t and t.name:
+                        name = t.name
+                except Exception:
+                    pass
+            
+            ancestors_list.append({
+                'id': curr.id,
+                'name': name,
+                'slug': curr.slug
+            })
+            curr = curr.parent
+        
+        # Инвертируем, чтобы было от корня к текущей
+        ancestors_list.reverse()
+        return ancestors_list
 
 
 class BrandSerializer(serializers.ModelSerializer):
@@ -1567,11 +1601,12 @@ class ClothingCategorySerializer(serializers.ModelSerializer):
     
     children_count = serializers.SerializerMethodField()
     gender_display = serializers.SerializerMethodField()
+    ancestors = serializers.SerializerMethodField()
     
     class Meta:
         model = Category
         fields = [
-            'id', 'name', 'slug', 'description', 'parent', 
+            'id', 'name', 'slug', 'description', 'parent', 'ancestors',
             'gender', 'gender_display', 'clothing_type',
             'external_id', 'is_active', 'sort_order', 
             'children_count', 'created_at', 'updated_at'
@@ -1587,6 +1622,37 @@ class ClothingCategorySerializer(serializers.ModelSerializer):
         if obj.gender:
             return obj.get_gender_display()
         return None
+
+    def get_ancestors(self, obj):
+        """Возвращает список родительских категорий (снизу вверх) с именами и слагами."""
+        from django.utils import translation
+        request = self.context.get('request')
+        lang = getattr(request, 'LANGUAGE_CODE', None) if request else None
+        if not lang:
+            lang = translation.get_language() or 'ru'
+            
+        ancestors_list = []
+        curr = obj.parent
+        while curr:
+            name = curr.name
+            # Попытка локализации родителя
+            if hasattr(curr, 'translations'):
+                try:
+                    t = curr.translations.filter(locale=lang).first()
+                    if t and t.name:
+                        name = t.name
+                except Exception:
+                    pass
+            
+            ancestors_list.append({
+                'id': curr.id,
+                'name': name,
+                'slug': curr.slug
+            })
+            curr = curr.parent
+        
+        ancestors_list.reverse()
+        return ancestors_list
 
 
 class ClothingProductImageSerializer(serializers.ModelSerializer):
@@ -2042,11 +2108,12 @@ class ShoeCategorySerializer(serializers.ModelSerializer):
     
     children_count = serializers.SerializerMethodField()
     gender_display = serializers.SerializerMethodField()
+    ancestors = serializers.SerializerMethodField()
     
     class Meta:
         model = Category
         fields = [
-            'id', 'name', 'slug', 'description', 'parent',
+            'id', 'name', 'slug', 'description', 'parent', 'ancestors',
             'gender', 'gender_display',
             'external_id', 'is_active', 'sort_order',
             'children_count', 'created_at', 'updated_at'
@@ -2062,6 +2129,37 @@ class ShoeCategorySerializer(serializers.ModelSerializer):
         if obj.gender:
             return obj.get_gender_display()
         return None
+
+    def get_ancestors(self, obj):
+        """Возвращает список родительских категорий (снизу вверх) с именами и слагами."""
+        from django.utils import translation
+        request = self.context.get('request')
+        lang = getattr(request, 'LANGUAGE_CODE', None) if request else None
+        if not lang:
+            lang = translation.get_language() or 'ru'
+            
+        ancestors_list = []
+        curr = obj.parent
+        while curr:
+            name = curr.name
+            # Попытка локализации родителя
+            if hasattr(curr, 'translations'):
+                try:
+                    t = curr.translations.filter(locale=lang).first()
+                    if t and t.name:
+                        name = t.name
+                except Exception:
+                    pass
+            
+            ancestors_list.append({
+                'id': curr.id,
+                'name': name,
+                'slug': curr.slug
+            })
+            curr = curr.parent
+        
+        ancestors_list.reverse()
+        return ancestors_list
 
 
 class ShoeProductSizeSerializer(serializers.ModelSerializer):
@@ -5526,6 +5624,8 @@ class HeadwearProductSizeSerializer(serializers.ModelSerializer):
         fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
 
 class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
     category_slug = serializers.CharField(source='category.slug', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     brand_name = serializers.CharField(source='brand.name', read_only=True)
@@ -5605,6 +5705,8 @@ class UnderwearProductSizeSerializer(serializers.ModelSerializer):
         fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
 
 class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
     category_slug = serializers.CharField(source='category.slug', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     brand_name = serializers.CharField(source='brand.name', read_only=True)
@@ -5684,6 +5786,8 @@ class IslamicClothingProductSizeSerializer(serializers.ModelSerializer):
         fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
 
 class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
+    category = CategorySerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
     category_slug = serializers.CharField(source='category.slug', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     brand_name = serializers.CharField(source='brand.name', read_only=True)
