@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
+import Image from 'next/image'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
 import { resolveMediaUrl, getPlaceholderImageUrl, getVideoEmbedUrl } from '../lib/media'
@@ -229,33 +230,30 @@ export default function BannerCarousel({ position, className = '', initialBanner
       >
         {(media.content_type === 'image' || media.content_type === 'gif') && (() => {
           const isPicsum = !fullUrl || fallbackToPicsumIds[media.id]
+          const finalUrl = isPicsum 
+            ? `https://fastly.picsum.photos/id/${(media.id % 200) + 1}/1920/600.jpg` 
+            : fullUrl
+
           return (
-            <img
-              src={
-                fullUrl ||
-                getPlaceholderImageUrl({
-                  type: 'banner',
-                  seed: `${position}-${media.id}-${Math.random().toString(16).slice(2, 6)}`,
-                  width: 1200,
-                  height: 400,
-                })
-              }
-              alt={title || 'Banner'}
-              className={isPicsum ? styles.itemPicsumPlaceholder : styles.itemImage}
-              fetchPriority={isActive ? "high" : "auto"}
-              loading={isActive ? "eager" : "lazy"}
-              decoding="async"
-              sizes="(max-width: 768px) 100vw, 1200px"
-              onError={(e) => {
-                setFallbackToPicsumIds((prev) => ({ ...prev, [media.id]: true }))
-                e.currentTarget.src = getPlaceholderImageUrl({
-                  type: 'banner',
-                  seed: `${position}-${media.id}-fallback-${Math.random().toString(16).slice(2, 6)}`,
-                  width: 1200,
-                  height: 400,
-                })
-              }}
-            />
+            <div className="relative h-full w-full">
+              <Image
+                src={finalUrl}
+                alt={title || t('banner_image_alt', 'Banner')}
+                fill
+                priority={isActive && position === 'main'}
+                loading={isActive && position === 'main' ? 'eager' : 'lazy'}
+                sizes="(max-width: 768px) 100vw, 1200px"
+                className={`${styles.itemImage} object-cover`}
+                onLoadingComplete={() => {
+                  if (isActive) setLoading(false)
+                }}
+                onError={() => {
+                  if (!isPicsum) {
+                    setFallbackToPicsumIds(prev => ({ ...prev, [media.id]: true }))
+                  }
+                }}
+              />
+            </div>
           )
         })()}
         {media.content_type === 'video' && embedUrl && fullUrl && (
