@@ -15,6 +15,8 @@ from apps.ai.admin_views import ai_manual_tasks_view
 urlpatterns = [
     # Админка: ручной запуск AI-задач (до основного admin, чтобы не перехватывалось)
     path("admin/ai/manual-tasks/", ai_manual_tasks_view, name="ai_manual_tasks"),
+    # Вложенные inline в админке (django-nested-admin; путь фиксирован документацией пакета)
+    path("_nested_admin/", include("nested_admin.urls")),
     path("admin/", admin.site.urls),
     # SEO
     path("robots.txt", seo_views.robots_txt, name="robots"),

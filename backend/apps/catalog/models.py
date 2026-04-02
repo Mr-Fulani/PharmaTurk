@@ -1050,6 +1050,17 @@ class AbstractDomainProduct(models.Model):
 
         product.save(update_fields=list(set(update_fields)))
 
+    def delete(self, *args, **kwargs):
+        """После удаления доменной строки удаляет связанный shadow Product (один источник правды в админке)."""
+        skip_shadow = kwargs.pop("skip_shadow_delete", False)
+        base_pk = getattr(self, "base_product_id", None)
+        super().delete(*args, **kwargs)
+        if base_pk and not skip_shadow:
+            from django.apps import apps
+
+            ProductModel = apps.get_model("catalog", "Product")
+            ProductModel.objects.filter(pk=base_pk).delete()
+
 
 class Product(models.Model):
     """Товар в каталоге."""

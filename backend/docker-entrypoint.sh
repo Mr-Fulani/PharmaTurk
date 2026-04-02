@@ -9,6 +9,10 @@ find /app -type f -name "*.pyo" -delete 2>/dev/null || true
 find /app -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 echo "✅ Кэш Python очищен"
 
+# Смонтированный ./backend может содержать обновлённый pyproject.toml / poetry.lock без пересборки образа
+echo "📦 Синхронизация зависимостей Poetry..."
+poetry install --no-interaction --no-ansi --no-root
+
 # Устанавливаем weasyprint если не установлен (требует системных библиотек Pango/Cairo из Dockerfile)
 echo "📦 Проверяем weasyprint..."
 poetry run python -c "import weasyprint" 2>/dev/null || {

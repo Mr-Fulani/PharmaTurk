@@ -38,8 +38,8 @@ ENV PATH="/usr/local/bin:$PATH"
 
 WORKDIR /app
 
-# Copy dependency manifests first for better caching
-COPY pyproject.toml poetry.toml ./
+# Манифесты и lock для воспроизводимой установки зависимостей
+COPY pyproject.toml poetry.toml poetry.lock ./
 
 RUN poetry install --no-root --no-interaction --no-ansi
 

@@ -1,7 +1,8 @@
 """Сигналы для каскадного удаления медиа-файлов из хранилища (R2/локальное) и автоскачивания из URL."""
 import logging
 
-from django.db.models.signals import post_delete, post_save, pre_save
+from django.core.exceptions import ObjectDoesNotExist
+from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 
 from .models import (
@@ -36,6 +37,40 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Имена reverse OneToOne с Product на доменные модели (base_product → related_name="*_item").
+_PRODUCT_DOMAIN_ONE_TO_ONE_RELS = (
+    "clothing_item",
+    "shoe_item",
+    "jewelry_item",
+    "electronics_item",
+    "furniture_item",
+    "book_item",
+    "perfumery_item",
+    "medicine_item",
+    "supplement_item",
+    "medical_equipment_item",
+    "tableware_item",
+    "accessory_item",
+    "incense_item",
+    "sports_item",
+    "auto_part_item",
+    "headwear_item",
+    "underwear_item",
+    "islamic_clothing_item",
+)
+
+
+@receiver(pre_delete, sender=Product)
+def delete_domain_before_generic_product(sender, instance, **kwargs):
+    """При удалении Product сначала удалить доменную карточку (варианты и пр. — каскадом с неё)."""
+    for attr in _PRODUCT_DOMAIN_ONE_TO_ONE_RELS:
+        try:
+            related = getattr(instance, attr)
+        except ObjectDoesNotExist:
+            continue
+        if related is not None:
+            related.delete(skip_shadow_delete=True)
 
 
 def delete_file_from_storage(file_field, storage=None):

@@ -1,5 +1,6 @@
 from django import forms
 from decimal import Decimal
+import nested_admin
 from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.contrib.contenttypes.admin import GenericTabularInline
@@ -2279,7 +2280,7 @@ class ServiceAdmin(admin.ModelAdmin):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
-class BannerTranslationInline(admin.TabularInline):
+class BannerTranslationNestedInline(nested_admin.NestedTabularInline):
     """Переводы заголовка, описания и текста кнопки баннера (ru/en)."""
     model = BannerTranslation
     extra = 0
@@ -2288,29 +2289,30 @@ class BannerTranslationInline(admin.TabularInline):
     verbose_name_plural = _("Переводы баннера")
 
 
-class BannerMediaTranslationInline(admin.TabularInline):
-    """Переводы текстов конкретного слайда (ru/en)."""
+class BannerMediaTranslationNestedInline(nested_admin.NestedTabularInline):
+    """Переводы текстов этого слайда (внутри блока медиа на странице баннера)."""
     model = BannerMediaTranslation
     extra = 0
     fields = ('locale', 'title', 'description', 'link_text')
     verbose_name = _("Перевод слайда")
-    verbose_name_plural = _("Переводы слайда")
+    verbose_name_plural = _("Переводы слайда (ru / en)")
 
 
-class BannerMediaInline(admin.StackedInline):
-    """Inline для медиа-файлов баннера."""
+class BannerMediaNestedInline(nested_admin.NestedStackedInline):
+    """Медиа-слайд баннера с вложенными переводами."""
     model = BannerMedia
     extra = 1
+    inlines = [BannerMediaTranslationNestedInline]
     fieldsets = (
         (None, {'fields': ('content_type', 'sort_order')}),
         (_('Изображение'), {'fields': ('image', 'image_url')}),
         (_('Видео'), {'fields': ('video_file', 'video_url')}),
         (_('GIF'), {'fields': ('gif_file', 'gif_url')}),
-        (_('Текст и ссылка'), {
+        (_('Текст и ссылка (fallback)'), {
             'fields': ('title', 'description', 'link_text', 'link_url'),
             'description': _(
-                'Fallback-тексты для всех языков. Варианты ru/en — в разделе «Маркетинг — Медиа баннеров», '
-                'в карточке этого медиа (блок переводов слайда). Если пусто — подставляются данные баннера.'
+                'Запасные тексты, если для языка не заполнена строка в таблице «Переводы слайда» ниже. '
+                'Обычно заголовок/описание/кнопку для ru и en удобнее задавать именно в переводах.'
             ),
         }),
     )
@@ -2318,14 +2320,23 @@ class BannerMediaInline(admin.StackedInline):
     verbose_name_plural = _("Медиа-файлы")
 
 
+class BannerMediaTranslationInline(admin.TabularInline):
+    """Переводы слайда на отдельной странице «Маркетинг — Медиа баннеров»."""
+    model = BannerMediaTranslation
+    extra = 0
+    fields = ('locale', 'title', 'description', 'link_text')
+    verbose_name = _("Перевод слайда")
+    verbose_name_plural = _("Переводы слайда")
+
+
 @admin.register(MarketingBanner)
-class BannerAdmin(admin.ModelAdmin):
+class BannerAdmin(nested_admin.NestedModelAdmin):
     """Админка для баннеров."""
     list_display = ('title', 'get_position_display', 'get_media_count', 'is_active', 'sort_order', 'created_at')
     list_filter = ('position', 'is_active', 'created_at')
     search_fields = ('title',)
     ordering = ('sort_order', '-created_at')
-    inlines = [BannerTranslationInline, BannerMediaInline]
+    inlines = [BannerTranslationNestedInline, BannerMediaNestedInline]
 
     def get_queryset(self, request):
         """Сортировка по позиции: 1—Главный, 2—Второй, 3—Третий, 4—Четвертый. Не вызываем super(),
@@ -2350,9 +2361,9 @@ class BannerAdmin(admin.ModelAdmin):
         (None, {
             'fields': ('title', 'description', 'position', 'is_active', 'sort_order'),
             'description': _(
-                'Заголовок и описание баннера используются как fallback, если нет строки перевода для языка '
-                'или не заполнены поля слайда. Языковые варианты — в блоке «Переводы баннера» ниже. '
-                'Тексты отдельных слайдов по языкам редактируются в разделе «Маркетинг — Медиа баннеров».'
+                'Заголовок и описание баннера — fallback, если нет перевода для языка или пусто у слайда. '
+                'Переводы уровня баннера — в таблице «Переводы баннера». У каждого медиа-слайда ниже своя '
+                'таблица «Переводы слайда (ru / en)».'
             ),
         }),
         (_('Ссылка'), {

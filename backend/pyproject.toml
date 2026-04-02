@@ -44,6 +44,7 @@ sentence-transformers = "^2.2.0"
 requests = "^2.31.0"
 weasyprint = "^68.1"
 ikea-api = ">=2.4.0"
+django-nested-admin = "^4.1.6"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"

@@ -30,6 +30,7 @@ INSTALLED_APPS = [
 
     # Django
     "django.contrib.admin",
+    "nested_admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
