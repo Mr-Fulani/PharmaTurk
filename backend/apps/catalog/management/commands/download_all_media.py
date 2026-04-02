@@ -93,7 +93,8 @@ def _set_file(instance, field_attr: str, url: str, r2_public: str, dry_run: bool
 
 # ── Обобщённый обработчик для любой *ProductImage-модели ────────────────────
 
-def _process_image_qs(qs, url_attr, file_attr, r2_public, dry_run, force, label_tpl, stdout, stats):
+def _process_image_qs(qs, url_attr, file_attr, r2_public, dry_run, force, sync_internal, label_tpl, stdout, stats):
+    from urllib.parse import urlparse
     for obj in qs.iterator(chunk_size=200):
         url = getattr(obj, url_attr, "") or ""
         if not url:
@@ -101,6 +102,30 @@ def _process_image_qs(qs, url_attr, file_attr, r2_public, dry_run, force, label_
             continue
         pk = obj.pk
         label = label_tpl.format(pk=pk)
+
+        # Если URL уже на нашем CDN — синхронизируем путь в file-поле (без скачивания)
+        if _is_internal(url, r2_public):
+            if sync_internal:
+                path = urlparse(url).path.lstrip("/")
+                if path:
+                    if dry_run:
+                        stdout.write(f"  🔗  {label}: sync {path}")
+                        stats["downloaded"] += 1
+                    else:
+                        try:
+                            setattr(obj, file_attr, path)
+                            obj.save(update_fields=[file_attr])
+                            stdout.write(f"  🔗  {label}: синхронизировано → {path}")
+                            stats["downloaded"] += 1
+                        except Exception as e:
+                            stdout.write(f"  ❌  {label}: ошибка sync — {e}")
+                            stats["errors"] += 1
+                else:
+                    stats["skipped"] += 1
+            else:
+                stats["skipped"] += 1
+            continue
+
         result = _set_file(obj, file_attr, url, r2_public, dry_run, force, label, stdout)
         if result == "downloaded":
             if not dry_run:
@@ -131,6 +156,15 @@ class Command(BaseCommand):
             help="Раздел для обработки (по умолчанию: all)",
         )
         parser.add_argument("--limit", type=int, default=0, help="Ограничить кол-во записей (0 = без лимита)")
+        parser.add_argument(
+            "--sync-internal",
+            action="store_true",
+            help=(
+                "Для записей где URL уже на нашем CDN (cdn.mudaroba.com) но "
+                "image_file пустой — проставить путь из URL в image_file без скачивания. "
+                "Используется для синхронизации legacy данных."
+            ),
+        )
 
     def handle(self, *args, **options):
         from django.conf import settings
@@ -139,6 +173,7 @@ class Command(BaseCommand):
         force = options["force"]
         only = options["only"]
         limit = options["limit"]
+        sync_internal = options["sync_internal"]
 
         r2_public = (getattr(settings, "R2_CONFIG", {}).get("public_url", "") or "").rstrip("/")
         mode_label = "[DRY-RUN] " if dry_run else ""
@@ -151,12 +186,12 @@ class Command(BaseCommand):
         # ── 1. Галереи товаров (image_url → image_file) ──────────────────────
         if section("products"):
             self.stdout.write(self.style.MIGRATE_HEADING("\n=== Галереи товаров ==="))
-            self._process_galleries(r2_public, dry_run, force, limit, stats)
+            self._process_galleries(r2_public, dry_run, force, sync_internal, limit, stats)
 
         # ── 2. Главные изображения товаров (main_image → main_image_file) ───
         if section("main_images"):
             self.stdout.write(self.style.MIGRATE_HEADING("\n=== Главные изображения товаров ==="))
-            self._process_main_images(r2_public, dry_run, force, limit, stats)
+            self._process_main_images(r2_public, dry_run, force, sync_internal, limit, stats)
 
         # ── 3. Отзывы (TestimonialMedia) ─────────────────────────────────────
         if section("testimonials"):
@@ -167,6 +202,16 @@ class Command(BaseCommand):
         if section("services"):
             self.stdout.write(self.style.MIGRATE_HEADING("\n=== Галерея услуг ==="))
             self._process_services(r2_public, dry_run, force, limit, stats)
+
+        # ── 5. Категории ──────────────────────────────────────────────────────
+        if section("categories"):
+            self.stdout.write(self.style.MIGRATE_HEADING("\n=== Карточки категорий ==="))
+            self._process_categories(r2_public, dry_run, force, limit, stats)
+
+        # ── 6. Бренды ─────────────────────────────────────────────────────────
+        if section("brands"):
+            self.stdout.write(self.style.MIGRATE_HEADING("\n=== Карточки брендов ==="))
+            self._process_brands(r2_public, dry_run, force, limit, stats)
 
         # ── Итог ─────────────────────────────────────────────────────────────
         self.stdout.write("")
@@ -181,7 +226,7 @@ class Command(BaseCommand):
     # Внутренние методы
     # ────────────────────────────────────────────────────────────────────────
 
-    def _process_galleries(self, r2_public, dry_run, force, limit, stats):
+    def _process_galleries(self, r2_public, dry_run, force, sync_internal, limit, stats):
         """Все *ProductImage и *VariantImage модели с image_url → image_file."""
         from apps.catalog.models import (
             ProductImage,
@@ -221,13 +266,11 @@ class Command(BaseCommand):
         for Model, url_attr, file_attr, label_tpl in gallery_models:
             qs = Model.objects.exclude(**{url_attr: ""}).exclude(**{url_attr: None})
             if not force:
-                # Пропускаем записи у которых file уже заполнен
                 qs = qs.filter(**{f"{file_attr}__in": ["", None]}) | qs.filter(**{f"{file_attr}__isnull": True})
             if limit:
                 qs = qs[:limit]
             total = qs.count() if hasattr(qs, 'count') else "?"
             if total == 0 or total == "?":
-                # Пересчитываем без limit для показа
                 count_qs = Model.objects.exclude(**{url_attr: ""}).exclude(**{url_attr: None})
                 if not force:
                     count_qs = count_qs.filter(**{f"{file_attr}__in": ["", None]}) | count_qs.filter(**{f"{file_attr}__isnull": True})
@@ -236,9 +279,12 @@ class Command(BaseCommand):
                     self.stdout.write(f"  ✅  {Model.__name__}: все уже загружены")
                     continue
             self.stdout.write(f"  📦  {Model.__name__}: {total} записей для скачивания")
-            _process_image_qs(qs, url_attr, file_attr, r2_public, dry_run, force, label_tpl, self.stdout, stats)
+            _process_image_qs(
+                qs, url_attr, file_attr, r2_public, dry_run, force,
+                sync_internal, label_tpl, self.stdout, stats,
+            )
 
-    def _process_main_images(self, r2_public, dry_run, force, limit, stats):
+    def _process_main_images(self, r2_public, dry_run, force, sync_internal, limit, stats):
         """Главные изображения товаров (main_image → main_image_file)."""
         from apps.catalog.models import Product, ClothingProduct, JewelryProduct
 
@@ -256,7 +302,10 @@ class Command(BaseCommand):
                 qs = qs[:limit]
             total = qs.count() if hasattr(qs, 'count') else "?"
             self.stdout.write(f"  📦  {Model.__name__} (main_image): {total} записей")
-            _process_image_qs(qs, url_attr, file_attr, r2_public, dry_run, force, label_tpl, self.stdout, stats)
+            _process_image_qs(
+                qs, url_attr, file_attr, r2_public, dry_run, force,
+                sync_internal, label_tpl, self.stdout, stats,
+            )
 
     def _process_testimonials(self, r2_public, dry_run, force, limit, stats):
         """TestimonialMedia: image (тип=image) и video_file (тип=video_file с прямой ссылкой)."""
