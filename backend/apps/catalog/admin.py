@@ -4,7 +4,7 @@ from django.contrib import admin, messages
 from django.contrib.admin import SimpleListFilter
 from django.contrib.contenttypes.admin import GenericTabularInline
 from django.core.exceptions import ValidationError
-from django.db.models import Case, When, Value, IntegerField, Q
+from django.db.models import Case, When, Value, IntegerField, Q, Count, Exists, OuterRef
 from django.utils.html import format_html, format_html_join
 from django.utils.translation import gettext_lazy as _
 
@@ -1598,12 +1598,62 @@ class ShoeVariantAdmin(admin.ModelAdmin):
     try_price_with_margin.short_description = _('TRY*')
 
 
+def shoe_product_changelist_canonical_queryset(queryset):
+    """
+    Список «основных» карточек обуви (как ожидает контент):
+
+    1) Исключаем теневые родители, совпадающие с публичным API (см. ShoeProductViewSet).
+    2) Исключаем лишние ShoeProduct без единого ShoeVariant, если уже есть другой
+       товар с тем же name+brand и с хотя бы одним вариантом (типичный мусор импорта:
+       отдельная «карточка» на цвет вместо ShoeVariant).
+    """
+    qs = queryset.exclude(
+        Q(external_data__has_key='source_variant_id')
+        | Q(external_data__has_key='source_variant_slug')
+    )
+    sibling_with_variants = (
+        ShoeProduct.objects.filter(
+            name=OuterRef('name'),
+            brand_id=OuterRef('brand_id'),
+        )
+        .exclude(pk=OuterRef('pk'))
+        .annotate(_svc=Count('variants'))
+        .filter(_svc__gt=0)
+    )
+    return qs.annotate(
+        _admin_variant_count=Count('variants'),
+        _admin_orphan_duplicate=Exists(sibling_with_variants),
+    ).exclude(
+        _admin_variant_count=0,
+        _admin_orphan_duplicate=True,
+    )
+
+
+class ShoeProductListScopeFilter(SimpleListFilter):
+    """Показать все строки ShoeProduct, включая ошибочно созданные дубли-родители."""
+
+    title = _('Объём списка')
+    parameter_name = 'shoe_list_scope'
+
+    def lookups(self, request, model_admin):
+        return (('all', _('Все записи (включая пустые дубли и теневые)')),)
+
+    def queryset(self, request, queryset):
+        return queryset
+
+
 @admin.register(ShoeProduct)
 class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров обуви."""
 
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.GET.get('shoe_list_scope') == 'all':
+            return qs
+        return shoe_product_changelist_canonical_queryset(qs)
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'category':
@@ -1620,7 +1670,18 @@ class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     category_path.short_description = _("Категория")
 
     list_display = ('name', 'slug', 'get_ai_status', 'category_path', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
-    list_filter = (AIStatusFilter, 'is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'currency', 'created_at')
+    list_filter = (
+        ShoeProductListScopeFilter,
+        AIStatusFilter,
+        'is_active',
+        'is_new',
+        'is_featured',
+        'category',
+        'brand',
+        'gender',
+        'currency',
+        'created_at',
+    )
     list_select_related = ('category', 'category__parent', 'category__parent__parent', 'category__parent__parent__parent')
     search_fields = ('name', 'slug', 'description')
     ordering = ('-created_at',)
