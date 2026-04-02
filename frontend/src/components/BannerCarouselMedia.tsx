@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
-import Image from 'next/image'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
@@ -321,34 +320,32 @@ export default function BannerCarouselMedia({ position, className = '', firstBan
         {(media.content_type === 'image' || media.content_type === 'gif') && (() => {
           const isPicsum = !fullUrl || fallbackToPicsumIds[media.id]
           return (
-            <div className={isPicsum ? styles.itemPicsumPlaceholder : styles.itemImage} style={{ position: 'relative', width: '100%', height: '100%' }}>
-              <Image
-                src={
-                  fullUrl ||
-                  getPlaceholderImageUrl({
-                    type: 'banner',
-                    seed: `${position}-${media.id}-${Math.random().toString(16).slice(2, 6)}`,
-                    width: 1200,
-                    height: 400,
-                  })
-                }
-                alt={title || banner?.title || 'Banner'}
-                priority={isActive}
-                fill
-                sizes="(max-width: 768px) 100vw, 1200px"
-                className="object-cover"
-                onError={(e) => {
-                  setFallbackToPicsumIds((prev) => ({ ...prev, [media.id]: true }))
-                  e.currentTarget.srcset = ''
-                  e.currentTarget.src = getPlaceholderImageUrl({
-                    type: 'banner',
-                    seed: `${position}-${media.id}-fallback-${Math.random().toString(16).slice(2, 6)}`,
-                    width: 1200,
-                    height: 400,
-                  })
-                }}
-              />
-            </div>
+            <img
+              src={
+                fullUrl ||
+                getPlaceholderImageUrl({
+                  type: 'banner',
+                  seed: `${position}-${media.id}-${Math.random().toString(16).slice(2, 6)}`,
+                  width: 1200,
+                  height: 400,
+                })
+              }
+              alt={title || banner?.title || 'Banner'}
+              className={isPicsum ? styles.itemPicsumPlaceholder : styles.itemImage}
+              fetchPriority={isActive ? "high" : "auto"}
+              loading={isActive ? "eager" : "lazy"}
+              decoding="async"
+              sizes="(max-width: 768px) 100vw, 1200px"
+              onError={(e) => {
+                setFallbackToPicsumIds((prev) => ({ ...prev, [media.id]: true }))
+                e.currentTarget.src = getPlaceholderImageUrl({
+                  type: 'banner',
+                  seed: `${position}-${media.id}-fallback-${Math.random().toString(16).slice(2, 6)}`,
+                  width: 1200,
+                  height: 400,
+                })
+              }}
+            />
           )
         })()}
         {/* Видео контент */}
@@ -375,28 +372,24 @@ export default function BannerCarouselMedia({ position, className = '', firstBan
         )}
         {media.content_type === 'video' && !fullUrl && (
           // Нет валидного URL — показываем placeholder (только picsum)
-          <div className={styles.itemPicsumPlaceholder} style={{ position: 'relative', width: '100%', height: '100%' }}>
-            <Image
-              src={getPlaceholderImageUrl({
+          <img
+            src={getPlaceholderImageUrl({
+              type: 'banner',
+              seed: `${position}-video-${media.id}-${Math.random().toString(16).slice(2, 6)}`,
+              width: 1200,
+              height: 400,
+            })}
+            alt={title || banner?.title || 'Banner'}
+            className={styles.itemPicsumPlaceholder}
+            onError={(e) => {
+              e.currentTarget.src = getPlaceholderImageUrl({
                 type: 'banner',
-                seed: `${position}-video-${media.id}-${Math.random().toString(16).slice(2, 6)}`,
+                seed: `${position}-video-${media.id}-fallback-${Math.random().toString(16).slice(2, 6)}`,
                 width: 1200,
                 height: 400,
-              })}
-              alt={title || banner?.title || 'Banner'}
-              fill
-              className="object-cover"
-              onError={(e) => {
-                e.currentTarget.srcset = ''
-                e.currentTarget.src = getPlaceholderImageUrl({
-                  type: 'banner',
-                  seed: `${position}-video-${media.id}-fallback-${Math.random().toString(16).slice(2, 6)}`,
-                  width: 1200,
-                  height: 400,
-                })
-              }}
-            />
-          </div>
+              })
+            }}
+          />
         )}
 
         {/* Контент с текстом - показываем только на большой картинке и только если у медиа есть свои данные */}
