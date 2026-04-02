@@ -385,7 +385,7 @@ class Command(BaseCommand):
             qs = qs[:limit]
 
         self.stdout.write(f"  📦  ServiceImage: {qs.count()} записей")
-        _process_image_qs(qs, "image_url", "image_file", r2_public, dry_run, force, "ServiceImage#{pk}", self.stdout, stats)
+        _process_image_qs(qs, "image_url", "image_file", r2_public, dry_run, force, False, "ServiceImage#{pk}", self.stdout, stats)
 
     def _process_categories(self, r2_public, dry_run, force, limit, stats):
         """
