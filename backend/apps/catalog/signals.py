@@ -499,14 +499,100 @@ def delete_book_variant_image_files(sender, instance, **kwargs):
 # --- Banner ---
 
 
+@receiver(pre_save, sender=BannerMedia)
+def auto_download_banner_media_from_url(sender, instance, **kwargs):
+    """
+    Авто-скачивание медиа баннеров из внешних URL (Pinterest, и др.) → R2.
+
+    Логика для каждого типа (image / video / gif):
+      1. Если URL изменился — удаляем старый файл из R2.
+      2. Если URL внешний, а файл ещё не загружен — скачиваем и помещаем в R2.
+
+    Поля:
+      image_url  → image      (ImageField,  upload_to=get_banner_image_upload_path)
+      video_url  → video_file (FileField,   upload_to=get_banner_video_upload_path)
+      gif_url    → gif_file   (FileField,   upload_to=get_banner_gif_upload_path)
+    """
+    # Получаем старое состояние из БД (только для существующих записей)
+    old = None
+    if instance.pk:
+        try:
+            old = BannerMedia.objects.only(
+                "image_url", "image",
+                "video_url", "video_file",
+                "gif_url", "gif_file",
+            ).get(pk=instance.pk)
+        except BannerMedia.DoesNotExist:
+            pass
+
+    # ── image ──────────────────────────────────────────────────────────────
+    if old and old.image and old.image.name:
+        url_changed = (instance.image_url != old.image_url)
+        file_cleared = not (instance.image and instance.image.name)
+        if url_changed and file_cleared:
+            delete_file_from_storage(old.image)
+            logger.info("Deleted old BannerMedia.image from R2 (pk=%s)", instance.pk)
+
+    if instance.image_url and not (instance.image and instance.image.name):
+        if not is_internal_storage_url(instance.image_url):
+            file_obj = _download_url_to_file(instance.image_url)
+            if file_obj:
+                _save_downloaded_file_to_storage(instance, "image", file_obj)
+                logger.info(
+                    "Auto-downloaded BannerMedia.image_url → image for banner %s (pk=%s)",
+                    instance.banner_id, instance.pk or "new",
+                )
+
+    # ── video ──────────────────────────────────────────────────────────────
+    if old and old.video_file and old.video_file.name:
+        v_url_changed = (instance.video_url != old.video_url)
+        v_file_cleared = not (instance.video_file and instance.video_file.name)
+        if v_url_changed and v_file_cleared:
+            delete_file_from_storage(old.video_file)
+            logger.info("Deleted old BannerMedia.video_file from R2 (pk=%s)", instance.pk)
+
+    if instance.video_url and not (instance.video_file and instance.video_file.name):
+        if not is_internal_storage_url(instance.video_url):
+            file_obj = _download_url_to_file(instance.video_url)
+            if file_obj:
+                _save_downloaded_file_to_storage(instance, "video_file", file_obj)
+                logger.info(
+                    "Auto-downloaded BannerMedia.video_url → video_file for banner %s (pk=%s)",
+                    instance.banner_id, instance.pk or "new",
+                )
+
+    # ── gif ────────────────────────────────────────────────────────────────
+    if old and old.gif_file and old.gif_file.name:
+        g_url_changed = (instance.gif_url != old.gif_url)
+        g_file_cleared = not (instance.gif_file and instance.gif_file.name)
+        if g_url_changed and g_file_cleared:
+            delete_file_from_storage(old.gif_file)
+            logger.info("Deleted old BannerMedia.gif_file from R2 (pk=%s)", instance.pk)
+
+    if instance.gif_url and not (instance.gif_file and instance.gif_file.name):
+        if not is_internal_storage_url(instance.gif_url):
+            file_obj = _download_url_to_file(instance.gif_url)
+            if file_obj:
+                _save_downloaded_file_to_storage(instance, "gif_file", file_obj)
+                logger.info(
+                    "Auto-downloaded BannerMedia.gif_url → gif_file for banner %s (pk=%s)",
+                    instance.banner_id, instance.pk or "new",
+                )
+
+
 @receiver(post_delete, sender=BannerMedia)
 def delete_banner_media_files(sender, instance, **kwargs):
-    if instance.image:
-        delete_file_from_storage(instance.image)
-    if instance.video_file:
-        delete_file_from_storage(instance.video_file)
-    if instance.gif_file:
-        delete_file_from_storage(instance.gif_file)
+    """Очищаем все файлы баннера из R2 при удалении записи."""
+    delete_file_from_storage(instance.image)
+    delete_file_from_storage(instance.video_file)
+    delete_file_from_storage(instance.gif_file)
+    # На случай если файл удалён, но URL остался — удаляем и по URL (если он внутренний)
+    if not instance.image:
+        delete_url_from_storage(instance.image_url)
+    if not instance.video_file:
+        delete_url_from_storage(instance.video_url)
+    if not instance.gif_file:
+        delete_url_from_storage(instance.gif_url)
 
 
 # --- Auto-download signals ---
