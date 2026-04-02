@@ -34,6 +34,14 @@ from .models import (
     ShoeProductImage,
     ShoeVariant,
     ShoeVariantImage,
+    # Доменные модели изображений без покрытия
+    TablewareProductImage,
+    AccessoryProductImage,
+    IncenseProductImage,
+    SportsProductImage,
+    AutoPartProductImage,
+    HeadwearProductImage,
+    UnderwearProductImage,
 )
 
 logger = logging.getLogger(__name__)
@@ -491,9 +499,150 @@ def delete_jewelry_variant_image_files(sender, instance, **kwargs):
 # --- Books ---
 
 
+@receiver(post_delete, sender=BookProductImage)
+def delete_book_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+@receiver(pre_save, sender=BookProductImage)
+def auto_download_book_product_image(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(
+        instance, url_attr="image_url", file_attr="image_file",
+        log_label="Auto-downloaded BookProductImage",
+    )
+
+
 @receiver(post_delete, sender=BookVariantImage)
 def delete_book_variant_image_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.image_file)
+
+
+@receiver(pre_save, sender=BookVariantImage)
+def auto_download_book_variant_image(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(
+        instance, url_attr="image_url", file_attr="image_file",
+        log_label="Auto-downloaded BookVariantImage",
+    )
+
+
+# --- Tableware ---
+
+
+@receiver(pre_save, sender=TablewareProductImage)
+def auto_download_tableware_product_image(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(
+        instance, url_attr="image_url", file_attr="image_file",
+        log_label="Auto-downloaded TablewareProductImage",
+    )
+
+
+@receiver(post_delete, sender=TablewareProductImage)
+def delete_tableware_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+# --- Accessories ---
+
+
+@receiver(pre_save, sender=AccessoryProductImage)
+def auto_download_accessory_product_image(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(
+        instance, url_attr="image_url", file_attr="image_file",
+        log_label="Auto-downloaded AccessoryProductImage",
+    )
+
+
+@receiver(post_delete, sender=AccessoryProductImage)
+def delete_accessory_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+# --- Incense ---
+
+
+@receiver(pre_save, sender=IncenseProductImage)
+def auto_download_incense_product_image(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(
+        instance, url_attr="image_url", file_attr="image_file",
+        log_label="Auto-downloaded IncenseProductImage",
+    )
+
+
+@receiver(post_delete, sender=IncenseProductImage)
+def delete_incense_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+# --- Sports ---
+
+
+@receiver(pre_save, sender=SportsProductImage)
+def auto_download_sports_product_image(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(
+        instance, url_attr="image_url", file_attr="image_file",
+        log_label="Auto-downloaded SportsProductImage",
+    )
+
+
+@receiver(post_delete, sender=SportsProductImage)
+def delete_sports_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+# --- Auto Parts ---
+
+
+@receiver(pre_save, sender=AutoPartProductImage)
+def auto_download_autopart_product_image(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(
+        instance, url_attr="image_url", file_attr="image_file",
+        log_label="Auto-downloaded AutoPartProductImage",
+    )
+
+
+@receiver(post_delete, sender=AutoPartProductImage)
+def delete_autopart_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+# --- Headwear ---
+
+
+@receiver(pre_save, sender=HeadwearProductImage)
+def auto_download_headwear_product_image(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(
+        instance, url_attr="image_url", file_attr="image_file",
+        log_label="Auto-downloaded HeadwearProductImage",
+    )
+
+
+@receiver(post_delete, sender=HeadwearProductImage)
+def delete_headwear_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+# --- Underwear ---
+
+
+@receiver(pre_save, sender=UnderwearProductImage)
+def auto_download_underwear_product_image(sender, instance, **kwargs):
+    _auto_download_image_url_to_file(
+        instance, url_attr="image_url", file_attr="image_file",
+        log_label="Auto-downloaded UnderwearProductImage",
+    )
+
+
+@receiver(post_delete, sender=UnderwearProductImage)
+def delete_underwear_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
 
 
 # --- Banner ---
