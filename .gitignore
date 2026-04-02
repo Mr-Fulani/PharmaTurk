@@ -49,8 +49,9 @@ docker-compose.override.yml
 .coverage
 htmlcov/
 
-# Poetry
+# Poetry: lock бэкенда нужен в репозитории (Dockerfile, воспроизводимые сборки)
 poetry.lock
+!backend/poetry.lock
 
 # Node / Frontend (future)
 node_modules/
