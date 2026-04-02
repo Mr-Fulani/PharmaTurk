@@ -33,7 +33,15 @@ const nextConfig = {
       },
       {
         protocol: 'https',
+        hostname: 'static.street-beat.ru',
+      },
+      {
+        protocol: 'https',
         hostname: 'img.youtube.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn.mudaroba.com',
       }
     ],
   },

@@ -1,5 +1,6 @@
 import Head from 'next/head'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import dynamic from 'next/dynamic'
@@ -95,14 +96,13 @@ const LazyYouTube = ({ youtubeId, youtubeThumb, title, alt }: { youtubeId: strin
       onClick={() => setLoadIframe(true)}
     >
       {youtubeThumb && (
-        <img
+        <Image
           src={youtubeThumb}
           alt={alt || title || 'Video thumbnail'}
           loading="lazy"
-          decoding="async"
-          width={480}
-          height={360}
-          className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${loadIframe ? 'opacity-0' : 'opacity-100'}`}
+          fill
+          unoptimized={false}
+          className={`pointer-events-none absolute inset-0 object-cover transition-opacity duration-700 ${loadIframe ? 'opacity-0' : 'opacity-100'}`}
         />
       )}
       {loadIframe && (
@@ -227,17 +227,15 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
     }
 
     return (
-      <img
+      <Image
         src={src}
         alt={alt || ''}
-        loading="lazy"
-        decoding="async"
-        width={400}
-        height={300}
-        sizes="(max-width: 640px) 96px, (max-width: 1024px) 33vw, 400px"
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        fill
+        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 400px"
+        className="pointer-events-none object-cover"
         onError={(e) => {
-          if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
+          if (fallbackSrc) {
+            e.currentTarget.srcset = ''
             e.currentTarget.src = fallbackSrc
           }
         }}
@@ -312,16 +310,16 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
               После гидрации JS карусель подменяет статику через CSS-hidden.
             */}
             {firstBannerImageUrl && (
-              <img
-                src={firstBannerImageUrl}
-                alt={firstBannerTitle || 'Banner'}
-                fetchPriority="high"
-                loading="eager"
-                decoding="async"
-                className="block md:hidden w-full rounded-[18px] object-cover"
-                style={{ aspectRatio: '4/3', maxHeight: '420px' }}
-                id="mobile-banner-static"
-              />
+              <div id="mobile-banner-static" className="block md:hidden w-full relative rounded-[18px] overflow-hidden" style={{ aspectRatio: '4/3', maxHeight: '420px' }}>
+                <Image
+                  src={firstBannerImageUrl}
+                  alt={firstBannerTitle || 'Banner'}
+                  priority
+                  fill
+                  sizes="(max-width: 768px) 100vw, 1200px"
+                  className="object-cover"
+                />
+              </div>
             )}
             {/* Карусель: скрыта на мобайл до гидрации, на десктопе — всегда видна */}
             <BannerCarousel
@@ -354,13 +352,15 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
                     <div className="absolute inset-0 hidden items-center justify-center p-2 z-10">
                       <div className="text-center text-white drop-shadow w-full">
                         {brand.logo ? (
-                          <div className="flex justify-center items-center w-full px-1">
-                            <img
+                          <div className="flex justify-center items-center w-full px-1 relative h-[36px]">
+                            <Image
                               src={resolveMediaUrl(brand.logo)}
                               alt={brand.name}
-                              className="pointer-events-none max-h-[36px] w-full object-contain filter brightness-0 invert"
+                              fill
+                              sizes="(max-width: 640px) 96px, 120px"
+                              className="pointer-events-none object-contain filter brightness-0 invert"
                               onError={(e) => {
-                                e.currentTarget.style.display = 'none'
+                                e.currentTarget.parentElement!.style.display = 'none'
                               }}
                             />
                           </div>
