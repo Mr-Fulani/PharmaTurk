@@ -20,8 +20,17 @@ def robots_txt(request):
     base_url = request.build_absolute_uri("/").rstrip("/")
     lines = [
         "User-agent: *",
-        "Disallow:",
+        "Allow: /",
+        "",
+        "Disallow: /api/",
+        "Disallow: /profile/",
+        "Disallow: /cart/",
+        "Disallow: /checkout/",
+        "Disallow: /auth/",
+        "Disallow: /_next/",
+        "",
         f"Sitemap: {base_url}/sitemap.xml",
+        "# last updated 2026-04-02 17:12 backend",
     ]
     response = HttpResponse("\n".join(lines), content_type="text/plain; charset=utf-8")
     return _cache_header(response)
