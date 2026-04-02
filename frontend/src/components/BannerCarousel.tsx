@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
+import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
 import { resolveMediaUrl, getVideoEmbedUrl } from '../lib/media'
@@ -27,15 +28,17 @@ interface Banner {
 interface BannerCarouselProps {
   position: 'main' | 'after_brands' | 'after_popular_products' | 'before_footer'
   className?: string
+  initialBanners?: Banner[]
 }
 
-export default function BannerCarousel({ position, className = '' }: BannerCarouselProps) {
+export default function BannerCarousel({ position, className = '', initialBanners = [] }: BannerCarouselProps) {
   const router = useRouter()
-  const [banners, setBanners] = useState<Banner[]>([])
-  const [displayBanners, setDisplayBanners] = useState<Banner[]>([])
+  const { t } = useTranslation('common')
+  const [banners, setBanners] = useState<Banner[]>(initialBanners)
+  const [displayBanners, setDisplayBanners] = useState<Banner[]>(initialBanners.slice(0, Math.min(6, initialBanners.length)))
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0)
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(initialBanners.length === 0)
   const slideRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -368,7 +371,9 @@ export default function BannerCarousel({ position, className = '' }: BannerCarou
                 }
               }}
             >
-              {banner.link_text}
+              {banner.link_text && banner.link_text.trim().toLowerCase() === 'learn more' 
+                ? t('view_product_details', 'Узнать подробнее о товаре') 
+                : (banner.link_text || t('view_details', 'Подробнее'))}
             </button>
           )}
         </div>

@@ -56,6 +56,8 @@ interface HomePageProps {
   categories: CategoryCard[]
   firstBannerImageUrl?: string | null
   firstBannerTitle?: string | null
+  mainBanners: any[]
+  footerSettings: any
 }
 
 const LazyYouTube = ({ youtubeId, youtubeThumb, title, alt }: { youtubeId: string, youtubeThumb: string | null, title?: string, alt?: string }) => {
@@ -127,7 +129,7 @@ const LazyYouTube = ({ youtubeId, youtubeThumb, title, alt }: { youtubeId: strin
 // @ts-ignore: нет типов для @egjs/react-grid
 import Masonry from 'react-masonry-css'
 
-export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle }: HomePageProps) {
+export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
   const tileHeights = [280, 320, 360]
@@ -323,10 +325,10 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
                 id="mobile-banner-static"
               />
             )}
-            {/* Карусель: скрыта на мобайл до гидрации, на десктопе — всегда видна */}
+            {/* Карусель: теперь с поддержкой SSR для мгновенного LCP */}
             <BannerCarousel
               position="main"
-              firstBannerImageUrl={firstBannerImageUrl}
+              initialBanners={mainBanners}
             />
           </div>
 
@@ -535,13 +537,14 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     let firstBannerImageUrl: string | null = null
     let firstBannerTitle: string | null = null
+    let mainBanners: any[] = []
     try {
       const bannersRes = await axios.get(getInternalApiUrl('catalog/banners'), {
         params: { position: 'main' },
         timeout: 3000,
       })
-      const bannersData: any[] = Array.isArray(bannersRes.data) ? bannersRes.data : []
-      const firstBanner = bannersData.find((b) => b.media_files && b.media_files.length > 0)
+      mainBanners = Array.isArray(bannersRes.data) ? bannersRes.data : []
+      const firstBanner = mainBanners.find((b) => b.media_files && b.media_files.length > 0)
       const firstMedia = firstBanner?.media_files[0]
       if (firstMedia && (firstMedia.content_type === 'image' || firstMedia.content_type === 'gif') && firstMedia.content_url) {
         firstBannerImageUrl = firstMedia.content_url
@@ -649,6 +652,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         categories: uniqueCategories,
         firstBannerImageUrl,
         firstBannerTitle,
+        mainBanners,
         footerSettings,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
@@ -662,6 +666,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         brands: [],
         categories: [],
         firstBannerImageUrl: null,
+        mainBanners: [],
         footerSettings,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
