@@ -35,6 +35,8 @@ class MyDocument extends Document<MyDocumentProps> {
           <meta charSet="utf-8" />
 
           {/* Preconnect для критических ресурсов */}
+          <link rel="preconnect" href="https://cdn.mudaroba.com" crossOrigin="anonymous" />
+          <link rel="dns-prefetch" href="https://cdn.mudaroba.com" />
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
           <link rel="preconnect" href="https://img.youtube.com" />
