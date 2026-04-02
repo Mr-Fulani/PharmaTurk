@@ -349,6 +349,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
             src={embedUrl}
             className={styles.itemIframe}
             allow="autoplay; encrypted-media"
+            loading={isActive ? 'eager' : 'lazy'}
             allowFullScreen
           />
         )}
@@ -429,10 +430,12 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
 
   if (loading) {
     return (
-      <div className={`flex items-center justify-center h-64 md:h-96 lg:h-[500px] bg-gray-100 rounded-xl ${className}`}>
-        <svg className="h-8 w-8 animate-spin text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
+      <div
+        className={`relative overflow-hidden rounded-[18px] ${className}`}
+        style={{ height: 'clamp(280px, 55vw, 600px)', background: 'linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%)', backgroundSize: '200% 100%', animation: 'bannerSkeleton 1.5s infinite' }}
+        aria-hidden="true"
+      >
+        <style>{`@keyframes bannerSkeleton { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }`}</style>
       </div>
     )
   }

@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
+import dynamic from 'next/dynamic'
 import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../lib/media'
 import { getSiteOrigin } from '../lib/urls'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
@@ -8,10 +9,12 @@ import { useTranslation } from 'next-i18next'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import BannerCarousel from '../components/BannerCarouselMedia'
-import PopularProductsCarousel from '../components/PopularProductsCarousel'
-import PersonalizedRecommendations from '../components/PersonalizedRecommendations'
-import TestimonialsCarousel from '../components/TestimonialsCarousel'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription, getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../lib/i18n'
+
+// Dynamic imports для компонентов ниже fold — уменьшают initial JS bundle
+const PopularProductsCarousel = dynamic(() => import('../components/PopularProductsCarousel'), { ssr: false })
+const PersonalizedRecommendations = dynamic(() => import('../components/PersonalizedRecommendations'), { ssr: false })
+const TestimonialsCarousel = dynamic(() => import('../components/TestimonialsCarousel'), { ssr: false })
 
 interface Brand {
   id: number
@@ -50,12 +53,13 @@ interface CategoryCard {
 interface HomePageProps {
   brands: Brand[]
   categories: CategoryCard[]
+  firstBannerImageUrl?: string | null
 }
 
 // @ts-ignore: нет типов для @egjs/react-grid
 import Masonry from 'react-masonry-css'
 
-export default function Home({ brands, categories }: HomePageProps) {
+export default function Home({ brands, categories, firstBannerImageUrl }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
   const tileHeights = [280, 320, 360]
@@ -210,6 +214,7 @@ export default function Home({ brands, categories }: HomePageProps) {
         decoding="async"
         width={400}
         height={300}
+        sizes="(max-width: 640px) 96px, (max-width: 1024px) 33vw, 400px"
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
         onError={(e) => {
           if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
@@ -254,6 +259,16 @@ export default function Home({ brands, categories }: HomePageProps) {
   return (
     <>
       <Head>
+        {/* Preload первого баннера для ускорения LCP — браузер начнёт скачивать до гидрации JS */}
+        {firstBannerImageUrl && (
+          <link
+            rel="preload"
+            as="image"
+            href={firstBannerImageUrl}
+            // @ts-ignore
+            fetchpriority="high"
+          />
+        )}
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
         <link rel="canonical" href={canonicalUrl} />
@@ -477,6 +492,23 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const { getInternalApiUrl } = await import('../lib/urls')
     const { fetchFooterSettings } = await import('../lib/footerSettings')
 
+    // Загружаем URL первой картинки главного баннера для <link rel="preload"> — ускоряет LCP
+    let firstBannerImageUrl: string | null = null
+    try {
+      const bannersRes = await axios.get(getInternalApiUrl('catalog/banners'), {
+        params: { position: 'main' },
+        timeout: 3000,
+      })
+      const bannersData: any[] = Array.isArray(bannersRes.data) ? bannersRes.data : []
+      const firstBanner = bannersData.find((b) => b.media_files && b.media_files.length > 0)
+      const firstMedia = firstBanner?.media_files[0]
+      if (firstMedia && (firstMedia.content_type === 'image' || firstMedia.content_type === 'gif') && firstMedia.content_url) {
+        firstBannerImageUrl = firstMedia.content_url
+      }
+    } catch {
+      // Не блокируем рендер страницы — preload необязателен
+    }
+
     // Загружаем все бренды из API с пагинацией
     let allBrands: Brand[] = []
     let nextUrl: string | null = getInternalApiUrl('catalog/brands')
@@ -573,6 +605,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       props: {
         brands,
         categories: uniqueCategories,
+        firstBannerImageUrl,
         footerSettings,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
@@ -585,6 +618,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       props: {
         brands: [],
         categories: [],
+        firstBannerImageUrl: null,
         footerSettings,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },

@@ -34,12 +34,24 @@ class MyDocument extends Document<MyDocumentProps> {
         <Head>
           <meta charSet="utf-8" />
 
-          {/* Preconnect для ресурсов */}
+          {/* Preconnect для критических ресурсов */}
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-          <link rel="preconnect" href="https://i.pinimg.com" />
           <link rel="preconnect" href="https://img.youtube.com" />
-          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&display=swap" />
+          {/* DNS prefetch для некритических ресурсов */}
+          <link rel="dns-prefetch" href="https://i.pinimg.com" />
+          <link rel="dns-prefetch" href="https://www.youtube-nocookie.com" />
+          {/* Monoton шрифт: загрузка без блокировки рендера */}
+          <link
+            rel="preload"
+            as="style"
+            href="https://fonts.googleapis.com/css2?family=Monoton&display=swap"
+            // @ts-ignore
+            onLoad="this.onload=null;this.rel='stylesheet'"
+          />
+          <noscript>
+            <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&display=swap" />
+          </noscript>
 
           {/* Базовые мета-теги */}
           <meta name="theme-color" content="#4c1d95" />

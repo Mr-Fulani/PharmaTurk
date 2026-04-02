@@ -401,47 +401,76 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     mutator(playerReadyMapRef.current)
   }
 
-  // Загрузка YouTube IFrame API
+  // Загрузка YouTube IFrame API — только когда секция видна во viewport (lazy)
   useEffect(() => {
-    // Проверяем, не загружен ли уже скрипт
-    if (window.YT && window.YT.Player) {
-      setYoutubeApiReady(true)
+    let checkReady: NodeJS.Timeout | null = null
+
+    const loadYouTubeApi = () => {
+      // Проверяем, не загружен ли уже скрипт
+      if (window.YT && window.YT.Player) {
+        setYoutubeApiReady(true)
+        return
+      }
+
+      // Проверяем, не загружается ли уже скрипт
+      if (document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        checkReady = setInterval(() => {
+          if (window.YT && window.YT.Player) {
+            setYoutubeApiReady(true)
+            if (checkReady) clearInterval(checkReady)
+          }
+        }, 100)
+        return
+      }
+
+      // Загружаем скрипт
+      const tag = document.createElement('script')
+      tag.src = 'https://www.youtube.com/iframe_api'
+      const firstScriptTag = document.getElementsByTagName('script')[0]
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag)
+
+      // Обработчик готовности API
+      ;(window as any).onYouTubeIframeAPIReady = () => {
+        setYoutubeApiReady(true)
+      }
+
+      // Периодическая проверка на случай если callback уже вызван
+      checkReady = setInterval(() => {
+        if (window.YT && window.YT.Player) {
+          setYoutubeApiReady(true)
+          if (checkReady) clearInterval(checkReady)
+        }
+      }, 100)
+    }
+
+    // Используем IntersectionObserver — загружаем API только когда секция видна
+    if (typeof IntersectionObserver === 'undefined') {
+      // Fallback для старых браузеров
+      loadYouTubeApi()
       return
     }
 
-    // Проверяем, не загружается ли уже скрипт
-    if (document.querySelector('script[src*="youtube.com/iframe_api"]')) {
-      // Ждем, пока API загрузится
-      const checkReady = setInterval(() => {
-        if (window.YT && window.YT.Player) {
-          setYoutubeApiReady(true)
-          clearInterval(checkReady)
-        }
-      }, 100)
-      return () => clearInterval(checkReady)
+    const sectionRef = scrollContainerRef.current?.closest('section') || scrollContainerRef.current?.parentElement
+    if (!sectionRef) {
+      loadYouTubeApi()
+      return
     }
 
-    // Загружаем скрипт
-    const tag = document.createElement('script')
-    tag.src = 'https://www.youtube.com/iframe_api'
-    const firstScriptTag = document.getElementsByTagName('script')[0]
-    firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag)
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadYouTubeApi()
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '200px' } // Начинаем загрузку за 200px до появления секции
+    )
 
-      // Обработчик готовности API
-      ; (window as any).onYouTubeIframeAPIReady = () => {
-        setYoutubeApiReady(true)
-      }
-
-    // Проверяем, не загрузился ли API уже
-    const checkReady = setInterval(() => {
-      if (window.YT && window.YT.Player) {
-        setYoutubeApiReady(true)
-        clearInterval(checkReady)
-      }
-    }, 100)
+    observer.observe(sectionRef)
 
     return () => {
-      clearInterval(checkReady)
+      observer.disconnect()
+      if (checkReady) clearInterval(checkReady)
     }
   }, [])
 
