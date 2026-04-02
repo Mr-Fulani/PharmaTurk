@@ -266,9 +266,28 @@ def auto_download_service_image_gallery(sender, instance, **kwargs):
 def delete_old_category_card_media(sender, instance, **kwargs):
     """Удаляет старый файл card_media из облака при замене на новый или при переключении на external_url."""
     if not instance.pk:
+        # Новая запись: пробуем сразу скачать external_url → card_media
+        if instance.card_media_external_url and not (instance.card_media and instance.card_media.name):
+            if not is_internal_storage_url(instance.card_media_external_url):
+                file_obj = _download_url_to_file(instance.card_media_external_url)
+                if file_obj:
+                    _save_downloaded_file_to_storage(instance, "card_media", file_obj)
+                    instance.card_media_external_url = ""  # переключаемся на локальный файл
+                    logger.info("Auto-downloaded new Category.card_media from %s", instance.card_media_external_url)
         return
     try:
         old = Category.objects.get(pk=instance.pk)
+
+        # Авто-скачивание: если external_url заполнен и файла нет — скачиваем
+        if instance.card_media_external_url and not (instance.card_media and instance.card_media.name):
+            if not is_internal_storage_url(instance.card_media_external_url):
+                file_obj = _download_url_to_file(instance.card_media_external_url)
+                if file_obj:
+                    _save_downloaded_file_to_storage(instance, "card_media", file_obj)
+                    instance.card_media_external_url = ""  # переключаемся на локальный файл
+                    logger.info("Auto-downloaded Category.card_media (pk=%s)", instance.pk)
+
+        # Удаление старого файла при замене
         if not old.card_media or not old.card_media.name:
             return
         old_path = old.card_media.name
@@ -293,9 +312,28 @@ def delete_old_category_card_media(sender, instance, **kwargs):
 def _delete_old_brand_card_media_impl(instance):
     """Удаляет старый файл card_media из облака при замене на новый или при переключении на external_url."""
     if not instance.pk:
+        # Новая запись: пробуем сразу скачать external_url → card_media
+        if instance.card_media_external_url and not (instance.card_media and instance.card_media.name):
+            if not is_internal_storage_url(instance.card_media_external_url):
+                file_obj = _download_url_to_file(instance.card_media_external_url)
+                if file_obj:
+                    _save_downloaded_file_to_storage(instance, "card_media", file_obj)
+                    instance.card_media_external_url = ""
+                    logger.info("Auto-downloaded new Brand.card_media")
         return
     try:
         old = Brand.objects.get(pk=instance.pk)
+
+        # Авто-скачивание: если external_url заполнен и файла нет — скачиваем
+        if instance.card_media_external_url and not (instance.card_media and instance.card_media.name):
+            if not is_internal_storage_url(instance.card_media_external_url):
+                file_obj = _download_url_to_file(instance.card_media_external_url)
+                if file_obj:
+                    _save_downloaded_file_to_storage(instance, "card_media", file_obj)
+                    instance.card_media_external_url = ""  # переключаемся на локальный файл
+                    logger.info("Auto-downloaded Brand.card_media (pk=%s)", instance.pk)
+
+        # Удаление старого файла при замене
         if not old.card_media or not old.card_media.name:
             return
         old_path = old.card_media.name
