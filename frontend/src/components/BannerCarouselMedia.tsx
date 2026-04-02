@@ -30,17 +30,22 @@ interface Banner {
 interface BannerCarouselProps {
   position: 'main' | 'after_brands' | 'after_popular_products' | 'before_footer'
   className?: string
+  firstBannerImageUrl?: string | null
 }
 
-export default function BannerCarouselMedia({ position, className = '' }: BannerCarouselProps) {
+export default function BannerCarouselMedia({ position, className = '', firstBannerImageUrl }: BannerCarouselProps) {
   const router = useRouter()
   const [banner, setBanner] = useState<Banner | null>(null)
   const [displayMedia, setDisplayMedia] = useState<BannerMedia[]>([])
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isHydrated, setIsHydrated] = useState(false)
   const [fallbackToPicsumIds, setFallbackToPicsumIds] = useState<Record<number, boolean>>({})
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
+
+  // Помечаем что гидрация прошла — после этого CSS-классы подменяют статичный баннер каруселью
+  useEffect(() => { setIsHydrated(true) }, [])
 
   // Важно: порядок медиа на фронте должен совпадать с порядком в админке.
   // Поэтому НИЧЕГО не крутим и не переставляем — просто показываем media_files
@@ -447,8 +452,12 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
 
   const hasMultipleMedia = displayMedia.length > 1
 
+  // На мобайл: скрываем карусель до гидрации если есть SSR-фолбек
+  // (в это время показывается статичный img из index.tsx)
+  const mobileCarouselHidden = firstBannerImageUrl && !isHydrated
+
   return (
-    <div className={`${styles.container} ${className}`}>
+    <div className={`${styles.container} ${className}${mobileCarouselHidden ? ' hidden md:block' : ''}`}>
       <div className={styles.slide}>
         {displayMedia.map((media, index) => renderMediaItem(media, index))}
       </div>

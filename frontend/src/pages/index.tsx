@@ -54,12 +54,13 @@ interface HomePageProps {
   brands: Brand[]
   categories: CategoryCard[]
   firstBannerImageUrl?: string | null
+  firstBannerTitle?: string | null
 }
 
 // @ts-ignore: нет типов для @egjs/react-grid
 import Masonry from 'react-masonry-css'
 
-export default function Home({ brands, categories, firstBannerImageUrl }: HomePageProps) {
+export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
   const tileHeights = [280, 320, 360]
@@ -285,8 +286,29 @@ export default function Home({ brands, categories, firstBannerImageUrl }: HomePa
       <main className="bg-page text-main min-h-screen transition-colors duration-200">
         <div className="mx-auto max-w-6xl px-3 sm:px-4 md:px-6 py-4 sm:py-8">
           {/* Главный баннер */}
-          <div className="mb-12">
-            <BannerCarousel position="main" />
+          <div className="mb-12 relative">
+            {/*
+              Мобайл: статичный SSR-img виден ДО загрузки JS (устраняет render delay ~5 сек).
+              На десктопе скрыт — там показывается полная карусель с анимацией.
+              После гидрации JS карусель подменяет статику через CSS-hidden.
+            */}
+            {firstBannerImageUrl && (
+              <img
+                src={firstBannerImageUrl}
+                alt={firstBannerTitle || 'Banner'}
+                fetchPriority="high"
+                loading="eager"
+                decoding="async"
+                className="block md:hidden w-full rounded-[18px] object-cover"
+                style={{ aspectRatio: '4/3', maxHeight: '420px' }}
+                id="mobile-banner-static"
+              />
+            )}
+            {/* Карусель: скрыта на мобайл до гидрации, на десктопе — всегда видна */}
+            <BannerCarousel
+              position="main"
+              firstBannerImageUrl={firstBannerImageUrl}
+            />
           </div>
 
           {/* Brands Section — горизонтальный скролл на мобильных, сетка на десктопе */}
@@ -492,8 +514,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const { getInternalApiUrl } = await import('../lib/urls')
     const { fetchFooterSettings } = await import('../lib/footerSettings')
 
-    // Загружаем URL первой картинки главного баннера для <link rel="preload"> — ускоряет LCP
     let firstBannerImageUrl: string | null = null
+    let firstBannerTitle: string | null = null
     try {
       const bannersRes = await axios.get(getInternalApiUrl('catalog/banners'), {
         params: { position: 'main' },
@@ -504,6 +526,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       const firstMedia = firstBanner?.media_files[0]
       if (firstMedia && (firstMedia.content_type === 'image' || firstMedia.content_type === 'gif') && firstMedia.content_url) {
         firstBannerImageUrl = firstMedia.content_url
+        firstBannerTitle = firstMedia.title || firstBanner?.title || null
       }
     } catch {
       // Не блокируем рендер страницы — preload необязателен
@@ -606,6 +629,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         brands,
         categories: uniqueCategories,
         firstBannerImageUrl,
+        firstBannerTitle,
         footerSettings,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
