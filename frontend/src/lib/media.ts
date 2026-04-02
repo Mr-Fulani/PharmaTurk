@@ -166,6 +166,7 @@ export const resolveMediaUrl = (url?: string | null) => {
       if (serverMediaBase && url.startsWith(serverMediaBase)) {
         return url.replace(serverMediaBase, clientMediaBase || u.origin)
       }
+      
       return url
     } catch {
       return url

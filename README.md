@@ -213,6 +213,15 @@ docker compose exec backend poetry run python manage.py migrate
 **На продакшене (через прямой docker exec):**
 > Используйте этот способ, если `docker compose exec` выдает ошибку "service not running".
 
+
+# Сухой прогон (посмотреть что найдет)
+docker exec -it pharmaturk-backend-1 poetry run python manage.py download_banner_media --dry-run
+
+# Реальное скачивание
+docker exec -it pharmaturk-backend-1 poetry run python manage.py download_banner_media
+
+
+
 ```bash
 # Посмотреть статус всех миграций
 docker exec -it pharmaturk-backend-1 poetry run python manage.py showmigrations

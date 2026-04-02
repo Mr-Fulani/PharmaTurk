@@ -1351,22 +1351,24 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
 
             {totalPages > 1 && (
               <div className="w-full flex justify-center items-center py-4">
-                <div className="flex justify-center items-center gap-2.5 px-4 py-2">
+                <div className="flex justify-center items-center gap-1.5 px-2 py-2">
                   {Array.from({ length: totalPages }, (_, i) => i).map((pageIndex) => (
                     <button
                       key={pageIndex}
                       onClick={() => goToPage(pageIndex)}
-                      className="transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 rounded-full"
-                      style={{
-                        width: pageIndex === currentPage ? '14px' : '10px',
-                        height: pageIndex === currentPage ? '14px' : '10px',
-                        borderRadius: '50%',
-                        border: pageIndex === currentPage ? 'none' : '2px solid #9ca3af',
-                        backgroundColor: pageIndex === currentPage ? (document.documentElement.classList.contains('dark') ? '#ffffff' : '#111827') : 'transparent',
-                        cursor: 'pointer',
-                      }}
+                      className="flex items-center justify-center w-8 h-8 focus:outline-none"
                       aria-label={`Перейти на страницу ${pageIndex + 1}`}
-                    />
+                    >
+                      <div
+                        className="transition-all duration-300 rounded-full"
+                        style={{
+                          width: pageIndex === currentPage ? '14px' : '10px',
+                          height: pageIndex === currentPage ? '14px' : '10px',
+                          border: pageIndex === currentPage ? 'none' : '2px solid #9ca3af',
+                          backgroundColor: pageIndex === currentPage ? (document.documentElement?.classList.contains('dark') ? '#ffffff' : '#111827') : 'transparent',
+                        }}
+                      />
+                    </button>
                   ))}
                 </div>
               </div>

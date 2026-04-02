@@ -56,7 +56,7 @@ export default function CookieBanner() {
               'Мы используем файлы cookie для улучшения работы сайта, аналитики и персонализации. Без вашего согласия аналитические данные не собираются.'
             )}{' '}
             <Link href={privacyPath} className={styles.link} id="cookie-banner-privacy-link">
-              {t('cookie_banner_learn_more', 'Подробнее')}
+              {t('cookie_banner_learn_more', 'Узнать больше о политике конфиденциальности')}
             </Link>
           </p>
         </div>

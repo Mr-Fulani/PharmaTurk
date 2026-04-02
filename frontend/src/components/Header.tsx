@@ -288,6 +288,7 @@ export default function Header() {
               onClick={() => setShowSuggestions(false)}
               className={`relative inline-flex items-center justify-center rounded-full p-2 transition-all duration-200 ${isDark ? 'text-slate-100 hover:bg-slate-800' : 'text-main hover:bg-[var(--surface)] hover:text-gray-900'}`}
               title={t('menu_favorites', 'Избранное')}
+              aria-label={t('menu_favorites', 'Избранное')}
             >
               <svg
                 className="h-5 w-5"

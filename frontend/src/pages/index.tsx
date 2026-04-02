@@ -284,7 +284,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
           <link
             rel="preload"
             as="image"
-            href={firstBannerImageUrl}
+            href={resolveMediaUrl(firstBannerImageUrl) || firstBannerImageUrl}
             // @ts-ignore
             fetchpriority="high"
           />
@@ -313,7 +313,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
             */}
             {firstBannerImageUrl && (
               <img
-                src={firstBannerImageUrl}
+                src={resolveMediaUrl(firstBannerImageUrl) || firstBannerImageUrl}
                 alt={firstBannerTitle || 'Banner'}
                 fetchPriority="high"
                 loading="eager"
