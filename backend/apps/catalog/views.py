@@ -2884,10 +2884,61 @@ def proxy_media(request):
         return JsonResponse({'error': 'Not found'}, status=404)
 
     try:
+        from PIL import Image, ImageOps
+        import io
+        import hashlib
+        from django.core.cache import cache
+        
         ext = resolved_path.rsplit('.', 1)[-1].lower() if '.' in resolved_path else ''
         content_type = _PROXY_MEDIA_TYPES.get(f'.{ext}', 'application/octet-stream')
 
         file_obj = default_storage.open(resolved_path, 'rb')
+        
+        # ✅ WebP Оптимизация на лету: экономия ресурса и трафика
+        # Применяется только если браузер поддерживает image/webp и файл подходящего формата
+        if content_type in ('image/jpeg', 'image/png'):
+            accept_header = request.META.get('HTTP_ACCEPT', '')
+            if 'image/webp' in accept_header or request.GET.get('format') == 'webp':
+                # Ключ кэша на основе пути и даты изменения (опционально)
+                cache_key = f"r2webp_{hashlib.md5(resolved_path.encode()).hexdigest()}"
+                webp_data = cache.get(cache_key)
+                
+                if webp_data is None:
+                    # Читаем файл в память
+                    try:
+                        img = Image.open(file_obj)
+                        img = ImageOps.exif_transpose(img) # Сохраняем ориентацию
+                        
+                        # Конвертируем прозрачность/палитру в RGB для Jpeg/WebP
+                        if img.mode in ('RGBA', 'P', 'LA'):
+                            # Для PNG сохраняем прозрачность в WebP 
+                            if img.mode == 'P':
+                                img = img.convert('RGBA')
+                        else:
+                            if img.mode != 'RGB':
+                                img = img.convert('RGB')
+                        
+                        output = io.BytesIO()
+                        img.save(output, format='WEBP', quality=82, method=4)
+                        webp_data = output.getvalue()
+                        
+                        # Кэшируем до 5 МБ в Memcached/Redis на 30 дней
+                        if len(webp_data) < 5 * 1024 * 1024:
+                            cache.set(cache_key, webp_data, 30 * 86400)
+                    except Exception as img_err:
+                        # В случае ошибки конвертации падаем в фолбэк к оригиналу
+                        logger.warning(f"WebP conversion failed for {resolved_path}: {img_err}")
+                        file_obj.seek(0)
+                        webp_data = None
+                
+                if webp_data is not None:
+                    response = HttpResponse(webp_data, content_type='image/webp')
+                    response['Content-Length'] = str(len(webp_data))
+                    response['Cache-Control'] = 'public, max-age=2592000, immutable'
+                    response['Vary'] = 'Accept'
+                    return response
+
+        # Стандартная обработка (для видео, GIF, SVG или если WebP не поддерживается)
         size = file_obj.size
         
         range_header = request.META.get('HTTP_RANGE', '').strip()

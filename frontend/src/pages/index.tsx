@@ -1,5 +1,6 @@
 import Head from 'next/head'
 import Link from 'next/link'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import dynamic from 'next/dynamic'
 import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../lib/media'
@@ -55,6 +56,72 @@ interface HomePageProps {
   categories: CategoryCard[]
   firstBannerImageUrl?: string | null
   firstBannerTitle?: string | null
+}
+
+const LazyYouTube = ({ youtubeId, youtubeThumb, title, alt }: { youtubeId: string, youtubeThumb: string | null, title?: string, alt?: string }) => {
+  const [loadIframe, setLoadIframe] = useState(false)
+
+  // Загружаем iframe с задержкой, чтобы не блокировать LCP и initial JS bundle
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoadIframe(true)
+    }, 2500)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
+  const params = [
+    'autoplay=1',
+    'mute=1',
+    'loop=1',
+    `playlist=${youtubeId}`,
+    'controls=0',
+    'playsinline=1',
+    'rel=0',
+    'modestbranding=1',
+    'iv_load_policy=3',
+    'cc_load_policy=0',
+    'fs=0',
+    'disablekb=1',
+    'showinfo=0',
+    'autohide=1',
+  ].join('&')
+  const embedUrl = `${base}?${params}`
+
+  return (
+    <div 
+      className="pointer-events-none absolute inset-0 h-full w-full overflow-hidden"
+      onMouseEnter={() => setLoadIframe(true)}
+      onClick={() => setLoadIframe(true)}
+    >
+      {youtubeThumb && (
+        <img
+          src={youtubeThumb}
+          alt={alt || title || 'Video thumbnail'}
+          loading="lazy"
+          decoding="async"
+          width={480}
+          height={360}
+          className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${loadIframe ? 'opacity-0' : 'opacity-100'}`}
+        />
+      )}
+      {loadIframe && (
+        <iframe
+          src={embedUrl}
+          title={alt || title || 'YouTube'}
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+          allow="autoplay; encrypted-media; picture-in-picture"
+          loading="lazy"
+          allowFullScreen={false}
+          style={{ opacity: 0, transition: 'opacity 0.7s ease' }}
+          onLoad={(e) => {
+            const el = e.currentTarget
+            el.style.opacity = '1'
+          }}
+        />
+      )}
+    </div>
+  )
 }
 
 // @ts-ignore: нет типов для @egjs/react-grid
@@ -122,55 +189,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
     const youtubeId = extractYouTubeId(mediaUrl || '')
     if (youtubeId) {
       const youtubeThumb = getYouTubeThumbnail(mediaUrl)
-      const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
-      const params = [
-        'autoplay=1',
-        'mute=1',
-        'loop=1',
-        `playlist=${youtubeId}`,
-        'controls=0',
-        'playsinline=1',
-        'rel=0',
-        'modestbranding=1',
-        'iv_load_policy=3',
-        'cc_load_policy=0',
-        'fs=0',
-        'disablekb=1',
-        'showinfo=0',
-        'autohide=1',
-      ].join('&')
-      const embedUrl = `${base}?${params}`
-      return (
-        <div className="pointer-events-none absolute inset-0 h-full w-full overflow-hidden">
-          {youtubeThumb && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={youtubeThumb}
-              alt={alt || ''}
-              loading="lazy"
-              decoding="async"
-              width={480}
-              height={360}
-              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-            />
-          )}
-          <iframe
-            src={embedUrl}
-            title={alt || 'YouTube'}
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-            allow="autoplay; encrypted-media; picture-in-picture"
-            loading="lazy"
-            style={{ opacity: 0, transition: 'opacity 0.4s ease' }}
-            onLoad={(e) => {
-              const el = e.currentTarget
-              setTimeout(() => {
-                el.style.opacity = '1'
-              }, 3100)
-            }}
-            allowFullScreen={false}
-          />
-        </div>
-      )
+      return <LazyYouTube youtubeId={youtubeId} youtubeThumb={youtubeThumb} alt={alt} />
     }
 
     // Если YouTube не обнаружен — обычная обработка файла/изображения
