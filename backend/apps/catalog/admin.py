@@ -32,7 +32,8 @@ from .models import (
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
     Service, ServiceTranslation, ServiceImage, ServiceAttribute, 
     GlobalAttributeKey, GlobalAttributeKeyTranslation, ProductAttributeValue,
-    Banner, BannerMedia, MarketingBanner, MarketingBannerMedia,
+    Banner, BannerMedia, BannerTranslation, BannerMediaTranslation,
+    MarketingBanner, MarketingBannerMedia,
     Author, ProductAuthor,
     # Валютные модели
     CurrencyRate, MarginSettings, ProductPrice, ServicePrice, CurrencyUpdateLog,
@@ -2217,6 +2218,24 @@ class ServiceAdmin(admin.ModelAdmin):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
+class BannerTranslationInline(admin.TabularInline):
+    """Переводы заголовка, описания и текста кнопки баннера (ru/en)."""
+    model = BannerTranslation
+    extra = 0
+    fields = ('locale', 'title', 'description', 'link_text')
+    verbose_name = _("Перевод баннера")
+    verbose_name_plural = _("Переводы баннера")
+
+
+class BannerMediaTranslationInline(admin.TabularInline):
+    """Переводы текстов конкретного слайда (ru/en)."""
+    model = BannerMediaTranslation
+    extra = 0
+    fields = ('locale', 'title', 'description', 'link_text')
+    verbose_name = _("Перевод слайда")
+    verbose_name_plural = _("Переводы слайда")
+
+
 class BannerMediaInline(admin.StackedInline):
     """Inline для медиа-файлов баннера."""
     model = BannerMedia
@@ -2228,7 +2247,10 @@ class BannerMediaInline(admin.StackedInline):
         (_('GIF'), {'fields': ('gif_file', 'gif_url')}),
         (_('Текст и ссылка'), {
             'fields': ('title', 'description', 'link_text', 'link_url'),
-            'description': _('Текст и ссылка для этого медиа-элемента. Если пусто, используются данные баннера.')
+            'description': _(
+                'Fallback-тексты для всех языков. Варианты ru/en — в разделе «Маркетинг — Медиа баннеров», '
+                'в карточке этого медиа (блок переводов слайда). Если пусто — подставляются данные баннера.'
+            ),
         }),
     )
     verbose_name = _("Медиа-файл")
@@ -2242,7 +2264,7 @@ class BannerAdmin(admin.ModelAdmin):
     list_filter = ('position', 'is_active', 'created_at')
     search_fields = ('title',)
     ordering = ('sort_order', '-created_at')
-    inlines = [BannerMediaInline]
+    inlines = [BannerTranslationInline, BannerMediaInline]
 
     def get_queryset(self, request):
         """Сортировка по позиции: 1—Главный, 2—Второй, 3—Третий, 4—Четвертый. Не вызываем super(),
@@ -2266,11 +2288,18 @@ class BannerAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {
             'fields': ('title', 'description', 'position', 'is_active', 'sort_order'),
-            'description': _('Заголовок и описание баннера используются как значения по умолчанию для всех медиа-файлов, если у них не указаны свои значения.')
+            'description': _(
+                'Заголовок и описание баннера используются как fallback, если нет строки перевода для языка '
+                'или не заполнены поля слайда. Языковые варианты — в блоке «Переводы баннера» ниже. '
+                'Тексты отдельных слайдов по языкам редактируются в разделе «Маркетинг — Медиа баннеров».'
+            ),
         }),
         (_('Ссылка'), {
             'fields': ('link_url', 'link_text'),
-            'description': _('Ссылка и текст кнопки баннера используются как значения по умолчанию для всех медиа-файлов, если у них не указаны свои значения.')
+            'description': _(
+                'Ссылка общая для всех языков. Текст кнопки для ru/en настраивается в переводах баннера; '
+                'поле «Текст кнопки» здесь — запасной вариант, если перевод пуст.'
+            ),
         }),
     )
     
@@ -2295,7 +2324,8 @@ class BannerMediaAdmin(admin.ModelAdmin):
     list_filter = ('content_type', 'banner__position', 'created_at')
     search_fields = ('banner__title',)
     ordering = ('banner', 'sort_order', '-created_at')
-    
+    inlines = [BannerMediaTranslationInline]
+
     fieldsets = (
         (None, {'fields': ('banner', 'content_type', 'sort_order')}),
         (_('Изображение'), {

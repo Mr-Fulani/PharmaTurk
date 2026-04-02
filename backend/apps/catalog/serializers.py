@@ -4112,20 +4112,88 @@ class ServiceSerializer(serializers.ModelSerializer):
         return None
 
 
+def _banner_api_language(context):
+    """Язык ответа API: X-Language / Accept-Language (как у категорий)."""
+    from django.utils import translation
+
+    request = context.get("request")
+    lang = getattr(request, "LANGUAGE_CODE", None) if request else None
+    if not lang:
+        lang = translation.get_language() or "ru"
+    if isinstance(lang, str) and "-" in lang:
+        lang = lang.split("-")[0]
+    return lang if lang in ("ru", "en") else "ru"
+
+
+def _translation_row_for_locale(translations_iter, lang):
+    for t in translations_iter:
+        if t.locale == lang:
+            return t
+    return None
+
+
+def _resolve_banner_texts_for_lang(banner, lang):
+    """Тексты баннера: перевод для locale, иначе поля модели."""
+    if hasattr(banner, "_prefetched_objects_cache") and "translations" in banner._prefetched_objects_cache:
+        trans_list = banner._prefetched_objects_cache["translations"]
+    else:
+        trans_list = list(banner.translations.all())
+    tr = _translation_row_for_locale(trans_list, lang)
+
+    def pick(attr):
+        v = getattr(tr, attr, "") if tr else ""
+        if v:
+            return v
+        return getattr(banner, attr, "") or ""
+
+    return {
+        "title": pick("title"),
+        "description": pick("description"),
+        "link_text": pick("link_text"),
+    }
+
+
+def _resolve_banner_media_texts_for_lang(media, lang, banner_resolved):
+    """Тексты слайда: перевод → поля медиа → fallback с баннера."""
+    if hasattr(media, "_prefetched_objects_cache") and "translations" in media._prefetched_objects_cache:
+        trans_list = media._prefetched_objects_cache["translations"]
+    else:
+        trans_list = list(media.translations.all())
+    tr = _translation_row_for_locale(trans_list, lang)
+
+    def pick(m_attr, banner_key):
+        v = getattr(tr, m_attr, "") if tr else ""
+        if v:
+            return v
+        mv = getattr(media, m_attr, "") or ""
+        if mv:
+            return mv
+        return (banner_resolved or {}).get(banner_key) or ""
+
+    return {
+        "title": pick("title", "title"),
+        "description": pick("description", "description"),
+        "link_text": pick("link_text", "link_text"),
+    }
+
+
 class BannerMediaSerializer(serializers.ModelSerializer):
     """Сериализатор для медиа-файлов баннера."""
-    
+
     content_url = serializers.SerializerMethodField()
     content_mime_type = serializers.SerializerMethodField()
     file = serializers.SerializerMethodField()  # Алиас для content_url (мобильное приложение)
-    
+    title = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
+    link_text = serializers.SerializerMethodField()
+
     class Meta:
         model = BannerMedia
         fields = [
             'id', 'content_type', 'content_url', 'content_mime_type', 'file', 'sort_order',
             'link_url', 'title', 'description', 'link_text', 'created_at'
         ]
-        read_only_fields = ['id', 'content_url', 'content_mime_type', 'file']
+        read_only_fields = ['id', 'content_url', 'content_mime_type', 'file', 'title', 'description', 'link_text']
     
     def get_content_url(self, obj):
         """Получить URL контента медиа-файла."""
@@ -4161,28 +4229,59 @@ class BannerMediaSerializer(serializers.ModelSerializer):
         """Получить MIME-тип контента."""
         return obj.get_content_type_for_html()
 
+    def get_title(self, obj):
+        lang = _banner_api_language(self.context)
+        br = self.context.get("banner_resolved") or _resolve_banner_texts_for_lang(obj.banner, lang)
+        return _resolve_banner_media_texts_for_lang(obj, lang, br)["title"]
+
+    def get_description(self, obj):
+        lang = _banner_api_language(self.context)
+        br = self.context.get("banner_resolved") or _resolve_banner_texts_for_lang(obj.banner, lang)
+        return _resolve_banner_media_texts_for_lang(obj, lang, br)["description"]
+
+    def get_link_text(self, obj):
+        lang = _banner_api_language(self.context)
+        br = self.context.get("banner_resolved") or _resolve_banner_texts_for_lang(obj.banner, lang)
+        return _resolve_banner_media_texts_for_lang(obj, lang, br)["link_text"]
+
 
 class BannerSerializer(serializers.ModelSerializer):
     """Сериализатор для баннеров."""
-    
+
+    title = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
+    link_text = serializers.SerializerMethodField()
     media_files = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Banner
         fields = [
-            'id', 'title', 'description', 'position', 'link_url', 'link_text', 
+            'id', 'title', 'description', 'position', 'link_url', 'link_text',
             'is_active', 'sort_order', 'media_files'
         ]
+        read_only_fields = ['title', 'description', 'link_text']
+
+    def get_title(self, obj):
+        return _resolve_banner_texts_for_lang(obj, _banner_api_language(self.context))["title"]
+
+    def get_description(self, obj):
+        return _resolve_banner_texts_for_lang(obj, _banner_api_language(self.context))["description"]
+
+    def get_link_text(self, obj):
+        return _resolve_banner_texts_for_lang(obj, _banner_api_language(self.context))["link_text"]
 
     def get_media_files(self, obj):
         """
         Получить отсортированные медиа-файлы баннера.
         ВАЖНО: порядок должен совпадать с тем, как их показывает админка.
-        У модели BannerMedia в Meta уже задан ordering = ['banner', 'sort_order', '-created_at'],
+        У модели BannerMedia в Meta уже задан ordering = ['banner', 'sort_order', 'id'],
         поэтому здесь не переопределяем сортировку и используем этот же порядок.
         """
+        lang = _banner_api_language(self.context)
+        banner_resolved = _resolve_banner_texts_for_lang(obj, lang)
         media = obj.media_files.all()
-        return BannerMediaSerializer(media, many=True, context=self.context).data
+        ctx = {**self.context, "banner_resolved": banner_resolved}
+        return BannerMediaSerializer(media, many=True, context=ctx).data
 
 
 # ─────────────────────────────────────────────────────────────

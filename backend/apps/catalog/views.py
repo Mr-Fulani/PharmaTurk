@@ -2677,9 +2677,13 @@ class BannerViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     ).filter(
         media_count__gt=0
     ).prefetch_related(
+        'translations',
         # Важно: порядок media_files здесь должен совпадать с Meta.ordering у BannerMedia,
         # чтобы API и админка показывали медиа в одном и том же порядке.
-        models.Prefetch('media_files', queryset=BannerMedia.objects.all())
+        models.Prefetch(
+            'media_files',
+            queryset=BannerMedia.objects.prefetch_related('translations'),
+        ),
     )
     serializer_class = BannerSerializer
     permission_classes = []  # Публичный доступ

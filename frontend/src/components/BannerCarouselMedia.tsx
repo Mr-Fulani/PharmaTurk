@@ -111,7 +111,7 @@ export default function BannerCarouselMedia({ position, className = '' }: Banner
     }
 
     fetchBanners()
-  }, [position])
+  }, [position, router.locale])
 
   // Функция для сброса и перезапуска автоматического переключения
   const resetAutoPlay = () => {

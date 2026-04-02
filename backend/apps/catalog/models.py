@@ -4826,6 +4826,60 @@ class MarketingBanner(Banner):
         verbose_name_plural = _("Маркетинг — Баннеры")
 
 
+class BannerTranslation(models.Model):
+    """Переводы текстов баннера (заголовок, описание, кнопка)."""
+
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+    ]
+
+    banner = models.ForeignKey(
+        Banner,
+        on_delete=models.CASCADE,
+        related_name='translations',
+        verbose_name=_("Баннер"),
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default='ru',
+        db_index=True,
+    )
+    title = models.CharField(
+        _("Заголовок"),
+        max_length=200,
+        blank=True,
+        help_text=_("Перевод заголовка баннера"),
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+        help_text=_("Перевод описания баннера"),
+    )
+    link_text = models.CharField(
+        _("Текст кнопки"),
+        max_length=100,
+        blank=True,
+        help_text=_("Перевод текста кнопки"),
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Перевод баннера")
+        verbose_name_plural = _("Переводы баннеров")
+        unique_together = [['banner', 'locale']]
+        ordering = ['banner', 'locale']
+        indexes = [
+            models.Index(fields=['banner', 'locale']),
+        ]
+
+    def __str__(self):
+        return f"{self.banner_id} ({self.get_locale_display()})"
+
+
 class BannerMedia(models.Model):
     """Медиа-файл для баннера (изображение, видео или GIF)."""
     
@@ -4969,6 +5023,57 @@ class BannerMedia(models.Model):
         elif self.content_type == 'gif':
             return 'image/gif'
         return ''
+
+
+class BannerMediaTranslation(models.Model):
+    """Переводы текстов отдельного слайда баннера."""
+
+    LOCALE_CHOICES = [
+        ('ru', _('Русский')),
+        ('en', _('Английский')),
+    ]
+
+    banner_media = models.ForeignKey(
+        'BannerMedia',
+        on_delete=models.CASCADE,
+        related_name='translations',
+        verbose_name=_("Медиа баннера"),
+    )
+    locale = models.CharField(
+        _("Язык"),
+        max_length=10,
+        choices=LOCALE_CHOICES,
+        default='ru',
+        db_index=True,
+    )
+    title = models.CharField(
+        _("Заголовок"),
+        max_length=200,
+        blank=True,
+    )
+    description = models.TextField(
+        _("Описание"),
+        blank=True,
+    )
+    link_text = models.CharField(
+        _("Текст кнопки"),
+        max_length=100,
+        blank=True,
+    )
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Перевод медиа баннера")
+        verbose_name_plural = _("Переводы медиа баннеров")
+        unique_together = [['banner_media', 'locale']]
+        ordering = ['banner_media', 'locale']
+        indexes = [
+            models.Index(fields=['banner_media', 'locale']),
+        ]
+
+    def __str__(self):
+        return f"{self.banner_media_id} ({self.get_locale_display()})"
 
 
 class Author(models.Model):
