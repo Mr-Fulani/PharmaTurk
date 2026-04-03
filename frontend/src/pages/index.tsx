@@ -483,8 +483,8 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
             </div>
           </section>
 
-          {/* Баннер после брендов */}
-          <div className="mb-12">
+          {/* Баннер после брендов — min-height предотвращает CLS */}
+          <div className="mb-12" style={{ minHeight: 'clamp(200px, 40vw, 450px)' }}>
             <BannerCarousel position="after_brands" />
           </div>
 
@@ -543,8 +543,8 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
             </div>
           </section>
 
-          {/* Баннер перед футером */}
-          <div className="mb-12">
+          {/* Баннер перед футером — min-height предотвращает CLS */}
+          <div className="mb-12" style={{ minHeight: 'clamp(200px, 40vw, 450px)' }}>
             <BannerCarousel position="before_footer" />
           </div>
 
@@ -554,8 +554,8 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
           {/* Вам может понравиться (RecSys) */}
           <PersonalizedRecommendations />
 
-          {/* Баннер после популярных товаров */}
-          <div className="mb-12">
+          {/* Баннер после популярных товаров — min-height предотвращает CLS */}
+          <div className="mb-12" style={{ minHeight: 'clamp(200px, 40vw, 450px)' }}>
             <BannerCarousel position="after_popular_products" />
           </div>
 
