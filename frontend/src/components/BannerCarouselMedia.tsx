@@ -229,9 +229,9 @@ export default function BannerCarousel({ position, className = '', initialBanner
         onClick={index >= 1 ? handleThumbnailClick : undefined}
       >
         {(media.content_type === 'image' || media.content_type === 'gif') && (() => {
-          const isPicsum = !fullUrl || fallbackToPicsumIds[media.id]
-          const finalUrl = isPicsum 
-            ? `https://fastly.picsum.photos/id/${(media.id % 200) + 1}/1920/600.jpg` 
+          const isFallback = !fullUrl || fallbackToPicsumIds[media.id]
+          const finalUrl = isFallback 
+            ? getPlaceholderImageUrl({ type: 'product', id: media.id.toString() })
             : fullUrl
 
           return (
@@ -248,7 +248,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
                   if (isActive) setLoading(false)
                 }}
                 onError={() => {
-                  if (!isPicsum) {
+                  if (!isFallback) {
                     setFallbackToPicsumIds(prev => ({ ...prev, [media.id]: true }))
                   }
                 }}
