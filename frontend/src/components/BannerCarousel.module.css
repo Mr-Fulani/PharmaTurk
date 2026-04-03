@@ -74,7 +74,7 @@
 /* Все элементы начиная с 5-го - скрыты справа */
 .slide .item:nth-child(n + 5) {
   left: calc(52% + clamp(420px, 66vw, 660px));
-  opacity: 0;
+  visibility: hidden;
   z-index: 13;
 }
 
@@ -297,13 +297,14 @@
   .slide .item:nth-child(4),
   .slide .item:nth-child(5),
   .slide .item:nth-child(n + 6) {
-    opacity: 0;
+    visibility: hidden;
   }
 }
 
 @media (max-width: 640px) {
+  /* visibility:hidden исключает элементы из LCP-расчёта (в отличие от opacity:0) */
   .slide .item:nth-child(n + 2) {
-    opacity: 0;
+    visibility: hidden;
     pointer-events: none;
   }
 }
