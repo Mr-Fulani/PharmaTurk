@@ -41,7 +41,17 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const router = useRouter()
   const { t } = useTranslation('common')
   const [banners, setBanners] = useState<Banner[]>(initialBanners)
-  const [displayMedia, setDisplayMedia] = useState<BannerMedia[]>([])
+  const [displayMedia, setDisplayMedia] = useState<BannerMedia[]>(() => {
+    const allMedia: BannerMedia[] = []
+    initialBanners.forEach((b) => {
+      if (b.media_files) {
+        b.media_files.forEach((m) => {
+          allMedia.push({ ...m, link_url: m.link_url || b.link_url, link_text: m.link_text || b.link_text })
+        })
+      }
+    })
+    return allMedia.slice(0, Math.min(10, allMedia.length))
+  })
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(initialBanners.length === 0)
   const [isHydrated, setIsHydrated] = useState(false)
@@ -76,23 +86,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
     fetchBanners()
   }, [position, router.locale, initialBanners])
 
-  useEffect(() => {
-    if (banners.length > 0 && displayMedia.length === 0) {
-      const allMedia: BannerMedia[] = []
-      banners.forEach((b) => {
-        if (b.media_files) {
-          b.media_files.forEach((m) => {
-            allMedia.push({ ...m, link_url: m.link_url || b.link_url, link_text: m.link_text || b.link_text })
-          })
-        }
-      })
-      if (allMedia.length > 0) {
-        const initialList = allMedia.slice(0, Math.min(10, allMedia.length))
-        setDisplayMedia(initialList)
-        setActiveMediaId(initialList[0].id)
-      }
-    }
-  }, [banners, displayMedia.length])
+
 
   // Функция для сброса и перезапуска автоматического переключения
   const resetAutoPlay = () => {
