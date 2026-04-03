@@ -13,11 +13,19 @@ import axios from 'axios'
 import BannerCarousel from '../components/BannerCarouselMedia'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription, getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../lib/i18n'
 
-// Dynamic imports для компонентов ниже fold — уменьшают initial JS bundle
-const PopularProductsCarousel = dynamic(() => import('../components/PopularProductsCarousel'), { ssr: false })
-const PersonalizedRecommendations = dynamic(() => import('../components/PersonalizedRecommendations'), { ssr: false })
-const TestimonialsCarousel = dynamic(() => import('../components/TestimonialsCarousel'), { ssr: false })
-
+// Dynamic imports для компонентов ниже fold — уменьшают initial JS bundle, добавляем fallback (Skeleton) для предотвращения CLS
+const PopularProductsCarousel = dynamic(() => import('../components/PopularProductsCarousel'), { 
+  ssr: false,
+  loading: () => <div className="w-full min-h-[400px] animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl mb-12" />
+})
+const PersonalizedRecommendations = dynamic(() => import('../components/PersonalizedRecommendations'), { 
+  ssr: false,
+  loading: () => <div className="w-full min-h-[400px] animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl mb-12" />
+})
+const TestimonialsCarousel = dynamic(() => import('../components/TestimonialsCarousel'), { 
+  ssr: false,
+  loading: () => <div className="w-full min-h-[400px] animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl mb-12" />
+})
 interface Brand {
   id: number
   name: string
