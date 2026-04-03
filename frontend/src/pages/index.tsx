@@ -66,6 +66,9 @@ interface HomePageProps {
   firstBannerImageUrl?: string | null
   firstBannerTitle?: string | null
   mainBanners: any[]
+  afterBrandsBanners: any[]
+  beforeFooterBanners: any[]
+  afterPopularBanners: any[]
   footerSettings: any
 }
 
@@ -187,7 +190,7 @@ const FallbackMediaImage = ({ src, alt, fallbackSrc }: { src: string, alt: strin
 }
 
 
-export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners }: HomePageProps) {
+export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
   const tileHeights = [280, 320, 360]
@@ -487,9 +490,9 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
             </div>
           </section>
 
-          {/* Баннер после брендов — min-height предотвращает CLS */}
-          <div className="mb-12" style={{ minHeight: 'clamp(200px, 40vw, 450px)' }}>
-            <BannerCarousel position="after_brands" />
+          {/* Баннер после брендов — SSR-данные исключают клиентский fetch и CLS */}
+          <div className="mb-12">
+            <BannerCarousel position="after_brands" initialBanners={afterBrandsBanners} />
           </div>
 
           {/* Categories Section */}
@@ -547,9 +550,9 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
             </div>
           </section>
 
-          {/* Баннер перед футером — min-height предотвращает CLS */}
-          <div className="mb-12" style={{ minHeight: 'clamp(200px, 40vw, 450px)' }}>
-            <BannerCarousel position="before_footer" />
+          {/* Баннер перед футером — SSR-данные исключают клиентский fetch и CLS */}
+          <div className="mb-12">
+            <BannerCarousel position="before_footer" initialBanners={beforeFooterBanners} />
           </div>
 
           {/* Популярные товары */}
@@ -558,9 +561,9 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
           {/* Вам может понравиться (RecSys) */}
           <PersonalizedRecommendations />
 
-          {/* Баннер после популярных товаров — min-height предотвращает CLS */}
-          <div className="mb-12" style={{ minHeight: 'clamp(200px, 40vw, 450px)' }}>
-            <BannerCarousel position="after_popular_products" />
+          {/* Баннер после популярных товаров — SSR-данные исключают клиентский fetch и CLS */}
+          <div className="mb-12">
+            <BannerCarousel position="after_popular_products" initialBanners={afterPopularBanners} />
           </div>
 
           {/* Отзывы клиентов */}
@@ -584,12 +587,22 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     let firstBannerImageUrl: string | null = null
     let firstBannerTitle: string | null = null
     let mainBanners: any[] = []
+    let afterBrandsBanners: any[] = []
+    let beforeFooterBanners: any[] = []
+    let afterPopularBanners: any[] = []
+
+    // Загружаем все позиции баннеров параллельно — устраняет 6,530мс задержку LCP
     try {
-      const bannersRes = await axios.get(getInternalApiUrl('catalog/banners'), {
-        params: { position: 'main' },
-        timeout: 3000,
-      })
-      mainBanners = Array.isArray(bannersRes.data) ? bannersRes.data : []
+      const [mainRes, afterBrandsRes, beforeFooterRes, afterPopularRes] = await Promise.all([
+        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'main' }, timeout: 3000 }),
+        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'after_brands' }, timeout: 3000 }),
+        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'before_footer' }, timeout: 3000 }),
+        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'after_popular_products' }, timeout: 3000 }),
+      ])
+      mainBanners = Array.isArray(mainRes.data) ? mainRes.data : []
+      afterBrandsBanners = Array.isArray(afterBrandsRes.data) ? afterBrandsRes.data : []
+      beforeFooterBanners = Array.isArray(beforeFooterRes.data) ? beforeFooterRes.data : []
+      afterPopularBanners = Array.isArray(afterPopularRes.data) ? afterPopularRes.data : []
       const firstBanner = mainBanners.find((b) => b.media_files && b.media_files.length > 0)
       const firstMedia = firstBanner?.media_files[0]
       if (firstMedia && (firstMedia.content_type === 'image' || firstMedia.content_type === 'gif') && firstMedia.content_url) {
@@ -597,7 +610,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         firstBannerTitle = firstMedia.title || firstBanner?.title || null
       }
     } catch {
-      // Не блокируем рендер страницы — preload необязателен
+      // Не блокируем рендер — баннеры необязательны
     }
 
     // Загружаем все бренды из API с пагинацией
@@ -699,6 +712,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         firstBannerImageUrl,
         firstBannerTitle,
         mainBanners,
+        afterBrandsBanners,
+        beforeFooterBanners,
+        afterPopularBanners,
         footerSettings,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
@@ -713,6 +729,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         categories: [],
         firstBannerImageUrl: null,
         mainBanners: [],
+        afterBrandsBanners: [],
+        beforeFooterBanners: [],
+        afterPopularBanners: [],
         footerSettings,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
