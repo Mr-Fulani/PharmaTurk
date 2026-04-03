@@ -282,7 +282,15 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
   return (
     <>
       <Head>
-        {/* Preload первого баннера для ускорения LCP — браузер начнёт скачивать до гидрации JS */}
+        {firstBannerImageUrl && (
+          <link
+            rel="preload"
+            as="image"
+            href={`/_next/image?url=${encodeURIComponent(resolveMediaUrl(firstBannerImageUrl) || firstBannerImageUrl)}&w=1200&q=75`}
+            // @ts-ignore: fetchpriority is valid in standard browsers but may be missing in react types
+            fetchPriority="high"
+          />
+        )}
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
         <link rel="canonical" href={canonicalUrl} />
@@ -523,6 +531,11 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
 }
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
+  // Кэшируем HTML-ответ главной страницы в Vercel/Cloudflare CDN на 60с
+  if (context.res) {
+    context.res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300')
+  }
+
   try {
     const { getInternalApiUrl } = await import('../lib/urls')
     const { fetchFooterSettings } = await import('../lib/footerSettings')

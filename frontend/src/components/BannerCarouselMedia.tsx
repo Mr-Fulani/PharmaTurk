@@ -54,13 +54,9 @@ export default function BannerCarousel({ position, className = '', initialBanner
   })
   const [activeMediaId, setActiveMediaId] = useState<number | null>(null)
   const [loading, setLoading] = useState(initialBanners.length === 0)
-  const [isHydrated, setIsHydrated] = useState(false)
   const [fallbackToPicsumIds, setFallbackToPicsumIds] = useState<Record<number, boolean>>({})
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
-
-  // Помечаем что гидрация прошла — после этого CSS-классы подменяют статичный баннер каруселью
-  useEffect(() => { setIsHydrated(true) }, [])
 
   useEffect(() => {
     if (initialBanners.length > 0) {
