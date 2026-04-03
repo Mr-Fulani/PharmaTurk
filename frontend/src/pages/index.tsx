@@ -357,18 +357,6 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
               На десктопе скрыт — там показывается полная карусель с анимацией.
               После гидрации JS карусель подменяет статику через CSS-hidden.
             */}
-            {firstBannerImageUrl && (
-              <div className="block md:hidden w-full rounded-[18px] overflow-hidden relative" style={{ aspectRatio: '4/3', maxHeight: '420px' }}>
-                <Image
-                  src={resolveMediaUrl(firstBannerImageUrl) || firstBannerImageUrl}
-                  alt={firstBannerTitle || t('main_banner_alt', 'Mudaroba - Главный баннер')}
-                  fill
-                  priority
-                  className="object-cover"
-                  id="mobile-banner-static"
-                />
-              </div>
-            )}
             {/* Карусель: теперь с поддержкой SSR для мгновенного LCP */}
             <BannerCarousel
               position="main"
