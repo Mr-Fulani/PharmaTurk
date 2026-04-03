@@ -536,13 +536,17 @@ export default function CategorySidebar({
       <aside
         suppressHydrationWarning
         className={`
-          fixed lg:sticky top-0 lg:top-20 left-0 z-[50]
-          h-[100dvh] lg:h-auto lg:max-h-[calc(100vh-2rem)]
-          w-80 bg-[var(--bg)]/95 backdrop-blur-2xl text-main border-r lg:border-r-0 lg:border border-[var(--border)]
+          z-[50] w-80 bg-[var(--bg)]/95 backdrop-blur-2xl text-main border-[var(--border)]
           shadow-[0_0_40px_rgba(0,0,0,0.2)] lg:shadow-md
-          transform transition-all duration-300 ease-in-out
+          transition-all duration-300 ease-in-out
           overflow-y-auto custom-scrollbar
+          
+          /* Мобильный вид (fixed drawer) */
+          fixed inset-y-0 left-0 lg:static
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          
+          /* Десктопный вид (sticky column) */
+          lg:sticky lg:top-[84px] lg:h-fit lg:max-h-[calc(100vh-100px)] lg:self-start lg:border lg:rounded-2xl lg:transform-none lg:z-10
         `}
       >
         <div className="p-6 space-y-6">

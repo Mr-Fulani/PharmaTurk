@@ -1528,7 +1528,7 @@ export default function CategoryPage({
       <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 pt-0 pb-8 sm:py-8">
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Sidebar */}
-          <div className="lg:w-1/4">
+          <div className="lg:w-80 flex-shrink-0">
             <CategorySidebar
               key={routeSlug || categoryType}
               categories={categoryGroups.length > 0 ? [] : sidebarCategoriesData}
@@ -1552,7 +1552,7 @@ export default function CategoryPage({
           </div>
 
           {/* Main Content */}
-          <div className="lg:w-3/4">
+          <div className="flex-1 min-w-0">
             {/* Toolbar (Mobile) */}
             <div className="flex lg:hidden items-center justify-between gap-4 mb-6">
               {/* Mobile filter button */}
