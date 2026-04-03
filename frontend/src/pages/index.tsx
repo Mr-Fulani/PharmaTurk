@@ -130,6 +130,51 @@ const LazyYouTube = ({ youtubeId, youtubeThumb, title, alt }: { youtubeId: strin
 // @ts-ignore: нет типов для @egjs/react-grid
 import Masonry from 'react-masonry-css'
 
+const FallbackMediaImage = ({ src, alt, fallbackSrc }: { src: string, alt: string, fallbackSrc?: string }) => {
+  const [imgSrc, setImgSrc] = useState(src)
+  
+  const isExternal = imgSrc.startsWith('http')
+  const allowedDomains = ['i.pinimg.com', 'fastly.picsum.photos', 'picsum.photos', 'static.street-beat.ru', 'img.youtube.com', 'cdn.mudaroba.com']
+  let isValidHost = true
+  if (isExternal) {
+    try {
+      const hostname = new URL(imgSrc).hostname
+      isValidHost = allowedDomains.includes(hostname) || hostname === 'localhost'
+    } catch (e) {
+      isValidHost = false
+    }
+  }
+
+  if (!isValidHost) {
+    return (
+      <img
+        src={imgSrc}
+        alt={alt}
+        loading="lazy"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        onError={() => {
+          if (fallbackSrc && imgSrc !== fallbackSrc) setImgSrc(fallbackSrc)
+        }}
+      />
+    )
+  }
+
+  return (
+    <Image
+      src={imgSrc}
+      alt={alt}
+      loading="lazy"
+      fill
+      sizes="(max-width: 640px) 210px, (max-width: 1024px) 33vw, 400px"
+      className="pointer-events-none object-cover"
+      onError={() => {
+        if (fallbackSrc && imgSrc !== fallbackSrc) setImgSrc(fallbackSrc)
+      }}
+    />
+  )
+}
+
+
 export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
@@ -229,23 +274,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
       )
     }
 
-    return (
-      <img
-        src={src}
-        alt={alt || ''}
-        loading="lazy"
-        decoding="async"
-        width={400}
-        height={300}
-        sizes="(max-width: 640px) 96px, (max-width: 1024px) 33vw, 400px"
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-        onError={(e) => {
-          if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
-            e.currentTarget.src = fallbackSrc
-          }
-        }}
-      />
-    )
+    return <FallbackMediaImage src={src} fallbackSrc={fallbackSrc || ''} alt={alt || ''} />
   }
 
   const preparedCategories = categories

@@ -57,7 +57,6 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const [fallbackToPicsumIds, setFallbackToPicsumIds] = useState<Record<number, boolean>>({})
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
-
   useEffect(() => {
     if (initialBanners.length > 0) {
       setBanners(initialBanners)
@@ -82,8 +81,21 @@ export default function BannerCarousel({ position, className = '', initialBanner
     fetchBanners()
   }, [position, router.locale, initialBanners])
 
-
-
+  useEffect(() => {
+    if (banners.length > 0) {
+      const allMedia: BannerMedia[] = []
+      banners.forEach((b) => {
+        if (b.media_files) {
+          b.media_files.forEach((m) => {
+            allMedia.push({ ...m, link_url: m.link_url || b.link_url, link_text: m.link_text || b.link_text })
+          })
+        }
+      })
+      setDisplayMedia(allMedia.slice(0, Math.min(10, allMedia.length)))
+    } else {
+      setDisplayMedia([])
+    }
+  }, [banners])
   // Функция для сброса и перезапуска автоматического переключения
   const resetAutoPlay = () => {
     if (autoPlayIntervalRef.current) {
@@ -93,10 +105,10 @@ export default function BannerCarousel({ position, className = '', initialBanner
     if (banners.length > 0 && displayMedia.length > 1) {
       autoPlayIntervalRef.current = setInterval(() => {
         const timeSinceLastManual = Date.now() - lastManualActionRef.current
-        if (timeSinceLastManual > 4000) {
+        if (timeSinceLastManual > 6000) {
           goToNextMedia(false)
         }
-      }, 5000)
+      }, 8000)
     }
   }
 
