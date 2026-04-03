@@ -283,15 +283,6 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
     <>
       <Head>
         {/* Preload первого баннера для ускорения LCP — браузер начнёт скачивать до гидрации JS */}
-        {firstBannerImageUrl && (
-          <link
-            rel="preload"
-            as="image"
-            href={resolveMediaUrl(firstBannerImageUrl) || firstBannerImageUrl}
-            // @ts-ignore
-            fetchpriority="high"
-          />
-        )}
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
         <link rel="canonical" href={canonicalUrl} />

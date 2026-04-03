@@ -240,8 +240,8 @@ export default function BannerCarousel({ position, className = '', initialBanner
                 src={finalUrl}
                 alt={title || t('banner_image_alt', 'Banner')}
                 fill
-                priority={isActive && position === 'main'}
-                loading={isActive && position === 'main' ? 'eager' : 'lazy'}
+                priority={index === 0 && position === 'main'}
+                loading={index === 0 && position === 'main' ? 'eager' : 'lazy'}
                 sizes="(max-width: 768px) 100vw, 1200px"
                 className={`${styles.itemImage} object-cover`}
                 onLoadingComplete={() => {
