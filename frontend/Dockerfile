@@ -10,7 +10,7 @@ RUN if [ -f yarn.lock ]; then \
     elif [ -f pnpm-lock.yaml ]; then \
       corepack enable && pnpm install --frozen-lockfile; \
     elif [ -f package-lock.json ]; then \
-      npm ci; \
+      npm ci || npm install; \
     else \
       npm install --legacy-peer-deps; \
     fi
