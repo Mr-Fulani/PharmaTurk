@@ -243,7 +243,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
                 alt={title || t('banner_image_alt', 'Banner')}
                 fill
                 priority={index === 0 && position === 'main'}
-                loading={index === 0 && position === 'main' ? 'eager' : 'lazy'}
+                loading={index <= 2 ? 'eager' : 'lazy'}
                 sizes={index === 0
                   ? '(max-width: 480px) 480px, (max-width: 768px) 768px, 1200px'
                   : '(max-width: 768px) 25vw, 220px'

@@ -140,11 +140,15 @@ import Masonry from 'react-masonry-css'
 
 const FallbackMediaImage = ({ src, alt, fallbackSrc }: { src: string, alt: string, fallbackSrc?: string }) => {
   const [imgSrc, setImgSrc] = useState(src)
-  
+
+  // next/image не поддерживает локальные URL с query-параметрами (/api/...?path=...)
+  // возвращаем 400. Для таких URL используем прямой <img>.
+  const isProxyMedia = imgSrc.includes('/api/') || imgSrc.includes('proxy-media')
+
   const isExternal = imgSrc.startsWith('http')
   const allowedDomains = ['i.pinimg.com', 'fastly.picsum.photos', 'picsum.photos', 'static.street-beat.ru', 'img.youtube.com', 'cdn.mudaroba.com']
-  let isValidHost = true
-  if (isExternal) {
+  let isValidHost = !isProxyMedia
+  if (!isProxyMedia && isExternal) {
     try {
       const hostname = new URL(imgSrc).hostname
       isValidHost = allowedDomains.includes(hostname) || hostname === 'localhost'
@@ -153,7 +157,7 @@ const FallbackMediaImage = ({ src, alt, fallbackSrc }: { src: string, alt: strin
     }
   }
 
-  if (!isValidHost) {
+  if (!isValidHost || isProxyMedia) {
     return (
       <img
         src={imgSrc}
