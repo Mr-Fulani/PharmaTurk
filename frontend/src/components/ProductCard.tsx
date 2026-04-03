@@ -1,4 +1,3 @@
-import Image from 'next/image'
 import Link from 'next/link'
 import { useTranslation } from 'next-i18next'
 import AddToCartButton from './AddToCartButton'
@@ -144,24 +143,32 @@ export default function ProductCard({
               className="w-full h-full rounded-md object-cover"
             />
           ) : resolvedImage ? (
-            <Image
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
               src={resolvedImage}
               alt={localizedName}
+              loading="lazy"
+              decoding="async"
               width={400}
               height={400}
               className="w-full h-full rounded-md object-cover"
               onError={(e) => {
-                // Next.js Image component handles fallbacks differently, 
-                // but we can use a state if we really need a dynamic fallback.
+                e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
               }}
             />
           ) : (
-            <Image
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
               src={getPlaceholderImageUrl({ type: 'product', id })}
-              alt={t('no_image_alt', 'No image available')}
+              alt="No image"
+              loading="lazy"
+              decoding="async"
               width={400}
               height={400}
               className="w-full h-full rounded-md object-cover"
+              onError={(e) => {
+                e.currentTarget.src = '/product-placeholder.svg'
+              }}
             />
           )}
           {badge && (
@@ -269,23 +276,32 @@ export default function ProductCard({
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
         ) : resolvedImage ? (
-          <Image
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
             src={resolvedImage}
             alt={localizedName}
+            loading="lazy"
+            decoding="async"
             width={400}
             height={500}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             onError={(e) => {
-              // Next.js handles internal fallback
+              e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
             }}
           />
         ) : (
-          <Image
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
             src={getPlaceholderImageUrl({ type: 'product', id })}
-            alt={t('no_image_alt', 'No image available')}
+            alt="No image"
+            loading="lazy"
+            decoding="async"
             width={400}
             height={500}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            onError={(e) => {
+              e.currentTarget.src = '/product-placeholder.svg'
+            }}
           />
         )}
         

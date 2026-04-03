@@ -230,20 +230,21 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
     }
 
     return (
-      <div className="relative isolate rounded-xl overflow-hidden bg-gray-100/50 aspect-[4/3]">
-        <Image
-          src={src}
-          alt={alt || ''}
-          fill
-          sizes="(max-width: 640px) 96px, (max-width: 1024px) 33vw, 400px"
-          className="pointer-events-none object-cover"
-          onError={(e) => {
-            if (fallbackSrc) {
-               // Fallback within Next.js Image is tricky, but usually handled by src prop logic
-            }
-          }}
-        />
-      </div>
+      <img
+        src={src}
+        alt={alt || ''}
+        loading="lazy"
+        decoding="async"
+        width={400}
+        height={300}
+        sizes="(max-width: 640px) 96px, (max-width: 1024px) 33vw, 400px"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        onError={(e) => {
+          if (fallbackSrc && e.currentTarget.src !== fallbackSrc) {
+            e.currentTarget.src = fallbackSrc
+          }
+        }}
+      />
     )
   }
 
@@ -356,14 +357,13 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
                     <div className="absolute inset-0 hidden items-center justify-center p-2 z-10">
                       <div className="text-center text-white drop-shadow w-full">
                         {brand.logo ? (
-                          <div className="flex justify-center items-center w-full px-1 relative h-[36px]">
-                            <Image
+                          <div className="flex justify-center items-center w-full px-1">
+                            <img
                               src={resolveMediaUrl(brand.logo)}
                               alt={brand.name}
-                              fill
-                              className="pointer-events-none object-contain filter brightness-0 invert"
+                              className="pointer-events-none max-h-[36px] w-full object-contain filter brightness-0 invert"
                               onError={(e) => {
-                                // Handled by Next.js
+                                e.currentTarget.style.display = 'none'
                               }}
                             />
                           </div>
@@ -416,14 +416,18 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
                     <div className="absolute inset-0 z-[1] bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
                     <div className="absolute inset-0 z-10 flex items-center justify-center p-4 md:p-6 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
                       <div className="text-center text-white drop-shadow">
-                          <div className="mb-2 md:mb-3 flex justify-center relative h-8 md:h-12 w-32">
-                            <Image
+                        {brand.logo && (
+                          <div className="mb-2 md:mb-3 flex justify-center">
+                            <img
                               src={resolveMediaUrl(brand.logo)}
                               alt={brand.name}
-                              fill
-                              className="pointer-events-none object-contain filter brightness-0 invert"
+                              className="pointer-events-none h-8 md:h-12 w-auto object-contain filter brightness-0 invert"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none'
+                              }}
                             />
                           </div>
+                        )}
                         <h3 className="text-xl md:text-3xl font-bold mb-1 md:mb-2 line-clamp-1">
                           {getLocalizedBrandName(brand.slug, brand.name, t, brand.translations, router.locale)}
                         </h3>
