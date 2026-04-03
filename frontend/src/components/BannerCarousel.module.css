@@ -4,6 +4,7 @@
   width: 100%;
   max-width: 1400px;
   height: clamp(280px, 55vw, 600px);
+  aspect-ratio: 1400 / 600;
   margin: 0 auto;
   background: #f5f5f5;
   border-radius: 18px;
@@ -262,6 +263,7 @@
 @media (max-width: 768px) {
   .container {
     height: clamp(260px, 70vw, 420px);
+    aspect-ratio: 4 / 3;
     max-width: 100%;
     border-radius: 18px;
   }
