@@ -5,6 +5,7 @@ import '../../styles/globals.css'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 import CookieBanner from '../components/CookieBanner'
+import NavigationProgress from '../components/NavigationProgress'
 import { AuthProvider } from '../context/AuthContext'
 import { ThemeProvider } from '../context/ThemeContext'
 import { useEffect } from 'react'
@@ -125,6 +126,8 @@ ym(${YM_ID},'init',{
             }}
           />
         )}
+
+        <NavigationProgress />
 
         {is404 ? (
           <Component {...pageProps} />

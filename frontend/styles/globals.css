@@ -211,3 +211,17 @@ a:hover {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--accent-muted);
 }
+
+/* Полоска навигации (components/NavigationProgress.tsx) */
+@keyframes navigation-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.navigation-progress-bar {
+  animation: navigation-progress-slide 1.05s ease-in-out infinite;
+}
