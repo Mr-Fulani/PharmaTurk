@@ -7,11 +7,16 @@ export type InViewAutoplayVideoProps = {
   videoClassName?: string
   /** Корень для IntersectionObserver (например rootMargin) */
   rootMargin?: string
+  /**
+   * true (по умолчанию): не подставлять src, пока блок не в зоне видимости — на витрине долго виден только poster.
+   * false: сразу грузить ролик (карточки товаров: приоритет видео должен быть заметен).
+   */
+  deferUntilInView?: boolean
   onError?: (e: React.SyntheticEvent<HTMLVideoElement>) => void
 }
 
 /**
- * Видео в карточке: не грузит поток, пока блок не в зоне видимости; затем muted loop.
+ * Видео в карточке: по умолчанию ленивая загрузка по IntersectionObserver; muted loop.
  */
 export default function InViewAutoplayVideo({
   src,
@@ -19,13 +24,18 @@ export default function InViewAutoplayVideo({
   className = '',
   videoClassName = '',
   rootMargin = '80px',
+  deferUntilInView = true,
   onError,
 }: InViewAutoplayVideoProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [shouldLoad, setShouldLoad] = useState(false)
+  const [shouldLoad, setShouldLoad] = useState(!deferUntilInView)
 
   useEffect(() => {
+    if (!deferUntilInView) {
+      setShouldLoad(true)
+      return
+    }
     const el = wrapRef.current
     if (!el || typeof IntersectionObserver === 'undefined') {
       setShouldLoad(true)
@@ -39,7 +49,7 @@ export default function InViewAutoplayVideo({
     )
     io.observe(el)
     return () => io.disconnect()
-  }, [rootMargin])
+  }, [deferUntilInView, rootMargin])
 
   useEffect(() => {
     const v = videoRef.current
@@ -62,7 +72,7 @@ export default function InViewAutoplayVideo({
         muted
         loop
         playsInline
-        preload="none"
+        preload={deferUntilInView ? 'none' : 'metadata'}
         autoPlay={false}
         onError={onError}
       />

@@ -162,6 +162,12 @@ def serialize_product_for_card(product, request):
         return FurnitureProductSerializer(product, context=ctx).data
     if isinstance(product, JewelryProduct):
         return JewelryProductSerializer(product, context=ctx).data
+    # Shadow Product с книгами: тот же payload, что в списке /catalog/books/ (video_url, варианты, …)
+    pt = (getattr(product, 'product_type', None) or '').strip().lower().replace('-', '_')
+    if pt == 'books':
+        book = getattr(product, 'book_item', None)
+        if book:
+            return BookProductSerializer(book, context=ctx).data
     return ProductSerializer(product, context=ctx).data
 
 
@@ -765,6 +771,8 @@ class ProductSerializer(serializers.ModelSerializer):
     reviews_count = serializers.SerializerMethodField()
     is_bestseller = serializers.SerializerMethodField()
     has_manual_main_image = serializers.BooleanField(read_only=True)
+    main_video_url = serializers.SerializerMethodField()
+    main_gif_url = serializers.SerializerMethodField()
     # Для shadow Product с доменом slug на доменной модели может отличаться от Product.slug (коллизии) —
     # фронт строит /product/{type}/{slug} по доменному API.
     slug = serializers.SerializerMethodField()
@@ -789,7 +797,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'book_authors', 'book_genres', 'book_attributes', 'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
-            'main_image_url', 'video_url', 'has_manual_main_image',
+            'main_image_url', 'video_url', 'main_video_url', 'main_gif_url', 'has_manual_main_image',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -975,23 +983,69 @@ class ProductSerializer(serializers.ModelSerializer):
         return None
 
     def get_video_url(self, obj):
-        """URL видео товара (Generic). Приоритет загруженному файлу."""
+        """URL видео товара (Generic). Приоритет загруженному файлу; затем доменная модель (shadow)."""
         request = self.context.get('request')
-        
-        # 1. Приоритет файлу из R2/Media (проксированный), только если файл существует
-        file_field = getattr(obj, "main_video_file", None)
-        if file_field and getattr(file_field, "name", None):
-            resolved = _resolve_file_url_if_stored(file_field, request)
-            if resolved:
-                return resolved
-            
-        # 2. Фолбэк на внешний URL
-        raw_url = getattr(obj, "video_url", None) or ""
-        if raw_url and raw_url.strip():
-            path_lower = raw_url.split("?")[0].lower()
-            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
-                return _resolve_media_url(raw_url, request)
-                
+
+        def _from_entity(entity):
+            if not entity:
+                return None
+            ff = getattr(entity, "main_video_file", None)
+            if ff and getattr(ff, "name", None):
+                resolved = _resolve_file_url_if_stored(ff, request)
+                if resolved:
+                    return resolved
+            raw = getattr(entity, "video_url", None) or ""
+            if raw and raw.strip():
+                path_lower = raw.split("?")[0].lower()
+                if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                    return _resolve_media_url(raw, request)
+            return None
+
+        # 1–2: shadow Product
+        out = _from_entity(obj)
+        if out:
+            return out
+        # 3: домен (книги, одежда и т.д.), если синк в Product ещё не заполнил видео
+        try:
+            domain = getattr(obj, "domain_item", None)
+            if domain and domain != obj:
+                out = _from_entity(domain)
+                if out:
+                    return out
+        except Exception:
+            pass
+        return None
+
+    def get_main_video_url(self, obj):
+        """Дублирует video_url для фронта (карточки ожидают main_video_url || video_url)."""
+        return self.get_video_url(obj)
+
+    def get_main_gif_url(self, obj):
+        """GIF с Product или доменной модели (например услуги с gif_file)."""
+        request = self.context.get('request')
+
+        def _from_entity(entity):
+            if not entity:
+                return None
+            gf = getattr(entity, 'gif_file', None)
+            if gf and getattr(gf, 'name', None):
+                u = _resolve_file_url_if_stored(gf, request)
+                if u:
+                    return u
+                return _resolve_file_url(gf, request)
+            return None
+
+        out = _from_entity(obj)
+        if out:
+            return out
+        try:
+            domain = getattr(obj, 'domain_item', None)
+            if domain and domain != obj:
+                out = _from_entity(domain)
+                if out:
+                    return out
+        except Exception:
+            pass
         return None
 
     def get_meta_title(self, obj):

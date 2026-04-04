@@ -57,7 +57,8 @@ class RecommendationViewSet(viewsets.ViewSet):
                 Q(external_data__has_key='source_variant_slug')
             )
         ).prefetch_related(
-            'images', 'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
+            'images', 'book_item', 'book_item__images', 'book_item__book_variants',
+            'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
             'shoe_item__images', 'shoe_item__variants', 'shoe_item__variants__images',
             'jewelry_item__images', 'electronics_item__images', 'furniture_item__images',
             'medicine_item__gallery_images', 'supplement_item__gallery_images',
@@ -112,7 +113,8 @@ class RecommendationViewSet(viewsets.ViewSet):
                 Q(external_data__has_key='source_variant_slug')
             )
         ).prefetch_related(
-            'images', 'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
+            'images', 'book_item', 'book_item__images', 'book_item__book_variants',
+            'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
             'shoe_item__images', 'shoe_item__variants', 'shoe_item__variants__images',
             'jewelry_item__images', 'electronics_item__images', 'furniture_item__images',
             'medicine_item__gallery_images', 'supplement_item__gallery_images',
@@ -185,7 +187,8 @@ class RecommendationViewSet(viewsets.ViewSet):
             )
             .order_by("-created_at")
             .prefetch_related(
-                'images', 'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
+                'images', 'book_item', 'book_item__images', 'book_item__book_variants',
+                'clothing_item__images', 'clothing_item__variants', 'clothing_item__variants__images',
                 'shoe_item__images', 'shoe_item__variants', 'shoe_item__variants__images',
                 'jewelry_item__images', 'electronics_item__images', 'furniture_item__images',
                 'medicine_item__gallery_images', 'supplement_item__gallery_images',

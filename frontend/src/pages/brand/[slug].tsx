@@ -22,6 +22,7 @@ interface Product {
   main_image_url?: string
   video_url?: string
   main_video_url?: string
+  main_gif_url?: string | null
   meta_title?: string | null
   meta_description?: string | null
   meta_keywords?: string | null
@@ -274,7 +275,9 @@ export default function BrandPage({
                     price={p.price}
                     currency={p.currency}
                     imageUrl={p.main_image_url}
-                    videoUrl={p.main_video_url || p.video_url}
+                    videoUrl={p.video_url}
+                    mainVideoUrl={p.main_video_url}
+                    mainGifUrl={(p as { main_gif_url?: string | null }).main_gif_url}
                     hasManualMainImage={(p as any).has_manual_main_image}
                     productType={pt}
                     isBaseProduct={isBaseProductType(pt)}

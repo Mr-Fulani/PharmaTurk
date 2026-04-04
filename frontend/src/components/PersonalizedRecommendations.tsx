@@ -21,6 +21,8 @@ interface Product {
   main_image_url?: string | null
   main_image?: string | null
   video_url?: string | null
+  main_video_url?: string | null
+  main_gif_url?: string | null
   product_type?: string
   is_featured?: boolean
   is_new?: boolean
@@ -135,6 +137,8 @@ export default function PersonalizedRecommendations() {
                 oldPrice={displayOldPrice != null ? String(displayOldPrice) : null}
                 imageUrl={product.main_image_url || product.main_image}
                 videoUrl={product.video_url}
+                mainVideoUrl={(product as { main_video_url?: string | null }).main_video_url}
+                mainGifUrl={(product as { main_gif_url?: string | null }).main_gif_url}
                 hasManualMainImage={(product as any).has_manual_main_image}
                 productType={pt}
                 isBaseProduct={isBaseProductType(pt)}

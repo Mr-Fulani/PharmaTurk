@@ -7,6 +7,7 @@ export type MediaSource = {
 }
 
 const VIDEO_EXT_REGEX = /\.(mp4|webm|mov|avi|mkv|m4v)(\?|$)/i
+const GIF_EXT_REGEX = /\.gif(\?|$)/i
 
 /** Проверяет, что URL указывает на видео (по расширению или хосту), а не на картинку. */
 export const isVideoUrl = (url?: string | null): boolean => {
@@ -26,6 +27,23 @@ export const isVideoUrl = (url?: string | null): boolean => {
   }
   if (url.includes('/video/') || url.includes('main_video')) return true
   if (/youtube(?:-nocookie)?\.com|youtu\.be|vimeo\.com/i.test(url)) return true
+  return false
+}
+
+/** URL анимированного GIF (по расширению или path= у proxy-media). */
+export const isGifUrl = (url?: string | null): boolean => {
+  if (!url || typeof url !== 'string') return false
+  const path = url.split('?')[0].toLowerCase()
+  if (GIF_EXT_REGEX.test(path)) return true
+  if (/proxy-media/i.test(url) && url.includes('path=')) {
+    try {
+      const pathMatch = url.match(/[?&]path=([^&]+)/)
+      const pathParam = pathMatch ? decodeURIComponent(pathMatch[1]) : ''
+      if (pathParam && GIF_EXT_REGEX.test(pathParam)) return true
+    } catch {
+      // ignore
+    }
+  }
   return false
 }
 

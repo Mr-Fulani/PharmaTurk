@@ -19,6 +19,8 @@ interface Product {
   main_image_url?: string | null
   main_image?: string | null
   video_url?: string | null
+  main_video_url?: string | null
+  main_gif_url?: string | null
   product_type?: string
   is_new?: boolean
   is_bestseller?: boolean
@@ -168,6 +170,8 @@ export default function VisualSearch() {
               oldPrice={r.product.old_price != null ? String(r.product.old_price) : null}
               imageUrl={r.product.main_image_url || r.product.main_image}
               videoUrl={r.product.video_url}
+              mainVideoUrl={r.product.main_video_url}
+              mainGifUrl={r.product.main_gif_url}
               hasManualMainImage={(r.product as any).has_manual_main_image}
               productType={r.product.product_type || 'medicines'}
               isBaseProduct={isBaseProductType(r.product.product_type || 'medicines')}

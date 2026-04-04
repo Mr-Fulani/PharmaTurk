@@ -20,6 +20,8 @@ interface Product {
   main_image_url?: string | null
   main_image?: string | null
   video_url?: string | null
+  main_video_url?: string | null
+  main_gif_url?: string | null
   product_type?: string
   is_featured?: boolean
   is_new?: boolean
@@ -232,6 +234,8 @@ export default function SimilarProducts({
                 oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                 imageUrl={product.main_image_url || product.main_image}
                 videoUrl={product.video_url}
+                mainVideoUrl={product.main_video_url}
+                mainGifUrl={product.main_gif_url}
                 hasManualMainImage={(product as any).has_manual_main_image}
                 badge={reasons[product.id] ? translateBadge(reasons[product.id]) : (product.is_featured ? t('product_featured', 'Хит') : null)}
                 productType={product.product_type || productType}

@@ -35,6 +35,7 @@ interface Product {
   main_image_url?: string
   video_url?: string
   main_video_url?: string
+  main_gif_url?: string | null
   is_available: boolean
   is_featured: boolean
   is_new?: boolean
@@ -1646,7 +1647,9 @@ export default function CategoryPage({
                         currency={displayCurrency}
                         oldPrice={displayOldPriceFormatted ? String(displayOldPriceFormatted) : null}
                         imageUrl={product.main_image_url || product.main_image}
-                        videoUrl={product.main_video_url || product.video_url}
+                        videoUrl={product.video_url}
+                        mainVideoUrl={(product as { main_video_url?: string | null }).main_video_url}
+                        mainGifUrl={(product as { main_gif_url?: string | null }).main_gif_url}
                         hasManualMainImage={(product as any).has_manual_main_image}
                         badge={product.is_featured ? t('product_featured', 'Хит') : null}
                         viewMode={viewMode}

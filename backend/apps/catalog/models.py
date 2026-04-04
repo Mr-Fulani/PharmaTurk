@@ -868,12 +868,8 @@ class AbstractDomainProduct(models.Model):
 
     @property
     def has_manual_main_image(self):
-        """Проверяет, было ли главное изображение задано вручную (чекбокс или файл)."""
-        if bool(self.main_image_file and getattr(self.main_image_file, "name", None)):
-            return True
-        if hasattr(self, 'images') and self.images.filter(is_main=True).exists():
-            return True
-        return False
+        """True только при загруженном файле главного фото (не галерея is_main — это не «ручной» выбор для видео)."""
+        return bool(self.main_image_file and getattr(self.main_image_file, "name", None))
 
     def _sync_to_base_product(self):
         """Синхронизирует данные с shadow-копией в Product.
@@ -1325,16 +1321,12 @@ class Product(models.Model):
 
     @property
     def has_manual_main_image(self):
-        """Проверяет, было ли главное изображение задано вручную (чекбокс или файл)."""
+        """Ручное главное фото — только загруженный файл на Product или на доменной модели (не is_main в галерее)."""
         if bool(self.main_image_file and getattr(self.main_image_file, "name", None)):
-            return True
-        if hasattr(self, 'images') and self.images.filter(is_main=True).exists():
             return True
         domain = self.domain_item
         if domain and domain != self:
             if bool(domain.main_image_file and getattr(domain.main_image_file, "name", None)):
-                return True
-            if hasattr(domain, 'images') and domain.images.filter(is_main=True).exists():
                 return True
         return False
 

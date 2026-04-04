@@ -128,7 +128,9 @@ export default function FavoritesPage() {
                   currency={displayCurrency || undefined}
                   oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                   imageUrl={product.main_image_url}
-                  videoUrl={(product as any).main_video_url || product.video_url}
+                  videoUrl={product.video_url}
+                  mainVideoUrl={(product as { main_video_url?: string | null }).main_video_url}
+                  mainGifUrl={(product as { main_gif_url?: string | null }).main_gif_url}
                   hasManualMainImage={(product as any).has_manual_main_image}
                   href={productHref}
                   productType={productType}

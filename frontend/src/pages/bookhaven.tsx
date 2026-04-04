@@ -20,6 +20,7 @@ interface Product {
   main_image_url?: string;
   video_url?: string;
   main_video_url?: string;
+  main_gif_url?: string | null;
   currency: string;
   is_featured: boolean;
   is_available: boolean;
@@ -244,7 +245,9 @@ const BookHavenPage: React.FC = () => {
                   currency={book.currency || 'RUB'}
                   oldPrice={displayOldPrice}
                   imageUrl={book.main_image_url || book.main_image}
-                  videoUrl={book.main_video_url || book.video_url}
+                  videoUrl={book.video_url}
+                  mainVideoUrl={book.main_video_url}
+                  mainGifUrl={book.main_gif_url}
                   hasManualMainImage={(book as any).has_manual_main_image}
                   badge={book.is_featured ? t('product_featured', 'Хит') : null}
                   viewMode={viewMode}

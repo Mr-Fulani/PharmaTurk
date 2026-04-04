@@ -14,6 +14,8 @@ import {
   extractYouTubeId,
   getYouTubeCardThumbnailUrl,
   withListingImageMaxWidth,
+  pickPreferredVideoUrl,
+  isGifUrl,
 } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { favoriteApiProductId } from '../lib/product'
@@ -31,6 +33,10 @@ interface ProductCardProps {
   rating?: number | null
   imageUrl?: string | null
   videoUrl?: string | null
+  /** Дублирует API main_video_url; вместе с video_url выбирается предпочтительный (proxy и т.д.). */
+  mainVideoUrl?: string | null
+  /** API main_gif_url (услуги и др.): после видео, до статичной картинки. */
+  mainGifUrl?: string | null
   viewMode?: 'grid' | 'list'
   description?: string
   href?: string
@@ -54,6 +60,9 @@ interface ProductCardProps {
   og_title?: string | null
   og_description?: string | null
   og_image_url?: string | null
+  /**
+   * has_manual_main_image с API: загружен файл главного фото — на витрине не подменяем превью на видео/GIF.
+   */
   hasManualMainImage?: boolean
 }
 
@@ -69,6 +78,8 @@ export default function ProductCard({
   rating,
   imageUrl,
   videoUrl,
+  mainVideoUrl,
+  mainGifUrl,
   viewMode = 'grid',
   description,
   href,
@@ -99,12 +110,14 @@ export default function ProductCard({
 
   const resolvedImage =
     imageUrl && !isVideoUrl(imageUrl) ? resolveMediaUrl(imageUrl) : null
-  const resolvedVideoUrl = (videoUrl && isVideoUrl(videoUrl))
-    ? resolveMediaUrl(videoUrl)
-    : (imageUrl && isVideoUrl(imageUrl))
+  const preferStaticHero = Boolean(hasManualMainImage)
+  const listingVideoRaw = preferStaticHero ? null : pickPreferredVideoUrl([mainVideoUrl, videoUrl])
+  const resolvedVideoUrl = listingVideoRaw
+    ? resolveMediaUrl(listingVideoRaw)
+    : (!preferStaticHero && imageUrl && isVideoUrl(imageUrl))
       ? resolveMediaUrl(imageUrl)
       : null
-  const showVideo = Boolean(resolvedVideoUrl) && !hasManualMainImage
+  const showVideo = Boolean(resolvedVideoUrl)
   const youtubeIdForCard = showVideo && resolvedVideoUrl ? extractYouTubeId(resolvedVideoUrl) : null
   const ambientIframeSrc =
     showVideo && resolvedVideoUrl && !youtubeIdForCard
@@ -112,6 +125,10 @@ export default function ProductCard({
       : null
   const hoverMediaClass = 'transition-transform duration-500 group-hover:scale-105'
   const listingImgSrc = resolvedImage ? withListingImageMaxWidth(resolvedImage) : null
+  const rawGif = preferStaticHero || showVideo ? null : mainGifUrl
+  const resolvedGifSrc =
+    rawGif && isGifUrl(rawGif) ? withListingImageMaxWidth(resolveMediaUrl(rawGif)) : null
+  const showGif = Boolean(resolvedGifSrc)
   const parseNumber = (value: string | number | null | undefined) => {
     if (value === null || typeof value === 'undefined') return null
     const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
@@ -152,6 +169,21 @@ export default function ProductCard({
               src={resolvedVideoUrl}
               poster={resolvedImage || undefined}
               videoClassName="rounded-md"
+              deferUntilInView={false}
+            />
+          ) : showGif && resolvedGifSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={resolvedGifSrc}
+              alt={localizedName}
+              loading="lazy"
+              decoding="async"
+              width={400}
+              height={400}
+              className="w-full h-full rounded-md object-cover"
+              onError={(e) => {
+                e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
+              }}
             />
           ) : listingImgSrc ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -286,6 +318,21 @@ export default function ProductCard({
             src={resolvedVideoUrl}
             poster={resolvedImage || undefined}
             videoClassName={hoverMediaClass}
+            deferUntilInView={false}
+          />
+        ) : showGif && resolvedGifSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={resolvedGifSrc}
+            alt={localizedName}
+            loading="lazy"
+            decoding="async"
+            width={400}
+            height={500}
+            className={`w-full h-full object-cover ${hoverMediaClass}`}
+            onError={(e) => {
+              e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
+            }}
           />
         ) : listingImgSrc ? (
           // eslint-disable-next-line @next/next/no-img-element

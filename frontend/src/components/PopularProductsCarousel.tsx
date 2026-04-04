@@ -327,9 +327,11 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                 : null
 
               const localizedName = getLocalizedProductName(product.name, t, product.translations, i18n.language)
+              const carouselRawVideo =
+                (product as { main_video_url?: string }).main_video_url || product.video_url
               const carouselVideoSrc =
-                product.video_url && isVideoUrl(product.video_url) && !product.has_manual_main_image
-                  ? resolveMediaUrl(product.video_url)
+                carouselRawVideo && isVideoUrl(carouselRawVideo)
+                  ? resolveMediaUrl(carouselRawVideo)
                   : null
               const carouselYoutubeEmbed = carouselVideoSrc ? getVideoEmbedUrl(carouselVideoSrc, 'player') : null
               return (
