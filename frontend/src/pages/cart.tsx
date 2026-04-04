@@ -266,6 +266,10 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
     return `#`
   }
 
+  const discountAmountNum = parseFloat(String(cart.discount_amount ?? '0'))
+  const showCartDiscountBreakdown =
+    Number.isFinite(discountAmountNum) && discountAmountNum > 0
+
   return (
     <>
       <Head>
@@ -547,22 +551,22 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     <span>{t('cart_items_count', 'Товаров')}</span>
                     <span className="font-medium text-main">{cart.items_count}</span>
                   </div>
-                  {cart.discount_amount && parseFloat(cart.discount_amount) > 0 && (
-                    <div className="flex justify-between text-sm text-gray-600">
-                      <span>{t('cart_subtotal', 'Сумма товаров')}</span>
-                      <span className="font-medium text-gray-900">
-                        {cart.total_amount} {cart.currency || 'USD'}
-                      </span>
-                    </div>
-                  )}
-                  {cart.discount_amount && parseFloat(cart.discount_amount) > 0 && (
-                    <div className="flex justify-between text-sm !text-red-600">
-                      <span>{t('cart_discount', 'Скидка')}</span>
-                      <span className="font-medium">
-                        -{cart.discount_amount} {cart.currency || 'USD'}
-                      </span>
-                    </div>
-                  )}
+                  {showCartDiscountBreakdown ? (
+                    <>
+                      <div className="flex justify-between text-sm text-gray-600">
+                        <span>{t('cart_subtotal', 'Сумма товаров')}</span>
+                        <span className="font-medium text-gray-900">
+                          {cart.total_amount} {cart.currency || 'USD'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm !text-red-600">
+                        <span>{t('cart_discount', 'Скидка')}</span>
+                        <span className="font-medium">
+                          -{cart.discount_amount} {cart.currency || 'USD'}
+                        </span>
+                      </div>
+                    </>
+                  ) : null}
                   <div className="border-t border-gray-200 pt-4">
                     <div className="flex justify-between items-baseline">
                       <span className="text-lg font-semibold text-gray-900">{t('cart_total', 'Итого')}</span>
