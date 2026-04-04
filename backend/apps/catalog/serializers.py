@@ -4345,6 +4345,8 @@ class BookProductSerializer(serializers.ModelSerializer):
     book_attributes = serializers.SerializerMethodField()
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     has_manual_main_image = serializers.BooleanField(read_only=True)
+    # _domain_product_type на модели — атрибут класса, не поле БД.
+    product_type = serializers.SerializerMethodField(read_only=True)
 
     def get_book_attributes(self, obj):
         data = getattr(obj.base_product, 'external_data', None) or {}
@@ -4356,6 +4358,15 @@ class BookProductSerializer(serializers.ModelSerializer):
         if attrs.get('thickness_mm') is not None and str(attrs.get('thickness_mm')).strip():
             out['thickness_mm'] = str(attrs['thickness_mm']).strip()
         return out
+
+    def get_product_type(self, obj):
+        raw = getattr(type(obj), '_domain_product_type', None)
+        if raw:
+            return str(raw).replace('_', '-')
+        pt = getattr(obj, 'product_type', None)
+        if pt is not None and str(pt).strip() != '':
+            return str(pt).replace('_', '-')
+        return None
 
     class Meta:
         model = BookProduct
