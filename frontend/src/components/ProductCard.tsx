@@ -3,11 +3,21 @@ import { useTranslation } from 'next-i18next'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
-import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl } from '../lib/media'
+import LazyYouTubeCard from './LazyYouTubeCard'
+import InViewAutoplayVideo from './InViewAutoplayVideo'
+import InViewAmbientIframe from './InViewAmbientIframe'
+import {
+  resolveMediaUrl,
+  isVideoUrl,
+  getPlaceholderImageUrl,
+  getVideoEmbedUrl,
+  extractYouTubeId,
+  getYouTubeCardThumbnailUrl,
+  withListingImageMaxWidth,
+} from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
-import { useState, useEffect } from 'react'
 
 interface ProductCardProps {
   id: number
@@ -78,12 +88,7 @@ export default function ProductCard({
   hasManualMainImage = false
 }: ProductCardProps) {
   const { t, i18n } = useTranslation('common')
-  const [isMounted, setIsMounted] = useState(false)
-  
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
-  
+
   const localizedName = getLocalizedProductName(name, t, translations, locale || i18n.language)
   const localizedDescription = getLocalizedProductDescription(
     description,
@@ -100,7 +105,13 @@ export default function ProductCard({
       ? resolveMediaUrl(imageUrl)
       : null
   const showVideo = Boolean(resolvedVideoUrl) && !hasManualMainImage
-  const youtubeIframeSrc = (showVideo && resolvedVideoUrl) ? getVideoEmbedUrl(resolvedVideoUrl, 'player') : null
+  const youtubeIdForCard = showVideo && resolvedVideoUrl ? extractYouTubeId(resolvedVideoUrl) : null
+  const ambientIframeSrc =
+    showVideo && resolvedVideoUrl && !youtubeIdForCard
+      ? getVideoEmbedUrl(resolvedVideoUrl, 'ambient')
+      : null
+  const hoverMediaClass = 'transition-transform duration-500 group-hover:scale-105'
+  const listingImgSrc = resolvedImage ? withListingImageMaxWidth(resolvedImage) : null
   const parseNumber = (value: string | number | null | undefined) => {
     if (value === null || typeof value === 'undefined') return null
     const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
@@ -122,30 +133,30 @@ export default function ProductCard({
   if (viewMode === 'list') {
     return (
       <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
-        <div className="relative w-full sm:w-48 h-48 flex-shrink-0">
-          {youtubeIframeSrc ? (
-            <iframe
-              src={youtubeIframeSrc}
-              title=""
-              className="pointer-events-none h-full w-full rounded-md object-cover"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
+        <div className="relative w-full sm:w-48 h-48 flex-shrink-0 overflow-hidden rounded-md">
+          {youtubeIdForCard ? (
+            <LazyYouTubeCard
+              youtubeId={youtubeIdForCard}
+              youtubeThumb={getYouTubeCardThumbnailUrl(resolvedVideoUrl)}
+              alt={localizedName}
+              className="rounded-md"
             />
-          ) : showVideo ? (
-            <video
-              src={resolvedVideoUrl!}
+          ) : ambientIframeSrc ? (
+            <InViewAmbientIframe
+              src={ambientIframeSrc}
+              title={localizedName}
+              iframeClassName="rounded-md"
+            />
+          ) : showVideo && resolvedVideoUrl ? (
+            <InViewAutoplayVideo
+              src={resolvedVideoUrl}
               poster={resolvedImage || undefined}
-              playsInline
-              muted
-              autoPlay
-              loop
-              preload="metadata"
-              className="w-full h-full rounded-md object-cover"
+              videoClassName="rounded-md"
             />
-          ) : resolvedImage ? (
+          ) : listingImgSrc ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={resolvedImage}
+              src={listingImgSrc}
               alt={localizedName}
               loading="lazy"
               decoding="async"
@@ -256,35 +267,36 @@ export default function ProductCard({
         href={href || buildProductUrl(productType, slug)}
         className="relative block w-full aspect-[4/5] rounded-xl overflow-hidden bg-gray-100/50"
       >
-        {youtubeIframeSrc ? (
-          <iframe
-            src={youtubeIframeSrc}
-            title=""
-            className="pointer-events-none h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
+        {youtubeIdForCard ? (
+          <LazyYouTubeCard
+            youtubeId={youtubeIdForCard}
+            youtubeThumb={getYouTubeCardThumbnailUrl(resolvedVideoUrl)}
+            alt={localizedName}
+            className={hoverMediaClass}
           />
-        ) : showVideo ? (
-          <video
-            src={resolvedVideoUrl!}
+        ) : ambientIframeSrc ? (
+          <InViewAmbientIframe
+            src={ambientIframeSrc}
+            title={localizedName}
+            className="absolute inset-0 h-full w-full"
+            iframeClassName={hoverMediaClass}
+          />
+        ) : showVideo && resolvedVideoUrl ? (
+          <InViewAutoplayVideo
+            src={resolvedVideoUrl}
             poster={resolvedImage || undefined}
-            playsInline
-            muted
-            autoPlay
-            loop
-            preload="metadata"
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            videoClassName={hoverMediaClass}
           />
-        ) : resolvedImage ? (
+        ) : listingImgSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={resolvedImage}
+            src={listingImgSrc}
             alt={localizedName}
             loading="lazy"
             decoding="async"
             width={400}
             height={500}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            className={`w-full h-full object-cover ${hoverMediaClass}`}
             onError={(e) => {
               e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
             }}

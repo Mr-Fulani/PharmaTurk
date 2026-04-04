@@ -1,10 +1,16 @@
 import Head from 'next/head'
 import Link from 'next/link'
-import Image from 'next/image'
-import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import dynamic from 'next/dynamic'
-import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../lib/media'
+import {
+  getPlaceholderImageUrl,
+  resolveMediaUrl,
+  isVideoUrl,
+  extractYouTubeId,
+  getYouTubeCardThumbnailUrl,
+} from '../lib/media'
+import LazyYouTubeCard from '../components/LazyYouTubeCard'
+import FallbackMediaImage from '../components/FallbackMediaImage'
 import { getSiteOrigin } from '../lib/urls'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
@@ -72,123 +78,8 @@ interface HomePageProps {
   footerSettings: any
 }
 
-const LazyYouTube = ({ youtubeId, youtubeThumb, title, alt }: { youtubeId: string, youtubeThumb: string | null, title?: string, alt?: string }) => {
-  const [loadIframe, setLoadIframe] = useState(false)
-
-  // Загружаем iframe с задержкой, чтобы не блокировать LCP и initial JS bundle
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoadIframe(true)
-    }, 2500)
-    return () => clearTimeout(timer)
-  }, [])
-
-  const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
-  const params = [
-    'autoplay=1',
-    'mute=1',
-    'loop=1',
-    `playlist=${youtubeId}`,
-    'controls=0',
-    'playsinline=1',
-    'rel=0',
-    'modestbranding=1',
-    'iv_load_policy=3',
-    'cc_load_policy=0',
-    'fs=0',
-    'disablekb=1',
-    'showinfo=0',
-    'autohide=1',
-  ].join('&')
-  const embedUrl = `${base}?${params}`
-
-  return (
-    <div 
-      className="pointer-events-none absolute inset-0 h-full w-full overflow-hidden"
-      onMouseEnter={() => setLoadIframe(true)}
-      onClick={() => setLoadIframe(true)}
-    >
-      {youtubeThumb && (
-        <img
-          src={youtubeThumb}
-          alt={alt || title || 'Video thumbnail'}
-          loading="lazy"
-          decoding="async"
-          width={480}
-          height={360}
-          className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${loadIframe ? 'opacity-0' : 'opacity-100'}`}
-        />
-      )}
-      {loadIframe && (
-        <iframe
-          src={embedUrl}
-          title={alt || title || 'YouTube'}
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-          allow="autoplay; encrypted-media; picture-in-picture"
-          loading="lazy"
-          allowFullScreen={false}
-          style={{ opacity: 0, transition: 'opacity 0.7s ease' }}
-          onLoad={(e) => {
-            const el = e.currentTarget
-            el.style.opacity = '1'
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
 // @ts-ignore: нет типов для @egjs/react-grid
 import Masonry from 'react-masonry-css'
-
-const FallbackMediaImage = ({ src, alt, fallbackSrc }: { src: string, alt: string, fallbackSrc?: string }) => {
-  const [imgSrc, setImgSrc] = useState(src)
-
-  // next/image не поддерживает локальные URL с query-параметрами (/api/...?path=...)
-  // возвращаем 400. Для таких URL используем прямой <img>.
-  const isProxyMedia = imgSrc.includes('/api/') || imgSrc.includes('proxy-media')
-
-  const isExternal = imgSrc.startsWith('http')
-  const allowedDomains = ['i.pinimg.com', 'fastly.picsum.photos', 'picsum.photos', 'static.street-beat.ru', 'img.youtube.com', 'cdn.mudaroba.com']
-  let isValidHost = !isProxyMedia
-  if (!isProxyMedia && isExternal) {
-    try {
-      const hostname = new URL(imgSrc).hostname
-      isValidHost = allowedDomains.includes(hostname) || hostname === 'localhost'
-    } catch (e) {
-      isValidHost = false
-    }
-  }
-
-  if (!isValidHost || isProxyMedia) {
-    return (
-      <img
-        src={imgSrc}
-        alt={alt}
-        loading="lazy"
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-        onError={() => {
-          if (fallbackSrc && imgSrc !== fallbackSrc) setImgSrc(fallbackSrc)
-        }}
-      />
-    )
-  }
-
-  return (
-    <Image
-      src={imgSrc}
-      alt={alt}
-      loading="lazy"
-      fill
-      sizes="(max-width: 640px) 210px, (max-width: 1024px) 33vw, 400px"
-      className="pointer-events-none object-cover"
-      onError={() => {
-        if (fallbackSrc && imgSrc !== fallbackSrc) setImgSrc(fallbackSrc)
-      }}
-    />
-  )
-}
-
 
 export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners }: HomePageProps) {
   const { t } = useTranslation('common')
@@ -233,26 +124,13 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
     return normalized || 'medicines'
   }
 
-  const extractYouTubeId = (url?: string | null) => {
-    if (!url) return null
-    const match =
-      url.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?/\\s]{11})/) ||
-      url.match(/(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?/\\s]+)/)
-    return match && match[1] ? match[1] : null
-  }
-
-  const getYouTubeThumbnail = (url?: string | null) => {
-    const youtubeId = extractYouTubeId(url)
-    return youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : null
-  }
-
   const renderMedia = (mediaUrl?: string | null, alt?: string, fallbackSrc?: string) => {
     if (!mediaUrl && !fallbackSrc) return null
 
     const youtubeId = extractYouTubeId(mediaUrl || '')
     if (youtubeId) {
-      const youtubeThumb = getYouTubeThumbnail(mediaUrl)
-      return <LazyYouTube youtubeId={youtubeId} youtubeThumb={youtubeThumb} alt={alt} />
+      const youtubeThumb = getYouTubeCardThumbnailUrl(mediaUrl)
+      return <LazyYouTubeCard youtubeId={youtubeId} youtubeThumb={youtubeThumb} alt={alt} />
     }
 
     // Если YouTube не обнаружен — обычная обработка файла/изображения

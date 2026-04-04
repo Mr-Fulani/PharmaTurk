@@ -113,6 +113,22 @@ export function getVideoEmbedUrl(url: string, mode: VideoEmbedMode = 'player'): 
   return null
 }
 
+/** Извлекает id ролика YouTube из URL (watch, embed, shorts, youtu.be). */
+export function extractYouTubeId(url?: string | null): string | null {
+  if (!url || typeof url !== 'string') return null
+  const match =
+    url.match(
+      /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?/\s]{11})/
+    ) || url.match(/(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?/\s]+)/)
+  return match?.[1] ?? null
+}
+
+/** Превью для карточек (легче полного плеера). */
+export function getYouTubeCardThumbnailUrl(url?: string | null): string | null {
+  const id = extractYouTubeId(url)
+  return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null
+}
+
 const stripTrailingSlash = (value?: string | null) => (value || '').replace(/\/+$/, '')
 
 /**
@@ -188,6 +204,17 @@ export const resolveMediaUrl = (url?: string | null) => {
     return `${origin}/${url}`
   }
   return `/${url}`
+}
+
+/**
+ * Превью для сетки товаров: запрос уменьшенного WebP через proxy-media (см. max_width в бэкенде).
+ */
+export function withListingImageMaxWidth(url: string, maxWidth = 480): string {
+  if (!url || typeof url !== 'string') return url
+  if (!url.includes('proxy-media')) return url
+  if (/[?&](max_width|w)=/i.test(url)) return url
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}max_width=${maxWidth}`
 }
 
 export const pickMedia = (media?: MediaSource, fallback?: string) => {

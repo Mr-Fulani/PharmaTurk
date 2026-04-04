@@ -6,7 +6,7 @@ import Masonry from 'react-masonry-css'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import BannerCarousel from '../../components/BannerCarouselMedia'
-import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl } from '../../lib/media'
+import CardMasonryMedia from '../../components/CardMasonryMedia'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
 
 interface CategoryTranslation {
@@ -35,121 +35,6 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
   const { t } = useTranslation('common')
   const router = useRouter()
   const locale = router.locale || propLocale || 'ru'
-
-  const extractYouTubeId = (url?: string | null) => {
-    if (!url) return null
-    const match =
-      url.match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|m\.youtube\.com\/watch\?v=)([^"&?/\\s]{11})/) ||
-      url.match(/(?:youtube\.com\/shorts\/|m\.youtube\.com\/shorts\/)([^"&?/\\s]+)/)
-    return match && match[1] ? match[1] : null
-  }
-
-  const getYouTubeThumbnail = (url?: string | null) => {
-    const youtubeId = extractYouTubeId(url)
-    return youtubeId ? `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg` : null
-  }
-
-  const renderMedia = (mediaUrl?: string | null, alt?: string, id?: number) => {
-    const effectiveUrl = mediaUrl || getPlaceholderImageUrl({ type: 'category', id })
-
-    const youtubeId = extractYouTubeId(effectiveUrl)
-    if (youtubeId) {
-      const youtubeThumb = getYouTubeThumbnail(effectiveUrl)
-      const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
-      const params = [
-        'autoplay=1',
-        'mute=1',
-        'loop=1',
-        `playlist=${youtubeId}`,
-        'controls=0',
-        'playsinline=1',
-        'rel=0',
-        'modestbranding=1',
-        'iv_load_policy=3',
-        'cc_load_policy=0',
-        'fs=0',
-        'disablekb=1',
-        'showinfo=0',
-        'autohide=1',
-      ].join('&')
-      const embedUrl = `${base}?${params}`
-      return (
-        <div className="pointer-events-none absolute inset-0 h-full w-full overflow-hidden">
-          {youtubeThumb && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={youtubeThumb}
-              alt={alt || ''}
-              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-            />
-          )}
-          <iframe
-            src={embedUrl}
-            title={alt || 'YouTube'}
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-            allow="autoplay; encrypted-media; picture-in-picture"
-            loading="lazy"
-            style={{ opacity: 0, transition: 'opacity 0.4s ease' }}
-            onLoad={(e) => {
-              const el = e.currentTarget
-              setTimeout(() => {
-                el.style.opacity = '1'
-              }, 3100) // скрываем стартовые оверлеи YouTube
-            }}
-            allowFullScreen={false}
-          />
-        </div>
-      )
-    }
-
-    // Обычная обработка файла/изображения
-    const src = resolveMediaUrl(effectiveUrl)
-    if (!src) return null
-
-    if (isVideoUrl(mediaUrl || src)) {
-      return (
-        <video
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          onError={(e) => {
-            const placeholder = id ? getPlaceholderImageUrl({ type: 'category', id }) : null
-            if (placeholder) {
-              const wrapper = e.currentTarget.parentElement
-              if (wrapper) {
-                const img = document.createElement('img')
-                img.src = placeholder
-                img.alt = alt || ''
-                img.className = 'pointer-events-none absolute inset-0 h-full w-full object-cover'
-                wrapper.replaceChildren(img)
-              }
-            }
-          }}
-        >
-          <source src={src} />
-        </video>
-      )
-    }
-
-    return (
-      <img
-        src={src}
-        alt={alt || ''}
-        loading="lazy"
-        decoding="async"
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-        onError={(e) => {
-          const placeholder = id ? getPlaceholderImageUrl({ type: 'category', id }) : null
-          if (placeholder && e.currentTarget.src !== placeholder) {
-            e.currentTarget.src = placeholder
-          }
-        }}
-      />
-    )
-  }
 
   return (
     <>
@@ -194,11 +79,12 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
                   className="relative isolate rounded-xl overflow-hidden block transform hover:scale-[1.02] transition-transform duration-300 shadow-md hover:shadow-xl bg-[var(--surface)]"
                 >
                   <div className="absolute inset-0 z-0 overflow-hidden">
-                    {renderMedia(
-                      c.card_media_url,
-                      getLocalizedCategoryName(c.slug, c.name, t, c.translations, locale),
-                      c.id
-                    )}
+                    <CardMasonryMedia
+                      mediaUrl={c.card_media_url}
+                      alt={getLocalizedCategoryName(c.slug, c.name, t, c.translations, locale)}
+                      placeholderType="category"
+                      id={c.id}
+                    />
                   </div>
                   <div className="absolute inset-0 z-[1] bg-[var(--text-strong)]/20" />
                   <div className="absolute inset-0 z-10 flex items-center justify-center p-4">

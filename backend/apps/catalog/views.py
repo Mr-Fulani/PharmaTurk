@@ -2892,6 +2892,45 @@ def proxy_media(request):
         ext = resolved_path.rsplit('.', 1)[-1].lower() if '.' in resolved_path else ''
         content_type = _PROXY_MEDIA_TYPES.get(f'.{ext}', 'application/octet-stream')
 
+        # Уменьшение изображений для карточек в каталоге (?max_width= / ?w=, только jpeg/png/webp)
+        max_w_raw = request.GET.get('max_width') or request.GET.get('w')
+        max_w_int = None
+        if max_w_raw:
+            try:
+                max_w_int = max(64, min(int(max_w_raw), 800))
+            except (TypeError, ValueError):
+                max_w_int = None
+
+        if max_w_int and content_type in ('image/jpeg', 'image/png', 'image/webp'):
+            cache_key_mw = f"r2mw_{hashlib.md5(resolved_path.encode()).hexdigest()}_{max_w_int}"
+            webp_resized = cache.get(cache_key_mw)
+            if webp_resized is None:
+                try:
+                    with default_storage.open(resolved_path, 'rb') as rf:
+                        img = Image.open(rf)
+                        img = ImageOps.exif_transpose(img)
+                        if img.mode in ('RGBA', 'P', 'LA'):
+                            if img.mode == 'P':
+                                img = img.convert('RGBA')
+                        else:
+                            if img.mode != 'RGB':
+                                img = img.convert('RGB')
+                        img.thumbnail((max_w_int, max_w_int * 4), Image.Resampling.LANCZOS)
+                        out = io.BytesIO()
+                        img.save(out, format='WEBP', quality=80, method=4)
+                        webp_resized = out.getvalue()
+                    if len(webp_resized) < 5 * 1024 * 1024:
+                        cache.set(cache_key_mw, webp_resized, 30 * 86400)
+                except Exception as resize_err:
+                    logger.warning('proxy_media max_width для %s: %s', resolved_path, resize_err)
+                    webp_resized = None
+            if webp_resized is not None:
+                resp = HttpResponse(webp_resized, content_type='image/webp')
+                resp['Content-Length'] = str(len(webp_resized))
+                resp['Cache-Control'] = 'public, max-age=2592000, immutable'
+                resp['Vary'] = 'Accept'
+                return resp
+
         file_obj = default_storage.open(resolved_path, 'rb')
         
         # ✅ WebP Оптимизация на лету: экономия ресурса и трафика
