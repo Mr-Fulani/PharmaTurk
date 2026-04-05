@@ -239,11 +239,58 @@ class CurrencyRateService:
                     execution_time_seconds=execution_time
                 )
         return False, f"All sources failed. Last error: {last_error}"
-    
-    def _derive_usdt_rate_via_usd(self, from_currency: str, to_currency: str) -> Optional[Decimal]:
+
+    @staticmethod
+    def _get_direct_rate_from_db(src: str, dst: str) -> Optional[Decimal]:
+        """Прямой или обратный курс из БД (без пивота)."""
+        try:
+            direct = CurrencyRate.objects.get(
+                from_currency=src,
+                to_currency=dst,
+                is_active=True,
+            )
+            return direct.rate
+        except CurrencyRate.DoesNotExist:
+            try:
+                reverse = CurrencyRate.objects.get(
+                    from_currency=dst,
+                    to_currency=src,
+                    is_active=True,
+                )
+                if reverse.rate == 0:
+                    return None
+                return Decimal('1') / reverse.rate
+            except CurrencyRate.DoesNotExist:
+                return None
+
+    def _lookup_rate_fiat(self, from_currency: str, to_currency: str) -> Optional[Decimal]:
         """
-        USDT нет на биржевых API; в БД пары USDT могли не появиться после старых обновлений.
-        Считаем курс через USD и GlobalCurrencySettings.usdt_markup_percentage (как при парсинге).
+        Курс между фиатными валютами (TRY, RUB, USD, EUR, KZT) из БД: прямой или один пивот.
+        Не используется для пар с USDT — см. _canonical_usdt_rate.
+        """
+        if from_currency == to_currency:
+            return Decimal('1')
+        direct = self._get_direct_rate_from_db(from_currency, to_currency)
+        if direct is not None:
+            return direct
+        pivots = ['RUB', 'USD', 'EUR', 'TRY', 'KZT']
+        for pivot in pivots:
+            if pivot == from_currency or pivot == to_currency:
+                continue
+            first = self._get_direct_rate_from_db(from_currency, pivot)
+            if first is None:
+                continue
+            second = self._get_direct_rate_from_db(pivot, to_currency)
+            if second is None:
+                continue
+            return (first * second).quantize(Decimal('0.0000001'))
+        return None
+
+    def _canonical_usdt_rate(self, from_currency: str, to_currency: str) -> Optional[Decimal]:
+        """
+        USDT: паритет к USD 1:1 в смысле базового курса; наценка магазина только из
+        GlobalCurrencySettings.usdt_markup_percentage. Ручные строки USDT в «Курс валют» не учитываются.
+        Маржа по парам (MarginSettings) по-прежнему в CurrencyConverter.
         """
         markup = GlobalCurrencySettings.load().usdt_markup_percentage
         usdt_modifier = Decimal('1') + (markup / Decimal('100'))
@@ -252,18 +299,18 @@ class CurrencyRateService:
         if from_currency == 'USDT' and to_currency == 'USD':
             return Decimal('1') / usdt_modifier
         if to_currency == 'USDT':
-            x_to_usd = self.get_rate(from_currency, 'USD', allow_usdt_derivation=False)
-            if x_to_usd is not None:
-                return (x_to_usd * usdt_modifier).quantize(Decimal('0.0000001'))
+            x_to_usd = self._lookup_rate_fiat(from_currency, 'USD')
+            if x_to_usd is None:
+                return None
+            return (x_to_usd * usdt_modifier).quantize(Decimal('0.0000001'))
         if from_currency == 'USDT':
-            usd_to_x = self.get_rate('USD', to_currency, allow_usdt_derivation=False)
-            if usd_to_x is not None:
-                return (usd_to_x / usdt_modifier).quantize(Decimal('0.0000001'))
+            usd_to_x = self._lookup_rate_fiat('USD', to_currency)
+            if usd_to_x is None:
+                return None
+            return (usd_to_x / usdt_modifier).quantize(Decimal('0.0000001'))
         return None
 
-    def get_rate(
-        self, from_currency: str, to_currency: str, *, allow_usdt_derivation: bool = True
-    ) -> Optional[Decimal]:
+    def get_rate(self, from_currency: str, to_currency: str) -> Optional[Decimal]:
         from_currency = _normalize_currency_for_rate(from_currency or "")
         to_currency = _normalize_currency_for_rate(to_currency or "")
         if not from_currency or not to_currency:
@@ -278,66 +325,25 @@ class CurrencyRateService:
             cached_rate = None
         if cached_rate:
             return cached_rate
-        try:
-            rate_obj = CurrencyRate.objects.get(
-                from_currency=from_currency,
-                to_currency=to_currency,
-                is_active=True
-            )
-            try:
-                cache.set(cache_key, rate_obj.rate, 300)
-            except Exception as e:
-                logger.warning(f"Cache set failed for {cache_key}: {e}")
-            return rate_obj.rate
-        except CurrencyRate.DoesNotExist:
-            pass
 
-        def _get_direct_rate(src: str, dst: str) -> Optional[Decimal]:
-            try:
-                direct = CurrencyRate.objects.get(
-                    from_currency=src,
-                    to_currency=dst,
-                    is_active=True
-                )
-                return direct.rate
-            except CurrencyRate.DoesNotExist:
+        if from_currency == 'USDT' or to_currency == 'USDT':
+            r = self._canonical_usdt_rate(from_currency, to_currency)
+            if r is not None:
                 try:
-                    reverse = CurrencyRate.objects.get(
-                        from_currency=dst,
-                        to_currency=src,
-                        is_active=True
-                    )
-                    if reverse.rate == 0:
-                        return None
-                    return Decimal('1') / reverse.rate
-                except CurrencyRate.DoesNotExist:
-                    return None
-
-        pivots = ['RUB', 'USD', 'EUR', 'TRY', 'KZT']
-        for pivot in pivots:
-            if pivot == from_currency or pivot == to_currency:
-                continue
-            first = _get_direct_rate(from_currency, pivot)
-            if first is None:
-                continue
-            second = _get_direct_rate(pivot, to_currency)
-            if second is None:
-                continue
-            derived = (first * second).quantize(Decimal('0.0000001'))
-            try:
-                cache.set(cache_key, derived, 300)
-            except Exception as e:
-                logger.warning(f"Cache set failed for {cache_key}: {e}")
-            return derived
-
-        if allow_usdt_derivation and (from_currency == 'USDT' or to_currency == 'USDT'):
-            synthetic = self._derive_usdt_rate_via_usd(from_currency, to_currency)
-            if synthetic is not None:
-                try:
-                    cache.set(cache_key, synthetic, 300)
+                    cache.set(cache_key, r, 300)
                 except Exception as e:
                     logger.warning(f"Cache set failed for {cache_key}: {e}")
-                return synthetic
+                return r
+            logger.warning(f"Rate not found: {from_currency} → {to_currency}")
+            return None
+
+        r = self._lookup_rate_fiat(from_currency, to_currency)
+        if r is not None:
+            try:
+                cache.set(cache_key, r, 300)
+            except Exception as e:
+                logger.warning(f"Cache set failed for {cache_key}: {e}")
+            return r
 
         logger.warning(f"Rate not found: {from_currency} → {to_currency}")
         return None

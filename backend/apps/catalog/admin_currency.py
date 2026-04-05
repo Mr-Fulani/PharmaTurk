@@ -22,7 +22,12 @@ class GlobalCurrencySettingsAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Основные настройки', {
-            'fields': ('default_margin_percentage', 'usdt_markup_percentage')
+            'fields': ('default_margin_percentage', 'usdt_markup_percentage'),
+            'description': (
+                'Маржа по умолчанию и отдельные пары в «Маржа по валютным парам» задают наценку конвертера. '
+                'USDT считается от паритета 1 USDT = 1 USD плюс поле «Наценка USDT (%)»; ручной ввод курсов '
+                'в разделе «Курс валют» используйте для фиата (TRY, RUB, USD, EUR, KZT), не для наценки USDT.'
+            ),
         }),
         ('Доставка по умолчанию (USD)', {
             'fields': (
@@ -67,7 +72,13 @@ class CurrencyRateAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Основная информация', {
-            'fields': ('from_currency', 'to_currency', 'rate', 'is_active')
+            'fields': ('from_currency', 'to_currency', 'rate', 'is_active'),
+            'description': (
+                'Источник правды для фиатных курсов (ручной ввод и автообновление). '
+                'Пары с USDT в списке могут появляться после автообновления, но при расчёте цен USDT '
+                'берётся из глобальной «Наценка USDT (%)» и курсов без USDT; редактировать USDT вручную для '
+                'наценки не нужно.'
+            ),
         }),
         ('Источник данных', {
             'fields': ('source',)
