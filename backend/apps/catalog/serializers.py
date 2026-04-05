@@ -1562,7 +1562,7 @@ class FavoriteSerializer(serializers.ModelSerializer):
     
     def get_product(self, obj):
         """Сериализация товара в зависимости от его типа."""
-        from .models import HeadwearProduct, UnderwearProduct, IslamicClothingProduct
+        from .models import BookProduct, HeadwearProduct, UnderwearProduct, IslamicClothingProduct
 
         product = obj.product
         request = self.context.get('request')
@@ -1629,7 +1629,16 @@ class FavoriteSerializer(serializers.ModelSerializer):
                     ic_item = product.islamic_clothing_item
                 except IslamicClothingProduct.DoesNotExist:
                     ic_item = None
-            if hw_item is not None:
+            book_item = None
+            if product_type == 'books':
+                try:
+                    book_item = product.book_item
+                except BookProduct.DoesNotExist:
+                    book_item = None
+            if book_item is not None:
+                product_data = BookProductSerializer(book_item, context={'request': request}).data
+                _pin_base_product_fields(product_data, product.id)
+            elif hw_item is not None:
                 product_data = HeadwearProductSerializer(hw_item, context={'request': request}).data
                 _pin_base_product_fields(product_data, product.id)
             elif uw_item is not None:
@@ -1665,9 +1674,9 @@ def resolve_product_for_favorites_api(product_id, product_type_raw):
     """
     Единая резолвация товара для add/remove/check избранного.
 
-    Для headwear / underwear / islamic_clothing допускается id доменной строки или id shadow Product
+    Для headwear / underwear / islamic_clothing / books допускается id доменной строки или id shadow Product
     (как в листингах и карточках). Избранное хранится на доменной модели; ответ списка по-прежнему
-    отдаёт id shadow Product в поле id (см. FavoriteSerializer).
+    отдаёт id shadow Product в поле id (см. FavoriteSerializer), если у домена задан base_product_id.
     """
     from django.core.exceptions import ObjectDoesNotExist
 
@@ -1727,6 +1736,30 @@ def resolve_product_for_favorites_api(product_id, product_type_raw):
     if product_type == 'islamic_clothing':
         return _resolve_domain_triplet(IslamicClothingProduct, 'islamic_clothing_item'), product_type
 
+    # Книги: в листинге и на карточке id = BookProduct.pk; shadow Product имеет другой pk — нельзя делать Product.objects.get(id=pid).
+    if product_type == 'books':
+        from .models import BookProduct
+
+        try:
+            return _ensure_active(BookProduct.objects.get(id=pid)), product_type
+        except BookProduct.DoesNotExist:
+            pass
+        row = BookProduct.objects.filter(base_product_id=pid).first()
+        if row:
+            return _ensure_active(row), product_type
+        try:
+            p = Product.objects.get(id=pid)
+        except Product.DoesNotExist:
+            raise serializers.ValidationError({"product_id": "Товар не найден"})
+        pt = (getattr(p, "product_type", None) or "").strip().lower().replace("-", "_")
+        if pt != "books":
+            raise serializers.ValidationError({"product_id": "Товар не найден"})
+        try:
+            dom = p.book_item
+        except BookProduct.DoesNotExist:
+            raise serializers.ValidationError({"product_id": "Товар не найден"})
+        return _ensure_active(dom), product_type
+
     try:
         from .models import MedicalEquipmentProduct
     except ImportError:
@@ -1744,7 +1777,6 @@ def resolve_product_for_favorites_api(product_id, product_type_raw):
         'accessories': Product,
         'jewelry': JewelryProduct,
         'perfumery': Product,
-        'books': Product,
         'clothing': ClothingProduct,
         'shoes': ShoeProduct,
         'electronics': ElectronicsProduct,

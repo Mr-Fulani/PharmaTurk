@@ -59,13 +59,14 @@ export function needsTypeInPath(productType?: string | null): boolean {
 
 /**
  * ID для API избранного (add/remove/check и сопоставление со списком /favorites).
- * Для headwear / underwear / islamic-clothing в ответе избранного id = shadow Product,
+ * Для headwear / underwear / islamic-clothing / books в ответе избранного id = shadow Product,
  * а в листингах карточка часто несёт доменный id — без base совпадение ломается.
  */
 const FAVORITE_API_USES_BASE_PRODUCT_ID = new Set([
   'headwear',
   'underwear',
   'islamic-clothing',
+  'books',
 ])
 
 export function favoriteApiProductId(

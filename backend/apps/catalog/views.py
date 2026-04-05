@@ -2474,7 +2474,7 @@ class FavoriteViewSet(viewsets.ViewSet):
         # Старые записи избранного по shadow Product для того же headwear/underwear/islamic
         base_pk = getattr(product, 'base_product_id', None)
         if base_pk and product.__class__.__name__ in (
-            'HeadwearProduct', 'UnderwearProduct', 'IslamicClothingProduct',
+            'HeadwearProduct', 'UnderwearProduct', 'IslamicClothingProduct', 'BookProduct',
         ):
             pct = ContentType.objects.get_for_model(Product)
             if user:
@@ -2542,7 +2542,7 @@ class FavoriteViewSet(viewsets.ViewSet):
         # Удаляем товар из избранного (и устаревшую запись по shadow Product, если была)
         base_pk = getattr(product, 'base_product_id', None)
         legacy_domain = product.__class__.__name__ in (
-            'HeadwearProduct', 'UnderwearProduct', 'IslamicClothingProduct',
+            'HeadwearProduct', 'UnderwearProduct', 'IslamicClothingProduct', 'BookProduct',
         )
         if user:
             deleted = Favorite.objects.filter(
@@ -2605,7 +2605,7 @@ class FavoriteViewSet(viewsets.ViewSet):
         content_type = ContentType.objects.get_for_model(product)
         base_pk = getattr(product, 'base_product_id', None)
         legacy_domain = product.__class__.__name__ in (
-            'HeadwearProduct', 'UnderwearProduct', 'IslamicClothingProduct',
+            'HeadwearProduct', 'UnderwearProduct', 'IslamicClothingProduct', 'BookProduct',
         )
         pct_product = ContentType.objects.get_for_model(Product) if legacy_domain and base_pk else None
         
