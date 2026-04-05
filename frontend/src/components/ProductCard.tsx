@@ -110,7 +110,10 @@ export default function ProductCard({
 
   const resolvedImage =
     imageUrl && !isVideoUrl(imageUrl) ? resolveMediaUrl(imageUrl) : null
-  const preferStaticHero = Boolean(hasManualMainImage)
+  // На книгах обложка часто в файле (has_manual_main_image), но маркетинговое видео на витрине всё равно показываем.
+  const preferStaticHero =
+    Boolean(hasManualMainImage) &&
+    (productType || '').toString().trim().replace(/_/g, '-').toLowerCase() !== 'books'
   const listingVideoRaw = preferStaticHero ? null : pickPreferredVideoUrl([mainVideoUrl, videoUrl])
   const resolvedVideoUrl = listingVideoRaw
     ? resolveMediaUrl(listingVideoRaw)

@@ -1019,7 +1019,18 @@ class ProductSerializer(serializers.ModelSerializer):
         out = _from_entity(obj)
         if out:
             return out
-        # 3: домен (книги, одежда и т.д.), если синк в Product ещё не заполнил видео
+        # Книги: явно book_item (как BookProductSerializer), без зависимости от порядка domain_item.
+        pt = (getattr(obj, "product_type", None) or "").strip().lower().replace("-", "_")
+        if pt == "books":
+            try:
+                bk = obj.book_item
+            except Exception:
+                bk = None
+            if bk is not None:
+                out = _from_entity(bk)
+                if out:
+                    return out
+        # 3: остальные домены, если синк в Product ещё не заполнил видео
         try:
             domain = getattr(obj, "domain_item", None)
             if domain and domain != obj:
@@ -1736,17 +1747,21 @@ def resolve_product_for_favorites_api(product_id, product_type_raw):
     if product_type == 'islamic_clothing':
         return _resolve_domain_triplet(IslamicClothingProduct, 'islamic_clothing_item'), product_type
 
-    # Книги: в листинге и на карточке id = BookProduct.pk; shadow Product имеет другой pk — нельзя делать Product.objects.get(id=pid).
+    # Книги: число pid может быть id shadow Product (витрина /catalog/products) или pk BookProduct (домен).
+    # Если в Product есть строка books с этим pk — сначала трактуем как shadow (избранное по base_product_id),
+    # иначе — как доменный pk; иначе коллизия «pk книги = id чужого shadow» ломала добавление.
     if product_type == 'books':
         from .models import BookProduct
 
-        try:
-            return _ensure_active(BookProduct.objects.get(id=pid)), product_type
-        except BookProduct.DoesNotExist:
-            pass
-        row = BookProduct.objects.filter(base_product_id=pid).first()
-        if row:
-            return _ensure_active(row), product_type
+        shadow_book = BookProduct.objects.filter(base_product_id=pid).first()
+        dom_book = BookProduct.objects.filter(pk=pid).first()
+        prod_is_book_shadow = Product.objects.filter(pk=pid, product_type='books', is_active=True).exists()
+        if prod_is_book_shadow and shadow_book:
+            return _ensure_active(shadow_book), product_type
+        if dom_book:
+            return _ensure_active(dom_book), product_type
+        if shadow_book:
+            return _ensure_active(shadow_book), product_type
         try:
             p = Product.objects.get(id=pid)
         except Product.DoesNotExist:
