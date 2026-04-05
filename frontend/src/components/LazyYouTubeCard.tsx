@@ -1,18 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 export type LazyYouTubeCardProps = {
   youtubeId: string
   youtubeThumb: string | null
   title?: string
   alt?: string
-  /** Задержка перед монтированием iframe (мс), как на главной */
+  /** Задержка после появления в viewport перед монтированием iframe (мс) */
   iframeDelayMs?: number
   className?: string
 }
 
 /**
- * Фоновый YouTube для карточек: сначала превью, iframe — после таймаута или при наведении/клике.
- * Снижает конкуренцию за сеть на страницах со многими карточками.
+ * Фоновый YouTube для карточек: превью до входа в viewport; iframe только при пересечении с экраном
+ * и после задержки / наведения / клика — без лишней нагрузки на сеть вне видимой области.
  */
 export default function LazyYouTubeCard({
   youtubeId,
@@ -22,12 +22,33 @@ export default function LazyYouTubeCard({
   iframeDelayMs = 2500,
   className = '',
 }: LazyYouTubeCardProps) {
-  const [loadIframe, setLoadIframe] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [inView, setInView] = useState(false)
+  const [wantsIframe, setWantsIframe] = useState(false)
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoadIframe(true), iframeDelayMs)
+    const el = rootRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setInView(true)
+      return
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) setInView(true)
+      },
+      { root: null, rootMargin: '0px', threshold: 0.01 }
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!inView) return
+    const timer = setTimeout(() => setWantsIframe(true), iframeDelayMs)
     return () => clearTimeout(timer)
-  }, [iframeDelayMs])
+  }, [inView, iframeDelayMs])
+
+  const showIframe = inView && wantsIframe
 
   const base = `https://www.youtube-nocookie.com/embed/${youtubeId}`
   const params = [
@@ -50,9 +71,10 @@ export default function LazyYouTubeCard({
 
   return (
     <div
+      ref={rootRef}
       className={`pointer-events-none absolute inset-0 h-full w-full overflow-hidden ${className}`}
-      onMouseEnter={() => setLoadIframe(true)}
-      onClick={() => setLoadIframe(true)}
+      onMouseEnter={() => setWantsIframe(true)}
+      onClick={() => setWantsIframe(true)}
     >
       {youtubeThumb && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -63,10 +85,10 @@ export default function LazyYouTubeCard({
           decoding="async"
           width={480}
           height={360}
-          className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${loadIframe ? 'opacity-0' : 'opacity-100'}`}
+          className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${showIframe ? 'opacity-0' : 'opacity-100'}`}
         />
       )}
-      {loadIframe && (
+      {showIframe && (
         <iframe
           src={embedUrl}
           title={alt || title || 'YouTube'}

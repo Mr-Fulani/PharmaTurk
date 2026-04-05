@@ -246,7 +246,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
                 loading={index === 0 ? 'eager' : 'lazy'}
                 sizes={index === 0
                   ? '(max-width: 480px) 480px, (max-width: 768px) 768px, 1200px'
-                  : '(max-width: 768px) 100vw, 1200px'
+                  : '(max-width: 768px) 25vw, 220px'
                 }
                 className={`${styles.itemImage} object-cover`}
                 onLoadingComplete={() => {
