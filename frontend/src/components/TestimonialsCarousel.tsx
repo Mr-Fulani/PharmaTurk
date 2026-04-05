@@ -78,6 +78,9 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const sectionRef = useRef<HTMLElement>(null)
+  /** YouTube/Vimeo iframe только для карточек, попавших в viewport (или по клику play) — иначе PSI тянет base.js на всю страницу */
+  const [lazyEmbedIds, setLazyEmbedIds] = useState<Set<number>>(() => new Set())
   const autoPlayRef = useRef<NodeJS.Timeout | null>(null)
   const videoRefs = useRef<Map<number, HTMLVideoElement>>(new Map())
   const iframeRefs = useRef<Map<number, HTMLIFrameElement>>(new Map())
@@ -242,6 +245,13 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     e.preventDefault()
     e.stopPropagation()
 
+    setLazyEmbedIds((prev) => {
+      if (prev.has(testimonialId)) return prev
+      const next = new Set(prev)
+      next.add(testimonialId)
+      return next
+    })
+
     const video = videoRefs.current.get(testimonialId)
     const iframe = iframeRefs.current.get(testimonialId)
     const player = youtubePlayers.current.get(testimonialId)
@@ -401,18 +411,69 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
     mutator(playerReadyMapRef.current)
   }
 
-  // Загрузка YouTube IFrame API — только когда секция видна во viewport (lazy)
+  // IntersectionObserver: разрешаем iframe только для карточек, реально попавших во viewport
   useEffect(() => {
+    if (loading || testimonials.length === 0) return
+
+    let cleanup: (() => void) | undefined
+    const run = () => {
+      const root = sectionRef.current
+      if (!root) return
+
+      const nodes = root.querySelectorAll<HTMLElement>('[data-testimonial-embed-lazy]')
+      if (nodes.length === 0) return
+
+      if (typeof IntersectionObserver === 'undefined') {
+        setLazyEmbedIds((prev) => {
+          const next = new Set(prev)
+          nodes.forEach((node) => {
+            const id = Number(node.dataset.testimonialEmbedLazy)
+            if (Number.isFinite(id)) next.add(id)
+          })
+          return next
+        })
+        return
+      }
+
+      const obs = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((en) => {
+            if (!en.isIntersecting) return
+            const id = Number((en.target as HTMLElement).dataset.testimonialEmbedLazy)
+            if (!Number.isFinite(id)) return
+            setLazyEmbedIds((prev) => {
+              if (prev.has(id)) return prev
+              const next = new Set(prev)
+              next.add(id)
+              return next
+            })
+          })
+        },
+        { root: null, rootMargin: '80px', threshold: 0.15 }
+      )
+      nodes.forEach((n) => obs.observe(n))
+      cleanup = () => obs.disconnect()
+    }
+
+    const tid = window.setTimeout(run, 0)
+    return () => {
+      window.clearTimeout(tid)
+      cleanup?.()
+    }
+  }, [loading, testimonials])
+
+  // YouTube IFrame API — только когда хотя бы один embed разрешён (есть iframe в DOM)
+  useEffect(() => {
+    if (lazyEmbedIds.size === 0) return
+
     let checkReady: NodeJS.Timeout | null = null
 
     const loadYouTubeApi = () => {
-      // Проверяем, не загружен ли уже скрипт
       if (window.YT && window.YT.Player) {
         setYoutubeApiReady(true)
         return
       }
 
-      // Проверяем, не загружается ли уже скрипт
       if (document.querySelector('script[src*="youtube.com/iframe_api"]')) {
         checkReady = setInterval(() => {
           if (window.YT && window.YT.Player) {
@@ -423,18 +484,15 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         return
       }
 
-      // Загружаем скрипт
       const tag = document.createElement('script')
       tag.src = 'https://www.youtube.com/iframe_api'
       const firstScriptTag = document.getElementsByTagName('script')[0]
       firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag)
 
-      // Обработчик готовности API
-      ;(window as any).onYouTubeIframeAPIReady = () => {
+      ;(window as unknown as { onYouTubeIframeAPIReady?: () => void }).onYouTubeIframeAPIReady = () => {
         setYoutubeApiReady(true)
       }
 
-      // Периодическая проверка на случай если callback уже вызван
       checkReady = setInterval(() => {
         if (window.YT && window.YT.Player) {
           setYoutubeApiReady(true)
@@ -443,36 +501,12 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
       }, 100)
     }
 
-    // Используем IntersectionObserver — загружаем API только когда секция видна
-    if (typeof IntersectionObserver === 'undefined') {
-      // Fallback для старых браузеров
-      loadYouTubeApi()
-      return
-    }
-
-    const sectionRef = scrollContainerRef.current?.closest('section') || scrollContainerRef.current?.parentElement
-    if (!sectionRef) {
-      loadYouTubeApi()
-      return
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          loadYouTubeApi()
-          observer.disconnect()
-        }
-      },
-      { rootMargin: '200px' } // Начинаем загрузку за 200px до появления секции
-    )
-
-    observer.observe(sectionRef)
+    loadYouTubeApi()
 
     return () => {
-      observer.disconnect()
       if (checkReady) clearInterval(checkReady)
     }
-  }, [])
+  }, [lazyEmbedIds.size])
 
   // Cleanup таймаутов при размонтировании компонента
   useEffect(() => {
@@ -1068,34 +1102,40 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
         }
 
         const thumbnail = getYouTubeThumbnail(firstMedia.video_url || embedUrl)
-        const isPlayerReady = playerReadyMapRef.current.get(testimonial.id) === true
+        const showEmbed = lazyEmbedIds.has(testimonial.id)
 
         return (
-          <div className="w-full h-full relative" key={`container-${testimonial.id}`}>
+          <div
+            className="w-full h-full relative"
+            key={`container-${testimonial.id}`}
+            data-testimonial-embed-lazy={testimonial.id}
+          >
             {thumbnail && (
               <img
                 src={thumbnail}
                 alt={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
-                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${playerReadyMapRef.current.get(testimonial.id) ? 'opacity-0' : 'opacity-100'}`}
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${showEmbed && playerReadyMapRef.current.get(testimonial.id) ? 'opacity-0' : 'opacity-100'}`}
               />
             )}
-            <iframe
-              ref={(el) => {
-                if (el) {
-                  iframeRefs.current.set(testimonial.id, el)
-                } else {
-                  iframeRefs.current.delete(testimonial.id)
-                  iframeUrls.current.delete(testimonial.id) // Очищаем URL при размонтировании
-                }
-              }}
-              src={finalUrl}
-              title={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              loading="lazy"
-              className="absolute inset-0 w-full h-full"
-            ></iframe>
+            {showEmbed ? (
+              <iframe
+                ref={(el) => {
+                  if (el) {
+                    iframeRefs.current.set(testimonial.id, el)
+                  } else {
+                    iframeRefs.current.delete(testimonial.id)
+                    iframeUrls.current.delete(testimonial.id)
+                  }
+                }}
+                src={finalUrl}
+                title={t('testimonial_video_alt', `Видео к отзыву от ${testimonial.author_name}`)}
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                loading="lazy"
+                className="absolute inset-0 w-full h-full"
+              />
+            ) : null}
           </div>
         )
       }
@@ -1131,7 +1171,7 @@ export default function TestimonialsCarousel({ className = '' }: TestimonialsCar
   }
 
   return (
-    <section className={`py-12 ${className}`}>
+    <section ref={sectionRef} className={`py-12 ${className}`}>
       <div className="mx-auto max-w-6xl px-4">
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-main text-center">
