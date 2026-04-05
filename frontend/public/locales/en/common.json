@@ -54,7 +54,7 @@
   "cart_items_count": "Items",
   "cart_item_total": "Total",
   "cart_delivery_info_title": "Free Delivery",
-  "cart_delivery_info_text": "On orders over a certain amount",
+  "cart_delivery_info_text": "On orders from {{minAmount}} {{currency}} (subtotal excluding shipping)",
   "product_details": "Details",
   "price_on_request": "Price on request",
   "section_daily_deals": "Deals of the day",

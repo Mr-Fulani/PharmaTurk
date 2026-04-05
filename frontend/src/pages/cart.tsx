@@ -40,10 +40,12 @@ interface Cart {
   items: CartItem[]
   items_count: number
   total_amount: string
-  discount_amount?: string
+  discount_amount?: string | number
   final_amount?: string
   currency?: string
   promo_code?: PromoCode | null
+  shipping_requires_quote?: boolean
+  free_shipping_threshold?: number | null
 }
 
 const parseNumber = (value: string | number | null | undefined) => {
@@ -592,18 +594,30 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                   </Link>
                 </div>
 
-                {/* Информация о доставке */}
-                <div className="mt-6 rounded-lg bg-[var(--surface)] p-4">
-                  <div className="flex items-start gap-2">
-                    <svg className="h-5 w-5 text-[var(--accent)] mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div className="text-xs text-main">
-                      <p className="font-medium">{t('cart_delivery_info_title', 'Бесплатная доставка')}</p>
-                      <p className="mt-1">{t('cart_delivery_info_text', 'При заказе от определенной суммы')}</p>
+                {/* Информация о бесплатной доставке (порог из глобальных настроек, в валюте корзины) */}
+                {cart.free_shipping_threshold != null &&
+                  cart.free_shipping_threshold > 0 &&
+                  !cart.shipping_requires_quote && (
+                    <div className="mt-6 rounded-lg bg-[var(--surface)] p-4">
+                      <div className="flex items-start gap-2">
+                        <svg className="h-5 w-5 text-[var(--accent)] mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div className="text-xs text-main">
+                          <p className="font-medium">{t('cart_delivery_info_title', 'Бесплатная доставка')}</p>
+                          <p className="mt-1">
+                            {t('cart_delivery_info_text', 'При заказе от {{minAmount}} {{currency}}', {
+                              minAmount: Number(cart.free_shipping_threshold).toLocaleString(i18n.language, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              }),
+                              currency: cart.currency || 'USD',
+                            })}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  )}
               </div>
             </div>
           </div>

@@ -1118,6 +1118,7 @@ class CartSerializer(serializers.ModelSerializer):
     final_amount = serializers.SerializerMethodField()
     shipping_options = serializers.SerializerMethodField()
     shipping_requires_quote = serializers.SerializerMethodField()
+    free_shipping_threshold = serializers.SerializerMethodField()
     promo_code = PromoCodeSerializer(read_only=True)
     currency = serializers.SerializerMethodField()  # Изменено на метод
 
@@ -1126,13 +1127,13 @@ class CartSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'session_key', 'currency',
             'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount',
-            'shipping_options', 'shipping_requires_quote', 'promo_code',
+            'shipping_options', 'shipping_requires_quote', 'free_shipping_threshold', 'promo_code',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
             'user', 'created_at', 'updated_at', 'items', 'items_count',
             'total_amount', 'discount_amount', 'final_amount', 'currency',
-            'shipping_options', 'shipping_requires_quote',
+            'shipping_options', 'shipping_requires_quote', 'free_shipping_threshold',
         ]
 
     def _get_preferred_currency(self, request):
@@ -1279,6 +1280,36 @@ class CartSerializer(serializers.ModelSerializer):
             if product and getattr(product, 'product_type', None) == 'furniture':
                 return True
         return False
+
+    def get_free_shipping_threshold(self, obj):
+        """
+        Порог «бесплатная доставка» из глобальных настроек, в валюте корзины (без маржи).
+        None — правило выключено или не задан порог.
+        """
+        from apps.catalog.currency_models import GlobalCurrencySettings
+        from apps.catalog.utils.currency_converter import currency_converter
+        from decimal import Decimal, ROUND_HALF_UP
+
+        gs = GlobalCurrencySettings.load()
+        raw = gs.free_shipping_min_subtotal_usd
+        if raw is None or raw <= 0:
+            return None
+
+        request = self.context.get('request')
+        preferred_currency = self._get_preferred_currency(request)
+        try:
+            threshold_dec = Decimal(str(raw))
+            if preferred_currency.upper() == 'USD':
+                return float(threshold_dec.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+            _, converted, _ = currency_converter.convert_price(
+                threshold_dec,
+                'USD',
+                preferred_currency,
+                apply_margin=False,
+            )
+            return float(Decimal(str(converted)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+        except Exception:
+            return float(raw)
 
     def get_shipping_options(self, obj):
         """Возвращает варианты доставки и их стоимость для всей корзины."""

@@ -54,7 +54,7 @@
   "cart_items_count": "Товаров",
   "cart_item_total": "Итого",
   "cart_delivery_info_title": "Бесплатная доставка",
-  "cart_delivery_info_text": "При заказе от определенной суммы",
+  "cart_delivery_info_text": "При заказе от {{minAmount}} {{currency}} (сумма товаров без доставки)",
   "product_details": "Подробнее",
   "price_on_request": "Цена по запросу",
   "section_daily_deals": "Товары дня",

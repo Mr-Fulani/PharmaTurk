@@ -44,6 +44,8 @@ interface Cart {
   shipping_options?: { air: number; sea: number; ground: number }
   /** В корзине есть мебель — авторасчёт доставки не показываем, только по запросу */
   shipping_requires_quote?: boolean
+  /** Порог бесплатной доставки в валюте корзины; null — правило выкл. */
+  free_shipping_threshold?: number | null
 }
 
 interface Address {
@@ -1087,7 +1089,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     {cart.total_amount} {cart.currency || 'USD'}
                   </span>
                 </div>
-                {cart.discount_amount && parseFloat(cart.discount_amount) > 0 && (
+                {parseFloat(String(cart.discount_amount ?? '0')) > 0 ? (
                   <>
                     <div className="flex justify-between text-sm !text-red-600">
                       <span>{t('cart_discount', 'Скидка')}</span>
@@ -1108,7 +1110,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       </div>
                     )}
                   </>
-                )}
+                ) : null}
                 <div className="flex justify-between text-sm text-gray-600 mt-2">
                   <span>{t('checkout_shipping_cost', 'Стоимость доставки')}</span>
                   <span className="font-medium text-gray-900">
@@ -1129,6 +1131,29 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     </span>
                   </div>
                 </div>
+
+                {cart.free_shipping_threshold != null &&
+                  cart.free_shipping_threshold > 0 &&
+                  !cart.shipping_requires_quote && (
+                    <div
+                      className={`mt-4 rounded-lg p-4 text-xs ${isDark ? 'bg-violet-950/40 text-violet-100' : 'bg-gray-50 text-gray-700'}`}
+                    >
+                      <p className="font-medium">{t('cart_delivery_info_title', 'Бесплатная доставка')}</p>
+                      <p className="mt-1">
+                        {t(
+                          'cart_delivery_info_text',
+                          'При заказе от {{minAmount}} {{currency}} (сумма товаров без доставки)',
+                          {
+                            minAmount: Number(cart.free_shipping_threshold).toLocaleString(i18n.language, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            }),
+                            currency: cart.currency || 'USD',
+                          },
+                        )}
+                      </p>
+                    </div>
+                  )}
               </div>
 
               <Link
