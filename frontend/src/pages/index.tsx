@@ -9,7 +9,6 @@ import {
   extractYouTubeId,
   getYouTubeCardThumbnailUrl,
 } from '../lib/media'
-import LazyYouTubeCard from '../components/LazyYouTubeCard'
 import FallbackMediaImage from '../components/FallbackMediaImage'
 import { getSiteOrigin } from '../lib/urls'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
@@ -32,6 +31,7 @@ const TestimonialsCarousel = dynamic(() => import('../components/TestimonialsCar
   ssr: false,
   loading: () => <div className="w-full min-h-[400px] animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl mb-12" />
 })
+const LazyYouTubeCard = dynamic(() => import('../components/LazyYouTubeCard'), { ssr: false })
 interface Brand {
   id: number
   name: string
@@ -208,7 +208,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
           <link
             rel="preload"
             as="image"
-            href={`/_next/image?url=${encodeURIComponent(resolveMediaUrl(firstBannerImageUrl) || firstBannerImageUrl)}&w=1200&q=75`}
+            href={`/_next/image?url=${encodeURIComponent(firstBannerImageUrl)}&w=828&q=75`}
             // @ts-ignore: fetchpriority is valid in standard browsers but may be missing in react types
             fetchPriority="high"
           />

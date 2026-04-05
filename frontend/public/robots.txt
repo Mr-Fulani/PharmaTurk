@@ -1,3 +1,5 @@
+# Если в ответе /robots.txt на проде есть строка Content-Signal — её добавляет Cloudflare Managed Content (не этот файл).
+# Отключите вставку в панели Cloudflare, иначе валидаторы/Lighthouse могут помечать robots.txt как недействительный.
 User-agent: *
 Allow: /
 
