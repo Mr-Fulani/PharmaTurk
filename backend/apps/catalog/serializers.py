@@ -3210,7 +3210,8 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
     og_description = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
     video_url = serializers.SerializerMethodField()
-    
+    product_type = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = FurnitureProduct
         fields = [
@@ -3229,7 +3230,12 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
             'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
-    
+
+    def get_product_type(self, obj):
+        """Тип товара для API: из _domain_product_type (как у других доменных сериализаторов)."""
+        raw = getattr(type(obj), '_domain_product_type', None)
+        return str(raw).replace('_', '-') if raw else None
+
     def get_main_image_url(self, obj):
         """URL главного изображения."""
         request = self.context.get('request')
@@ -3259,7 +3265,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
                     return file_url
                 return _resolve_media_url(v_first.image_url, request)
         return None
-    
+
     def get_video_url(self, obj):
         """URL видео товара (Furniture). Приоритет загруженному файлу."""
         request = self.context.get('request')
@@ -3747,7 +3753,7 @@ class JewelryProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = JewelryProduct
         fields = [
-            'id', 'name', 'slug', 'description', 'product_type', 'category', 'brand',
+            'id', 'name', 'slug', 'description', 'category', 'brand',
             'price', 'price_formatted', 'old_price', 'old_price_formatted',
             'currency', 'jewelry_type', 'material', 'metal_purity', 'stone_type', 'carat_weight', 'gender',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'video_url',
