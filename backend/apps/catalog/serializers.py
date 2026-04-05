@@ -31,6 +31,7 @@ from .models import (
     AutoPartProduct, AutoPartProductTranslation, AutoPartProductImage, AutoPartVariant, AutoPartVariantImage,
 )
 from .seo_defaults import resolve_book_seo_value
+from .utils.media_path import normalize_duplicated_media_path
 from .utils.storage_paths import detect_media_type
 
 
@@ -50,8 +51,6 @@ def _r2_proxy_url(absolute_url, request):
         return None
 
     try:
-        from apps.catalog.utils.media_path import normalize_duplicated_media_path
-
         # Извлекаем путь относительно публичного URL
         prefix = r2_public if is_r2 else project_cdn
         path = absolute_url[len(prefix):].lstrip('/')
@@ -99,8 +98,15 @@ def _resolve_media_url(value, request):
             return proxy
         return f"/api/catalog/proxy-image/?url={quote(value)}"
 
+    # Относительный ключ в бакете (без https): /media/ на проде часто без Range — <video> не стримится.
     if not value.startswith('http'):
-        return f"/media/{value.lstrip('/')}"
+        p = value.lstrip('/')
+        if '..' in p:
+            return None
+        if is_video:
+            path_norm = normalize_duplicated_media_path(p)
+            return f"/api/catalog/proxy-media/?path={quote(path_norm, safe='')}"
+        return f"/media/{p}"
     
     proxy = _r2_proxy_url(value, request)
     if proxy:

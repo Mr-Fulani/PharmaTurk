@@ -2891,6 +2891,9 @@ def proxy_media(request):
         
         ext = resolved_path.rsplit('.', 1)[-1].lower() if '.' in resolved_path else ''
         content_type = _PROXY_MEDIA_TYPES.get(f'.{ext}', 'application/octet-stream')
+        # Ключи в /videos/ без расширения (.mp4) — иначе octet-stream, Safari часто не запускает воспроизведение.
+        if content_type == 'application/octet-stream' and '/videos/' in resolved_path.lower():
+            content_type = 'video/mp4'
 
         # Уменьшение изображений для карточек в каталоге (?max_width= / ?w=, только jpeg/png/webp)
         max_w_raw = request.GET.get('max_width') or request.GET.get('w')
