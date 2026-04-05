@@ -29,6 +29,7 @@ from .utils.storage_paths import (
     get_jewelry_variant_gallery_upload_path,
     get_service_upload_path,
     get_service_image_upload_path,
+    get_book_product_gallery_upload_path,
 )
 
 CURRENCY_CHOICES = [
@@ -3775,6 +3776,22 @@ class BookProductImage(models.Model):
         max_length=2000,
         blank=True,
         null=True,
+    )
+    video_url = models.URLField(
+        _("URL видео"),
+        max_length=2000,
+        blank=True,
+        help_text=_("Видео в галерее (парсер кладёт ссылку на R2; без дублирования в main/)."),
+    )
+    video_file = models.FileField(
+        _("Видео (файл)"),
+        upload_to=get_book_product_gallery_upload_path,
+        max_length=2000,
+        blank=True,
+        null=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=["mp4", "mov", "webm", "avi", "mkv"]),
+        ],
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)

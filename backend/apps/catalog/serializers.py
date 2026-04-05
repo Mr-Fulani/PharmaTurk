@@ -4420,17 +4420,32 @@ class BookProductImageSerializer(serializers.ModelSerializer):
     """Сериализатор для изображений товаров-книг."""
 
     image_url = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
 
     class Meta:
         model = BookProductImage
-        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+        fields = ['id', 'image_url', 'video_url', 'alt_text', 'sort_order', 'is_main']
 
     def get_image_url(self, obj):
         request = self.context.get('request')
+        if getattr(obj, "video_url", None) or getattr(obj, "video_file", None):
+            return None
         file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
         if file_url:
             return file_url
         return _resolve_media_url(obj.image_url, request)
+
+    def get_video_url(self, obj):
+        request = self.context.get('request')
+        raw_url = getattr(obj, "video_url", None) or ""
+        if raw_url:
+            path_lower = raw_url.split("?")[0].lower()
+            if not path_lower.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".svg")):
+                return _resolve_media_url(raw_url, request)
+        file_url = _resolve_file_url(getattr(obj, "video_file", None), request)
+        if file_url:
+            return file_url
+        return None
 
 
 class BookProductSerializer(serializers.ModelSerializer):

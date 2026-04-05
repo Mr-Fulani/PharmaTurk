@@ -540,7 +540,9 @@ def delete_jewelry_variant_image_files(sender, instance, **kwargs):
 @receiver(post_delete, sender=BookProductImage)
 def delete_book_product_image_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.image_file)
+    delete_file_from_storage(instance.video_file)
     delete_url_from_storage(instance.image_url)
+    delete_url_from_storage(instance.video_url)
 
 
 @receiver(pre_save, sender=BookProductImage)

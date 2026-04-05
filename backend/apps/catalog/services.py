@@ -121,6 +121,13 @@ class CatalogNormalizer:
         self._media_type_cache[media_url] = media_type
         return media_type
 
+    def _first_video_url_from_images(self, images: List[str]) -> Optional[str]:
+        """Первый URL видео из списка медиа (после скрапера — обычно уже R2), приоритетнее сырого attributes."""
+        for u in images or []:
+            if isinstance(u, str) and self._resolve_media_type(u) == "video":
+                return u
+        return None
+
     def _is_books_category(self, category: Category | None) -> bool:
         if not category:
             return False
@@ -606,15 +613,22 @@ class CatalogNormalizer:
                 product.stock_quantity = stock
                 product.save(update_fields=['stock_quantity'])
 
-        # Обновляем video_url если есть в метаданных (от парсеров) и у нас его нет
-        if hasattr(product_data, 'metadata') and product_data.metadata:
-            attributes = product_data.metadata.get('attributes', {})
-            if attributes.get('video_url') and not product.video_url:
-                product.video_url = attributes['video_url']
-                # Нельзя save(update_fields=['video_url']): pre_save скачивает видео в main_video_file,
-                # а при ограниченном update_fields Django не пишет FileField — файл не попадает в R2/БД
-                # (для только что созданного товара полного save() ниже по коду нет).
-                product.save()
+        # Видео: сначала URL из списка images (R2 после парсера), иначе attributes — чтобы не скачивать дубликат в main/.
+        if hasattr(product_data, "metadata") and product_data.metadata:
+            attributes = product_data.metadata.get("attributes", {}) or {}
+            if not product.video_url:
+                from_images = self._first_video_url_from_images(
+                    getattr(product_data, "images", None) or []
+                )
+                if from_images:
+                    product.video_url = from_images
+                    product.save()
+                elif attributes.get("video_url"):
+                    product.video_url = attributes["video_url"]
+                    # Нельзя save(update_fields=['video_url']): pre_save скачивает видео в main_video_file,
+                    # а при ограниченном update_fields Django не пишет FileField — файл не попадает в R2/БД
+                    # (для только что созданного товара полного save() ниже по коду нет).
+                    product.save()
 
         if not created:
             # Обновляем существующий товар
@@ -841,8 +855,7 @@ class CatalogNormalizer:
             if hasattr(image_manager.model, 'video_url'):
                 create_kwargs["video_url"] = image_url if media_type == "video" else ""
             elif media_type == "video":
-                # Если модель галереи (например BookProductImage) не поддерживает video_url,
-                # просто пропускаем видео-элемент, иначе он сохранится как пустая картинка.
+                # Модели галереи без video_url: пропускаем, иначе получится пустая «картинка».
                 continue
             
             create_kwargs["product"] = target

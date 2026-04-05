@@ -253,6 +253,7 @@ class Command(BaseCommand):
             (ShoeProductImage,        "image_url", "image_file", "ShoeImg#{pk}"),
             (ShoeVariantImage,        "image_url", "image_file", "ShoeVariantImg#{pk}"),
             (BookProductImage,        "image_url", "image_file", "BookImg#{pk}"),
+            (BookProductImage,        "video_url", "video_file", "BookVid#{pk}"),
             (BookVariantImage,        "image_url", "image_file", "BookVariantImg#{pk}"),
             (TablewareProductImage,   "image_url", "image_file", "TablewareImg#{pk}"),
             (AccessoryProductImage,   "image_url", "image_file", "AccessoryImg#{pk}"),

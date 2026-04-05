@@ -77,7 +77,7 @@ class BookProductImageInline(admin.TabularInline):
     """Inline для изображений книги."""
     model = BookProductImage
     extra = 1
-    fields = ('image_file', 'image_url', 'alt_text', 'is_main', 'sort_order')
+    fields = ('image_file', 'image_url', 'video_file', 'video_url', 'alt_text', 'is_main', 'sort_order')
     readonly_fields = ('image_preview',)
     verbose_name = _('Изображение')
     verbose_name_plural = _('Изображения')

@@ -69,6 +69,24 @@ def get_product_image_upload_path(instance, filename):
     return f"products/{base}/gallery/{media_folder}/{readable_name}"
 
 
+def get_book_product_gallery_upload_path(instance, filename):
+    """upload_to для файлов галереи книги (изображение или видео), единая иерархия images/videos/gifs."""
+    product = getattr(instance, "product", None)
+    base_product = getattr(product, "base_product", None) if product else None
+    media_folder = _media_folder_from_filename(filename)
+    readable_name = _build_readable_filename(
+        [
+            "books",
+            getattr(base_product, "slug", None) if base_product else None,
+            getattr(product, "name", None),
+            "gallery",
+        ],
+        filename,
+        "book-gallery",
+    )
+    return f"products/books/gallery/{media_folder}/{readable_name}"
+
+
 def get_category_card_upload_path(instance, filename):
     """
     Динамический upload_to для Category.card_media.

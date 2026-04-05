@@ -423,8 +423,12 @@ class ScraperIntegrationService:
         parser_name: str,
         product_id: str,
         sub_folder: Optional[str],
-    ) -> List[str]:
-        """Скачивает внешние URL в хранилище parsed-медиа (как у основной карточки)."""
+    ) -> Tuple[List[str], Dict[str, str]]:
+        """Скачивает внешние URL в хранилище parsed-медиа (как у основной карточки).
+
+        Возвращает (список URL в порядке обработки, карта исходный_URL → итоговый_URL),
+        чтобы синхронизировать attributes (video_url и т.д.) с R2 и не дублировать файлы в main/.
+        """
         scraper_config = session.scraper_config
         max_images = session.max_images_per_product or scraper_config.max_images_per_product or 0
         urls = source_urls[:max_images] if max_images else list(source_urls)
@@ -432,12 +436,14 @@ class ScraperIntegrationService:
         if scraper_config.user_agent:
             headers.setdefault("User-Agent", scraper_config.user_agent)
         out: List[str] = []
+        url_map: Dict[str, str] = {}
         for index, url in enumerate(urls):
             if not isinstance(url, str) or not url:
                 continue
             parsed = urlparse(url)
             if "/products/parsed/" in parsed.path:
                 out.append(url)
+                url_map[url] = url
                 continue
             r2_url = download_and_optimize_parsed_media(
                 url=url,
@@ -449,13 +455,35 @@ class ScraperIntegrationService:
             )
             if r2_url:
                 out.append(r2_url)
-        return out
+                url_map[url] = r2_url
+        return out, url_map
+
+    @staticmethod
+    def _remap_attribute_urls(attributes: dict, url_map: Dict[str, str]) -> None:
+        """Подменяет в attributes известные медиа-URL на версии из R2 (после парсерной загрузки)."""
+        if not url_map:
+            return
+        vu = attributes.get("video_url")
+        if isinstance(vu, str) and vu in url_map:
+            attributes["video_url"] = url_map[vu]
+        vus = attributes.get("video_urls")
+        if isinstance(vus, list):
+            attributes["video_urls"] = [
+                url_map.get(x, x) for x in vus if isinstance(x, str)
+            ]
+        for key in ("main_video_url", "main_media_url"):
+            val = attributes.get(key)
+            if isinstance(val, str) and val in url_map:
+                attributes[key] = url_map[val]
 
     def _normalize_scraped_media(
         self, session: ScrapingSession, scraped_product: ScrapedProduct
     ) -> None:
+        if not isinstance(scraped_product.attributes, dict):
+            scraped_product.attributes = dict(scraped_product.attributes or {})
+        attributes = scraped_product.attributes
+
         media_urls = list(scraped_product.images or [])
-        attributes = scraped_product.attributes or {}
         video_url = attributes.get("video_url")
         if isinstance(video_url, str) and video_url:
             media_urls.append(video_url)
@@ -483,14 +511,10 @@ class ScraperIntegrationService:
             seen_urls.add(url)
         media_urls = unique_media_urls
 
-        # Определяем sub_folder для группировки медиа
-        sub_folder = None
-        if isinstance(scraped_product.attributes, dict):
-            # Для Instagram и др. соцсетей приоритет отдаем автору/аккаунту
-            sub_folder = scraped_product.attributes.get("username")
+        # Определяем sub_folder для группировки медиа (Instagram: username)
+        sub_folder = attributes.get("username")
 
         if not sub_folder and scraped_product.category:
-            # Иначе используем категорию
             sub_folder = scraped_product.category
 
         scraper_config = session.scraper_config
@@ -509,13 +533,15 @@ class ScraperIntegrationService:
                 product_id = raw_hash[:12]
 
         if media_urls:
-            scraped_product.images = self._download_parsed_media_urls(
+            new_images, url_map = self._download_parsed_media_urls(
                 session,
                 source_urls=media_urls,
                 parser_name=parser_name,
                 product_id=product_id,
                 sub_folder=sub_folder,
             )
+            scraped_product.images = new_images
+            self._remap_attribute_urls(attributes, url_map)
 
         # Медиа цветовых вариантов IKEA (отдельные sprCode, одна карточка FurnitureProduct)
         fv = attributes.get("furniture_variants")
@@ -527,13 +553,14 @@ class ScraperIntegrationService:
                 raw_imgs = spec.get("images") or []
                 if not raw_imgs:
                     continue
-                spec["images"] = self._download_parsed_media_urls(
+                variant_images, _variant_map = self._download_parsed_media_urls(
                     session,
                     source_urls=list(raw_imgs),
                     parser_name=parser_name,
                     product_id=vid,
                     sub_folder=sub_folder,
                 )
+                spec["images"] = variant_images
 
     def _process_single_product(
         self, session: ScrapingSession, scraped_product: ScrapedProduct
@@ -1009,11 +1036,24 @@ class ScraperIntegrationService:
                 existing_product.main_image = main_image_url
                 updated = True
 
-        # Обновляем video_url, если его нет
-        if scraped_product.attributes and scraped_product.attributes.get('video_url') and not existing_product.video_url:
-            existing_product.video_url = scraped_product.attributes['video_url']
-            updated = True
-            self.logger.info(f"Updated video_url for existing product {existing_product.id} to {existing_product.video_url}")
+        # Обновляем video_url: приоритет R2 из images, иначе attributes (после _normalize_scraped_media — тоже R2)
+        if not existing_product.video_url:
+            first_vid = None
+            if scraped_product.images:
+                first_vid = self.catalog_normalizer._first_video_url_from_images(scraped_product.images)
+            if first_vid:
+                existing_product.video_url = first_vid
+                updated = True
+                self.logger.info(
+                    "Updated video_url for existing product %s from gallery images",
+                    existing_product.id,
+                )
+            elif scraped_product.attributes and scraped_product.attributes.get("video_url"):
+                existing_product.video_url = scraped_product.attributes["video_url"]
+                updated = True
+                self.logger.info(
+                    f"Updated video_url for existing product {existing_product.id} to {existing_product.video_url}"
+                )
 
         if scraped_product.category and not existing_product.category:
             category, product_type = resolve_category_and_product_type(scraped_product.category)
