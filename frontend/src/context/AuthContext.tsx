@@ -61,7 +61,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           phone_number: profile.phone_number,
           currency: profile.currency
         })
-        if (profile.currency) {
+        // Не затираем уже выбранную валюту в cookie: при сбое PATCH профиль в БД старый,
+        // а X-Currency в api.ts берётся из cookie — иначе снова «залипание» на USDT в шапке.
+        const existingCurrency = Cookies.get('currency')
+        if (profile.currency && !existingCurrency) {
           Cookies.set('currency', profile.currency, { sameSite: 'Lax', path: '/' })
           setPreferredCurrency(profile.currency)
         }

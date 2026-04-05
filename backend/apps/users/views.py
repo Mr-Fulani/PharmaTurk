@@ -29,6 +29,7 @@ from .serializers import (
     PublicUserProfileSerializer
 )
 from .telegram_auth import generate_telegram_sync_token, process_telegram_webhook
+from api.authentication import JWTSafeAuthentication
 
 
 def create_user_session(user, request):
@@ -425,9 +426,11 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     """
     Управление профилем пользователя
 
-    CSRF отключён для dispatch: SPA шлёт JWT в Authorization, а при логине трогается
-    django session — иначе PATCH/PUT без X-CSRFToken дают 403 (GET остаётся без CSRF).
+    Только JWT: при активной django-сессии (например, после /admin/) SessionAuthentication
+    внутри DRF вызывает enforce_csrf и даёт 403 на PATCH без CSRF-токена, хотя внешний
+    view уже csrf_exempt.
     """
+    authentication_classes = [JWTSafeAuthentication]
     permission_classes = [IsAuthenticated]
     serializer_class = UserSerializer
     
@@ -563,8 +566,9 @@ class UserAddressViewSet(viewsets.ModelViewSet):
     """
     Управление адресами пользователя
 
-    CSRF отключён по той же причине, что и у UserProfileViewSet (сессия + JWT SPA).
+    Только JWT — см. UserProfileViewSet (сессия админки + SessionAuthentication → CSRF 403).
     """
+    authentication_classes = [JWTSafeAuthentication]
     permission_classes = [IsAuthenticated]
     serializer_class = UserAddressSerializer
     
