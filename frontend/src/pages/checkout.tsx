@@ -42,6 +42,8 @@ interface Cart {
   currency?: string
   promo_code?: PromoCode | null
   shipping_options?: { air: number; sea: number; ground: number }
+  /** В корзине есть мебель — авторасчёт доставки не показываем, только по запросу */
+  shipping_requires_quote?: boolean
 }
 
 interface Address {
@@ -707,6 +709,17 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
               {/* Способ доставки */}
               <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('checkout_shipping_method', 'Способ доставки')}</h2>
+                {cart?.shipping_requires_quote && (
+                  <div
+                    className={`mb-4 rounded-lg border p-3 text-sm ${isDark ? 'border-amber-600/50 bg-amber-950/40 text-amber-100' : 'border-amber-200 bg-amber-50 text-amber-900'}`}
+                    role="status"
+                  >
+                    {t(
+                      'checkout_furniture_shipping_notice',
+                      'В заказе есть мебель: стоимость доставки рассчитывается индивидуально после оформления. Сумма к оплате ниже — без доставки; менеджер свяжется с вами.',
+                    )}
+                  </div>
+                )}
                 <div className="space-y-3">
                   <label className={`flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all ${shippingMethod === 'ground'
                     ? (isDark ? 'border-violet-500 bg-violet-50' : 'border-[var(--accent)] bg-[var(--surface)]')
@@ -724,7 +737,11 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-gray-900">{t('shipping_ground', 'Наземная доставка')}</span>
                         <span className="font-semibold text-gray-900">
-                          {cart?.shipping_options?.ground !== undefined ? `+${cart.shipping_options.ground} ${cart.currency || 'USD'}` : ''}
+                          {cart?.shipping_requires_quote
+                            ? t('shipping_on_request', 'По запросу')
+                            : cart?.shipping_options?.ground !== undefined
+                              ? `+${cart.shipping_options.ground} ${cart.currency || 'USD'}`
+                              : ''}
                         </span>
                       </div>
                       <p className="text-sm text-gray-500 mt-1">{t('shipping_ground_description', 'Доставка автотранспортом. Оптимальный выбор.')}</p>
@@ -747,7 +764,11 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-gray-900">{t('shipping_air', 'Авиадоставка')}</span>
                         <span className="font-semibold text-gray-900">
-                          {cart?.shipping_options?.air !== undefined ? `+${cart.shipping_options.air} ${cart.currency || 'USD'}` : ''}
+                          {cart?.shipping_requires_quote
+                            ? t('shipping_on_request', 'По запросу')
+                            : cart?.shipping_options?.air !== undefined
+                              ? `+${cart.shipping_options.air} ${cart.currency || 'USD'}`
+                              : ''}
                         </span>
                       </div>
                       <p className="text-sm text-gray-500 mt-1">{t('shipping_air_description', 'Ускоренная воздушная доставка.')}</p>
@@ -770,7 +791,11 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-gray-900">{t('shipping_sea', 'Морская доставка')}</span>
                         <span className="font-semibold text-gray-900">
-                          {cart?.shipping_options?.sea !== undefined ? `+${cart.shipping_options.sea} ${cart.currency || 'USD'}` : ''}
+                          {cart?.shipping_requires_quote
+                            ? t('shipping_on_request', 'По запросу')
+                            : cart?.shipping_options?.sea !== undefined
+                              ? `+${cart.shipping_options.sea} ${cart.currency || 'USD'}`
+                              : ''}
                         </span>
                       </div>
                       <p className="text-sm text-gray-500 mt-1">{t('shipping_sea_description', 'Доставка морем для крупногабаритных грузов.')}</p>
@@ -1087,14 +1112,20 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 <div className="flex justify-between text-sm text-gray-600 mt-2">
                   <span>{t('checkout_shipping_cost', 'Стоимость доставки')}</span>
                   <span className="font-medium text-gray-900">
-                    +{cart.shipping_options?.[shippingMethod] || 0} {cart.currency || 'USD'}
+                    {cart?.shipping_requires_quote
+                      ? t('shipping_on_request', 'По запросу')
+                      : `+${cart.shipping_options?.[shippingMethod] || 0} ${cart.currency || 'USD'}`}
                   </span>
                 </div>
                 <div className="border-t border-gray-200 pt-4 mt-4">
                   <div className="flex justify-between items-baseline">
                     <span className="text-lg font-semibold text-gray-900">{t('cart_total', 'Итого')}</span>
                     <span className="text-2xl font-bold text-violet-600">
-                      {(parseFloat(cart.final_amount || cart.total_amount || "0") + (cart.shipping_options?.[shippingMethod] || 0)).toFixed(2)} {cart.currency || 'USD'}
+                      {(
+                        parseFloat(cart.final_amount || cart.total_amount || '0') +
+                        (cart?.shipping_requires_quote ? 0 : cart.shipping_options?.[shippingMethod] || 0)
+                      ).toFixed(2)}{' '}
+                      {cart.currency || 'USD'}
                     </span>
                   </div>
                 </div>

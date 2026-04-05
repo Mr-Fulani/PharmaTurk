@@ -1117,6 +1117,7 @@ class CartSerializer(serializers.ModelSerializer):
     discount_amount = serializers.SerializerMethodField()
     final_amount = serializers.SerializerMethodField()
     shipping_options = serializers.SerializerMethodField()
+    shipping_requires_quote = serializers.SerializerMethodField()
     promo_code = PromoCodeSerializer(read_only=True)
     currency = serializers.SerializerMethodField()  # Изменено на метод
 
@@ -1125,10 +1126,14 @@ class CartSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'session_key', 'currency',
             'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount',
-            'shipping_options', 'promo_code',
+            'shipping_options', 'shipping_requires_quote', 'promo_code',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['user', 'created_at', 'updated_at', 'items', 'items_count', 'total_amount', 'discount_amount', 'final_amount', 'currency', 'shipping_options']
+        read_only_fields = [
+            'user', 'created_at', 'updated_at', 'items', 'items_count',
+            'total_amount', 'discount_amount', 'final_amount', 'currency',
+            'shipping_options', 'shipping_requires_quote',
+        ]
 
     def _get_preferred_currency(self, request):
         """Определяет валюту по приоритетам: explicit -> user -> язык -> default."""
@@ -1267,8 +1272,19 @@ class CartSerializer(serializers.ModelSerializer):
 
         return float((total_dec - discount_dec).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
+    def get_shipping_requires_quote(self, obj):
+        """Мебель (крупногабарит): доставка не считается автоматически, только по запросу менеджера."""
+        for item in obj.items.all():
+            product = item.product
+            if product and getattr(product, 'product_type', None) == 'furniture':
+                return True
+        return False
+
     def get_shipping_options(self, obj):
         """Возвращает варианты доставки и их стоимость для всей корзины."""
+        if self.get_shipping_requires_quote(obj):
+            return {'air': 0.0, 'sea': 0.0, 'ground': 0.0}
+
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
 

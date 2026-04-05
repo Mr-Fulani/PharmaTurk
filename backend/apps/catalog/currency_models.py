@@ -103,7 +103,7 @@ class GlobalCurrencySettings(models.Model):
         blank=True,
         validators=[MinValueValidator(0)],
         verbose_name='Бесплатная доставка от суммы заказа (USD)',
-        help_text="Субтотал корзины без доставки. Пусто — правило отключено. При достижении порога все способы доставки в ответе API обнуляются.",
+        help_text="Порог по сумме товаров в заказе (субтотал без доставки), в USD. Не путать со стоимостью доставки: при субтотале ≥ порога доставка в API = 0. Пусто — правило отключено.",
     )
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')

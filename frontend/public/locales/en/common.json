@@ -99,6 +99,8 @@
   "checkout_phone": "Phone",
   "checkout_email_optional": "Email (optional)",
   "checkout_shipping_address": "Shipping address",
+  "checkout_furniture_shipping_notice": "Your order includes furniture: shipping cost is quoted individually after checkout. The total below excludes shipping; a manager will contact you.",
+  "shipping_on_request": "On request",
   "checkout_contact_info": "Contact information",
   "checkout_use_manual_address": "Enter address manually",
   "checkout_address_placeholder": "Country, city, street, house, apartment",

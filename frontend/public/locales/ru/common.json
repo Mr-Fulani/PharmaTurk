@@ -99,6 +99,8 @@
   "checkout_phone": "Телефон",
   "checkout_email_optional": "Email (необязательно)",
   "checkout_shipping_address": "Адрес доставки",
+  "checkout_furniture_shipping_notice": "В заказе есть мебель: стоимость доставки рассчитывается индивидуально после оформления. Сумма ниже — без доставки; с вами свяжется менеджер.",
+  "shipping_on_request": "По запросу",
   "checkout_contact_info": "Контактная информация",
   "checkout_use_manual_address": "Указать адрес вручную",
   "checkout_address_placeholder": "Страна, город, улица, дом, квартира",
