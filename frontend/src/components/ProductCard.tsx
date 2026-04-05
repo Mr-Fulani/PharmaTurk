@@ -1,9 +1,11 @@
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { useTranslation } from 'next-i18next'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
-import LazyYouTubeCard from './LazyYouTubeCard'
+
+const LazyYouTubeCard = dynamic(() => import('./LazyYouTubeCard'), { ssr: false })
 import InViewAutoplayVideo from './InViewAutoplayVideo'
 import InViewAmbientIframe from './InViewAmbientIframe'
 import {

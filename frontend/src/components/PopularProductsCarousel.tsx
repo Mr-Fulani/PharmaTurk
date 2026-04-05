@@ -1,14 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
 import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
-import { getPlaceholderImageUrl, resolveMediaUrl, isVideoUrl, getVideoEmbedUrl } from '../lib/media'
+import {
+  getPlaceholderImageUrl,
+  resolveMediaUrl,
+  isVideoUrl,
+  getVideoEmbedUrl,
+  extractYouTubeId,
+  getYouTubeCardThumbnailUrl,
+} from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
 import { favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
+
+const LazyYouTubeCard = dynamic(() => import('./LazyYouTubeCard'), { ssr: false })
 
 interface Product {
   id: number
@@ -333,7 +343,12 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                 carouselRawVideo && isVideoUrl(carouselRawVideo)
                   ? resolveMediaUrl(carouselRawVideo)
                   : null
-              const carouselYoutubeEmbed = carouselVideoSrc ? getVideoEmbedUrl(carouselVideoSrc, 'player') : null
+              const carouselYtId =
+                carouselVideoSrc && carouselRawVideo && isVideoUrl(carouselRawVideo)
+                  ? extractYouTubeId(carouselVideoSrc)
+                  : null
+              const carouselNonYoutubeEmbed =
+                carouselVideoSrc && !carouselYtId ? getVideoEmbedUrl(carouselVideoSrc, 'player') : null
               return (
                 <div
                   key={product.id}
@@ -343,9 +358,16 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                     href={buildProductUrl(product.product_type || 'medicines', product.slug)}
                     className="relative block w-full aspect-[4/5] overflow-hidden bg-gray-100/50 rounded-xl"
                   >
-                    {carouselYoutubeEmbed ? (
+                    {carouselYtId ? (
+                      <LazyYouTubeCard
+                        youtubeId={carouselYtId}
+                        youtubeThumb={getYouTubeCardThumbnailUrl(carouselRawVideo || carouselVideoSrc)}
+                        alt={localizedName}
+                        className="transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : carouselNonYoutubeEmbed ? (
                       <iframe
-                        src={carouselYoutubeEmbed}
+                        src={carouselNonYoutubeEmbed}
                         title=""
                         className="pointer-events-none h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
