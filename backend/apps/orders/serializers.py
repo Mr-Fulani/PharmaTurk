@@ -1271,26 +1271,47 @@ class CartSerializer(serializers.ModelSerializer):
         """Возвращает варианты доставки и их стоимость для всей корзины."""
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
-        
+
+        from apps.catalog.currency_models import GlobalCurrencySettings, ProductVariantPrice
+        from django.contrib.contenttypes.models import ContentType
+        from apps.catalog.utils.currency_converter import currency_converter
+        from apps.orders.shipping_pricing import resolve_shipping_costs_usd
+        from decimal import Decimal
+
+        global_settings = GlobalCurrencySettings.load()
+
         shipping_costs = {
             'air': 0.0,
             'sea': 0.0,
             'ground': 0.0
         }
-        
-        from apps.catalog.currency_models import ProductVariantPrice
-        from django.contrib.contenttypes.models import ContentType
-        from apps.catalog.utils.currency_converter import currency_converter
-        from decimal import Decimal
-        
+
+        # Валюта исходных сумм доставки — USD
+        shipping_base_currency = 'USD'
+
+        def convert_cost(cost):
+            if not cost:
+                return 0
+            if shipping_base_currency.upper() == preferred_currency.upper():
+                return float(cost)
+            try:
+                _, converted, _ = currency_converter.convert_price(
+                    Decimal(str(cost)),
+                    shipping_base_currency,
+                    preferred_currency,
+                    apply_margin=False
+                )
+                return float(converted)
+            except Exception:
+                return float(cost)
+
         for item in obj.items.all():
             if not item.product:
                 continue
-                
-            # Валюта доставки всегда фиксированно USD по требованию
-            shipping_base_currency = 'USD'
-            air_cost = sea_cost = ground_cost = 0
-                
+
+            price_info = getattr(item.product, 'price_info', None)
+            variant_price = None
+
             if item.product.external_data and (
                 'source_variant_id' in item.product.external_data or 'jewelry_variant_id' in item.product.external_data
             ):
@@ -1310,58 +1331,43 @@ class CartSerializer(serializers.ModelSerializer):
                 elif item.product.product_type == 'books':
                     from apps.catalog.models import BookVariant
                     variant_model = BookVariant
-                
+
                 if variant_model:
                     variant_id = item.product.external_data.get('source_variant_id') or item.product.external_data.get('jewelry_variant_id')
                     variant = variant_model.objects.filter(id=variant_id).first()
-                    
                     if variant:
                         content_type = ContentType.objects.get_for_model(variant)
                         variant_price = ProductVariantPrice.objects.filter(
                             content_type=content_type,
                             object_id=variant.id
                         ).first()
-                        
-                        if variant_price:
-                            air_cost = variant_price.air_shipping_cost or 0
-                            sea_cost = variant_price.sea_shipping_cost or 0
-                            ground_cost = variant_price.ground_shipping_cost or 0
 
-                # Если не нашли через ProductVariantPrice — пробуем price_info (ProductPrice)
-                # Это актуально для ювелирки и других товаров, у которых данные в ProductPrice
-                if not any([air_cost, sea_cost, ground_cost]):
-                    price_info = getattr(item.product, 'price_info', None)
-                    if price_info:
-                        air_cost = price_info.air_shipping_cost or 0
-                        sea_cost = price_info.sea_shipping_cost or 0
-                        ground_cost = price_info.ground_shipping_cost or 0
-            else:
-                # Обычные товары без вариантов — читаем из price_info напрямую
-                price_info = getattr(item.product, 'price_info', None)
-                if price_info:
-                    air_cost = price_info.air_shipping_cost or 0
-                    sea_cost = price_info.sea_shipping_cost or 0
-                    ground_cost = price_info.ground_shipping_cost or 0
-                    
-            def convert_cost(cost):
-                if not cost: return 0
-                if shipping_base_currency.upper() == preferred_currency:
-                    return float(cost)
-                try:
-                    _, converted, _ = currency_converter.convert_price(
-                        Decimal(str(cost)),
-                        shipping_base_currency,
-                        preferred_currency,
-                        apply_margin=False
-                    )
-                    return float(converted)
-                except Exception:
-                    return float(cost)
-                    
+            air_cost, sea_cost, ground_cost = resolve_shipping_costs_usd(
+                variant_price, price_info, global_settings
+            )
+
             shipping_costs['air'] += convert_cost(air_cost) * item.quantity
             shipping_costs['sea'] += convert_cost(sea_cost) * item.quantity
             shipping_costs['ground'] += convert_cost(ground_cost) * item.quantity
-            
+
+        threshold = global_settings.free_shipping_min_subtotal_usd
+        if threshold is not None and threshold > 0:
+            try:
+                subtotal_pref = Decimal(str(self.get_total_amount(obj)))
+                if preferred_currency.upper() == 'USD':
+                    subtotal_usd = subtotal_pref
+                else:
+                    _, subtotal_usd, _ = currency_converter.convert_price(
+                        subtotal_pref,
+                        preferred_currency,
+                        'USD',
+                        apply_margin=False,
+                    )
+                if subtotal_usd >= threshold:
+                    shipping_costs = {'air': 0.0, 'sea': 0.0, 'ground': 0.0}
+            except Exception:
+                pass
+
         return {
             'air': float(round(shipping_costs['air'], 2)),
             'sea': float(round(shipping_costs['sea'], 2)),

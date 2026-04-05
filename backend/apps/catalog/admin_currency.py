@@ -14,14 +14,24 @@ class GlobalCurrencySettingsAdmin(admin.ModelAdmin):
     """Админ-панель для глобальных настроек валют."""
     
     list_display = [
-        'id_display', 'default_margin_percentage', 'usdt_markup_percentage', 
-        'updated_at'
+        'id_display', 'default_margin_percentage', 'usdt_markup_percentage',
+        'default_ground_shipping_usd', 'free_shipping_min_subtotal_usd',
+        'updated_at',
     ]
     readonly_fields = ['created_at', 'updated_at']
     
     fieldsets = (
         ('Основные настройки', {
             'fields': ('default_margin_percentage', 'usdt_markup_percentage')
+        }),
+        ('Доставка по умолчанию (USD)', {
+            'fields': (
+                'default_air_shipping_usd',
+                'default_sea_shipping_usd',
+                'default_ground_shipping_usd',
+                'free_shipping_min_subtotal_usd',
+            ),
+            'description': 'Суммы в долларах США; в корзине конвертируются в валюту клиента без торговой маржи.',
         }),
         ('Временные метки', {
             'fields': ('created_at', 'updated_at'),

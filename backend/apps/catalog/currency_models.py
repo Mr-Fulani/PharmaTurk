@@ -71,6 +71,41 @@ class GlobalCurrencySettings(models.Model):
         help_text="На сколько процентов USDT дороже базового USD (по умолчанию 3%)."
     )
 
+    # Дефолты доставки в USD (в корзине конвертируются в валюту клиента без маржи).
+    default_air_shipping_usd = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0'),
+        validators=[MinValueValidator(0)],
+        verbose_name='Дефолт: авиадоставка (USD)',
+        help_text="Пустое поле на товаре/варианте — подставляется это значение. 0 на карточке — явная бесплатная доставка.",
+    )
+    default_sea_shipping_usd = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0'),
+        validators=[MinValueValidator(0)],
+        verbose_name='Дефолт: морская доставка (USD)',
+        help_text="Аналогично авиадоставке.",
+    )
+    default_ground_shipping_usd = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0'),
+        validators=[MinValueValidator(0)],
+        verbose_name='Дефолт: наземная доставка (USD)',
+        help_text="Пустое поле на товаре/варианте — подставляется это значение.",
+    )
+    free_shipping_min_subtotal_usd = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(0)],
+        verbose_name='Бесплатная доставка от суммы заказа (USD)',
+        help_text="Субтотал корзины без доставки. Пусто — правило отключено. При достижении порога все способы доставки в ответе API обнуляются.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлено')
 
