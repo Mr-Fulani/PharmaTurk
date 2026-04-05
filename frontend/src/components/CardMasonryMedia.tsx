@@ -41,6 +41,8 @@ export default function CardMasonryMedia({ mediaUrl, alt, placeholderType, id }:
     return (
       <InViewAutoplayVideo
         src={src}
+        // Как в ProductCard: без отложенной подгрузки — IO внутри Link + overflow-hidden часто не даёт src.
+        deferUntilInView={false}
         onError={(e) => {
           if (!placeholder) return
           // video → обёртка InViewAutoplayVideo → ячейка карточки
