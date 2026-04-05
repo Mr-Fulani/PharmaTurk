@@ -73,12 +73,17 @@ export default function Header() {
   }
 
   useEffect(() => {
+    // Cookie совпадает с X-Currency в api.ts; для авторизованных раньше брали только
+    // user.currency — при неуспешном PATCH профиль в БД отставал, индикатор «залипал» на USDT.
+    const savedCurrency = Cookies.get('currency')
+    if (savedCurrency) {
+      setCurrency(savedCurrency)
+      return
+    }
     if (user?.currency) {
       setCurrency(user.currency)
     } else {
-      // Для гостей читаем валюту из cookie
-      const savedCurrency = Cookies.get('currency')
-      setCurrency(savedCurrency || 'RUB')
+      setCurrency('RUB')
     }
   }, [user])
 

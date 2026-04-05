@@ -420,9 +420,13 @@ class TelegramAuthView(APIView):
         })
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class UserProfileViewSet(viewsets.ModelViewSet):
     """
     Управление профилем пользователя
+
+    CSRF отключён для dispatch: SPA шлёт JWT в Authorization, а при логине трогается
+    django session — иначе PATCH/PUT без X-CSRFToken дают 403 (GET остаётся без CSRF).
     """
     permission_classes = [IsAuthenticated]
     serializer_class = UserSerializer
@@ -554,9 +558,12 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         return Response({'link': link})
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class UserAddressViewSet(viewsets.ModelViewSet):
     """
     Управление адресами пользователя
+
+    CSRF отключён по той же причине, что и у UserProfileViewSet (сессия + JWT SPA).
     """
     permission_classes = [IsAuthenticated]
     serializer_class = UserAddressSerializer

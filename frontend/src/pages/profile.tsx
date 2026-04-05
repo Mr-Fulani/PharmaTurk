@@ -175,12 +175,16 @@ export default function ProfilePage() {
   }, [user])
 
   useEffect(() => {
-    if (user?.currency) {
-      setCurrency(user.currency)
+    const savedCurrency = Cookies.get('currency')
+    if (savedCurrency) {
+      setCurrency(savedCurrency)
       return
     }
-    const savedCurrency = Cookies.get('currency')
-    setCurrency(savedCurrency || 'RUB')
+    if (user?.currency) {
+      setCurrency(user.currency)
+    } else {
+      setCurrency('RUB')
+    }
   }, [user])
 
   const handleCurrencyChange = async (nextCurrency: string) => {
