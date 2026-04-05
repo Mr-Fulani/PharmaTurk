@@ -24,7 +24,10 @@ class ScraperConfig(models.Model):
         "catalog.Category",
         on_delete=models.PROTECT,
         verbose_name=_("Категория по умолчанию"),
-        help_text=_("Категория-домен для всех товаров этого парсера (обязательно)"),
+        help_text=_(
+            "Категория-домен для всех товаров этого парсера (обязательно). "
+            "В админке пункты отсортированы по полному пути (Корень › Подкатегория › …)."
+        ),
     )
     default_brand = models.ForeignKey(
         "catalog.Brand",

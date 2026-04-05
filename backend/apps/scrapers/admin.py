@@ -26,6 +26,29 @@ from .models import (
 from .tasks import run_scraper_task
 
 
+def _category_breadcrumb_labels_and_order():
+    """Путь «Родитель › … › Имя» и порядок сортировки для выпадающего списка категорий в админке."""
+    rows = list(Category.objects.all().values("id", "name", "parent_id"))
+    by_id = {r["id"]: r for r in rows}
+
+    def breadcrumb(pk: int) -> str:
+        parts: list[str] = []
+        cid: int | None = pk
+        for _ in range(64):
+            if cid is None:
+                break
+            row = by_id.get(cid)
+            if not row:
+                break
+            parts.insert(0, row["name"])
+            cid = row["parent_id"]
+        return " › ".join(parts) if parts else ""
+
+    labels = {r["id"]: breadcrumb(r["id"]) for r in rows}
+    ordered_pks = sorted(by_id.keys(), key=lambda pk: labels[pk].casefold())
+    return labels, ordered_pks
+
+
 class InstagramScraperTaskForm(forms.ModelForm):
     """Форма задачи Instagram с проверкой: указан post_url или username."""
 
@@ -70,6 +93,26 @@ class ScraperConfigAdmin(admin.ModelAdmin):
     ordering = ["priority", "name"]
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "default_category":
+            labels, ordered_pks = _category_breadcrumb_labels_and_order()
+            if ordered_pks:
+                preserved = Case(
+                    *[When(pk=pk, then=pos) for pos, pk in enumerate(ordered_pks)],
+                    output_field=IntegerField(),
+                )
+                kwargs["queryset"] = (
+                    Category.objects.filter(pk__in=ordered_pks)
+                    .annotate(_scraper_cat_sort=preserved)
+                    .order_by("_scraper_cat_sort")
+                )
+            else:
+                kwargs["queryset"] = Category.objects.none()
+            formfield = super().formfield_for_foreignkey(db_field, request, **kwargs)
+            if hasattr(formfield, "label_from_instance"):
+                formfield.label_from_instance = lambda obj, _labels=labels: _labels.get(
+                    obj.pk, str(obj)
+                )
+            return formfield
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     fieldsets = [
