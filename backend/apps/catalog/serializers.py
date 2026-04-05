@@ -144,6 +144,20 @@ def _resolve_file_url_if_stored(file_field, request):
     return raw_url
 
 
+def _resolve_video_file_url(file_field, request):
+    """URL главного видеофайла: сначала только если объект есть в storage (как proxy-media), иначе как в корзине.
+
+    На проде ключ в БД и префикс в бакете иногда расходятся — if_stored даёт None, тогда всё равно отдаём
+    URL по полю (иначе витрина без видео, а корзина с тем же товаром показывает ролик).
+    """
+    if not file_field or not getattr(file_field, "name", None):
+        return None
+    u = _resolve_file_url_if_stored(file_field, request)
+    if u:
+        return u
+    return _resolve_file_url(file_field, request)
+
+
 def serialize_product_for_card(product, request):
     """
     Сериализует товар для карточки с учётом типа (shoes, clothing и т.д.).
@@ -991,7 +1005,7 @@ class ProductSerializer(serializers.ModelSerializer):
                 return None
             ff = getattr(entity, "main_video_file", None)
             if ff and getattr(ff, "name", None):
-                resolved = _resolve_file_url_if_stored(ff, request)
+                resolved = _resolve_video_file_url(ff, request)
                 if resolved:
                     return resolved
             raw = getattr(entity, "video_url", None) or ""
@@ -1576,6 +1590,11 @@ class FavoriteSerializer(serializers.ModelSerializer):
         elif isinstance(product, JewelryProduct):
             product_type = 'jewelry'
             product_data = JewelryProductSerializer(product, context={'request': request}).data
+        elif isinstance(product, BookProduct):
+            product_type = 'books'
+            product_data = BookProductSerializer(product, context={'request': request}).data
+            if product.base_product_id:
+                _pin_base_product_fields(product_data, product.base_product_id)
         elif isinstance(product, HeadwearProduct):
             product_type = 'headwear'
             product_data = HeadwearProductSerializer(product, context={'request': request}).data
@@ -2048,7 +2067,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         # 1. Приоритет файлу в ClothingProduct
         file_field = getattr(obj, "main_video_file", None)
         if file_field and getattr(file_field, "name", None):
-            resolved = _resolve_file_url_if_stored(file_field, request)
+            resolved = _resolve_video_file_url(file_field, request)
             if resolved:
                 return resolved
 
@@ -2057,7 +2076,7 @@ class ClothingProductSerializer(serializers.ModelSerializer):
         if base_product:
             file_field = getattr(base_product, "main_video_file", None)
             if file_field and getattr(file_field, "name", None):
-                resolved = _resolve_file_url_if_stored(file_field, request)
+                resolved = _resolve_video_file_url(file_field, request)
                 if resolved:
                     return resolved
 
@@ -2411,7 +2430,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         # 1. Приоритет файлу в ShoeProduct
         file_field = getattr(obj, "main_video_file", None)
         if file_field and getattr(file_field, "name", None):
-            resolved = _resolve_file_url_if_stored(file_field, request)
+            resolved = _resolve_video_file_url(file_field, request)
             if resolved:
                 return resolved
 
@@ -2420,7 +2439,7 @@ class ShoeProductSerializer(serializers.ModelSerializer):
         if base_product:
             file_field = getattr(base_product, "main_video_file", None)
             if file_field and getattr(file_field, "name", None):
-                resolved = _resolve_file_url_if_stored(file_field, request)
+                resolved = _resolve_video_file_url(file_field, request)
                 if resolved:
                     return resolved
 
@@ -3196,7 +3215,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         # 1. Приоритет файлу в FurnitureProduct
         file_field = getattr(obj, "main_video_file", None)
         if file_field and getattr(file_field, "name", None):
-            resolved = _resolve_file_url_if_stored(file_field, request)
+            resolved = _resolve_video_file_url(file_field, request)
             if resolved:
                 return resolved
 
@@ -3205,7 +3224,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         if base_product:
             file_field = getattr(base_product, "main_video_file", None)
             if file_field and getattr(file_field, "name", None):
-                resolved = _resolve_file_url_if_stored(file_field, request)
+                resolved = _resolve_video_file_url(file_field, request)
                 if resolved:
                     return resolved
 
@@ -3742,7 +3761,7 @@ class JewelryProductSerializer(serializers.ModelSerializer):
         # 1. Приоритет файлу в JewelryProduct
         file_field = getattr(obj, "main_video_file", None)
         if file_field and getattr(file_field, "name", None):
-            resolved = _resolve_file_url_if_stored(file_field, request)
+            resolved = _resolve_video_file_url(file_field, request)
             if resolved:
                 return resolved
 
@@ -3751,7 +3770,7 @@ class JewelryProductSerializer(serializers.ModelSerializer):
         if base_product:
             file_field = getattr(base_product, "main_video_file", None)
             if file_field and getattr(file_field, "name", None):
-                resolved = _resolve_file_url_if_stored(file_field, request)
+                resolved = _resolve_video_file_url(file_field, request)
                 if resolved:
                     return resolved
 
@@ -4498,7 +4517,7 @@ class BookProductSerializer(serializers.ModelSerializer):
                 return None
             ff = getattr(entity, "main_video_file", None)
             if ff and getattr(ff, "name", None):
-                resolved = _resolve_file_url_if_stored(ff, request)
+                resolved = _resolve_video_file_url(ff, request)
                 if resolved:
                     return resolved
             raw = getattr(entity, "video_url", None) or ""
