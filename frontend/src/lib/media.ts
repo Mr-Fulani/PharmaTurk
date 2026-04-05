@@ -20,12 +20,19 @@ export const isVideoUrl = (url?: string | null): boolean => {
       const pathMatch = url.match(/[?&]path=([^&]+)/)
       const pathParam = pathMatch ? decodeURIComponent(pathMatch[1]) : ''
       if (pathParam && VIDEO_EXT_REGEX.test(pathParam)) return true
+      // Карточки категорий/брендов (marketing/cards/.../videos/...) без суффикса в ключе R2
+      if (pathParam && pathParam.toLowerCase().includes('/videos/')) return true
       if (pathParam) return false
     } catch {
       // ignore
     }
   }
+  // main/videos, устаревший сегмент /video/; наши пути .../products/.../videos/ и marketing/cards/.../videos/
   if (url.includes('/video/') || url.includes('main_video')) return true
+  const low = url.toLowerCase()
+  if (low.includes('/videos/')) {
+    if (low.includes('marketing/cards/') || low.includes('/products/')) return true
+  }
   if (/youtube(?:-nocookie)?\.com|youtu\.be|vimeo\.com/i.test(url)) return true
   return false
 }

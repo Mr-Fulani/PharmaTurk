@@ -71,9 +71,14 @@ def _resolve_media_url(value, request):
     if value.startswith('/api/'):
         return value
 
-    # Проверка на видео — для них ОБЯЗАТЕЛЬНО используем proxy-media (поддерживает Range)
+    # Проверка на видео — для них ОБЯЗАТЕЛЬНО используем proxy-media (поддерживает Range).
+    # Пути карточек категорий/брендов и галерей: .../videos/... — на CDN имя без суффикса .mp4.
     path_lower = value.lower().split('?')[0]
-    is_video = any(path_lower.endswith(ext) for ext in ['.mp4', '.webm', '.mov', '.m4v'])
+    video_exts = ('.mp4', '.webm', '.mov', '.m4v', '.avi', '.mkv')
+    is_video = any(path_lower.endswith(ext) for ext in video_exts)
+    if not is_video and '/videos/' in path_lower:
+        if 'marketing/cards/' in path_lower or '/products/' in path_lower:
+            is_video = True
 
     if is_video:
         proxy = _r2_proxy_url(value, request)
