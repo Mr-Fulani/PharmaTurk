@@ -89,6 +89,58 @@ const normalizeMediaValue = (value?: string | null) => {
   return trimmed
 }
 
+/**
+ * Ключ дедупликации слайдов галереи: один и тот же файл часто приходит и как main_image (сырой путь),
+ * и как image_url в варианте (уже разрешённый URL) — строки не совпадают, но pathname один.
+ */
+const galleryImageDedupeKey = (value?: string | null): string | null => {
+  const n = normalizeMediaValue(value)
+  if (!n) return null
+  const r = resolveMediaUrl(n)
+  if (!r || r === '/product-placeholder.svg') return n.toLowerCase()
+  try {
+    const base =
+      typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost'
+    const u = new URL(r, base)
+    return `${u.pathname}${u.search || ''}`.toLowerCase()
+  } catch {
+    return r.toLowerCase()
+  }
+}
+
+type GalleryItemDedupe = {
+  id: number | string
+  image_url: string
+  video_url?: string | null
+  alt_text?: string
+  is_main?: boolean
+  sort_order?: number
+  isVideo?: boolean
+}
+
+/** После сортировки убираем повторы одного файла (мебель: product.main_* дублирует кадры варианта). */
+function dedupeGalleryItemsPreservingOrder(items: GalleryItemDedupe[]): GalleryItemDedupe[] {
+  const seenImg = new Set<string>()
+  const seenVid = new Set<string>()
+  const out: GalleryItemDedupe[] = []
+  for (const item of items) {
+    if (item.isVideo && item.video_url) {
+      const vk = normalizeMediaValue(item.video_url)
+      if (!vk || seenVid.has(vk)) continue
+      seenVid.add(vk)
+      out.push(item)
+      continue
+    }
+    const u = normalizeMediaValue(item.image_url)
+    if (!u) continue
+    const k = galleryImageDedupeKey(u)
+    if (!k || seenImg.has(k)) continue
+    seenImg.add(k)
+    out.push(item)
+  }
+  return out
+}
+
 /** Краткая строка под названием мебели (тип, цвет, размер) — без HTML из админки */
 const stripHtmlToPlainText = (html: string) => {
   if (!html) return ''
@@ -715,6 +767,10 @@ export default function ProductPage({
       const mergedImages = productType === 'jewelry'
         ? [...variantImages, ...productImages]
         : (variantImages.length > 0 ? variantImages : productImages)
+
+      /** У мебели с галереей варианта корневое main_image / main_image_url — тот же кадр, что images[0]; отдельный слайд «main-i» даёт дубль. */
+      const furnitureSkipSyntheticMain =
+        productType === 'furniture' && (selectedVariant?.images?.length ?? 0) > 0
   
       const mainImageRaw = normalizeMediaValue(selectedVariant?.main_image || product.main_image_url || product.main_image)
   
@@ -726,6 +782,7 @@ export default function ProductPage({
   
       const baseImages: GalleryItem[] = mergedImages.flatMap((img) => {
         const imageUrl = normalizeMediaValue(img.image_url)
+        const imageDedupeKey = galleryImageDedupeKey(img.image_url)
         const possibleVideoUrl = (img as any).video_url || (imageUrl && isVideoUrl(imageUrl) ? imageUrl : null)
         const videoUrl = normalizeMediaValue(possibleVideoUrl)
   
@@ -744,8 +801,8 @@ export default function ProductPage({
           } as GalleryItem]
         }
   
-        if (!imageUrl || seenImageUrls.has(imageUrl)) return []
-        seenImageUrls.add(imageUrl)
+        if (!imageUrl || !imageDedupeKey || seenImageUrls.has(imageDedupeKey)) return []
+        seenImageUrls.add(imageDedupeKey)
         
         return [{
           id: img.id,
@@ -762,10 +819,19 @@ export default function ProductPage({
       if (normalizedProductVideoUrl && !seenVideoUrls.has(normalizedProductVideoUrl)) {
         list.push({ id: 'main-v', image_url: '', video_url: normalizedProductVideoUrl, alt_text: 'Видео', isVideo: true, is_main: !list.some(i => i.is_main), sort_order: -50 })
       }
-      if (normalizedProductGifUrl && !seenImageUrls.has(normalizedProductGifUrl)) {
+      const gifDedupeKey = galleryImageDedupeKey(normalizedProductGifUrl)
+      if (normalizedProductGifUrl && gifDedupeKey && !seenImageUrls.has(gifDedupeKey)) {
+        seenImageUrls.add(gifDedupeKey)
         list.push({ id: 'main-g', image_url: normalizedProductGifUrl, alt_text: 'GIF', is_main: !list.some(i => i.is_main), sort_order: -40 })
       }
-      if (mainImageRaw && !seenImageUrls.has(mainImageRaw)) {
+      const mainDedupeKey = galleryImageDedupeKey(mainImageRaw)
+      if (
+        mainImageRaw &&
+        mainDedupeKey &&
+        !seenImageUrls.has(mainDedupeKey) &&
+        !furnitureSkipSyntheticMain
+      ) {
+        seenImageUrls.add(mainDedupeKey)
         list.push({ id: 'main-i', image_url: mainImageRaw, alt_text: product.name, is_main: !list.some(i => i.is_main), sort_order: -30 })
       }
   
@@ -789,16 +855,20 @@ export default function ProductPage({
         return String(a.id).localeCompare(String(b.id), 'ru')
       })
 
-      const hasProxyVideo = sorted.some((i) => i.isVideo && i.video_url && /proxy-media/i.test(i.video_url))
+      const sortedDeduped = dedupeGalleryItemsPreservingOrder(sorted)
+
+      const hasProxyVideo = sortedDeduped.some((i) => i.isVideo && i.video_url && /proxy-media/i.test(i.video_url))
       if (hasProxyVideo) {
-        return sorted.filter((i) => {
-          if (!i.isVideo || !i.video_url) return true
-          if (/proxy-media/i.test(i.video_url)) return true
-          if (/^https?:\/\//i.test(i.video_url)) return false
-          return true
-        })
+        return dedupeGalleryItemsPreservingOrder(
+          sortedDeduped.filter((i) => {
+            if (!i.isVideo || !i.video_url) return true
+            if (/proxy-media/i.test(i.video_url)) return true
+            if (/^https?:\/\//i.test(i.video_url)) return false
+            return true
+          })
+        )
       }
-      return sorted
+      return sortedDeduped
     }, [product, productType, selectedVariant])
 
   const gallerySource = useMemo(() => buildGallerySource(), [buildGallerySource])

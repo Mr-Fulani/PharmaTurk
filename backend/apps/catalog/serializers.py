@@ -3421,23 +3421,41 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
         return (preferred or obj.currency or 'RUB').upper()
 
     def get_images(self, obj):
-        """Галерея изображений. Объединяет изображения товара и текущего варианта."""
-        all_images = []
+        """Галерея изображений. Объединяет изображения товара и текущего варианта.
+
+        У вариативной мебели одна и та же картинка может храниться и в FurnitureProductImage,
+        и в FurnitureVariantImage (наследие парсинга или ручные правки). Без дедупликации
+        в API уходили два одинаковых слайда подряд.
+        """
         request = self.context.get('request')
-        
-        # 1. Изображения самого товара
-        product_images = obj.images.all().order_by("sort_order")
-        if product_images.exists():
-            all_images.extend(FurnitureProductImageSerializer(product_images, many=True, context={'request': request}).data)
-            
-        # 2. Изображения активного варианта
+        ctx = {"request": request}
+
         variant = self._get_active_variant(obj)
+        variant_rows: list = []
         if variant:
             variant_images = variant.images.all().order_by("sort_order")
             if variant_images.exists():
-                all_images.extend(FurnitureVariantImageSerializer(variant_images, many=True, context={'request': request}).data)
-                
-        return all_images
+                variant_rows = FurnitureVariantImageSerializer(
+                    variant_images, many=True, context=ctx
+                ).data
+
+        product_images = obj.images.all().order_by("sort_order")
+        product_rows: list = []
+        if product_images.exists():
+            product_rows = FurnitureProductImageSerializer(
+                product_images, many=True, context=ctx
+            ).data
+
+        # Сначала кадры варианта (источник истины по цвету), затем уникальные общие кадры товара
+        ordered: list = []
+        seen: set[str] = set()
+        for row in variant_rows + product_rows:
+            url = (row.get("image_url") or "").strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            ordered.append(row)
+        return ordered
 
     def _get_default_variant(self, obj):
         variants = getattr(obj, "variants", None)
