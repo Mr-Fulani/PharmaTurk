@@ -1124,6 +1124,12 @@ export default function CategoryPage({
         const genderSet = new Set(['women', 'men', 'kids', 'unisex'])
         const nonGenderSubSlugs = normalizedSubSlugs.filter((s) => !genderSet.has(s))
         if (nonGenderSubSlugs.length > 0) {
+          // Важно для всех деревьев: подкатегория должна сужать выборку.
+          // Если оставить category_slug/category_id вместе с subcategory_slug,
+          // многие backend ViewSet'ы возьмут category_slug (или сделают OR) и сужение не сработает.
+          delete params.category_slug
+          delete params.category_id
+
           if (categoryType === 'jewelry' && jewelryTypeFilters.length > 0) {
             params.jewelry_type = jewelryTypeFilters.join(',')
             params.subcategory_slug = nonGenderSubSlugs.join(',')

@@ -159,7 +159,7 @@ gtag('config', '${GA4_ID.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', { send_p
         ) : (
           <div className="min-h-screen flex flex-col">
             <Header />
-            <div className="flex-1 pt-[108px] md:pt-[72px]">
+            <div className="flex-1 pt-[calc(124px+env(safe-area-inset-top))] md:pt-[calc(72px+env(safe-area-inset-top))]">
               <Component {...pageProps} />
             </div>
             <Footer initialSettings={(pageProps as Record<string, unknown>)?.footerSettings} />
