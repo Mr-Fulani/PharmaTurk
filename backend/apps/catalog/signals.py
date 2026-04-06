@@ -7,6 +7,8 @@ from django.dispatch import receiver
 
 from .models import (
     BannerMedia,
+    AccessoryProduct,
+    AutoPartProduct,
     BookProduct,
     BookProductImage,
     BookVariantImage,
@@ -22,10 +24,16 @@ from .models import (
     FurnitureProduct,
     FurnitureVariant,
     FurnitureVariantImage,
+    HeadwearProduct,
+    IncenseProduct,
+    IslamicClothingProduct,
     JewelryProduct,
     JewelryProductImage,
     JewelryVariant,
     JewelryVariantImage,
+    MedicalEquipmentProduct,
+    MedicineProduct,
+    PerfumeryProduct,
     Product,
     ProductImage,
     Service,
@@ -34,6 +42,10 @@ from .models import (
     ShoeProductImage,
     ShoeVariant,
     ShoeVariantImage,
+    SportsProduct,
+    SupplementProduct,
+    TablewareProduct,
+    UnderwearProduct,
     # Доменные модели изображений без покрытия
     TablewareProductImage,
     AccessoryProductImage,
@@ -67,6 +79,49 @@ _PRODUCT_DOMAIN_ONE_TO_ONE_RELS = (
     "underwear_item",
     "islamic_clothing_item",
 )
+
+
+def _get_or_create_other_brand():
+    """Возвращает бренд «Другое», создаёт при отсутствии."""
+    other_brand = Brand.objects.filter(slug="other").first()
+    if other_brand:
+        return other_brand
+    return Brand.objects.create(
+        name="Другое",
+        slug="other",
+        is_active=True,
+    )
+
+
+@receiver(pre_save, sender=Product)
+@receiver(pre_save, sender=ClothingProduct)
+@receiver(pre_save, sender=ShoeProduct)
+@receiver(pre_save, sender=JewelryProduct)
+@receiver(pre_save, sender=ElectronicsProduct)
+@receiver(pre_save, sender=FurnitureProduct)
+@receiver(pre_save, sender=BookProduct)
+@receiver(pre_save, sender=PerfumeryProduct)
+@receiver(pre_save, sender=MedicineProduct)
+@receiver(pre_save, sender=SupplementProduct)
+@receiver(pre_save, sender=MedicalEquipmentProduct)
+@receiver(pre_save, sender=TablewareProduct)
+@receiver(pre_save, sender=AccessoryProduct)
+@receiver(pre_save, sender=IncenseProduct)
+@receiver(pre_save, sender=SportsProduct)
+@receiver(pre_save, sender=AutoPartProduct)
+@receiver(pre_save, sender=HeadwearProduct)
+@receiver(pre_save, sender=UnderwearProduct)
+@receiver(pre_save, sender=IslamicClothingProduct)
+def set_default_other_brand(sender, instance, **kwargs):
+    """
+    Для всех категорий товаров: если бренд не указан, подставляем бренд «Другое».
+    """
+    if getattr(instance, "brand_id", None):
+        return
+    try:
+        instance.brand = _get_or_create_other_brand()
+    except Exception as e:
+        logger.warning("Не удалось подставить бренд 'Другое' для %s: %s", sender.__name__, e)
 
 
 @receiver(pre_delete, sender=Product)
@@ -140,6 +195,25 @@ def _get_path_from_storage_url(url: str) -> str | None:
         return None
     except Exception:
         return None
+
+
+def _normalize_storage_key_for_file_field(path: str) -> str:
+    """Нормализует ключ для FileField (без дублирования R2_PREFIX/location)."""
+    if not path:
+        return path
+    normalized = path.lstrip("/")
+    if normalized.startswith("media/"):
+        normalized = normalized[len("media/") :]
+    try:
+        from django.conf import settings
+
+        r2_prefix = (getattr(settings, "R2_PREFIX", "") or "").strip("/")
+        if r2_prefix and normalized.startswith(f"{r2_prefix}/"):
+            normalized = normalized[len(r2_prefix) + 1 :]
+    except Exception:
+        # В pre_save лучше не прерывать сохранение товара из-за ошибки нормализации.
+        pass
+    return normalized
 
 
 def is_internal_storage_url(url):
@@ -227,9 +301,7 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
             # Если URL внутренний (например, cdn.mudaroba.com), пробуем извлечь путь
             try:
                 from urllib.parse import urlparse
-                path = urlparse(url).path 
-                if path.startswith("/"):
-                    path = path[1:]
+                path = _normalize_storage_key_for_file_field(urlparse(url).path)
                 # Простая проверка: если путь не пустой, сохраняем как файл
                 if path:
                     setattr(instance, field_name, path)

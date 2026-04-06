@@ -370,9 +370,15 @@ def _apply_brand_filter(queryset, request):
     wants_other = 0 in brand_ids or (other_brand_id and other_brand_id in brand_ids)
     brand_ids = [bid for bid in brand_ids if bid > 0 and bid != other_brand_id]
     if wants_other and brand_ids:
-        return queryset.filter(models.Q(brand__isnull=True) | models.Q(brand_id__in=brand_ids))
+        q_other = models.Q(brand__isnull=True)
+        if other_brand_id:
+            q_other |= models.Q(brand_id=other_brand_id)
+        return queryset.filter(q_other | models.Q(brand_id__in=brand_ids))
     if wants_other:
-        return queryset.filter(brand__isnull=True)
+        q_other = models.Q(brand__isnull=True)
+        if other_brand_id:
+            q_other |= models.Q(brand_id=other_brand_id)
+        return queryset.filter(q_other)
     return queryset.filter(brand_id__in=brand_ids)
 
 
@@ -2029,21 +2035,46 @@ class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, view
                     raw_list = raw.split(',')
             return [v.strip() for v in raw_list if v and str(v).strip()]
 
-        category_ids = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
-        if category_ids:
+        # Категории:
+        # - category_slug: "родительские" категории (например rings)
+        # - subcategory_slug: узкие подкатегории (например signet-rings)
+        # Поведение:
+        # - только category_slug -> родитель + все потомки
+        # - category_slug + subcategory_slug -> (товары прямо в родителе) OR (товары в выбранных подкатегориях)
+        category_ids_raw = self.request.query_params.getlist('category_id') or self.request.query_params.getlist('category_id[]')
+        category_ids: list[int] = []
+        if category_ids_raw:
             try:
-                category_ids = [int(cid) for cid in category_ids if cid]
-                if category_ids:
-                    queryset = queryset.filter(category_id__in=category_ids)
+                category_ids = [int(cid) for cid in category_ids_raw if cid]
             except (ValueError, TypeError):
-                pass
-        category_slug = self.request.query_params.get('category_slug') or self.request.query_params.get('subcategory_slug')
-        if category_slug:
-            slugs = [s.strip() for s in category_slug.split(',') if s.strip()]
-            if slugs:
-                cat_ids = _get_category_ids_with_descendants(slugs)
-                if cat_ids:
-                    queryset = queryset.filter(category_id__in=cat_ids)
+                category_ids = []
+
+        parent_slug_raw = self.request.query_params.get('category_slug') or ''
+        child_slug_raw = self.request.query_params.get('subcategory_slug') or ''
+        parent_slugs = [s.strip() for s in parent_slug_raw.split(',') if s.strip()]
+        child_slugs = [s.strip() for s in child_slug_raw.split(',') if s.strip()]
+
+        if parent_slugs or child_slugs or category_ids:
+            q_cat = models.Q()
+
+            if child_slugs:
+                # Если выбраны подкатегории — это строгий фильтр: показываем ТОЛЬКО эти подкатегории
+                # (и их потомков). Товары, лежащие прямо в родительской категории, НЕ включаем.
+                child_ids = _get_category_ids_with_descendants(child_slugs)
+                if child_ids:
+                    q_cat |= models.Q(category_id__in=child_ids)
+            else:
+                # Только родительские slug: включаем потомков.
+                if parent_slugs:
+                    parent_ids = _get_category_ids_with_descendants(parent_slugs)
+                    if parent_ids:
+                        q_cat |= models.Q(category_id__in=parent_ids)
+                # Явные category_id — строгая привязка без потомков (используем если slug не задан).
+                if category_ids:
+                    q_cat |= models.Q(category_id__in=category_ids)
+
+            if q_cat:
+                queryset = queryset.filter(q_cat)
         gender_slugs = _parse_multi_param(self.request, 'gender') or _parse_multi_param(self.request, 'jewelry_gender')
         if gender_slugs:
             normalized_genders = gender_slugs

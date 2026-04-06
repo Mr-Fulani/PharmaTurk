@@ -1,5 +1,6 @@
 """Модели для каталога товаров."""
 
+import logging
 import uuid
 from urllib.parse import urlparse, urlunparse
 from django.db import models
@@ -31,6 +32,8 @@ from .utils.storage_paths import (
     get_service_image_upload_path,
     get_book_product_gallery_upload_path,
 )
+
+logger = logging.getLogger(__name__)
 
 CURRENCY_CHOICES = [
     ('TRY', 'Турецкая лира'),
@@ -158,7 +161,15 @@ def _resolve_category_card_base(category) -> str:
 def validate_card_media_file_size(value):
     """Проверяет, что размер медиа-файла карточки не превышает допустимый лимит."""
     max_bytes = CARD_MEDIA_MAX_SIZE_MB * 1024 * 1024
-    if value.size > max_bytes:
+    try:
+        size = value.size
+    except FileNotFoundError:
+        # Не роняем admin 500: возвращаем контролируемую ошибку валидации.
+        raise ValidationError(_("Файл не найден в хранилище. Обновите медиафайл или очистите поле и сохраните снова."))
+    except Exception as e:
+        logger.warning("Не удалось проверить размер медиафайла %s: %s", getattr(value, "name", "<unknown>"), e)
+        raise ValidationError(_("Не удалось проверить размер медиафайла. Попробуйте заново выбрать файл."))
+    if size > max_bytes:
         raise ValidationError(
             _("Размер файла превышает %(size)s МБ"),
             params={"size": CARD_MEDIA_MAX_SIZE_MB},

@@ -329,7 +329,7 @@ const areFiltersEqual = (left: FilterState, right: FilterState) =>
   left.priceMin === right.priceMin &&
   left.priceMax === right.priceMax
 
-const createTreeItem = (category: Category, allCategories: Category[]): SidebarTreeItem => {
+const createTreeItem = (category: Category, allCategories: Category[], depth: number = 0): SidebarTreeItem => {
   const children = allCategories
     .filter((c) => c.parent === category.id)
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'ru'))
@@ -340,9 +340,11 @@ const createTreeItem = (category: Category, allCategories: Category[]): SidebarT
     slug: category.slug,
     dataId: category.id,
     count: category.product_count,
-    type: 'category',
+    // Корневой пункт группы (L2) — category, вложенные уровни — subcategory.
+    // Это нужно, чтобы дочерние чекбоксы сужали выборку, а не расширяли её как родитель.
+    type: depth === 0 ? 'category' : 'subcategory',
     translations: category.translations,
-    children: children.length > 0 ? children.map(c => createTreeItem(c, allCategories)) : undefined
+    children: children.length > 0 ? children.map(c => createTreeItem(c, allCategories, depth + 1)) : undefined
   }
 }
 
@@ -995,10 +997,13 @@ export default function CategoryPage({
         if (brandPrimarySlug && !isFurnitureCategory) {
           params.primary_category_slug = brandPrimarySlug
         }
-        if (filters.categories.length > 0) {
-          params.category_id = filters.categories
-        } else if (filters.categorySlugs.length > 0) {
+        // Важно: не отправляем category_id вместе с category_slug.
+        // category_id на бэкенде фильтрует строго по выбранным ID (без потомков),
+        // из-за чего ломается иерархия (родитель не включает детей).
+        if (filters.categorySlugs.length > 0) {
           params.category_slug = filters.categorySlugs.join(',')
+        } else if (filters.categories.length > 0) {
+          params.category_id = filters.categories
         }
         if (filters.inStock) {
           params.in_stock = true
@@ -1095,11 +1100,10 @@ export default function CategoryPage({
       }
         }
 
-        if (filters.categories.length > 0) {
-          params.category_id = filters.categories
-        }
         if (filters.categorySlugs.length > 0) {
           params.category_slug = filters.categorySlugs.join(',')
+        } else if (filters.categories.length > 0) {
+          params.category_id = filters.categories
         }
         if (effectiveBrandIds.length > 0) {
           params.brand_id = effectiveBrandIds
@@ -1122,6 +1126,7 @@ export default function CategoryPage({
         if (nonGenderSubSlugs.length > 0) {
           if (categoryType === 'jewelry' && jewelryTypeFilters.length > 0) {
             params.jewelry_type = jewelryTypeFilters.join(',')
+            params.subcategory_slug = nonGenderSubSlugs.join(',')
           } else if (categoryType === 'books' || categoryType === 'furniture' || categoryType === 'uslugi') {
             params.category_slug = nonGenderSubSlugs.join(',')
           } else {

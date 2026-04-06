@@ -268,11 +268,15 @@ export default function CategorySidebar({
   }
 
   const toggleSubcategoryFilter = (subcategoryId: number, slug?: string) => {
-    updateFilters((prev) => ({
-      ...prev,
-      subcategories: toggleArrayValue(prev.subcategories, subcategoryId),
-      subcategorySlugs: slug ? toggleArrayValue(prev.subcategorySlugs, slug) : prev.subcategorySlugs
-    }))
+    updateFilters((prev) => {
+      const nextSubcategories = toggleArrayValue(prev.subcategories, subcategoryId)
+      const nextSubcategorySlugs = slug ? toggleArrayValue(prev.subcategorySlugs, slug) : prev.subcategorySlugs
+      return {
+        ...prev,
+        subcategories: nextSubcategories,
+        subcategorySlugs: nextSubcategorySlugs,
+      }
+    })
   }
 
   const toggleGenderFilter = (slug: string) => {
@@ -450,7 +454,7 @@ export default function CategorySidebar({
         <span className="flex-1 truncate">
           {item.nameKey
             ? t(item.nameKey, item.name)
-            : item.slug && item.type === 'category'
+            : item.slug && (item.type === 'category' || item.type === 'subcategory')
               ? getLocalizedCategoryName(item.slug, item.name, t, item.translations as CategoryTranslation[], router.locale)
               : item.type === 'brand' && item.slug
                 ? getLocalizedBrandName(item.slug, item.name, t, item.translations as BrandTranslation[], router.locale)
