@@ -89,22 +89,52 @@ const normalizeMediaValue = (value?: string | null) => {
   return trimmed
 }
 
+/** Нормализованный путь для сравнения картинок (без ведущих слешей), одинаково на SSR и в браузере. */
+const normalizeImagePathKey = (raw: string): string => {
+  const noHash = raw.split('#')[0] || ''
+  const [pathPart, ...qsParts] = noHash.split('?')
+  const path = pathPart.replace(/^\/+/, '').toLowerCase()
+  const qs = qsParts.length ? `?${qsParts.join('?').toLowerCase()}` : ''
+  return `${path}${qs}`
+}
+
 /**
- * Ключ дедупликации слайдов галереи: один и тот же файл часто приходит и как main_image (сырой путь),
- * и как image_url в варианте (уже разрешённый URL) — строки не совпадают, но pathname один.
+ * Ключ дедупликации слайдов: не используем resolveMediaUrl — на проде SSR и клиент могут давать разные строки
+ * для одного файла (разные базы API / относительный vs абсолютный CDN). Сравниваем путь и proxy path=.
  */
 const galleryImageDedupeKey = (value?: string | null): string | null => {
   const n = normalizeMediaValue(value)
   if (!n) return null
-  const r = resolveMediaUrl(n)
-  if (!r || r === '/product-placeholder.svg') return n.toLowerCase()
+
+  if (/proxy-media/i.test(n) && n.includes('path=')) {
+    try {
+      const m = n.match(/[?&]path=([^&]+)/)
+      if (m?.[1]) {
+        const decoded = decodeURIComponent(m[1].replace(/\+/g, '%20'))
+        return normalizeImagePathKey(decoded)
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (/^https?:\/\//i.test(n) || n.startsWith('//')) {
+    try {
+      const urlStr = n.startsWith('//') ? `https:${n}` : n
+      const u = new URL(urlStr)
+      return normalizeImagePathKey(`${u.pathname}${u.search || ''}`)
+    } catch {
+      return n.toLowerCase()
+    }
+  }
+
   try {
-    const base =
-      typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'http://localhost'
-    const u = new URL(r, base)
-    return `${u.pathname}${u.search || ''}`.toLowerCase()
+    const tail = n.split('#')[0] || n
+    const abs = tail.startsWith('/') ? `https://x.invalid${tail}` : `https://x.invalid/${tail}`
+    const u = new URL(abs)
+    return normalizeImagePathKey(`${u.pathname}${u.search || ''}`)
   } catch {
-    return r.toLowerCase()
+    return n.toLowerCase()
   }
 }
 
@@ -768,9 +798,12 @@ export default function ProductPage({
         ? [...variantImages, ...productImages]
         : (variantImages.length > 0 ? variantImages : productImages)
 
-      /** У мебели с галереей варианта корневое main_image / main_image_url — тот же кадр, что images[0]; отдельный слайд «main-i» даёт дубль. */
+      /**
+       * Мебель: корневое main_* дублирует первый кадр галереи. На проде галерея иногда только в product.images
+       * (merged API), а variant.images пустой — расширяем условие до «есть любые кадры из merged».
+       */
       const furnitureSkipSyntheticMain =
-        productType === 'furniture' && (selectedVariant?.images?.length ?? 0) > 0
+        productType === 'furniture' && mergedImages.length > 0
   
       const mainImageRaw = normalizeMediaValue(selectedVariant?.main_image || product.main_image_url || product.main_image)
   
