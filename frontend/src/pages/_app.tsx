@@ -15,11 +15,13 @@ import { initCartSession } from '../lib/api'
 import { appWithTranslation } from 'next-i18next'
 import { useCookieConsent } from '../hooks/useCookieConsent'
 import { gtmPageView } from '../lib/gtm'
+import { ga4PageView } from '../lib/gtag'
 import { ymPageHit } from '../lib/ym'
 // eslint-disable-next-line
 const nextI18NextConfig = require('../../next-i18next.config.js')
 
 const YM_ID = process.env.NEXT_PUBLIC_YM_ID
+const GA4_ID = process.env.NEXT_PUBLIC_GA4_ID
 
 function App({ Component, pageProps }: AppProps) {
   const router = useRouter()
@@ -80,6 +82,7 @@ function App({ Component, pageProps }: AppProps) {
 
     const handleRouteChangeComplete = (url: string) => {
       gtmPageView(url)
+      ga4PageView(url)
       ymPageHit(url)
     }
 
@@ -125,6 +128,28 @@ ym(${YM_ID},'init',{
               `.trim(),
             }}
           />
+        )}
+
+        {/* Google tag (gtag.js) / GA4 — только после согласия на аналитику */}
+        {consent === 'accepted' && GA4_ID && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`}
+              strategy="afterInteractive"
+            />
+            <Script
+              id="google-gtag-init"
+              strategy="afterInteractive"
+              dangerouslySetInnerHTML={{
+                __html: `
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${GA4_ID.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', { send_page_view: true });
+                `.trim(),
+              }}
+            />
+          </>
         )}
 
         <NavigationProgress />
