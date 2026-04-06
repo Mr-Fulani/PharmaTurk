@@ -423,11 +423,15 @@ class ScraperIntegrationService:
         parser_name: str,
         product_id: str,
         sub_folder: Optional[str],
+        reuse_map: Optional[Dict[str, str]] = None,
     ) -> Tuple[List[str], Dict[str, str]]:
         """Скачивает внешние URL в хранилище parsed-медиа (как у основной карточки).
 
         Возвращает (список URL в порядке обработки, карта исходный_URL → итоговый_URL),
         чтобы синхронизировать attributes (video_url и т.д.) с R2 и не дублировать файлы в main/.
+
+        reuse_map — уже скачанные в этом же проходе нормализации пары исходный→R2: те же URL
+        не качаются повторно с другим product_id (иначе дублируется первая картинка у вариантов).
         """
         scraper_config = session.scraper_config
         max_images = session.max_images_per_product or scraper_config.max_images_per_product or 0
@@ -437,8 +441,17 @@ class ScraperIntegrationService:
             headers.setdefault("User-Agent", scraper_config.user_agent)
         out: List[str] = []
         url_map: Dict[str, str] = {}
+        reuse_map = reuse_map or {}
         for index, url in enumerate(urls):
             if not isinstance(url, str) or not url:
+                continue
+            if url in url_map:
+                out.append(url_map[url])
+                continue
+            if url in reuse_map:
+                resolved = reuse_map[url]
+                out.append(resolved)
+                url_map[url] = resolved
                 continue
             parsed = urlparse(url)
             if "/products/parsed/" in parsed.path:
@@ -532,6 +545,9 @@ class ScraperIntegrationService:
                 ).hexdigest()
                 product_id = raw_hash[:12]
 
+        # Общая карта исходный_URL→R2: корень карточки и все варианты делят одни файлы при совпадении URL.
+        shared_source_to_r2: Dict[str, str] = {}
+
         if media_urls:
             new_images, url_map = self._download_parsed_media_urls(
                 session,
@@ -541,6 +557,7 @@ class ScraperIntegrationService:
                 sub_folder=sub_folder,
             )
             scraped_product.images = new_images
+            shared_source_to_r2.update(url_map)
             self._remap_attribute_urls(attributes, url_map)
 
         # Медиа цветовых вариантов IKEA (отдельные sprCode, одна карточка FurnitureProduct)
@@ -553,14 +570,16 @@ class ScraperIntegrationService:
                 raw_imgs = spec.get("images") or []
                 if not raw_imgs:
                     continue
-                variant_images, _variant_map = self._download_parsed_media_urls(
+                variant_images, variant_map = self._download_parsed_media_urls(
                     session,
                     source_urls=list(raw_imgs),
                     parser_name=parser_name,
                     product_id=vid,
                     sub_folder=sub_folder,
+                    reuse_map=shared_source_to_r2,
                 )
                 spec["images"] = variant_images
+                shared_source_to_r2.update(variant_map)
 
     def _process_single_product(
         self, session: ScrapingSession, scraped_product: ScrapedProduct
