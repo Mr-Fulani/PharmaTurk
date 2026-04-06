@@ -1036,6 +1036,22 @@ export default function ProductPage({
     : t('price_on_request')
 
   const sizeRequired = normalizedSizes.length > 0
+  const hasProductVariants = variants.length > 0
+  /** Избранное и корзина по варианту: небазовые типы или мебель/база с несколькими вариантами */
+  const favoriteUsesVariantSlug = !isBaseProduct || (isBaseProduct && hasProductVariants)
+  const favoriteProductSlugForApi = favoriteUsesVariantSlug
+    ? isBaseProduct
+      ? (selectedVariant?.slug || product.slug)
+      : (selectedVariantSlug || product.slug)
+    : undefined
+  const favoriteSizeForApi = !isBaseProduct ? (selectedSize || '') : ''
+  const cartUsesProductIdOnly = isBaseProduct && !hasProductVariants
+  const cartProductSlug =
+    isBaseProduct && hasProductVariants
+      ? (selectedVariant?.slug || product.slug)
+      : !isBaseProduct
+        ? (selectedVariantSlug || product.slug)
+        : product.slug
   const siteUrl = getSiteOrigin()
   const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
   const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
@@ -1187,7 +1203,13 @@ export default function ProductPage({
                     </div>
                     
                     <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
-                      <FavoriteButton productId={favoriteApiProductId(product, productType)} productType={productType} cornerIcon={true} />
+                      <FavoriteButton
+                        productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
+                        productType={productType}
+                        favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
+                        favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
+                        cornerIcon={true}
+                      />
                       <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
                     </div>
                   </div>
@@ -1202,7 +1224,13 @@ export default function ProductPage({
                     onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
                   />
                   <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
-                    <FavoriteButton productId={favoriteApiProductId(product, productType)} productType={productType} cornerIcon={true} />
+                    <FavoriteButton
+                      productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
+                      productType={productType}
+                      favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
+                      favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
+                      cornerIcon={true}
+                    />
                     <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
                   </div>
                 </div>
@@ -1353,8 +1381,10 @@ export default function ProductPage({
                     onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
                   >
                     <FavoriteButton
-                      productId={favoriteApiProductId(product, productType)}
+                      productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
                       productType={productType}
+                      favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
+                      favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
                       cornerIcon={true}
                     />
                     <ShareButton
@@ -1390,8 +1420,10 @@ export default function ProductPage({
                     onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
                   >
                     <FavoriteButton
-                      productId={favoriteApiProductId(product, productType)}
+                      productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
                       productType={productType}
+                      favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
+                      favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
                       cornerIcon={true}
                     />
                     <ShareButton
@@ -2044,9 +2076,9 @@ export default function ProductPage({
                 ) : (
                   <>
                     <AddToCartButton
-                      productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
+                      productId={cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : undefined}
                       productType={productType}
-                      productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+                      productSlug={cartProductSlug}
                       size={selectedSize}
                       requireSize={!isBaseProduct && sizeRequired}
                       quantity={quantity}
@@ -2056,9 +2088,9 @@ export default function ProductPage({
                       label={t('add_to_cart', 'В корзину')}
                     />
                     <BuyNowButton
-                      productId={isBaseProduct ? (product.base_product_id ?? product.id) : undefined}
+                      productId={cartUsesProductIdOnly ? (product.base_product_id ?? product.id) : undefined}
                       productType={productType}
-                      productSlug={!isBaseProduct ? (selectedVariantSlug || product.slug) : product.slug}
+                      productSlug={cartProductSlug}
                       size={selectedSize}
                       requireSize={!isBaseProduct && sizeRequired}
                       quantity={quantity}

@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import api, { initCartSession } from '../lib/api'
 import { useCartStore } from '../store/cart'
+import { isBaseProductType } from '../lib/product'
 
 interface BuyNowButtonProps {
   productId?: number
@@ -42,12 +43,7 @@ export default function BuyNowButton({
       initCartSession()
       const body = new URLSearchParams()
       body.set('quantity', String(quantity))
-      const baseTypes = [
-        'medicines', 'supplements', 'medical-equipment', 'medical_equipment',
-        'furniture', 'tableware', 'accessories', 'jewelry',
-        'underwear', 'headwear'
-      ]
-      const isBase = baseTypes.includes(productType)
+      const isBase = isBaseProductType(productType)
       if (isBase && productId !== undefined) {
         body.set('product_id', String(productId))
       } else {

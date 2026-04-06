@@ -168,9 +168,11 @@ BASE_PRODUCT_TYPES = {
 
 
 def normalize_product_type(value: str | None) -> str:
+    """Канонический тип для карт/резолва: trim, lower, дефисы → подчёркивание, алиасы."""
     if not value:
         return 'medicines'
-    return value.lower()
+    s = str(value).strip().lower().replace('-', '_')
+    return PRODUCT_TYPE_ALIASES.get(s, s)
 
 
 def ensure_product_from_base(base_obj, product_type: str) -> Product:
@@ -406,8 +408,19 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
 
 
 def resolve_variant_product(product_type: str, product_slug: str) -> Product:
-    normalized = normalize_product_type(product_type)
-    effective_type = PRODUCT_TYPE_ALIASES.get(normalized, normalized)
+    effective_type = normalize_product_type(product_type)
+    # Мебель: slug запроса может быть FurnitureVariant.slug, а не родительского Product.slug
+    if effective_type == "furniture":
+        fv = FurnitureVariant.objects.filter(slug=product_slug, is_active=True).first()
+        if fv:
+            return ensure_product_from_variant(fv, effective_type, effective_type)
+    # JSON-запросы без product_type: в теле часто medicines по умолчанию, а slug — вариант мебели
+    if effective_type == "medicines" and not Product.objects.filter(
+        slug=product_slug, is_active=True
+    ).exists():
+        fv_med = FurnitureVariant.objects.filter(slug=product_slug, is_active=True).first()
+        if fv_med:
+            return ensure_product_from_variant(fv_med, "furniture", "furniture")
     if effective_type in BASE_PRODUCT_TYPES:
         return Product.objects.get(slug=product_slug, is_active=True)
 
@@ -451,7 +464,7 @@ def resolve_variant_product(product_type: str, product_slug: str) -> Product:
         variant = model.objects.get(slug=product_slug, is_active=True)
     except model.DoesNotExist:
         raise Product.DoesNotExist()
-    return ensure_product_from_variant(variant, normalized, effective_type)
+    return ensure_product_from_variant(variant, effective_type, effective_type)
 
 
 class CartItemSerializer(serializers.ModelSerializer):
@@ -727,7 +740,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         return None
 
     def get_product_slug(self, obj):
-        """Для варианта возвращаем исходный slug варианта, если сохранён в external_data."""
+        """Slug для ссылки на карточку: у мебели — родительская FurnitureProduct, у прочих вариантов — по external_data."""
         product = obj.product
         if not product:
             return None
@@ -742,6 +755,17 @@ class CartItemSerializer(serializers.ModelSerializer):
                 if variant and getattr(variant, "product", None):
                     return variant.product.slug
             return product.slug
+        if product.product_type == "furniture":
+            vid = ext.get("source_variant_id")
+            if vid:
+                fv = FurnitureVariant.objects.filter(id=vid, is_active=True).select_related("product").first()
+                if fv and getattr(fv, "product", None):
+                    return fv.product.slug
+            vslug = ext.get("source_variant_slug")
+            if vslug:
+                fv = FurnitureVariant.objects.filter(slug=vslug, is_active=True).select_related("product").first()
+                if fv and getattr(fv, "product", None):
+                    return fv.product.slug
         return ext.get("source_variant_slug") or product.slug
 
     def get_product_name(self, obj):
@@ -1428,9 +1452,10 @@ class AddToCartSerializer(serializers.Serializer):
     - Базовые товары: product_id
     - Варианты (одежда/обувь): product_type + product_slug (slug варианта цвета) + size
     """
-    product_id = serializers.IntegerField(required=False)
-    product_type = serializers.CharField(required=False)
-    product_slug = serializers.CharField(required=False)
+    # allow_null: из AddToFavorite / resolve_product_like_add_to_cart явно передаётся product_id=None
+    product_id = serializers.IntegerField(required=False, allow_null=True)
+    product_type = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    product_slug = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     size = serializers.CharField(required=False, allow_blank=True)
     quantity = serializers.IntegerField(min_value=1, default=1)
 
@@ -1530,6 +1555,32 @@ class AddToCartSerializer(serializers.Serializer):
         attrs['product'] = product
         attrs['chosen_size'] = chosen_size
         return attrs
+
+
+def resolve_product_like_add_to_cart(
+    *,
+    product_id: int | None,
+    product_type: str | None,
+    product_slug: str | None,
+    size: str | None,
+) -> tuple[Product, str]:
+    """
+    Резолв catalog Product как при POST /orders/cart/add (slug варианта + размер).
+    Для избранного с вариантами — тот же shadow Product и chosen_size, что у позиции корзины.
+    """
+    ser = AddToCartSerializer(
+        data={
+            "product_id": product_id,
+            "product_type": product_type,
+            "product_slug": product_slug,
+            "size": size if size is not None else "",
+            "quantity": 1,
+        }
+    )
+    ser.is_valid(raise_exception=True)
+    product = ser.validated_data["product"]
+    chosen = ser.validated_data.get("chosen_size") or ""
+    return product, chosen
 
 
 class UpdateCartItemSerializer(serializers.Serializer):

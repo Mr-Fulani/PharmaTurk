@@ -2035,14 +2035,21 @@ class Favorite(models.Model):
         blank=True,
         help_text=_("Для анонимных пользователей")
     )
+    chosen_size = models.CharField(
+        _("Выбранный размер"),
+        max_length=50,
+        blank=True,
+        default="",
+        help_text=_("Для обуви/одежды с сеткой размеров — как в корзине; иначе пусто."),
+    )
     created_at = models.DateTimeField(_("Дата добавления"), auto_now_add=True)
 
     class Meta:
         verbose_name = _("Избранное")
         verbose_name_plural = _("Избранное")
         unique_together = [
-            ('user', 'content_type', 'object_id'),
-            ('session_key', 'content_type', 'object_id'),
+            ('user', 'content_type', 'object_id', 'chosen_size'),
+            ('session_key', 'content_type', 'object_id', 'chosen_size'),
         ]
         indexes = [
             models.Index(fields=['user', 'created_at']),

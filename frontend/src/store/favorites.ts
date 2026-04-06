@@ -4,6 +4,7 @@ import { ProductTranslation } from '../lib/i18n'
 
 interface Favorite {
   id: number
+  chosen_size?: string
   product: {
     id: number
     name: string
@@ -19,8 +20,16 @@ interface Favorite {
     video_url?: string | null
     _product_type?: string
     translations?: ProductTranslation[]
+    /** Slug цветового/мебельного варианта (shadow Product), для сопоставления с витриной */
+    favorite_variant_slug?: string
+    favorite_chosen_size?: string
   }
   created_at: string
+}
+
+export interface FavoriteVariantOpts {
+  productSlug: string
+  size?: string
 }
 
 interface FavoritesStore {
@@ -29,11 +38,14 @@ interface FavoritesStore {
   loading: boolean
   refreshing: boolean
   refresh: (currency?: string) => Promise<void>
-  add: (productId: number, productType?: string) => Promise<void>
-  remove: (productId: number, productType?: string) => Promise<void>
-  check: (productId: number, productType?: string) => Promise<boolean>
-  isFavorite: (productId: number, productType?: string) => boolean
+  add: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => Promise<void>
+  remove: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => Promise<void>
+  check: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => Promise<boolean>
+  isFavorite: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => boolean
 }
+
+const normType = (t: string | undefined) =>
+  (t || '').toString().trim().replace(/_/g, '-').toLowerCase()
 
 export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
   favorites: [],
@@ -42,7 +54,6 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
   refreshing: false,
 
   refresh: async (currency?: string) => {
-    // Предотвращаем множественные одновременные запросы
     if (get().refreshing) {
       return
     }
@@ -61,10 +72,29 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
     }
   },
 
-  add: async (productId: number, productType: string = 'medicines') => {
+  add: async (productId: number | undefined, productType: string = 'medicines', variant?: FavoriteVariantOpts) => {
     try {
       initCartSession()
-      await api.post('/catalog/favorites/add', { product_id: productId, product_type: productType })
+      const pt =
+        productType != null && String(productType).trim() !== ''
+          ? String(productType).trim()
+          : 'medicines'
+      const slug = variant?.productSlug?.trim()
+      if (slug) {
+        await api.post('/catalog/favorites/add', {
+          product_type: pt,
+          product_slug: slug,
+          size: variant?.size || '',
+        })
+      } else {
+        if (productId === undefined || productId === null || Number(productId) <= 0) {
+          throw new Error('Нужен product_id или product_slug')
+        }
+        await api.post('/catalog/favorites/add', {
+          product_type: pt,
+          product_id: Number(productId),
+        })
+      }
       await get().refresh()
     } catch (error: any) {
       const detail = error?.response?.data?.detail || error?.message || 'Ошибка добавления в избранное'
@@ -72,10 +102,30 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
     }
   },
 
-  remove: async (productId: number, productType: string = 'medicines') => {
+  remove: async (productId: number | undefined, productType: string = 'medicines', variant?: FavoriteVariantOpts) => {
     try {
       initCartSession()
-      await api.delete('/catalog/favorites/remove', { data: { product_id: productId, product_type: productType } })
+      const pt =
+        productType != null && String(productType).trim() !== ''
+          ? String(productType).trim()
+          : 'medicines'
+      const slug = variant?.productSlug?.trim()
+      if (slug) {
+        await api.delete('/catalog/favorites/remove', {
+          data: {
+            product_type: pt,
+            product_slug: slug,
+            size: variant?.size || '',
+          },
+        })
+      } else {
+        if (productId === undefined || productId === null || Number(productId) <= 0) {
+          throw new Error('Нужен product_id или product_slug')
+        }
+        await api.delete('/catalog/favorites/remove', {
+          data: { product_type: pt, product_id: Number(productId) },
+        })
+      }
       await get().refresh()
     } catch (error: any) {
       const detail = error?.response?.data?.detail || error?.message || 'Ошибка удаления из избранного'
@@ -83,10 +133,23 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
     }
   },
 
-  check: async (productId: number, productType: string = 'medicines') => {
+  check: async (productId: number | undefined, productType: string = 'medicines', variant?: FavoriteVariantOpts) => {
     try {
       initCartSession()
-      const response = await api.get('/catalog/favorites/check', { params: { product_id: productId, product_type: productType } })
+      const pt =
+        productType != null && String(productType).trim() !== ''
+          ? String(productType).trim()
+          : 'medicines'
+      const slug = variant?.productSlug?.trim()
+      const params: Record<string, string | number> = { product_type: pt }
+      if (slug) {
+        params.product_slug = slug
+        if (variant?.size) params.size = variant.size
+      } else {
+        if (productId === undefined || productId === null || Number(productId) <= 0) return false
+        params.product_id = Number(productId)
+      }
+      const response = await api.get('/catalog/favorites/check', { params })
       return response.data?.is_favorite || false
     } catch (error) {
       console.error('Failed to check favorite:', error)
@@ -94,12 +157,17 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
     }
   },
 
-  isFavorite: (productId: number, productType?: string) => {
+  isFavorite: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => {
     const { favorites } = get()
-    const normType = (t: string | undefined) =>
-      (t || '').toString().trim().replace(/_/g, '-').toLowerCase()
     const want = normType(productType)
-    return favorites.some(fav => {
+    return favorites.some((fav) => {
+      if (variant?.productSlug) {
+        const slugOk = fav.product.favorite_variant_slug === variant.productSlug
+        const sizeOk = (fav.product.favorite_chosen_size || '') === (variant.size || '')
+        const typeOk = normType(fav.product._product_type || 'medicines') === want
+        return slugOk && sizeOk && typeOk
+      }
+      if (productId === undefined) return false
       const sameId = fav.product.id === productId
       if (!productType) return sameId
       const type = normType(fav.product._product_type || 'medicines')

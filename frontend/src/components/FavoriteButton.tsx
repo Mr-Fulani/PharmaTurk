@@ -1,11 +1,16 @@
 import { useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import { shallow } from 'zustand/shallow'
-import { useFavoritesStore } from '../store/favorites'
+import { useFavoritesStore, FavoriteVariantOpts } from '../store/favorites'
 
 interface FavoriteButtonProps {
-  productId: number
+  /** Для карточек без вариантного slug (листинги) */
+  productId?: number
   productType?: string
+  /** Как product_slug при добавлении в корзину: вариант мебели / обуви / одежды */
+  favoriteProductSlug?: string
+  /** Размер для обуви/одежды (как в корзине) */
+  favoriteSize?: string
   className?: string
   iconOnly?: boolean
   /** Режим угловой иконки: полупрозрачный фон, увеличенное сердечко */
@@ -15,6 +20,8 @@ interface FavoriteButtonProps {
 export default function FavoriteButton({
   productId,
   productType = 'medicines',
+  favoriteProductSlug,
+  favoriteSize,
   className = '',
   iconOnly = false,
   cornerIcon = false,
@@ -31,7 +38,12 @@ export default function FavoriteButton({
     shallow
   )
   const { t } = useTranslation('common')
-  const favorite = isFavoriteFn(productId, productType)
+
+  const variantOpts: FavoriteVariantOpts | undefined = favoriteProductSlug
+    ? { productSlug: favoriteProductSlug, size: favoriteSize || '' }
+    : undefined
+
+  const favorite = isFavoriteFn(productId, productType, variantOpts)
 
   const toggle = async (e?: React.MouseEvent) => {
     if (e) {
@@ -41,9 +53,9 @@ export default function FavoriteButton({
     setLoading(true)
     try {
       if (favorite) {
-        await remove(productId, productType)
+        await remove(productId, productType, variantOpts)
       } else {
-        await add(productId, productType)
+        await add(productId, productType, variantOpts)
       }
     } catch (error: any) {
       const msg = String(error?.message || '')

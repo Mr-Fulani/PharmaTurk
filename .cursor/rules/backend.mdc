@@ -13,3 +13,14 @@ globs: backend/**/*
 4. Использовать импорты от корня `backend` (например, `from apps.catalog...`).
 5. Временные скрипты создавать ТОЛЬКО в `backend/scripts/` и удалять после использования.
 6. Проверять отсутствие ошибок линтера (Pylance/Pyright).
+
+## Миграции Django (Docker и Poetry)
+
+Описание и **точные команды** — в [`.agents/workflows/ru-rules.md`](.agents/workflows/ru-rules.md). Из корня репозитория (где `docker-compose.yml`):
+
+```bash
+docker compose exec backend poetry run python manage.py makemigrations
+docker compose exec backend poetry run python manage.py migrate
+```
+
+При необходимости указать приложение: `makemigrations catalog` (и аналогично `migrate catalog`). Локально без Docker (из каталога `backend/`): `poetry run python manage.py makemigrations` / `migrate`. При старте контейнера `backend` в `docker-entrypoint.sh` выполняется `migrate --noinput`.

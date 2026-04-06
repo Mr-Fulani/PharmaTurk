@@ -7,6 +7,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.db.models import Count
 from rest_framework import serializers
+from django.utils.translation import gettext_lazy as _
 
 logger = logging.getLogger(__name__)
 from .models import (
@@ -1579,8 +1580,8 @@ class FavoriteSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Favorite
-        fields = ['id', 'product', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'product', 'chosen_size', 'created_at']
+        read_only_fields = ['id', 'chosen_size', 'created_at']
     
     def get_product(self, obj):
         """Сериализация товара в зависимости от его типа."""
@@ -1689,6 +1690,12 @@ class FavoriteSerializer(serializers.ModelSerializer):
         # Тип для фронта: дефисы (как в URL и TYPES_NEEDING_PATH)
         api_pt = str(product_type).replace('_', '-')
         product_data['_product_type'] = api_pt
+        product_data['favorite_chosen_size'] = getattr(obj, 'chosen_size', '') or ''
+        ed = getattr(product, 'external_data', None) if isinstance(product, Product) else None
+        if isinstance(ed, dict):
+            sv = ed.get('source_variant_slug')
+            if sv:
+                product_data['favorite_variant_slug'] = sv
         return product_data
 
 
@@ -1826,18 +1833,53 @@ def resolve_product_for_favorites_api(product_id, product_type_raw):
 
 
 class AddToFavoriteSerializer(serializers.Serializer):
-    """Сериализатор для добавления товара в избранное."""
-    
-    product_id = serializers.IntegerField(required=True)
+    """
+    Добавление/удаление из избранного.
+    Либо product_id (как раньше), либо product_slug + product_type — как при добавлении в корзину
+    (вариант мебели, обуви, одежды → shadow Product + chosen_size).
+    """
+
+    product_id = serializers.IntegerField(required=False, allow_null=True)
     product_type = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    
+    product_slug = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    size = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
     def validate(self, attrs):
-        """Проверка существования товара в зависимости от типа."""
-        product, norm_type = resolve_product_for_favorites_api(
-            attrs.get('product_id'),
-            attrs.get('product_type'),
-        )
+        from apps.orders.serializers import resolve_product_like_add_to_cart
+
+        slug = (attrs.get('product_slug') or '').strip()
+        ptype = attrs.get('product_type')
+        size_raw = attrs.get('size')
+        size_str = (size_raw or '').strip() if size_raw is not None else ''
+
+        # Сначала slug (вариант мебели/обуви и т.д.): не смешиваем с product_id.
+        # Иначе клиенты с product_id: 0 / мусором + product_slug получали 400.
+        if slug:
+            product, chosen = resolve_product_like_add_to_cart(
+                product_id=None,
+                product_type=ptype,
+                product_slug=slug,
+                size=size_str,
+            )
+            attrs['_product'] = product
+            attrs['_chosen_size'] = chosen or ''
+            pt = getattr(product, 'product_type', None) or ptype or 'medicines'
+            attrs['_product_type'] = str(pt).strip().lower().replace('-', '_')
+            return attrs
+
+        pid_raw = attrs.get('product_id')
+        pid_int = None
+        if pid_raw is not None and pid_raw != '':
+            try:
+                pid_int = int(pid_raw)
+            except (TypeError, ValueError):
+                pid_int = None
+        if not pid_int or pid_int <= 0:
+            raise serializers.ValidationError({"detail": _("Нужен product_id или product_slug")})
+
+        product, norm_type = resolve_product_for_favorites_api(pid_int, ptype)
         attrs['_product'] = product
+        attrs['_chosen_size'] = ''
         attrs['_product_type'] = norm_type
         return attrs
 

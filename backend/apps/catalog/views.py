@@ -2329,7 +2329,8 @@ def _dedupe_favorites_serialized_rows(serialized_list):
         slug = (p.get('slug') or '').strip().lower()
         ptype = _norm_type(p.get('_product_type'))
         pid = p.get('id')
-        key = (slug, ptype) if slug else (str(pid or ''), ptype)
+        csize = (row.get('chosen_size') or p.get('favorite_chosen_size') or '').strip().lower()
+        key = (slug, ptype, csize) if slug else (str(pid or ''), ptype, csize)
         if key in seen:
             continue
         seen.add(key)
@@ -2368,11 +2369,13 @@ class FavoriteViewSet(viewsets.ViewSet):
             return
 
         existing_pairs = set(
-            Favorite.objects.filter(user=user).values_list('content_type_id', 'object_id')
+            Favorite.objects.filter(user=user).values_list(
+                'content_type_id', 'object_id', 'chosen_size'
+            )
         )
 
         for favorite in session_favorites:
-            pair = (favorite.content_type_id, favorite.object_id)
+            pair = (favorite.content_type_id, favorite.object_id, favorite.chosen_size or '')
             if pair in existing_pairs:
                 favorite.delete()
             else:
@@ -2425,9 +2428,12 @@ class FavoriteViewSet(viewsets.ViewSet):
     
     @extend_schema(
         summary="Добавить товар в избранное",
-        description="Добавляет товар в избранное для текущего пользователя или сессии",
+        description=(
+            "Добавляет товар в избранное для текущего пользователя или сессии. "
+            "Повторное добавление того же товара (тот же вариант и размер) идемпотентно: 200 и существующая запись."
+        ),
         request=AddToFavoriteSerializer,
-        responses={201: FavoriteSerializer, 400: None},
+        responses={201: FavoriteSerializer, 200: FavoriteSerializer},
         examples=[
             OpenApiExample(
                 'Запрос',
@@ -2482,29 +2488,29 @@ class FavoriteViewSet(viewsets.ViewSet):
             else:
                 Favorite.objects.filter(session_key=session_key, content_type=pct, object_id=base_pk).delete()
         
+        chosen_size = serializer.validated_data.get('_chosen_size', '') or ''
+
         # Проверяем, не добавлен ли уже товар
         if user:
             favorite, created = Favorite.objects.get_or_create(
                 user=user,
                 content_type=content_type,
-                object_id=product.id
+                object_id=product.id,
+                chosen_size=chosen_size,
             )
         else:
             favorite, created = Favorite.objects.get_or_create(
                 session_key=session_key,
                 content_type=content_type,
-                object_id=product.id
+                object_id=product.id,
+                chosen_size=chosen_size,
             )
-        
-        if not created:
-            return Response(
-                {"detail": "Товар уже в избранном"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Загружаем связанные данные в зависимости от типа товара
+
         favorite = Favorite.objects.filter(pk=favorite.pk).select_related('content_type').first()
-        return Response(FavoriteSerializer(favorite).data, status=status.HTTP_201_CREATED)
+        payload = FavoriteSerializer(favorite, context={'request': request}).data
+        # Идемпотентность: двойной клик, гонки, React Strict Mode — не 400.
+        status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(payload, status=status_code)
     
     @extend_schema(
         summary="Удалить товар из избранного",
@@ -2529,6 +2535,7 @@ class FavoriteViewSet(viewsets.ViewSet):
         
         product = serializer.validated_data['_product']
         content_type = ContentType.objects.get_for_model(product)
+        chosen_size = serializer.validated_data.get('_chosen_size', '') or ''
         
         user = request.user if request.user.is_authenticated else None
         session_key = None if user else self._get_session_key(request)
@@ -2548,23 +2555,25 @@ class FavoriteViewSet(viewsets.ViewSet):
             deleted = Favorite.objects.filter(
                 user=user,
                 content_type=content_type,
-                object_id=product.id
+                object_id=product.id,
+                chosen_size=chosen_size,
             ).delete()[0]
             if legacy_domain and base_pk:
                 pct = ContentType.objects.get_for_model(Product)
                 deleted += Favorite.objects.filter(
-                    user=user, content_type=pct, object_id=base_pk
+                    user=user, content_type=pct, object_id=base_pk, chosen_size=''
                 ).delete()[0]
         else:
             deleted = Favorite.objects.filter(
                 session_key=session_key,
                 content_type=content_type,
-                object_id=product.id
+                object_id=product.id,
+                chosen_size=chosen_size,
             ).delete()[0]
             if legacy_domain and base_pk:
                 pct = ContentType.objects.get_for_model(Product)
                 deleted += Favorite.objects.filter(
-                    session_key=session_key, content_type=pct, object_id=base_pk
+                    session_key=session_key, content_type=pct, object_id=base_pk, chosen_size=''
                 ).delete()[0]
         
         if not deleted:
@@ -2587,21 +2596,37 @@ class FavoriteViewSet(viewsets.ViewSet):
     def check(self, request):
         """Проверить, находится ли товар в избранном."""
         from django.contrib.contenttypes.models import ContentType
-        
+
         product_id = request.query_params.get('product_id')
+        product_slug = (request.query_params.get('product_slug') or '').strip()
+        size_param = (request.query_params.get('size') or '').strip()
         product_type_param = request.query_params.get('product_type') or 'medicines'
 
-        if not product_id:
-            return Response(
-                {"detail": "Не указан product_id"},
-                status=status.HTTP_400_BAD_REQUEST
+        chosen_size = ''
+        if product_slug:
+            ser = AddToFavoriteSerializer(
+                data={
+                    'product_slug': product_slug,
+                    'product_type': product_type_param,
+                    'size': size_param,
+                }
             )
+            if not ser.is_valid():
+                return Response({"is_favorite": False})
+            product = ser.validated_data['_product']
+            chosen_size = ser.validated_data.get('_chosen_size', '') or ''
+        else:
+            if not product_id:
+                return Response(
+                    {"detail": "Не указан product_id или product_slug"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                product, _ = resolve_product_for_favorites_api(product_id, product_type_param)
+            except FavoriteResolveValidationError:
+                return Response({"is_favorite": False})
+            chosen_size = ''
 
-        try:
-            product, _ = resolve_product_for_favorites_api(product_id, product_type_param)
-        except FavoriteResolveValidationError:
-            return Response({"is_favorite": False})
-        
         content_type = ContentType.objects.get_for_model(product)
         base_pk = getattr(product, 'base_product_id', None)
         legacy_domain = product.__class__.__name__ in (
@@ -2622,21 +2647,23 @@ class FavoriteViewSet(viewsets.ViewSet):
             is_favorite = Favorite.objects.filter(
                 user=user,
                 content_type=content_type,
-                object_id=product.id
+                object_id=product.id,
+                chosen_size=chosen_size,
             ).exists()
             if not is_favorite and pct_product:
                 is_favorite = Favorite.objects.filter(
-                    user=user, content_type=pct_product, object_id=base_pk
+                    user=user, content_type=pct_product, object_id=base_pk, chosen_size=''
                 ).exists()
         else:
             is_favorite = Favorite.objects.filter(
                 session_key=session_key,
                 content_type=content_type,
-                object_id=product.id
+                object_id=product.id,
+                chosen_size=chosen_size,
             ).exists()
             if not is_favorite and pct_product:
                 is_favorite = Favorite.objects.filter(
-                    session_key=session_key, content_type=pct_product, object_id=base_pk
+                    session_key=session_key, content_type=pct_product, object_id=base_pk, chosen_size=''
                 ).exists()
         
         return Response({"is_favorite": is_favorite})
