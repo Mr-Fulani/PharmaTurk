@@ -1,6 +1,6 @@
 """URL-маршруты для каталога товаров."""
 
-from django.urls import path, include
+from django.urls import path, include, re_path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
@@ -26,6 +26,8 @@ from .views import (
     proxy_image,
     proxy_media,
 )
+from .views_yml import YMLExportView
+
 
 # Основной роутер для медикаментов (существующий)
 router = DefaultRouter(trailing_slash=False)
@@ -177,4 +179,6 @@ urlpatterns = [
     # Прокси для R2-медиа (видео/картинки) — устраняет ERR_SSL_PROTOCOL_ERROR
     path('proxy-media/', proxy_media, name='proxy_media'),
     path('proxy-media', proxy_media, name='proxy_media_no_slash'),
+    # Экспорт товаров в формате YML — поддерживает / и /catalog.yml
+    re_path(r'^export/yml(/|/catalog\.(xml|yml))?$', YMLExportView.as_view(), name='export-yml'),
 ]

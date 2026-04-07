@@ -11,4 +11,5 @@ class CatalogConfig(AppConfig):
     def ready(self):
         import apps.catalog.signals  # noqa: F401
         import apps.catalog.admin_perfumery  # noqa: F401
+        import apps.catalog.admin_vk  # noqa: F401  — маппинг категорий ВК
 
