@@ -199,7 +199,7 @@ CELERY_BEAT_SCHEDULE = {
     # Очистка неиспользуемых медиа из R2/локального хранилища ежедневно в 3:00
     "cleanup-orphaned-media": {
         "task": "catalog.cleanup_orphaned_media",
-        "schedule": 60 * 60 * 24,  # день (можно заменить на crontab(0, 3) при наличии celery.schedules)
+        "schedule": crontab(hour=3, minute=0),
     },
     # AI: задачи, тратящие токены OpenAI, отключены — только ручной запуск через админку /admin/ai/manual-tasks/
     # Крипто: пометить истёкшие инвойсы (каждые 10 мин)

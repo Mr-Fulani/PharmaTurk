@@ -186,7 +186,6 @@ _PROTECTED_STORAGE_PREFIXES = (
     "products/original/",
     "products/processed/",
     "products/thumbs/",
-    "products/parsed/",  # файлы, скачанные парсерами
     "temp/",
     "avatars/",  # аватарки пользователей (users.User.avatar)
     "testimonials/",  # аватарки авторов отзывов (feedback.Testimonial.author_avatar)
