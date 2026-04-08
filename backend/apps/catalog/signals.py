@@ -157,17 +157,13 @@ def delete_file_from_storage(file_field, storage=None):
 
 
 def delete_url_from_storage(url):
-    if not url:
-        return
-    try:
-        from django.core.files.storage import default_storage
-
-        storage_path = _get_path_from_storage_url(url)
-        if storage_path and default_storage.exists(storage_path):
-            default_storage.delete(storage_path)
-            logger.info("Deleted file by URL: %s", storage_path)
-    except Exception as e:
-        logger.warning("Failed to delete file by url %s: %s", url, e)
+    """
+    Удаление файла по строковому URL.
+    ОТКЛЮЧЕНО: Удаление файлов по URL в сигналах приводит к удалению медиа, 
+    которые шарятся между несколькими объектами (например FurnitureProductImage и FurnitureVariantImage из парсера).
+    Сборку мусора (очистку неиспользуемых файлов) выполняет Celery-задача cleanup_orphaned_media.
+    """
+    pass
 
 
 def _get_path_from_storage_url(url: str) -> str | None:
