@@ -598,6 +598,15 @@ class ScraperIntegrationService:
             existing_by_external_id = Product.objects.filter(
                 external_id=scraped_product.external_id
             ).first()
+
+            if not existing_by_external_id:
+                from apps.catalog.models import FurnitureVariant
+                variant = FurnitureVariant.objects.filter(
+                    external_id=scraped_product.external_id
+                ).select_related('product__base_product').first()
+                if variant and variant.product and variant.product.base_product:
+                    existing_by_external_id = variant.product.base_product
+
             if existing_by_external_id:
                 return self._update_existing_product(
                     session,
