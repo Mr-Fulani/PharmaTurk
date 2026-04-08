@@ -4,18 +4,19 @@ Management command: sync_vk_photos
 Синхронизирует фотографии товаров из нашей БД в ВК Маркет через VK API.
 
 Использование:
-  # Сухой прогон — покажет что будет сделано, без реальной загрузки
-  python manage.py sync_vk_photos --dry-run
+  python manage.py sync_vk_photos --dry-run          # сухой прогон
+  python manage.py sync_vk_photos                    # все товары
+  python manage.py sync_vk_photos --category shoes   # только обувь
+  python manage.py sync_vk_photos --offer-id 1v9     # один товар
 
-  # Синхронизировать все товары
-  python manage.py sync_vk_photos
-
-  # Синхронизировать только один оффер (ID из YML-фида)
-  python manage.py sync_vk_photos --offer-id 1v9
-
-Требует:
-  .env: VK_YML_API=<токен сообщества>
-  .env: VK_GROUP_ID=<ID группы ВК, число>
+Требует в .env:
+  VK_YML_API=<ключ сообщества>       # для загрузки фото/видео
+  VK_USER_TOKEN=<пользовательский токен> # для market.get (group token не работает)
+  VK_GROUP_ID=<ID группы>
+Ссылка для получения VK_USER_TOKEN:
+  https://oauth.vk.com/authorize?client_id=APP_ID&display=page
+  &redirect_uri=https://oauth.vk.com/blank.html
+  &scope=market,photos,video,offline&response_type=token&v=5.131
 """
 from __future__ import annotations
 
@@ -159,15 +160,22 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         token: str = getattr(settings, "VK_API_TOKEN", "")
         group_id: int = getattr(settings, "VK_GROUP_ID", 0)
+        user_token: str = getattr(settings, "VK_USER_TOKEN", "")
 
         if not token:
-            raise CommandError(
-                "Токен не найден. Укажите VK_YML_API в файле .env"
-            )
+            raise CommandError("VK_YML_API не задан в .env")
         if not group_id:
             raise CommandError(
-                "ID группы не найден. Укажите VK_GROUP_ID в файле .env\n"
+                "VK_GROUP_ID не задан в .env\n"
                 "Найти ID: откройте группу ВК → в URL: vk.com/clubXXXXX → XXXXX и есть ID"
+            )
+        if not user_token:
+            raise CommandError(
+                "VK_USER_TOKEN не задан. Он нужен для market.get (group token не подходит).\n"
+                "Получите: https://oauth.vk.com/authorize"
+                f"?client_id={getattr(settings, 'VK_APP_ID', 'APP_ID')}"
+                "&display=page&redirect_uri=https://oauth.vk.com/blank.html"
+                "&scope=market,photos,video,offline&response_type=token&v=5.131"
             )
 
         dry_run: bool = options["dry_run"]
@@ -178,7 +186,7 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("⚡ DRY-RUN режим — реальной загрузки не будет"))
 
-        sync = VKMarketSync(token=token, group_id=group_id)
+        sync = VKMarketSync(group_token=token, group_id=group_id, user_token=user_token)
 
         # ---------------------------------------------------------------
         # 1. Загружаем список всех товаров из ВК

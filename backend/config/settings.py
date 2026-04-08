@@ -523,6 +523,9 @@ VK_APP_SECRET = env("VK_APP_SECRET", default="")
 # Токен получить: vk.com/club → Управление → Настройки → Работа с API
 VK_API_TOKEN = env("VK_YML_API", default="")
 VK_GROUP_ID = env.int("VK_GROUP_ID", default=0)
+# Пользовательский токен (нужен для market.get):
+# https://oauth.vk.com/authorize?client_id=APP_ID&display=page&redirect_uri=https://oauth.vk.com/blank.html&scope=market,photos,video,offline&response_type=token&v=5.131
+VK_USER_TOKEN = env("VK_USER_TOKEN", default="")
 
 # Increase data upload fields because admin uses filter_horizontal for thousands of categories
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
