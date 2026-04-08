@@ -80,6 +80,7 @@ requirements-nomarker.txt
 skills-lock.json
 
 # Backup/scratch scripts
+backend/scratch/
 backend/check_book.py
 backend/products_db_dump.txt
 exemple/

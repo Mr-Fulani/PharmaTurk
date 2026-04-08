@@ -166,7 +166,30 @@ class VKOAuthProvider(SocialAuthProvider):
             if res.status_code == 200:
                 user_data = res.json().get("user", {})
                 vk_id = user_data.get("user_id")
+                
                 if vk_id:
+                    # Попытка обогатить профиль через API (VK OIDC маскирует фамилию и иногда не отдает аватар)
+                    # Используем сервисный или пользовательский токен бэкенда, чтобы избежать проверки клиентского IP
+                    supp_token = getattr(settings, "VK_USER_TOKEN", getattr(settings, "VK_API_TOKEN", ""))
+                    if supp_token:
+                        try:
+                            supp_res = client.get(
+                                self.USERS_GET_URL,
+                                params={
+                                    "user_ids": vk_id,
+                                    "fields": "photo_100,first_name,last_name",
+                                    "v": self.VK_API_VERSION,
+                                    "access_token": supp_token
+                                }
+                            )
+                            if supp_res.status_code == 200:
+                                supp_data = supp_res.json().get("response", [{}])[0]
+                                user_data["first_name"] = supp_data.get("first_name", user_data.get("first_name"))
+                                user_data["last_name"] = supp_data.get("last_name", user_data.get("last_name"))
+                                user_data["avatar"] = supp_data.get("photo_100", user_data.get("avatar"))
+                        except Exception as e:
+                            logger.debug(f"VK profile enrichment error: {e}")
+
                     return {
                         "provider_id": str(vk_id),
                         "email": user_data.get("email"),

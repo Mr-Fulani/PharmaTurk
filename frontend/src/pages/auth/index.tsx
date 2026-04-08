@@ -275,104 +275,60 @@ function VKLoginButton() {
   const { t } = useTranslation('common')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const containerRef = useRef<HTMLDivElement>(null)
 
   const vkAppId = process.env.NEXT_PUBLIC_VK_APP_ID
 
   useEffect(() => {
-    if (!vkAppId) return
-
-    const initVK = () => {
-      if (!('VKIDSDK' in window)) return
-      const VKID = (window as any).VKIDSDK
-
-      VKID.Config.init({
-        app: Number(vkAppId),
-        redirectUrl: window.location.origin + '/auth/vk-callback',
-        responseMode: VKID.ConfigResponseMode.Callback,
-        source: VKID.ConfigSource.LOWCODE,
-        scope: '',
-      })
-
-      const oneTap = new VKID.OneTap()
-
-      if (containerRef.current) {
-        containerRef.current.innerHTML = ''
-        oneTap.render({
-          container: containerRef.current,
-          showAlternativeLogin: false,
-          styles: {
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-          }
-        })
-        .on(VKID.WidgetEvents.ERROR, () => {
-          setError(t('auth_social_error', 'Ошибка виджета ВКонтакте'))
-        })
-        .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, function (payload: any) {
-          const code = payload.code;
-          const deviceId = payload.device_id;
-          
-          setLoading(true)
-          setError('')
-
-          VKID.Auth.exchangeCode(code, deviceId)
-            .then(async (data: any) => {
-               try {
-                  const res = await import('../../lib/api').then(m => m.default.post('/users/social-auth/', {
-                    provider: 'vk',
-                    access_token: data.access_token,
-                    vk_user_id: data.user_id,
-                  }))
-                  const Cookies = (await import('js-cookie')).default
-                  const { setPreferredCurrency } = await import('../../lib/api')
-                  const { tokens, user: userData } = res.data
-                  if (tokens?.access) Cookies.set('access', tokens.access, { sameSite: 'Lax', path: '/' })
-                  if (tokens?.refresh) Cookies.set('refresh', tokens.refresh, { sameSite: 'Lax', path: '/' })
-                  if (userData?.currency) {
-                    Cookies.set('currency', userData.currency, { sameSite: 'Lax', path: '/' })
-                    setPreferredCurrency(userData.currency)
-                  }
-                  redirect()
-                  window.location.reload()
-               } catch (e: any) {
-                  const raw = e?.response?.data?.detail || ''
-                  const msg = String(raw).toLowerCase().includes('csrf')
-                    ? t('auth_csrf_error')
-                    : (raw || t('auth_social_error', 'Ошибка входа через ВКонтакте'))
-                  setError(msg)
-               } finally {
-                  setLoading(false)
-               }
-            })
-            .catch(() => {
-               setError(t('auth_social_error', 'Ошибка обмена токена ВКонтакте'))
-               setLoading(false)
-            });
-        });
+    const handleMessage = async (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      
+      const payload = e.data;
+      if (payload && payload.type === 'vk_auth' && payload.access_token) {
+        setLoading(true);
+        setError('');
+        try {
+          await loginWithSocial('vk', payload.access_token);
+          redirect();
+        } catch (err: any) {
+          const raw = err?.response?.data?.detail || err?.message || '';
+          const msg = String(raw).toLowerCase().includes('csrf')
+            ? t('auth_csrf_error')
+            : (raw || t('auth_social_error', 'Ошибка входа через ВКонтакте'));
+          setError(String(msg));
+        } finally {
+          setLoading(false);
+        }
       }
-    }
+    };
 
-    if ('VKIDSDK' in window) {
-      initVK()
-    } else {
-      const script = document.createElement('script')
-      script.src = 'https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js'
-      script.async = true
-      script.onload = initVK
-      document.head.appendChild(script)
-    }
-  }, [vkAppId, t, redirect])
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [loginWithSocial, redirect, t]);
 
-  if (!vkAppId) return null
+  if (!vkAppId) return null;
+
+  const handleVKLogin = () => {
+    const redirectUri = window.location.origin + '/auth/vk-callback';
+    const vkLoginUrl = `https://oauth.vk.com/authorize?client_id=${vkAppId}&display=popup&redirect_uri=${encodeURIComponent(redirectUri)}&scope=email&response_type=token&v=5.199`;
+    
+    // Располагаем popup по центру
+    const width = 650;
+    const height = 550;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+    window.open(vkLoginUrl, 'vk_auth', `width=${width},height=${height},top=${top},left=${left},toolbar=0,location=0,menubar=0`);
+  };
 
   return (
-    <div className="flex flex-col items-center gap-1 hover:opacity-90 transition-opacity h-11 w-11 justify-center rounded-full overflow-hidden relative">
-      <div
-        ref={containerRef}
-        className={`vk-signin-btn-wrapper transition-opacity flex items-center justify-center ${loading ? 'opacity-60 pointer-events-none' : ''}`}
-      />
+    <div className="flex flex-col items-center gap-1 hover:opacity-80 transition-opacity">
+      <button
+        type="button"
+        onClick={handleVKLogin}
+        disabled={loading}
+        className={`flex h-10 w-10 items-center justify-center rounded-full bg-[#0077FF] text-white shadow-sm overflow-hidden ${loading ? 'opacity-60 cursor-not-allowed' : ''}`}
+      >
+        <img src="/vk.svg" alt="VK" aria-hidden="true" className="h-[22px] w-[22px] object-cover pointer-events-none" />
+      </button>
       {error && <p className="text-xs text-red-500 absolute -bottom-5 whitespace-nowrap">{error}</p>}
     </div>
   )
