@@ -158,24 +158,21 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        token: str = getattr(settings, "VK_API_TOKEN", "")
+        token: str = getattr(settings, "VK_USER_TOKEN", "")
         group_id: int = getattr(settings, "VK_GROUP_ID", 0)
-        user_token: str = getattr(settings, "VK_USER_TOKEN", "")
 
         if not token:
-            raise CommandError("VK_YML_API не задан в .env")
-        if not group_id:
             raise CommandError(
-                "VK_GROUP_ID не задан в .env\n"
-                "Найти ID: откройте группу ВК → в URL: vk.com/clubXXXXX → XXXXX и есть ID"
-            )
-        if not user_token:
-            raise CommandError(
-                "VK_USER_TOKEN не задан. Он нужен для market.get (group token не подходит).\n"
+                "VK_USER_TOKEN не задан в .env.\n"
                 "Получите: https://oauth.vk.com/authorize"
                 f"?client_id={getattr(settings, 'VK_APP_ID', 'APP_ID')}"
                 "&display=page&redirect_uri=https://oauth.vk.com/blank.html"
                 "&scope=market,photos,video,offline&response_type=token&v=5.131"
+            )
+        if not group_id:
+            raise CommandError(
+                "VK_GROUP_ID не задан в .env.\n"
+                "Найти ID: откройте группу ВК → vk.com/clubXXXXX → XXXXX и есть ID"
             )
 
         dry_run: bool = options["dry_run"]
@@ -186,7 +183,7 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("⚡ DRY-RUN режим — реальной загрузки не будет"))
 
-        sync = VKMarketSync(group_token=token, group_id=group_id, user_token=user_token)
+        sync = VKMarketSync(token=token, group_id=group_id)
 
         # ---------------------------------------------------------------
         # 1. Загружаем список всех товаров из ВК

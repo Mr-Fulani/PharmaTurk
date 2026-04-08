@@ -67,34 +67,30 @@ class VKCategoryMappingAdmin(admin.ModelAdmin):
         from apps.catalog.models import Product
         from apps.catalog.services.vk_market_sync import VKAPIError, VKMarketSync
 
-        token: str = getattr(settings, "VK_API_TOKEN", "")
+        token: str = getattr(settings, "VK_USER_TOKEN", "")
         group_id: int = getattr(settings, "VK_GROUP_ID", 0)
-        user_token: str = getattr(settings, "VK_USER_TOKEN", "")
 
         if not token:
-            messages.error(request, "❌ VK_YML_API не задан в .env")
-            return redirect("..")
-        if not group_id:
-            messages.error(request, "❌ VK_GROUP_ID не задан в .env")
-            return redirect("..")
-        if not user_token:
             messages.error(
                 request,
-                "❌ VK_USER_TOKEN не задан. "
-                "Получите его: https://oauth.vk.com/authorize"
+                "❌ VK_USER_TOKEN не задан в .env. "
+                "Получите: https://oauth.vk.com/authorize"
                 f"?client_id={getattr(settings, 'VK_APP_ID', 'APP_ID')}"
                 "&display=page&redirect_uri=https://oauth.vk.com/blank.html"
                 "&scope=market,photos,video,offline&response_type=token&v=5.131"
             )
             return redirect("..")
+        if not group_id:
+            messages.error(request, "❌ VK_GROUP_ID не задан в .env")
+            return redirect("..")
 
         label = f"«{category}»" if category else "все категории"
 
         try:
-            sync = VKMarketSync(group_token=token, group_id=group_id, user_token=user_token)
+            sync = VKMarketSync(token=token, group_id=group_id)
             vk_items = sync.get_all_market_items()
         except Exception as e:
-            messages.error(request, f"❌ Ошибка подключения к VK API: {e}")
+            messages.error(request, f"❌ Ошибка VK API: {e}")
             return redirect("..")
 
         total_uploaded = 0

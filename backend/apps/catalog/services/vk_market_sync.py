@@ -28,47 +28,31 @@ class VKAPIError(Exception):
 
 class VKMarketSync:
     """
-    Клиент для синхронизации фото товаров ВК Маркет через API.
+    Клиент для синхронизации фото/видео товаров ВК Маркет через API.
 
-    Два токена (оба обязательны):
-    - user_token: пользовательский токен (VK_USER_TOKEN) — нужен для market.get
-    - group_token: ключ сообщества (VK_YML_API) — для загрузки фото/видео и редактирования товаров
+    Требует ОДИН пользовательский токен (VK_USER_TOKEN) с правами:
+      market, photos, video, offline
 
-    Ограничения VK API:
-    - market.get доступен ТОЛЬКО с user token (error 27 при group token)
-    - photos.getMarketUploadServer, market.edit — работают с group token
+    Получить токен: откройте от имени администратора группы:
+    https://oauth.vk.com/authorize?client_id=APP_ID&display=page
+    &redirect_uri=https://oauth.vk.com/blank.html
+    &scope=market,photos,video,offline&response_type=token&v=5.131
     """
 
     REQUEST_DELAY = 0.4
 
-    def __init__(self, group_token: str, group_id: int, user_token: str = ""):
-        self.group_token = group_token
-        self.user_token = user_token
+    def __init__(self, token: str, group_id: int):
+        self.token = token
         self.group_id = group_id
         self.owner_id = -abs(group_id)
 
-    # ------------------------------------------------------------------
-    # Внутренние методы
-    # ------------------------------------------------------------------
-
-    def _api(self, method: str, params: dict, use_user_token: bool = False) -> dict | list:
-        """VK API запрос. use_user_token=True — для методов, недоступных с group token (market.get)."""
-        token = self.user_token if use_user_token else self.group_token
-        if not token:
-            if use_user_token:
-                raise VKAPIError(
-                    "VK_USER_TOKEN не задан. "
-                    "Получите его через OAuth: "
-                    "https://oauth.vk.com/authorize?client_id=APP_ID"
-                    "&display=page&redirect_uri=https://oauth.vk.com/blank.html"
-                    "&scope=market,photos,video,offline&response_type=token&v=5.131"
-                )
-            raise VKAPIError("VK group token не задан.")
+    def _api(self, method: str, params: dict) -> dict | list:
+        """VK API запрос с единым токеном."""
         time.sleep(self.REQUEST_DELAY)
         resp = requests.get(
             f"{VK_API_URL}/{method}",
             params={
-                "access_token": token,
+                "access_token": self.token,
                 "v": VK_API_VERSION,
                 **params,
             },
@@ -78,9 +62,7 @@ class VKMarketSync:
         data = resp.json()
         if "error" in data:
             err = data["error"]
-            raise VKAPIError(
-                f"[{err.get('error_code')}] {err.get('error_msg')}"
-            )
+            raise VKAPIError(f"[{err.get('error_code')}] {err.get('error_msg')}")
         return data["response"]
 
     def _download_image(self, url: str) -> tuple[bytes, str]:
@@ -98,10 +80,7 @@ class VKMarketSync:
     # ------------------------------------------------------------------
 
     def get_all_market_items(self) -> list[dict]:
-        """
-        Загружает все товары из группы ВК постранично.
-        Требует user_token (недоступно с group token).
-        """
+        """Загружает все товары из группы ВК постранично."""
         items: list[dict] = []
         offset = 0
         page_size = 200
@@ -112,11 +91,9 @@ class VKMarketSync:
                 "count": page_size,
                 "offset": offset,
                 "extended": 1,
-            }, use_user_token=True)  # market.get недоступен с group token
+            })
             batch = response.get("items", [])
             items.extend(batch)
-            logger.debug(f"Loaded {len(batch)} items (offset={offset})")
-
             if len(batch) < page_size:
                 break
             offset += page_size
