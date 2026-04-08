@@ -126,10 +126,17 @@ class Command(BaseCommand):
             default=None,
             metavar="OFFER_ID",
             help=(
-                "Синхронизировать только один оффер по его ID из YML-фида "
+                "Синхронизировать только один оффер по ID из YML-фида "
                 "(например: '42' или '42v7'). "
                 "По умолчанию — все товары."
             ),
+        )
+        parser.add_argument(
+            "--category",
+            type=str,
+            default=None,
+            metavar="SLUG",
+            help="Синхронизировать только товары определенной категории (по slug).",
         )
         parser.add_argument(
             "--dry-run",
@@ -166,6 +173,7 @@ class Command(BaseCommand):
         dry_run: bool = options["dry_run"]
         max_photos: int = options["max_photos"]
         target_offer: str | None = options["offer_id"]
+        target_category: str | None = options["category"]
 
         if dry_run:
             self.stdout.write(self.style.WARNING("⚡ DRY-RUN режим — реальной загрузки не будет"))
@@ -231,16 +239,17 @@ class Command(BaseCommand):
 
             # Загружаем товар из БД
             try:
-                prod = (
-                    Product.objects
-                    .select_related("brand", "category")
-                    .prefetch_related("images")
-                    .get(id=prod_id)
-                )
+                prod_query = Product.objects.select_related("brand", "category", "category__parent")
+                if target_category:
+                    # Фильтр по категории (включая дочерние)
+                    prod = prod_query.get(id=prod_id, category__slug=target_category)
+                else:
+                    prod = prod_query.get(id=prod_id)
             except Product.DoesNotExist:
-                self.stdout.write(
-                    self.style.WARNING(f"  [{external_id}] Product id={prod_id} не найден в БД, пропуск")
-                )
+                if not target_category:
+                    self.stdout.write(
+                        self.style.WARNING(f"  [{external_id}] Product id={prod_id} не найден в БД, пропуск")
+                    )
                 skipped += 1
                 continue
 

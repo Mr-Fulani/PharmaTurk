@@ -1,12 +1,15 @@
 {% extends "admin/change_list.html" %}
+{% load i18n %}
 
 {% block content %}
+
+{# ── Панель 1: YML-ссылки ── #}
 <div style="
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
     border: 1px solid #0f3460;
     border-radius: 8px;
     padding: 20px 24px;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     color: #e0e0e0;
 ">
     <h3 style="margin: 0 0 12px; color: #4fc3f7; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">
@@ -33,6 +36,95 @@
     <p style="margin: 10px 0 0; color: #78909c; font-size: 12px;">
         ℹ️ Ссылки на конкретные категории — в таблице ниже (колонка «Ссылка на YML-фид»)
     </p>
+</div>
+
+{# ── Панель 2: Синхронизация фото ── #}
+<div style="
+    background: linear-gradient(135deg, #1b2a1b 0%, #0d1f0d 100%);
+    border: 1px solid #2e7d32;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    color: #e0e0e0;
+">
+    <h3 style="margin: 0 0 6px; color: #81c784; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">
+        📸 Синхронизация фото и видео в ВК Маркет
+    </h3>
+    <p style="margin: 0 0 16px; color: #78909c; font-size: 12px; line-height: 1.5;">
+        Загружает все фото и видео из базы в карточки ВК — по одному нажатию.<br>
+        <strong style="color: #ffcc80;">⚠ Синхронизация запускается синхронно.
+        Для большого каталога используйте команду в терминале.</strong>
+    </p>
+
+    {# ── Кнопка «Синхронизировать всё» ── #}
+    <div style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid rgba(46,125,50,0.3);">
+        <span style="color: #90a4ae; font-size: 12px; display: block; margin-bottom: 8px;">
+            Все категории сразу:
+        </span>
+        <a href="sync-photos/" style="
+            display: inline-block;
+            background: linear-gradient(135deg, #2e7d32, #388e3c);
+            color: #fff;
+            text-decoration: none;
+            padding: 9px 20px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            transition: opacity .2s;
+        "
+        onclick="return confirm('Запустить синхронизацию фото для ВСЕХ категорий?\n\nЭто может занять несколько минут.');"
+        >
+            ⚡ Синхронизировать всё
+        </a>
+    </div>
+
+    {# ── Кнопки по категориям ── #}
+    {% if vk_mappings %}
+    <div>
+        <span style="color: #90a4ae; font-size: 12px; display: block; margin-bottom: 10px;">
+            По категории:
+        </span>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+            {% for m in vk_mappings %}
+            <div style="
+                background: rgba(255,255,255,0.04);
+                border: 1px solid rgba(46,125,50,0.35);
+                border-radius: 6px;
+                padding: 10px 14px;
+                min-width: 180px;
+            ">
+                <div style="font-size: 12px; color: #a5d6a7; font-weight: 600; margin-bottom: 6px;">
+                    {{ m.get_product_type_display }}
+                </div>
+                <div style="font-size: 11px; color: #546e7a; margin-bottom: 8px; font-family: monospace;">
+                    ?category={{ m.product_type }}
+                </div>
+                <a href="sync-photos/{{ m.product_type }}/" style="
+                    display: inline-block;
+                    background: rgba(56,142,60,0.8);
+                    color: #fff;
+                    text-decoration: none;
+                    padding: 5px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: 600;
+                "
+                onclick="return confirm('Синхронизировать фото для категории «{{ m.get_product_type_display }}»?');"
+                >
+                    📤 Синхронизировать
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <p style="color: #546e7a; font-size: 12px;">
+        Нет настроенных маппингов. Добавьте маппинги категорий — кнопки появятся автоматически.
+    </p>
+    {% endif %}
 </div>
 
 {{ block.super }}
