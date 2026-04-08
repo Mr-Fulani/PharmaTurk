@@ -119,6 +119,7 @@ class YMLExportView(APIView):
                 .filter(category_id__in=all_cat_ids, is_active=True)
                 .select_related("brand", "category")
                 .prefetch_related("images")
+                .distinct()
             )
         else:
             cats = Category.objects.filter(is_active=True)
@@ -127,6 +128,7 @@ class YMLExportView(APIView):
                 .filter(is_active=True)
                 .select_related("brand", "category")
                 .prefetch_related("images")
+                .distinct()
             )
 
         # Дерево категорий
@@ -138,6 +140,7 @@ class YMLExportView(APIView):
 
         offers_el = ET.SubElement(shop, "offers")
         site_url = request.build_absolute_uri("/").rstrip("/")
+        exported_ids: set[str] = set()  # защита от дублей
 
         for prod in products:
             domain_item = prod.domain_item
@@ -151,16 +154,28 @@ class YMLExportView(APIView):
                 )
 
             if not variants:
-                offer = self._create_offer(offers_el, prod, site_url, vk_map)
+                oid = str(prod.id)
+                if oid in exported_ids:
+                    continue
+                exported_ids.add(oid)
+                offer = self._create_offer(
+                    offers_el, prod, site_url, vk_map,
+                    has_variants=False,
+                )
                 self._add_params_to_description(offer, prod, domain_item)
             else:
-                # Намеренно БЕЗ group_id — с ним ВК дописывает атрибуты в название
+                # Намеренно БЕЗ group_id — с ним ВК дописывает атрибуты в название.
+                # Каждый вариант — отдельный offer с ТОЛЬКО своими изображениями.
                 for variant in variants:
                     offer_id = f"{prod.id}v{variant.id}"
+                    if offer_id in exported_ids:
+                        continue
+                    exported_ids.add(offer_id)
                     offer = self._create_offer(
                         offers_el, prod, site_url, vk_map,
                         offer_id=offer_id,
                         variant=variant,
+                        has_variants=True,
                     )
                     self._add_params_to_description(offer, prod, domain_item, variant)
 
@@ -172,7 +187,7 @@ class YMLExportView(APIView):
     # ------------------------------------------------------------------
 
     def _create_offer(self, parent, prod, site_url, vk_map,
-                      offer_id=None, variant=None):
+                      offer_id=None, variant=None, has_variants=False):
         """
         Строит элемент <offer> с правильным порядком тегов.
 
@@ -223,52 +238,51 @@ class YMLExportView(APIView):
         )
         ET.SubElement(offer, "market_category").text = market_cat
 
-        # 6. Изображения (вначале вариантные, затем родительские, без дублей)
+        # 6. Изображения
+        # Стратегия: максимум картинок для каждого offer без дублей.
+        #   Вариант: сначала фото варианта (его цвет), потом галерея родителя (студио, детали).
+        #   Без вариантов: всё что есть у родительского товара.
         added_images: set[str] = set()
 
-        if variant:
-            v_main = ""
-            if getattr(variant, "main_image_file", None):
-                v_main = f"{site_url}{variant.main_image_file.url}"
-            elif getattr(variant, "main_image", ""):
-                raw = variant.main_image
-                v_main = raw if raw.startswith("http") else f"{site_url}{raw}"
-            if v_main:
-                ET.SubElement(offer, "picture").text = v_main
-                added_images.add(v_main)
+        def _add_image(url: str):
+            """Добавляет <picture> если URL не пустой и не дубль."""
+            if url and url not in added_images:
+                ET.SubElement(offer, "picture").text = url
+                added_images.add(url)
 
+        def _resolve_url(raw: str) -> str:
+            if not raw:
+                return ""
+            return raw if raw.startswith("http") else f"{site_url}{raw}"
+
+        if variant:
+            # 1. Главное фото варианта
+            if getattr(variant, "main_image_file", None):
+                _add_image(f"{site_url}{variant.main_image_file.url}")
+            elif getattr(variant, "main_image", ""):
+                _add_image(_resolve_url(variant.main_image))
+
+            # 2. Галерея варианта
             if hasattr(variant, "images"):
                 for vi in variant.images.all():
-                    url = vi.image_url or (
+                    _add_image(vi.image_url or (
                         f"{site_url}{vi.image_file.url}" if vi.image_file else ""
-                    )
-                    if url and url not in added_images:
-                        ET.SubElement(offer, "picture").text = url
-                        added_images.add(url)
+                    ))
 
-        # Главное фото родительского товара
-        main_img = ""
+        # 3. Главное фото родительского товара (и для варианта, и без)
         if getattr(prod, "main_image", ""):
-            raw = prod.main_image
-            main_img = raw if raw.startswith("http") else f"{site_url}{raw}"
+            _add_image(_resolve_url(prod.main_image))
         elif getattr(prod, "main_image_file", None):
-            main_img = f"{site_url}{prod.main_image_file.url}"
+            _add_image(f"{site_url}{prod.main_image_file.url}")
 
-        if main_img and main_img not in added_images:
-            ET.SubElement(offer, "picture").text = main_img
-            added_images.add(main_img)
-
-        # Галерея родительского товара
+        # 4. Галерея родительского товара
         if hasattr(prod, "images"):
             for pi in prod.images.all():
-                url = pi.image_url or (
+                _add_image(pi.image_url or (
                     f"{site_url}{pi.image_file.url}" if pi.image_file else ""
-                )
-                if url and url not in added_images:
-                    ET.SubElement(offer, "picture").text = url
-                    added_images.add(url)
+                ))
 
-        # 7. Видео (первое доступное)
+        # 7. Видео (первое доступное, только из галереи родительского товара)
         if hasattr(prod, "images"):
             for pi in prod.images.all():
                 v_url = pi.video_url or (
