@@ -160,6 +160,7 @@ class YMLExportView(APIView):
                 exported_ids.add(oid)
                 offer = self._create_offer(
                     offers_el, prod, site_url, vk_map,
+                    domain_item=domain_item,
                     has_variants=False,
                 )
                 self._add_params_to_description(offer, prod, domain_item)
@@ -173,6 +174,7 @@ class YMLExportView(APIView):
                     exported_ids.add(offer_id)
                     offer = self._create_offer(
                         offers_el, prod, site_url, vk_map,
+                        domain_item=domain_item,
                         offer_id=offer_id,
                         variant=variant,
                         has_variants=True,
@@ -187,7 +189,7 @@ class YMLExportView(APIView):
     # ------------------------------------------------------------------
 
     def _create_offer(self, parent, prod, site_url, vk_map,
-                      offer_id=None, variant=None, has_variants=False):
+                      domain_item=None, offer_id=None, variant=None, has_variants=False):
         """
         Строит элемент <offer> с правильным порядком тегов.
 
@@ -270,27 +272,40 @@ class YMLExportView(APIView):
                     ))
 
         # 3. Главное фото родительского товара (и для варианта, и без)
-        if getattr(prod, "main_image", ""):
+        # Приоритет: domain_item.main_image → prod.main_image
+        domain = domain_item if (domain_item and domain_item is not prod) else None
+        if domain and getattr(domain, "main_image", ""):
+            _add_image(_resolve_url(domain.main_image))
+        elif domain and getattr(domain, "main_image_file", None):
+            _add_image(f"{site_url}{domain.main_image_file.url}")
+        elif getattr(prod, "main_image", ""):
             _add_image(_resolve_url(prod.main_image))
         elif getattr(prod, "main_image_file", None):
             _add_image(f"{site_url}{prod.main_image_file.url}")
 
-        # 4. Галерея родительского товара
-        if hasattr(prod, "images"):
-            for pi in prod.images.all():
-                _add_image(pi.image_url or (
-                    f"{site_url}{pi.image_file.url}" if pi.image_file else ""
-                ))
+        # 4. Галерея: сначала domain_item.images (ShoeProductImage и т.п.), потом prod.images
+        for image_source in ([domain, prod] if domain else [prod]):
+            if image_source and hasattr(image_source, "images"):
+                for pi in image_source.images.all():
+                    _add_image(pi.image_url or (
+                        f"{site_url}{pi.image_file.url}" if pi.image_file else ""
+                    ))
 
-        # 7. Видео (первое доступное, только из галереи родительского товара)
-        if hasattr(prod, "images"):
-            for pi in prod.images.all():
-                v_url = pi.video_url or (
-                    f"{site_url}{pi.video_file.url}" if pi.video_file else ""
-                )
-                if v_url:
-                    ET.SubElement(offer, "video").text = v_url
-                    break
+        # 7. Видео (первое доступное из domain_item или prod)
+        video_found = False
+        for image_source in ([domain, prod] if domain else [prod]):
+            if video_found:
+                break
+            if image_source and hasattr(image_source, "images"):
+                for pi in image_source.images.all():
+                    v_url = getattr(pi, "video_url", "") or (
+                        f"{site_url}{pi.video_file.url}"
+                        if getattr(pi, "video_file", None) else ""
+                    )
+                    if v_url:
+                        ET.SubElement(offer, "video").text = v_url
+                        video_found = True
+                        break
 
         # 8. Флаги доставки
         ET.SubElement(offer, "store").text = "true"
