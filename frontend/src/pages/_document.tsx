@@ -63,6 +63,11 @@ class MyDocument extends Document<MyDocumentProps> {
           <meta property="og:url" content={locale === 'ru' ? ruUrl : enUrl} />
           <meta property="twitter:card" content="summary_large_image" />
 
+          {/* ─── Yandex Webmaster (подтверждение прав) ────────────────────────── */}
+          {process.env.NEXT_PUBLIC_YANDEX_VERIFICATION && (
+            <meta name="yandex-verification" content={process.env.NEXT_PUBLIC_YANDEX_VERIFICATION} />
+          )}
+
           {/* ─── SEO: hreflang (мультиязычность) ─────────────────────────── */}
           <link rel="alternate" hrefLang="ru" href={ruUrl} />
           <link rel="alternate" hrefLang="en" href={enUrl} />
