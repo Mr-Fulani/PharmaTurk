@@ -519,6 +519,11 @@ GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", default="")
 VK_APP_ID = env("VK_APP_ID", default="")
 VK_APP_SECRET = env("VK_APP_SECRET", default="")
 
+# VK Market API (управление товарами и фото через API сообщества)
+# Токен получить: vk.com/club → Управление → Настройки → Работа с API
+VK_API_TOKEN = env("VK_YML_API", default="")
+VK_GROUP_ID = env.int("VK_GROUP_ID", default=0)
+
 # Increase data upload fields because admin uses filter_horizontal for thousands of categories
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 
