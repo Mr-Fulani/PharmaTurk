@@ -147,13 +147,37 @@ class VKOAuthProvider(SocialAuthProvider):
     id_field = "vk_id"
 
     USERS_GET_URL = "https://api.vk.com/method/users.get"
+    USER_INFO_URL = "https://id.vk.com/oauth2/user_info"
     VK_API_VERSION = "5.199"
 
     def get_user_info(self, token: str, **kwargs) -> dict | None:
-        """
-        token — access_token из VK SDK.
-        kwargs может содержать vk_user_id — ID пользователя (для передачи в API).
-        """
+        client_id = getattr(settings, "VK_APP_ID", "")
+        
+        # Шаг 1: Пробуем специальный серверный OIDC эндпоинт VK ID (он не требует совпадения IP браузера и сервера)
+        try:
+            with httpx.Client(timeout=10) as client:
+                res = client.post(
+                    self.USER_INFO_URL,
+                    data={
+                        "client_id": client_id,
+                        "access_token": token,
+                    }
+                )
+            if res.status_code == 200:
+                user_data = res.json().get("user", {})
+                vk_id = user_data.get("user_id")
+                if vk_id:
+                    return {
+                        "provider_id": str(vk_id),
+                        "email": user_data.get("email"),
+                        "first_name": user_data.get("first_name", ""),
+                        "last_name": user_data.get("last_name", ""),
+                        "avatar_url": user_data.get("avatar"),
+                    }
+        except Exception as e:
+            logger.debug(f"VK USER_INFO error: {e}")
+
+        # Шаг 2: Фолбэк на классический VK API (может выдать ошибку IP-адреса для клиентских токенов)
         try:
             params = {
                 "access_token": token,

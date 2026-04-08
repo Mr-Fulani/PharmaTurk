@@ -294,22 +294,23 @@ function VKLoginButton() {
         scope: '',
       })
 
-      const oAuth = new VKID.OAuthList()
+      const oneTap = new VKID.OneTap()
 
       if (containerRef.current) {
         containerRef.current.innerHTML = ''
-        oAuth.render({
+        oneTap.render({
           container: containerRef.current,
-          oauthList: [
-            'vkid',
-            'ok_ru',
-            'mail_ru'
-          ]
+          showAlternativeLogin: false,
+          styles: {
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+          }
         })
         .on(VKID.WidgetEvents.ERROR, () => {
           setError(t('auth_social_error', 'Ошибка виджета ВКонтакте'))
         })
-        .on(VKID.OAuthListInternalEvents.LOGIN_SUCCESS, function (payload: any) {
+        .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, function (payload: any) {
           const code = payload.code;
           const deviceId = payload.device_id;
           
@@ -367,10 +368,10 @@ function VKLoginButton() {
   if (!vkAppId) return null
 
   return (
-    <div className="flex flex-col items-center gap-1 relative hover:opacity-90 transition-opacity">
+    <div className="flex flex-col items-center gap-1 hover:opacity-90 transition-opacity h-11 w-11 justify-center rounded-full overflow-hidden relative">
       <div
         ref={containerRef}
-        className={`vk-signin-btn-wrapper transition-opacity ${loading ? 'opacity-60 pointer-events-none' : ''}`}
+        className={`vk-signin-btn-wrapper transition-opacity flex items-center justify-center ${loading ? 'opacity-60 pointer-events-none' : ''}`}
       />
       {error && <p className="text-xs text-red-500 absolute -bottom-5 whitespace-nowrap">{error}</p>}
     </div>
