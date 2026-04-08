@@ -19,6 +19,8 @@ Management command: sync_vk_photos
 """
 from __future__ import annotations
 
+from typing import Optional
+
 import logging
 
 from django.conf import settings
@@ -40,7 +42,7 @@ def _resolve_url(raw: str) -> str:
 
 def collect_image_urls(prod: Product, variant=None, domain_item=None) -> list[str]:
     """
-    Собирает все URL изображений для товара/варианта в правильном порядке:
+    Собирает все URL изображений для товара/варианта:
     1. Фото варианта (если есть)
     2. Фото доменного товара (ShoeProduct, ClothingProduct и т.д.)
     3. Фото базового Product
@@ -96,6 +98,24 @@ def collect_image_urls(prod: Product, variant=None, domain_item=None) -> list[st
     return urls
 
 
+def collect_video_url(prod: Product, domain_item=None) -> Optional[str]:
+    """
+    Возвращает первый доступный URL видео для товара.
+    Проверяет галерею domain_item, затем prod.
+    """
+    domain = domain_item if (domain_item and domain_item is not prod) else None
+    for source in ([domain, prod] if domain else [prod]):
+        if source and hasattr(source, "images"):
+            for pi in source.images.all():
+                v_url = getattr(pi, "video_url", "") or (
+                    f"{SITE_URL}{pi.video_file.url}"
+                    if getattr(pi, "video_file", None) else ""
+                )
+                if v_url:
+                    return v_url
+    return None
+
+
 class Command(BaseCommand):
     help = "Синхронизирует фото товаров из БД в ВК Маркет через VK API."
 
@@ -122,6 +142,11 @@ class Command(BaseCommand):
             default=5,
             metavar="N",
             help="Максимальное число фото на один товар (по умолчанию: 5).",
+        )
+        parser.add_argument(
+            "--skip-video",
+            action="store_true",
+            help="Не синхронизировать видео.",
         )
 
     def handle(self, *args, **options):
@@ -240,15 +265,23 @@ class Command(BaseCommand):
             image_urls = collect_image_urls(prod, variant=variant, domain_item=domain_item)
             image_urls = [u for u in image_urls if u][:max_photos]
 
+            # Видео (1 URL из галереи товара)
+            video_url: Optional[str] = None
+            if not options["skip_video"]:
+                video_url = collect_video_url(prod, domain_item=domain_item)
+
             total_offers += 1
 
             self.stdout.write(
-                f"  [{external_id}] VK item={vk_item_id} | {title[:40]} | {len(image_urls)} фото"
+                f"  [{external_id}] VK item={vk_item_id} | {title[:40]} | "
+                f"{len(image_urls)} фото{'  + видео' if video_url else ''}"
             )
 
             if dry_run:
                 for url in image_urls:
                     self.stdout.write(f"    → {url[:90]}")
+                if video_url:
+                    self.stdout.write(f"    🎥 {video_url[:90]}")
                 continue
 
             if not image_urls:
@@ -257,12 +290,13 @@ class Command(BaseCommand):
 
             # Реальная загрузка
             try:
-                result = sync.sync_item_photos(vk_item_id, image_urls)
+                result = sync.sync_item_photos(vk_item_id, image_urls, video_url=video_url)
                 total_uploaded += result["uploaded"]
                 total_failed += result["failed"]
                 status = "✓" if result["failed"] == 0 else "⚠"
+                video_status = " 🎥✓" if result.get("video") else (" 🎥✗" if video_url else "")
                 self.stdout.write(
-                    f"    {status} загружено={result['uploaded']} ошибок={result['failed']}"
+                    f"    {status} загружено={result['uploaded']} ошибок={result['failed']}{video_status}"
                 )
             except Exception as e:
                 self.stdout.write(self.style.ERROR(f"    ✗ Ошибка: {e}"))

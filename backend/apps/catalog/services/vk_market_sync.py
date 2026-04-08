@@ -191,28 +191,100 @@ class VKMarketSync:
             logger.warning(f"Failed to set main photo for item {vk_item_id}: {e}")
             return False
 
+    def upload_video(self, video_url: str, name: str = "Product Video") -> Optional[dict]:
+        """
+        Загружает видео в видеокаталог группы ВК.
+
+        Flow:
+          1. video.save → получаем upload_url
+          2. POST видеофайл на upload_url
+          3. Видео появляется в группе с id и owner_id
+
+        Returns:
+            dict с полями id, owner_id или None при ошибке.
+        """
+        try:
+            # 1. Получаем URL для загрузки
+            save_resp = self._api("video.save", {
+                "group_id": self.group_id,
+                "name": name[:255],
+                "wallpost": 0,          # не публиковать на стене
+                "is_private": 0,
+            })
+            upload_url = save_resp["upload_url"]
+            video_id = save_resp["video_id"]
+            owner_id = save_resp["owner_id"]
+
+            # 2. Скачиваем видео (может быть большим!)
+            logger.info(f"Downloading video: {video_url[:80]}")
+            video_resp = requests.get(video_url, timeout=120, stream=True)
+            video_resp.raise_for_status()
+
+            filename = video_url.split("/")[-1].split("?")[0] or "video.mp4"
+            if not any(filename.lower().endswith(ext) for ext in [".mp4", ".avi", ".mov", ".webm"]):
+                filename += ".mp4"
+
+            # 3. Загружаем в VK
+            logger.info(f"Uploading video to VK: {filename}")
+            time.sleep(self.REQUEST_DELAY)
+            upload_resp = requests.post(
+                upload_url,
+                files={"file": (filename, io.BytesIO(video_resp.content), "video/mp4")},
+                timeout=300,  # видео может быть большим
+            )
+            upload_resp.raise_for_status()
+
+            logger.info(f"Video uploaded: owner_id={owner_id}, video_id={video_id}")
+            return {"id": video_id, "owner_id": owner_id}
+
+        except Exception as e:
+            logger.warning(f"Failed to upload video {video_url!r}: {e}")
+            return None
+
+    def set_item_video(self, vk_item_id: int, video_owner_id: int, video_id: int) -> bool:
+        """
+        Привязывает видео из видеотеки группы к товару в ВК Маркете.
+        Использует market.edit с параметром video_id.
+        """
+        video_id_str = f"{video_owner_id}_{video_id}"
+        try:
+            self._api("market.edit", {
+                "owner_id": self.owner_id,
+                "item_id": vk_item_id,
+                "video_id": video_id_str,
+            })
+            logger.info(f"Set video {video_id_str} for item {vk_item_id}")
+            return True
+        except VKAPIError as e:
+            logger.warning(f"Failed to set video for item {vk_item_id}: {e}")
+            return False
+
     def sync_item_photos(
         self,
         vk_item_id: int,
         image_urls: list[str],
+        video_url: Optional[str] = None,
     ) -> dict:
         """
-        Загружает все картинки и устанавливает их на товар в ВК Маркете.
+        Загружает все картинки (и опционально видео) и устанавливает их на товар.
 
         Args:
             vk_item_id: ID товара в ВК.
             image_urls: Список URL картинок. Первый — главное фото.
+            video_url: URL видео (опционально).
 
         Returns:
-            {'uploaded': N, 'failed': N}
+            {'uploaded': N, 'failed': N, 'video': True/False}
         """
-        if not image_urls:
-            return {"uploaded": 0, "failed": 0}
+        if not image_urls and not video_url:
+            return {"uploaded": 0, "failed": 0, "video": False}
 
         uploaded = 0
         failed = 0
         main_photo: Optional[dict] = None
+        video_synced = False
 
+        # --- Фото ---
         for i, url in enumerate(image_urls):
             is_main = (i == 0)
             photo = self.upload_photo(url, is_main=is_main, vk_item_id=vk_item_id)
@@ -224,7 +296,6 @@ class VKMarketSync:
             else:
                 failed += 1
 
-        # Устанавливаем главное фото (если успешно загружено)
         if main_photo:
             self.set_main_photo(
                 vk_item_id=vk_item_id,
@@ -232,4 +303,16 @@ class VKMarketSync:
                 photo_id=main_photo["id"],
             )
 
-        return {"uploaded": uploaded, "failed": failed}
+        # --- Видео ---
+        if video_url:
+            video = self.upload_video(video_url)
+            if video:
+                video_synced = self.set_item_video(
+                    vk_item_id=vk_item_id,
+                    video_owner_id=video["owner_id"],
+                    video_id=video["id"],
+                )
+            else:
+                failed += 1
+
+        return {"uploaded": uploaded, "failed": failed, "video": video_synced}
