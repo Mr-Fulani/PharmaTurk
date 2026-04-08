@@ -82,11 +82,7 @@ class IkeaService:
     @staticmethod
     def _extract_item_code(url: str) -> Optional[str]:
         """
-        Артикул из URL карточки товара ikea.com.tr.
-
-        Поддержка:
-        - /urun/slug-80275887 (турецкая витрина)
-        - /en/product/slug-39440475, /tr/product/... (англ./локаль перед product)
+        Артикул из URL карточки товара ikea.com.tr или ikea.com.
         """
         if not url or not isinstance(url, str):
             return None
@@ -97,17 +93,7 @@ class IkeaService:
         if not segments:
             return None
 
-        last: Optional[str] = None
-        # /urun/slug — не путать с /urun-gruplari/
-        if segments[0] == "urun" and len(segments) >= 2:
-            last = segments[-1].split("?")[0]
-        # /en/product/slug или /tr/product/slug
-        elif "product" in segments:
-            idx = segments.index("product")
-            if idx + 1 < len(segments):
-                last = segments[idx + 1].split("?")[0]
-        if not last:
-            return None
+        last = segments[-1].split("?")[0]
 
         m = re.search(r"(\d{8})$", last)
         if m:

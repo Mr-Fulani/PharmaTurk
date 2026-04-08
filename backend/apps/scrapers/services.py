@@ -234,11 +234,10 @@ class ScraperIntegrationService:
                 (len(path_parts) == 1 and path_parts[0] in ('ilaclar', 'takviye-edici-gida'))
             )
             is_search = "/search" in start_url or "/arama" in start_url
-            # IKEA TR: карточка товара — /urun/slug (не /urun-gruplari/, где первый сегмент другой)
+            # IKEA TR/COM: карточка товара — /urun/, /product/ или /p/
             is_ikea_product = (
                 is_ikea_host
-                and len(path_parts) >= 2
-                and path_parts[0] == "urun"
+                and any(p in path_parts for p in ("urun", "product", "p"))
             )
             is_product = (
                 "/product/" in start_url or 
