@@ -1,0 +1,39 @@
+{% extends "admin/change_list.html" %}
+
+{% block content %}
+<div style="
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border: 1px solid #0f3460;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    color: #e0e0e0;
+">
+    <h3 style="margin: 0 0 12px; color: #4fc3f7; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">
+        🔗 Ссылки на YML-фид
+    </h3>
+
+    <div style="margin-bottom: 10px;">
+        <span style="color: #90a4ae; font-size: 12px; display: block; margin-bottom: 4px;">
+            Полный каталог (все товары):
+        </span>
+        <a href="{{ full_feed_url }}" target="_blank" style="
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #81d4fa;
+            text-decoration: none;
+            background: rgba(255,255,255,0.05);
+            padding: 6px 12px;
+            border-radius: 4px;
+            display: inline-block;
+            border: 1px solid rgba(79, 195, 247, 0.3);
+        ">{{ full_feed_url }}</a>
+    </div>
+
+    <p style="margin: 10px 0 0; color: #78909c; font-size: 12px;">
+        ℹ️ Ссылки на конкретные категории — в таблице ниже (колонка «Ссылка на YML-фид»)
+    </p>
+</div>
+
+{{ block.super }}
+{% endblock %}

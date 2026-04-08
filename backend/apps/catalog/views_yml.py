@@ -327,10 +327,18 @@ class YMLExportView(APIView):
 
         # Динамические атрибуты из domain_item
         if domain_item and hasattr(domain_item, "dynamic_attributes"):
-            attrs = domain_item.dynamic_attributes.all().select_related("attribute_key")
+            attrs = domain_item.dynamic_attributes.all().select_related("attribute_key").prefetch_related("attribute_key__translations")
             seen = {s.split(":")[0] for s in specs}  # не дублируем
             for attr in attrs:
-                attr_name = attr.attribute_key.name
+                # Всегда берём русское название ключа — независимо от языка сервера
+                key_obj = attr.attribute_key
+                ru_trans = key_obj.translations.filter(locale="ru").first()
+                en_trans = key_obj.translations.filter(locale="en").first()
+                attr_name = (
+                    ru_trans.name if ru_trans
+                    else en_trans.name if en_trans
+                    else key_obj.slug
+                )
                 attr_value = attr.value_ru or attr.value
                 if attr_name and attr_value and attr_name not in seen:
                     specs.append(f"{attr_name}: {attr_value}")
