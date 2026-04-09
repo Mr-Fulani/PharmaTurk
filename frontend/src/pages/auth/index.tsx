@@ -306,8 +306,9 @@ function VKLoginButton() {
             height: 44,
           }
         })
-        .on(VKID.WidgetEvents.ERROR, () => {
-          setError(t('auth_social_error', 'Ошибка виджета ВКонтакте'))
+        .on(VKID.WidgetEvents.ERROR, (err: any) => {
+          console.warn('VKID SDK Widget Error:', err);
+          // Убрали setError, так как VKID генерирует ложно-срабатывающие ошибки при скрытии iframe
         })
         .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, function (payload: any) {
           const code = payload.code;

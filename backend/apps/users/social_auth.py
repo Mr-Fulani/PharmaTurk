@@ -12,7 +12,9 @@ import logging
 import uuid
 
 import httpx
+import time
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.utils.crypto import get_random_string
 
 from .models import User
@@ -277,6 +279,21 @@ def get_or_create_social_user(
     email: str | None = user_info.get("email")
     first_name: str = user_info.get("first_name", "")
     last_name: str = user_info.get("last_name", "")
+    avatar_url: str | None = user_info.get("avatar_url")
+
+    def _assign_avatar_if_needed(u: User):
+        if avatar_url and not u.avatar:
+            try:
+                with httpx.Client(timeout=5) as client:
+                    resp = client.get(avatar_url)
+                    if resp.status_code == 200:
+                        ext = avatar_url.split("?")[0].split(".")[-1]
+                        if ext not in ["jpg", "jpeg", "png", "gif", "webp"]:
+                            ext = "jpg"
+                        filename = f"social_{provider.name}_{u.id}_{int(time.time())}.{ext}"
+                        u.avatar.save(filename, ContentFile(resp.content), save=False)
+            except Exception as e:
+                logger.debug(f"Failed to fetch social avatar: {e}")
 
     id_field = provider.id_field  # 'google_id' | 'vk_id'
 
@@ -292,6 +309,9 @@ def get_or_create_social_user(
         if last_name and not user.last_name:
             user.last_name = last_name
             update_fields.append("last_name")
+        if avatar_url and not user.avatar:
+            _assign_avatar_if_needed(user)
+            update_fields.append("avatar")
         if update_fields:
             user.save(update_fields=update_fields)
         logger.info(f"Social login [{provider.name}]: существующий пользователь id={user.id}")
@@ -309,6 +329,9 @@ def get_or_create_social_user(
             if last_name and not user.last_name:
                 user.last_name = last_name
                 update_fields.append("last_name")
+            if avatar_url and not user.avatar:
+                _assign_avatar_if_needed(user)
+                update_fields.append("avatar")
             user.save(update_fields=update_fields)
             logger.info(
                 f"Social login [{provider.name}]: привязан к существующему email={email}, user_id={user.id}"
@@ -346,6 +369,12 @@ def get_or_create_social_user(
         is_verified=True,  # OAuth аккаунты считаем верифицированными
         **{id_field: provider_id},
     )
+    
+    # Загружаем аватар для нового аккаунта
+    if avatar_url:
+        _assign_avatar_if_needed(user)
+        user.save(update_fields=["avatar"])
+
     logger.info(
         f"Social login [{provider.name}]: создан новый пользователь id={user.id}, email={dummy_email}"
     )
