@@ -3480,7 +3480,7 @@ class FurnitureProduct(AbstractDomainProduct):
     )
 
     # Специфичные для мебели поля
-    material = models.CharField(_("Материал"), max_length=1000, blank=True)
+    material = models.TextField(_("Материал"), blank=True)
     furniture_type = models.CharField(
         _("Тип мебели"),
         max_length=255,
