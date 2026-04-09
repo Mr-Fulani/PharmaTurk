@@ -624,6 +624,9 @@ class ScraperIntegrationService:
         for similar_product in similar_products:
             similarity = self._calculate_product_similarity(scraped_product, similar_product)
             if similarity > 0.8:  # 80% похожести
+                # Если external_id точно разные, значит это РАЗНЫЕ товары с одинаковым именем. Не сливаем.
+                if scraped_product.external_id and similar_product.external_id and scraped_product.external_id != similar_product.external_id:
+                    continue
                 # Обновляем существующий товар
                 return self._update_existing_product(
                     session,
@@ -677,6 +680,14 @@ class ScraperIntegrationService:
         self, scraped_product: ScrapedProduct, existing_product: Product
     ) -> float:
         """Вычисляет похожесть товаров."""
+        if (
+            scraped_product.external_id 
+            and existing_product.external_id 
+            and scraped_product.external_id != existing_product.external_id
+        ):
+            # Если внешние ID присутствуют и различаются - это разные товары
+            return 0.0
+
         score = 0.0
 
         # Сравниваем названия
@@ -1029,25 +1040,35 @@ class ScraperIntegrationService:
         """Обновляет существующий товар."""
         updated = False
 
-        # Обновляем цену, если она изменилась
-        if scraped_product.price and scraped_product.price != existing_product.price:
-            existing_product.old_price = existing_product.price
-            existing_product.price = scraped_product.price
-            existing_product.currency = scraped_product.currency
-            updated = True
+        # Флаг, указывающий, что мы обновляем базовый товар пришедшими данными его варианта
+        # В этом случае мы НЕ должны перезатирать общие поля базового товара (фото, цену, url)
+        # специфичными данными конкретного варианта (цвета/ножек), чтобы не "создавать дублей/миксов"
+        is_variant_update = bool(
+            scraped_product.external_id 
+            and existing_product.external_id 
+            and str(scraped_product.external_id) != str(existing_product.external_id)
+        )
 
-        # Обновляем наличие
-        if scraped_product.is_available != existing_product.is_available:
-            existing_product.is_available = scraped_product.is_available
-            updated = True
-            
-        # Обновляем количество на складе
-        if scraped_product.stock_quantity is not None and scraped_product.stock_quantity != existing_product.stock_quantity:
-            existing_product.stock_quantity = scraped_product.stock_quantity
-            existing_product.is_available = (existing_product.stock_quantity or 0) > 0
-            updated = True
+        if not is_variant_update:
+            # Обновляем цену, если она изменилась (только для базового товара)
+            if scraped_product.price and scraped_product.price != existing_product.price:
+                existing_product.old_price = existing_product.price
+                existing_product.price = scraped_product.price
+                existing_product.currency = scraped_product.currency
+                updated = True
 
-        # Обновляем бренд, если его нет или он изменился
+            # Обновляем наличие
+            if scraped_product.is_available != existing_product.is_available:
+                existing_product.is_available = scraped_product.is_available
+                updated = True
+                
+            # Обновляем количество на складе
+            if scraped_product.stock_quantity is not None and scraped_product.stock_quantity != existing_product.stock_quantity:
+                existing_product.stock_quantity = scraped_product.stock_quantity
+                existing_product.is_available = (existing_product.stock_quantity or 0) > 0
+                updated = True
+
+        # Обновляем бренд, если его нет или он изменился (бренд общий для всех вариантов)
         if scraped_product.brand:
             from apps.catalog.models import Brand
             brand_name = scraped_product.brand.strip()
@@ -1056,31 +1077,32 @@ class ScraperIntegrationService:
                 existing_product.brand = brand
                 updated = True
 
-        # Обновляем изображения, если их нет
-        if not existing_product.main_image and scraped_product.images:
-            main_image_url = self._get_first_image_url(scraped_product.images)
-            if main_image_url:
-                existing_product.main_image = main_image_url
-                updated = True
+        if not is_variant_update:
+            # Обновляем изображения, если их нет
+            if not existing_product.main_image and scraped_product.images:
+                main_image_url = self._get_first_image_url(scraped_product.images)
+                if main_image_url:
+                    existing_product.main_image = main_image_url
+                    updated = True
 
-        # Обновляем video_url: приоритет R2 из images, иначе attributes (после _normalize_scraped_media — тоже R2)
-        if not existing_product.video_url:
-            first_vid = None
-            if scraped_product.images:
-                first_vid = self.catalog_normalizer._first_video_url_from_images(scraped_product.images)
-            if first_vid:
-                existing_product.video_url = first_vid
-                updated = True
-                self.logger.info(
-                    "Updated video_url for existing product %s from gallery images",
-                    existing_product.id,
-                )
-            elif scraped_product.attributes and scraped_product.attributes.get("video_url"):
-                existing_product.video_url = scraped_product.attributes["video_url"]
-                updated = True
-                self.logger.info(
-                    f"Updated video_url for existing product {existing_product.id} to {existing_product.video_url}"
-                )
+            # Обновляем video_url: приоритет R2 из images, иначе attributes
+            if not existing_product.video_url:
+                first_vid = None
+                if scraped_product.images:
+                    first_vid = self.catalog_normalizer._first_video_url_from_images(scraped_product.images)
+                if first_vid:
+                    existing_product.video_url = first_vid
+                    updated = True
+                    self.logger.info(
+                        "Updated video_url for existing product %s from gallery images",
+                        existing_product.id,
+                    )
+                elif scraped_product.attributes and scraped_product.attributes.get("video_url"):
+                    existing_product.video_url = scraped_product.attributes["video_url"]
+                    updated = True
+                    self.logger.info(
+                        f"Updated video_url for existing product {existing_product.id} to {existing_product.video_url}"
+                    )
 
         if scraped_product.category and not existing_product.category:
             category, product_type = resolve_category_and_product_type(scraped_product.category)

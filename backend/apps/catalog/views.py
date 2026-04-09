@@ -2978,7 +2978,7 @@ def proxy_media(request):
                                 img = img.convert('RGB')
                         img.thumbnail((max_w_int, max_w_int * 4), Image.Resampling.LANCZOS)
                         out = io.BytesIO()
-                        img.save(out, format='WEBP', quality=80, method=4)
+                        img.save(out, format='WEBP', quality=80, method=2)
                         webp_resized = out.getvalue()
                     if len(webp_resized) < 5 * 1024 * 1024:
                         cache.set(cache_key_mw, webp_resized, 30 * 86400)
@@ -3004,32 +3004,37 @@ def proxy_media(request):
                 webp_data = cache.get(cache_key)
                 
                 if webp_data is None:
-                    # Читаем файл в память
-                    try:
-                        img = Image.open(file_obj)
-                        img = ImageOps.exif_transpose(img) # Сохраняем ориентацию
-                        
-                        # Конвертируем прозрачность/палитру в RGB для Jpeg/WebP
-                        if img.mode in ('RGBA', 'P', 'LA'):
-                            # Для PNG сохраняем прозрачность в WebP 
-                            if img.mode == 'P':
-                                img = img.convert('RGBA')
-                        else:
-                            if img.mode != 'RGB':
-                                img = img.convert('RGB')
-                        
-                        output = io.BytesIO()
-                        img.save(output, format='WEBP', quality=82, method=4)
-                        webp_data = output.getvalue()
-                        
-                        # Кэшируем до 5 МБ в Memcached/Redis на 30 дней
-                        if len(webp_data) < 5 * 1024 * 1024:
-                            cache.set(cache_key, webp_data, 30 * 86400)
-                    except Exception as img_err:
-                        # В случае ошибки конвертации падаем в фолбэк к оригиналу
-                        logger.warning(f"WebP conversion failed for {resolved_path}: {img_err}")
-                        file_obj.seek(0)
+                    # Пропускаем преобразование на лету для файлов > 8MB чтобы избежать OOM
+                    if file_obj.size > 8 * 1024 * 1024:
                         webp_data = None
+                    else:
+                        # Читаем файл в память
+                        try:
+                            img = Image.open(file_obj)
+                            img = ImageOps.exif_transpose(img) # Сохраняем ориентацию
+                            
+                            # Конвертируем прозрачность/палитру в RGB для Jpeg/WebP
+                            if img.mode in ('RGBA', 'P', 'LA'):
+                                # Для PNG сохраняем прозрачность в WebP 
+                                if img.mode == 'P':
+                                    img = img.convert('RGBA')
+                            else:
+                                if img.mode != 'RGB':
+                                    img = img.convert('RGB')
+                            
+                            output = io.BytesIO()
+                            # Снижаем method до 1 или 2 чтобы значительно сократить потребление памяти и CPU 
+                            img.save(output, format='WEBP', quality=80, method=1)
+                            webp_data = output.getvalue()
+                            
+                            # Кэшируем до 5 МБ в Memcached/Redis на 30 дней
+                            if len(webp_data) < 5 * 1024 * 1024:
+                                cache.set(cache_key, webp_data, 30 * 86400)
+                        except Exception as img_err:
+                            # В случае ошибки конвертации падаем в фолбэк к оригиналу
+                            logger.warning(f"WebP conversion failed for {resolved_path}: {img_err}")
+                            file_obj.seek(0)
+                            webp_data = None
                 
                 if webp_data is not None:
                     response = HttpResponse(webp_data, content_type='image/webp')
