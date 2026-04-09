@@ -103,12 +103,15 @@ export default function ProductCard({
   const { t, i18n } = useTranslation('common')
 
   const localizedName = getLocalizedProductName(name, t, translations, locale || i18n.language)
-  const localizedDescription = getLocalizedProductDescription(
+  const rawDescription = getLocalizedProductDescription(
     description,
     t,
     translations,
     locale || i18n.language
   )
+  const localizedDescription = rawDescription 
+    ? rawDescription.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim() 
+    : ''
 
   const resolvedImage =
     imageUrl && !isVideoUrl(imageUrl) ? resolveMediaUrl(imageUrl) : null
