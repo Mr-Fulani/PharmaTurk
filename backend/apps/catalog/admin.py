@@ -444,6 +444,11 @@ class BaseCategoryAdmin(admin.ModelAdmin):
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
+        (_('SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'),
+            'classes': ('collapse',),
+            'description': _('SEO-поля для поисковой оптимизации категории.'),
+        }),
     )
 
     def level_display(self, obj):
@@ -516,6 +521,11 @@ class AllCategoriesAdmin(admin.ModelAdmin):
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
+        (_('SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'),
+            'classes': ('collapse',),
+            'description': _('SEO-поля для поисковой оптимизации категории.'),
+        }),
     )
 
     def level_display(self, obj):
@@ -1073,6 +1083,11 @@ class ClothingCategoryAdmin(admin.ModelAdmin):
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
+        (_('SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'),
+            'classes': ('collapse',),
+            'description': _('SEO-поля для поисковой оптимизации категории.'),
+        }),
     )
     list_select_related = ('category_type', 'parent', 'parent__parent')
 
@@ -1437,6 +1452,11 @@ class ShoeCategoryAdmin(admin.ModelAdmin):
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
+        (_('SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'),
+            'classes': ('collapse',),
+            'description': _('SEO-поля для поисковой оптимизации категории.'),
+        }),
         (_('Подсказка'), {
             'fields': (),
             'description': _(
@@ -1893,6 +1913,11 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
+        (_('SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'),
+            'classes': ('collapse',),
+            'description': _('SEO-поля для поисковой оптимизации категории.'),
+        }),
     )
     
     def get_queryset(self, request):
@@ -2267,6 +2292,11 @@ class ServiceAdmin(admin.ModelAdmin):
         (_('Media Assets'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file', 'gif_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
+        (_('SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'),
+            'classes': ('collapse',),
+            'description': _('SEO-поля для поисковой оптимизации услуги.'),
+        }),
     )
     inlines = [ServiceTranslationInline, ServiceImageInline, ServiceAttributeInline, ServicePriceInline]
 

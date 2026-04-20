@@ -287,6 +287,33 @@ class Category(models.Model):
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
 
+    # SEO-поля
+    meta_title = models.CharField(
+        _("SEO заголовок"), max_length=255, blank=True, default="",
+        help_text=_("Заголовок для поисковых систем (до 255 символов). Если пусто — используется название категории.")
+    )
+    meta_description = models.TextField(
+        _("SEO описание"), max_length=500, blank=True, default="",
+        help_text=_("Описание страницы категории для поисковых систем (до 500 символов).")
+    )
+    meta_keywords = models.CharField(
+        _("Ключевые слова"), max_length=500, blank=True, default="",
+        help_text=_("Ключевые слова через запятую.")
+    )
+    og_title = models.CharField(
+        _("OG заголовок"), max_length=255, blank=True, default="",
+        help_text=_("Заголовок для социальных сетей (Open Graph). Если пусто — используется SEO заголовок.")
+    )
+    og_description = models.TextField(
+        _("OG описание"), max_length=500, blank=True, default="",
+        help_text=_("Описание для социальных сетей (Open Graph).")
+    )
+    og_image_url = models.URLField(
+        _("OG изображение (URL)"), max_length=500, blank=True, default="",
+        help_text=_("URL изображения для превью в социальных сетях.")
+    )
+
+
     class Meta:
         verbose_name = _("Категория")
         verbose_name_plural = _("Категории")
@@ -3115,7 +3142,33 @@ class Service(models.Model):
     # Временные метки
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
-    
+
+    # SEO-поля
+    meta_title = models.CharField(
+        _("SEO заголовок"), max_length=255, blank=True, default="",
+        help_text=_("Заголовок для поисковых систем (до 255 символов). Если пусто — используется название услуги.")
+    )
+    meta_description = models.TextField(
+        _("SEO описание"), max_length=500, blank=True, default="",
+        help_text=_("Описание страницы услуги для поисковых систем (до 500 символов).")
+    )
+    meta_keywords = models.CharField(
+        _("Ключевые слова"), max_length=500, blank=True, default="",
+        help_text=_("Ключевые слова через запятую.")
+    )
+    og_title = models.CharField(
+        _("OG заголовок"), max_length=255, blank=True, default="",
+        help_text=_("Заголовок для социальных сетей (Open Graph).")
+    )
+    og_description = models.TextField(
+        _("OG описание"), max_length=500, blank=True, default="",
+        help_text=_("Описание для социальных сетей (Open Graph).")
+    )
+    og_image_url = models.URLField(
+        _("OG изображение (URL)"), max_length=500, blank=True, default="",
+        help_text=_("URL изображения для превью в социальных сетях.")
+    )
+
     class Meta:
         verbose_name = _("Услуга")
         verbose_name_plural = _("Услуги")

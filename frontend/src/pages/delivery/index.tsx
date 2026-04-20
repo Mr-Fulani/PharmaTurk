@@ -5,6 +5,7 @@ import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
 import { Plane, Truck, Ship, CreditCard, ShieldCheck } from 'lucide-react'
+import { SITE_NAME } from '../../lib/siteMeta'
 
 export default function DeliveryPage({ pageData, footerSettings }: { pageData: any; footerSettings: { phone?: string | null; email?: string | null; location?: string | null; telegram_url?: string | null; whatsapp_url?: string | null; vk_url?: string | null; instagram_url?: string | null; crypto_payment_text?: string | null } }) {
     const { t } = useTranslation('common')
@@ -14,7 +15,7 @@ export default function DeliveryPage({ pageData, footerSettings }: { pageData: a
     return (
         <>
             <Head>
-                <title>{pageData?.title || t('delivery_title', 'Доставка и оплата')} — Turk-Export</title>
+                <title>{pageData?.title || t('delivery_title', 'Доставка и оплата')} — {SITE_NAME}</title>
             </Head>
             <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">

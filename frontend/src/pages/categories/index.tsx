@@ -8,6 +8,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import BannerCarousel from '../../components/BannerCarouselMedia'
 import CardMasonryMedia from '../../components/CardMasonryMedia'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
+import { SITE_NAME } from '../../lib/siteMeta'
 
 interface CategoryTranslation {
   locale: string
@@ -39,7 +40,7 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
   return (
     <>
       <Head>
-        <title>{t('menu_categories', 'Категории')} — Turk-Export</title>
+        <title>{t('menu_categories', 'Категории')} — {SITE_NAME}</title>
       </Head>
       <main className="min-h-screen bg-page text-main transition-colors duration-200">
         {/* Hero banner */}

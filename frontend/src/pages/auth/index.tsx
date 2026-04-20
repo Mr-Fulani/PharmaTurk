@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { useRouter } from 'next/router'
 import styles from './Auth.module.css'
+import { SITE_NAME } from '../../lib/siteMeta'
 
 // ─── Утилита: редирект после входа ──────────────────────────────────────────
 
@@ -35,7 +36,8 @@ export default function AuthIndexPage() {
   return (
     <>
       <Head>
-        <title>{tab === 'login' ? t('login') : t('register')} — Turk-Export</title>
+        <title>{tab === 'login' ? t('login') : t('register')} — {SITE_NAME}</title>
+        <meta name="robots" content="noindex, nofollow" />
       </Head>
       <main className="flex min-h-[80vh] items-center justify-center p-4">
         <div className={`${styles.container} ${tab === 'register' ? styles.active : ''}`}>

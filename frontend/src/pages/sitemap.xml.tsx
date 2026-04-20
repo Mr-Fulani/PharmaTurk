@@ -88,6 +88,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     ['/privacy', '/privacy', 'monthly', 0.4],
     ['/how-to-order-medicines', '/how-to-order-medicines', 'monthly', 0.5],
     ['/testimonials', '/testimonials', 'weekly', 0.6],
+    ['/categories/uslugi', '/categories/uslugi', 'weekly', 0.8],
   ]
 
   for (const [enPath, ruPath, changefreq, priority] of staticPages) {
@@ -141,6 +142,32 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     }
   } catch {
     // Если API недоступен — продолжаем без товаров
+  }
+
+  // Услуги из API
+  try {
+    const servicesRes = await axios.get(getInternalApiUrl('catalog/services/'), {
+      params: { lang: 'en', page_size: 500, is_active: true },
+      timeout: 5000,
+    })
+    const services = servicesRes.data?.results || servicesRes.data || []
+    for (const service of services) {
+      if (service.slug) {
+        const lastmod = service.updated_at
+          ? new Date(service.updated_at).toISOString().split('T')[0]
+          : today
+        const url = buildUrl(
+          `/product/uslugi/${service.slug}`,
+          `/product/uslugi/${service.slug}`,
+          'weekly',
+          0.75
+        )
+        url.lastmod = lastmod
+        urls.push(url)
+      }
+    }
+  } catch {
+    // Если API недоступен — продолжаем без услуг
   }
 
   const sitemap = generateSitemapXml(urls)

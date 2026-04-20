@@ -9,6 +9,7 @@ import { resolveMediaUrl, getPlaceholderImageUrl, isVideoUrl } from '../lib/medi
 import { needsTypeInPath } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
+import { SITE_NAME } from '../lib/siteMeta'
 
 interface CartItem {
   id: number
@@ -275,7 +276,8 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
   return (
     <>
       <Head>
-        <title>{t('menu_cart', 'Корзина')} — Turk-Export</title>
+        <title>{t('menu_cart', 'Корзина')} — {SITE_NAME}</title>
+        <meta name="robots" content="noindex, nofollow" />
       </Head>
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8">

@@ -5,6 +5,7 @@ import { useTheme } from '../../context/ThemeContext'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
+import { SITE_NAME } from '../../lib/siteMeta'
 
 export default function RegisterPage() {
   const { register } = useAuth()
@@ -44,7 +45,8 @@ export default function RegisterPage() {
   return (
     <>
       <Head>
-        <title>Регистрация — Turk-Export</title>
+        <title>{t('register', 'Регистрация')} — {SITE_NAME}</title>
+        <meta name="robots" content="noindex, nofollow" />
       </Head>
       <main className="mx-auto max-w-md p-6">
         <h1 className="text-2xl font-bold">{t('register')}</h1>

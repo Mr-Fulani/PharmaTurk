@@ -62,22 +62,31 @@ class IkeaService:
     }
 
     def __init__(self):
-        self.brand = self._get_or_create_brand()
-        self.default_category = Category.objects.filter(slug='furniture').first()
+        # Отложенная инициализация, так как __init__ вызывается при запуске приложения (registry)
+        self._brand = None
+        self._default_category = None
         self.client = httpx.Client(headers=self.HEADERS, timeout=10.0)
 
-    def _get_or_create_brand(self) -> Brand:
-        brand, created = Brand.objects.get_or_create(
-            name="IKEA",
-            defaults={
-                "slug": "ikea",
-                "description": "IKEA Products",
-                "is_active": True,
-                "primary_category_slug": "furniture",
-                "category_slugs": ["furniture", "tableware"]
-            }
-        )
-        return brand
+    @property
+    def brand(self) -> Brand:
+        if self._brand is None:
+            self._brand, _ = Brand.objects.get_or_create(
+                name="IKEA",
+                defaults={
+                    "slug": "ikea",
+                    "description": "IKEA Products",
+                    "is_active": True,
+                    "primary_category_slug": "furniture",
+                    "category_slugs": ["furniture", "tableware"]
+                }
+            )
+        return self._brand
+
+    @property
+    def default_category(self):
+        if self._default_category is None:
+            self._default_category = Category.objects.filter(slug='furniture').first()
+        return self._default_category
 
     @staticmethod
     def _extract_item_code(url: str) -> Optional[str]:

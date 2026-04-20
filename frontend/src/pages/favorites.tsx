@@ -9,6 +9,7 @@ import { useFavoritesStore } from '../store/favorites'
 import ProductCard from '../components/ProductCard'
 import { isBaseProductType } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
+import { SITE_NAME } from '../lib/siteMeta'
 
 const parseNumber = (value: string | number | null | undefined) => {
   if (value === null || typeof value === 'undefined') return null
@@ -51,7 +52,8 @@ export default function FavoritesPage() {
   return (
     <>
       <Head>
-        <title>{`${t('favorites_title', 'Избранное')} — Turk-Export`}</title>
+        <title>{`${t('favorites_title', 'Избранное')} — ${SITE_NAME}`}</title>
+        <meta name="robots" content="noindex, nofollow" />
       </Head>
       <main className="mx-auto max-w-6xl px-3 pt-4 pb-6 sm:p-6">
         <h1 className="mb-6 text-3xl font-bold text-gray-900">

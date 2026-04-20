@@ -301,6 +301,7 @@ class CategorySerializer(serializers.ModelSerializer):
             'children_count', 'products_count', 'created_at', 'updated_at',
             'category_type', 'category_type_slug', 'translations',
             'gender', 'gender_display', 'clothing_type', 'device_type',
+            'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -4225,7 +4226,8 @@ class ServiceSerializer(serializers.ModelSerializer):
             'main_image', 'main_image_url', 'video_url', 'main_video_url', 'main_gif_url',
             'gallery', 'images',
             'service_attributes',
-            'is_active', 'is_featured', 'created_at', 'updated_at', 'translations'
+            'is_active', 'is_featured', 'created_at', 'updated_at', 'translations',
+            'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'product_type']
     

@@ -12,6 +12,7 @@ import { needsTypeInPath } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
 import { useAuth } from '../context/AuthContext'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
+import { SITE_NAME } from '../lib/siteMeta'
 
 interface OrderItem {
   id: number
@@ -626,7 +627,8 @@ export default function ProfilePage() {
   return (
     <>
       <Head>
-        <title>{t('profile_title')} — Turk-Export</title>
+        <title>{t('profile_title')} — {SITE_NAME}</title>
+        <meta name="robots" content="noindex, nofollow" />
       </Head>
       <section className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Заголовок */}

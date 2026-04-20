@@ -5,6 +5,7 @@ import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
 import { Lock, FileText, Database, Shield, Cookie } from 'lucide-react'
+import { SITE_NAME } from '../../lib/siteMeta'
 
 export default function PrivacyPage({ pageData }: { pageData: any }) {
     const { t } = useTranslation('common')
@@ -12,7 +13,7 @@ export default function PrivacyPage({ pageData }: { pageData: any }) {
     return (
         <>
             <Head>
-                <title>{pageData?.title || t('privacy_title', 'Политика конфиденциальности')} — Turk-Export</title>
+                <title>{pageData?.title || t('privacy_title', 'Политика конфиденциальности')} — {SITE_NAME}</title>
             </Head>
             <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">
