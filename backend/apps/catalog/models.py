@@ -3390,7 +3390,6 @@ class ServiceAttribute(models.Model):
         verbose_name = _("Атрибут услуги")
         verbose_name_plural = _("Атрибуты услуг")
         ordering = ["sort_order", "attribute_key"]
-        unique_together = [["service", "attribute_key"]]
         indexes = [
             models.Index(fields=["service", "sort_order"]),
         ]
