@@ -30,11 +30,8 @@ class PageListView(generics.ListAPIView):
         return context
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        show_in_footer = self.request.GET.get("show_in_footer")
-        if show_in_footer in ["1", "true", "True"]:
-            qs = qs.filter(show_in_footer=True)
-        return qs
+        """Возвращает только активные страницы."""
+        return Page.objects.filter(is_active=True).order_by("footer_order", "-updated_at")
 
 
 class PageDetailView(generics.RetrieveAPIView):

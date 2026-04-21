@@ -16,14 +16,14 @@ class PageAdmin(admin.ModelAdmin):
     prepopulated_fields: автогенерация slug из русского заголовка.
     fieldsets: отдельные секции формы для разных языков и метаданных.
     """
-    list_display = ("slug", "get_title", "is_active", "show_in_footer", "footer_order", "updated_at")
-    list_filter = ("is_active", "show_in_footer")
+    list_display = ("slug", "get_title", "is_active", "footer_order", "updated_at")
+    list_filter = ("is_active",)
     search_fields = ("slug", "title_en", "title_ru", "content_en", "content_ru")
     # Генерируем slug на основе поля title_ru при вводе
     prepopulated_fields = {"slug": ("title_ru",)}
     readonly_fields = ("created_at", "updated_at")
     fieldsets = (
-        (None, {"fields": ("slug", "is_active", "show_in_footer", "footer_order")} ),
+        (None, {"fields": ("slug", "is_active", "footer_order")} ),
         ("English", {"fields": ("title_en", "content_en")} ),
         ("Русский", {"fields": ("title_ru", "content_ru")} ),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),

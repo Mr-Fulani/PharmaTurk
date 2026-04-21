@@ -30,7 +30,6 @@ class Page(models.Model):
     content_ru = models.TextField(blank=True, verbose_name="Content (RU)")
 
     is_active = models.BooleanField(default=True, verbose_name="Опубликовано")
-    show_in_footer = models.BooleanField(default=False, verbose_name="Показывать в футере")
     footer_order = models.PositiveIntegerField(default=0, verbose_name="Порядок в футере")
     
     created_at = models.DateTimeField(auto_now_add=True)

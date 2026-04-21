@@ -72,9 +72,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
     }
 
     if (typeof window !== 'undefined') {
-      // Ссылка на страницы для футера должна загружаться ВСЕГДА на клиенте, 
-      // так как они пока не передаются через SSR во всех случаях.
-      api.get('/pages/?show_in_footer=1')
+      // Загружаем все активные статические страницы для футера
+      api.get('/pages/')
         .then(response => {
           const pages = response.data?.results || response.data || []
           setSettings(prev => ({
@@ -90,12 +89,12 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
       const hasSocialFromSSR = initialSettings?.telegram_url || initialSettings?.whatsapp_url ||
         initialSettings?.vk_url || initialSettings?.instagram_url
       
-      // Обновляем остальные настройки только если их нет из SSR
       if (!hasSocialFromSSR) {
         api.get('/settings/footer-settings')
           .then(response => {
             const data = response.data || {}
             setSettings((prev) => ({
+              ...prev, // Сохраняем уже загруженные footerLinks
               phone: data.phone || prev.phone || '+90 552 582 14 97',
               email: data.email || prev.email || envSupportEmail,
               location: resolveValue(data.location, defaultLocation, 'Стамбул, Турция'),
@@ -104,7 +103,6 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
               vk_url: data.vk_url || prev.vk_url || '',
               instagram_url: data.instagram_url || prev.instagram_url || '',
               crypto_payment_text: resolveValue(data.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой'),
-              footerLinks: prev.footerLinks
             }))
           })
           .catch(err => console.error('Error fetching footer settings:', err))

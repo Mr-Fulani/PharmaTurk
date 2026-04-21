@@ -19,7 +19,7 @@ class PageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Page
-        fields = ("id", "slug", "title", "content", "is_active", "show_in_footer", "footer_order", "created_at", "updated_at")
+        fields = ("id", "slug", "title", "content", "is_active", "footer_order", "created_at", "updated_at")
         read_only_fields = ("created_at", "updated_at")
 
     def get_title(self, obj: Page) -> str:  # pragma: no cover - trivial
