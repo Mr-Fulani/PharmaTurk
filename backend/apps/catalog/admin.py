@@ -315,7 +315,7 @@ class ServiceAttributeInline(admin.TabularInline):
     """Inline для атрибутов услуги (площадь, срок, формат и т.д.)."""
     model = ServiceAttribute
     extra = 0
-    fields = ('attribute_key', 'value', 'sort_order')
+    fields = ('attribute_key', 'value', 'value_ru', 'value_en', 'sort_order')
     verbose_name = _("🛠️ Атрибут услуги")
     verbose_name_plural = _("🛠️ Атрибуты услуг (динамические)")
 

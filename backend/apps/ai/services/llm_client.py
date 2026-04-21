@@ -1,9 +1,11 @@
 import os
 import json
 import time
+import requests
 from typing import List, Dict, Optional, Union
 from openai import OpenAI, AsyncOpenAI
 from django.conf import settings
+from django.core.cache import cache
 import logging
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,32 @@ class LLMClient:
             'gpt-4o': {'input': 0.005, 'output': 0.015},
             'text-embedding-3-small': {'input': 0.00002, 'output': 0},
         }
+
+    def _notify_admin_quota_error(self):
+        """Оповещение админа в Telegram об исчерпании лимита (с антиспам кэшем на 1 час)."""
+        bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
+        chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "")
+        
+        if not bot_token or not chat_id:
+            return
+            
+        cache_key = "openai_quota_alert_sent"
+        if not cache.get(cache_key):
+            text = (
+                "⚠️ *Внимание!*\n\n"
+                "На аккаунте OpenAI закончились средства (Insufficient Quota) или превышен лимит.\n"
+                "Генерация контента (AI) временно остановлена.\n\n"
+                "Пожалуйста, пополните баланс на platform.openai.com."
+            )
+            try:
+                requests.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+                    timeout=5
+                )
+                cache.set(cache_key, True, 3600)  # Раз в час
+            except Exception as e:
+                logger.error(f"Failed to send Telegram quota alert: {e}")
 
     def get_embedding(self, text: str) -> List[float]:
         """Получить векторное представление текста."""
@@ -115,8 +143,16 @@ class LLMClient:
                 break
             except Exception as e:
                 msg = str(e).lower()
+                is_quota_error = "insufficient_quota" in msg
                 is_rate_limit = "rate limit" in msg or "too many requests" in msg or "429" in msg
                 is_server_busy = "try again" in msg or "overloaded" in msg
+                
+                # Не пытаемся повторить запрос, если кончились деньги на балансе
+                if is_quota_error:
+                    logger.error(f"OpenAI Insufficient Quota: {e}")
+                    self._notify_admin_quota_error()
+                    raise
+                    
                 logger.warning(f"LLM generation retry {attempt + 1}/{max_retries}: {e}")
                 if attempt >= max_retries or not (is_rate_limit or is_server_busy):
                     logger.error(f"LLM generation error: {e}")
@@ -206,8 +242,16 @@ class LLMClient:
                 break
             except Exception as e:
                 msg = str(e).lower()
+                is_quota_error = "insufficient_quota" in msg
                 is_rate_limit = "rate limit" in msg or "too many requests" in msg or "429" in msg
                 is_server_busy = "try again" in msg or "overloaded" in msg
+                
+                # Не пытаемся повторить запрос, если кончились деньги на балансе
+                if is_quota_error:
+                    logger.error(f"OpenAI Insufficient Quota: {e}")
+                    self._notify_admin_quota_error()
+                    raise
+                    
                 logger.warning(f"Vision API retry {attempt + 1}/{max_retries}: {e}")
                 if attempt >= max_retries or not (is_rate_limit or is_server_busy):
                     logger.error(f"Vision API error: {e}")

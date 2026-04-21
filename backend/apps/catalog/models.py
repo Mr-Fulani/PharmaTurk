@@ -3382,6 +3382,8 @@ class ServiceAttribute(models.Model):
         max_length=500,
         help_text=_("Например: '50 м²', '3-5 дней', 'онлайн/очно'")
     )
+    value_ru = models.CharField(_("Значение (RU)"), max_length=500, blank=True, null=True)
+    value_en = models.CharField(_("Значение (EN)"), max_length=500, blank=True, null=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
 
     class Meta:
@@ -3395,7 +3397,8 @@ class ServiceAttribute(models.Model):
 
     def __str__(self):
         key_name = self.attribute_key.name if self.attribute_key else "Unknown"
-        return f"{self.service.name} — {key_name}: {self.value}"
+        val = self.value_ru or self.value_en or self.value
+        return f"{self.service.name} — {key_name}: {val}"
 
 
 class ServiceImage(models.Model):
