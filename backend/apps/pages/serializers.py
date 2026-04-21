@@ -16,6 +16,9 @@ class PageSerializer(serializers.ModelSerializer):
     """
     title = serializers.SerializerMethodField()
     content = serializers.SerializerMethodField()
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    og_image = serializers.SerializerMethodField()
 
     class Meta:
         model = Page
@@ -33,6 +36,17 @@ class PageSerializer(serializers.ModelSerializer):
     def get_meta_description(self, obj: Page) -> str:  # pragma: no cover - trivial
         lang = self.context.get("lang") or "ru"
         return obj.get_meta_description(lang=lang)
+
+    def get_og_image(self, obj: Page) -> str:  # pragma: no cover - trivial
+        if not obj.og_image:
+            return ""
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(obj.og_image.url)
+        try:
+            return obj.og_image.url
+        except Exception:
+            return ""
 
     def get_content(self, obj: Page) -> str:  # pragma: no cover - trivial
         lang = self.context.get("lang") or "ru"
