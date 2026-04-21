@@ -4193,10 +4193,22 @@ class ServiceAttributeSerializer(serializers.ModelSerializer):
 
     key = serializers.ReadOnlyField(source='attribute_key.slug')
     key_display = serializers.ReadOnlyField(source='attribute_key.name')
+    value = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceAttribute
         fields = ['id', 'key', 'key_display', 'value', 'sort_order']
+
+    def get_value(self, obj):
+        from django.utils import translation
+        lang = translation.get_language()
+        
+        if lang == 'ru' and obj.value_ru:
+            return obj.value_ru
+        if lang == 'en' and obj.value_en:
+            return obj.value_en
+            
+        return obj.value
 
 
 class ServiceSerializer(serializers.ModelSerializer):
