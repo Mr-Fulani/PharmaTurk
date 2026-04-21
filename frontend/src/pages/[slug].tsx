@@ -56,7 +56,8 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
 
   try {
     const lang = ctx.locale || 'ru'
-    const res = await axios.get(`${getInternalApiUrl('pages')}${slug}/?lang=${lang}`)
+    // Исправлено: добавлен пропущенный / через правильный вызов getInternalApiUrl
+    const res = await axios.get(getInternalApiUrl(`pages/${slug}/`) + `?lang=${lang}`)
     pageData = res.data
   } catch (error) {
     console.error(`Failed to fetch static page: ${slug}`)
