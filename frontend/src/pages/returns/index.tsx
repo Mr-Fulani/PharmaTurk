@@ -5,7 +5,7 @@ import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../../lib/urls'
 import { RefreshCcw, PackageCheck, HeadphonesIcon } from 'lucide-react'
-import { SITE_NAME } from '../../lib/siteMeta'
+import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
 
 export default function ReturnsPage({ pageData, footerSettings }: { pageData: any; footerSettings: { phone?: string | null; email?: string | null; location?: string | null; telegram_url?: string | null; whatsapp_url?: string | null; vk_url?: string | null; instagram_url?: string | null; crypto_payment_text?: string | null } }) {
     const { t } = useTranslation('common')
@@ -16,6 +16,12 @@ export default function ReturnsPage({ pageData, footerSettings }: { pageData: an
         <>
             <Head>
                 <title>{pageData?.title || t('returns_title', 'Возврат и обмен')} — {SITE_NAME}</title>
+                {pageData?.meta_description && <meta name="description" content={pageData.meta_description} />}
+                <meta property="og:title" content={pageData?.meta_title || pageData?.title || t('returns_title', 'Возврат и обмен')} />
+                {pageData?.meta_description && <meta property="og:description" content={pageData.meta_description} />}
+                <meta property="og:type" content="website" />
+                <meta property="og:url" content={`${SITE_URL}/returns`} />
+                {pageData?.og_image && <meta property="og:image" content={pageData.og_image} />}
             </Head>
             <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">
