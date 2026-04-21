@@ -91,21 +91,15 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   // Форматируем дату на сервере, чтобы избежать Hydration Error
   const formattedDate = new Date().toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US')
 
-  // Карта OG-картинок по slug (файлы хранятся в frontend/public/)
-  const slugOgMap: Record<string, string> = {
-    'about-us': '/og-default.png',
-    'delivery': '/og-delivery.png',
-    'returns': '/og-returns.png',
-    'privacy': '/og-privacy.png',
-  }
-
   // Строим абсолютный URL для OG-картинки (мессенджеры требуют полный URL)
+  // og_image из API уже может быть полным CDN URL (https://cdn.mudaroba.com/...)
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
-  let ogImageAbsoluteUrl = `${siteUrl}${slugOgMap[slug] || '/og-default.png'}`
+  let ogImageAbsoluteUrl = `${siteUrl}/og-default.png` // глобальный fallback
 
   if (pageData.og_image) {
     const img = String(pageData.og_image)
     if (img.startsWith('http://') || img.startsWith('https://')) {
+      // Уже полный URL (CDN) — используем as-is
       ogImageAbsoluteUrl = img
     } else if (img.startsWith('/')) {
       ogImageAbsoluteUrl = `${siteUrl}${img}`
