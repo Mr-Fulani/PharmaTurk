@@ -40,67 +40,54 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
   }, [])
 
   useEffect(() => {
-    if (!initialSettings) return
-    setSettings((prev) => ({
-      phone: initialSettings.phone || prev.phone || '+90 552 582 14 97',
-      email: initialSettings.email || prev.email || envSupportEmail,
-      location: initialSettings.location || prev.location || defaultLocation,
-      telegram_url: initialSettings.telegram_url || prev.telegram_url || '',
-      whatsapp_url: initialSettings.whatsapp_url || prev.whatsapp_url || '',
-      vk_url: initialSettings.vk_url || prev.vk_url || '',
-      instagram_url: initialSettings.instagram_url || prev.instagram_url || '',
-      crypto_payment_text: initialSettings.crypto_payment_text || prev.crypto_payment_text || defaultCryptoText
-    }))
-  }, [initialSettings, defaultLocation, defaultCryptoText])
+    const isNonRu = !i18n.language?.toLowerCase().startsWith('ru')
+    
+    const resolveValue = (raw: string | undefined, defaultValue: string, defaultKey: string) => {
+      const trimmed = (raw || '').trim()
+      if (!trimmed) return defaultValue
+      // Если значение из базы совпадает с дефолтной русской строкой - используем перевод ключа
+      if (isNonRu && trimmed === defaultKey) return defaultValue
+      return trimmed
+    }
 
-  useEffect(() => {
-    // Загружаем настройки футера из API только на клиенте, если SSR не передал соцсети
+    if (initialSettings) {
+      setSettings((prev) => ({
+        phone: initialSettings.phone || prev.phone || '+90 552 582 14 97',
+        email: initialSettings.email || prev.email || envSupportEmail,
+        location: resolveValue(initialSettings.location, defaultLocation, 'Стамбул, Турция'),
+        telegram_url: initialSettings.telegram_url || prev.telegram_url || '',
+        whatsapp_url: initialSettings.whatsapp_url || prev.whatsapp_url || '',
+        vk_url: initialSettings.vk_url || prev.vk_url || '',
+        instagram_url: initialSettings.instagram_url || prev.instagram_url || '',
+        crypto_payment_text: resolveValue(initialSettings.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой')
+      }))
+    }
+
     if (typeof window !== 'undefined') {
       const hasSocialFromSSR = initialSettings?.telegram_url || initialSettings?.whatsapp_url ||
         initialSettings?.vk_url || initialSettings?.instagram_url
-      if (hasSocialFromSSR) return // Не перезаписываем — SSR уже передал данные (работает локально без CORS)
+      
+      // Даже если есть данные из SSR, мы могли захотеть обновить их (или если SSR не полный)
+      // Но по вашей логике мы выходим. Чтобы перевод работал для SSR, мы его применили выше.
+      if (hasSocialFromSSR) return
 
       api.get('/settings/footer-settings')
         .then(response => {
           const data = response.data || {}
-          const rawLocation = (data.location || '').trim()
-          const rawCrypto = (data.crypto_payment_text || '').trim()
-          const isNonRu = !i18n.language?.toLowerCase().startsWith('ru')
-          const resolvedLocation = rawLocation
-            ? (isNonRu && rawLocation === 'Стамбул, Турция' ? defaultLocation : rawLocation)
-            : defaultLocation
-          const resolvedCrypto = rawCrypto
-            ? (isNonRu && rawCrypto === 'Возможна оплата криптовалютой' ? defaultCryptoText : rawCrypto)
-            : defaultCryptoText
           setSettings((prev) => ({
-            phone: data.phone || initialSettings?.phone || prev.phone || '+90 552 582 14 97',
-            email: data.email || initialSettings?.email || prev.email || envSupportEmail,
-            location: resolvedLocation || initialSettings?.location || prev.location || defaultLocation,
-            telegram_url: data.telegram_url || initialSettings?.telegram_url || prev.telegram_url || '',
-            whatsapp_url: data.whatsapp_url || initialSettings?.whatsapp_url || prev.whatsapp_url || '',
-            vk_url: data.vk_url || initialSettings?.vk_url || prev.vk_url || '',
-            instagram_url: data.instagram_url || initialSettings?.instagram_url || prev.instagram_url || '',
-            crypto_payment_text: resolvedCrypto || initialSettings?.crypto_payment_text || prev.crypto_payment_text || defaultCryptoText
+            phone: data.phone || prev.phone || '+90 552 582 14 97',
+            email: data.email || prev.email || envSupportEmail,
+            location: resolveValue(data.location, defaultLocation, 'Стамбул, Турция'),
+            telegram_url: data.telegram_url || prev.telegram_url || '',
+            whatsapp_url: data.whatsapp_url || prev.whatsapp_url || '',
+            vk_url: data.vk_url || prev.vk_url || '',
+            instagram_url: data.instagram_url || prev.instagram_url || '',
+            crypto_payment_text: resolveValue(data.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой')
           }))
         })
-        .catch(error => {
-          console.error('Ошибка загрузки настроек футера:', error)
-          setSettings((prev) => prev)
-        })
-    } else {
-      // На сервере используем значения по умолчанию
-      setSettings({
-        phone: '+90 552 582 14 97',
-        email: envSupportEmail,
-        location: defaultLocation,
-        telegram_url: '',
-        whatsapp_url: '',
-        vk_url: '',
-        instagram_url: '',
-        crypto_payment_text: defaultCryptoText
-      })
+        .catch(err => console.error('Error fetching footer settings:', err))
     }
-  }, [defaultLocation, defaultCryptoText, i18n.language, initialSettings])
+  }, [initialSettings, i18n.language, defaultLocation, defaultCryptoText, envSupportEmail])
 
   // Используем значения из API или значения по умолчанию
   const phone = settings.phone
