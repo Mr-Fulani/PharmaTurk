@@ -120,25 +120,40 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
 
   // Товары из API
   try {
-    const productsRes = await axios.get(getInternalApiUrl('catalog/products/'), {
-      params: { lang: 'en', page_size: 500, is_active: true },
-      timeout: 8000,
-    })
-    const products = productsRes.data?.results || productsRes.data || []
-    for (const product of products) {
-      if (product.slug) {
-        const lastmod = product.updated_at
-          ? new Date(product.updated_at).toISOString().split('T')[0]
-          : today
-        const url = buildUrl(
-          `/product/${product.slug}`,
-          `/product/${product.slug}`,
-          'weekly',
-          0.7
-        )
-        url.lastmod = lastmod
-        urls.push(url)
+    let currentPage = 1
+    let totalPages = 1
+    const maxPagesLimit = 50 // Limit to 50,000 products to avoid timeout
+
+    while (currentPage <= totalPages && currentPage <= maxPagesLimit) {
+      const productsRes = await axios.get(getInternalApiUrl('catalog/products/'), {
+        params: { lang: 'en', page_size: 1000, is_active: true, page: currentPage },
+        timeout: 10000,
+      })
+      const data = productsRes.data
+      const products = data?.results || data || []
+
+      if (data?.count) {
+        totalPages = Math.ceil(data.count / 1000)
+      } else {
+        totalPages = 1
       }
+
+      for (const product of products) {
+        if (product.slug) {
+          const lastmod = product.updated_at
+            ? new Date(product.updated_at).toISOString().split('T')[0]
+            : today
+          const url = buildUrl(
+            `/product/${product.slug}`,
+            `/product/${product.slug}`,
+            'weekly',
+            0.7
+          )
+          url.lastmod = lastmod
+          urls.push(url)
+        }
+      }
+      currentPage++
     }
   } catch {
     // Если API недоступен — продолжаем без товаров
@@ -146,25 +161,40 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
 
   // Услуги из API
   try {
-    const servicesRes = await axios.get(getInternalApiUrl('catalog/services/'), {
-      params: { lang: 'en', page_size: 500, is_active: true },
-      timeout: 5000,
-    })
-    const services = servicesRes.data?.results || servicesRes.data || []
-    for (const service of services) {
-      if (service.slug) {
-        const lastmod = service.updated_at
-          ? new Date(service.updated_at).toISOString().split('T')[0]
-          : today
-        const url = buildUrl(
-          `/product/uslugi/${service.slug}`,
-          `/product/uslugi/${service.slug}`,
-          'weekly',
-          0.75
-        )
-        url.lastmod = lastmod
-        urls.push(url)
+    let currentPage = 1
+    let totalPages = 1
+    const maxPagesLimit = 50
+
+    while (currentPage <= totalPages && currentPage <= maxPagesLimit) {
+      const servicesRes = await axios.get(getInternalApiUrl('catalog/services/'), {
+        params: { lang: 'en', page_size: 1000, is_active: true, page: currentPage },
+        timeout: 10000,
+      })
+      const data = servicesRes.data
+      const services = data?.results || data || []
+
+      if (data?.count) {
+        totalPages = Math.ceil(data.count / 1000)
+      } else {
+        totalPages = 1
       }
+
+      for (const service of services) {
+        if (service.slug) {
+          const lastmod = service.updated_at
+            ? new Date(service.updated_at).toISOString().split('T')[0]
+            : today
+          const url = buildUrl(
+            `/product/uslugi/${service.slug}`,
+            `/product/uslugi/${service.slug}`,
+            'weekly',
+            0.75
+          )
+          url.lastmod = lastmod
+          urls.push(url)
+        }
+      }
+      currentPage++
     }
   } catch {
     // Если API недоступен — продолжаем без услуг

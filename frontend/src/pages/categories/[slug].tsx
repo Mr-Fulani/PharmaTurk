@@ -1438,11 +1438,25 @@ export default function CategoryPage({
     if (Array.isArray(v)) return (v as any[]).map((x) => (typeof x === 'string' ? x : '')).join('')
     return v != null ? String(v) : ''
   }, [localizedCategoryName])
-  const ogTitle = useMemo(() => `${titleText} — Mudaroba`, [titleText])
-  const ogDescription = useMemo(
-    () => categoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() }),
-    [categoryDescription, titleText, t]
-  )
+  const ogTitle = useMemo(() => {
+    return (currentCategory?.og_title || currentCategory?.meta_title || `${titleText} — Mudaroba`).trim()
+  }, [currentCategory, titleText])
+
+  const metaTitle = useMemo(() => {
+    return (currentCategory?.meta_title || currentCategory?.og_title || `${titleText} - Mudaroba`).trim()
+  }, [currentCategory, titleText])
+
+  const ogDescription = useMemo(() => {
+    return (currentCategory?.og_description || currentCategory?.meta_description || categoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })).trim()
+  }, [currentCategory, categoryDescription, titleText, t])
+
+  const metaDescription = useMemo(() => {
+    return (currentCategory?.meta_description || currentCategory?.og_description || categoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })).trim()
+  }, [currentCategory, categoryDescription, titleText, t])
+
+  const ogImageUrl = useMemo(() => {
+    return currentCategory?.og_image_url ? currentCategory.og_image_url : `${siteUrl}/apple-touch-icon.png`
+  }, [currentCategory, siteUrl])
   const breadcrumbSchema = useMemo(() => {
     const items = breadcrumbs.map((item, idx) => ({
       '@type': 'ListItem',
@@ -1460,16 +1474,19 @@ export default function CategoryPage({
   return (
     <>
       <Head>
-        <title>{titleText ? `${titleText} - Mudaroba` : 'Категория - Mudaroba'}</title>
-        <meta name="description" content={ogDescription} />
+        <title>{metaTitle}</title>
+        <meta name="description" content={metaDescription} />
+        {currentCategory?.meta_keywords && <meta name="keywords" content={currentCategory.meta_keywords} />}
         <link rel="canonical" href={canonicalUrl} />
         <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
         <meta property="og:title" content={ogTitle} />
         <meta property="og:description" content={ogDescription} />
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:type" content="website" />
+        <meta property="og:image" content={ogImageUrl} />
         <meta property="twitter:title" content={ogTitle} />
         <meta property="twitter:description" content={ogDescription} />
+        <meta property="twitter:image" content={ogImageUrl} />
         <meta property="twitter:card" content="summary_large_image" />
         <script
           type="application/ld+json"
