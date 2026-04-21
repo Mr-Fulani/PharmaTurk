@@ -24,12 +24,10 @@ interface FooterSettings {
 export default function Footer({ initialSettings }: { initialSettings?: Partial<FooterSettings> }) {
   const { t, i18n } = useTranslation('common')
   const theme = useTheme()
-  const [isMounted, setIsMounted] = useState(false)
   const envSupportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || ''
   const defaultLocation = t('footer_location', 'Стамбул, Турция')
   const defaultCryptoText = t('footer_crypto_payment', 'Возможна оплата криптовалютой')
   
-  // Инициализируем с дефолтными значениями, чтобы избежать проблем при SSR
   const [settings, setSettings] = useState<FooterSettings>({
     phone: initialSettings?.phone || '+90 552 582 14 97',
     email: initialSettings?.email || envSupportEmail,
@@ -42,9 +40,23 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
     footerLinks: []
   })
 
+  // Отдельное состояние для ссылок футера — не зависит от initialSettings
+  const [footerLinks, setFooterLinks] = useState<StaticPageLink[]>([])
+
+  // Загружаем ссылки ОДИН РАЗ при монтировании компонента и больше никогда не сбрасываем
   useEffect(() => {
-    setIsMounted(true)
-  }, [])
+    api.get('/pages/')
+      .then(response => {
+        const pages = response.data?.results || response.data || []
+        if (Array.isArray(pages) && pages.length > 0) {
+          setFooterLinks(pages.map((p: any) => ({
+            slug: p.slug,
+            title: p.title
+          })))
+        }
+      })
+      .catch(err => console.error('Error fetching footer pages:', err))
+  }, []) // пустой массив — запускается только при первом рендере
 
   useEffect(() => {
     const isNonRu = !i18n.language?.toLowerCase().startsWith('ru')
@@ -52,7 +64,6 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
     const resolveValue = (raw: string | undefined, defaultValue: string, defaultKey: string) => {
       const trimmed = (raw || '').trim()
       if (!trimmed) return defaultValue
-      // Если значение из базы совпадает с дефолтной русской строкой - используем перевод ключа
       if (isNonRu && trimmed === defaultKey) return defaultValue
       return trimmed
     }
@@ -67,48 +78,30 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
         vk_url: initialSettings.vk_url || prev.vk_url || '',
         instagram_url: initialSettings.instagram_url || prev.instagram_url || '',
         crypto_payment_text: resolveValue(initialSettings.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой'),
-        footerLinks: (initialSettings.footerLinks && initialSettings.footerLinks.length > 0) 
-          ? initialSettings.footerLinks 
-          : prev.footerLinks
+        footerLinks: [] // не используем это поле - используем отдельный state
       }))
     }
 
-    if (typeof window !== 'undefined') {
-      // Загружаем все активные статические страницы для футера
-      api.get('/pages/')
+    const hasSocialFromSSR = initialSettings?.telegram_url || initialSettings?.whatsapp_url ||
+      initialSettings?.vk_url || initialSettings?.instagram_url
+    
+    if (!hasSocialFromSSR) {
+      api.get('/settings/footer-settings')
         .then(response => {
-          const pages = response.data?.results || response.data || []
-          setSettings(prev => ({
+          const data = response.data || {}
+          setSettings((prev) => ({
             ...prev,
-            footerLinks: pages.map((p: any) => ({
-              slug: p.slug,
-              title: p.title
-            }))
+            phone: data.phone || prev.phone || '+90 552 582 14 97',
+            email: data.email || prev.email || envSupportEmail,
+            location: resolveValue(data.location, defaultLocation, 'Стамбул, Турция'),
+            telegram_url: data.telegram_url || prev.telegram_url || '',
+            whatsapp_url: data.whatsapp_url || prev.whatsapp_url || '',
+            vk_url: data.vk_url || prev.vk_url || '',
+            instagram_url: data.instagram_url || prev.instagram_url || '',
+            crypto_payment_text: resolveValue(data.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой'),
           }))
         })
-        .catch(err => console.error('Error fetching footer pages:', err))
-
-      const hasSocialFromSSR = initialSettings?.telegram_url || initialSettings?.whatsapp_url ||
-        initialSettings?.vk_url || initialSettings?.instagram_url
-      
-      if (!hasSocialFromSSR) {
-        api.get('/settings/footer-settings')
-          .then(response => {
-            const data = response.data || {}
-            setSettings((prev) => ({
-              ...prev, // Сохраняем уже загруженные footerLinks
-              phone: data.phone || prev.phone || '+90 552 582 14 97',
-              email: data.email || prev.email || envSupportEmail,
-              location: resolveValue(data.location, defaultLocation, 'Стамбул, Турция'),
-              telegram_url: data.telegram_url || prev.telegram_url || '',
-              whatsapp_url: data.whatsapp_url || prev.whatsapp_url || '',
-              vk_url: data.vk_url || prev.vk_url || '',
-              instagram_url: data.instagram_url || prev.instagram_url || '',
-              crypto_payment_text: resolveValue(data.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой'),
-            }))
-          })
-          .catch(err => console.error('Error fetching footer settings:', err))
-      }
+        .catch(err => console.error('Error fetching footer settings:', err))
     }
   }, [initialSettings, i18n.language, defaultLocation, defaultCryptoText, envSupportEmail])
 
@@ -281,8 +274,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
           <div className="text-center sm:text-left">
             <div className="mb-2 text-sm font-medium text-main">{t('footer_information')}</div>
             <ul className="space-y-1 text-sm text-main/80">
-              {settings.footerLinks.length > 0 ? (
-                settings.footerLinks.map((link) => (
+              {footerLinks.length > 0 ? (
+                footerLinks.map((link) => (
                   <li key={link.slug}>
                     <Link 
                       href={`/${link.slug}`} 
