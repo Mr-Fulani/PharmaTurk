@@ -92,8 +92,16 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
   // Используем значения из API или значения по умолчанию
   const phone = settings.phone
   const email = settings.email
-  const location = settings.location
-  const cryptoText = settings.crypto_payment_text || defaultCryptoText
+  // Переводим прямо при рендере: если значение из базы — это русская строка по умолчанию,
+  // заменяем на переведённую версию через t(). Это гарантирует перевод при SSR и после гидрации.
+  const LOCATION_DEFAULT_RU = 'Стамбул, Турция'
+  const CRYPTO_DEFAULT_RU = 'Возможна оплата криптовалютой'
+  const location = (settings.location === LOCATION_DEFAULT_RU || !settings.location)
+    ? t('footer_location', LOCATION_DEFAULT_RU)
+    : settings.location
+  const cryptoText = (settings.crypto_payment_text === CRYPTO_DEFAULT_RU || !settings.crypto_payment_text)
+    ? t('footer_crypto_payment', CRYPTO_DEFAULT_RU)
+    : settings.crypto_payment_text
 
   return (
     <footer suppressHydrationWarning className="mt-10 border-t border-main shadow-xl transition-colors duration-200 dark:bg-[#0c1628] dark:border-[#1f2a3d] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.55)]" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>

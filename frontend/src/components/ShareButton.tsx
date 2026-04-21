@@ -37,8 +37,8 @@ export default function ShareButton({
   const getUrl = (): string => {
     if (pageUrl) return pageUrl
     const origin = getSiteOrigin()
-    // По-умолчанию локаль 'en', так что для 'ru' добавляем префикс '/ru'
-    const defaultLocale = (i18n.options as any)?.defaultLocale || 'en'
+    // По-умолчанию локаль 'ru', так что для 'en' добавляем префикс '/en'
+    const defaultLocale = (i18n.options as any)?.defaultLocale || 'ru'
     const locale = i18n.language && i18n.language !== defaultLocale ? `/${i18n.language}` : ''
     return `${origin}${locale}${buildProductUrl(productType, slug)}`
   }

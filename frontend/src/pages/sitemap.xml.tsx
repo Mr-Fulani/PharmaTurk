@@ -20,21 +20,21 @@ interface SitemapUrl {
 }
 
 function buildUrl(
-  enPath: string,
   ruPath: string,
+  enPath: string,
   changefreq: SitemapUrl['changefreq'] = 'weekly',
   priority = 0.8
 ): SitemapUrl {
-  const enHref = `${SITE_URL}${enPath}`
-  const ruHref = `${SITE_URL}/ru${ruPath}`
+  const ruHref = `${SITE_URL}${ruPath}`        // ru — без префикса (основной)
+  const enHref = `${SITE_URL}/en${enPath}`    // en — с /en
   return {
-    loc: enHref,
+    loc: ruHref,
     changefreq,
     priority,
     alternates: [
-      { lang: 'en', href: enHref },
       { lang: 'ru', href: ruHref },
-      { lang: 'x-default', href: enHref },
+      { lang: 'en', href: enHref },
+      { lang: 'x-default', href: ruHref },
     ],
   }
 }

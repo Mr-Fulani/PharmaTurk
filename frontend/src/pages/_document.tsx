@@ -11,7 +11,7 @@ interface MyDocumentProps extends DocumentInitialProps {
 class MyDocument extends Document<MyDocumentProps> {
   static async getInitialProps(ctx: DocumentContext): Promise<MyDocumentProps> {
     const initialProps = await Document.getInitialProps(ctx)
-    const locale = ctx.locale || 'en'
+    const locale = ctx.locale || 'ru'
     // Получаем путь без локального префикса для hreflang
     const rawPath = ctx.asPath || '/'
     // Убираем query-string для canonical
@@ -21,13 +21,13 @@ class MyDocument extends Document<MyDocumentProps> {
 
   render() {
     const siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'Mudaroba'
-    const { locale = 'en', path = '/' } = this.props
+    const { locale = 'ru', path = '/' } = this.props
 
     // Строим hreflang URL
-    // ru-вариант всегда /ru/... , en-вариант — без префикса
+    // ru-вариант — без префикса (основной язык), en-вариант — /en/...
     const cleanPath = path.replace(/^\/(ru|en)/, '') || '/'
-    const ruUrl = `${SITE_URL}/ru${cleanPath === '/' ? '' : cleanPath}`
-    const enUrl = `${SITE_URL}${cleanPath === '/' ? '' : cleanPath}`
+    const ruUrl = `${SITE_URL}${cleanPath === '/' ? '' : cleanPath}`
+    const enUrl = `${SITE_URL}/en${cleanPath === '/' ? '' : cleanPath}`
 
     return (
       <Html lang={locale}>
@@ -60,7 +60,7 @@ class MyDocument extends Document<MyDocumentProps> {
           <meta name="application-name" content={siteName} />
           <meta property="og:site_name" content={siteName} />
           <meta property="og:type" content="website" />
-          <meta property="og:url" content={locale === 'ru' ? ruUrl : enUrl} />
+          <meta property="og:url" content={locale === 'en' ? enUrl : ruUrl} />
           <meta property="twitter:card" content="summary_large_image" />
 
           {/* ─── Yandex Webmaster (подтверждение прав) ────────────────────────── */}
@@ -71,8 +71,8 @@ class MyDocument extends Document<MyDocumentProps> {
           {/* ─── SEO: hreflang (мультиязычность) ─────────────────────────── */}
           <link rel="alternate" hrefLang="ru" href={ruUrl} />
           <link rel="alternate" hrefLang="en" href={enUrl} />
-          {/* x-default указывает на основной язык (en без префикса) */}
-          <link rel="alternate" hrefLang="x-default" href={enUrl} />
+          {/* x-default указывает на основной язык (ru без префикса) */}
+          <link rel="alternate" hrefLang="x-default" href={ruUrl} />
 
           {/* ─── Google Tag Manager (загружается только при наличии ID) ──── */}
           {GTM_ID && (
