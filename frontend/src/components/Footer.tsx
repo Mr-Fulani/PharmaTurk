@@ -72,31 +72,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
     }
 
     if (typeof window !== 'undefined') {
-      const hasSocialFromSSR = initialSettings?.telegram_url || initialSettings?.whatsapp_url ||
-        initialSettings?.vk_url || initialSettings?.instagram_url
-      
-      // Даже если есть данные из SSR, мы могли захотеть обновить их (или если SSR не полный)
-      // Но по вашей логике мы выходим. Чтобы перевод работал для SSR, мы его применили выше.
-      if (hasSocialFromSSR) return
-
-      api.get('/settings/footer-settings')
-        .then(response => {
-          const data = response.data || {}
-          setSettings((prev) => ({
-            phone: data.phone || prev.phone || '+90 552 582 14 97',
-            email: data.email || prev.email || envSupportEmail,
-            location: resolveValue(data.location, defaultLocation, 'Стамбул, Турция'),
-            telegram_url: data.telegram_url || prev.telegram_url || '',
-            whatsapp_url: data.whatsapp_url || prev.whatsapp_url || '',
-            vk_url: data.vk_url || prev.vk_url || '',
-            instagram_url: data.instagram_url || prev.instagram_url || '',
-            crypto_payment_text: resolveValue(data.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой'),
-            footerLinks: prev.footerLinks
-          }))
-        })
-        .catch(err => console.error('Error fetching footer settings:', err))
-
-      // Ссылка на страницы для футера
+      // Ссылка на страницы для футера должна загружаться ВСЕГДА на клиенте, 
+      // так как они пока не передаются через SSR во всех случаях.
       api.get('/pages/?show_in_footer=1')
         .then(response => {
           const pages = response.data?.results || response.data || []
@@ -109,6 +86,29 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
           }))
         })
         .catch(err => console.error('Error fetching footer pages:', err))
+
+      const hasSocialFromSSR = initialSettings?.telegram_url || initialSettings?.whatsapp_url ||
+        initialSettings?.vk_url || initialSettings?.instagram_url
+      
+      // Обновляем остальные настройки только если их нет из SSR
+      if (!hasSocialFromSSR) {
+        api.get('/settings/footer-settings')
+          .then(response => {
+            const data = response.data || {}
+            setSettings((prev) => ({
+              phone: data.phone || prev.phone || '+90 552 582 14 97',
+              email: data.email || prev.email || envSupportEmail,
+              location: resolveValue(data.location, defaultLocation, 'Стамбул, Турция'),
+              telegram_url: data.telegram_url || prev.telegram_url || '',
+              whatsapp_url: data.whatsapp_url || prev.whatsapp_url || '',
+              vk_url: data.vk_url || prev.vk_url || '',
+              instagram_url: data.instagram_url || prev.instagram_url || '',
+              crypto_payment_text: resolveValue(data.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой'),
+              footerLinks: prev.footerLinks
+            }))
+          })
+          .catch(err => console.error('Error fetching footer settings:', err))
+      }
     }
   }, [initialSettings, i18n.language, defaultLocation, defaultCryptoText, envSupportEmail])
 
