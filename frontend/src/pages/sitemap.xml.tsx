@@ -78,21 +78,44 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
 
   const urls: SitemapUrl[] = []
 
-  // Статические страницы
-  const staticPages: Array<[string, string, SitemapUrl['changefreq'], number]> = [
+  // 1. Статические страницы (базовые роуты)
+  const basePages: Array<[string, string, SitemapUrl['changefreq'], number]> = [
     ['/', '/', 'daily', 1.0],
     ['/categories', '/categories', 'daily', 0.9],
     ['/brands', '/brands', 'weekly', 0.7],
-    ['/delivery', '/delivery', 'monthly', 0.5],
-    ['/returns', '/returns', 'monthly', 0.5],
-    ['/privacy', '/privacy', 'monthly', 0.4],
     ['/how-to-order-medicines', '/how-to-order-medicines', 'monthly', 0.5],
     ['/testimonials', '/testimonials', 'weekly', 0.6],
     ['/categories/uslugi', '/categories/uslugi', 'weekly', 0.8],
   ]
 
-  for (const [enPath, ruPath, changefreq, priority] of staticPages) {
+  for (const [enPath, ruPath, changefreq, priority] of basePages) {
     urls.push(buildUrl(enPath, ruPath, changefreq, priority))
+  }
+
+  // 2. Динамические страницы из базы (О нас, Доставка, Возврат и т.д.)
+  try {
+    const pagesRes = await axios.get(getInternalApiUrl('pages/'), {
+      params: { is_active: true },
+      timeout: 5000,
+    })
+    const pages = pagesRes.data?.results || pagesRes.data || []
+    for (const page of pages) {
+      if (page.slug) {
+        // Пропускаем те, что уже добавлены вручную (на всякий случай)
+        const path = `/${page.slug}`
+        if (urls.some(u => u.loc.endsWith(path))) continue
+
+        const lastmod = page.updated_at
+          ? new Date(page.updated_at).toISOString().split('T')[0]
+          : today
+        
+        const url = buildUrl(path, path, 'monthly', 0.6)
+        url.lastmod = lastmod
+        urls.push(url)
+      }
+    }
+  } catch (err) {
+    console.error('Sitemap: Failed to fetch dynamic pages', err)
   }
 
   // Категории из API
