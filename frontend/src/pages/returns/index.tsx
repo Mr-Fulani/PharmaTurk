@@ -15,13 +15,14 @@ export default function ReturnsPage({ pageData, footerSettings }: { pageData: an
     return (
         <>
             <Head>
-                <title>{pageData?.title || t('returns_title', 'Возврат и обмен')} — {SITE_NAME}</title>
-                {pageData?.meta_description && <meta name="description" content={pageData.meta_description} />}
+                <title>{pageData?.meta_title || pageData?.title || t('returns_title', 'Возврат и обмен')} — {SITE_NAME}</title>
+                <meta name="description" content={pageData?.meta_description || t('returns_subtitle', 'Условия возврата и обмена товаров')} />
+                
                 <meta property="og:title" content={pageData?.meta_title || pageData?.title || t('returns_title', 'Возврат и обмен')} />
-                {pageData?.meta_description && <meta property="og:description" content={pageData.meta_description} />}
+                <meta property="og:description" content={pageData?.meta_description || t('returns_subtitle', 'Условия возврата и обмена товаров')} />
                 <meta property="og:type" content="website" />
                 <meta property="og:url" content={`${SITE_URL}/returns`} />
-                {pageData?.og_image && <meta property="og:image" content={pageData.og_image} />}
+                <meta property="og:image" content={pageData?.og_image?.startsWith('http') ? pageData.og_image : `${SITE_URL}${pageData?.og_image || '/og-default.png'}`} />
             </Head>
             <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">

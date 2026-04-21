@@ -13,13 +13,14 @@ export default function PrivacyPage({ pageData }: { pageData: any }) {
     return (
         <>
             <Head>
-                <title>{pageData?.title || t('privacy_title', 'Политика конфиденциальности')} — {SITE_NAME}</title>
-                {pageData?.meta_description && <meta name="description" content={pageData.meta_description} />}
+                <title>{pageData?.meta_title || pageData?.title || t('privacy_title', 'Политика конфиденциальности')} — {SITE_NAME}</title>
+                <meta name="description" content={pageData?.meta_description || t('privacy_subtitle', 'Политика конфиденциальности и защиты данных')} />
+                
                 <meta property="og:title" content={pageData?.meta_title || pageData?.title || t('privacy_title', 'Политика конфиденциальности')} />
-                {pageData?.meta_description && <meta property="og:description" content={pageData.meta_description} />}
+                <meta property="og:description" content={pageData?.meta_description || t('privacy_subtitle', 'Политика конфиденциальности и защиты данных')} />
                 <meta property="og:type" content="website" />
                 <meta property="og:url" content={`${SITE_URL}/privacy`} />
-                {pageData?.og_image && <meta property="og:image" content={pageData.og_image} />}
+                <meta property="og:image" content={pageData?.og_image?.startsWith('http') ? pageData.og_image : `${SITE_URL}${pageData?.og_image || '/og-default.png'}`} />
             </Head>
             <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">
