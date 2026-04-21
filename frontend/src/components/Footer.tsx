@@ -67,7 +67,9 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
         vk_url: initialSettings.vk_url || prev.vk_url || '',
         instagram_url: initialSettings.instagram_url || prev.instagram_url || '',
         crypto_payment_text: resolveValue(initialSettings.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой'),
-        footerLinks: initialSettings.footerLinks || prev.footerLinks || []
+        footerLinks: (initialSettings.footerLinks && initialSettings.footerLinks.length > 0) 
+          ? initialSettings.footerLinks 
+          : prev.footerLinks
       }))
     }
 
