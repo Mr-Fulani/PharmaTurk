@@ -26,5 +26,13 @@ class PageAdmin(admin.ModelAdmin):
         (None, {"fields": ("slug", "is_active", "footer_order")} ),
         ("English", {"fields": ("title_en", "content_en")} ),
         ("Русский", {"fields": ("title_ru", "content_ru")} ),
+        ("SEO / Соцсети", {
+            "classes": ("collapse",),
+            "fields": (
+                "meta_title_ru", "meta_title_en", 
+                "meta_description_ru", "meta_description_en", 
+                "og_image"
+            )
+        }),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )

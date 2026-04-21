@@ -31,6 +31,19 @@ class Page(models.Model):
 
     is_active = models.BooleanField(default=True, verbose_name="Опубликовано")
     footer_order = models.PositiveIntegerField(default=0, verbose_name="Порядок в футере")
+
+    # SEO / Open Graph
+    meta_title_en = models.CharField(max_length=255, blank=True, verbose_name="SEO Title (EN)")
+    meta_title_ru = models.CharField(max_length=255, blank=True, verbose_name="SEO Title (RU)")
+    meta_description_en = models.TextField(blank=True, verbose_name="SEO Description (EN)")
+    meta_description_ru = models.TextField(blank=True, verbose_name="SEO Description (RU)")
+    og_image = models.ImageField(
+        upload_to="pages/og/", 
+        blank=True, 
+        null=True, 
+        verbose_name="OG Image",
+        help_text="Изображение для превью в соцсетях (1200x630px)"
+    )
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -52,12 +65,22 @@ class Page(models.Model):
         super().save(*args, **kwargs)
 
     def get_title(self, lang: str = "ru") -> str:
-        """Возвращает заголовок для заданного языка.
-
-        Если для запрошенного языка заголовок пуст, возвращается первый доступный (en/ru).
-        """
+        """Возвращает заголовок для заданного языка."""
         return getattr(self, f"title_{lang}", None) or getattr(self, "title_en") or getattr(self, "title_ru") or ""
 
     def get_content(self, lang: str = "ru") -> str:
         """Возвращает HTML-контент для заданного языка с fallback'ом."""
         return getattr(self, f"content_{lang}", None) or getattr(self, "content_en") or getattr(self, "content_ru") or ""
+
+    def get_meta_title(self, lang: str = "ru") -> str:
+        """Возвращает SEO заголовок с fallback'ом на обычный заголовок."""
+        return (getattr(self, f"meta_title_{lang}", None) or 
+                getattr(self, "meta_title_en") or 
+                getattr(self, "meta_title_ru") or 
+                self.get_title(lang))
+
+    def get_meta_description(self, lang: str = "ru") -> str:
+        """Возвращает SEO описание."""
+        return (getattr(self, f"meta_description_{lang}", None) or 
+                getattr(self, "meta_description_en") or 
+                getattr(self, "meta_description_ru") or "")

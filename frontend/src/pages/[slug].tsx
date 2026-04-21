@@ -4,12 +4,15 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../lib/urls'
-import { SITE_NAME } from '../lib/siteMeta'
+import { SITE_NAME, SITE_URL } from '../lib/siteMeta'
 
 interface PageData {
   title: string
   content: string
   slug: string
+  meta_title?: string
+  meta_description?: string
+  og_image?: string
 }
 
 export default function GenericStaticPage({ pageData, formattedDate }: { pageData: PageData | null; formattedDate: string }) {
@@ -23,10 +26,27 @@ export default function GenericStaticPage({ pageData, formattedDate }: { pageDat
     )
   }
 
+  const seoTitle = pageData.meta_title || pageData.title
+  const fullTitle = `${seoTitle} — ${SITE_NAME}`
+
   return (
     <>
       <Head>
-        <title>{`${pageData.title} — ${SITE_NAME}`}</title>
+        <title>{fullTitle}</title>
+        {pageData.meta_description && (
+          <meta name="description" content={pageData.meta_description} />
+        )}
+        
+        {/* Open Graph / Social Media */}
+        <meta property="og:title" content={seoTitle} />
+        {pageData.meta_description && (
+          <meta property="og:description" content={pageData.meta_description} />
+        )}
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content={`${SITE_URL}/${pageData.slug}`} />
+        {pageData.og_image && (
+          <meta property="og:image" content={pageData.og_image} />
+        )}
       </Head>
       <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">

@@ -19,12 +19,20 @@ class PageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Page
-        fields = ("id", "slug", "title", "content", "is_active", "footer_order", "created_at", "updated_at")
+        fields = ("id", "slug", "title", "content", "meta_title", "meta_description", "og_image", "is_active", "footer_order", "created_at", "updated_at")
         read_only_fields = ("created_at", "updated_at")
 
     def get_title(self, obj: Page) -> str:  # pragma: no cover - trivial
         lang = self.context.get("lang") or "ru"
         return obj.get_title(lang=lang)
+
+    def get_meta_title(self, obj: Page) -> str:  # pragma: no cover - trivial
+        lang = self.context.get("lang") or "ru"
+        return obj.get_meta_title(lang=lang)
+
+    def get_meta_description(self, obj: Page) -> str:  # pragma: no cover - trivial
+        lang = self.context.get("lang") or "ru"
+        return obj.get_meta_description(lang=lang)
 
     def get_content(self, obj: Page) -> str:  # pragma: no cover - trivial
         lang = self.context.get("lang") or "ru"
