@@ -4,6 +4,11 @@ import { useTheme } from '../context/ThemeContext'
 import api from '../lib/api'
 import Link from 'next/link'
 
+interface StaticPageLink {
+  slug: string
+  title: string
+}
+
 interface FooterSettings {
   phone: string
   email: string
@@ -13,6 +18,7 @@ interface FooterSettings {
   vk_url: string
   instagram_url: string
   crypto_payment_text: string
+  footerLinks: StaticPageLink[]
 }
 
 export default function Footer({ initialSettings }: { initialSettings?: Partial<FooterSettings> }) {
@@ -32,7 +38,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
     whatsapp_url: initialSettings?.whatsapp_url || '',
     vk_url: initialSettings?.vk_url || '',
     instagram_url: initialSettings?.instagram_url || '',
-    crypto_payment_text: initialSettings?.crypto_payment_text || 'Возможна оплата криптовалютой'
+    crypto_payment_text: initialSettings?.crypto_payment_text || 'Возможна оплата криптовалютой',
+    footerLinks: []
   })
 
   useEffect(() => {
@@ -59,7 +66,8 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
         whatsapp_url: initialSettings.whatsapp_url || prev.whatsapp_url || '',
         vk_url: initialSettings.vk_url || prev.vk_url || '',
         instagram_url: initialSettings.instagram_url || prev.instagram_url || '',
-        crypto_payment_text: resolveValue(initialSettings.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой')
+        crypto_payment_text: resolveValue(initialSettings.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой'),
+        footerLinks: initialSettings.footerLinks || prev.footerLinks || []
       }))
     }
 
@@ -82,10 +90,25 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
             whatsapp_url: data.whatsapp_url || prev.whatsapp_url || '',
             vk_url: data.vk_url || prev.vk_url || '',
             instagram_url: data.instagram_url || prev.instagram_url || '',
-            crypto_payment_text: resolveValue(data.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой')
+            crypto_payment_text: resolveValue(data.crypto_payment_text, defaultCryptoText, 'Возможна оплата криптовалютой'),
+            footerLinks: prev.footerLinks
           }))
         })
         .catch(err => console.error('Error fetching footer settings:', err))
+
+      // Ссылка на страницы для футера
+      api.get('/pages/?show_in_footer=1')
+        .then(response => {
+          const pages = response.data?.results || response.data || []
+          setSettings(prev => ({
+            ...prev,
+            footerLinks: pages.map((p: any) => ({
+              slug: p.slug,
+              title: p.title
+            }))
+          }))
+        })
+        .catch(err => console.error('Error fetching footer pages:', err))
     }
   }, [initialSettings, i18n.language, defaultLocation, defaultCryptoText, envSupportEmail])
 
@@ -258,9 +281,24 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
           <div className="text-center sm:text-left">
             <div className="mb-2 text-sm font-medium text-main">{t('footer_information')}</div>
             <ul className="space-y-1 text-sm text-main/80">
-              <li><Link href="/delivery" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_delivery_payment')}</Link></li>
-              <li><Link href="/returns" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_return')}</Link></li>
-              <li><Link href="/privacy" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_privacy')}</Link></li>
+              {settings.footerLinks.length > 0 ? (
+                settings.footerLinks.map((link) => (
+                  <li key={link.slug}>
+                    <Link 
+                      href={`/${link.slug}`} 
+                      className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium"
+                    >
+                      {link.title}
+                    </Link>
+                  </li>
+                ))
+              ) : (
+                <>
+                  <li><Link href="/delivery" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_delivery_payment', 'Доставка и оплата')}</Link></li>
+                  <li><Link href="/returns" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_return', 'Возврат товара')}</Link></li>
+                  <li><Link href="/privacy" className="transition-all duration-200 hover:text-red-600 hover:underline hover:font-medium">{t('footer_privacy', 'Политика конфиденциальности')}</Link></li>
+                </>
+              )}
             </ul>
           </div>
         </div>

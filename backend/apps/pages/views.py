@@ -10,6 +10,33 @@ from .models import Page
 from .serializers import PageSerializer
 
 
+class PageListView(generics.ListAPIView):
+    """Возвращает список активных страниц.
+    
+    Может быть отфильтрован через ?show_in_footer=1
+    """
+    queryset = Page.objects.filter(is_active=True)
+    serializer_class = PageSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        lang = (
+            self.request.GET.get("lang")
+            or self.request.GET.get("locale")
+            or self.request.headers.get("X-Language", "").split("-")[0].lower() or "ru"
+        )
+        context["lang"] = lang
+        return context
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        show_in_footer = self.request.GET.get("show_in_footer")
+        if show_in_footer in ["1", "true", "True"]:
+            qs = qs.filter(show_in_footer=True)
+        return qs
+
+
 class PageDetailView(generics.RetrieveAPIView):
     """Возвращает данные страницы по её slug.
 

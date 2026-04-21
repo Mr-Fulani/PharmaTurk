@@ -30,13 +30,16 @@ class Page(models.Model):
     content_ru = models.TextField(blank=True, verbose_name="Content (RU)")
 
     is_active = models.BooleanField(default=True, verbose_name="Опубликовано")
+    show_in_footer = models.BooleanField(default=False, verbose_name="Показывать в футере")
+    footer_order = models.PositiveIntegerField(default=0, verbose_name="Порядок в футере")
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = "📄 Статическая страница"
         verbose_name_plural = "📄 Контент — Статические страницы"
-        ordering = ("-updated_at",)
+        ordering = ("footer_order", "-updated_at",)
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         return self.title_ru or self.title_en or self.slug

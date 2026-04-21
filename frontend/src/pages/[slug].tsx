@@ -1,65 +1,78 @@
+import Head from 'next/head'
+import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
-
-/**
- * Динамическая страница для отображения статических страниц (delivery, returns, privacy и т.д.).
- *
- * Используем getServerSideProps для SSR: сервер получает локализованный контент с бэкенда
- * и передаёт его в компонент. Locale берётся из `context.locale` (next.js) и передаётся
- * в GET-параметре `lang` к API. Также загружаем переводы через serverSideTranslations,
- * чтобы t('...') в Header/other components совпадали на сервере и клиенте.
- */
-
-import React from 'react'
 import { GetServerSideProps } from 'next'
-const nextI18NextConfig = require('../../next-i18next.config.js')
+import axios from 'axios'
+import { getInternalApiUrl } from '../lib/urls'
+import { SITE_NAME } from '../lib/siteMeta'
 
-type PageProps = {
-  page: {
-    slug: string
-    title: string
-    content: string
-  } | null
+interface PageData {
+  title: string
+  content: string
+  slug: string
 }
 
-const Page: React.FC<PageProps> = ({ page }) => {
-  if (!page) return <div>Page not found</div>
+export default function GenericStaticPage({ pageData }: { pageData: PageData | null }) {
+  const { t } = useTranslation('common')
+
+  if (!pageData) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <h1 className="text-2xl font-bold text-main">{t('page_not_found', 'Страница не найдена')}</h1>
+      </div>
+    )
+  }
+
   return (
-    <div className="container mx-auto py-8">
-      <h1 className="text-2xl font-bold mb-4">{page.title}</h1>
-      {/* Контент сервера считается безопасным: админ контролирует HTML. При необходимости можно очистить его дополнительно. */}
-      <div dangerouslySetInnerHTML={{ __html: page.content }} />
-    </div>
+    <>
+      <Head>
+        <title>{pageData.title} — {SITE_NAME}</title>
+      </Head>
+      <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">
+          <h1 className="mb-8 text-3xl font-bold text-main md:text-5xl text-center">
+            {pageData.title}
+          </h1>
+
+          <div 
+            className="prose prose-indigo max-w-none text-main/80 mb-12 dark:prose-invert"
+            dangerouslySetInnerHTML={{ __html: pageData.content }}
+          />
+
+          <div className="h-px w-full bg-gradient-to-r from-transparent via-gray-200 to-transparent dark:via-gray-700 mb-8"></div>
+          
+          <div className="text-center text-sm text-main/60">
+            {t('last_updated', 'Последнее обновление')}: {new Date().toLocaleDateString()}
+          </div>
+        </div>
+      </main>
+    </>
   )
 }
 
-export const getServerSideProps: GetServerSideProps = async (context) => {
-  const { params, locale } = context
-  const slug = params?.slug
-  if (!slug) return { notFound: true }
-  const lang = locale || nextI18NextConfig.i18n.defaultLocale || 'ru'
-  const { getInternalApiUrl } = await import('../lib/urls')
-  const url = `${getInternalApiUrl('pages/' + slug)}/?lang=${lang}`
+export const getServerSideProps: GetServerSideProps = async (ctx) => {
+  const { slug } = ctx.params as { slug: string }
+  let pageData = null
 
-  let page = null
   try {
-    const res = await fetch(url)
-    if (res.ok) {
-      page = await res.json()
+    const lang = ctx.locale || 'ru'
+    const res = await axios.get(`${getInternalApiUrl('pages')}${slug}/?lang=${lang}`)
+    pageData = res.data
+  } catch (error) {
+    console.error(`Failed to fetch static page: ${slug}`)
+  }
+
+  // Если страница не найдена в API, возвращаем 404
+  if (!pageData) {
+    return {
+      notFound: true,
     }
-  } catch (e) {
-    // ignore
   }
 
-  const { fetchFooterSettings } = await import('../lib/footerSettings')
-  const footerSettings = await fetchFooterSettings()
-
-  if (!page) {
-    const i18nProps = await serverSideTranslations(lang, ['common'])
-    return { props: { page: null, footerSettings, ...i18nProps } }
+  return {
+    props: {
+      pageData,
+      ...(await serverSideTranslations(ctx.locale ?? 'ru', ['common'])),
+    },
   }
-
-  const i18nProps = await serverSideTranslations(lang, ['common'])
-  return { props: { page, footerSettings, ...i18nProps } }
 }
-
-export default Page
