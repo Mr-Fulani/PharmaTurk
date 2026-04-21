@@ -91,17 +91,25 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   // Форматируем дату на сервере, чтобы избежать Hydration Error
   const formattedDate = new Date().toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US')
 
+  // Карта OG-картинок по slug (файлы хранятся в frontend/public/)
+  const slugOgMap: Record<string, string> = {
+    'about-us': '/og-default.png',
+    'delivery': '/og-delivery.png',
+    'returns': '/og-returns.png',
+    'privacy': '/og-privacy.png',
+  }
+
   // Строим абсолютный URL для OG-картинки (мессенджеры требуют полный URL)
-  // og_image из API — это относительный path (pages/og/...) или абсолютный URL бэкенда
-  // Используем публичный fallback-файл как дефолтный
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
-  let ogImageAbsoluteUrl = `${siteUrl}/og-default.png`
+  let ogImageAbsoluteUrl = `${siteUrl}${slugOgMap[slug] || '/og-default.png'}`
+
   if (pageData.og_image) {
     const img = String(pageData.og_image)
     if (img.startsWith('http://') || img.startsWith('https://')) {
       ogImageAbsoluteUrl = img
+    } else if (img.startsWith('/')) {
+      ogImageAbsoluteUrl = `${siteUrl}${img}`
     } else {
-      // Путь вида "pages/og/default_og.png" — добавляем /media/ prefix
       ogImageAbsoluteUrl = `${siteUrl}/media/${img.replace(/^\//, '')}`
     }
   }
