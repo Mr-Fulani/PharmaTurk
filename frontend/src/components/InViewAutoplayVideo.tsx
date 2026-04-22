@@ -15,9 +15,6 @@ export type InViewAutoplayVideoProps = {
   onError?: (e: React.SyntheticEvent<HTMLVideoElement>) => void
 }
 
-/**
- * Видео в карточке: по умолчанию ленивая загрузка по IntersectionObserver; muted loop.
- */
 export default function InViewAutoplayVideo({
   src,
   poster,
@@ -28,7 +25,6 @@ export default function InViewAutoplayVideo({
   onError,
 }: InViewAutoplayVideoProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
   const [shouldLoad, setShouldLoad] = useState(!deferUntilInView)
 
   useEffect(() => {
@@ -43,7 +39,10 @@ export default function InViewAutoplayVideo({
     }
     const io = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) setShouldLoad(true)
+        if (entry.isIntersecting) {
+          setShouldLoad(true)
+          io.disconnect()
+        }
       },
       { rootMargin, threshold: 0.08 }
     )
@@ -51,46 +50,31 @@ export default function InViewAutoplayVideo({
     return () => io.disconnect()
   }, [deferUntilInView, rootMargin])
 
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v) return
-    v.defaultMuted = true
-    v.muted = true
-    v.setAttribute('playsinline', '')
-  }, [])
-
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v || !shouldLoad || !src) return
-    const run = () => {
-      v.muted = true
-      v.play().catch(() => {})
-    }
-    if (v.readyState >= 2) run()
-    else {
-      v.addEventListener('loadeddata', run, { once: true })
-      v.addEventListener('canplay', run, { once: true })
-    }
-    return () => {
-      v.removeEventListener('loadeddata', run)
-      v.removeEventListener('canplay', run)
-    }
-  }, [shouldLoad, src])
-
   return (
     <div ref={wrapRef} className={`absolute inset-0 h-full w-full ${className}`}>
-      <video
-        ref={videoRef}
-        src={shouldLoad ? src : undefined}
-        poster={poster}
-        className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${videoClassName}`.trim()}
-        muted
-        loop
-        playsInline
-        preload={deferUntilInView ? 'none' : 'metadata'}
-        autoPlay
-        onError={onError}
-      />
+      {shouldLoad ? (
+        <video
+          src={src}
+          poster={poster}
+          className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${videoClassName}`.trim()}
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="metadata"
+          onError={onError}
+        />
+      ) : (
+        poster ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={poster}
+            alt="Video poster"
+            className={`pointer-events-none absolute inset-0 h-full w-full object-cover ${videoClassName}`.trim()}
+            loading="lazy"
+          />
+        ) : null
+      )}
     </div>
   )
 }
