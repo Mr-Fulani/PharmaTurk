@@ -2,6 +2,7 @@ import os
 import json
 import time
 import requests
+import random
 from typing import List, Dict, Optional, Union
 from openai import OpenAI, AsyncOpenAI
 from django.conf import settings
@@ -94,7 +95,7 @@ class LLMClient:
         json_mode: bool = True,
         temperature: float = 0.7,
         max_tokens: int = 1000,
-        max_retries: int = 6,
+        max_retries: int = 10,
         initial_backoff_ms: int = 250
     ) -> Dict:
         """
@@ -157,8 +158,13 @@ class LLMClient:
                 if attempt >= max_retries or not (is_rate_limit or is_server_busy):
                     logger.error(f"LLM generation error: {e}")
                     raise
-                time.sleep(backoff)
-                backoff = min(backoff * 2, 5.0)
+                
+                # При rate limit увеличиваем паузу и добавляем рандомный jitter (анти-спам)
+                sleep_time = backoff + (random.uniform(0, 1))
+                time.sleep(sleep_time)
+                
+                # Экспоненциальное увеличение задержки
+                backoff = min(backoff * 2, 15.0)
                 attempt += 1
 
         processing_time = int((time.time() - start_time) * 1000)
@@ -186,7 +192,7 @@ class LLMClient:
         images: List[Dict],  # Из R2MediaProcessor.get_product_images_batch
         prompt: str,
         json_mode: bool = True,
-        max_retries: int = 6,
+        max_retries: int = 10,
         initial_backoff_ms: int = 250
     ) -> Dict:
         """
@@ -256,8 +262,12 @@ class LLMClient:
                 if attempt >= max_retries or not (is_rate_limit or is_server_busy):
                     logger.error(f"Vision API error: {e}")
                     raise
-                time.sleep(backoff)
-                backoff = min(backoff * 2, 5.0)
+                
+                # При rate limit увеличиваем паузу и добавляем рандомный jitter
+                sleep_time = backoff + (random.uniform(0, 1))
+                time.sleep(sleep_time)
+                
+                backoff = min(backoff * 2, 15.0)
                 attempt += 1
 
         processing_time = int((time.time() - start_time) * 1000)
