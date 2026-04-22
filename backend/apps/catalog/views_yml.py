@@ -78,7 +78,7 @@ class YMLExportView(APIView):
         # Корневой элемент YML
         yml_catalog = ET.Element(
             "yml_catalog",
-            date=timezone.now().strftime("%Y-%m-%d %H:%M")
+            date=timezone.now().replace(microsecond=0).isoformat()
         )
         shop = ET.SubElement(yml_catalog, "shop")
 
