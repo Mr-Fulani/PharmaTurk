@@ -53,13 +53,28 @@ export default function InViewAutoplayVideo({
 
   useEffect(() => {
     const v = videoRef.current
-    if (!v || !shouldLoad) return
+    if (!v) return
+    v.defaultMuted = true
+    v.muted = true
+    v.setAttribute('playsinline', '')
+  }, [])
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !shouldLoad || !src) return
     const run = () => {
+      v.muted = true
       v.play().catch(() => {})
     }
     if (v.readyState >= 2) run()
-    else v.addEventListener('canplay', run, { once: true })
-    return () => v.removeEventListener('canplay', run)
+    else {
+      v.addEventListener('loadeddata', run, { once: true })
+      v.addEventListener('canplay', run, { once: true })
+    }
+    return () => {
+      v.removeEventListener('loadeddata', run)
+      v.removeEventListener('canplay', run)
+    }
   }, [shouldLoad, src])
 
   return (
