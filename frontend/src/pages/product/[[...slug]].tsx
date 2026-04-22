@@ -1208,9 +1208,16 @@ export default function ProductPage({
                             />
                           )
                         }
+                        const videoPoster =
+                          (img.image_url && !isVideoUrl(img.image_url)
+                            ? resolveMediaUrl(img.image_url)
+                            : null) ||
+                          (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
+                          undefined
                         return (
                           <video
                             src={resolveMediaUrl(img.video_url)}
+                            poster={videoPoster}
                             controls
                             playsInline
                             muted

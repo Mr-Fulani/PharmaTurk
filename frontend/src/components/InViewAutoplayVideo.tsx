@@ -73,7 +73,7 @@ export default function InViewAutoplayVideo({
         loop
         playsInline
         preload={deferUntilInView ? 'none' : 'metadata'}
-        autoPlay={false}
+        autoPlay
         onError={onError}
       />
     </div>
