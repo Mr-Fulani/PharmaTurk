@@ -15,7 +15,7 @@ interface PageData {
   og_image?: string
 }
 
-export default function GenericStaticPage({ pageData, formattedDate }: { pageData: PageData | null; formattedDate: string }) {
+export default function GenericStaticPage({ pageData }: { pageData: PageData | null }) {
   const { t } = useTranslation('common')
 
   if (!pageData) {
@@ -59,11 +59,7 @@ export default function GenericStaticPage({ pageData, formattedDate }: { pageDat
             dangerouslySetInnerHTML={{ __html: pageData.content }}
           />
 
-          <div className="h-px w-full bg-gradient-to-r from-transparent via-gray-200 to-transparent dark:via-gray-700 mb-8"></div>
-          
-          <div className="text-center text-sm text-main/60">
-            {t('last_updated', 'Последнее обновление')}: {formattedDate}
-          </div>
+
         </div>
       </main>
     </>
@@ -88,8 +84,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     }
   }
 
-  // Форматируем дату на сервере, чтобы избежать Hydration Error
-  const formattedDate = new Date().toLocaleDateString(lang === 'ru' ? 'ru-RU' : 'en-US')
+
 
   // Строим абсолютный URL для OG-картинки (мессенджеры требуют полный URL)
   // og_image из API уже может быть полным CDN URL (https://cdn.mudaroba.com/...)
@@ -114,7 +109,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         ...pageData,
         og_image: ogImageAbsoluteUrl,
       },
-      formattedDate,
+
       ...(await serverSideTranslations(ctx.locale ?? 'ru', ['common'])),
     },
   }
