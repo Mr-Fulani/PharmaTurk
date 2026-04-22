@@ -46,9 +46,9 @@ const CheckIcon = () => (
   </svg>
 )
 
-const LinkedInIcon = () => (
+const VKIcon = () => (
   <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+    <path d="M15.684 0H8.316C1.592 0 0 1.592 0 8.316v7.368C0 22.408 1.592 24 8.316 24h7.368C22.408 24 24 22.408 24 15.684V8.316C24 1.592 22.408 0 15.684 0zm3.692 17.123h-1.744c-.66 0-.864-.525-2.05-1.727-1.033-1-1.49-1.135-1.744-1.135-.356 0-.458.102-.458.593v1.575c0 .424-.135.678-1.253.678-1.845 0-3.896-1.118-5.335-3.202C4.624 10.857 4.03 8.57 4.03 8.096c0-.254.102-.491.593-.491h1.744c.44 0 .61.203.78.677.864 2.49 2.303 4.675 2.896 4.675.22 0 .322-.102.322-.66V9.721c-.068-1.186-.695-1.287-.695-1.71 0-.204.17-.407.44-.407h2.744c.373 0 .508.203.508.643v3.473c0 .372.17.508.271.508.22 0 .407-.136.813-.542 1.254-1.406 2.151-3.574 2.151-3.574.119-.254.322-.491.762-.491h1.744c.525 0 .643.27.525.643-.22 1.017-2.354 4.031-2.354 4.031-.186.305-.254.44 0 .78.186.254.796.779 1.203 1.253.745.847 1.32 1.558 1.473 2.05.17.49-.085.745-.576.745z"/>
   </svg>
 )
 
@@ -189,11 +189,14 @@ export default function ShareButton({
     setTimeout(() => setCopied(false), 2000)
   }, [getUrl])
 
-  const shareViaLinkedIn = useCallback((e: React.MouseEvent) => {
+  const shareViaVK = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
-    window.open(`https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(getUrl())}&title=${encodeURIComponent(title)}`, '_blank', 'noopener,noreferrer,width=600,height=500')
+    const params = new URLSearchParams({ url: getUrl(), title })
+    if (imageUrl) params.set('image', imageUrl)
+    if (description) params.set('description', description)
+    window.open(`https://vk.com/share.php?${params.toString()}`, '_blank', 'noopener,noreferrer,width=600,height=500')
     setOpen(false)
-  }, [getUrl, title])
+  }, [getUrl, title, imageUrl, description])
 
   const shareViaInstagram = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
@@ -220,12 +223,12 @@ export default function ShareButton({
   }, [getUrl])
 
   // ─── 8 items — full circle like the example ─────────────────────────────
-  // Порядок: Facebook(0), YouTube(1), X(2), LinkedIn(3), Copy(4), Instagram(5), Telegram(6), WhatsApp(7)
+  // Порядок: Facebook(0), YouTube(1), X(2), VK(3), Copy(4), Instagram(5), Telegram(6), WhatsApp(7)
   const items: ShareItem[] = [
     { key: 'facebook',  label: 'Facebook',  icon: <FacebookIcon />,  color: '#1877f2', onClick: shareViaFacebook },
     { key: 'youtube',   label: 'YouTube',   icon: <YouTubeIcon />,   color: '#ff0000', onClick: shareViaYouTube },
     { key: 'twitter',   label: 'X (Twitter)', icon: <XTwitterIcon />, color: '#000000', onClick: shareViaTwitter },
-    { key: 'linkedin',  label: 'LinkedIn',  icon: <LinkedInIcon />,  color: '#0a66c2', onClick: shareViaLinkedIn },
+    { key: 'vk',        label: 'VKontakte', icon: <VKIcon />,        color: '#4C75A3', onClick: shareViaVK },
     { key: 'copy',      label: t('copy_link', 'Копировать'), icon: copied ? <CheckIcon /> : <CopyIcon />, color: '#ff5733', onClick: copyToClipboard },
     { key: 'instagram', label: 'Instagram', icon: <InstagramIcon />, color: '#c32aa3', onClick: shareViaInstagram },
     { key: 'telegram2', label: 'Telegram',  icon: <TelegramIcon />,  color: '#0088cc', onClick: shareViaGitHub },
