@@ -220,16 +220,16 @@ export default function ShareButton({
   }, [getUrl])
 
   // ─── 8 items — full circle like the example ─────────────────────────────
-  // Порядок: Facebook(0), WhatsApp(1), X(2), Copy/Reddit(3), LinkedIn(4), Instagram(5), GitHub(6), YouTube(7)
+  // Порядок: Facebook(0), YouTube(1), X(2), LinkedIn(3), Copy(4), Instagram(5), Telegram(6), WhatsApp(7)
   const items: ShareItem[] = [
     { key: 'facebook',  label: 'Facebook',  icon: <FacebookIcon />,  color: '#1877f2', onClick: shareViaFacebook },
-    { key: 'whatsapp',  label: 'WhatsApp',  icon: <WhatsAppIcon />,  color: '#25d366', onClick: shareViaWhatsApp },
+    { key: 'youtube',   label: 'YouTube',   icon: <YouTubeIcon />,   color: '#ff0000', onClick: shareViaYouTube },
     { key: 'twitter',   label: 'X (Twitter)', icon: <XTwitterIcon />, color: '#000000', onClick: shareViaTwitter },
-    { key: 'copy',      label: t('copy_link', 'Копировать'), icon: copied ? <CheckIcon /> : <CopyIcon />, color: '#ff5733', onClick: copyToClipboard },
     { key: 'linkedin',  label: 'LinkedIn',  icon: <LinkedInIcon />,  color: '#0a66c2', onClick: shareViaLinkedIn },
+    { key: 'copy',      label: t('copy_link', 'Копировать'), icon: copied ? <CheckIcon /> : <CopyIcon />, color: '#ff5733', onClick: copyToClipboard },
     { key: 'instagram', label: 'Instagram', icon: <InstagramIcon />, color: '#c32aa3', onClick: shareViaInstagram },
     { key: 'telegram2', label: 'Telegram',  icon: <TelegramIcon />,  color: '#0088cc', onClick: shareViaGitHub },
-    { key: 'youtube',   label: 'YouTube',   icon: <YouTubeIcon />,   color: '#ff0000', onClick: shareViaYouTube },
+    { key: 'whatsapp',  label: 'WhatsApp',  icon: <WhatsAppIcon />,  color: '#25d366', onClick: shareViaWhatsApp },
   ]
 
   // ─── Radial positioning — full 360° circle (8 items × 45°) ──────────────
