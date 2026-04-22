@@ -557,6 +557,15 @@ class CatalogNormalizer:
         if product_data.category and isinstance(product_data.category, str) and not product_data.category.isdigit():
             resolved_category, resolved_product_type = resolve_category_and_product_type(product_data.category)
 
+        # Разрешаем бренд до создания (чтобы pre_save сигнал не подставил "Другое" если бренд известен)
+        resolved_brand = None
+        if product_data.brand:
+            raw_brand = str(product_data.brand).strip()
+            if raw_brand:
+                resolved_brand = Brand.objects.filter(external_id=raw_brand).first()
+                if not resolved_brand:
+                    resolved_brand = Brand.objects.filter(name__iexact=raw_brand).first()
+
         # Ищем существующий товар по external_id
         # Используем filter().first() вместо get_or_create, так как external_id не уникален
         if external_id:
@@ -596,6 +605,8 @@ class CatalogNormalizer:
             defaults["category_id"] = resolved_category.pk
         if resolved_product_type is not None:
             defaults["product_type"] = resolved_product_type
+        if resolved_brand is not None:
+            defaults["brand_id"] = resolved_brand.pk
 
         if existing_products.exists():
             product = existing_products.first()
@@ -676,20 +687,10 @@ class CatalogNormalizer:
                     product.category = category
                     product.save()
 
-        # Бренд до синхронизации метаданных домена: при ошибке в _sync_* товар уже с корректным брендом
-        if product_data.brand and not product.brand:
-            raw = str(product_data.brand).strip()
-            if raw:
-                brand = Brand.objects.filter(external_id=raw).first()
-                if not brand:
-                    brand = Brand.objects.filter(name__iexact=raw).first()
-                if brand:
-                    product.brand = brand
-                    product.save(update_fields=["brand"])
-
         # Синхронизируем книжные поля ПОСЛЕ того, как product_type установлен сигналом
         if hasattr(product_data, "metadata") and product_data.metadata:
             self._sync_product_fields_from_metadata(product, product_data.metadata)
+
 
         # Обрабатываем изображения
         self._normalize_product_images(product, product_data.images)
