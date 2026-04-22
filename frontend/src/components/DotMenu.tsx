@@ -133,6 +133,10 @@ export default function DotMenu({ user, currency, onCurrencyChange, onToggleLoca
                   e.stopPropagation()
                   if (item.onClick) {
                     item.onClick()
+                    // Закрываем меню для всех айтемов, кроме выбора валюты (т.к. там открывается подменю)
+                    if (item.i !== 2) {
+                      closeMenu()
+                    }
                   } else if (item.href) {
                     closeMenu()
                     // If we navigate using standard router, setActive(false) is good
