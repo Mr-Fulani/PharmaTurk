@@ -2296,7 +2296,7 @@ export default function ProductPage({
                           style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
                           dangerouslySetInnerHTML={{ 
                             __html: (() => {
-                              const content = section.html;
+                              const content = section.content;
                               if (!content) return '';
                               const urlRegex = /((https?:\/\/[^\s<"']+)|(www\.[^\s<"']+))/gi;
                               return content.replace(urlRegex, (url) => {
