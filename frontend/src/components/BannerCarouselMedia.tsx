@@ -58,12 +58,7 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
   useEffect(() => {
-    if (initialBanners.length > 0) {
-      setBanners(initialBanners)
-      setLoading(false)
-      return
-    }
-
+    setLoading(true)
     const fetchBanners = async () => {
       try {
         const response = await api.get('/catalog/banners', {
@@ -78,8 +73,10 @@ export default function BannerCarousel({ position, className = '', initialBanner
       }
     }
 
+    // Всегда перезапрашиваем при смене языка (router.locale),
+    // даже если SSR передал initialBanners — иначе русские переводы не загружаются.
     fetchBanners()
-  }, [position, router.locale, initialBanners])
+  }, [position, router.locale])
 
   useEffect(() => {
     if (banners.length > 0) {

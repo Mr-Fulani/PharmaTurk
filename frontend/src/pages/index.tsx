@@ -459,11 +459,14 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     // Загружаем все позиции баннеров параллельно — устраняет 6,530мс задержку LCP
     try {
+      // Передаём язык в заголовках, чтобы бэкенд вернул переводы на нужном языке
+      const locale = context.locale ?? 'ru'
+      const langHeaders = { 'Accept-Language': locale, 'X-Language': locale }
       const [mainRes, afterBrandsRes, beforeFooterRes, afterPopularRes] = await Promise.all([
-        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'main' }, timeout: 3000 }),
-        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'after_brands' }, timeout: 3000 }),
-        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'before_footer' }, timeout: 3000 }),
-        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'after_popular_products' }, timeout: 3000 }),
+        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'main' }, headers: langHeaders, timeout: 3000 }),
+        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'after_brands' }, headers: langHeaders, timeout: 3000 }),
+        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'before_footer' }, headers: langHeaders, timeout: 3000 }),
+        axios.get(getInternalApiUrl('catalog/banners'), { params: { position: 'after_popular_products' }, headers: langHeaders, timeout: 3000 }),
       ])
       mainBanners = Array.isArray(mainRes.data) ? mainRes.data : []
       afterBrandsBanners = Array.isArray(afterBrandsRes.data) ? afterBrandsRes.data : []
