@@ -1208,11 +1208,13 @@ export default function ProductPage({
                             />
                           )
                         }
+                        const prodAny = product as any
+                        const productFallbackImage = prodAny.main_image_url || prodAny.main_image || prodAny.image_url
                         const videoPoster =
                           (img.image_url && !isVideoUrl(img.image_url)
                             ? resolveMediaUrl(img.image_url)
                             : null) ||
-                          (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
+                          (productFallbackImage ? resolveMediaUrl(productFallbackImage) : null) ||
                           undefined
                         return (
                           <video
