@@ -56,6 +56,7 @@ class MyDocument extends Document<MyDocumentProps> {
           </noscript>
 
           {/* Базовые мета-теги */}
+          <meta httpEquiv="Content-Language" content={locale} />
           <meta name="theme-color" content="#4c1d95" />
           <meta name="application-name" content={siteName} />
           <meta property="og:site_name" content={siteName} />
