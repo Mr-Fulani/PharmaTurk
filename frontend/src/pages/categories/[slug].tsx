@@ -1907,7 +1907,10 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         if (routeSlug) {
           bookParams.category_slug = routeSlug
         }
-        const bookRes = await axios.get(getInternalApiUrl('catalog/products/book-filters'), { params: bookParams })
+        const bookRes = await axios.get(getInternalApiUrl('catalog/products/book-filters'), {
+          params: bookParams,
+          headers: { 'Accept-Language': context.locale || 'ru' }
+        })
         bookAuthors = bookRes.data?.authors || []
         bookGenres = bookRes.data?.genres || []
         bookPublishers = bookRes.data?.publishers || []

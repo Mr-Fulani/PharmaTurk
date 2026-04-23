@@ -1252,7 +1252,7 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
                 cleaned.append(v)
             return sorted(cleaned, key=lambda item: item.casefold())
 
-        locale = getattr(request, "LANGUAGE_CODE", "") or ""
+        locale = getattr(request, "LANGUAGE_CODE", "") or request.headers.get("Accept-Language", "") or ""
         is_english = locale.lower().startswith("en")
         return Response({
             "authors": [
