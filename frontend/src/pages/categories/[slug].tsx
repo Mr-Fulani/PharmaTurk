@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
-import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTranslation, BrandTranslation } from '../../lib/i18n'
+import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTranslation, BrandTranslation, stripHtml } from '../../lib/i18n'
 import { getSiteOrigin } from '../../lib/urls'
 import { isBaseProductType } from '../../lib/product'
 import { GetServerSideProps } from 'next'
@@ -1453,11 +1453,13 @@ export default function CategoryPage({
   }, [currentCategory, titleText])
 
   const ogDescription = useMemo(() => {
-    return (currentCategory?.og_description || currentCategory?.meta_description || categoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })).trim()
+    const raw = currentCategory?.og_description || currentCategory?.meta_description || categoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })
+    return stripHtml(raw)
   }, [currentCategory, categoryDescription, titleText, t])
 
   const metaDescription = useMemo(() => {
-    return (currentCategory?.meta_description || currentCategory?.og_description || categoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })).trim()
+    const raw = currentCategory?.meta_description || currentCategory?.og_description || categoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })
+    return stripHtml(raw)
   }, [currentCategory, categoryDescription, titleText, t])
 
   const ogImageUrl = useMemo(() => {

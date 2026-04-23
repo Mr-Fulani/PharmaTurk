@@ -274,3 +274,17 @@ export function getLocalizedProductDescription(
 
   return fallbackDescription || ''
 }
+
+/**
+ * Удаляет HTML-теги из строки.
+ * Полезно для подготовки текстов для SEO meta-тегов.
+ */
+export function stripHtml(html: string | null | undefined): string {
+  if (!html) return ''
+  return String(html)
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
