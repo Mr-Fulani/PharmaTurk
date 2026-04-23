@@ -43,7 +43,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
   // Отдельное состояние для ссылок футера — не зависит от initialSettings
   const [footerLinks, setFooterLinks] = useState<StaticPageLink[]>([])
 
-  // Загружаем ссылки ОДИН РАЗ при монтировании компонента и больше никогда не сбрасываем
+  // Загружаем ссылки при монтировании компонента и обновляем при смене языка
   useEffect(() => {
     api.get('/pages/')
       .then(response => {
@@ -56,7 +56,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
         }
       })
       .catch(err => console.error('Error fetching footer pages:', err))
-  }, []) // пустой массив — запускается только при первом рендере
+  }, [i18n.language]) // добавлена зависимость от языка
 
   useEffect(() => {
     const isNonRu = !i18n.language?.toLowerCase().startsWith('ru')
