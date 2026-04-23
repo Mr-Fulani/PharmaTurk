@@ -41,7 +41,15 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const [loading, setLoading] = useState(initialBanners.length === 0)
   const slideRef = useRef<HTMLDivElement>(null)
 
+  const initialMountRef = useRef(true)
+
   useEffect(() => {
+    if (initialMountRef.current && initialBanners.length > 0) {
+      initialMountRef.current = false
+      return
+    }
+    initialMountRef.current = false
+
     const fetchBanners = async () => {
       try {
         const response = await api.get('/catalog/banners', {

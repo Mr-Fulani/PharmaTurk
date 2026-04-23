@@ -91,9 +91,10 @@ api.interceptors.request.use((config) => {
   }
 
   // Прокидываем язык для локализации ответов DRF/Django
-  // Приоритет: Кука -> Путь в URL -> Язык браузера -> Английский
+  // Приоритет: Кука -> Путь в URL -> Язык HTML тега -> Язык по умолчанию (ru)
+  const htmlLang = typeof document !== 'undefined' ? document.documentElement.lang : null
   const locale = Cookies.get('NEXT_LOCALE') || 
-    (typeof window !== 'undefined' ? (window.location.pathname.startsWith('/en') ? 'en' : (window.location.pathname.startsWith('/ru') ? 'ru' : (navigator.language?.split('-')[0] || 'en'))) : 'en')
+    (typeof window !== 'undefined' ? (window.location.pathname.startsWith('/en') ? 'en' : (window.location.pathname.startsWith('/ru') ? 'ru' : (htmlLang || 'ru'))) : 'ru')
     ; (config.headers as AxiosRequestHeaders)['Accept-Language'] = locale
     ; (config.headers as AxiosRequestHeaders)['X-Language'] = locale
 

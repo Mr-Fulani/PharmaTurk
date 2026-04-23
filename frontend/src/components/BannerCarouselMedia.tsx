@@ -57,7 +57,17 @@ export default function BannerCarousel({ position, className = '', initialBanner
   const [fallbackToPicsumIds, setFallbackToPicsumIds] = useState<Record<number, boolean>>({})
   const autoPlayIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const lastManualActionRef = useRef<number>(0)
+  const initialMountRef = useRef(true)
+
   useEffect(() => {
+    // Пропускаем запрос при первой отрисовке, если у нас уже есть SSR данные, 
+    // чтобы не было мерцания и лишних запросов
+    if (initialMountRef.current && initialBanners.length > 0) {
+      initialMountRef.current = false
+      return
+    }
+    initialMountRef.current = false
+
     setLoading(true)
     const fetchBanners = async () => {
       try {
@@ -73,8 +83,6 @@ export default function BannerCarousel({ position, className = '', initialBanner
       }
     }
 
-    // Всегда перезапрашиваем при смене языка (router.locale),
-    // даже если SSR передал initialBanners — иначе русские переводы не загружаются.
     fetchBanners()
   }, [position, router.locale])
 
