@@ -182,8 +182,23 @@ export default function Header() {
       }`}>
       <div className="mx-auto w-full max-w-6xl px-3 sm:px-6">
         <div className={`flex items-center justify-between gap-3 transition-all duration-300 ${scrolled ? 'py-1.5' : 'py-3'}`}>
-          <Link href="/" className={`text-lg font-bold transition-all duration-200 hover:scale-105 ${isDark ? 'text-slate-100 hover:text-white' : 'text-main hover:text-gray-900'}`}>
-            Mudaroba<sup className="text-[0.6em] font-medium ml-0.5 opacity-80">TM</sup>
+          <Link href="/" className="flex items-center gap-2.5 transition-all duration-300 hover:opacity-90 group">
+            <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className={`flex-shrink-0 transition-transform duration-300 group-hover:scale-105 ${isDark ? 'drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]' : 'drop-shadow-md'}`}>
+              <defs>
+                <linearGradient id={`logo-grad-${isDark ? 'dark' : 'light'}`} x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+                  <stop stopColor={isDark ? "#ef4444" : "#dc2626"} />
+                  <stop offset="1" stopColor={isDark ? "#b91c1c" : "#991b1b"} />
+                </linearGradient>
+              </defs>
+              <rect width="40" height="40" rx="10" fill={`url(#logo-grad-${isDark ? 'dark' : 'light'})`} />
+              <path d="M7 23H10.5L14.5 13L20 28L25.5 13L29.5 23H33" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="33" cy="23" r="1.5" fill="white" />
+            </svg>
+            <div className="flex flex-col justify-center">
+              <span className={`text-xl font-black tracking-tight leading-none ${isDark ? 'text-slate-50' : 'text-gray-900'}`}>
+                MUDAROBA<sup className="text-[0.55em] font-bold ml-0.5 opacity-70">TM</sup>
+              </span>
+            </div>
           </Link>
           <div className="hidden flex-1 items-center gap-3 md:flex">
             <div ref={searchRef} className="relative flex w-full max-w-xl items-center">
