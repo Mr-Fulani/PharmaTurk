@@ -122,6 +122,7 @@ interface CategoryPageProps {
   subcategories?: Category[]
   availableAttributes?: AvailableAttribute[]
   availableGenders?: string[]
+  availableFragranceTypes?: string[]
   categoryName: string
   categoryDescription?: string
   totalCount: number
@@ -324,6 +325,7 @@ const areFiltersEqual = (left: FilterState, right: FilterState) =>
   areFilterArraysEqual(left.subcategories, right.subcategories) &&
   areFilterArraysEqual(left.subcategorySlugs, right.subcategorySlugs) &&
   areFilterArraysEqual(left.genders || [], right.genders || []) &&
+  areFilterArraysEqual(left.fragranceTypes || [], right.fragranceTypes || []) &&
   areFilterArraysEqual(left.authorIds || [], right.authorIds || []) &&
   areFilterArraysEqual(left.genreIds || [], right.genreIds || []) &&
   areFilterArraysEqual(left.publishers || [], right.publishers || []) &&
@@ -436,39 +438,6 @@ const buildMedicineSections = (categories: Category[]): SidebarTreeSection[] => 
   return sections
 }
 
-// Парфюмерия: две группы — по аудитории (жен/муж/унисекс) и по типу (нишевая, дом, EDP, EDT)
-const PERFUMERY_AUDIENCE_KEYWORDS = ['women', 'men', 'unisex', 'zhensk', 'muzhsk', 'uniseks', 'female', 'male']
-const PERFUMERY_TYPE_KEYWORDS = ['niche', 'nishchevaya', 'home', 'edp', 'edt', 'eau-de-parfum', 'eau-de-toilette', 'aromaty', 'parfumernaya', 'tualetnaya', 'doma', 'fragrances']
-
-const buildPerfumerySections = (categories: Category[]): SidebarTreeSection[] => {
-  // Исключаем корень perfumery — только дети
-  const children = categories.filter((c) => c.parent != null)
-  const byAudience = children.filter((c) =>
-    PERFUMERY_AUDIENCE_KEYWORDS.some((kw) =>
-      (c.slug || '').toLowerCase().includes(kw) || (c.name || '').toLowerCase().includes(kw)
-    )
-  )
-  const byType = children.filter((c) =>
-    PERFUMERY_TYPE_KEYWORDS.some((kw) =>
-      (c.slug || '').toLowerCase().includes(kw) || (c.name || '').toLowerCase().includes(kw)
-    )
-  )
-  const sections: SidebarTreeSection[] = []
-  if (byAudience.length > 0) {
-    sections.push({
-      title: 'По аудитории',
-      items: byAudience.map((c) => createTreeItem(c, categories))
-    } as SidebarTreeSection)
-  }
-  if (byType.length > 0) {
-    sections.push({
-      title: 'По типу',
-      items: byType.map((c) => createTreeItem(c, categories))
-    } as SidebarTreeSection)
-  }
-  return sections
-}
-
 /**
  * Строит разделы сайдбара для обуви: полное дерево L2 → L3 → ...
  */
@@ -513,7 +482,7 @@ const getCategorySections = (type: CategoryPageProps['categoryType'], categories
     return buildMedicineSections(categories)
   }
   if (type === 'perfumery') {
-    return buildPerfumerySections(categories)
+    return []
   }
   // Электроника, мебель, украшения, аксессуары, посуда, БАДы, медтехника, нижнее бельё, головные уборы
   const genericTypes: Record<string, { title: string; key?: string }> = {
@@ -654,6 +623,7 @@ export default function CategoryPage({
   subcategories = [],
   availableAttributes: initialAvailableAttributes = [],
   availableGenders: initialAvailableGenders = [],
+  availableFragranceTypes: initialAvailableFragranceTypes = [],
   categoryName,
   categoryDescription,
   totalCount: initialTotalCount,
@@ -808,6 +778,7 @@ export default function CategoryPage({
   const [loading, setLoading] = useState(false)
   const [availableAttributes, setAvailableAttributes] = useState<AvailableAttribute[]>(initialAvailableAttributes)
   const [availableGenders, setAvailableGenders] = useState<string[]>(initialAvailableGenders)
+  const [availableFragranceTypes, setAvailableFragranceTypes] = useState<string[]>(initialAvailableFragranceTypes)
   const showGenderFilter = (availableGenders || []).length > 0
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
@@ -831,6 +802,7 @@ export default function CategoryPage({
     subcategories: [],
     subcategorySlugs: [],
     genders: [],
+    fragranceTypes: [],
     authorIds: [],
     genreIds: [],
     publishers: [],
@@ -885,6 +857,7 @@ export default function CategoryPage({
     delete nextQuery.page
     delete nextQuery.brand_id
     delete nextQuery.gender
+    delete nextQuery.fragrance_type
     delete nextQuery.subcategory_slug
     router.replace(
       {
@@ -955,24 +928,31 @@ export default function CategoryPage({
     const initKey = `extra-${router.asPath}`
     if (extraFiltersInitialized.current === initKey) return
     const genderParam = router.query.gender
+    const fragranceTypeParam = router.query.fragrance_type
     const subcategoryParam = router.query.subcategory_slug
     const genderRaw = Array.isArray(genderParam) ? genderParam[0] : genderParam
+    const fragranceTypeRaw = Array.isArray(fragranceTypeParam) ? fragranceTypeParam[0] : fragranceTypeParam
     const subcategorySlug = Array.isArray(subcategoryParam) ? subcategoryParam[0] : subcategoryParam
     const genderSlugs = genderRaw
       ? String(genderRaw).split(',').map((s) => normalizeSlug(s)).filter(Boolean)
       : []
+    const fragranceTypeSlugs = fragranceTypeRaw
+      ? String(fragranceTypeRaw).split(',').map((s) => normalizeSlug(s)).filter(Boolean)
+      : []
     const genderSet = new Set(['women', 'men', 'kids', 'unisex'])
     const validGenders = genderSlugs.filter((g) => genderSet.has(g))
     const subcategorySlugs = subcategorySlug ? [String(subcategorySlug)] : []
-    if (validGenders.length === 0 && subcategorySlugs.length === 0) {
+    if (validGenders.length === 0 && fragranceTypeSlugs.length === 0 && subcategorySlugs.length === 0) {
       extraFiltersInitialized.current = initKey
       return
     }
     setFilters((prev) => {
       const nextGenders = validGenders.length > 0 ? validGenders : prev.genders
+      const nextFragranceTypes = fragranceTypeSlugs.length > 0 ? fragranceTypeSlugs : prev.fragranceTypes
       const nextSubcategorySlugs = subcategorySlugs.length > 0 ? subcategorySlugs : prev.subcategorySlugs
       if (
         (prev.genders || []).join(',') === (nextGenders || []).join(',') &&
+        (prev.fragranceTypes || []).join(',') === (nextFragranceTypes || []).join(',') &&
         prev.subcategorySlugs.join(',') === nextSubcategorySlugs.join(',')
       ) {
         extraFiltersInitialized.current = initKey
@@ -982,10 +962,11 @@ export default function CategoryPage({
       return {
         ...prev,
         genders: nextGenders,
+        fragranceTypes: nextFragranceTypes,
         subcategorySlugs: nextSubcategorySlugs
       }
     })
-  }, [router.isReady, router.asPath, router.query.gender, router.query.subcategory_slug])
+  }, [router.isReady, router.asPath, router.query.gender, router.query.fragrance_type, router.query.subcategory_slug])
 
   useEffect(() => {
     const loadBrands = async () => {
@@ -1120,6 +1101,9 @@ export default function CategoryPage({
         if ((filters.genders || []).length > 0) {
           params.gender = filters.genders!.join(',')
         }
+        if ((filters.fragranceTypes || []).length > 0) {
+          params.fragrance_type = filters.fragranceTypes!.join(',')
+        }
         if (filters.subcategories.length > 0) {
           params.subcategory_id = filters.subcategories
         }
@@ -1212,6 +1196,10 @@ export default function CategoryPage({
         if (genders && Array.isArray(genders)) {
           setAvailableGenders(genders)
         }
+        const fragranceTypes = data.available_fragrance_types as string[] | undefined
+        if (fragranceTypes && Array.isArray(fragranceTypes)) {
+          setAvailableFragranceTypes(fragranceTypes)
+        }
 
         console.log(`Loaded ${productsList.length} products (after filters: ${filteredList.length}), total count: ${count}`)
         console.log('Category type:', categoryType)
@@ -1246,6 +1234,7 @@ export default function CategoryPage({
     filters.subcategories,
     filters.subcategorySlugs,
     filters.genders?.join(','),
+    filters.fragranceTypes?.join(','),
     filters.authorIds,
     filters.genreIds,
     filters.publishers,
@@ -1578,7 +1567,8 @@ export default function CategoryPage({
               brands={categoryType === 'books' ? [] : brandOptions}
               subcategories={categoryType === 'books' ? [] : displaySubcategories}
               categoryGroups={categoryGroups}
-              availableAttributes={availableAttributes}
+              availableAttributes={categoryType === 'perfumery' ? [] : availableAttributes}
+              availableFragranceTypes={categoryType === 'perfumery' ? availableFragranceTypes : []}
               onFilterChange={handleFilterChange}
               isOpen={sidebarOpen}
               onToggle={() => setSidebarOpen(!sidebarOpen)}
@@ -1587,8 +1577,8 @@ export default function CategoryPage({
               bookGenres={bookGenres}
               bookPublishers={bookPublishers}
               bookLanguages={bookLanguages}
-              showSubcategories={categoryType !== 'books' && displaySubcategories.length > 0}
-              showCategories={!isRootCategoryPage}
+              showSubcategories={categoryType !== 'books' && categoryType !== 'perfumery' && displaySubcategories.length > 0}
+              showCategories={!isRootCategoryPage && categoryType !== 'perfumery'}
               showGenderFilter={showGenderFilter}
               categoryType={categoryType}
             />
@@ -1903,6 +1893,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const availableGenders: string[] = Array.isArray(productsData?.available_genders)
       ? productsData.available_genders
       : []
+    const availableFragranceTypes: string[] = Array.isArray(productsData?.available_fragrance_types)
+      ? productsData.available_fragrance_types
+      : []
 
     // --- Фильтры книг ---
     let bookAuthors: Array<{ id: number; name: string }> = []
@@ -2104,6 +2097,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         subcategories,
         availableAttributes,
         availableGenders,
+        availableFragranceTypes,
         categoryName: categoryInfo.name,
         categoryDescription: categoryInfo.description,
         totalCount,
@@ -2129,6 +2123,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         subcategories: [],
         availableAttributes: [],
         availableGenders: [],
+        availableFragranceTypes: [],
         categoryName: context.locale === 'en' ? 'Products' : 'Товары',
         categoryDescription: '',
         totalCount: 0,

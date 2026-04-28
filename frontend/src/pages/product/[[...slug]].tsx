@@ -90,6 +90,44 @@ const normalizeMediaValue = (value?: string | null) => {
   return trimmed
 }
 
+const getPerfumeryGenderLabel = (value: string | null | undefined, t: any) => {
+  const normalized = String(value || '').trim().toLowerCase()
+  const map: Record<string, string> = {
+    men: t('gender_men_perfume', 'Мужской'),
+    women: t('gender_women_perfume', 'Женский'),
+    unisex: t('gender_unisex', 'Унисекс'),
+    kids: t('gender_kids_perfume', 'Детский'),
+  }
+  return map[normalized] || value || ''
+}
+
+const getPerfumeryFragranceTypeLabel = (value: string | null | undefined, t: any) => {
+  const normalized = String(value || '').trim().toLowerCase()
+  const map: Record<string, string> = {
+    edp: t('fragrance_type_edp', 'Парфюмерная вода (EDP)'),
+    edt: t('fragrance_type_edt', 'Туалетная вода (EDT)'),
+    edc: t('fragrance_type_edc', 'Одеколон (EDC)'),
+    parfum: t('fragrance_type_parfum', 'Духи'),
+    body_mist: t('fragrance_type_body_mist', 'Парфюмированный мист'),
+  }
+  return map[normalized] || value || ''
+}
+
+const getPerfumeryFragranceFamilyLabel = (value: string | null | undefined, t: any) => {
+  const normalized = String(value || '').trim().toLowerCase()
+  const map: Record<string, string> = {
+    floral: t('fragrance_family_floral', 'Цветочный'),
+    woody: t('fragrance_family_woody', 'Древесный'),
+    oriental: t('fragrance_family_oriental', 'Восточный'),
+    fresh: t('fragrance_family_fresh', 'Свежий'),
+    citrus: t('fragrance_family_citrus', 'Цитрусовый'),
+    aquatic: t('fragrance_family_aquatic', 'Акватический'),
+    gourmand: t('fragrance_family_gourmand', 'Гурманский'),
+    aromatic: t('fragrance_family_aromatic', 'Ароматический'),
+  }
+  return map[normalized] || value || ''
+}
+
 /** Нормализованный путь для сравнения картинок (без ведущих слешей), одинаково на SSR и в браузере. */
 const normalizeImagePathKey = (raw: string): string => {
   const noHash = raw.split('#')[0] || ''
@@ -480,6 +518,11 @@ interface Product {
   sgk_status?: string | null
   special_notes?: string | null
   serving_size?: string | null
+  fragrance_type?: string | null
+  fragrance_family?: string | null
+  top_notes?: string | null
+  heart_notes?: string | null
+  base_notes?: string | null
   // Physical Attributes
   weight_value?: number | string | null
   weight_unit?: string | null
@@ -1712,6 +1755,55 @@ export default function ProductPage({
                         ({product.reviews_count} {t('reviews', 'отзывов')})
                       </span>
                     )}
+                  </p>
+                )}
+              </div>
+            )}
+            {(productType === 'perfumery' || product.product_type === 'perfumery') && (
+              <div
+                className="mt-3 space-y-1.5 text-sm"
+                style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+              >
+                {product.volume && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('volume', 'Объем/Количество')}: </span>
+                    {product.volume}
+                  </p>
+                )}
+                {product.fragrance_type && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('fragrance_type', 'Тип аромата')}: </span>
+                    {getPerfumeryFragranceTypeLabel(product.fragrance_type, t)}
+                  </p>
+                )}
+                {product.fragrance_family && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('fragrance_family', 'Семейство аромата')}: </span>
+                    {getPerfumeryFragranceFamilyLabel(product.fragrance_family, t)}
+                  </p>
+                )}
+                {product.gender && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('gender', 'Пол')}: </span>
+                    {getPerfumeryGenderLabel(product.gender, t)}
+                  </p>
+                )}
+                {product.top_notes && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('top_notes', 'Верхние ноты')}: </span>
+                    {product.top_notes}
+                  </p>
+                )}
+                {product.heart_notes && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('heart_notes', 'Средние ноты')}: </span>
+                    {product.heart_notes}
+                  </p>
+                )}
+                {product.base_notes && (
+                  <p>
+                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('base_notes', 'Базовые ноты')}: </span>
+                    {product.base_notes}
                   </p>
                 )}
               </div>

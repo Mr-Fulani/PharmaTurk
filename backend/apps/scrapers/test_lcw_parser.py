@@ -109,6 +109,37 @@ LCW_DETAIL_WITH_EMBEDDED_VARIANTS_HTML = """
 """
 
 
+LCW_DETAIL_WITH_DISABLED_SIZES_HTML = """
+<html>
+  <head>
+    <title>LCW ACCESSORIES Hakiki Deri Erkek Kemer - S6F922Z8-HKK | LCW</title>
+    <meta property="og:title" content="LCW ACCESSORIES Hakiki Deri Erkek Kemer - S6F922Z8-HKK | LCW" />
+    <meta property="og:image" content="https://img-lcwaikiki.mncdn.com/mnpadding/320/426/ffffff/pim/productimages/20261/9999999/v1/l_20261-s6f922z8-hkk_a.jpg" />
+  </head>
+  <body>
+    <h1>LCW ACCESSORIES Hakiki Deri Erkek Kemer - S6F922Z8-HKK</h1>
+    <h2>Kemer</h2>
+    <div>499,99 TL</div>
+    <div>Renk: Kahverengi</div>
+    <div>Beden:</div>
+    <button>85</button>
+    <button disabled>95</button>
+    <button aria-disabled="true">105</button>
+    <button class="size-button passive">115</button>
+    <button>125</button>
+    <div>Sepete Ekle</div>
+    <div>Ürün Açıklaması</div>
+    <div>: S6F922Z8-HKK - Kahverengi</div>
+    <div>Erkek kemer, deri kumaştan üretilmiştir.</div>
+    <div>Ürün İçeriği ve Özellikleri</div>
+    <div>Marka: LCW ACCESSORIES</div>
+    <div>Ürün Tipi: Kemer</div>
+    <img src="https://img-lcwaikiki.mncdn.com/mnpadding/1020/1360/ffffff/pim/productimages/20261/9999999/v1/l_20261-s6f922z8-hkk_a.jpg" alt="LCW ACCESSORIES Hakiki Deri Erkek Kemer" />
+  </body>
+</html>
+"""
+
+
 def _white_cap_variant_html():
     return (
         LCW_DETAIL_WITH_EMBEDDED_VARIANTS_HTML
@@ -252,6 +283,24 @@ def test_parse_product_list_uses_group_ids_to_deduplicate(monkeypatch):
     assert len(products) == 2
     assert products[0].external_id == "lcw-4827603"
     assert products[1].external_id == "lcw-4827604"
+
+
+def test_parse_product_detail_keeps_disabled_sizes_with_zero_stock(monkeypatch):
+    parser = LcwParser()
+    monkeypatch.setattr(parser, "_make_request", lambda url, **kwargs: LCW_DETAIL_WITH_DISABLED_SIZES_HTML)
+
+    product = parser.parse_product_detail("https://www.lcw.com/hakiki-deri-erkek-kemer-kahverengi-o-5373706")
+
+    assert product is not None
+    sizes = product.attributes["fashion_variants"][0]["sizes"]
+    assert sizes == [
+        {"size": "85", "is_available": True, "stock_quantity": 1000, "sort_order": 0},
+        {"size": "95", "is_available": False, "stock_quantity": 0, "sort_order": 1},
+        {"size": "105", "is_available": False, "stock_quantity": 0, "sort_order": 2},
+        {"size": "115", "is_available": False, "stock_quantity": 0, "sort_order": 3},
+        {"size": "125", "is_available": True, "stock_quantity": 1000, "sort_order": 4},
+    ]
+    assert product.attributes["fashion_variants"][0]["stock_quantity"] == 1000
 
 
 def test_parse_product_list_skips_variant_urls_already_seen_in_same_family(monkeypatch):

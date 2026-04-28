@@ -66,6 +66,7 @@ def _base_product_to_domain_kwargs(product):
         "name": product.name or "",
         "slug": product.slug,
         "description": product.description or "",
+        "gender": getattr(product, "gender", None) or "",
         "category_id": product.category_id,
         "brand_id": product.brand_id,
         "price": product.price,

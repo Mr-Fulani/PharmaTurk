@@ -51,6 +51,7 @@ import datetime
 
 # Типы товаров, для которых при парсинге обнуляется бренд (например книги)
 BRAND_CLEAR_PRODUCT_TYPES = {"books"}
+DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
 
 # Реестр: product_type → метод получения/создания доменного объекта
 _DOMAIN_GETTER_NAMES = {
@@ -58,6 +59,8 @@ _DOMAIN_GETTER_NAMES = {
     "jewelry": "_get_jewelry_product",
     "medicines": "_get_medicine_product",
     "furniture": "_get_furniture_product",
+    "accessories": "_get_accessory_product",
+    "perfumery": "_get_perfumery_product",
     "clothing": "_get_clothing_product",
     "shoes": "_get_shoe_product",
     "headwear": "_get_headwear_product",
@@ -71,6 +74,8 @@ _ATTRIBUTE_UPDATE_HANDLER_NAMES = {
     "jewelry": "_update_jewelry_attributes",
     "medicines": "_update_medicine_attributes",
     "furniture": "_update_furniture_attributes",
+    "accessories": "_update_accessory_attributes",
+    "perfumery": "_update_perfumery_attributes",
     "clothing": "_update_clothing_attributes",
     "shoes": "_update_shoe_attributes",
     "headwear": "_update_headwear_attributes",
@@ -81,6 +86,107 @@ _ATTRIBUTE_UPDATE_HANDLER_NAMES = {
 
 class ScraperIntegrationService:
     """Сервис интеграции парсеров с каталогом."""
+
+    PERFUMERY_GENDER_MAP = {
+        "erkek": "men",
+        "male": "men",
+        "man": "men",
+        "men": "men",
+        "kadin": "women",
+        "kadın": "women",
+        "bayan": "women",
+        "female": "women",
+        "woman": "women",
+        "women": "women",
+        "unisex": "unisex",
+        "unisex": "unisex",
+        "cocuk": "kids",
+        "çocuk": "kids",
+        "kids": "kids",
+        "kid": "kids",
+    }
+    PERFUMERY_TYPE_ALIASES = {
+        "edp": "edp",
+        "eau de parfum": "edp",
+        "edt": "edt",
+        "eau de toilette": "edt",
+        "edc": "edc",
+        "eau de cologne": "edc",
+        "parfum": "parfum",
+        "perfume": "parfum",
+        "body mist": "body_mist",
+        "mist": "body_mist",
+    }
+    PERFUMERY_FAMILY_ALIASES = {
+        "floral": ("floral", "flower", "ciceksi", "çiçeksi"),
+        "woody": ("woody", "wood", "odunsu"),
+        "oriental": ("oriental", "amber", "dogu", "doğu", "baharatli", "baharatlı"),
+        "fresh": ("fresh", "ferah", "temiz"),
+        "citrus": ("citrus", "narenciye", "bergamot", "limon", "portakal", "greyfurt"),
+        "aquatic": ("aquatic", "su", "marine", "okyanus", "deniz"),
+        "gourmand": ("gourmand", "tatli", "tatlı", "vanilya", "karamel", "cikolata", "çikolata"),
+        "aromatic": ("aromatic", "aromatik", "herbal"),
+    }
+    PERFUMERY_NOTE_STOP_MARKERS = (
+        "üst not",
+        "orta not",
+        "kalp not",
+        "temel not",
+        "alt not",
+        "base note",
+        "heart note",
+        "top note",
+        "hacim",
+        "volume",
+        "türü",
+        "turu",
+        "ürün kodu",
+        "urun kodu",
+        "deodorant hacim",
+        "duş jeli hacim",
+        "dus jeli hacim",
+        "özel hediye kutusu",
+        "ozel hediye kutusu",
+    )
+    ACCESSORY_TYPE_TRANSLATIONS = {
+        "kemer": "Пояс / ремень",
+        "kep sapka": "Кепка",
+        "kep şapka": "Кепка",
+        "sapka": "Шапка",
+        "şapka": "Шапка",
+        "cuzdan": "Кошелек",
+        "cüzdan": "Кошелек",
+        "cantа": "Сумка",
+        "canta": "Сумка",
+        "çanta": "Сумка",
+        "gozluk": "Очки",
+        "gözlük": "Очки",
+        "sal": "Шаль",
+        "şal": "Шаль",
+        "esarp": "Платок",
+        "eşarp": "Платок",
+    }
+    ACCESSORY_MATERIAL_TRANSLATIONS = {
+        "hakiki deri": "Натуральная кожа",
+        "gercek deri": "Натуральная кожа",
+        "gerçek deri": "Натуральная кожа",
+        "suni deri": "Искусственная кожа",
+        "vegan deri": "Искусственная кожа",
+        "pamuk": "Хлопок",
+        "kumas": "Ткань",
+        "kumaş": "Ткань",
+        "metal": "Металл",
+        "polar": "Флис",
+        "hasir": "Соломка",
+        "hasır": "Соломка",
+    }
+    FASHION_PRODUCT_TYPES = {
+        "clothing",
+        "shoes",
+        "headwear",
+        "underwear",
+        "islamic_clothing",
+    }
 
     VARIANT_COLOR_TRANSLATIONS = {
         "beyaz": {"ru": "Белый", "en": "White"},
@@ -161,6 +267,355 @@ class ScraperIntegrationService:
         ru_name = f"{cleaned_base} - {ru_color}".strip(" -") if cleaned_base and ru_color else cleaned_base or ru_color
         en_name = f"{cleaned_base} - {en_color}".strip(" -") if cleaned_base and en_color else cleaned_base or en_color
         return ru_name[:500], en_name[:500]
+
+    def _normalize_ascii_text(self, value: str) -> str:
+        value = str(value or "").strip().lower()
+        if not value:
+            return ""
+        replacements = str.maketrans({
+            "ç": "c",
+            "ğ": "g",
+            "ı": "i",
+            "İ": "i",
+            "ö": "o",
+            "ş": "s",
+            "ü": "u",
+        })
+        return value.translate(replacements)
+
+    def _normalize_perfume_gender(self, value: str) -> str:
+        normalized = self._normalize_ascii_text(value)
+        if not normalized:
+            return ""
+        for token in re.split(r"[^a-z]+", normalized):
+            if token in self.PERFUMERY_GENDER_MAP:
+                return self.PERFUMERY_GENDER_MAP[token]
+        return ""
+
+    def _extract_perfume_gender_candidates(self, value: str) -> List[str]:
+        normalized = self._normalize_ascii_text(value)
+        if not normalized:
+            return []
+        found: List[str] = []
+        for token in re.split(r"[^a-z]+", normalized):
+            mapped = self.PERFUMERY_GENDER_MAP.get(token)
+            if mapped and mapped not in found:
+                found.append(mapped)
+        return found
+
+    def _normalize_perfume_type(self, value: str) -> str:
+        normalized = self._normalize_ascii_text(value)
+        if not normalized:
+            return ""
+        for key, target in self.PERFUMERY_TYPE_ALIASES.items():
+            if key in normalized:
+                return target
+        return ""
+
+    def _normalize_perfume_family(self, value: str) -> str:
+        normalized = self._normalize_ascii_text(value)
+        if not normalized:
+            return ""
+
+        best_match = ("", None)
+        for family, aliases in self.PERFUMERY_FAMILY_ALIASES.items():
+            positions = [normalized.find(alias) for alias in aliases if alias in normalized]
+            if not positions:
+                continue
+            position = min(positions)
+            if best_match[1] is None or position < best_match[1]:
+                best_match = (family, position)
+        return best_match[0]
+
+    def _normalize_volume_text(self, value: str) -> str:
+        match = re.search(r"(\d{1,4}(?:[.,]\d{1,2})?)\s*ml\b", str(value or ""), flags=re.IGNORECASE)
+        if not match:
+            return ""
+        raw_number = match.group(1).replace(",", ".")
+        if raw_number.endswith(".0"):
+            raw_number = raw_number[:-2]
+        return f"{raw_number} ml"
+
+    def _extract_perfume_note_value(self, description: str, labels: Tuple[str, ...]) -> str:
+        source = str(description or "")
+        if not source:
+            return ""
+        for label in labels:
+            pattern = rf"{label}\s*:\s*(.+?)(?=(?:{'|'.join(re.escape(marker) for marker in self.PERFUMERY_NOTE_STOP_MARKERS)})\s*:|$)"
+            match = re.search(pattern, source, flags=re.IGNORECASE | re.DOTALL)
+            if not match:
+                continue
+            value = re.sub(r"\s+", " ", match.group(1)).strip(" ,;-")
+            if value:
+                return value[:500]
+        return ""
+
+    def _enrich_perfumery_attrs(
+        self,
+        attrs: Dict[str, Any],
+        *,
+        name: str = "",
+        description: str = "",
+        category: str = "",
+        url: str = "",
+    ) -> Dict[str, Any]:
+        enriched = dict(attrs or {})
+        text_parts = [
+            str(name or ""),
+            str(category or ""),
+            str(description or ""),
+            str(url or ""),
+            str(enriched.get("description") or ""),
+        ]
+        full_text = " ".join(part for part in text_parts if part)
+        normalized_text = self._normalize_ascii_text(full_text)
+
+        gender_candidates = self._extract_perfume_gender_candidates(str(enriched.get("gender") or ""))
+        if not gender_candidates:
+            gender_candidates = self._extract_perfume_gender_candidates(full_text)
+        if len(gender_candidates) > 1:
+            enriched["gender"] = "unisex"
+            enriched["gender_options"] = gender_candidates
+        elif gender_candidates:
+            enriched["gender"] = gender_candidates[0]
+
+        type_candidates = []
+        explicit_type = self._normalize_perfume_type(str(enriched.get("fragrance_type") or enriched.get("type") or ""))
+        raw_type_match = re.search(r"(?<![A-Za-z])(?:Turu|Türü)\s*:\s*([A-Za-z ]+)", full_text, flags=re.IGNORECASE)
+        if raw_type_match:
+            mapped = self._normalize_perfume_type(raw_type_match.group(1))
+            if mapped:
+                explicit_type = mapped
+        raw_component_types = re.findall(
+            r"\b(edp|edt|edc|parfum|extrait|body\s*mist|vucut\s*spreyi|vücut\s*spreyi|deodorant|dus\s*jeli|duş\s*jeli)\b",
+            normalized_text,
+            flags=re.IGNORECASE,
+        )
+        normalized_component_types = []
+        for raw in raw_component_types:
+            normalized_component_types.append(raw.lower())
+        is_mixed_set = any(keyword in normalized_text for keyword in ("set", "hediye kutusu", "gift set"))
+        if any(token in normalized_text for token in ("deodorant", "dus jeli", "duş jeli")):
+            is_mixed_set = True
+        if explicit_type:
+            type_candidates.append(explicit_type)
+        inferred_component_fragrance_types = []
+        for raw in normalized_component_types:
+            mapped = self._normalize_perfume_type(raw)
+            if mapped and mapped not in {"parfum"} and mapped not in inferred_component_fragrance_types:
+                inferred_component_fragrance_types.append(mapped)
+        if not explicit_type and len(inferred_component_fragrance_types) == 1:
+            type_candidates.append(inferred_component_fragrance_types[0])
+        unique_type_candidates = list(dict.fromkeys(candidate for candidate in type_candidates if candidate))
+        if len(unique_type_candidates) == 1:
+            enriched["fragrance_type"] = unique_type_candidates[0]
+        elif unique_type_candidates and "fragrance_type" not in enriched:
+            enriched["fragrance_type"] = ""
+
+        if normalized_component_types:
+            enriched["component_types"] = list(dict.fromkeys(normalized_component_types))
+        if is_mixed_set:
+            enriched["is_perfume_set"] = True
+
+        family_source = str(enriched.get("fragrance_family") or "")
+        if not family_source:
+            family_match = re.search(r"\bgrup\s*:\s*([^,;\n]+)", full_text, flags=re.IGNORECASE)
+            if family_match:
+                family_source = family_match.group(1)
+        normalized_family = self._normalize_perfume_family(family_source or full_text)
+        if normalized_family:
+            enriched["fragrance_family"] = normalized_family
+
+        all_volume_matches = [
+            self._normalize_volume_text(match)
+            for match in re.findall(r"\b\d{1,4}(?:[.,]\d{1,2})?\s*ml\b", full_text, flags=re.IGNORECASE)
+        ]
+        unique_volumes = list(dict.fromkeys(volume for volume in all_volume_matches if volume))
+        if len(unique_volumes) > 1:
+            enriched["volume_options"] = unique_volumes
+
+        if not enriched.get("volume"):
+            explicit_volume_match = re.search(
+                r"(?<![A-Za-z])(?:Hacim|Volume)\s*:\s*(\d{1,4}(?:[.,]\d{1,2})?\s*ml\b)",
+                full_text,
+                flags=re.IGNORECASE,
+            )
+            if explicit_volume_match:
+                normalized_volume = self._normalize_volume_text(explicit_volume_match.group(1))
+                if normalized_volume:
+                    enriched["volume"] = normalized_volume
+        if not enriched.get("volume"):
+            if len(unique_volumes) == 1 and not is_mixed_set:
+                enriched["volume"] = unique_volumes[0]
+            elif len(unique_volumes) > 1 and is_mixed_set:
+                enriched["volume"] = " / ".join(unique_volumes)[:50]
+
+        note_fields = {
+            "top_notes": ("üst notalar", "ust notalar", "top notes"),
+            "heart_notes": ("orta notalar", "heart notes", "kalp notalar"),
+            "base_notes": ("temel notalar", "alt notalar", "base notes"),
+        }
+        for field_name, labels in note_fields.items():
+            if enriched.get(field_name):
+                continue
+            note_value = self._extract_perfume_note_value(full_text, labels)
+            if note_value:
+                enriched[field_name] = note_value
+
+        return enriched
+
+    def _normalize_accessory_type(self, value: str) -> str:
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return ""
+        normalized = self._normalize_ascii_text(raw_value)
+        for key, label in self.ACCESSORY_TYPE_TRANSLATIONS.items():
+            if key in normalized:
+                return label
+        return raw_value[:100]
+
+    def _normalize_accessory_material(self, value: str) -> str:
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return ""
+        normalized = self._normalize_ascii_text(raw_value)
+        for key, label in self.ACCESSORY_MATERIAL_TRANSLATIONS.items():
+            if key in normalized:
+                return label
+        cleaned = re.sub(r"\s+", " ", raw_value).strip(" ,.;-")
+        return cleaned[:100]
+
+    def _enrich_accessory_attrs(
+        self,
+        attrs: Dict[str, Any],
+        *,
+        name: str = "",
+        description: str = "",
+        category: str = "",
+    ) -> Dict[str, Any]:
+        enriched = dict(attrs or {})
+        full_text = " ".join(
+            part for part in (str(name or ""), str(category or ""), str(description or "")) if part
+        )
+        normalized_text = self._normalize_ascii_text(full_text)
+
+        accessory_type_source = (
+            enriched.get("accessory_type")
+            or enriched.get("urun_tipi")
+            or enriched.get("ürün_tipi")
+            or category
+        )
+        accessory_type = self._normalize_accessory_type(str(accessory_type_source or ""))
+        if accessory_type:
+            enriched["accessory_type"] = accessory_type
+
+        material_source = (
+            enriched.get("material")
+            or enriched.get("malzeme")
+            or enriched.get("kumaş")
+            or enriched.get("kumas")
+        )
+        if not material_source:
+            material_match = re.search(
+                r"\b(hakiki deri|gercek deri|gerçek deri|suni deri|vegan deri|pamuk|metal|polar|hasir|hasır)\b",
+                normalized_text,
+                flags=re.IGNORECASE,
+            )
+            if material_match:
+                material_source = material_match.group(1)
+        material = self._normalize_accessory_material(str(material_source or ""))
+        if material:
+            enriched["material"] = material
+
+        return enriched
+
+    def _extract_single_size_from_variant_payload(self, attrs: Dict[str, Any]) -> str:
+        variants = attrs.get("fashion_variants") or []
+        if not isinstance(variants, list):
+            return ""
+        unique_sizes: List[str] = []
+        seen = set()
+        for variant in variants:
+            if not isinstance(variant, dict):
+                continue
+            for row in variant.get("sizes") or []:
+                if isinstance(row, dict):
+                    raw_size = row.get("size")
+                else:
+                    raw_size = row
+                size_value = re.sub(r"\s+", " ", str(raw_size or "")).strip()
+                if not size_value or size_value in seen:
+                    continue
+                seen.add(size_value)
+                unique_sizes.append(size_value)
+        return unique_sizes[0] if len(unique_sizes) == 1 else ""
+
+    def _enrich_gendered_fashion_attrs(
+        self,
+        attrs: Dict[str, Any],
+        *,
+        name: str = "",
+        description: str = "",
+        category: str = "",
+        product_type: str = "",
+    ) -> Dict[str, Any]:
+        enriched = dict(attrs or {})
+        full_text = " ".join(
+            part
+            for part in (
+                str(name or ""),
+                str(category or ""),
+                str(description or ""),
+                str(enriched.get("cinsiyet") or ""),
+            )
+            if part
+        )
+        normalized_gender = self._normalize_perfume_gender(
+            str(enriched.get("gender") or enriched.get("cinsiyet") or full_text)
+        )
+        if normalized_gender:
+            enriched["gender"] = normalized_gender
+
+        if product_type in {"headwear", "underwear"} and not enriched.get("default_size"):
+            default_size = self._extract_single_size_from_variant_payload(enriched)
+            if default_size:
+                enriched["default_size"] = default_size[:50]
+
+        return enriched
+
+    def _prepare_scraped_attributes(
+        self,
+        scraped_product: ScrapedProduct,
+        product_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        attrs = dict(scraped_product.attributes or {})
+        effective_type = product_type
+        if not effective_type and scraped_product.category:
+            _, effective_type = resolve_category_and_product_type(scraped_product.category)
+        if effective_type == "perfumery":
+            attrs = self._enrich_perfumery_attrs(
+                attrs,
+                name=scraped_product.name,
+                description=scraped_product.description or "",
+                category=scraped_product.category or "",
+                url=scraped_product.url or "",
+            )
+        elif effective_type == "accessories":
+            attrs = self._enrich_accessory_attrs(
+                attrs,
+                name=scraped_product.name,
+                description=scraped_product.description or "",
+                category=scraped_product.category or "",
+            )
+        elif effective_type in self.FASHION_PRODUCT_TYPES:
+            attrs = self._enrich_gendered_fashion_attrs(
+                attrs,
+                name=scraped_product.name,
+                description=scraped_product.description or "",
+                category=scraped_product.category or "",
+                product_type=effective_type,
+            )
+        return attrs
 
     def run_scraper(
         self,
@@ -833,6 +1288,7 @@ class ScraperIntegrationService:
             name=product.name,
             slug=slug,
             description=product.description or "",
+            gender=getattr(product, "gender", None) or "",
             category=product.category,
             brand=product.brand,
             price=product.price,
@@ -850,6 +1306,22 @@ class ScraperIntegrationService:
         # Обновляем кеш
         product.furniture_item = item
         return item
+
+    def _get_perfumery_product(self, product: Product):
+        return self._get_or_create_domain_product(
+            product,
+            cache_attr="perfumery_item",
+            model_path="apps.catalog.models.PerfumeryProduct",
+            slug_prefix="perfumery",
+        )
+
+    def _get_accessory_product(self, product: Product):
+        return self._get_or_create_domain_product(
+            product,
+            cache_attr="accessory_item",
+            model_path="apps.catalog.models.AccessoryProduct",
+            slug_prefix="accessory",
+        )
 
     def _get_or_create_domain_product(
         self,
@@ -885,6 +1357,7 @@ class ScraperIntegrationService:
             name=product.name,
             slug=slug,
             description=product.description or "",
+            gender=getattr(product, "gender", None) or "",
             category=product.category,
             brand=product.brand,
             price=product.price,
@@ -971,9 +1444,9 @@ class ScraperIntegrationService:
                 try:
                     v_stock = int(raw_sq)
                 except (TypeError, ValueError):
-                    v_stock = 3 if avail else 0
+                    v_stock = DEFAULT_ASSUMED_STOCK_QUANTITY if avail else 0
             else:
-                v_stock = 3 if avail else 0
+                v_stock = DEFAULT_ASSUMED_STOCK_QUANTITY if avail else 0
 
             price_dec = self._safe_decimal(spec.get("price"))
             raw_color = (spec.get("color") or "").strip()
@@ -1086,7 +1559,7 @@ class ScraperIntegrationService:
         if furniture_product.is_available != any_avail:
             furniture_product.is_available = any_avail
             changed = True
-        new_sq = total_stock if total_stock > 0 else None
+        new_sq = DEFAULT_ASSUMED_STOCK_QUANTITY if any_avail else (total_stock if total_stock > 0 else None)
         if default_v and new_sq is None and default_v.stock_quantity:
             new_sq = default_v.stock_quantity
         if furniture_product.stock_quantity != new_sq:
@@ -1268,9 +1741,9 @@ class ScraperIntegrationService:
                 try:
                     stock_quantity = int(raw_stock)
                 except (TypeError, ValueError):
-                    stock_quantity = 3 if avail else 0
+                    stock_quantity = DEFAULT_ASSUMED_STOCK_QUANTITY if avail else 0
             else:
-                stock_quantity = 3 if avail else 0
+                stock_quantity = DEFAULT_ASSUMED_STOCK_QUANTITY if avail else 0
 
             price_dec = self._safe_decimal(spec.get("price"))
             color_value = str(spec.get("color") or "").strip()[:50]
@@ -1380,7 +1853,7 @@ class ScraperIntegrationService:
 
             any_avail = any(v.is_available for v in active_variants)
             total_stock = sum((v.stock_quantity or 0) for v in active_variants if v.stock_quantity)
-            new_sq = total_stock if total_stock > 0 else None
+            new_sq = DEFAULT_ASSUMED_STOCK_QUANTITY if any_avail else (total_stock if total_stock > 0 else None)
             if domain_product.is_available != any_avail:
                 domain_product.is_available = any_avail
                 changed = True
@@ -1433,29 +1906,29 @@ class ScraperIntegrationService:
         )
 
         # Синхронизация базовых полей, которые могли измениться в Product (через default_brand или парсер)
-        if product.brand != item.brand:
+        if not item.brand and product.brand != item.brand:
             item.brand = product.brand
             updated = True
-        if product.category != item.category:
+        if not item.category and product.category != item.category:
             item.category = product.category
             updated = True
-        if product.name and product.name != item.name:
+        if product.name and not item.name:
             item.name = product.name
             updated = True
-        if product.description != item.description:
+        if product.description and not item.description:
             item.description = product.description or ""
             updated = True
         if product.external_url != item.external_url:
             item.external_url = product.external_url or ""
             updated = True
 
-        if "dimensions" in attrs and attrs["dimensions"] and attrs["dimensions"] != item.dimensions:
+        if "dimensions" in attrs and attrs["dimensions"] and not item.dimensions:
             item.dimensions = attrs["dimensions"]
             updated = True
-        if "material" in attrs and attrs["material"] and attrs["material"] != item.material:
+        if "material" in attrs and attrs["material"] and not item.material:
             item.material = attrs["material"]
             updated = True
-        if "furniture_type" in attrs and attrs["furniture_type"] and attrs["furniture_type"] != item.furniture_type:
+        if "furniture_type" in attrs and attrs["furniture_type"] and not item.furniture_type:
             item.furniture_type = attrs["furniture_type"]
             updated = True
 
@@ -1472,7 +1945,7 @@ class ScraperIntegrationService:
         # Если есть видео
         if "video_url" in attrs and attrs["video_url"]:
             # Сохраняем в external_data или если есть поле video_url в модели
-            if hasattr(item, "video_url") and item.video_url != attrs["video_url"]:
+            if hasattr(item, "video_url") and not item.video_url:
                 item.video_url = attrs["video_url"]
                 updated = True
 
@@ -1507,16 +1980,16 @@ class ScraperIntegrationService:
         domain_product = domain_config["getter"](product)
         updated = False
 
-        if product.brand != domain_product.brand:
+        if not domain_product.brand and product.brand != domain_product.brand:
             domain_product.brand = product.brand
             updated = True
-        if product.category != domain_product.category:
+        if not domain_product.category and product.category != domain_product.category:
             domain_product.category = product.category
             updated = True
-        if product.name and product.name != domain_product.name:
+        if product.name and not domain_product.name:
             domain_product.name = product.name
             updated = True
-        if product.description != domain_product.description:
+        if product.description and not domain_product.description:
             domain_product.description = product.description or ""
             updated = True
         if product.external_url != domain_product.external_url:
@@ -1524,11 +1997,26 @@ class ScraperIntegrationService:
             updated = True
 
         color_value = str(attrs.get("color") or "").strip()
-        if color_value and getattr(domain_product, "color", "") != color_value[:50]:
+        if color_value and not getattr(domain_product, "color", ""):
             domain_product.color = color_value[:50]
             updated = True
 
-        if "video_url" in attrs and attrs["video_url"] and getattr(domain_product, "video_url", "") != attrs["video_url"]:
+        gender_value = self._normalize_perfume_gender(str(attrs.get("gender") or attrs.get("cinsiyet") or ""))
+        if gender_value and not getattr(domain_product, "gender", ""):
+            domain_product.gender = gender_value
+            updated = True
+
+        default_size = str(attrs.get("default_size") or "").strip()
+        if (
+            default_size
+            and product.product_type in {"headwear", "underwear"}
+            and hasattr(domain_product, "size")
+            and not getattr(domain_product, "size", "")
+        ):
+            domain_product.size = default_size[:20]
+            updated = True
+
+        if "video_url" in attrs and attrs["video_url"] and not getattr(domain_product, "video_url", ""):
             domain_product.video_url = attrs["video_url"]
             updated = True
 
@@ -1595,6 +2083,7 @@ class ScraperIntegrationService:
     ) -> Tuple[str, Product]:
         """Обновляет существующий товар."""
         updated = False
+        prepared_attrs = self._prepare_scraped_attributes(scraped_product, existing_product.product_type)
 
         # Флаг, указывающий, что мы обновляем базовый товар пришедшими данными его варианта
         # В этом случае мы НЕ должны перезатирать общие поля базового товара (фото, цену, url)
@@ -1624,11 +2113,12 @@ class ScraperIntegrationService:
                 existing_product.is_available = (existing_product.stock_quantity or 0) > 0
                 updated = True
 
-        # Обновляем бренд, если его нет или он изменился (бренд общий для всех вариантов)
+        # Бренд после обогащения/ручной правки не перетираем повторным парсом:
+        # при повторной синхронизации только дозаполняем пустое поле.
         if scraped_product.brand:
             from apps.catalog.models import Brand
             brand_name = scraped_product.brand.strip()
-            if not existing_product.brand or existing_product.brand.name.lower() != brand_name.lower():
+            if not existing_product.brand:
                 brand, _ = Brand.objects.get_or_create(name=brand_name)
                 existing_product.brand = brand
                 updated = True
@@ -1638,7 +2128,7 @@ class ScraperIntegrationService:
             current_description = (existing_product.description or "").strip()
             if (
                 next_description
-                and next_description != current_description
+                and not current_description
                 and (not is_variant_update or not current_description)
             ):
                 existing_product.description = next_description
@@ -1664,8 +2154,8 @@ class ScraperIntegrationService:
                         "Updated video_url for existing product %s from gallery images",
                         existing_product.id,
                     )
-                elif scraped_product.attributes and scraped_product.attributes.get("video_url"):
-                    existing_product.video_url = scraped_product.attributes["video_url"]
+                elif prepared_attrs and prepared_attrs.get("video_url"):
+                    existing_product.video_url = prepared_attrs["video_url"]
                     updated = True
                     self.logger.info(
                         f"Updated video_url for existing product {existing_product.id} to {existing_product.video_url}"
@@ -1674,20 +2164,13 @@ class ScraperIntegrationService:
                 existing_product.external_url = scraped_product.url
                 updated = True
 
-        if scraped_product.category and not existing_product.category:
+        if scraped_product.category:
             category, product_type = resolve_category_and_product_type(scraped_product.category)
-            if category is not None:
-                if existing_product.category_id != category.id:
-                    existing_product.category = category
-                    updated = True
-                if product_type is not None and existing_product.product_type != product_type:
-                    existing_product.product_type = product_type
-                    updated = True
-            if (
-                existing_product.product_type in BRAND_CLEAR_PRODUCT_TYPES
-                and existing_product.brand
-            ):
-                existing_product.brand = None
+            if category is not None and not existing_product.category_id:
+                existing_product.category = category
+                updated = True
+            if product_type is not None and not existing_product.product_type:
+                existing_product.product_type = product_type
                 updated = True
 
         # Обновляем external_data
@@ -1700,13 +2183,13 @@ class ScraperIntegrationService:
             existing_product.external_data.setdefault("source", scraped_product.source)
         if scraped_product.scraped_at:
             existing_product.external_data["scraped_at"] = scraped_product.scraped_at
-        if isinstance(scraped_product.attributes, dict):
+        if prepared_attrs:
             if is_variant_update:
                 variant_content = existing_product.external_data.get("variant_content") or {}
                 if not isinstance(variant_content, dict):
                     variant_content = {}
                 snapshot = dict(variant_content.get(str(scraped_product.external_id)) or {})
-                safe_attrs = _json_safe_scraped_value(scraped_product.attributes)
+                safe_attrs = _json_safe_scraped_value(prepared_attrs)
                 if snapshot.get("attributes") != safe_attrs:
                     snapshot["attributes"] = safe_attrs
                 if scraped_product.description:
@@ -1722,7 +2205,7 @@ class ScraperIntegrationService:
                     updated = True
             else:
                 existing_product.external_data["attributes"] = _json_safe_scraped_value(
-                    scraped_product.attributes
+                    prepared_attrs
                 )
 
         source_info = {
@@ -1740,9 +2223,9 @@ class ScraperIntegrationService:
         updated = True
 
         # Обновляем атрибуты книги (ISBN, издательство, страницы и т.д.)
-        if scraped_product.attributes:
+        if prepared_attrs:
             if self._update_product_attributes(
-                existing_product, scraped_product.attributes, session=session
+                existing_product, prepared_attrs, session=session
             ):
                 updated = True
 
@@ -1767,14 +2250,14 @@ class ScraperIntegrationService:
 
             # Обновляем авторов, только если их сейчас нет (или перенесли на проверку)
             if (
-                scraped_product.attributes
-                and "author" in scraped_product.attributes
+                prepared_attrs
+                and "author" in prepared_attrs
                 and existing_product.product_type == "books"
             ):
                 try:
                     book_product = self._get_book_product(existing_product)
                     if not book_product.book_authors.exists():
-                        author_str = scraped_product.attributes["author"]
+                        author_str = prepared_attrs["author"]
                         if author_str:
                             author_names = [a.strip() for a in author_str.split(",") if a.strip()]
                             for idx, name in enumerate(author_names):
@@ -2066,6 +2549,103 @@ class ScraperIntegrationService:
             medicine_product.save()
         return updated
 
+    def _update_perfumery_attributes(
+        self, product: Product, attrs: Dict[str, Any], *, session: Optional[ScrapingSession] = None
+    ) -> bool:
+        perfumery_keys = (
+            "volume",
+            "fragrance_type",
+            "fragrance_family",
+            "gender",
+            "top_notes",
+            "heart_notes",
+            "base_notes",
+        )
+        if not any(attrs.get(key) for key in perfumery_keys):
+            return False
+
+        perfumery_product = self._get_perfumery_product(product)
+        updated = False
+
+        simple_fields = {
+            "volume": 50,
+            "top_notes": 500,
+            "heart_notes": 500,
+            "base_notes": 500,
+        }
+        for field_name, max_length in simple_fields.items():
+            value = str(attrs.get(field_name) or "").strip()
+            if value and not getattr(perfumery_product, field_name):
+                setattr(perfumery_product, field_name, value[:max_length])
+                updated = True
+
+        fragrance_type = self._normalize_perfume_type(str(attrs.get("fragrance_type") or ""))
+        if fragrance_type and not perfumery_product.fragrance_type:
+            perfumery_product.fragrance_type = fragrance_type
+            updated = True
+
+        fragrance_family = self._normalize_perfume_family(str(attrs.get("fragrance_family") or ""))
+        if fragrance_family and not perfumery_product.fragrance_family:
+            perfumery_product.fragrance_family = fragrance_family
+            updated = True
+
+        gender = self._normalize_perfume_gender(str(attrs.get("gender") or ""))
+        if gender and not perfumery_product.gender:
+            perfumery_product.gender = gender
+            updated = True
+
+        if attrs.get("volume_options") or attrs.get("component_types") or attrs.get("is_perfume_set") or attrs.get("gender_options"):
+            external_data = (
+                dict(perfumery_product.external_data)
+                if isinstance(perfumery_product.external_data, dict)
+                else {}
+            )
+            perfumery_meta = dict(external_data.get("perfumery_meta") or {})
+            changed = False
+            if attrs.get("volume_options") and perfumery_meta.get("volume_options") != attrs.get("volume_options"):
+                perfumery_meta["volume_options"] = attrs.get("volume_options")
+                changed = True
+            if attrs.get("component_types") and perfumery_meta.get("component_types") != attrs.get("component_types"):
+                perfumery_meta["component_types"] = attrs.get("component_types")
+                changed = True
+            if attrs.get("is_perfume_set") and perfumery_meta.get("is_perfume_set") is not True:
+                perfumery_meta["is_perfume_set"] = True
+                changed = True
+            if attrs.get("gender_options") and perfumery_meta.get("gender_options") != attrs.get("gender_options"):
+                perfumery_meta["gender_options"] = attrs.get("gender_options")
+                changed = True
+            if changed:
+                external_data["perfumery_meta"] = perfumery_meta
+                perfumery_product.external_data = external_data
+                updated = True
+
+        if updated:
+            perfumery_product.save()
+        return updated
+
+    def _update_accessory_attributes(
+        self, product: Product, attrs: Dict[str, Any], *, session: Optional[ScrapingSession] = None
+    ) -> bool:
+        if not any(attrs.get(key) for key in ("accessory_type", "material")):
+            return False
+
+        accessory_product = self._get_accessory_product(product)
+        updated = False
+
+        accessory_type = self._normalize_accessory_type(str(attrs.get("accessory_type") or ""))
+        if accessory_type and not accessory_product.accessory_type:
+            accessory_product.accessory_type = accessory_type[:100]
+            updated = True
+
+        material = self._normalize_accessory_material(str(attrs.get("material") or ""))
+        if material and not accessory_product.material:
+            accessory_product.material = material[:100]
+            updated = True
+
+        if updated:
+            accessory_product.save()
+        return updated
+
     def _process_medicine_analogs(
         self, product: Product, scraped_product: ScrapedProduct, session: ScrapingSession
     ) -> None:
@@ -2240,6 +2820,11 @@ class ScraperIntegrationService:
         # Преобразуем в формат ProductData для CatalogNormalizer
         from apps.vapi.client import ProductData
 
+        resolved_product_type = None
+        if scraped_product.category:
+            _, resolved_product_type = resolve_category_and_product_type(scraped_product.category)
+        prepared_attrs = self._prepare_scraped_attributes(scraped_product, resolved_product_type)
+
         product_data = ProductData(
             id=scraped_product.external_id,
             name=scraped_product.name,
@@ -2254,7 +2839,7 @@ class ScraperIntegrationService:
             metadata={
                 "source": scraped_product.source,
                 "scraped_at": scraped_product.scraped_at,
-                "attributes": scraped_product.attributes,
+                "attributes": prepared_attrs,
                 "stock_quantity": scraped_product.stock_quantity,
             },
             barcode=scraped_product.barcode,
@@ -2268,9 +2853,9 @@ class ScraperIntegrationService:
             product.is_new = True
             product.save(update_fields=["is_new"])
 
-        # Количество по умолчанию = 3 только для доступных товаров, если парсер не передал остаток
+        # Дефолтный остаток для parser-driven товаров: 1000, если парсер не передал точный stock.
         if product.is_available and not product.stock_quantity:
-            product.stock_quantity = 3
+            product.stock_quantity = DEFAULT_ASSUMED_STOCK_QUANTITY
             product.save(update_fields=["stock_quantity"])
 
         # Для типов из BRAND_CLEAR_PRODUCT_TYPES убираем бренд, если проставился
@@ -2282,8 +2867,8 @@ class ScraperIntegrationService:
         # normalize_product уже вызвал _sync_product_fields_from_metadata, но
         # _update_product_attributes дополнительно заполняет SEO поля и вес,
         # а также создаёт доменные объекты (BookProduct, JewelryProduct и т.д.).
-        if scraped_product.attributes:
-            if self._update_product_attributes(product, scraped_product.attributes, session=session):
+        if prepared_attrs:
+            if self._update_product_attributes(product, prepared_attrs, session=session):
                 product.save()
 
         # Обрабатываем аналоги, если это медицина
@@ -2308,12 +2893,12 @@ class ScraperIntegrationService:
 
         # Авторы привязаны к BookProduct — сохраняем всегда, не зависит от updated
         if (
-            scraped_product.attributes
-            and "author" in scraped_product.attributes
+            prepared_attrs
+            and "author" in prepared_attrs
             and product.product_type == "books"
         ):
             try:
-                author_str = scraped_product.attributes["author"]
+                author_str = prepared_attrs["author"]
                 if author_str:
                     book_product = self._get_book_product(product)
                     book_product.book_authors.all().delete()

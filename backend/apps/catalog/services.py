@@ -20,6 +20,16 @@ from apps.catalog.utils.storage_paths import detect_media_type
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_PARSER_STOCK_QUANTITY = 1000
+VARIANT_GALLERY_PRODUCT_TYPES = {
+    "clothing",
+    "shoes",
+    "headwear",
+    "underwear",
+    "islamic_clothing",
+    "furniture",
+}
+
 
 def _json_safe_for_external_data(value: Any) -> Any:
     """Рекурсивно приводит значения к типам, допустимым для JSONField (в т.ч. без Decimal)."""
@@ -41,6 +51,14 @@ SYNC_METADATA_HANDLER_NAMES = {
 }
 
 
+def _product_type_uses_variant_gallery(product: Product | str | None) -> bool:
+    if isinstance(product, str):
+        product_type = product
+    else:
+        product_type = getattr(product, "product_type", None)
+    return product_type in VARIANT_GALLERY_PRODUCT_TYPES
+
+
 def _payload_variant_galleries_present(attrs: Optional[Dict[str, Any]]) -> bool:
     """Проверяет, есть ли в сыром payload варианты с собственными изображениями."""
     if not isinstance(attrs, dict):
@@ -60,6 +78,8 @@ def _payload_variant_galleries_present(attrs: Optional[Dict[str, Any]]) -> bool:
 
 def _domain_variants_have_gallery(product: Product) -> bool:
     """Есть ли у доменной модели активные варианты с собственной галереей."""
+    if not _product_type_uses_variant_gallery(product):
+        return False
     domain_item = getattr(product, "domain_item", None)
     if not domain_item:
         return False
@@ -88,6 +108,8 @@ def _skip_shared_product_gallery(product: Product, attrs: Optional[Dict[str, Any
 
     Учитывает как сырой payload вариаций, так и уже сохранённые варианты в БД.
     """
+    if not _product_type_uses_variant_gallery(product):
+        return False
     ad = attrs if isinstance(attrs, dict) else {}
     if _payload_variant_galleries_present(ad):
         return True
@@ -654,6 +676,9 @@ class CatalogNormalizer:
             if stock is not None:
                 product.stock_quantity = stock
                 product.save(update_fields=['stock_quantity'])
+            elif product.is_available and not product.stock_quantity:
+                product.stock_quantity = DEFAULT_PARSER_STOCK_QUANTITY
+                product.save(update_fields=['stock_quantity'])
 
         # Видео: сначала URL из списка images (R2 после парсера), иначе attributes — чтобы не скачивать дубликат в main/.
         if hasattr(product_data, "metadata") and product_data.metadata:
@@ -681,6 +706,8 @@ class CatalogNormalizer:
                 product.description = product_data.description
             
             product.is_available = product_data.availability
+            if product.is_available and not product.stock_quantity:
+                product.stock_quantity = DEFAULT_PARSER_STOCK_QUANTITY
             
             # Мержим external_data вместо полной перезаписи, чтобы сохранить данные ИИ-агента
             if isinstance(product.external_data, dict):
@@ -706,23 +733,28 @@ class CatalogNormalizer:
             
             product.save()
 
-        # Обрабатываем категорию: для существующего товара обновляем category и product_type из маппинга
-        if product_data.category and not product.category:
+        # Обрабатываем категорию: для существующего товара синхронизируем и category, и product_type,
+        # даже если category уже была заполнена раньше.
+        if product_data.category:
             if isinstance(product_data.category, str) and not product_data.category.isdigit():
                 category, product_type = resolve_category_and_product_type(product_data.category)
-                if category is not None:
+                update_fields = []
+                if category is not None and product.category_id != category.id:
                     product.category = category
-                    if product_type is not None and not product.product_type:
-                        product.product_type = product_type
-                    product.save()
+                    update_fields.append("category")
+                if product_type is not None and product.product_type != product_type:
+                    product.product_type = product_type
+                    update_fields.append("product_type")
+                if update_fields:
+                    product.save(update_fields=update_fields)
             else:
                 # Это ID категории
                 category = Category.objects.filter(
                     external_id=product_data.category
                 ).first()
-                if category:
+                if category and product.category_id != category.id:
                     product.category = category
-                    product.save()
+                    product.save(update_fields=["category"])
 
         # Синхронизируем книжные поля ПОСЛЕ того, как product_type установлен сигналом
         if hasattr(product_data, "metadata") and product_data.metadata:

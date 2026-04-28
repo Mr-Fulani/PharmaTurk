@@ -57,7 +57,7 @@ def _make_image_inline(model_class):
     class Inline(admin.TabularInline):
         model = model_class
         extra = 1
-        fields = ('image_file', 'image_url', 'alt_text', 'is_main', 'sort_order')
+        fields = ('image_file', 'image_url', 'alt_text', 'is_main', 'sort_order', 'image_preview')
         readonly_fields = ('image_preview',)
         verbose_name = _('Изображение')
         verbose_name_plural = _('Изображения')

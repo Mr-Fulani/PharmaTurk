@@ -10,6 +10,8 @@ import pytest
 from django.test import RequestFactory
 from rest_framework import status
 
+from apps.catalog.models import Brand, Category, PerfumeryProduct
+from apps.catalog.serializers import PerfumeryProductSerializer
 from apps.catalog.services.product_resolve import (
     BASE_PRODUCT_TYPES,
     TYPES_NEEDING_PATH,
@@ -131,3 +133,24 @@ def test_resolve_api_unknown_slug_404():
     slug = f"___missing_resolve_{uuid.uuid4().hex}___"
     response = client.get(f"/api/catalog/products/resolve/{slug}")
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_perfumery_serializer_exposes_product_type_and_dynamic_attributes():
+    category = Category.objects.create(name="Парфюмерия", slug=f"perfumery-{uuid.uuid4().hex[:8]}")
+    brand = Brand.objects.create(name=f"LCW {uuid.uuid4().hex[:6]}", slug=f"lcw-{uuid.uuid4().hex[:8]}")
+    product = PerfumeryProduct.objects.create(
+        name="Parfum Test",
+        slug=f"parfum-test-{uuid.uuid4().hex[:8]}",
+        category=category,
+        brand=brand,
+        price=100,
+        currency="TRY",
+        gender="",
+        is_active=True,
+    )
+
+    data = PerfumeryProductSerializer(product).data
+
+    assert data["product_type"] == "perfumery"
+    assert "dynamic_attributes" in data

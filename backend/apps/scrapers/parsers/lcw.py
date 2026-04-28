@@ -14,6 +14,7 @@ from ..base.utils import clean_text, extract_currency, normalize_price
 class LcwParser(BaseScraper):
     """Парсер для lcw.com."""
 
+    DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
     MAX_VARIANTS_PER_PRODUCT = 24
     PRODUCT_PATH_RE = re.compile(r"-o-(\d+)(?:$|[/?#])")
     CATEGORY_PATH_RE = re.compile(r"-t-(\d+)(?:$|[/?#])")
@@ -293,7 +294,7 @@ class LcwParser(BaseScraper):
         attributes = self._extract_attributes(page_text)
         og_image_url = self._extract_og_image_url(soup)
         color = self._extract_color(page_text)
-        sizes = self._extract_sizes(page_text)
+        sizes = self._extract_sizes(soup, page_text)
         is_available = "tukendi" not in page_text.lower() and "tükendi" not in page_text.lower()
         group_sku = self._extract_group_sku(page_text, sku)
         if og_image_url:
@@ -329,7 +330,9 @@ class LcwParser(BaseScraper):
             "currency": parsed.get("currency") or "TRY",
             "external_url": parsed.get("url") or "",
             "images": list(parsed.get("images") or []),
-            "stock_quantity": len(parsed.get("sizes") or []) if parsed.get("sizes") else (3 if parsed.get("is_available", True) else 0),
+            "stock_quantity": (
+                self.DEFAULT_ASSUMED_STOCK_QUANTITY if parsed.get("is_available", True) else 0
+            ),
             "is_available": bool(parsed.get("is_available", True)),
             "sizes": list(parsed.get("sizes") or []),
             "sku": parsed.get("sku") or "",
@@ -356,7 +359,10 @@ class LcwParser(BaseScraper):
 
     def _extract_description_from_soup(self, soup: BeautifulSoup) -> str:
         rich_from_text = self._build_rich_description(soup.get_text("\n", strip=True))
-        if rich_from_text:
+        if rich_from_text and not any(
+            marker in rich_from_text
+            for marker in ("Ürün İçeriği ve Özellikleri", "Bakım Bilgileri", "Kumaş Rehberi")
+        ):
             return rich_from_text
 
         stop_markers = (
@@ -409,6 +415,7 @@ class LcwParser(BaseScraper):
         description = clean_text(" ".join(texts))
         description = re.sub(r"^(?:Kargo ve İade\s*)+", "", description, flags=re.IGNORECASE).strip()
         description = re.sub(r"^(?:Ürün Açıklaması\s*:?\s*)+", "", description, flags=re.IGNORECASE).strip()
+        description = re.sub(r"^(?:Kampanyalar\s*)+", "", description, flags=re.IGNORECASE).strip()
         description = re.sub(r"^:\s*", "", description).strip()
         description = re.sub(r"^[A-Z0-9-]+\s*-\s*", "", description).strip()
         return description
@@ -433,6 +440,28 @@ class LcwParser(BaseScraper):
                 sections.append(f"Ürün Kodu: {product_code}")
             if intro_text:
                 sections.append(intro_text)
+        else:
+            fallback_intro = re.search(
+                r"Ürün Açıklaması\s*(.+?)(?:Ürün İçeriği ve Özellikleri|Kargo ve İade|$)",
+                raw_text,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            if fallback_intro:
+                intro_text = clean_text(fallback_intro.group(1))
+                intro_text = re.sub(r"^(?:Kampanyalar\s*)+", "", intro_text, flags=re.IGNORECASE).strip()
+                intro_text = re.sub(
+                    r"^:\s*[A-Z0-9-]+\s*-\s*",
+                    "",
+                    intro_text,
+                ).strip()
+                intro_text = re.split(
+                    r"\b(?:Manken Bilgisi|Ürün İçeriği ve Özellikleri|Kargo ve İade)\b",
+                    intro_text,
+                    maxsplit=1,
+                    flags=re.IGNORECASE,
+                )[0].strip()
+                if intro_text:
+                    sections.append(intro_text)
 
         attrs_block_match = re.search(
             r"Ürün İçeriği ve Özellikleri\s*(.+?)(?:Kumaş Rehberi|Bakım Bilgileri|Destek|$)",
@@ -580,28 +609,68 @@ class LcwParser(BaseScraper):
             images_by_key[image_key] = image_url
             scores_by_key[image_key] = self._image_resolution_score(image_url)
 
-        for img in soup.select("img[src], img[data-src]"):
-            source = img.get("src") or img.get("data-src")
+        for img in soup.select("img[src], img[data-src], img[data-zoom], img[data-image], img[data-original]"):
+            source = (
+                img.get("src")
+                or img.get("data-src")
+                or img.get("data-zoom")
+                or img.get("data-image")
+                or img.get("data-original")
+            )
             if not source:
                 continue
 
             full_url = urljoin(self.base_url, source)
-            source_lower = full_url.lower()
-            if source_lower.endswith(".svg"):
-                continue
-            if any(hint in source_lower for hint in self.SKIP_IMAGE_HINTS):
-                continue
             alt_text = clean_text(img.get("alt", ""))
-            if alt_text and product_name.lower() not in alt_text.lower() and len(alt_text.split()) <= 4:
+            if (
+                alt_text
+                and product_name.lower() not in alt_text.lower()
+                and len(alt_text.split()) <= 4
+                and not self._is_lcw_product_gallery_image_url(full_url)
+            ):
                 continue
+            self._store_image_candidate(full_url, images_by_key, scores_by_key)
 
-            image_key = self._canonicalize_image_url(full_url)
-            score = self._image_resolution_score(full_url)
-            if image_key not in images_by_key or score > scores_by_key.get(image_key, -1):
-                images_by_key[image_key] = full_url
-                scores_by_key[image_key] = score
+        # У LCW часть галереи может приезжать как прямые ссылки <a href="...jpg">,
+        # особенно на карточках без полноценного набора <img> для всех слайдов.
+        for anchor in soup.select("a[href]"):
+            href = anchor.get("href", "").strip()
+            if not href:
+                continue
+            full_url = urljoin(self.base_url, href)
+            if not self._looks_like_image_url(full_url):
+                continue
+            self._store_image_candidate(full_url, images_by_key, scores_by_key)
 
         return list(images_by_key.values())
+
+    def _store_image_candidate(
+        self,
+        image_url: str,
+        images_by_key: Dict[str, str],
+        scores_by_key: Dict[str, int],
+    ) -> None:
+        source_lower = image_url.lower()
+        if source_lower.endswith(".svg"):
+            return
+        if any(hint in source_lower for hint in self.SKIP_IMAGE_HINTS):
+            return
+
+        image_key = self._canonicalize_image_url(image_url)
+        score = self._image_resolution_score(image_url)
+        if image_key not in images_by_key or score > scores_by_key.get(image_key, -1):
+            images_by_key[image_key] = image_url
+            scores_by_key[image_key] = score
+
+    def _looks_like_image_url(self, url: str) -> bool:
+        lowered = url.lower()
+        if lowered.endswith((".jpg", ".jpeg", ".png", ".webp")):
+            return True
+        return self._is_lcw_product_gallery_image_url(lowered)
+
+    def _is_lcw_product_gallery_image_url(self, url: str) -> bool:
+        lowered = url.lower()
+        return "img-lcwaikiki.mncdn.com" in lowered and "/productimages/" in lowered
 
     def _canonicalize_image_url(self, image_url: str) -> str:
         canonical = re.sub(r"/mnpadding/\d+/\d+/ffffff/", "/", image_url)
@@ -618,7 +687,89 @@ class LcwParser(BaseScraper):
         match = re.search(r"Renk\s*:\s*(.+?)(?:Renk seçenekleri|Beden:|Sepete Ekle|$)", page_text, re.IGNORECASE | re.DOTALL)
         return clean_text(match.group(1)) if match else ""
 
-    def _extract_sizes(self, page_text: str) -> List[Dict[str, Any]]:
+    def _extract_sizes(self, soup: BeautifulSoup, page_text: str) -> List[Dict[str, Any]]:
+        soup_sizes = self._extract_sizes_from_soup(soup)
+        if soup_sizes:
+            return soup_sizes
+
+        return self._extract_sizes_from_text(page_text)
+
+    def _extract_sizes_from_soup(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
+        heading = soup.find(
+            string=lambda value: (
+                isinstance(value, str)
+                and "Beden" in value
+                and getattr(getattr(value, "parent", None), "name", None) not in {"script", "style"}
+            )
+        )
+        if not heading:
+            return []
+
+        stop_markers = ("Bedenini Keşfet", "Sepete Ekle", "Ürün Açıklaması", "Renk seçenekleri")
+        sizes: List[Dict[str, Any]] = []
+        seen = set()
+
+        def add_candidate(text_value: str, available: bool) -> None:
+            candidate = clean_text(text_value)
+            if not candidate or len(candidate) > 20:
+                return
+            lowered = candidate.lower()
+            if any(token in lowered for token in ("beden", "keşfet", "sepete", "ekle", "urun", "ürün")):
+                return
+            if candidate in seen:
+                return
+            seen.add(candidate)
+            sizes.append(
+                {
+                    "size": candidate,
+                    "is_available": available,
+                    "stock_quantity": self.DEFAULT_ASSUMED_STOCK_QUANTITY if available else 0,
+                    "sort_order": len(sizes),
+                }
+            )
+
+        container = getattr(heading, "parent", None)
+        if container is None:
+            return []
+
+        for node in container.next_elements:
+            if node is heading:
+                continue
+            if isinstance(node, str):
+                raw_text = clean_text(node)
+                if not raw_text:
+                    continue
+                if any(raw_text.startswith(marker) for marker in stop_markers):
+                    break
+                continue
+
+            tag_name = getattr(node, "name", None)
+            if tag_name not in {"button", "span", "label", "div", "li", "a"}:
+                continue
+
+            node_text = clean_text(node.get_text(" ", strip=True))
+            if not node_text:
+                continue
+            if any(node_text.startswith(marker) for marker in stop_markers):
+                break
+
+            if tag_name == "div" and len(node_text.split()) > 4:
+                continue
+
+            classes = " ".join(node.get("class", [])).lower()
+            available = not (
+                node.has_attr("disabled")
+                or str(node.get("aria-disabled", "")).lower() == "true"
+                or any(
+                    hint in classes
+                    for hint in ("disabled", "passive", "inactive", "out-of-stock", "outofstock", "sold-out")
+                )
+            )
+            add_candidate(node_text, available)
+
+        return sizes
+
+    def _extract_sizes_from_text(self, page_text: str) -> List[Dict[str, Any]]:
         match = re.search(r"Beden:\s*(.+?)(?:Bedenini Keşfet|Sepete Ekle|Ürün Açıklaması|$)", page_text, re.IGNORECASE | re.DOTALL)
         if not match:
             return []
@@ -640,7 +791,7 @@ class LcwParser(BaseScraper):
                 {
                     "size": candidate,
                     "is_available": True,
-                    "stock_quantity": 1,
+                    "stock_quantity": self.DEFAULT_ASSUMED_STOCK_QUANTITY,
                     "sort_order": idx,
                 }
             )

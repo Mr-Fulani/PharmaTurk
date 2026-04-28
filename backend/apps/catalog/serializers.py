@@ -5031,7 +5031,9 @@ class PerfumeryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
     active_variant_main_image_url = serializers.SerializerMethodField()
     active_variant_old_price_formatted = serializers.SerializerMethodField()
     translations = PerfumeryProductTranslationSerializer(many=True, read_only=True)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    product_type = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = PerfumeryProduct
@@ -5042,7 +5044,7 @@ class PerfumeryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
             'volume', 'fragrance_type', 'fragrance_family', 'gender',
             'top_notes', 'heart_notes', 'base_notes',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url',
-            'images',
+            'images', 'dynamic_attributes', 'product_type',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
@@ -5050,6 +5052,10 @@ class PerfumeryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
             'base_product_id',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_product_type(self, obj):
+        raw = getattr(type(obj), '_domain_product_type', None)
+        return str(raw).replace('_', '-') if raw else None
 
     def _get_active_variant(self, obj):
         active_slug = self.context.get('active_variant_slug')

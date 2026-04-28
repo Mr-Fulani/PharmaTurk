@@ -236,8 +236,17 @@ def _parse_multi_param(request, param_name: str) -> list[str]:
     if not raw_list:
         raw = request.query_params.get(param_name)
         if raw:
-            raw_list = raw.split(',')
-    return [v.strip().lower().replace('_', '-') for v in raw_list if v and str(v).strip()]
+            raw_list = [raw]
+
+    values: list[str] = []
+    for raw in raw_list:
+        if raw is None:
+            continue
+        for part in str(raw).split(','):
+            cleaned = part.strip().lower().replace('_', '-')
+            if cleaned:
+                values.append(cleaned)
+    return values
 
 
 from django.db.models import Q
@@ -479,6 +488,18 @@ class FacetedModelViewSetMixin:
             for k in sorted(grouped.keys())
         ]
 
+    def _calculate_available_fragrance_types(self, queryset):
+        """Вычисляет доступные типы аромата для парфюмерии."""
+        model = queryset.model
+        if not hasattr(model, 'fragrance_type'):
+            return []
+        values = (
+            queryset.exclude(fragrance_type__in=[None, ''])
+            .values_list('fragrance_type', flat=True)
+            .distinct()
+        )
+        return sorted(str(value).strip().lower() for value in values if str(value or '').strip())
+
     def _get_facet_queryset(self):
         """Возвращает queryset для расчета фасетов, игнорируя текущие фильтры по полу и динамическим атрибутам."""
         original_get = self.request._request.GET
@@ -512,12 +533,14 @@ class FacetedModelViewSetMixin:
             data = self.get_paginated_response(serializer.data).data
             data['available_attributes'] = self._calculate_available_attributes(facet_queryset)
             data['available_genders'] = self._calculate_available_genders(facet_queryset)
+            data['available_fragrance_types'] = self._calculate_available_fragrance_types(facet_queryset)
             return Response(data)
         serializer = self.get_serializer(queryset, many=True)
         return Response({
             'results': serializer.data,
             'available_attributes': self._calculate_available_attributes(facet_queryset),
             'available_genders': self._calculate_available_genders(facet_queryset),
+            'available_fragrance_types': self._calculate_available_fragrance_types(facet_queryset),
         })
 
 

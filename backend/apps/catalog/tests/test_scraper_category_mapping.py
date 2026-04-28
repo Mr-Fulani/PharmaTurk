@@ -20,6 +20,11 @@ from apps.catalog.scraper_category_mapping import resolve_category_and_product_t
         ("Güneş Bakım", "perfumery", "perfumery"),
         ("Vücut Bakım", "perfumery", "perfumery"),
         ("Parfüm", "perfumery", "perfumery"),
+        ("Şapka", "headwear", "headwear"),
+        ("Kep Şapka", "headwear", "headwear"),
+        ("Bere", "headwear", "headwear"),
+        ("Boxer", "underwear", "underwear"),
+        ("Sütyen", "underwear", "underwear"),
     ],
 )
 def test_resolve_category_and_product_type_supports_lcw_turkish_aliases(

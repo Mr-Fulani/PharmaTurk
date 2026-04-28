@@ -35,6 +35,7 @@ export interface FilterState {
   subcategories: number[]
   subcategorySlugs: string[]
   genders?: string[]
+  fragranceTypes?: string[]
   authorIds?: number[]
   genreIds?: number[]
   publishers?: string[]
@@ -83,6 +84,7 @@ interface CategorySidebarProps {
   categoryGroups?: SidebarTreeSection[]
   brandGroups?: SidebarTreeSection[]
   availableAttributes?: AvailableAttribute[]
+  availableFragranceTypes?: string[]
   onFilterChange?: (filters: FilterState) => void
   isOpen?: boolean
   onToggle?: () => void
@@ -99,6 +101,14 @@ const GENDER_OPTIONS = [
   { slug: 'kids', key: 'filter_kids', fallback: 'Детская' },
   { slug: 'unisex', key: 'filter_unisex', fallback: 'Унисекс' },
 ]
+
+const FRAGRANCE_TYPE_LABEL_KEYS: Record<string, { key: string; fallback: string }> = {
+  edp: { key: 'fragrance_type_edp', fallback: 'Парфюмерная вода (EDP)' },
+  edt: { key: 'fragrance_type_edt', fallback: 'Туалетная вода (EDT)' },
+  edc: { key: 'fragrance_type_edc', fallback: 'Одеколон (EDC)' },
+  parfum: { key: 'fragrance_type_parfum', fallback: 'Духи' },
+  body_mist: { key: 'fragrance_type_body_mist', fallback: 'Парфюмированный мист' },
+}
 
 const toggleArrayValue = <T,>(arr: T[], value: T): T[] =>
   arr.includes(value) ? arr.filter((item) => item !== value) : [...arr, value]
@@ -142,6 +152,7 @@ export default function CategorySidebar({
   categoryGroups = [],
   brandGroups = [],
   availableAttributes = [],
+  availableFragranceTypes = [],
   onFilterChange,
   isOpen = true,
   onToggle,
@@ -161,6 +172,7 @@ export default function CategorySidebar({
     subcategories: [],
     subcategorySlugs: [],
     genders: [],
+    fragranceTypes: [],
     authorIds: [],
     genreIds: [],
     publishers: [],
@@ -195,6 +207,7 @@ export default function CategorySidebar({
     initialFilters?.categories?.join(','),
     initialFilters?.subcategories?.join(','),
     initialFilters?.genders?.join(','),
+    initialFilters?.fragranceTypes?.join(','),
     initialFilters?.authorIds?.join(','),
     initialFilters?.genreIds?.join(','),
     initialFilters?.publishers?.join(','),
@@ -232,6 +245,7 @@ export default function CategorySidebar({
     filters.categories.join(','),
     filters.subcategories.join(','),
     filters.genders?.join(','),
+    filters.fragranceTypes?.join(','),
     filters.brandSlugs.join(','),
     filters.categorySlugs.join(','),
     filters.subcategorySlugs.join(','),
@@ -283,6 +297,13 @@ export default function CategorySidebar({
     updateFilters((prev) => ({
       ...prev,
       genders: toggleArrayValue(prev.genders || [], slug)
+    }))
+  }
+
+  const toggleFragranceTypeFilter = (value: string) => {
+    updateFilters((prev) => ({
+      ...prev,
+      fragranceTypes: toggleArrayValue(prev.fragranceTypes || [], value)
     }))
   }
 
@@ -416,6 +437,7 @@ export default function CategorySidebar({
       subcategories: [],
       subcategorySlugs: [],
       genders: [],
+      fragranceTypes: [],
       authorIds: [],
       genreIds: [],
       publishers: [],
@@ -524,6 +546,7 @@ export default function CategorySidebar({
     filters.brands.length > 0 ||
     filters.subcategories.length > 0 ||
     (filters.genders && filters.genders.length > 0) ||
+    (filters.fragranceTypes && filters.fragranceTypes.length > 0) ||
     filters.priceMin !== undefined ||
     filters.priceMax !== undefined ||
     filters.inStock ||
@@ -641,6 +664,50 @@ export default function CategorySidebar({
                       </span>
                     </label>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {categoryType === 'perfumery' && availableFragranceTypes.length > 0 && (
+            <div className="border-b border-[var(--border)] pb-4">
+              <button
+                onClick={() => setExpandedSections((prev) => ({ ...prev, subcategories: !prev.subcategories }))}
+                className="flex items-center justify-between w-full mb-3 group"
+              >
+                <h3 className="text-base font-bold text-main group-hover:text-[var(--accent)] transition-colors uppercase tracking-tight">
+                  {t('fragrance_type', 'Тип аромата')}
+                </h3>
+                <svg
+                  className={`w-4 h-4 text-main/40 group-hover:text-[var(--accent)] transition-transform duration-300 ${expandedSections.subcategories ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {expandedSections.subcategories && (
+                <div className="space-y-2">
+                  {availableFragranceTypes.map((value) => {
+                    const config = FRAGRANCE_TYPE_LABEL_KEYS[value] || {
+                      key: `fragrance_type_${value}`,
+                      fallback: value,
+                    }
+                    return (
+                      <label key={value} className="flex items-center space-x-3 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={(filters.fragranceTypes || []).includes(value)}
+                          onChange={() => toggleFragranceTypeFilter(value)}
+                          className="w-4 h-4 text-[var(--accent)] border-[var(--border)] rounded focus:ring-[var(--accent)] transition-colors"
+                        />
+                        <span className="text-sm text-main group-hover:text-[var(--accent)] transition-colors flex-1">
+                          {t(config.key, config.fallback)}
+                        </span>
+                      </label>
+                    )
+                  })}
                 </div>
               )}
             </div>
