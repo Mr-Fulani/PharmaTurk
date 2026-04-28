@@ -4083,6 +4083,7 @@ ECOMMERCE_ATTRIBUTES = [
     ("sole-material", "Материал подошвы", "Sole Material", 20, ["shoes"]),
     ("heel-height", "Высота каблука", "Heel Height", 21, ["shoes"]),
     ("closure-type", "Тип застёжки", "Closure Type", 22, ["shoes", "accessories", "underwear"]),
+    ("toe-shape", "Форма носка", "Toe Shape", 22, ["shoes"]),
     ("shoe-width", "Ширина обуви", "Shoe Width", 23, ["shoes"]),
     ("insole-type", "Тип стельки", "Insole Type", 24, ["shoes"]),
     # Electronics / Электроника

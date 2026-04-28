@@ -422,6 +422,7 @@ interface Variant {
   name?: string
   name_en?: string
   description?: string
+  description_en?: string
   color?: string
   sku?: string
   price?: number | string | null
@@ -651,8 +652,11 @@ export default function ProductPage({
 
   const localizedDescriptionHtml = useMemo(() => {
     if (!product) return ''
-    if (selectedVariant?.description?.trim()) {
-      return selectedVariant.description.trim()
+    const variantDescription = (
+      isEnglishLocale ? selectedVariant?.description_en : selectedVariant?.description
+    )?.trim()
+    if (variantDescription) {
+      return variantDescription
     }
     return getLocalizedProductDescription(
       product.description,
@@ -660,7 +664,7 @@ export default function ProductPage({
       product.translations,
       router.locale
     )
-  }, [product, selectedVariant?.description, t, router.locale])
+  }, [product, selectedVariant?.description, selectedVariant?.description_en, isEnglishLocale, t, router.locale])
 
   const descriptionSections = useMemo(
     () => splitDescriptionIntoSections(localizedDescriptionHtml),
@@ -1104,7 +1108,10 @@ export default function ProductPage({
   const apiTranslation = product.translations?.find(
     (tr) => tr.locale === router.locale || tr.locale === router.locale?.split('-')[0]
   )
-  const localizedDescription = selectedVariant?.description || apiTranslation?.description || product.description
+  const localizedDescription =
+    (isEnglishLocale ? selectedVariant?.description_en : selectedVariant?.description) ||
+    apiTranslation?.description ||
+    product.description
 
   const metaTitle = (
     apiTranslation?.meta_title || 

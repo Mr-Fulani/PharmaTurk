@@ -95,12 +95,13 @@ class BaseAIApplier:
             if isinstance(val, list):
                 val = ", ".join(map(str, val))
                 
-            if val and not re.search("[а-яА-Я]", str(val)):
-                if getattr(target, model_key, None) != val:
-                    if model_key in ['seo_title', 'meta_title']: val = str(val)[:70]
-                    if model_key in ['seo_description', 'meta_description']: val = str(val)[:160]
-                    setattr(target, model_key, val)
-                    updated = True
+            if val and getattr(target, model_key, None) != val:
+                if model_key in ['seo_title', 'meta_title']:
+                    val = str(val)[:70]
+                if model_key in ['seo_description', 'meta_description']:
+                    val = str(val)[:160]
+                setattr(target, model_key, val)
+                updated = True
 
         # og_image_url — URL, не проверяем на кириллицу
         if is_domain:

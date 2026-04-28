@@ -56,7 +56,17 @@ class ContentGenerator:
         "perfect for everyday wear",
         "стильный вид",
         "stylish look",
+        "available in different colors and sizes",
+        "доступны в разных цветах и размерах",
     )
+    DYNAMIC_ATTR_SOURCE_HINTS = {
+        "material": ("kumaş", "materyal", "material", "suni deri", "deri", "pamuk", "polyester", "cotton", "leather"),
+        "closure-type": ("kapanma şekli", "bağcık", "fermuar", "closure", "lace", "zipper", "hook"),
+        "toe-shape": ("burun şekli", "yuvarlak burun", "sivri burun", "square toe", "round toe", "pointed toe"),
+        "sole-material": ("taban", "sole", "подошв"),
+        "season": ("season", "sezon", "yaz", "kış", "ilkbahar", "sonbahar", "summer", "winter"),
+        "gender": ("erkek", "kadın", "unisex", "male", "female", "муж", "жен"),
+    }
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
@@ -1073,9 +1083,11 @@ class ContentGenerator:
           • Если исходный язык — английский: результат → en.generated_description; ru.generated_description = перевод на РУССКИЙ.
           • Если исходный язык — турецкий (или другой): переведи на русский → ru.generated_description; переведи на английский → en.generated_description.
           • Если в raw_description есть структура вроде «Ürün Tipi / Kumaş / Burun Şekli / Ayakkabı Kapanma Şekli / Bakım Bilgileri», ОБЯЗАТЕЛЬНО используй эти факты в описании. Не заменяй их общими словами.
+          • Если факт в source указан прямо, передавай его прямо и точно. Пример: «Kumaş: Suni Deri» => «из искусственной кожи», а не «из материала, напоминающего искусственную кожу».
         - Если есть variant_context:
           • Пиши базовое описание только про общие свойства товара, не зависящие от конкретного варианта.
           • Не смешивай в родительское описание различия по цветам, размерам, объёмам и другим вариантам, если они не общие для всех.
+          • Не пиши в родительском описании, что товар «доступен в разных цветах и размерах», если это уже видно через UI вариантов.
           • Если variant_context.needs_separate_variant_copy=true, особенно избегай добавлять variant-specific факты в общее описание.
         - В итоге ВСЕГДА заполняй оба: ru.generated_description (RU) и en.generated_description (EN).
         - Технические поля заполняй только если данные есть в current_description, raw_description, known_attributes ИЛИ image_analysis. Не придумывай.
@@ -1091,8 +1103,8 @@ class ContentGenerator:
         - Для медикаментов: ОЯЗАТЕЛЬНО переведи все технические поля из known_attributes на русский и английский. Если в raw_description или current_description есть инструкции по применению, побочные эффекты, противопоказания, показания (Ne İçin Kullanılır, Yan Etkileri, vs.) — ОБЯЗАТЕЛЬНО извлеки их, переведи на нужный язык (RU/EN) и заполни соответствующие поля (indications, usage_instructions, side_effects, contraindications, storage_conditions, administration_route, shelf_life, sgk_status, prescription_type, special_notes, origin_country) внутри объектов "ru" и "en". Например: "Subkütan" (TR) -> "Подкожно" (RU) / "Subcutaneous" (EN); "İthal" (TR) -> "Импортный" (RU) / "Imported" (EN).
         - Название (generated_title): только основной заголовок, без подзаголовка. Например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура». Для книг: если в image_analysis есть name (название с обложки) — используй его; автор — из image_analysis.author.
         - Для одежды и обуви: title должен быть на языке ответа и не должен содержать турецкие цвета, цену, TL/TRY, SKU или код товара.
-        - SEO — только на английском (латиница). Кириллица в SEO недопустима.
-        - В "ru" — название и описание на русском; в "en" — название, описание (перевод ru) и все SEO на английском.
+        - SEO в общих полях карточки можно писать на русском, если это логичнее для витрины. Английскую SEO-версию при этом тоже заполни в "en".
+        - В "ru" — название и описание на русском; в "en" — название, описание (перевод ru) и SEO на английском.
         - stock_quantity: если не указано, можно 3.
 
         Верни JSON (опускай только технические поля без данных — не опускай описание и SEO, если есть текст или image_analysis). Описание ru и en — один смысл, перевод; каждое от 20 до 100 слов:
@@ -1248,6 +1260,13 @@ class ContentGenerator:
             kept.append(candidate)
         cleaned = " ".join(kept).strip()
         cleaned = re.sub(r"\s{2,}", " ", cleaned)
+        replacements = {
+            "из материала, напоминающего искусственную кожу": "из искусственной кожи",
+            "made from a material resembling artificial leather": "made of artificial leather",
+            "made from material resembling artificial leather": "made of artificial leather",
+        }
+        for old, new in replacements.items():
+            cleaned = cleaned.replace(old, new)
         return cleaned or normalized
 
     def _apply_confidence_gate_to_dynamic_attributes(self, dynamic_attrs: List[Dict[str, Any]], input_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1282,10 +1301,37 @@ class ContentGenerator:
             values_to_check = [v for v in values_to_check if v]
             if not values_to_check:
                 continue
-            if not any(v.lower() in source_blob for v in values_to_check if len(v) >= 3):
+            hinted = any(v.lower() in source_blob for v in values_to_check if len(v) >= 3)
+            if not hinted:
+                hinted = any(hint in source_blob for hint in self.DYNAMIC_ATTR_SOURCE_HINTS.get(slug, ()))
+            if not hinted:
                 continue
             approved.append(row)
         return approved
+
+    def _merge_dynamic_attributes_into_top_level(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
+        dynamic_attrs = attrs.get("dynamic_attributes") or []
+        if not isinstance(dynamic_attrs, list):
+            return attrs
+
+        slug_to_top_level = {
+            "material": "material",
+            "gender": "gender",
+            "closure-type": "closure_type",
+            "toe-shape": "toe_shape",
+            "sole-material": "sole_material",
+        }
+        for row in dynamic_attrs:
+            if not isinstance(row, dict):
+                continue
+            slug = str(row.get("slug") or "").strip().lower()
+            target_key = slug_to_top_level.get(slug)
+            if not target_key or attrs.get(target_key):
+                continue
+            value = str(row.get("value_ru") or row.get("value") or row.get("value_en") or "").strip()
+            if value:
+                attrs[target_key] = value
+        return attrs
 
     def _sanitize_ai_content(self, content: Dict[str, Any], input_data: Dict[str, Any], *, variant_mode: bool = False) -> Dict[str, Any]:
         if not isinstance(content, dict):
@@ -1309,6 +1355,7 @@ class ContentGenerator:
                 attrs.get("dynamic_attributes") or [],
                 input_data,
             )
+            content["attributes"] = self._merge_dynamic_attributes_into_top_level(attrs)
         return content
 
     def _parse_and_save_results(self, log: AIProcessingLog, content):
@@ -1330,21 +1377,26 @@ class ContentGenerator:
         if "generated_description" in data_source and data_source["generated_description"]:
             log.generated_description = data_source["generated_description"]
 
-        # SEO только из en (английский, латиница). Кириллицу не записываем даже в логи.
+        # SEO: сохраняем в общие поля SEO в первую очередь RU, затем EN fallback.
         en_data = content.get("en") or {}
-        
-        def is_clean_en(text):
-            if not text: return True
-            return not bool(re.search("[а-яА-Я]", str(text)))
+        ru_data = content.get("ru") or {}
 
-        if en_data.get("seo_title") and is_clean_en(en_data["seo_title"]):
-            log.generated_seo_title = (en_data["seo_title"] or "")[:70]
-        if en_data.get("seo_description") and is_clean_en(en_data["seo_description"]):
-            log.generated_seo_description = (en_data["seo_description"] or "")[:160]
-        if en_data.get("keywords"):
-            # Фильтруем ключевые слова от кириллицы
-            clean_keywords = [k for k in en_data["keywords"] if is_clean_en(k)]
-            log.generated_keywords = clean_keywords
+        seo_title = ru_data.get("seo_title") or en_data.get("seo_title")
+        seo_description = ru_data.get("seo_description") or en_data.get("seo_description")
+        seo_keywords = ru_data.get("keywords") or en_data.get("keywords") or []
+
+        if seo_title:
+            log.generated_seo_title = str(seo_title)[:70]
+        elif log.generated_title:
+            log.generated_seo_title = str(log.generated_title)[:70]
+        if seo_description:
+            log.generated_seo_description = str(seo_description)[:160]
+        elif log.generated_description:
+            plain_desc = re.sub(r"<[^>]+>", " ", str(log.generated_description))
+            plain_desc = re.sub(r"\s+", " ", plain_desc).strip()
+            log.generated_seo_description = plain_desc[:160]
+        if seo_keywords:
+            log.generated_keywords = [str(k).strip() for k in seo_keywords if str(k).strip()]
 
         if "attributes" in content and content["attributes"]:
             log.extracted_attributes = content["attributes"]
@@ -1354,11 +1406,10 @@ class ContentGenerator:
             if not log.extracted_attributes:
                 log.extracted_attributes = {}
             
-            # В структуре внутри attributes фильтруем тоже
             seo_en_data = {
-                "title": en_data.get("seo_title") if is_clean_en(en_data.get("seo_title")) else None,
-                "description": en_data.get("seo_description") if is_clean_en(en_data.get("seo_description")) else None,
-                "keywords": [k for k in en_data.get("keywords", []) if is_clean_en(k)],
+                "title": en_data.get("seo_title"),
+                "description": en_data.get("seo_description"),
+                "keywords": [str(k).strip() for k in en_data.get("keywords", []) if str(k).strip()],
                 "generated_title": en_data.get("generated_title"),
                 "generated_description": en_data.get("generated_description"),
             }
@@ -1465,7 +1516,7 @@ class ContentGenerator:
         # Английское описание и название хранятся в seo_en внутри extracted_attributes
         seo_en = dict(attrs.get('seo_en') or {})
         en_description = seo_en.get('generated_description') or log.generated_description or ""
-        en_name = log.generated_seo_title or seo_en.get('generated_title') or log.generated_title or original_name
+        en_name = seo_en.get('generated_title') or log.generated_title or original_name
 
         ai_data = {
             'generated_title': (log.generated_title or '').strip() or None,

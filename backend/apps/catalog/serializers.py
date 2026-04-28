@@ -142,6 +142,22 @@ def _get_variant_draft_description(variant, locale: str) -> str:
     return str(bucket.get("generated_description") or "").strip()
 
 
+def _get_variant_localized_description(variant, locale: str) -> str:
+    localized = _get_variant_draft_description(variant, locale)
+    if localized:
+        return localized
+    product = getattr(variant, "product", None)
+    if not product:
+        return ""
+    if locale == "en":
+        translations = getattr(product, "translations", None)
+        if hasattr(translations, "filter"):
+            trans = translations.filter(locale="en").first()
+            if trans and trans.description:
+                return trans.description
+    return getattr(product, "description", "") or ""
+
+
 def _resolve_file_url(file_field, request):
     if not file_field:
         return None
@@ -766,13 +782,14 @@ class BookVariantSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     name_en = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
+    description_en = serializers.SerializerMethodField()
     images = BookVariantImageSerializer(many=True, read_only=True)
     sizes = BookVariantSizeSerializer(many=True, read_only=True)
 
     class Meta:
         model = BookVariant
         fields = [
-            'id', 'slug', 'name', 'name_en', 'description',
+            'id', 'slug', 'name', 'name_en', 'description', 'description_en',
             'cover_type', 'format_type', 'isbn',
             'price', 'old_price', 'currency',
             'is_available', 'stock_quantity',
@@ -792,7 +809,10 @@ class BookVariantSerializer(serializers.ModelSerializer):
         return _get_variant_draft_title(obj, "en") or obj.name_en
 
     def get_description(self, obj):
-        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
+        return _get_variant_localized_description(obj, "ru")
+
+    def get_description_en(self, obj):
+        return _get_variant_localized_description(obj, "en")
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -2058,13 +2078,14 @@ class ClothingVariantSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     name_en = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
+    description_en = serializers.SerializerMethodField()
     images = ClothingVariantImageSerializer(many=True, read_only=True)
     sizes = ClothingVariantSizeSerializer(many=True, read_only=True)
 
     class Meta:
         model = ClothingVariant
         fields = [
-            'id', 'slug', 'name', 'name_en', 'description', 'color',
+            'id', 'slug', 'name', 'name_en', 'description', 'description_en', 'color',
             'size',  # устаревшее поле оставлено для совместимости
             'sizes',
             'price', 'old_price', 'currency',
@@ -2082,7 +2103,10 @@ class ClothingVariantSerializer(serializers.ModelSerializer):
         return _get_variant_draft_title(obj, "en") or obj.name_en
 
     def get_description(self, obj):
-        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
+        return _get_variant_localized_description(obj, "ru")
+
+    def get_description_en(self, obj):
+        return _get_variant_localized_description(obj, "en")
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -2919,13 +2943,14 @@ class ShoeVariantSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     name_en = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
+    description_en = serializers.SerializerMethodField()
     images = ShoeVariantImageSerializer(many=True, read_only=True)
     sizes = ShoeVariantSizeSerializer(many=True, read_only=True)
 
     class Meta:
         model = ShoeVariant
         fields = [
-            'id', 'slug', 'name', 'name_en', 'description', 'color',
+            'id', 'slug', 'name', 'name_en', 'description', 'description_en', 'color',
             'size',  # устаревшее поле оставлено для совместимости
             'sizes',
             'price', 'old_price', 'currency',
@@ -2943,7 +2968,10 @@ class ShoeVariantSerializer(serializers.ModelSerializer):
         return _get_variant_draft_title(obj, "en") or obj.name_en
 
     def get_description(self, obj):
-        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
+        return _get_variant_localized_description(obj, "ru")
+
+    def get_description_en(self, obj):
+        return _get_variant_localized_description(obj, "en")
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -3174,6 +3202,7 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     name_en = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
+    description_en = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()
     old_price = serializers.SerializerMethodField()
@@ -3184,7 +3213,7 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = FurnitureVariant
         fields = [
-            'id', 'name', 'name_en', 'description', 'slug', 'color',
+            'id', 'name', 'name_en', 'description', 'description_en', 'slug', 'color',
             'price', 'old_price', 'currency',
             'is_available', 'stock_quantity',
             'main_image', 'images',
@@ -3200,7 +3229,10 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
         return _get_variant_draft_title(obj, "en") or obj.name_en
 
     def get_description(self, obj):
-        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
+        return _get_variant_localized_description(obj, "ru")
+
+    def get_description_en(self, obj):
+        return _get_variant_localized_description(obj, "en")
 
     def _get_preferred_currency(self, request):
         default = 'RUB'
@@ -3769,6 +3801,7 @@ class JewelryVariantSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     name_en = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
+    description_en = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
     sizes = JewelryVariantSizeSerializer(many=True, read_only=True)
     price = serializers.SerializerMethodField()
@@ -3778,7 +3811,7 @@ class JewelryVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = JewelryVariant
         fields = [
-            'id', 'name', 'name_en', 'description', 'slug', 'color', 'material', 'gender',
+            'id', 'name', 'name_en', 'description', 'description_en', 'slug', 'color', 'material', 'gender',
             'price', 'old_price', 'currency',
             'is_available', 'stock_quantity',
             'main_image', 'images', 'sizes',
@@ -3794,7 +3827,10 @@ class JewelryVariantSerializer(serializers.ModelSerializer):
         return _get_variant_draft_title(obj, "en") or obj.name_en
 
     def get_description(self, obj):
-        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
+        return _get_variant_localized_description(obj, "ru")
+
+    def get_description_en(self, obj):
+        return _get_variant_localized_description(obj, "en")
 
     def _get_preferred_currency(self, request):
         default = 'RUB'
@@ -5033,12 +5069,13 @@ class PerfumeryVariantSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     name_en = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
+    description_en = serializers.SerializerMethodField()
     images = PerfumeryVariantImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = PerfumeryVariant
         fields = [
-            'id', 'slug', 'name', 'name_en', 'description', 'volume',
+            'id', 'slug', 'name', 'name_en', 'description', 'description_en', 'volume',
             'price', 'old_price', 'currency',
             'is_available', 'stock_quantity',
             'main_image', 'images',
@@ -5056,7 +5093,10 @@ class PerfumeryVariantSerializer(serializers.ModelSerializer):
         return _get_variant_draft_title(obj, "en") or obj.name_en
 
     def get_description(self, obj):
-        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
+        return _get_variant_localized_description(obj, "ru")
+
+    def get_description_en(self, obj):
+        return _get_variant_localized_description(obj, "en")
 
 
 class PerfumeryProductSerializer(serializers.ModelSerializer):
@@ -6228,6 +6268,7 @@ class HeadwearVariantSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     name_en = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
+    description_en = serializers.SerializerMethodField()
     images = HeadwearVariantImageSerializer(many=True, read_only=True)
     sizes = HeadwearVariantSizeSerializer(many=True, read_only=True)
     main_image_url = serializers.SerializerMethodField()
@@ -6235,7 +6276,7 @@ class HeadwearVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = HeadwearVariant
         fields = [
-            'id', 'name', 'name_en', 'description', 'slug', 'color', 'size',
+            'id', 'name', 'name_en', 'description', 'description_en', 'slug', 'color', 'size',
             'sku', 'barcode', 'gtin', 'mpn',
             'price', 'currency', 'old_price',
             'is_available', 'stock_quantity',
@@ -6252,7 +6293,10 @@ class HeadwearVariantSerializer(serializers.ModelSerializer):
         return _get_variant_draft_title(obj, "en") or obj.name_en
 
     def get_description(self, obj):
-        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
+        return _get_variant_localized_description(obj, "ru")
+
+    def get_description_en(self, obj):
+        return _get_variant_localized_description(obj, "en")
 
     def get_main_image_url(self, obj):
         request = self.context.get('request')

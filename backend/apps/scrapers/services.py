@@ -81,6 +81,20 @@ _ATTRIBUTE_UPDATE_HANDLER_NAMES = {
 class ScraperIntegrationService:
     """Сервис интеграции парсеров с каталогом."""
 
+    VARIANT_COLOR_TRANSLATIONS = {
+        "beyaz": {"ru": "Белый", "en": "White"},
+        "lacivert": {"ru": "Темно-синий", "en": "Navy"},
+        "siyah": {"ru": "Черный", "en": "Black"},
+        "mavi": {"ru": "Синий", "en": "Blue"},
+        "gri": {"ru": "Серый", "en": "Gray"},
+        "kahverengi": {"ru": "Коричневый", "en": "Brown"},
+        "bej": {"ru": "Бежевый", "en": "Beige"},
+        "kirmizi": {"ru": "Красный", "en": "Red"},
+        "kırmızı": {"ru": "Красный", "en": "Red"},
+        "yeşil": {"ru": "Зеленый", "en": "Green"},
+        "yesil": {"ru": "Зеленый", "en": "Green"},
+    }
+
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.catalog_normalizer = CatalogNormalizer()
@@ -119,6 +133,33 @@ class ScraperIntegrationService:
                 bio=""
             )
         return author
+
+    def _strip_variant_noise(self, name: str) -> str:
+        value = str(name or "").strip()
+        if not value:
+            return ""
+        value = re.sub(r"\b\d[\d.,]*\s*(TL|TRY|USD|EUR|RUB|KZT)\b", "", value, flags=re.IGNORECASE)
+        value = re.sub(r"\bSKU[:\s-]*[A-Z0-9-]+\b", "", value, flags=re.IGNORECASE)
+        value = re.sub(r"\s+-\s+$", "", value)
+        value = re.sub(r"\s{2,}", " ", value)
+        return value.strip(" -")
+
+    def _translate_variant_color(self, color: str, locale: str = "ru") -> str:
+        normalized = str(color or "").strip().lower()
+        if not normalized:
+            return ""
+        bucket = self.VARIANT_COLOR_TRANSLATIONS.get(normalized)
+        if bucket:
+            return bucket.get(locale) or color
+        return str(color).strip()
+
+    def _build_variant_names(self, base_name: str, color: str) -> Tuple[str, str]:
+        cleaned_base = self._strip_variant_noise(base_name)
+        ru_color = self._translate_variant_color(color, "ru")
+        en_color = self._translate_variant_color(color, "en")
+        ru_name = f"{cleaned_base} - {ru_color}".strip(" -") if cleaned_base and ru_color else cleaned_base or ru_color
+        en_name = f"{cleaned_base} - {en_color}".strip(" -") if cleaned_base and en_color else cleaned_base or en_color
+        return ru_name[:500], en_name[:500]
 
     def run_scraper(
         self,
@@ -1232,8 +1273,13 @@ class ScraperIntegrationService:
 
             price_dec = self._safe_decimal(spec.get("price"))
             color_value = str(spec.get("color") or "").strip()[:50]
+            variant_name_ru, variant_name_en = self._build_variant_names(
+                str(domain_product.name or ""),
+                color_value,
+            )
             defaults = {
-                "name": (spec.get("display_name") or domain_product.name or "")[:500],
+                "name": variant_name_ru or self._strip_variant_noise(spec.get("display_name") or domain_product.name or "")[:500],
+                "name_en": variant_name_en,
                 "color": color_value,
                 "sku": str(spec.get("sku") or ext)[:100],
                 "barcode": str(spec.get("barcode") or "")[:100],
