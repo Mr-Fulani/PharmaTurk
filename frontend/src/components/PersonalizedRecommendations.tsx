@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
-import { isBaseProductType } from '../lib/product'
+import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
 
@@ -127,7 +127,7 @@ export default function PersonalizedRecommendations() {
             const pt = product.product_type || 'medicines'
             return (
               <ProductCard
-                key={product.id}
+                key={buildProductIdentityKey(product, pt)}
                 id={product.id}
                 baseProductId={(product as { base_product_id?: number }).base_product_id}
                 name={product.name}

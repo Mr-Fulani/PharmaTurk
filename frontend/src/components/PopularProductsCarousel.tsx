@@ -15,7 +15,7 @@ import {
   getYouTubeCardThumbnailUrl,
 } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
-import { favoriteApiProductId } from '../lib/product'
+import { buildProductIdentityKey, favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 
 const LazyYouTubeCard = dynamic(() => import('./LazyYouTubeCard'), { ssr: false })
@@ -351,7 +351,7 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                 carouselVideoSrc && !carouselYtId ? getVideoEmbedUrl(carouselVideoSrc, 'player') : null
               return (
                 <div
-                  key={product.id}
+                  key={buildProductIdentityKey(product, product.product_type)}
                   className="flex-shrink-0 w-44 md:w-60 group flex flex-col gap-2 relative transition-all duration-300 hover:-translate-y-1 snap-start"
                 >
                   <Link

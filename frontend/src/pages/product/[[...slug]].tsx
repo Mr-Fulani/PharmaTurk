@@ -1267,6 +1267,7 @@ export default function ProductPage({
                       <FavoriteButton
                         productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
                         productType={productType}
+                        productSlug={product.slug}
                         favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
                         favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
                         cornerIcon={true}
@@ -1288,6 +1289,7 @@ export default function ProductPage({
                     <FavoriteButton
                       productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
                       productType={productType}
+                      productSlug={product.slug}
                       favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
                       favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
                       cornerIcon={true}
@@ -1444,6 +1446,7 @@ export default function ProductPage({
                     <FavoriteButton
                       productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
                       productType={productType}
+                      productSlug={product.slug}
                       favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
                       favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
                       cornerIcon={true}
@@ -1483,6 +1486,7 @@ export default function ProductPage({
                     <FavoriteButton
                       productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
                       productType={productType}
+                      productSlug={product.slug}
                       favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
                       favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
                       cornerIcon={true}

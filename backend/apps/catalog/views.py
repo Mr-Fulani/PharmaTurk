@@ -2342,7 +2342,8 @@ def _dedupe_favorites_serialized_rows(serialized_list):
 
     В БД могут сосуществовать несколько Favorite на один и тот же товар разными путями
     (например shadow Product и ShoeProduct с одним slug), в т.ч. после старых багов с id.
-    Ключ совпадает с тем, как фронт строит ссылку на карточку: slug + тип.
+    Ключ совпадает с публичной идентичностью карточки для фронта: type + public id/base id (+ size),
+    а если id по какой-то причине нет — fallback на slug.
     Оставляем самую свежую запись по created_at.
     """
     def _norm_type(raw):
@@ -2359,9 +2360,9 @@ def _dedupe_favorites_serialized_rows(serialized_list):
         p = row.get('product') or {}
         slug = (p.get('slug') or '').strip().lower()
         ptype = _norm_type(p.get('_product_type'))
-        pid = p.get('id')
+        pid = p.get('id') or p.get('base_product_id')
         csize = (row.get('chosen_size') or p.get('favorite_chosen_size') or '').strip().lower()
-        key = (slug, ptype, csize) if slug else (str(pid or ''), ptype, csize)
+        key = (str(pid or ''), ptype, csize) if pid else (slug, ptype, csize)
         if key in seen:
             continue
         seen.add(key)

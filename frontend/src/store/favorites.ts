@@ -41,7 +41,12 @@ interface FavoritesStore {
   add: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => Promise<void>
   remove: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => Promise<void>
   check: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => Promise<boolean>
-  isFavorite: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => boolean
+  isFavorite: (
+    productId: number | undefined,
+    productType?: string,
+    variant?: FavoriteVariantOpts,
+    productSlug?: string
+  ) => boolean
 }
 
 const normType = (t: string | undefined) =>
@@ -157,21 +162,28 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
     }
   },
 
-  isFavorite: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => {
+  isFavorite: (
+    productId: number | undefined,
+    productType?: string,
+    variant?: FavoriteVariantOpts,
+    productSlug?: string
+  ) => {
     const { favorites } = get()
     const want = normType(productType)
+    const wantSlug = (productSlug || '').trim().toLowerCase()
     return favorites.some((fav) => {
+      const type = normType(fav.product._product_type || 'medicines')
+      if (type !== want) return false
       if (variant?.productSlug) {
         const slugOk = fav.product.favorite_variant_slug === variant.productSlug
         const sizeOk = (fav.product.favorite_chosen_size || '') === (variant.size || '')
-        const typeOk = normType(fav.product._product_type || 'medicines') === want
-        return slugOk && sizeOk && typeOk
+        return slugOk && sizeOk
       }
       if (productId === undefined) return false
       const sameId = fav.product.id === productId
-      if (!productType) return sameId
-      const type = normType(fav.product._product_type || 'medicines')
-      return sameId && type === want
+      if (sameId) return true
+      if (!wantSlug) return false
+      return (fav.product.slug || '').trim().toLowerCase() === wantSlug
     })
   },
 }))

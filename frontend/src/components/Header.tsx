@@ -10,6 +10,7 @@ import AnimatedLogoutButton from './AnimatedLogoutButton'
 import { useTheme } from '../context/ThemeContext'
 import Cookies from 'js-cookie'
 import DotMenu from './DotMenu'
+import { buildProductIdentityKey } from '../lib/product'
 
 export default function Header() {
   const router = useRouter()
@@ -217,7 +218,7 @@ export default function Header() {
                     <div className={`px-3 py-2 text-sm ${isDark ? 'text-slate-300' : 'text-gray-500'}`}>{t('search_loading')}</div>
                   ) : suggestions.map((p) => (
                     <button
-                      key={p.id}
+                      key={buildProductIdentityKey(p, p.is_service ? 'uslugi' : p.product_type)}
                       onClick={() => { 
                         setShowSuggestions(false); 
                         if (p.is_service) {
@@ -397,7 +398,7 @@ export default function Header() {
                   <div className={`px-3 py-2 text-sm ${isDark ? 'text-slate-300' : 'text-gray-500'}`}>{t('search_loading')}</div>
                 ) : suggestions.map((p) => (
                   <button
-                    key={p.id}
+                    key={buildProductIdentityKey(p, p.product_type)}
                     onClick={() => { setShowSuggestions(false); router.push(`/product/${p.slug}`) }}
                     className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors duration-200 ${isDark ? 'text-slate-100 hover:bg-slate-700' : 'text-gray-800 hover:bg-red-50'}`}
                   >

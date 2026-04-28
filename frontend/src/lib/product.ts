@@ -69,6 +69,12 @@ const FAVORITE_API_USES_BASE_PRODUCT_ID = new Set([
   'books',
 ])
 
+type ProductIdentityLike = {
+  id: number | string
+  base_product_id?: number | null
+  slug?: string | null
+}
+
 export function favoriteApiProductId(
   product: { id: number; base_product_id?: number | null },
   productType?: string | null
@@ -79,4 +85,24 @@ export function favoriteApiProductId(
     return base
   }
   return product.id
+}
+
+/**
+ * Стабильный ключ товара для mixed-списков на фронте.
+ * Одного product.id недостаточно: id могут пересекаться между разными категориями/моделями.
+ */
+export function buildProductIdentityKey(
+  product: ProductIdentityLike,
+  productType?: string | null
+): string {
+  const norm = normalizeProductType(productType) || 'medicines'
+  const safeId = favoriteApiProductId(
+    {
+      id: Number(product.id),
+      base_product_id: product.base_product_id,
+    },
+    norm
+  )
+  const slug = (product.slug || '').toString().trim().toLowerCase()
+  return slug ? `${norm}:${safeId}:${slug}` : `${norm}:${safeId}`
 }

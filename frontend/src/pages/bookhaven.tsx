@@ -6,6 +6,7 @@ import { Search, Filter, Grid, List } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ProductCard from '../components/ProductCard';
 import api from '../lib/api';
+import { buildProductIdentityKey } from '../lib/product';
 import { ProductTranslation } from '../lib/i18n';
 
 interface Product {
@@ -237,7 +238,7 @@ const BookHavenPage: React.FC = () => {
 
               return (
                 <ProductCard
-                  key={book.id}
+                  key={buildProductIdentityKey(book, 'books')}
                   id={book.id}
                   name={book.name}
                   slug={book.slug}

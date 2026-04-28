@@ -7,6 +7,8 @@ interface FavoriteButtonProps {
   /** Для карточек без вариантного slug (листинги) */
   productId?: number
   productType?: string
+  /** Fallback для сопоставления после refresh, если список избранного вернул другой публичный id. */
+  productSlug?: string
   /** Как product_slug при добавлении в корзину: вариант мебели / обуви / одежды */
   favoriteProductSlug?: string
   /** Размер для обуви/одежды (как в корзине) */
@@ -20,6 +22,7 @@ interface FavoriteButtonProps {
 export default function FavoriteButton({
   productId,
   productType = 'medicines',
+  productSlug,
   favoriteProductSlug,
   favoriteSize,
   className = '',
@@ -43,7 +46,7 @@ export default function FavoriteButton({
     ? { productSlug: favoriteProductSlug, size: favoriteSize || '' }
     : undefined
 
-  const favorite = isFavoriteFn(productId, productType, variantOpts)
+  const favorite = isFavoriteFn(productId, productType, variantOpts, productSlug)
 
   const toggle = async (e?: React.MouseEvent) => {
     if (e) {

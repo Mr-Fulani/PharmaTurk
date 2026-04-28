@@ -235,6 +235,7 @@ export default function ProductCard({
             <FavoriteButton
               productId={favoriteProductId}
               productType={productType}
+              productSlug={slug}
               cornerIcon={true}
             />
             <ShareButton
@@ -413,6 +414,7 @@ export default function ProductCard({
           <FavoriteButton
             productId={favoriteProductId}
             productType={productType}
+            productSlug={slug}
             cornerIcon={true}
           />
           <ShareButton

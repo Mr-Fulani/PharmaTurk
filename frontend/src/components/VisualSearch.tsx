@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
-import { isBaseProductType } from '../lib/product'
+import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
 
@@ -160,7 +160,7 @@ export default function VisualSearch() {
         <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
           {results.map((r) => (
             <ProductCard
-              key={r.product_id}
+              key={buildProductIdentityKey(r.product, r.product.product_type)}
               id={r.product.id}
               baseProductId={(r.product as { base_product_id?: number }).base_product_id}
               name={r.product.name}

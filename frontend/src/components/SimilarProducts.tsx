@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'next-i18next'
 import api from '../lib/api'
-import { isBaseProductType } from '../lib/product'
+import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
 
@@ -223,7 +223,7 @@ export default function SimilarProducts({
           const displayOldPrice = displayOldCurrency === displayCurrency ? parsedOldPrice ?? oldPriceSource : null
 
           return (
-            <div key={product.id} className="relative">
+            <div key={buildProductIdentityKey(product, product.product_type)} className="relative">
               <ProductCard
                 id={product.id}
                 baseProductId={(product as { base_product_id?: number }).base_product_id}

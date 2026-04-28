@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import ProductCard from '../../components/ProductCard'
 import Sidebar from '../../components/Sidebar'
-import { isBaseProductType } from '../../lib/product'
+import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { ProductTranslation } from '../../lib/i18n'
@@ -267,7 +267,7 @@ export default function BrandPage({
                 const pt = (p as { product_type?: string }).product_type || 'medicines'
                 return (
                   <ProductCard
-                    key={p.id}
+                    key={buildProductIdentityKey(p, pt)}
                     id={p.id}
                     baseProductId={(p as { base_product_id?: number }).base_product_id}
                     name={p.name}

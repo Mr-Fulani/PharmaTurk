@@ -5,7 +5,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTranslation, BrandTranslation, stripHtml } from '../../lib/i18n'
 import { getSiteOrigin } from '../../lib/urls'
-import { isBaseProductType } from '../../lib/product'
+import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios from 'axios'
@@ -1674,7 +1674,7 @@ export default function CategoryPage({
 
                     return (
                       <ProductCard
-                        key={product.id}
+                        key={buildProductIdentityKey(product, effectiveProductType)}
                         id={product.id}
                         baseProductId={(product as { base_product_id?: number }).base_product_id}
                         name={product.name}

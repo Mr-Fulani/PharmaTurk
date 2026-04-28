@@ -2,7 +2,7 @@ import { useRouter } from 'next/router'
 import Head from 'next/head'
 import { useEffect, useState } from 'react'
 import api from '../lib/api'
-import { isBaseProductType } from '../lib/product'
+import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from '../components/ProductCard'
 import VisualSearch from '../components/VisualSearch'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
@@ -55,7 +55,7 @@ export default function SearchPage() {
               const pt = p.product_type || 'medicines'
               return (
                 <ProductCard
-                  key={p.id}
+                  key={buildProductIdentityKey(p, pt)}
                   id={p.id}
                   baseProductId={(p as { base_product_id?: number }).base_product_id}
                   name={p.name}
