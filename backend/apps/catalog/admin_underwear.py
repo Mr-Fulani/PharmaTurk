@@ -40,8 +40,13 @@ def _product_category_path(obj):
 
 class UnderwearProductTranslationInline(admin.StackedInline):
     model = UnderwearProductTranslation
-    extra = 0
-    fields = ('locale', 'name', 'description', 'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description')
+    extra = 1
+    fieldsets = (
+        (None, {'fields': ('locale', 'name', 'description')}),
+        (_('Локализованное SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description'),
+        }),
+    )
 
 class UnderwearProductSizeInline(admin.TabularInline):
     model = UnderwearProductSize

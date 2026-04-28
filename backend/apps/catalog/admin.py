@@ -141,6 +141,16 @@ PRODUCT_TRANSLATION_SEO_FIELDS = (
     'og_title', 'og_description',
 )
 
+PRODUCT_TRANSLATION_INLINE_FIELDSETS = (
+    (None, {
+        'fields': ('locale', 'name', 'description'),
+    }),
+    (_('Локализованное SEO'), {
+        'fields': PRODUCT_TRANSLATION_SEO_FIELDS,
+        'description': _('SEO-поля для конкретного языка перевода (например ru или en).'),
+    }),
+)
+
 
 @admin.action(description=_("Сделать активными"))
 def activate_variants(modeladmin, request, queryset):
@@ -190,47 +200,47 @@ class BrandTranslationInline(admin.TabularInline):
     fields = ('locale', 'name', 'description')
 
 
-class ProductTranslationInline(admin.TabularInline):
+class ProductTranslationInline(admin.StackedInline):
     """Inline для редактирования переводов товаров."""
     model = ProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
+    fieldsets = PRODUCT_TRANSLATION_INLINE_FIELDSETS
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
 
-class ClothingProductTranslationInline(admin.TabularInline):
+class ClothingProductTranslationInline(admin.StackedInline):
     """Inline для редактирования переводов товаров одежды."""
     model = ClothingProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
+    fieldsets = PRODUCT_TRANSLATION_INLINE_FIELDSETS
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
 
-class ShoeProductTranslationInline(admin.TabularInline):
+class ShoeProductTranslationInline(admin.StackedInline):
     """Inline для редактирования переводов товаров обуви."""
     model = ShoeProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
+    fieldsets = PRODUCT_TRANSLATION_INLINE_FIELDSETS
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
 
-class ElectronicsProductTranslationInline(admin.TabularInline):
+class ElectronicsProductTranslationInline(admin.StackedInline):
     """Inline для редактирования переводов товаров электроники."""
     model = ElectronicsProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
+    fieldsets = PRODUCT_TRANSLATION_INLINE_FIELDSETS
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
 
-class FurnitureProductTranslationInline(admin.TabularInline):
+class FurnitureProductTranslationInline(admin.StackedInline):
     """Inline для редактирования переводов товаров мебели."""
     model = FurnitureProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
+    fieldsets = PRODUCT_TRANSLATION_INLINE_FIELDSETS
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -2043,10 +2053,10 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Mod
 # АДМИНКА ДЛЯ УКРАШЕНИЙ (JewelryProduct с вариантами и размерами)
 # ============================================================================
 
-class JewelryProductTranslationInline(admin.TabularInline):
+class JewelryProductTranslationInline(admin.StackedInline):
     model = JewelryProductTranslation
-    extra = 0
-    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
+    extra = 1
+    fieldsets = PRODUCT_TRANSLATION_INLINE_FIELDSETS
 
 
 class JewelryProductImageInline(admin.TabularInline):

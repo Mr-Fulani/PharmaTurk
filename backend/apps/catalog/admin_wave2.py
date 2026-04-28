@@ -23,18 +23,28 @@ from .admin_base import AIStatusFilter, RunAIActionMixin, MediaEnrichmentStatusF
 
 def _make_translation_inline(model_class, extra_fields=None):
     """Фабрика для StackedInline переводов (чтобы широкие текстовые поля нормально помещались)."""
-    inline_fields = (
-        'locale', 'name', 'description',
-        'meta_title', 'meta_description', 'meta_keywords',
-        'og_title', 'og_description',
-    )
+    base_fieldsets = [
+        (None, {'fields': ('locale', 'name', 'description')}),
+        (_('Локализованное SEO'), {
+            'fields': (
+                'meta_title', 'meta_description', 'meta_keywords',
+                'og_title', 'og_description',
+            ),
+            'description': _('SEO-поля для конкретного языка перевода (например ru или en).'),
+        }),
+    ]
     if extra_fields:
-        inline_fields += tuple(extra_fields)
+        base_fieldsets.append(
+            (_('Дополнительные поля'), {
+                'fields': tuple(extra_fields),
+                'classes': ('collapse',),
+            })
+        )
 
     class Inline(admin.StackedInline):
         model = model_class
         extra = 2
-        fields = inline_fields
+        fieldsets = tuple(base_fieldsets)
         verbose_name = _('Перевод')
         verbose_name_plural = _('Переводы')
 

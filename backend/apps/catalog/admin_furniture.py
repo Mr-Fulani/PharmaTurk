@@ -7,8 +7,13 @@ from .models import (
 
 class FurnitureProductTranslationInline(admin.StackedInline):
     model = FurnitureProductTranslation
-    extra = 0
-    fields = ['locale', 'name', 'description']
+    extra = 1
+    fieldsets = (
+        (None, {'fields': ('locale', 'name', 'description')}),
+        (_('Локализованное SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description'),
+        }),
+    )
 
 class FurnitureProductImageInline(admin.TabularInline):
     model = FurnitureProductImage

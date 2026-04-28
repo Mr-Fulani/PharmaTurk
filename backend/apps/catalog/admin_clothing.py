@@ -7,8 +7,13 @@ from .models import (
 
 class ClothingProductTranslationInline(admin.StackedInline):
     model = ClothingProductTranslation
-    extra = 0
-    fields = ['locale', 'name', 'description']
+    extra = 1
+    fieldsets = (
+        (None, {'fields': ('locale', 'name', 'description')}),
+        (_('Локализованное SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description'),
+        }),
+    )
 
 class ClothingProductImageInline(admin.TabularInline):
     model = ClothingProductImage

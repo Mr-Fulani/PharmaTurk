@@ -65,11 +65,17 @@ class BookVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     inlines = [BookVariantSizeInline, BookVariantImageInline]
 
 
-class BookProductTranslationInline(admin.TabularInline):
+class BookProductTranslationInline(admin.StackedInline):
     """Inline для переводов книги."""
     model = BookProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description', 'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description')
+    fieldsets = (
+        (None, {'fields': ('locale', 'name', 'description')}),
+        (_('Локализованное SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description'),
+            'description': _('SEO-поля для конкретного языка перевода (например ru или en).'),
+        }),
+    )
     verbose_name = _('Перевод')
     verbose_name_plural = _('Переводы')
 

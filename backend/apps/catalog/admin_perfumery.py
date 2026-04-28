@@ -58,7 +58,13 @@ class PerfumeryProductTranslationInline(admin.StackedInline):
     """Inline для переводов товаров парфюмерии."""
     model = PerfumeryProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description', 'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description')
+    fieldsets = (
+        (None, {'fields': ('locale', 'name', 'description')}),
+        (_('Локализованное SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description'),
+            'description': _('SEO-поля для конкретного языка перевода (например ru или en).'),
+        }),
+    )
 
 
 class PerfumeryProductImageInline(admin.TabularInline):

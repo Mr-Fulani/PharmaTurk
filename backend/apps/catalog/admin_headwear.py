@@ -40,8 +40,13 @@ def _product_category_path(obj):
 
 class HeadwearProductTranslationInline(admin.StackedInline):
     model = HeadwearProductTranslation
-    extra = 0
-    fields = ('locale', 'name', 'description', 'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description')
+    extra = 1
+    fieldsets = (
+        (None, {'fields': ('locale', 'name', 'description')}),
+        (_('Локализованное SEO'), {
+            'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description'),
+        }),
+    )
 
 class HeadwearProductSizeInline(admin.TabularInline):
     model = HeadwearProductSize
