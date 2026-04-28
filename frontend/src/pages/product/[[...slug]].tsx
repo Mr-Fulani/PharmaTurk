@@ -304,78 +304,23 @@ function parseStructuredDescription(html: string): StructuredDescription {
   return structured
 }
 
-const DescriptionCareIcon = ({ theme }: { theme: string }) => (
+const DescriptionFactBullet = ({ theme }: { theme: string }) => (
   <span
-    className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border"
-    style={{
-      borderColor: theme === 'dark' ? '#4B5563' : '#E5D3B3',
-      backgroundColor: theme === 'dark' ? '#111827' : '#FFF8E7',
-      color: theme === 'dark' ? '#F9FAFB' : '#7C4A03',
-    }}
-  >
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 6h14l-2 12H7L5 6Z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8 6V4h8v2" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="m7 17 10-10" />
-    </svg>
-  </span>
+    className="mt-[10px] inline-block h-[6px] w-[6px] shrink-0 rounded-full"
+    style={{ backgroundColor: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+  />
 )
 
-function renderFactSymbol(label: string) {
-  const normalized = label.toLowerCase()
-  if (normalized.includes('материал') || normalized.includes('material') || normalized.includes('kumaş')) {
-    return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M7 4h10v5l-2 2 2 2v7H7v-7l2-2-2-2V4Z" />
-      </svg>
-    )
-  }
-  if (normalized.includes('форма носка') || normalized.includes('toe') || normalized.includes('burun')) {
-    return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 15c0-4 3-7 7-7h2c4 0 7 3 7 7v2H4v-2Z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 11h6" />
-      </svg>
-    )
-  }
-  if (normalized.includes('заст') || normalized.includes('closure') || normalized.includes('kapanma')) {
-    return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8 5 6 19m10-14-2 14M9.5 8h5M9 12h5M8.5 16h5" />
-      </svg>
-    )
-  }
-  if (normalized.includes('тип товара') || normalized.includes('product type') || normalized.includes('ürün tipi')) {
-    return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6 8h12M6 12h12M6 16h8" />
-      </svg>
-    )
-  }
-  if (normalized.includes('производитель') || normalized.includes('importer') || normalized.includes('ithalatçı')) {
-    return (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 20h16M6 20V9l6-4 6 4v11M10 12h4v4h-4z" />
-      </svg>
-    )
-  }
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h8M8 8h8M8 16h5M5 8.5h.01M5 12.5h.01M5 16.5h.01" />
-    </svg>
-  )
-}
-
-const DescriptionTypedFactIcon = ({ theme, label }: { theme: string; label: string }) => (
+const DescriptionCareGlyph = ({ theme }: { theme: string }) => (
   <span
-    className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border"
-    style={{
-      borderColor: theme === 'dark' ? '#4B5563' : '#E5D3B3',
-      backgroundColor: theme === 'dark' ? '#1F2937' : '#FFF5DC',
-      color: theme === 'dark' ? '#F9FAFB' : '#7C4A03',
-    }}
+    className="mt-[2px] inline-flex h-5 w-5 shrink-0 items-center justify-center"
+    style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
   >
-    {renderFactSymbol(label)}
+    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.6">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 7h15l-1.7 10.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8L4.5 7Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V5.4c0-.22.18-.4.4-.4h7.2c.22 0 .4.18.4.4V7" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m7 17 10-10" />
+    </svg>
   </span>
 )
 
@@ -733,8 +678,6 @@ export default function ProductPage({
   const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined)
   // Количество товара
   const [quantity, setQuantity] = useState(1)
-  /** Раскрытие блоков описания по индексу (вертикальный аккордеон) */
-  const [descriptionAccordionOpen, setDescriptionAccordionOpen] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     const next = furnitureVariantPickerBySlug ? initialVariant?.slug : initialVariant?.color
@@ -826,10 +769,6 @@ export default function ProductPage({
     () => splitDescriptionIntoSections(localizedDescriptionHtml),
     [localizedDescriptionHtml]
   )
-
-  useEffect(() => {
-    setDescriptionAccordionOpen({})
-  }, [product?.slug, selectedVariantSlug])
 
   const maxAvailable = product ? resolveAvailableStock(product, selectedVariant, selectedSize) : null
   const sizeHintMessage = t(
@@ -2337,9 +2276,9 @@ export default function ProductPage({
           </div>
         </div>
 
-        {/* Описание: блоки друг под другом, как у лекарств (раскрывающийся список) */}
+        {/* Описание: editorial layout, ближе к референсу */}
         {descriptionSections.length > 0 && (
-          <div className="mt-6 flex w-full flex-col gap-4">
+          <div className="mt-8 flex w-full flex-col gap-10">
             {descriptionSections.map((sec, idx) => {
               const rawBody = sec.html.trim()
               if (!rawBody) return null
@@ -2356,168 +2295,107 @@ export default function ProductPage({
                 : idx === 0
                   ? t('description', 'Описание')
                   : `${t('description', 'Описание')} (${idx + 1})`
-              const isExpanded = Boolean(descriptionAccordionOpen[idx])
               const structured = parseStructuredDescription(rawBody)
               return (
-                <div
-                  key={idx}
-                  className="w-full overflow-hidden rounded-lg border dark:border-gray-700"
-                  style={{
-                    borderColor: theme === 'dark' ? '#374151' : '#E5E7EB',
-                    backgroundColor: theme === 'dark' ? '#1F2937' : '#FFF8E7',
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDescriptionAccordionOpen((prev) => ({
-                        ...prev,
-                        [idx]: !prev[idx],
-                      }))
-                    }}
-                    className="flex w-full items-center justify-between p-4 text-left transition-colors"
-                    style={{ backgroundColor: 'transparent' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = theme === 'dark' ? '#374151' : '#FFF5DC'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = 'transparent'
-                    }}
-                    aria-expanded={isExpanded}
-                  >
-                    <span
-                      className="font-medium"
-                      style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
-                    >
-                      {sectionTitle}
-                    </span>
-                    <svg
-                      className={`h-5 w-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {isExpanded && (
-                    <div
-                      className="border-t p-6 dark:border-gray-700"
-                      style={{
-                        borderTopColor: theme === 'dark' ? '#374151' : '#E5E7EB',
-                        backgroundColor: theme === 'dark' ? '#111827' : '#FFFBF0',
-                      }}
-                    >
-                      {structured.facts.length > 0 || structured.care.length > 0 ? (
-                        <div className="flex flex-col gap-6">
+                <section key={idx} className="w-full">
+                  {structured.facts.length > 0 || structured.care.length > 0 ? (
+                    <div className="flex flex-col gap-8">
                           {structured.lead.length > 0 && (
                             <div className="flex flex-col gap-3">
                               {structured.lead.map((paragraph, paragraphIndex) => (
                                 <p
                                   key={`lead-${paragraphIndex}`}
-                                  className="text-[15px] leading-7"
-                                  style={{ color: theme === 'dark' ? '#F3F4F6' : '#1F2937' }}
+                                  className="max-w-3xl text-[16px] leading-8"
+                                  style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
                                 >
                                   {paragraph}
                                 </p>
                               ))}
-                            </div>
-                          )}
+                        </div>
+                      )}
 
                           {structured.facts.length > 0 && (
-                            <div className="grid gap-3">
-                              <div
-                                className="mb-1 text-xs font-semibold uppercase tracking-[0.16em]"
-                                style={{ color: theme === 'dark' ? '#C7D2FE' : '#9A6700' }}
+                            <div className="flex flex-col gap-4">
+                              <h3
+                                className="text-[18px] font-medium leading-tight"
+                                style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
                               >
-                                {t('product_facts', 'Состав и характеристики')}
-                              </div>
-                              {structured.facts.map((fact, factIndex) => (
+                                {t('product_facts', 'Состав и характеристики продукта')}
+                              </h3>
+                          <div className="flex flex-col gap-3">
+                            {structured.facts.map((fact, factIndex) => (
+                              <div key={`${fact.label}-${factIndex}`} className="flex items-start gap-4">
+                                <DescriptionFactBullet theme={theme} />
                                 <div
-                                  key={`${fact.label}-${factIndex}`}
-                                  className="flex items-start gap-3 rounded-2xl border px-4 py-3"
-                                  style={{
-                                    borderColor: theme === 'dark' ? '#374151' : '#EADBC2',
-                                    backgroundColor: theme === 'dark' ? '#0F172A' : '#FFFCF5',
-                                  }}
+                                  className="min-w-0 max-w-3xl text-[16px] leading-8"
+                                  style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
                                 >
-                                  <DescriptionTypedFactIcon theme={theme} label={fact.label} />
-                                  <div className="min-w-0">
-                                    <div
-                                      className="text-xs font-semibold uppercase tracking-[0.16em]"
-                                      style={{ color: theme === 'dark' ? '#C7D2FE' : '#9A6700' }}
-                                    >
-                                      {fact.label}
-                                    </div>
-                                    <div
-                                      className="mt-1 text-[15px] leading-7"
-                                      style={{ color: theme === 'dark' ? '#F9FAFB' : '#111827' }}
-                                    >
-                                      {fact.value}
-                                    </div>
-                                  </div>
+                                  <span>{fact.label}</span>
+                                  <span style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}> : </span>
+                                  <span style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}>{fact.value}</span>
                                 </div>
-                              ))}
-                            </div>
-                          )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                           {structured.care.length > 0 && (
-                            <div
-                              className="rounded-2xl border px-4 py-4"
-                              style={{
-                                borderColor: theme === 'dark' ? '#374151' : '#EADBC2',
-                                backgroundColor: theme === 'dark' ? '#111827' : '#FFFDF7',
-                              }}
-                            >
-                              <div
-                                className="mb-3 text-xs font-semibold uppercase tracking-[0.16em]"
-                                style={{ color: theme === 'dark' ? '#C7D2FE' : '#9A6700' }}
+                            <div className="flex flex-col gap-4">
+                              <h3
+                                className="text-[18px] font-medium leading-tight"
+                                style={{ color: theme === 'dark' ? '#ffffff' : '#111827' }}
                               >
-                                {t('care_information', 'Информация по уходу')}
-                              </div>
-                              <div className="flex flex-col gap-3">
-                                {structured.care.map((item, careIndex) => (
-                                  <div key={`care-${careIndex}`} className="flex items-start gap-3">
-                                    <DescriptionCareIcon theme={theme} />
+                                {t('care_information', 'Информация по техническому обслуживанию')}
+                              </h3>
+                          <div className="flex flex-col gap-3">
+                            {structured.care.map((item, careIndex) => (
+                              <div key={`care-${careIndex}`} className="flex items-start gap-3">
+                                <DescriptionCareGlyph theme={theme} />
                                     <div
-                                      className="pt-1 text-[15px] leading-7"
-                                      style={{ color: theme === 'dark' ? '#F3F4F6' : '#1F2937' }}
+                                      className="max-w-3xl text-[16px] leading-8"
+                                      style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
                                     >
                                       {item}
                                     </div>
                                   </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
-                          {structured.notes.length > 0 && (
-                            <div className="flex flex-col gap-3">
+                      {structured.notes.length > 0 && (
+                            <div className="flex flex-col gap-3 max-w-3xl">
                               {structured.notes.map((note, noteIndex) => (
                                 <p
                                   key={`note-${noteIndex}`}
-                                  className="text-[15px] leading-7"
-                                  style={{ color: theme === 'dark' ? '#D1D5DB' : '#374151' }}
+                                  className="text-[16px] leading-8"
+                                  style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
                                 >
                                   {note}
                                 </p>
                               ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="prose max-w-none dark:prose-invert">
-                          <div
-                            className="whitespace-pre-wrap text-base leading-relaxed"
-                            style={{ color: theme === 'dark' ? '#F3F4F6' : '#111827' }}
-                            dangerouslySetInnerHTML={{ __html: body }}
-                          />
                         </div>
                       )}
                     </div>
+                  ) : (
+                    <div className="flex flex-col gap-4">
+                      <h3
+                        className="text-[18px] font-medium leading-tight"
+                        style={{ color: theme === 'dark' ? '#F9FAFB' : '#1C1C1C' }}
+                      >
+                        {sectionTitle}
+                      </h3>
+                      <div className="prose max-w-none dark:prose-invert">
+                        <div
+                          className="max-w-3xl whitespace-pre-wrap text-[16px] leading-8"
+                          style={{ color: theme === 'dark' ? '#F3F4F6' : '#2F2F2F' }}
+                          dangerouslySetInnerHTML={{ __html: body }}
+                        />
+                      </div>
+                    </div>
                   )}
-                </div>
+                </section>
               )
             })}
           </div>
