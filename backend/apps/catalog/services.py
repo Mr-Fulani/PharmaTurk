@@ -41,47 +41,57 @@ SYNC_METADATA_HANDLER_NAMES = {
 }
 
 
-def _furniture_variant_galleries_present(attrs: Optional[Dict[str, Any]]) -> bool:
-    """Проверяет, есть ли у цветовых вариантов мебели свои изображения (галерея на FurnitureVariant)."""
+def _payload_variant_galleries_present(attrs: Optional[Dict[str, Any]]) -> bool:
+    """Проверяет, есть ли в сыром payload варианты с собственными изображениями."""
     if not isinstance(attrs, dict):
         return False
-    fv = attrs.get("furniture_variants")
-    if not isinstance(fv, list) or not fv:
-        return False
-    for spec in fv:
-        if not isinstance(spec, dict):
+    for key in ("furniture_variants", "fashion_variants", "variants"):
+        rows = attrs.get(key)
+        if not isinstance(rows, list) or not rows:
             continue
-        raw = spec.get("images") or []
-        if any(isinstance(u, str) and u.strip() for u in raw):
+        for spec in rows:
+            if not isinstance(spec, dict):
+                continue
+            raw = spec.get("images") or []
+            if any(isinstance(u, str) and u.strip() for u in raw):
+                return True
+    return False
+
+
+def _domain_variants_have_gallery(product: Product) -> bool:
+    """Есть ли у доменной модели активные варианты с собственной галереей."""
+    domain_item = getattr(product, "domain_item", None)
+    if not domain_item:
+        return False
+    variants_manager = getattr(domain_item, "variants", None)
+    if variants_manager is None:
+        return False
+    try:
+        active = list(variants_manager.filter(is_active=True))
+    except Exception:
+        try:
+            active = list(variants_manager.all())
+        except Exception:
+            return False
+    if len(active) > 1:
+        return True
+    for variant in active:
+        images_manager = getattr(variant, "images", None)
+        if images_manager is not None and images_manager.exists():
             return True
     return False
 
 
-def _furniture_skip_shared_product_gallery(product: Product, attrs: Optional[Dict[str, Any]]) -> bool:
+def _skip_shared_product_gallery(product: Product, attrs: Optional[Dict[str, Any]]) -> bool:
     """
-    Не мержить корневой список изображений в FurnitureProductImage: галерея только у вариантов.
+    Не мержить корневой список изображений в parent/domain gallery: галерея только у вариантов.
 
-    Учитывает парсинг категории без furniture_variants в JSON — тогда смотрим уже сохранённые варианты в БД.
+    Учитывает как сырой payload вариаций, так и уже сохранённые варианты в БД.
     """
-    if getattr(product, "product_type", None) != "furniture":
-        return False
     ad = attrs if isinstance(attrs, dict) else {}
-
-    if _furniture_variant_galleries_present(ad):
+    if _payload_variant_galleries_present(ad):
         return True
-
-    fv = ad.get("furniture_variants")
-    if isinstance(fv, list) and len(fv) > 1:
-        return True
-
-    furniture_item = getattr(product, "furniture_item", None)
-    if not furniture_item:
-        return False
-
-    active = list(furniture_item.variants.filter(is_active=True))
-    if len(active) > 1:
-        return True
-    if any(v.images.exists() for v in active):
+    if _domain_variants_have_gallery(product):
         return True
     return False
 
@@ -428,7 +438,7 @@ class CatalogNormalizer:
             
         # Галерея изображений (FurnitureProductImage) — не заполняем из корня, если галереи на вариантах
         images = attrs.get("images")
-        if isinstance(images, list) and images and not _furniture_skip_shared_product_gallery(product, attrs):
+        if isinstance(images, list) and images and not _skip_shared_product_gallery(product, attrs):
             from apps.catalog.models import FurnitureProductImage
 
             existing_urls = set(furniture_product.images.values_list("image_url", flat=True))
@@ -734,8 +744,8 @@ class CatalogNormalizer:
 
         metadata = product.external_data if isinstance(product.external_data, dict) else {}
         attrs = metadata.get("attributes") if isinstance(metadata.get("attributes"), dict) else {}
-        if _furniture_skip_shared_product_gallery(product, attrs):
-            # Не дублируем корневую галерею на FurnitureProduct — картинки только у вариантов.
+        if _skip_shared_product_gallery(product, attrs):
+            # Не дублируем корневую галерею на parent/domain-товаре — картинки только у вариантов.
             return
 
         # Используем максимально специфичный объект (BookProduct и т.д.) для сохранения изображений
