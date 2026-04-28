@@ -41,7 +41,7 @@ def _product_category_path(obj):
 class IslamicClothingProductTranslationInline(admin.StackedInline):
     model = IslamicClothingProductTranslation
     extra = 0
-    fields = ('locale', 'name', 'description')
+    fields = ('locale', 'name', 'description', 'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description')
 
 class IslamicClothingProductSizeInline(admin.TabularInline):
     model = IslamicClothingProductSize
@@ -137,12 +137,12 @@ class IslamicClothingProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('SEO (EN)'), {
+        (_('SEO (fallback / EN)'), {
             'fields': (
                 'meta_title', 'meta_description', 'meta_keywords',
                 'og_title', 'og_description', 'og_image_url'
             ),
-            'description': _("Англоязычные SEO-поля и OpenGraph.")
+            'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
         (_('Media'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),

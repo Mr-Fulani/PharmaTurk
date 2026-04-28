@@ -1069,10 +1069,10 @@ class ContentGenerator:
         {json.dumps(data, ensure_ascii=False)}
 
         Важно:
-        - Если в current_description есть текст (например на русском), но НЕТ image_analysis (картинки не загрузились) — ОБЯЗАТЕЛЬНО переведи описание на английский в en.generated_description и заполни ВСЕ SEO-поля (en.seo_title, en.seo_description, en.keywords) на английском. Не оставляй en пустым, когда есть текст описания.
-        - Если у товара НЕТ описания или оно очень короткое (мало текста), но есть image_analysis (анализ фото товара) — ОБЯЗАТЕЛЬНО сгенерируй описание на двух языках (ru и en) и заполни все SEO-поля в "en" на основе анализа изображений. Не оставляй описание и SEO пустыми, когда есть картинки.
-        - Если есть и текст, и image_analysis — объединяй: описание на двух языках и SEO на английском.
-        - Описание (ru.generated_description, en.generated_description) и SEO (en.seo_title, en.seo_description, en.keywords) — ВСЕГДА заполняй, когда есть хотя бы описание ИЛИ image_analysis.
+        - Если в current_description есть текст (например на русском), но НЕТ image_analysis (картинки не загрузились) — ОБЯЗАТЕЛЬНО переведи описание на английский в en.generated_description и заполни ВСЕ SEO-поля и для ru, и для en. Не оставляй ru/en SEO пустыми, когда есть текст описания.
+        - Если у товара НЕТ описания или оно очень короткое (мало текста), но есть image_analysis (анализ фото товара) — ОБЯЗАТЕЛЬНО сгенерируй описание на двух языках (ru и en) и заполни все SEO-поля в "ru" и "en" на основе анализа изображений. Не оставляй описание и SEO пустыми, когда есть картинки.
+        - Если есть и текст, и image_analysis — объединяй: описание на двух языках и SEO на двух языках.
+        - Описание (ru.generated_description, en.generated_description) и SEO (ru.seo_title, ru.seo_description, ru.keywords, en.seo_title, en.seo_description, en.keywords) — ВСЕГДА заполняй, когда есть хотя бы описание ИЛИ image_analysis.
 
         Правила:
         - Описание на русском (ru.generated_description) и на английском (en.generated_description) — ОДИН И ТОТ ЖЕ смысл; длина каждого: от 20 до 100 слов.
@@ -1103,8 +1103,8 @@ class ContentGenerator:
         - Для медикаментов: ОЯЗАТЕЛЬНО переведи все технические поля из known_attributes на русский и английский. Если в raw_description или current_description есть инструкции по применению, побочные эффекты, противопоказания, показания (Ne İçin Kullanılır, Yan Etkileri, vs.) — ОБЯЗАТЕЛЬНО извлеки их, переведи на нужный язык (RU/EN) и заполни соответствующие поля (indications, usage_instructions, side_effects, contraindications, storage_conditions, administration_route, shelf_life, sgk_status, prescription_type, special_notes, origin_country) внутри объектов "ru" и "en". Например: "Subkütan" (TR) -> "Подкожно" (RU) / "Subcutaneous" (EN); "İthal" (TR) -> "Импортный" (RU) / "Imported" (EN).
         - Название (generated_title): только основной заголовок, без подзаголовка. Например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция, инструменты и инфраструктура». Для книг: если в image_analysis есть name (название с обложки) — используй его; автор — из image_analysis.author.
         - Для одежды и обуви: title должен быть на языке ответа и не должен содержать турецкие цвета, цену, TL/TRY, SKU или код товара.
-        - SEO в общих полях карточки можно писать на русском, если это логичнее для витрины. Английскую SEO-версию при этом тоже заполни в "en".
-        - В "ru" — название и описание на русском; в "en" — название, описание (перевод ru) и SEO на английском.
+        - SEO в "ru" пиши на русском, SEO в "en" — на английском. Не смешивай языки внутри одного языкового блока.
+        - В "ru" — название, описание и SEO на русском; в "en" — название, описание и SEO на английском.
         - stock_quantity: если не указано, можно 3.
 
         Верни JSON (опускай только технические поля без данных — не опускай описание и SEO, если есть текст или image_analysis). Описание ru и en — один смысл, перевод; каждое от 20 до 100 слов:
@@ -1112,6 +1112,9 @@ class ContentGenerator:
             "ru": {{
                 "generated_title": "Название на русском",
                 "generated_description": "Описание на русском, 20–100 слов (HTML allowed)",
+                "seo_title": "SEO meta title in Russian",
+                "seo_description": "SEO meta description in Russian",
+                "keywords": ["ключевое слово 1", "ключевое слово 2"],
                 "indications": "Показания к применению (RU)",
                 "usage_instructions": "Инструкция по применению (RU)",
                 "side_effects": "Побочные эффекты (RU)",
@@ -1126,8 +1129,8 @@ class ContentGenerator:
             "en": {{
                 "generated_title": "Product name in English",
                 "generated_description": "Same description in English, 20–100 words (HTML allowed)",
-                "seo_title": "SEO meta title in English only",
-                "seo_description": "SEO meta description in English only",
+                "seo_title": "SEO meta title in English",
+                "seo_description": "SEO meta description in English",
                 "keywords": ["keyword1", "keyword2"],
                 "indications": "Indications (EN)",
                 "usage_instructions": "Usage instructions (EN)",
@@ -1401,25 +1404,29 @@ class ContentGenerator:
         if "attributes" in content and content["attributes"]:
             log.extracted_attributes = content["attributes"]
 
-        # Сохраняем en для применения meta_title, meta_description, meta_keywords к товару
-        if en_data:
+        # Сохраняем локализованные SEO-блоки для применения к переводам и fallback-метаполям товара
+        seo_translation_map = {}
+        for locale_key, locale_data in (("ru", ru_data), ("en", en_data)):
+            if not locale_data:
+                continue
+            seo_payload = {
+                "meta_title": locale_data.get("seo_title"),
+                "meta_description": locale_data.get("seo_description"),
+                "meta_keywords": [str(k).strip() for k in locale_data.get("keywords", []) if str(k).strip()],
+                "generated_title": locale_data.get("generated_title"),
+                "generated_description": locale_data.get("generated_description"),
+            }
+            if seo_payload["meta_title"]:
+                seo_payload["og_title"] = seo_payload["meta_title"]
+            if seo_payload["meta_description"]:
+                seo_payload["og_description"] = seo_payload["meta_description"]
+            if any(seo_payload.values()):
+                seo_translation_map[locale_key] = seo_payload
+
+        if seo_translation_map:
             if not log.extracted_attributes:
                 log.extracted_attributes = {}
-            
-            seo_en_data = {
-                "title": en_data.get("seo_title"),
-                "description": en_data.get("seo_description"),
-                "keywords": [str(k).strip() for k in en_data.get("keywords", []) if str(k).strip()],
-                "generated_title": en_data.get("generated_title"),
-                "generated_description": en_data.get("generated_description"),
-            }
-            # Авто-заполнение OG-тегов из SEO, если они есть
-            if seo_en_data["title"]:
-                seo_en_data["og_title"] = seo_en_data["title"]
-            if seo_en_data["description"]:
-                seo_en_data["og_description"] = seo_en_data["description"]
-            
-            log.extracted_attributes["seo_en"] = seo_en_data
+            log.extracted_attributes["seo_translations"] = seo_translation_map
 
         # Дополнительные поля переводов (indications, usage_instructions и т.д.)
         trans_fields = [
@@ -1513,10 +1520,13 @@ class ContentGenerator:
                         if img.get(key):
                             attrs[key] = img[key]
 
-        # Английское описание и название хранятся в seo_en внутри extracted_attributes
-        seo_en = dict(attrs.get('seo_en') or {})
+        seo_translations = dict(attrs.get('seo_translations') or {})
+        seo_ru = dict(seo_translations.get('ru') or {})
+        seo_en = dict(seo_translations.get('en') or {})
         en_description = seo_en.get('generated_description') or log.generated_description or ""
         en_name = seo_en.get('generated_title') or log.generated_title or original_name
+        ru_description = seo_ru.get('generated_description') or log.generated_description or ""
+        ru_name = seo_ru.get('generated_title') or log.generated_title or original_name
 
         ai_data = {
             'generated_title': (log.generated_title or '').strip() or None,
@@ -1525,8 +1535,8 @@ class ContentGenerator:
             'generated_seo_description': log.generated_seo_description,
             'generated_keywords': log.generated_keywords,
             # OG-поля: og_title / og_description из seo_en; og_image_url из изображения товара
-            'og_title': seo_en.get('og_title') or log.generated_seo_title,
-            'og_description': seo_en.get('og_description') or log.generated_seo_description,
+            'og_title': seo_en.get('og_title') or seo_ru.get('og_title') or log.generated_seo_title,
+            'og_description': seo_en.get('og_description') or seo_ru.get('og_description') or log.generated_seo_description,
             'og_image_url': self._get_preferred_og_image_url(product)
                             or product.main_image
                             or getattr(getattr(product, 'domain_item', None), 'main_image', None),
@@ -1535,13 +1545,23 @@ class ContentGenerator:
             'category_confidence': log.category_confidence,
             'translations': {
                 'ru': {
-                    'name': (log.generated_title or original_name).strip(),
-                    'description': log.generated_description,
+                    'name': ru_name.strip(),
+                    'description': ru_description,
+                    'meta_title': seo_ru.get('meta_title') or log.generated_seo_title,
+                    'meta_description': seo_ru.get('meta_description') or log.generated_seo_description,
+                    'meta_keywords': seo_ru.get('meta_keywords') or log.generated_keywords,
+                    'og_title': seo_ru.get('og_title') or seo_ru.get('meta_title') or log.generated_seo_title,
+                    'og_description': seo_ru.get('og_description') or seo_ru.get('meta_description') or log.generated_seo_description,
                     **attrs.get('translations_data', {}).get('ru', {})
                 },
                 'en': {
                     'name': en_name,
                     'description': en_description,
+                    'meta_title': seo_en.get('meta_title') or log.generated_seo_title,
+                    'meta_description': seo_en.get('meta_description') or log.generated_seo_description,
+                    'meta_keywords': seo_en.get('meta_keywords') or log.generated_keywords,
+                    'og_title': seo_en.get('og_title') or seo_en.get('meta_title') or log.generated_seo_title,
+                    'og_description': seo_en.get('og_description') or seo_en.get('meta_description') or log.generated_seo_description,
                     **attrs.get('translations_data', {}).get('en', {})
                 }
             }

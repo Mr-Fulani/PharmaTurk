@@ -74,7 +74,7 @@ class {Prefix}ProductSize(models.Model):
             models.Index(fields=["product", "size"]),
         ]
 
-class {Prefix}ProductTranslation(models.Model):
+class {Prefix}ProductTranslation(SeoTranslationMixin, models.Model):
     product = models.ForeignKey({Prefix}Product, on_delete=models.CASCADE, related_name='translations', verbose_name=_("{verbose_name_product}"))
     locale = models.CharField(_("Язык"), max_length=10, choices=[('ru', _('Русский')), ('en', _('Английский'))], default='ru', db_index=True)
     name = models.CharField(_("Название"), max_length=500, blank=True)

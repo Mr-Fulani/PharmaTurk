@@ -75,7 +75,11 @@ export default function BrandPage({
   const currentPage = Number(page) || 1
   const totalPages = Math.max(1, Math.ceil((Number(brandData?.totalCount) || 0) / productsPerPage))
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
-  const canonicalUrl = `${siteUrl}/brand/${slug || ''}`
+  const brandPath = `/brand/${slug || ''}`
+  const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
+  const canonicalUrl = `${siteUrl}${localePrefix}${brandPath}`
+  const ruUrl = `${siteUrl}${brandPath}`
+  const enUrl = `${siteUrl}/en${brandPath}`
   const metaTitle = brandData ? `${brandData.name} — Mudaroba` : 'Бренд — Mudaroba'
   const metaDescription =
     brandData?.description?.slice(0, 200) ||
@@ -182,7 +186,9 @@ export default function BrandPage({
         <title>{metaTitle}</title>
         <meta name="description" content={metaDescription} />
         <link rel="canonical" href={canonicalUrl} />
-        <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
+        <link rel="alternate" hrefLang="ru" href={ruUrl} />
+        <link rel="alternate" hrefLang="en" href={enUrl} />
+        <link rel="alternate" hrefLang="x-default" href={ruUrl} />
         <meta property="og:title" content={metaTitle} />
         <meta property="og:description" content={metaDescription} />
         <meta property="og:url" content={canonicalUrl} />

@@ -58,7 +58,7 @@ class PerfumeryProductTranslationInline(admin.StackedInline):
     """Inline для переводов товаров парфюмерии."""
     model = PerfumeryProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description')
+    fields = ('locale', 'name', 'description', 'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description')
 
 
 class PerfumeryProductImageInline(admin.TabularInline):
@@ -113,12 +113,12 @@ class PerfumeryProductAdmin(admin.ModelAdmin):
         (_('Наличие'), {
             'fields': ('is_available', 'stock_quantity'),
         }),
-        (_("SEO (EN)"), {
+        (_("SEO (fallback / EN)"), {
             'fields': (
                 'meta_title', 'meta_description', 'meta_keywords',
                 'og_title', 'og_description', 'og_image_url'
             ),
-            'description': _("Англоязычные SEO-поля и OpenGraph.")
+            'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
         (_('Медиа'), {
             'fields': ('main_image', 'main_image_file'),

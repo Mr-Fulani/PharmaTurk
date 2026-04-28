@@ -135,6 +135,39 @@ class BaseAIApplier:
                 if val and getattr(trans, field, None) != val:
                     setattr(trans, field, val)
                     trans_updated = True
+
+            seo_map = {
+                'meta_title': ['meta_title', 'seo_title', 'generated_seo_title'],
+                'meta_description': ['meta_description', 'seo_description', 'generated_seo_description'],
+                'meta_keywords': ['meta_keywords', 'keywords', 'generated_keywords'],
+                'og_title': ['og_title'],
+                'og_description': ['og_description'],
+            }
+            for model_field, source_keys in seo_map.items():
+                if not hasattr(trans, model_field):
+                    continue
+                val = None
+                for key in source_keys:
+                    raw = data.get(key)
+                    if raw:
+                        val = raw
+                        break
+                if not val:
+                    continue
+                if isinstance(val, list):
+                    val = ", ".join(str(item).strip() for item in val if str(item).strip())
+                val = str(val).strip()
+                if not val:
+                    continue
+                if model_field in ['meta_title', 'og_title']:
+                    val = val[:255]
+                elif model_field in ['meta_description', 'og_description']:
+                    val = val[:500]
+                elif model_field == 'meta_keywords':
+                    val = val[:500]
+                if getattr(trans, model_field, None) != val:
+                    setattr(trans, model_field, val)
+                    trans_updated = True
             
             if trans_updated or created:
                 trans.save()

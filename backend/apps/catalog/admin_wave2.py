@@ -23,7 +23,11 @@ from .admin_base import AIStatusFilter, RunAIActionMixin, MediaEnrichmentStatusF
 
 def _make_translation_inline(model_class, extra_fields=None):
     """Фабрика для StackedInline переводов (чтобы широкие текстовые поля нормально помещались)."""
-    inline_fields = ('locale', 'name', 'description')
+    inline_fields = (
+        'locale', 'name', 'description',
+        'meta_title', 'meta_description', 'meta_keywords',
+        'og_title', 'og_description',
+    )
     if extra_fields:
         inline_fields += tuple(extra_fields)
 
@@ -114,12 +118,12 @@ class _SimpleDomainAdmin(RunAIActionMixin, admin.ModelAdmin):
     )
 
     _seo_fieldsets = (
-        (_("SEO (EN)"), {
+        (_("SEO (fallback / EN)"), {
             "fields": (
                 "meta_title", "meta_description", "meta_keywords",
                 "og_title", "og_description", "og_image_url"
             ),
-            "description": _("Англоязычные SEO-поля и OpenGraph.")
+            "description": _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
     )
 

@@ -1762,7 +1762,20 @@ class Product(models.Model):
                 logger.error(f"Error updating currency prices for product {self.id}: {str(e)}")
 
 
-class ProductTranslation(models.Model):
+class SeoTranslationMixin(models.Model):
+    """Локализованные SEO-поля для переводов товарных моделей."""
+
+    meta_title = models.CharField(_("Meta Title"), max_length=255, blank=True)
+    meta_description = models.CharField(_("Meta Description"), max_length=500, blank=True)
+    meta_keywords = models.CharField(_("Meta Keywords"), max_length=500, blank=True)
+    og_title = models.CharField(_("OG Title"), max_length=255, blank=True)
+    og_description = models.CharField(_("OG Description"), max_length=500, blank=True)
+
+    class Meta:
+        abstract = True
+
+
+class ProductTranslation(SeoTranslationMixin, models.Model):
     """Переводы для товаров."""
     
     LOCALE_CHOICES = [
@@ -2191,7 +2204,7 @@ class ClothingProductSize(models.Model):
         return f"{self.product.name} - {self.size}"
 
 
-class ClothingProductTranslation(models.Model):
+class ClothingProductTranslation(SeoTranslationMixin, models.Model):
     """Переводы для товаров одежды."""
     
     LOCALE_CHOICES = [
@@ -2367,7 +2380,7 @@ class ShoeProductSize(models.Model):
         return f"{self.product.name} - {self.size}"
 
 
-class ShoeProductTranslation(models.Model):
+class ShoeProductTranslation(SeoTranslationMixin, models.Model):
     """Переводы для товаров обуви."""
     
     LOCALE_CHOICES = [
@@ -2682,7 +2695,7 @@ class JewelryProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class JewelryProductTranslation(models.Model):
+class JewelryProductTranslation(SeoTranslationMixin, models.Model):
     """Переводы для товаров украшений."""
 
     LOCALE_CHOICES = [
@@ -3012,7 +3025,7 @@ class ElectronicsProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class ElectronicsProductTranslation(models.Model):
+class ElectronicsProductTranslation(SeoTranslationMixin, models.Model):
     """Переводы для товаров электроники."""
     
     LOCALE_CHOICES = [
@@ -3566,7 +3579,7 @@ class FurnitureProduct(AbstractDomainProduct):
         return self.description or ''
 
 
-class FurnitureProductTranslation(models.Model):
+class FurnitureProductTranslation(SeoTranslationMixin, models.Model):
     """Переводы для товаров мебели."""
     
     LOCALE_CHOICES = [
@@ -3806,7 +3819,7 @@ class BookProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class BookProductTranslation(models.Model):
+class BookProductTranslation(SeoTranslationMixin, models.Model):
     """Переводы товара-книги."""
 
     LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
@@ -3969,7 +3982,7 @@ class PerfumeryProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class PerfumeryProductTranslation(models.Model):
+class PerfumeryProductTranslation(SeoTranslationMixin, models.Model):
     """Переводы товара парфюмерии."""
 
     LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
@@ -4289,7 +4302,7 @@ class MedicineProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class MedicineProductTranslation(models.Model):
+class MedicineProductTranslation(SeoTranslationMixin, models.Model):
     LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
 
     product = models.ForeignKey(
@@ -4459,7 +4472,7 @@ class SupplementProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class SupplementProductTranslation(models.Model):
+class SupplementProductTranslation(SeoTranslationMixin, models.Model):
     LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
 
     product = models.ForeignKey(
@@ -4551,7 +4564,7 @@ class MedicalEquipmentProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class MedicalEquipmentProductTranslation(models.Model):
+class MedicalEquipmentProductTranslation(SeoTranslationMixin, models.Model):
     LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
 
     product = models.ForeignKey(
@@ -4633,7 +4646,7 @@ class TablewareProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class TablewareProductTranslation(models.Model):
+class TablewareProductTranslation(SeoTranslationMixin, models.Model):
     LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
 
     product = models.ForeignKey(
@@ -4715,7 +4728,7 @@ class AccessoryProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class AccessoryProductTranslation(models.Model):
+class AccessoryProductTranslation(SeoTranslationMixin, models.Model):
     LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
 
     product = models.ForeignKey(
@@ -4801,7 +4814,7 @@ class IncenseProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class IncenseProductTranslation(models.Model):
+class IncenseProductTranslation(SeoTranslationMixin, models.Model):
     LOCALE_CHOICES = [("ru", _("Русский")), ("en", _("Английский"))]
 
     product = models.ForeignKey(
@@ -5588,7 +5601,7 @@ class SportsProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class SportsProductTranslation(models.Model):
+class SportsProductTranslation(SeoTranslationMixin, models.Model):
     """Переводы для спортивных товаров."""
     
     LOCALE_CHOICES = [
@@ -5678,7 +5691,7 @@ class AutoPartProduct(AbstractDomainProduct):
         self._sync_to_base_product()
 
 
-class AutoPartProductTranslation(models.Model):
+class AutoPartProductTranslation(SeoTranslationMixin, models.Model):
     """Переводы для автозапчастей."""
     
     LOCALE_CHOICES = [
@@ -5871,7 +5884,7 @@ class HeadwearProductSize(models.Model):
             models.Index(fields=["product", "size"]),
         ]
 
-class HeadwearProductTranslation(models.Model):
+class HeadwearProductTranslation(SeoTranslationMixin, models.Model):
     product = models.ForeignKey(HeadwearProduct, on_delete=models.CASCADE, related_name='translations', verbose_name=_("Головной убор"))
     locale = models.CharField(_("Язык"), max_length=10, choices=[('ru', _('Русский')), ('en', _('Английский'))], default='ru', db_index=True)
     name = models.CharField(_("Название"), max_length=500, blank=True)
@@ -6030,7 +6043,7 @@ class UnderwearProductSize(models.Model):
             models.Index(fields=["product", "size"]),
         ]
 
-class UnderwearProductTranslation(models.Model):
+class UnderwearProductTranslation(SeoTranslationMixin, models.Model):
     product = models.ForeignKey(UnderwearProduct, on_delete=models.CASCADE, related_name='translations', verbose_name=_("Нижнее бельё (товар)"))
     locale = models.CharField(_("Язык"), max_length=10, choices=[('ru', _('Русский')), ('en', _('Английский'))], default='ru', db_index=True)
     name = models.CharField(_("Название"), max_length=500, blank=True)
@@ -6189,7 +6202,7 @@ class IslamicClothingProductSize(models.Model):
             models.Index(fields=["product", "size"]),
         ]
 
-class IslamicClothingProductTranslation(models.Model):
+class IslamicClothingProductTranslation(SeoTranslationMixin, models.Model):
     product = models.ForeignKey(IslamicClothingProduct, on_delete=models.CASCADE, related_name='translations', verbose_name=_("Исламская одежда"))
     locale = models.CharField(_("Язык"), max_length=10, choices=[('ru', _('Русский')), ('en', _('Английский'))], default='ru', db_index=True)
     name = models.CharField(_("Название"), max_length=500, blank=True)

@@ -19,6 +19,33 @@ interface SitemapUrl {
   alternates?: { lang: string; href: string }[]
 }
 
+const BASE_PRODUCT_TYPES = new Set([
+  '',
+  'product',
+  'products',
+  'medicine',
+  'medicines',
+  'supplement',
+  'supplements',
+  'medical_equipment',
+  'medical-equipment',
+  'tableware',
+  'accessory',
+  'accessories',
+  'incense',
+  'sports',
+  'auto_parts',
+  'auto-parts',
+])
+
+function buildProductPath(slug: string, productType?: string | null): string {
+  const normalizedType = (productType || '').trim().replace(/_/g, '-')
+  if (!normalizedType || BASE_PRODUCT_TYPES.has(normalizedType)) {
+    return `/product/${slug}`
+  }
+  return `/product/${normalizedType}/${slug}`
+}
+
 function buildUrl(
   ruPath: string,
   enPath: string,
@@ -166,12 +193,8 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
           const lastmod = product.updated_at
             ? new Date(product.updated_at).toISOString().split('T')[0]
             : today
-          const url = buildUrl(
-            `/product/${product.slug}`,
-            `/product/${product.slug}`,
-            'weekly',
-            0.7
-          )
+          const productPath = buildProductPath(product.slug, product.product_type)
+          const url = buildUrl(productPath, productPath, 'weekly', 0.7)
           url.lastmod = lastmod
           urls.push(url)
         }

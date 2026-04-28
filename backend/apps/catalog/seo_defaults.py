@@ -28,6 +28,81 @@ def _get_site_label() -> str:
     return "Online Bookstore"
 
 
+def _normalize_lang(lang: str | None) -> str:
+    raw = (lang or "ru").strip().lower()
+    return raw.split("-")[0] if raw else "ru"
+
+
+def _get_translation_value(container, field_name: str, lang: str) -> str | None:
+    translations = getattr(container, "translations", None)
+    if not translations:
+        return None
+
+    candidates = [lang]
+    if lang != "en":
+        candidates.append("en")
+    if lang != "ru":
+        candidates.append("ru")
+
+    try:
+        if hasattr(translations, "filter"):
+            for locale in candidates:
+                tr = translations.filter(locale=locale).first()
+                if tr:
+                    val = getattr(tr, field_name, None)
+                    if val:
+                        return val
+            fallback = translations.first()
+            if fallback:
+                val = getattr(fallback, field_name, None)
+                if val:
+                    return val
+        else:
+            trans_list = list(translations)
+            for locale in candidates:
+                for tr in trans_list:
+                    if getattr(tr, "locale", None) == locale:
+                        val = getattr(tr, field_name, None)
+                        if val:
+                            return val
+            for tr in trans_list:
+                val = getattr(tr, field_name, None)
+                if val:
+                    return val
+    except Exception:
+        return None
+
+    return None
+
+
+def _iter_seo_sources(product):
+    seen = set()
+    queue = [product]
+    while queue:
+        current = queue.pop(0)
+        if not current:
+            continue
+        marker = (current.__class__, getattr(current, "pk", None), id(current))
+        if marker in seen:
+            continue
+        seen.add(marker)
+        yield current
+        try:
+            base = getattr(current, "base_product", None)
+        except Exception:
+            base = None
+        if base and base is not current:
+            queue.append(base)
+        try:
+            domain = getattr(current, "domain_item", None)
+            if callable(domain):
+                domain = domain()
+        except Exception:
+            domain = None
+        if domain and domain is not current:
+            queue.append(domain)
+
+
 def _collect_book_authors(product) -> list[str]:
     try:
         authors = []
@@ -72,28 +147,37 @@ def build_book_seo_defaults(product) -> Dict[str, str]:
     }
 
 
-def resolve_book_seo_value(product, field_name: str) -> str | None:
-    # 1. Try exact field name (e.g. meta_title on domain product)
-    val = getattr(product, field_name, None)
-    if val:
-        return val
+def resolve_book_seo_value(product, field_name: str, lang: str | None = None) -> str | None:
+    lang = _normalize_lang(lang)
 
-    # 2. Fallback for Product model fields (seo_title, etc.)
-    if field_name == "meta_title":
-        val = getattr(product, "seo_title", None)
-    elif field_name == "meta_description":
-        val = getattr(product, "seo_description", None)
-    elif field_name == "meta_keywords":
-        kw = getattr(product, "keywords", None)
-        if isinstance(kw, list):
-            val = ", ".join([str(x) for x in kw if x])
+    if field_name != "og_image_url":
+        for source in _iter_seo_sources(product):
+            val = _get_translation_value(source, field_name, lang)
+            if val:
+                return val
+
+    for source in _iter_seo_sources(product):
+        if field_name == "meta_title":
+            val = getattr(source, "seo_title", None)
+        elif field_name == "meta_description":
+            val = getattr(source, "seo_description", None)
+        elif field_name == "meta_keywords":
+            kw = getattr(source, "keywords", None)
+            if isinstance(kw, list):
+                val = ", ".join([str(x) for x in kw if x])
+            else:
+                val = kw
         else:
-            val = kw
-            
-    if val:
-        return val
+            val = None
+        if val:
+            return val
 
-    # 3. Auto-generation for Books only
+    for source in _iter_seo_sources(product):
+        val = getattr(source, field_name, None)
+        if val:
+            return val
+
+    # Auto-generation for Books only
     if not product or getattr(product, "product_type", None) != "books":
         return None
 

@@ -35,6 +35,41 @@ from .seo_defaults import resolve_book_seo_value
 from .utils.media_path import normalize_duplicated_media_path
 from .utils.storage_paths import detect_media_type
 
+TRANSLATION_SEO_FIELDS = [
+    'meta_title',
+    'meta_description',
+    'meta_keywords',
+    'og_title',
+    'og_description',
+]
+
+
+def _request_lang(request) -> str:
+    return getattr(request, 'LANGUAGE_CODE', 'ru') if request else 'ru'
+
+
+class _LocalizedSeoMethodsMixin:
+    def _resolve_localized_seo(self, obj, field_name: str):
+        return resolve_book_seo_value(obj, field_name, lang=_request_lang(self.context.get('request')))
+
+    def get_meta_title(self, obj):
+        return self._resolve_localized_seo(obj, "meta_title")
+
+    def get_meta_description(self, obj):
+        return self._resolve_localized_seo(obj, "meta_description")
+
+    def get_meta_keywords(self, obj):
+        return self._resolve_localized_seo(obj, "meta_keywords")
+
+    def get_og_title(self, obj):
+        return self._resolve_localized_seo(obj, "og_title")
+
+    def get_og_description(self, obj):
+        return self._resolve_localized_seo(obj, "og_description")
+
+    def get_og_image_url(self, obj):
+        return self._resolve_localized_seo(obj, "og_image_url")
+
 
 def _r2_proxy_url(absolute_url, request):
     """Если URL ведёт на R2 или CDN проекта, вернуть URL прокси через /api/catalog/proxy-media/."""
@@ -261,7 +296,7 @@ class ProductTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class FurnitureProductTranslationSerializer(serializers.ModelSerializer):
@@ -269,7 +304,7 @@ class FurnitureProductTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = FurnitureProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class ServiceTranslationSerializer(serializers.ModelSerializer):
@@ -285,7 +320,7 @@ class ClothingProductTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ClothingProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class ShoeProductTranslationSerializer(serializers.ModelSerializer):
@@ -293,7 +328,7 @@ class ShoeProductTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ShoeProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class ElectronicsProductTranslationSerializer(serializers.ModelSerializer):
@@ -301,7 +336,7 @@ class ElectronicsProductTranslationSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ElectronicsProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 def _get_category_ids_with_descendants(slugs: list) -> set:
@@ -815,7 +850,7 @@ class BookVariantSerializer(serializers.ModelSerializer):
         return _get_variant_localized_description(obj, "en")
 
 
-class ProductSerializer(serializers.ModelSerializer):
+class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров (краткая информация)."""
     
     name = serializers.SerializerMethodField()
@@ -986,7 +1021,16 @@ class ProductSerializer(serializers.ModelSerializer):
                     domain_trans = domain_obj.translations.all()
                     if domain_trans:
                         return [
-                            {"locale": t.locale, "name": t.name, "description": t.description}
+                            {
+                                "locale": t.locale,
+                                "name": t.name,
+                                "description": t.description,
+                                "meta_title": getattr(t, "meta_title", ""),
+                                "meta_description": getattr(t, "meta_description", ""),
+                                "meta_keywords": getattr(t, "meta_keywords", ""),
+                                "og_title": getattr(t, "og_title", ""),
+                                "og_description": getattr(t, "og_description", ""),
+                            }
                             for t in domain_trans
                         ]
         except Exception:
@@ -1144,24 +1188,6 @@ class ProductSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return None
-
-    def get_meta_title(self, obj):
-        return resolve_book_seo_value(obj, "meta_title")
-
-    def get_meta_description(self, obj):
-        return resolve_book_seo_value(obj, "meta_description")
-
-    def get_meta_keywords(self, obj):
-        return resolve_book_seo_value(obj, "meta_keywords")
-
-    def get_og_title(self, obj):
-        return resolve_book_seo_value(obj, "og_title")
-
-    def get_og_description(self, obj):
-        return resolve_book_seo_value(obj, "og_description")
-
-    def get_og_image_url(self, obj):
-        return resolve_book_seo_value(obj, "og_image_url")
 
     def _get_external_attributes(self, obj):
         data = obj.external_data or {}
@@ -2136,7 +2162,7 @@ class ClothingVariantSerializer(serializers.ModelSerializer):
         return data
 
 
-class ClothingProductSerializer(serializers.ModelSerializer):
+class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров одежды (краткая информация)."""
     
     category = ClothingCategorySerializer(read_only=True)
@@ -2457,25 +2483,6 @@ class ClothingProductSerializer(serializers.ModelSerializer):
             return _resolve_media_url(first_img.image_url, request)
         return None
 
-    def get_meta_title(self, obj):
-        return resolve_book_seo_value(obj, "meta_title")
-
-    def get_meta_description(self, obj):
-        return resolve_book_seo_value(obj, "meta_description")
-
-    def get_meta_keywords(self, obj):
-        return resolve_book_seo_value(obj, "meta_keywords")
-
-    def get_og_title(self, obj):
-        return resolve_book_seo_value(obj, "og_title")
-
-    def get_og_description(self, obj):
-        return resolve_book_seo_value(obj, "og_description")
-
-    def get_og_image_url(self, obj):
-        return resolve_book_seo_value(obj, "og_image_url")
-
-
 class ShoeCategorySerializer(serializers.ModelSerializer):
     """Сериализатор для категорий обуви."""
     
@@ -2549,7 +2556,7 @@ class ShoeProductSizeSerializer(serializers.ModelSerializer):
         return data
 
 
-class ShoeProductSerializer(serializers.ModelSerializer):
+class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров обуви (краткая информация)."""
     
     category = ShoeCategorySerializer(read_only=True)
@@ -2868,25 +2875,6 @@ class ShoeProductSerializer(serializers.ModelSerializer):
             return _resolve_media_url(first_img.image_url, request)
         return None
 
-    def get_meta_title(self, obj):
-        return resolve_book_seo_value(obj, "meta_title")
-
-    def get_meta_description(self, obj):
-        return resolve_book_seo_value(obj, "meta_description")
-
-    def get_meta_keywords(self, obj):
-        return resolve_book_seo_value(obj, "meta_keywords")
-
-    def get_og_title(self, obj):
-        return resolve_book_seo_value(obj, "og_title")
-
-    def get_og_description(self, obj):
-        return resolve_book_seo_value(obj, "og_description")
-
-    def get_og_image_url(self, obj):
-        return resolve_book_seo_value(obj, "og_image_url")
-
-
 class ShoeProductImageSerializer(serializers.ModelSerializer):
     """Сериализатор изображений обуви."""
     
@@ -3037,7 +3025,7 @@ class ElectronicsProductImageSerializer(serializers.ModelSerializer):
         return _resolve_media_url(obj.image_url, request)
 
 
-class ElectronicsProductSerializer(serializers.ModelSerializer):
+class ElectronicsProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров электроники (краткая информация)."""
     
     category = ElectronicsCategorySerializer(read_only=True)
@@ -3138,25 +3126,6 @@ class ElectronicsProductSerializer(serializers.ModelSerializer):
         if not gallery:
             return []
         return ElectronicsProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
-
-    def get_meta_title(self, obj):
-        return resolve_book_seo_value(obj, "meta_title")
-
-    def get_meta_description(self, obj):
-        return resolve_book_seo_value(obj, "meta_description")
-
-    def get_meta_keywords(self, obj):
-        return resolve_book_seo_value(obj, "meta_keywords")
-
-    def get_og_title(self, obj):
-        return resolve_book_seo_value(obj, "og_title")
-
-    def get_og_description(self, obj):
-        return resolve_book_seo_value(obj, "og_description")
-
-    def get_og_image_url(self, obj):
-        return resolve_book_seo_value(obj, "og_image_url")
-
 
 class FurnitureProductImageSerializer(serializers.ModelSerializer):
     """Сериализатор изображений товаров мебели (галерея)."""
@@ -3339,7 +3308,7 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
         return ""
 
 
-class FurnitureProductSerializer(serializers.ModelSerializer):
+class FurnitureProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров мебели (краткая информация)."""
     
     category = CategorySerializer(read_only=True)
@@ -3732,25 +3701,6 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
             return _resolve_media_url(first_img.image_url, request)
         return None
 
-    def get_meta_title(self, obj):
-        return resolve_book_seo_value(obj, "meta_title")
-
-    def get_meta_description(self, obj):
-        return resolve_book_seo_value(obj, "meta_description")
-
-    def get_meta_keywords(self, obj):
-        return resolve_book_seo_value(obj, "meta_keywords")
-
-    def get_og_title(self, obj):
-        return resolve_book_seo_value(obj, "og_title")
-
-    def get_og_description(self, obj):
-        return resolve_book_seo_value(obj, "og_description")
-
-    def get_og_image_url(self, obj):
-        return resolve_book_seo_value(obj, "og_image_url")
-
-
 # ============================================================================
 # СЕРИАЛИЗАТОРЫ ДЛЯ УКРАШЕНИЙ
 # ============================================================================
@@ -3758,7 +3708,7 @@ class FurnitureProductSerializer(serializers.ModelSerializer):
 class JewelryProductTranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = JewelryProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class JewelryProductImageSerializer(serializers.ModelSerializer):
@@ -3910,7 +3860,7 @@ class JewelryVariantSerializer(serializers.ModelSerializer):
         return JewelryVariantImageSerializer(gallery.all().order_by("sort_order"), many=True).data
 
 
-class JewelryProductSerializer(serializers.ModelSerializer):
+class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров украшений (с вариантами и размерами)."""
     product_type = serializers.SerializerMethodField()
     category = CategorySerializer(read_only=True)
@@ -4260,25 +4210,6 @@ class JewelryProductSerializer(serializers.ModelSerializer):
             return f"{price_val} {curr}" if price_val is not None else None
         return None
 
-    def get_meta_title(self, obj):
-        return resolve_book_seo_value(obj, "meta_title")
-
-    def get_meta_description(self, obj):
-        return resolve_book_seo_value(obj, "meta_description")
-
-    def get_meta_keywords(self, obj):
-        return resolve_book_seo_value(obj, "meta_keywords")
-
-    def get_og_title(self, obj):
-        return resolve_book_seo_value(obj, "og_title")
-
-    def get_og_description(self, obj):
-        return resolve_book_seo_value(obj, "og_description")
-
-    def get_og_image_url(self, obj):
-        return resolve_book_seo_value(obj, "og_image_url")
-
-
 # ============================================================================
 # СЕРИАЛИЗАТОРЫ ДЛЯ УСЛУГ
 # ============================================================================
@@ -4627,7 +4558,7 @@ class BookProductTranslationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BookProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class BookProductImageSerializer(serializers.ModelSerializer):
@@ -4662,7 +4593,7 @@ class BookProductImageSerializer(serializers.ModelSerializer):
         return None
 
 
-class BookProductSerializer(serializers.ModelSerializer):
+class BookProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров-книг (краткая информация)."""
 
     category = CategorySerializer(read_only=True)
@@ -4998,25 +4929,6 @@ class BookProductSerializer(serializers.ModelSerializer):
             return f"{formatted} {from_currency}"
         return None
 
-    def get_meta_title(self, obj):
-        return resolve_book_seo_value(obj, "meta_title")
-
-    def get_meta_description(self, obj):
-        return resolve_book_seo_value(obj, "meta_description")
-
-    def get_meta_keywords(self, obj):
-        return resolve_book_seo_value(obj, "meta_keywords")
-
-    def get_og_title(self, obj):
-        return resolve_book_seo_value(obj, "og_title")
-
-    def get_og_description(self, obj):
-        return resolve_book_seo_value(obj, "og_description")
-
-    def get_og_image_url(self, obj):
-        return resolve_book_seo_value(obj, "og_image_url")
-
-
 # ─────────────────────────────────────────────────────────────
 #                     PERFUMERY PRODUCT
 # ─────────────────────────────────────────────────────────────
@@ -5026,7 +4938,7 @@ class PerfumeryProductTranslationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PerfumeryProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class PerfumeryProductImageSerializer(serializers.ModelSerializer):
@@ -5099,7 +5011,7 @@ class PerfumeryVariantSerializer(serializers.ModelSerializer):
         return _get_variant_localized_description(obj, "en")
 
 
-class PerfumeryProductSerializer(serializers.ModelSerializer):
+class PerfumeryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров парфюмерии (краткая информация)."""
 
     category = CategorySerializer(read_only=True)
@@ -5334,32 +5246,13 @@ class PerfumeryProductSerializer(serializers.ModelSerializer):
             return f"{formatted} {from_currency}"
         return None
 
-    def get_meta_title(self, obj):
-        return resolve_book_seo_value(obj, "meta_title")
-
-    def get_meta_description(self, obj):
-        return resolve_book_seo_value(obj, "meta_description")
-
-    def get_meta_keywords(self, obj):
-        return resolve_book_seo_value(obj, "meta_keywords")
-
-    def get_og_title(self, obj):
-        return resolve_book_seo_value(obj, "og_title")
-
-    def get_og_description(self, obj):
-        return resolve_book_seo_value(obj, "og_description")
-
-    def get_og_image_url(self, obj):
-        return resolve_book_seo_value(obj, "og_image_url")
-
-
 # ─────────────────────────────────────────────────────────────
 #                 ПРОСТЫЕ ДОМЕНЫ (Волна 2)
 # ─────────────────────────────────────────────────────────────
 
 # ─── Базовый миксин для простых доменов (без вариантов) ───
 
-class _SimpleDomainMixin(serializers.Serializer):
+class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
     """Общие поля и методы для доменных ModelSerializer.
 
     Важно: наследуемся от serializers.Serializer, чтобы SerializerMetaclass
@@ -5508,25 +5401,6 @@ class _SimpleDomainMixin(serializers.Serializer):
                 
         return image_serializer(imgs, many=True, context=from_context).data
 
-    def get_meta_title(self, obj):
-        return resolve_book_seo_value(obj, "meta_title")
-
-    def get_meta_description(self, obj):
-        return resolve_book_seo_value(obj, "meta_description")
-
-    def get_meta_keywords(self, obj):
-        return resolve_book_seo_value(obj, "meta_keywords")
-
-    def get_og_title(self, obj):
-        return resolve_book_seo_value(obj, "og_title")
-
-    def get_og_description(self, obj):
-        return resolve_book_seo_value(obj, "og_description")
-
-    def get_og_image_url(self, obj):
-        return resolve_book_seo_value(obj, "og_image_url")
-
-
 # ─── МЕДИКАМЕНТЫ ───
 
 class MedicineProductTranslationSerializer(serializers.ModelSerializer):
@@ -5535,7 +5409,8 @@ class MedicineProductTranslationSerializer(serializers.ModelSerializer):
         fields = [
             'locale', 'name', 'description', 'usage_instructions',
             'side_effects', 'contraindications', 'storage_conditions', 'indications',
-            'dosage_form', 'active_ingredient', 'volume', 'origin_country'
+            'dosage_form', 'active_ingredient', 'volume', 'origin_country',
+            *TRANSLATION_SEO_FIELDS,
         ]
 
 
@@ -5675,7 +5550,7 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
 class SupplementProductTranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = SupplementProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class SupplementProductImageSerializer(serializers.ModelSerializer):
@@ -5763,7 +5638,7 @@ class SupplementProductSerializer(_SimpleDomainMixin, serializers.ModelSerialize
 class MedicalEquipmentProductTranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = MedicalEquipmentProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class MedicalEquipmentProductImageSerializer(serializers.ModelSerializer):
@@ -5819,7 +5694,7 @@ class MedicalEquipmentProductSerializer(_SimpleDomainMixin, serializers.ModelSer
 class TablewareProductTranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = TablewareProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class TablewareProductImageSerializer(serializers.ModelSerializer):
@@ -5875,7 +5750,7 @@ class TablewareProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
 class AccessoryProductTranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = AccessoryProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class AccessoryProductImageSerializer(serializers.ModelSerializer):
@@ -5931,7 +5806,7 @@ class AccessoryProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
 class IncenseProductTranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = IncenseProductTranslation
-        fields = ['locale', 'name', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class IncenseProductImageSerializer(serializers.ModelSerializer):
@@ -5988,7 +5863,7 @@ class IncenseProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
 class SportsProductTranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = SportsProductTranslation
-        fields = ['locale', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class SportsProductImageSerializer(serializers.ModelSerializer):
@@ -6113,7 +5988,7 @@ class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeriali
 class AutoPartProductTranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = AutoPartProductTranslation
-        fields = ['locale', 'description']
+        fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
 class AutoPartProductImageSerializer(serializers.ModelSerializer):

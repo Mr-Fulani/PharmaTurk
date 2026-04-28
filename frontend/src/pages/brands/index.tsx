@@ -32,7 +32,11 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
   const router = useRouter()
 
   const siteUrl = getSiteOrigin()
-  const canonicalUrl = `${siteUrl}/brands`
+  const brandsPath = '/brands'
+  const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
+  const canonicalUrl = `${siteUrl}${localePrefix}${brandsPath}`
+  const ruUrl = `${siteUrl}${brandsPath}`
+  const enUrl = `${siteUrl}/en${brandsPath}`
   const pageTitle = t('brands_page_title', 'Бренды — Mudaroba')
   const pageDescription = t('brands_page_description', 'Популярные бренды из Турции: одежда, обувь, электроника, аксессуары и товары для здоровья.')
 
@@ -42,7 +46,9 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
         <link rel="canonical" href={canonicalUrl} />
-        <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
+        <link rel="alternate" hrefLang="ru" href={ruUrl} />
+        <link rel="alternate" hrefLang="en" href={enUrl} />
+        <link rel="alternate" hrefLang="x-default" href={ruUrl} />
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={pageDescription} />
         <meta property="og:url" content={canonicalUrl} />

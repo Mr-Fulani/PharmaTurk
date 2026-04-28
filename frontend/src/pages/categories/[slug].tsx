@@ -1436,7 +1436,11 @@ export default function CategoryPage({
   }, [brandLabel, localizedCategoryName, routeSlug, router.asPath, t, currentCategory, router.locale])
 
   const siteUrl = useMemo(() => getSiteOrigin(), [])
-  const canonicalUrl = useMemo(() => `${siteUrl}/categories/${routeSlug || categoryType}`, [siteUrl, routeSlug, categoryType])
+  const categoryPath = useMemo(() => `/categories/${routeSlug || categoryType}`, [routeSlug, categoryType])
+  const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
+  const canonicalUrl = useMemo(() => `${siteUrl}${localePrefix}${categoryPath}`, [siteUrl, localePrefix, categoryPath])
+  const ruUrl = useMemo(() => `${siteUrl}${categoryPath}`, [siteUrl, categoryPath])
+  const enUrl = useMemo(() => `${siteUrl}/en${categoryPath}`, [siteUrl, categoryPath])
   // title принимает только текст
   const titleText = useMemo(() => {
     const v = localizedCategoryName as unknown
@@ -1486,7 +1490,9 @@ export default function CategoryPage({
         <meta name="description" content={metaDescription} />
         {currentCategory?.meta_keywords && <meta name="keywords" content={currentCategory.meta_keywords} />}
         <link rel="canonical" href={canonicalUrl} />
-        <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
+        <link rel="alternate" hrefLang="ru" href={ruUrl} />
+        <link rel="alternate" hrefLang="en" href={enUrl} />
+        <link rel="alternate" hrefLang="x-default" href={ruUrl} />
         <meta property="og:title" content={ogTitle} />
         <meta property="og:description" content={ogDescription} />
         <meta property="og:url" content={canonicalUrl} />

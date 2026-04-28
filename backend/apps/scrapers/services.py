@@ -43,6 +43,7 @@ from apps.catalog.models import (
     Author,
     ProductAuthor,
 )
+from apps.catalog.seo_defaults import resolve_book_seo_value
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
 from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
 import datetime
@@ -783,9 +784,9 @@ class ScraperIntegrationService:
 
     def _is_ai_content_ready(self, product: Product) -> bool:
         has_description = bool((product.description or "").strip())
-        meta_title = (product.meta_title or "").strip()
-        meta_description = (product.meta_description or "").strip()
-        meta_keywords = (product.meta_keywords or "").strip()
+        meta_title = (resolve_book_seo_value(product, "meta_title", lang="en") or "").strip()
+        meta_description = (resolve_book_seo_value(product, "meta_description", lang="en") or "").strip()
+        meta_keywords = (resolve_book_seo_value(product, "meta_keywords", lang="en") or "").strip()
         if not meta_title or not meta_description or not meta_keywords:
             return False
         if self._contains_cyrillic(meta_title) or self._contains_cyrillic(meta_description):
@@ -2162,6 +2163,8 @@ class ScraperIntegrationService:
         # Поэтому спарсенные данные сохраняем в русские поля (seo_title, seo_description)
         # или игнорируем, если они дублируют название/описание.
 
+        ru_translation_defaults = {}
+
         # Meta Title -> seo_title (RU)
         if (
             "meta_title" in attrs
@@ -2170,6 +2173,8 @@ class ScraperIntegrationService:
         ):
             product.seo_title = attrs["meta_title"][:70]
             updated = True
+        if "meta_title" in attrs and attrs["meta_title"]:
+            ru_translation_defaults["meta_title"] = str(attrs["meta_title"])[:255]
 
         # Meta Description -> seo_description (RU)
         if (
@@ -2179,12 +2184,27 @@ class ScraperIntegrationService:
         ):
             product.seo_description = attrs["meta_description"][:160]
             updated = True
+        if "meta_description" in attrs and attrs["meta_description"]:
+            ru_translation_defaults["meta_description"] = str(attrs["meta_description"])[:500]
 
         # Keywords -> keywords (RU) - JSON field
         if "meta_keywords" in attrs and attrs["meta_keywords"] and not product.keywords:
             keywords_list = [k.strip() for k in attrs["meta_keywords"].split(",") if k.strip()]
             product.keywords = keywords_list
             updated = True
+        if "meta_keywords" in attrs and attrs["meta_keywords"]:
+            ru_translation_defaults["meta_keywords"] = str(attrs["meta_keywords"])[:500]
+
+        if ru_translation_defaults:
+            ru_translation, _ = product.translations.get_or_create(locale="ru")
+            translation_updated_fields = []
+            for field_name, value in ru_translation_defaults.items():
+                if value and not getattr(ru_translation, field_name, ""):
+                    setattr(ru_translation, field_name, value)
+                    translation_updated_fields.append(field_name)
+            if translation_updated_fields:
+                ru_translation.save(update_fields=translation_updated_fields + ["updated_at"])
+                updated = True
 
         # OG-данные от источника (на языке источника) — сохраняем в external_data для справки AI,
         # но `og_image_url` сохраняем и в модель, чтобы AI/SEO могли использовать исходное фото товара.

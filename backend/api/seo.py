@@ -7,6 +7,35 @@ from django.conf import settings
 from apps.catalog.models import Category, Brand, Product
 
 
+BASE_PRODUCT_TYPES = {
+    "",
+    "product",
+    "products",
+    "medicine",
+    "medicines",
+    "supplement",
+    "supplements",
+    "medical_equipment",
+    "medical-equipment",
+    "tableware",
+    "accessory",
+    "accessories",
+    "incense",
+    "sports",
+    "auto_parts",
+    "auto-parts",
+}
+
+
+def _product_path(product: Product) -> str:
+    slug = product.slug
+    raw_type = (product.product_type or "").strip()
+    normalized_type = raw_type.replace("_", "-")
+    if not normalized_type or raw_type in BASE_PRODUCT_TYPES or normalized_type in BASE_PRODUCT_TYPES:
+        return f"/product/{slug}"
+    return f"/product/{normalized_type}/{slug}"
+
+
 def _cache_header(response: HttpResponse) -> HttpResponse:
     """Устанавливает Cache-Control только в production, чтобы не мешать разработке."""
     if not settings.DEBUG:
@@ -62,9 +91,7 @@ def sitemap_xml(request):
 
     # Товары (ограничение, чтобы не раздувать sitemap)
     for product in Product.objects.filter(is_active=True).only("slug", "updated_at", "product_type")[:5000]:
-        slug = product.slug
-        product_type = (product.product_type or "").replace("_", "-")
-        path = f"/product/{product_type}/{slug}" if product_type else f"/product/{slug}"
+        path = _product_path(product)
         lastmod = product.updated_at.date().isoformat() if product.updated_at else None
         add_url(path, lastmod)
 
@@ -75,4 +102,3 @@ def sitemap_xml(request):
            f"\n<!-- generated {generated} -->\n</urlset>"
     response = HttpResponse(body, content_type="application/xml; charset=utf-8")
     return _cache_header(response)
-

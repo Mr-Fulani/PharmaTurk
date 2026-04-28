@@ -69,7 +69,7 @@ class BookProductTranslationInline(admin.TabularInline):
     """Inline для переводов книги."""
     model = BookProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description')
+    fields = ('locale', 'name', 'description', 'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description')
     verbose_name = _('Перевод')
     verbose_name_plural = _('Переводы')
 
@@ -169,12 +169,12 @@ class BookProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         (_('Рейтинг и статус'), {
             'fields': ('rating', 'reviews_count', 'is_featured', 'is_bestseller', 'is_new')
         }),
-        (_("SEO (EN)"), {
+        (_("SEO (fallback / EN)"), {
             'fields': (
                 'meta_title', 'meta_description', 'meta_keywords',
                 'og_title', 'og_description', 'og_image_url'
             ),
-            'description': _("Англоязычные SEO-поля и OpenGraph.")
+            'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
         (_('Медиа'), {
             'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file'),

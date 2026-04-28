@@ -136,6 +136,12 @@ class ActiveRootFilter(SimpleListFilter):
 from .admin_base import AIStatusFilter, RunAIActionMixin
 
 
+PRODUCT_TRANSLATION_SEO_FIELDS = (
+    'meta_title', 'meta_description', 'meta_keywords',
+    'og_title', 'og_description',
+)
+
+
 @admin.action(description=_("Сделать активными"))
 def activate_variants(modeladmin, request, queryset):
     queryset.update(is_active=True)
@@ -188,7 +194,7 @@ class ProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров."""
     model = ProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description')
+    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -197,7 +203,7 @@ class ClothingProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров одежды."""
     model = ClothingProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description')
+    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -206,7 +212,7 @@ class ShoeProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров обуви."""
     model = ShoeProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description')
+    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -215,7 +221,7 @@ class ElectronicsProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров электроники."""
     model = ElectronicsProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description')
+    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -224,7 +230,7 @@ class FurnitureProductTranslationInline(admin.TabularInline):
     """Inline для редактирования переводов товаров мебели."""
     model = FurnitureProductTranslation
     extra = 1
-    fields = ('locale', 'name', 'description')
+    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
     verbose_name = _("Перевод")
     verbose_name_plural = _("Переводы")
 
@@ -850,13 +856,13 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
                 'width', 'height', 'dimensions_unit', 'country_of_origin'
             )
         }),
-        (_('SEO (EN)'), {
+        (_('SEO (fallback / EN)'), {
             'fields': (
                 'meta_title', 'meta_description', 'meta_keywords',
                 'og_title', 'og_description', 'og_image_url'
             ),
             'description': _(
-                "Англоязычные SEO-поля и OpenGraph используются на сайте и в соцсетях."
+                "Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара."
             )
         }),
         (_('Медиа'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
@@ -1279,12 +1285,12 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.Mod
         }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('SEO (EN)'), {
+        (_('SEO (fallback / EN)'), {
             'fields': (
                 'meta_title', 'meta_description', 'meta_keywords',
                 'og_title', 'og_description', 'og_image_url'
             ),
-            'description': _("Англоязычные SEO-поля и OpenGraph.")
+            'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
@@ -1719,12 +1725,12 @@ class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         }),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('SEO (EN)'), {
+        (_('SEO (fallback / EN)'), {
             'fields': (
                 'meta_title', 'meta_description', 'meta_keywords',
                 'og_title', 'og_description', 'og_image_url'
             ),
-            'description': _("Англоязычные SEO-поля и OpenGraph.")
+            'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
@@ -1961,12 +1967,12 @@ class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.
         (_('Electronics'), {'fields': ('model', 'specifications', 'warranty', 'power_consumption')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('SEO (EN)'), {
+        (_('SEO (fallback / EN)'), {
             'fields': (
                 'meta_title', 'meta_description', 'meta_keywords',
                 'og_title', 'og_description', 'og_image_url'
             ),
-            'description': _("Англоязычные SEO-поля и OpenGraph.")
+            'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
@@ -2019,12 +2025,12 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Mod
         (_('Furniture'), {'fields': ('material', 'furniture_type', 'dimensions')}),
         (_('Pricing'), {'fields': ('price', 'currency', 'old_price')}),
         (_('Availability'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('SEO (EN)'), {
+        (_('SEO (fallback / EN)'), {
             'fields': (
                 'meta_title', 'meta_description', 'meta_keywords',
                 'og_title', 'og_description', 'og_image_url'
             ),
-            'description': _("Англоязычные SEO-поля и OpenGraph.")
+            'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
         (_('Media'), {'fields': ('main_image', 'main_image_file')}),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
@@ -2040,7 +2046,7 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Mod
 class JewelryProductTranslationInline(admin.TabularInline):
     model = JewelryProductTranslation
     extra = 0
-    fields = ('locale', 'name', 'description')
+    fields = ('locale', 'name', 'description', *PRODUCT_TRANSLATION_SEO_FIELDS)
 
 
 class JewelryProductImageInline(admin.TabularInline):
@@ -2122,12 +2128,12 @@ class JewelryProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.Model
         (_('Украшение'), {'fields': ('jewelry_type', 'gender', 'material', 'metal_purity', 'stone_type', 'carat_weight')}),
         (_('Цены'), {'fields': ('price', 'currency', 'old_price', 'variant_prices_overview', 'variant_prices_converted_overview')}),
         (_('Наличие'), {'fields': ('is_available', 'stock_quantity')}),
-        (_('SEO (EN)'), {
+        (_('SEO (fallback / EN)'), {
             'fields': (
                 'meta_title', 'meta_description', 'meta_keywords',
                 'og_title', 'og_description', 'og_image_url'
             ),
-            'description': _("Англоязычные SEO-поля и OpenGraph.")
+            'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
         (_('Медиа'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
         (_('Настройки'), {'fields': ('is_active', 'is_new', 'is_featured')}),

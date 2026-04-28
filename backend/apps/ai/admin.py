@@ -118,7 +118,8 @@ class AIProcessingLogForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if self.instance and self.instance.pk:
             attrs = self.instance.extracted_attributes or {}
-            seo_en = attrs.get("seo_en") or {}
+            seo_translations = attrs.get("seo_translations") or {}
+            seo_en = seo_translations.get("en") or attrs.get("seo_en") or {}
             self.fields["generated_en_title"].initial = seo_en.get("generated_title") or ""
             self.fields["generated_en_description"].initial = seo_en.get("generated_description") or ""
             self.fields["og_title"].initial = seo_en.get("og_title") or ""
@@ -148,7 +149,8 @@ class AIProcessingLogForm(forms.ModelForm):
         obj = super().save(commit=commit)
         if commit and obj.pk:
             attrs = dict(obj.extracted_attributes or {})
-            seo_en = dict(attrs.get("seo_en") or {})
+            seo_translations = dict(attrs.get("seo_translations") or {})
+            seo_en = dict(seo_translations.get("en") or attrs.get("seo_en") or {})
             if self.cleaned_data.get("generated_en_title") is not None:
                 seo_en["generated_title"] = (self.cleaned_data.get("generated_en_title") or "").strip() or None
             if self.cleaned_data.get("generated_en_description") is not None:
@@ -157,6 +159,8 @@ class AIProcessingLogForm(forms.ModelForm):
                 seo_en["og_title"] = (self.cleaned_data.get("og_title") or "").strip() or None
             if self.cleaned_data.get("og_description") is not None:
                 seo_en["og_description"] = (self.cleaned_data.get("og_description") or "").strip() or None
+            seo_translations["en"] = seo_en
+            attrs["seo_translations"] = seo_translations
             attrs["seo_en"] = seo_en
             # Атрибуты украшений
             for key, field_name in [

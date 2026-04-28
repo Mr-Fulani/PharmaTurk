@@ -197,7 +197,10 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
   }
 
   const siteUrl = getSiteOrigin()
-  const canonicalUrl = `${siteUrl}/`
+  const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
+  const canonicalUrl = `${siteUrl}${localePrefix || '/'}`
+  const ruUrl = `${siteUrl}/`
+  const enUrl = `${siteUrl}/en/`
   const pageTitle = 'Mudaroba — Главная'
   const pageDescription = 'Mudaroba: турецкие товары — лекарства, одежда, обувь, электроника, аксессуары и мебель с доставкой.'
 
@@ -216,7 +219,9 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
         <link rel="canonical" href={canonicalUrl} />
-        <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
+        <link rel="alternate" hrefLang="ru" href={ruUrl} />
+        <link rel="alternate" hrefLang="en" href={enUrl} />
+        <link rel="alternate" hrefLang="x-default" href={ruUrl} />
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={pageDescription} />
         <meta property="og:url" content={canonicalUrl} />
