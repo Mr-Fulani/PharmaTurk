@@ -1148,12 +1148,12 @@ class ContentGenerator:
                 "price": null,
                 "currency": null,
                 "dynamic_attributes": [
-                    {
+                    {{
                         "slug": "material",
                         "value": "искусственная кожа",
                         "value_ru": "искусственная кожа",
                         "value_en": "artificial leather"
-                    }
+                    }}
                 ]
             }}
         }}
