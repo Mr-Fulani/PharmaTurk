@@ -523,6 +523,7 @@ parser_class = get_parser(task.url)    # → по домену из URL
 | `ilacabak` | `IlacabakParser` | ilacabak.com, www.ilacabak.com |
 | `ilacfiyati` | `IlacFiyatiParser` | ilacfiyati.com, www.ilacfiyati.com |
 | `ikea` | `IkeaParser` | ikea.com.tr, www.ikea.com.tr |
+| `lcw` | `LcwParser` | lcw.com, www.lcw.com |
 
 ### 6.4. IKEA Turkey (`ikea.com.tr`)
 
@@ -542,6 +543,40 @@ parser_class = get_parser(task.url)    # → по домену из URL
 **Мебель и цветовые варианты:** при парсинге **листинга** и **одной ссылки** собираются все цвета из `colorOptions` API; в `attributes` передаётся `furniture_variants`, по ним создаются записи `FurnitureVariant` и галереи вариантов. В листинге несколько `sprCode` одной модели не порождают дубликаты карточек — учитывается одно «семейство» вариантов.
 
 **Бренд:** в `ScraperConfig` доступно поле **`default_brand`** (миграция `scrapers.0012_scraperconfig_default_brand`). Если задано, оно имеет приоритет над строкой бренда из парсера; для IKEA без поля в конфиге по-прежнему подставляется `IKEA` из кода парсера.
+
+---
+
+### 6.5. LC Waikiki (`lcw.com`)
+
+Парсер `LcwParser` уже встроен в проект и зарегистрирован в реестре.
+
+**Начальный URL в задаче (`SiteScraperTask.url`):**
+
+| Режим | Примеры URL |
+|-------|-------------|
+| Категория (листинг) | `https://www.lcw.com/t-shirt-t-590`, `https://www.lcw.com/erkek-polo-yaka-tisort-t-8` |
+| Одна карточка товара | `https://www.lcw.com/polo-yaka-erkek-triko-tisort-siyah-o-4823160` |
+| Поиск | `https://www.lcw.com/arama?q=polo%20yaka%20tisort` |
+
+**Как LCW определяется технически:**
+- карточка товара: URL содержит шаблон `-o-<id>`
+- категория/листинг: URL содержит шаблон `-t-<id>`
+
+**Что умеет LCW-парсер:**
+- запускаться как по листингу категории, так и по одной карточке товара
+- собирать группу цветовых вариантов в один товар
+- парсить размеры и остатки по вариантам
+- вытаскивать `og:image` и сохранять его для дальнейшего SEO/AI использования
+- забирать подробное описание из блока `Ürün Açıklaması`
+
+**Практическая настройка в админке:**
+1. Создать `ScraperConfig` с именем `lcw`
+2. Указать `Base URL` = `https://www.lcw.com`
+3. Включить конфиг (`Is enabled`)
+4. В `SiteScraperTask` указать ссылку на категорию или карточку товара
+5. Обязательно выбрать `target_category` или ещё лучше `target_subcategory`
+
+**Важно по категории:** LCW сам может вернуть строку внешней категории, но надёжнее задавать целевую категорию руками в `SiteScraperTask`, чтобы товары сразу сохранялись в нужный домен каталога.
 
 ---
 
@@ -1254,6 +1289,7 @@ docker compose -p pharmaturk -f docker-compose.yml -f docker-compose.prod.yml up
 | Парсер Instagram | `backend/apps/scrapers/parsers/instagram.py` |
 | Парсер Zara | `backend/apps/scrapers/parsers/zara.py` |
 | Парсер Ilacabak | `backend/apps/scrapers/parsers/ilacabak.py` |
+| Парсер LC Waikiki | `backend/apps/scrapers/parsers/lcw.py` |
 | Сервис интеграции | `backend/apps/scrapers/services.py` |
 | Модели ScraperConfig/Task | `backend/apps/scrapers/models.py` |
 | Admin парсеров | `backend/apps/scrapers/admin.py` |

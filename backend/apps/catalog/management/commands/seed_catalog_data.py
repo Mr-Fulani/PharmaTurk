@@ -116,13 +116,19 @@ SUBCAT_TO_ROOT = {
     "sachets-sprays": "incense",
     "incense-accessories": "incense",
     "cookware": "tableware",
+    "kitchen-cookware": "tableware",
     "tableware-serving": "tableware",
+    "serving": "tableware",
     "drinkware": "tableware",
     "tea-coffee-ware": "tableware",
     "bakeware": "tableware",
     "food-storage": "tableware",
+    "storage": "tableware",
     "kitchen-accessories": "tableware",
     "tableware-sets": "tableware",
+    "copper": "tableware",
+    "porcelain": "tableware",
+    "glass-ceramic": "tableware",
     "living-room": "furniture",
     "bedroom": "furniture",
     "kitchen-dining": "furniture",
@@ -148,6 +154,10 @@ SUBCAT_TO_ROOT = {
     "sneakers": "shoes",
     "sandals": "shoes",
     "home-shoes": "shoes",
+    "women-shoes": "shoes",
+    "men-shoes": "shoes",
+    "unisex-shoes": "shoes",
+    "kids-shoes": "shoes",
     # Одежда L2 (под clothing; sportswear и underwear — отдельные корни)
     "outerwear": "clothing",
     "tops": "clothing",
@@ -169,6 +179,9 @@ SUBCAT_TO_ROOT = {
     "hair-jewelry": "jewelry",
     "mens-jewelry": "jewelry",
     "jewelry-sets": "jewelry",
+    "wedding": "jewelry",
+    "women": "jewelry",
+    "men": "jewelry",
     # БАДы L2 (под supplements)
     "vitamins": "supplements",
     "minerals": "supplements",
@@ -324,6 +337,57 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("Готово."))
 
+    def _ensure_category(
+        self,
+        *,
+        slug,
+        name,
+        description,
+        category_type,
+        parent,
+        sort_order,
+        is_active=True,
+    ):
+        """Создать категорию или привести существующую к ожидаемой иерархии."""
+        category, created = Category.objects.get_or_create(
+            slug=slug,
+            defaults={
+                "name": name,
+                "description": description,
+                "category_type": category_type,
+                "parent": parent,
+                "is_active": is_active,
+                "sort_order": sort_order,
+            },
+        )
+
+        update_fields = []
+        if category.name != name:
+            category.name = name
+            update_fields.append("name")
+        if (category.description or "") != (description or ""):
+            category.description = description or ""
+            update_fields.append("description")
+        expected_type_id = category_type.id if category_type else None
+        if category.category_type_id != expected_type_id:
+            category.category_type = category_type
+            update_fields.append("category_type")
+        expected_parent_id = parent.id if parent else None
+        if category.parent_id != expected_parent_id:
+            category.parent = parent
+            update_fields.append("parent")
+        if category.is_active != is_active:
+            category.is_active = is_active
+            update_fields.append("is_active")
+        if category.sort_order != sort_order:
+            category.sort_order = sort_order
+            update_fields.append("sort_order")
+
+        if update_fields:
+            category.save(update_fields=update_fields)
+
+        return category, created, bool(update_fields)
+
     def _seed_category_types(self):
         self.stdout.write("Создание типов категорий...")
         for i, (slug, name_ru, name_en, _, _, _) in enumerate(ROOT_CATEGORIES):
@@ -358,19 +422,19 @@ class Command(BaseCommand):
         self.stdout.write("Создание корневых категорий...")
         for i, (slug, name_ru, name_en, desc_ru, desc_en, type_slug) in enumerate(ROOT_CATEGORIES):
             cat_type = CategoryType.objects.filter(slug=type_slug).first()
-            cat, created = Category.objects.get_or_create(
+            cat, created, updated = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": None,
-                    "is_active": True,
-                    "sort_order": i,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=None,
+                is_active=True,
+                sort_order=i,
             )
             if created:
                 self.stdout.write(f"  ✓ Корневая: {slug}")
+            elif updated:
+                self.stdout.write(f"  ↻ Корневая исправлена: {slug}")
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
 
     def _seed_subcategories(self):
@@ -381,38 +445,32 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f"  Родитель не найден: {parent_slug}, пропуск"))
                 continue
             for sort, (name_ru, name_en, sub_slug, desc_ru, desc_en) in enumerate(items):
-                cat, created = Category.objects.get_or_create(
+                cat, created, updated = self._ensure_category(
                     slug=sub_slug,
-                    defaults={
-                        "name": name_ru,
-                        "description": desc_ru or name_ru,
-                        "category_type": parent.category_type,
-                        "parent": parent,
-                        "is_active": True,
-                        "sort_order": sort,
-                    },
+                    name=name_ru,
+                    description=desc_ru or name_ru,
+                    category_type=parent.category_type,
+                    parent=parent,
+                    is_active=True,
+                    sort_order=sort,
                 )
                 if created:
                     self.stdout.write(f"  ✓ Подкатегория: {sub_slug} -> {parent_slug}")
-                elif not cat.parent_id:
-                    cat.parent = parent
-                    cat.save()
+                elif updated:
                     self.stdout.write(f"  ↻ Исправлен parent: {sub_slug} -> {parent_slug}")
                 _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
 
     def _seed_medical_equipment_subcategories(self):
         """Создание подкатегорий медтехники (L2–L4) по MEDICAL_EQUIPMENT_SUBCATEGORIES. Рекурсивно."""
         def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
-            cat, created = Category.objects.get_or_create(
+            cat, created, _ = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": parent,
-                    "is_active": True,
-                    "sort_order": sort_order,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=parent,
+                is_active=True,
+                sort_order=sort_order,
             )
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             return cat, created
@@ -440,35 +498,33 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(MEDICAL_EQUIPMENT_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> medical-equipment")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> medical-equipment")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             process_children(cat_l2, children, 3, slug_l2)
 
     def _seed_accessories_subcategories(self):
         """Создание подкатегорий аксессуаров (L2–L4) по ACCESSORIES_SUBCATEGORIES. Рекурсивно."""
         def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
-            cat, created = Category.objects.get_or_create(
+            cat, created, _ = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": parent,
-                    "is_active": True,
-                    "sort_order": sort_order,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=parent,
+                is_active=True,
+                sort_order=sort_order,
             )
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             return cat, created
@@ -496,35 +552,33 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(ACCESSORIES_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> accessories")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> accessories")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             process_children(cat_l2, children, 3, slug_l2)
 
     def _seed_perfumery_subcategories(self):
         """Создание подкатегорий парфюмерии (L2–L4) по PERFUMERY_SUBCATEGORIES. Рекурсивно."""
         def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
-            cat, created = Category.objects.get_or_create(
+            cat, created, _ = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": parent,
-                    "is_active": True,
-                    "sort_order": sort_order,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=parent,
+                is_active=True,
+                sort_order=sort_order,
             )
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             return cat, created
@@ -552,35 +606,33 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(PERFUMERY_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> perfumery")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> perfumery")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             process_children(cat_l2, children, 3, slug_l2)
 
     def _seed_incense_subcategories(self):
         """Создание подкатегорий благовоний (L2–L4) по INCENSE_SUBCATEGORIES. Рекурсивно."""
         def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
-            cat, created = Category.objects.get_or_create(
+            cat, created, _ = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": parent,
-                    "is_active": True,
-                    "sort_order": sort_order,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=parent,
+                is_active=True,
+                sort_order=sort_order,
             )
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             return cat, created
@@ -608,35 +660,33 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(INCENSE_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> incense")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> incense")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             process_children(cat_l2, children, 3, slug_l2)
 
     def _seed_headwear_subcategories(self):
         """Создание подкатегорий головных уборов (L2–L4) по HEADWEAR_SUBCATEGORIES. Рекурсивно."""
         def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
-            cat, created = Category.objects.get_or_create(
+            cat, created, _ = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": parent,
-                    "is_active": True,
-                    "sort_order": sort_order,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=parent,
+                is_active=True,
+                sort_order=sort_order,
             )
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             return cat, created
@@ -664,35 +714,33 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(HEADWEAR_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> headwear")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> headwear")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             process_children(cat_l2, children, 3, slug_l2)
 
     def _seed_underwear_subcategories(self):
         """Создание подкатегорий нижнего белья (L2–L4) по UNDERWEAR_SUBCATEGORIES. Рекурсивно."""
         def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
-            cat, created = Category.objects.get_or_create(
+            cat, created, _ = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": parent,
-                    "is_active": True,
-                    "sort_order": sort_order,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=parent,
+                is_active=True,
+                sort_order=sort_order,
             )
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             return cat, created
@@ -720,19 +768,19 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(UNDERWEAR_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> underwear")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> underwear")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             process_children(cat_l2, children, 3, slug_l2)
 
@@ -746,51 +794,49 @@ class Command(BaseCommand):
         cat_type = shoes_root.category_type
         for sort_l2, item in enumerate(SHOE_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": shoes_root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=shoes_root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> shoes")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> shoes")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             for sort_l3, child in enumerate(children):
                 c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
-                cat_l3, created = Category.objects.get_or_create(
+                cat_l3, created, updated = self._ensure_category(
                     slug=c_slug,
-                    defaults={
-                        "name": c_ru,
-                        "description": c_desc_ru or c_ru,
-                        "category_type": cat_type,
-                        "parent": cat_l2,
-                        "is_active": True,
-                        "sort_order": sort_l3,
-                    },
+                    name=c_ru,
+                    description=c_desc_ru or c_ru,
+                    category_type=cat_type,
+                    parent=cat_l2,
+                    is_active=True,
+                    sort_order=sort_l3,
                 )
                 if created:
                     self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
+                elif updated:
+                    self.stdout.write(f"  ↻ L3 исправлен: {c_slug} -> {slug_l2}")
                 _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
 
     def _seed_clothing_subcategories(self):
         """Создание подкатегорий одежды (L2–L4) по схеме из CLOTHING_SUBCATEGORIES. Рекурсивно."""
 
         def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
-            cat, created = Category.objects.get_or_create(
+            cat, created, _ = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": parent,
-                    "is_active": True,
-                    "sort_order": sort_order,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=parent,
+                is_active=True,
+                sort_order=sort_order,
             )
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             return cat, created
@@ -818,19 +864,19 @@ class Command(BaseCommand):
         cat_type = clothing_root.category_type
         for sort_l2, item in enumerate(CLOTHING_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": clothing_root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=clothing_root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> clothing")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> clothing")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             process_children(cat_l2, children, 3, slug_l2)
 
@@ -844,38 +890,34 @@ class Command(BaseCommand):
         cat_type = jewelry_root.category_type
         for sort_l2, item in enumerate(JEWELRY_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": jewelry_root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=jewelry_root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> jewelry")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> jewelry")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             for sort_l3, child in enumerate(children):
                 c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
-                cat_l3, created = Category.objects.get_or_create(
+                cat_l3, created, updated = self._ensure_category(
                     slug=c_slug,
-                    defaults={
-                        "name": c_ru,
-                        "description": c_desc_ru or c_ru,
-                        "category_type": cat_type,
-                        "parent": cat_l2,
-                        "is_active": True,
-                        "sort_order": sort_l3,
-                    },
+                    name=c_ru,
+                    description=c_desc_ru or c_ru,
+                    category_type=cat_type,
+                    parent=cat_l2,
+                    is_active=True,
+                    sort_order=sort_l3,
                 )
                 if created:
                     self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
-                elif cat_l3.parent_id != cat_l2.id:
-                    cat_l3.parent = cat_l2
-                    cat_l3.save()
+                elif updated:
                     self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
                 _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
 
@@ -889,38 +931,34 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(SUPPLEMENTS_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> supplements")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> supplements")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             for sort_l3, child in enumerate(children):
                 c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
-                cat_l3, created = Category.objects.get_or_create(
+                cat_l3, created, updated = self._ensure_category(
                     slug=c_slug,
-                    defaults={
-                        "name": c_ru,
-                        "description": c_desc_ru or c_ru,
-                        "category_type": cat_type,
-                        "parent": cat_l2,
-                        "is_active": True,
-                        "sort_order": sort_l3,
-                    },
+                    name=c_ru,
+                    description=c_desc_ru or c_ru,
+                    category_type=cat_type,
+                    parent=cat_l2,
+                    is_active=True,
+                    sort_order=sort_l3,
                 )
                 if created:
                     self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
-                elif cat_l3.parent_id != cat_l2.id:
-                    cat_l3.parent = cat_l2
-                    cat_l3.save()
+                elif updated:
                     self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
                 _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
 
@@ -934,38 +972,34 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(MEDICINES_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> medicines")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> medicines")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             for sort_l3, child in enumerate(children):
                 c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
-                cat_l3, created = Category.objects.get_or_create(
+                cat_l3, created, updated = self._ensure_category(
                     slug=c_slug,
-                    defaults={
-                        "name": c_ru,
-                        "description": c_desc_ru or c_ru,
-                        "category_type": cat_type,
-                        "parent": cat_l2,
-                        "is_active": True,
-                        "sort_order": sort_l3,
-                    },
+                    name=c_ru,
+                    description=c_desc_ru or c_ru,
+                    category_type=cat_type,
+                    parent=cat_l2,
+                    is_active=True,
+                    sort_order=sort_l3,
                 )
                 if created:
                     self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
-                elif cat_l3.parent_id != cat_l2.id:
-                    cat_l3.parent = cat_l2
-                    cat_l3.save()
+                elif updated:
                     self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
                 _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
 
@@ -979,38 +1013,34 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(FURNITURE_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> furniture")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> furniture")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             for sort_l3, child in enumerate(children):
                 c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
-                cat_l3, created = Category.objects.get_or_create(
+                cat_l3, created, updated = self._ensure_category(
                     slug=c_slug,
-                    defaults={
-                        "name": c_ru,
-                        "description": c_desc_ru or c_ru,
-                        "category_type": cat_type,
-                        "parent": cat_l2,
-                        "is_active": True,
-                        "sort_order": sort_l3,
-                    },
+                    name=c_ru,
+                    description=c_desc_ru or c_ru,
+                    category_type=cat_type,
+                    parent=cat_l2,
+                    is_active=True,
+                    sort_order=sort_l3,
                 )
                 if created:
                     self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
-                elif cat_l3.parent_id != cat_l2.id:
-                    cat_l3.parent = cat_l2
-                    cat_l3.save()
+                elif updated:
                     self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
                 _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
 
@@ -1024,54 +1054,48 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(AUTO_PARTS_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> auto-parts")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> auto-parts")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             for sort_l3, child in enumerate(children):
                 c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
-                cat_l3, created = Category.objects.get_or_create(
+                cat_l3, created, updated = self._ensure_category(
                     slug=c_slug,
-                    defaults={
-                        "name": c_ru,
-                        "description": c_desc_ru or c_ru,
-                        "category_type": cat_type,
-                        "parent": cat_l2,
-                        "is_active": True,
-                        "sort_order": sort_l3,
-                    },
+                    name=c_ru,
+                    description=c_desc_ru or c_ru,
+                    category_type=cat_type,
+                    parent=cat_l2,
+                    is_active=True,
+                    sort_order=sort_l3,
                 )
                 if created:
                     self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
-                elif cat_l3.parent_id != cat_l2.id:
-                    cat_l3.parent = cat_l2
-                    cat_l3.save()
+                elif updated:
                     self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
                 _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
 
     def _seed_tableware_subcategories(self):
         """Создание подкатегорий посуды (L2–L4) по TABLEWARE_SUBCATEGORIES. Рекурсивно."""
         def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
-            cat, created = Category.objects.get_or_create(
+            cat, created, _ = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": parent,
-                    "is_active": True,
-                    "sort_order": sort_order,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=parent,
+                is_active=True,
+                sort_order=sort_order,
             )
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             return cat, created
@@ -1099,35 +1123,33 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(TABLEWARE_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> tableware")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> tableware")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             process_children(cat_l2, children, 3, slug_l2)
 
     def _seed_electronics_subcategories(self):
         """Создание подкатегорий электроники (L2–L4) по ELECTRONICS_SUBCATEGORIES. Рекурсивно."""
         def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
-            cat, created = Category.objects.get_or_create(
+            cat, created, _ = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": parent,
-                    "is_active": True,
-                    "sort_order": sort_order,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=parent,
+                is_active=True,
+                sort_order=sort_order,
             )
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             return cat, created
@@ -1155,35 +1177,33 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(ELECTRONICS_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> electronics")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> electronics")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             process_children(cat_l2, children, 3, slug_l2)
 
     def _seed_sports_subcategories(self):
         """Создание подкатегорий спорттоваров (L2–L4) по SPORTS_SUBCATEGORIES. Рекурсивно."""
         def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
-            cat, created = Category.objects.get_or_create(
+            cat, created, _ = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": parent,
-                    "is_active": True,
-                    "sort_order": sort_order,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=parent,
+                is_active=True,
+                sort_order=sort_order,
             )
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             return cat, created
@@ -1211,19 +1231,19 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(SPORTS_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> sports")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> sports")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             process_children(cat_l2, children, 3, slug_l2)
 
@@ -1237,54 +1257,48 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(ISLAMIC_CLOTHING_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> islamic-clothing")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> islamic-clothing")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             for sort_l3, child in enumerate(children):
                 c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
-                cat_l3, created = Category.objects.get_or_create(
+                cat_l3, created, updated = self._ensure_category(
                     slug=c_slug,
-                    defaults={
-                        "name": c_ru,
-                        "description": c_desc_ru or c_ru,
-                        "category_type": cat_type,
-                        "parent": cat_l2,
-                        "is_active": True,
-                        "sort_order": sort_l3,
-                    },
+                    name=c_ru,
+                    description=c_desc_ru or c_ru,
+                    category_type=cat_type,
+                    parent=cat_l2,
+                    is_active=True,
+                    sort_order=sort_l3,
                 )
                 if created:
                     self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
-                elif cat_l3.parent_id != cat_l2.id:
-                    cat_l3.parent = cat_l2
-                    cat_l3.save()
+                elif updated:
                     self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
                 _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
 
     def _seed_services_subcategories(self):
         """Создание подкатегорий услуг (L2–L5) по SERVICES_SUBCATEGORIES. Рекурсивно."""
         def create_category(parent, name_ru, name_en, slug, desc_ru, desc_en, sort_order, cat_type):
-            cat, created = Category.objects.get_or_create(
+            cat, created, _ = self._ensure_category(
                 slug=slug,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": parent,
-                    "is_active": True,
-                    "sort_order": sort_order,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=parent,
+                is_active=True,
+                sort_order=sort_order,
             )
             _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             return cat, created
@@ -1312,19 +1326,19 @@ class Command(BaseCommand):
         cat_type = root.category_type
         for sort_l2, item in enumerate(SERVICES_SUBCATEGORIES):
             name_ru, name_en, slug_l2, desc_ru, desc_en, children = item
-            cat_l2, created = Category.objects.get_or_create(
+            cat_l2, created, updated = self._ensure_category(
                 slug=slug_l2,
-                defaults={
-                    "name": name_ru,
-                    "description": desc_ru or name_ru,
-                    "category_type": cat_type,
-                    "parent": root,
-                    "is_active": True,
-                    "sort_order": sort_l2,
-                },
+                name=name_ru,
+                description=desc_ru or name_ru,
+                category_type=cat_type,
+                parent=root,
+                is_active=True,
+                sort_order=sort_l2,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> uslugi")
+            elif updated:
+                self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> uslugi")
             _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
             process_children(cat_l2, children, 3, slug_l2)
 

@@ -1,4 +1,5 @@
 from celery import shared_task, group
+from django.apps import apps
 from django.utils import timezone
 from django.db.models import Count, Q
 
@@ -55,6 +56,8 @@ def process_product_ai_task(
                 product_id,
                 log_entry.id,
             )
+        if processing_type in ("full", "description_only"):
+            prepare_variant_ai_candidates_task.delay(product_id=product_id, force=force)
         from apps.recommendations.tasks import index_product_vectors
         index_product_vectors.apply_async(args=[[product_id]], countdown=60)
         return {
@@ -68,6 +71,98 @@ def process_product_ai_task(
             "status": "error",
             "error": str(e),
             "product_id": product_id,
+        }
+
+
+@shared_task
+def prepare_variant_ai_candidates_task(product_id: int, force: bool = False):
+    """Собирает очередь вариантов, для которых потенциально нужна отдельная AI-обработка."""
+    try:
+        product = Product.objects.get(id=product_id)
+    except Product.DoesNotExist:
+        logger.warning("prepare_variant_ai_candidates_task: product %s not found", product_id)
+        return {"status": "missing", "product_id": product_id}
+
+    generator = ContentGenerator()
+    variant_context = generator._collect_variant_context(product) or {}
+
+    queue_payload = {
+        "status": "not_needed",
+        "updated_at": timezone.now().isoformat(),
+        "variant_axis": variant_context.get("variant_axis"),
+        "variant_count": variant_context.get("variant_count", 0),
+        "candidate_count": 0,
+        "candidates": [],
+    }
+
+    if variant_context.get("needs_separate_variant_copy"):
+        queue_payload.update(
+            {
+                "status": "pending_review",
+                "candidate_count": variant_context.get("variant_copy_candidate_count", 0),
+                "candidates": variant_context.get("variant_copy_candidates", []),
+                "strategy": variant_context.get("content_strategy"),
+            }
+        )
+
+    external_data = dict(product.external_data) if isinstance(product.external_data, dict) else {}
+    previous_queue = external_data.get("ai_variant_processing_queue")
+    if not force and previous_queue == queue_payload:
+        return {
+            "status": "unchanged",
+            "product_id": product_id,
+            "candidate_count": queue_payload["candidate_count"],
+        }
+
+    external_data["ai_variant_processing_queue"] = queue_payload
+    product.external_data = external_data
+    product.save(update_fields=["external_data"])
+
+    logger.info(
+        "Prepared variant AI queue for product %s: %s candidates",
+        product_id,
+        queue_payload["candidate_count"],
+    )
+    return {
+        "status": "success",
+        "product_id": product_id,
+        "candidate_count": queue_payload["candidate_count"],
+    }
+
+
+@shared_task(bind=True, max_retries=3)
+def process_variant_ai_task(self, model_label: str, variant_id: int, force: bool = False):
+    """Ручная AI-обработка варианта товара. Результат сохраняется только в external_data варианта."""
+    try:
+        VariantModel = apps.get_model(model_label)
+        variant = VariantModel.objects.select_related("product").get(pk=variant_id)
+        generator = ContentGenerator()
+        payload = generator.process_variant_content(variant, force=force)
+        return {
+            "status": payload.get("status", "success"),
+            "model_label": model_label,
+            "variant_id": variant_id,
+        }
+    except Exception as e:
+        logger.exception("Error in variant AI task for %s:%s: %s", model_label, variant_id, e)
+        try:
+            VariantModel = apps.get_model(model_label)
+            variant = VariantModel.objects.get(pk=variant_id)
+            external_data = dict(variant.external_data) if isinstance(variant.external_data, dict) else {}
+            external_data["ai_variant_content"] = {
+                "status": "failed",
+                "updated_at": timezone.now().isoformat(),
+                "error_message": str(e),
+            }
+            variant.external_data = external_data
+            variant.save(update_fields=["external_data"])
+        except Exception:
+            logger.exception("Failed to persist variant AI error for %s:%s", model_label, variant_id)
+        return {
+            "status": "error",
+            "error": str(e),
+            "model_label": model_label,
+            "variant_id": variant_id,
         }
 
 

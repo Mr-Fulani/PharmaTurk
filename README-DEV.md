@@ -15,6 +15,10 @@
 - `--clean` - Удалить volumes (база данных будет очищена!)
 - `--no-cache` - Пересобрать образы без кэша Docker
 - `--rebuild` - Полная пересборка (--clean + --no-cache)
+- `--fast`, `--quick` - Быстрый повседневный рестарт без пересборки; `seed_catalog_data` при старте backend пропускается
+- `--fast-rebuild` - Быстрая пересборка только `backend` и `frontend`
+- `--with-seed` - Принудительно выполнить `seed_catalog_data` при старте backend
+- `--skip-seed` - Пропустить `seed_catalog_data` при старте backend
 - `--logs` - Показать логи после запуска
 - `--help` - Показать справку
 
@@ -22,6 +26,12 @@
 ```bash
 # Обычный перезапуск
 ./restart.sh
+
+# Быстрый лёгкий dev-рестарт
+./restart.sh --fast --logs
+
+# Быстрый рестарт, но с seed каталога
+./restart.sh --fast --with-seed --logs
 
 # Пересборка без кэша
 ./restart.sh --no-cache
@@ -32,6 +42,13 @@
 # Полная пересборка с логами
 ./restart.sh --rebuild --logs
 ```
+
+**Как теперь работает seed каталога при старте backend:**
+- `./restart.sh --fast` и `./restart.sh --quick` по умолчанию **не** запускают `seed_catalog_data`, чтобы dev-старт был заметно быстрее.
+- Обычный `./restart.sh` и `./restart.sh --rebuild` по умолчанию **запускают** `seed_catalog_data`.
+- Если нужно принудительно восстановить категории, подкатегории, атрибуты и бренды при старте, используй `--with-seed`.
+- Если нужно пропустить seed явно, используй `--skip-seed`.
+- В `docker-compose.yml` безопасный дефолт для `RUN_SEED_CATALOG` теперь равен `0`, поэтому на проде без явной переменной автосид не запустится.
 
 ### `restart.bat` (Windows)
 
@@ -176,6 +193,9 @@ docker compose exec backend poetry run python manage.py shell -c "from django.co
 # Восстановление каталога (seed: категории, атрибуты, бренды)
 docker compose run --rm backend poetry run python manage.py seed_catalog_data
 
+# То же, если контейнер backend уже запущен
+docker compose exec backend poetry run python manage.py seed_catalog_data
+
 # Только категории (без брендов)
 docker compose run --rm backend poetry run python manage.py seed_catalog_data --categories-only
 
@@ -303,4 +323,3 @@ ports:
 ```bash
 ./restart.sh --no-cache
 ```
-

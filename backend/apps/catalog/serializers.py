@@ -115,6 +115,33 @@ def _resolve_media_url(value, request):
     return value
 
 
+def _get_variant_applied_ai_draft(variant):
+    external_data = getattr(variant, "external_data", None)
+    if not isinstance(external_data, dict):
+        return {}
+    payload = external_data.get("ai_variant_applied")
+    if not isinstance(payload, dict):
+        return {}
+    draft = payload.get("draft")
+    return draft if isinstance(draft, dict) else {}
+
+
+def _get_variant_draft_title(variant, locale: str) -> str:
+    draft = _get_variant_applied_ai_draft(variant)
+    if not draft:
+        return ""
+    bucket = draft.get(locale) or {}
+    return str(bucket.get("generated_title") or "").strip()
+
+
+def _get_variant_draft_description(variant, locale: str) -> str:
+    draft = _get_variant_applied_ai_draft(variant)
+    if not draft:
+        return ""
+    bucket = draft.get(locale) or {}
+    return str(bucket.get("generated_description") or "").strip()
+
+
 def _resolve_file_url(file_field, request):
     if not file_field:
         return None
@@ -736,13 +763,16 @@ class BookVariantImageSerializer(serializers.ModelSerializer):
 class BookVariantSerializer(serializers.ModelSerializer):
     """Сериализатор вариантов книги."""
 
+    name = serializers.SerializerMethodField()
+    name_en = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
     images = BookVariantImageSerializer(many=True, read_only=True)
     sizes = BookVariantSizeSerializer(many=True, read_only=True)
 
     class Meta:
         model = BookVariant
         fields = [
-            'id', 'slug', 'name', 'name_en',
+            'id', 'slug', 'name', 'name_en', 'description',
             'cover_type', 'format_type', 'isbn',
             'price', 'old_price', 'currency',
             'is_available', 'stock_quantity',
@@ -754,6 +784,15 @@ class BookVariantSerializer(serializers.ModelSerializer):
             'sizes',
         ]
         read_only_fields = ['id', 'slug', 'sort_order', 'created_at', 'updated_at']
+
+    def get_name(self, obj):
+        return _get_variant_draft_title(obj, "ru") or obj.name
+
+    def get_name_en(self, obj):
+        return _get_variant_draft_title(obj, "en") or obj.name_en
+
+    def get_description(self, obj):
+        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -2016,13 +2055,16 @@ class ClothingVariantSizeSerializer(serializers.ModelSerializer):
 class ClothingVariantSerializer(serializers.ModelSerializer):
     """Сериализатор варианта одежды."""
 
+    name = serializers.SerializerMethodField()
+    name_en = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
     images = ClothingVariantImageSerializer(many=True, read_only=True)
     sizes = ClothingVariantSizeSerializer(many=True, read_only=True)
 
     class Meta:
         model = ClothingVariant
         fields = [
-            'id', 'slug', 'name', 'name_en', 'color',
+            'id', 'slug', 'name', 'name_en', 'description', 'color',
             'size',  # устаревшее поле оставлено для совместимости
             'sizes',
             'price', 'old_price', 'currency',
@@ -2032,6 +2074,15 @@ class ClothingVariantSerializer(serializers.ModelSerializer):
             'is_active', 'sort_order',
         ]
         read_only_fields = ['id', 'slug', 'sort_order']
+
+    def get_name(self, obj):
+        return _get_variant_draft_title(obj, "ru") or obj.name
+
+    def get_name_en(self, obj):
+        return _get_variant_draft_title(obj, "en") or obj.name_en
+
+    def get_description(self, obj):
+        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -2865,13 +2916,16 @@ class ShoeVariantSizeSerializer(serializers.ModelSerializer):
 class ShoeVariantSerializer(serializers.ModelSerializer):
     """Сериализатор варианта обуви."""
 
+    name = serializers.SerializerMethodField()
+    name_en = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
     images = ShoeVariantImageSerializer(many=True, read_only=True)
     sizes = ShoeVariantSizeSerializer(many=True, read_only=True)
 
     class Meta:
         model = ShoeVariant
         fields = [
-            'id', 'slug', 'name', 'name_en', 'color',
+            'id', 'slug', 'name', 'name_en', 'description', 'color',
             'size',  # устаревшее поле оставлено для совместимости
             'sizes',
             'price', 'old_price', 'currency',
@@ -2881,6 +2935,15 @@ class ShoeVariantSerializer(serializers.ModelSerializer):
             'is_active', 'sort_order',
         ]
         read_only_fields = ['id', 'slug', 'sort_order']
+
+    def get_name(self, obj):
+        return _get_variant_draft_title(obj, "ru") or obj.name
+
+    def get_name_en(self, obj):
+        return _get_variant_draft_title(obj, "en") or obj.name_en
+
+    def get_description(self, obj):
+        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -3108,6 +3171,9 @@ class FurnitureVariantImageSerializer(serializers.ModelSerializer):
 class FurnitureVariantSerializer(serializers.ModelSerializer):
     """Сериализатор для вариантов мебели."""
 
+    name = serializers.SerializerMethodField()
+    name_en = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()
     old_price = serializers.SerializerMethodField()
@@ -3118,7 +3184,7 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = FurnitureVariant
         fields = [
-            'id', 'name', 'name_en', 'slug', 'color',
+            'id', 'name', 'name_en', 'description', 'slug', 'color',
             'price', 'old_price', 'currency',
             'is_available', 'stock_quantity',
             'main_image', 'images',
@@ -3126,6 +3192,15 @@ class FurnitureVariantSerializer(serializers.ModelSerializer):
             'is_active', 'sort_order', 'size_display', 'color_display',
         ]
         read_only_fields = ['id', 'slug', 'sort_order']
+
+    def get_name(self, obj):
+        return _get_variant_draft_title(obj, "ru") or obj.name
+
+    def get_name_en(self, obj):
+        return _get_variant_draft_title(obj, "en") or obj.name_en
+
+    def get_description(self, obj):
+        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
 
     def _get_preferred_currency(self, request):
         default = 'RUB'
@@ -3691,6 +3766,9 @@ class JewelryVariantImageSerializer(serializers.ModelSerializer):
 
 
 class JewelryVariantSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    name_en = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
     sizes = JewelryVariantSizeSerializer(many=True, read_only=True)
     price = serializers.SerializerMethodField()
@@ -3700,7 +3778,7 @@ class JewelryVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = JewelryVariant
         fields = [
-            'id', 'name', 'name_en', 'slug', 'color', 'material', 'gender',
+            'id', 'name', 'name_en', 'description', 'slug', 'color', 'material', 'gender',
             'price', 'old_price', 'currency',
             'is_available', 'stock_quantity',
             'main_image', 'images', 'sizes',
@@ -3708,6 +3786,15 @@ class JewelryVariantSerializer(serializers.ModelSerializer):
             'is_active', 'sort_order',
         ]
         read_only_fields = ['id', 'slug', 'sort_order']
+
+    def get_name(self, obj):
+        return _get_variant_draft_title(obj, "ru") or obj.name
+
+    def get_name_en(self, obj):
+        return _get_variant_draft_title(obj, "en") or obj.name_en
+
+    def get_description(self, obj):
+        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
 
     def _get_preferred_currency(self, request):
         default = 'RUB'
@@ -4943,12 +5030,15 @@ class PerfumeryVariantImageSerializer(serializers.ModelSerializer):
 class PerfumeryVariantSerializer(serializers.ModelSerializer):
     """Сериализатор для вариантов парфюмерии."""
 
+    name = serializers.SerializerMethodField()
+    name_en = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
     images = PerfumeryVariantImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = PerfumeryVariant
         fields = [
-            'id', 'slug', 'name', 'name_en', 'volume',
+            'id', 'slug', 'name', 'name_en', 'description', 'volume',
             'price', 'old_price', 'currency',
             'is_available', 'stock_quantity',
             'main_image', 'images',
@@ -4958,6 +5048,15 @@ class PerfumeryVariantSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'slug', 'sort_order', 'created_at', 'updated_at']
+
+    def get_name(self, obj):
+        return _get_variant_draft_title(obj, "ru") or obj.name
+
+    def get_name_en(self, obj):
+        return _get_variant_draft_title(obj, "en") or obj.name_en
+
+    def get_description(self, obj):
+        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
 
 
 class PerfumeryProductSerializer(serializers.ModelSerializer):
@@ -6085,6 +6184,7 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
 
 from .models import (
     HeadwearProduct, HeadwearProductImage, HeadwearProductSize, HeadwearVariant,
+    HeadwearVariantImage, HeadwearVariantSize,
     UnderwearProduct, UnderwearProductImage, UnderwearProductSize, UnderwearVariant,
     IslamicClothingProduct, IslamicClothingProductImage, IslamicClothingProductSize, IslamicClothingVariant
 )
@@ -6106,6 +6206,69 @@ class HeadwearProductSizeSerializer(serializers.ModelSerializer):
         model = HeadwearProductSize
         fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
 
+class HeadwearVariantImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = HeadwearVariantImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image_file:
+            return _resolve_file_url(obj.image_file, request)
+        return _resolve_media_url(obj.image_url, request)
+
+class HeadwearVariantSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HeadwearVariantSize
+        fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
+
+class HeadwearVariantSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    name_en = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
+    images = HeadwearVariantImageSerializer(many=True, read_only=True)
+    sizes = HeadwearVariantSizeSerializer(many=True, read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = HeadwearVariant
+        fields = [
+            'id', 'name', 'name_en', 'description', 'slug', 'color', 'size',
+            'sku', 'barcode', 'gtin', 'mpn',
+            'price', 'currency', 'old_price',
+            'is_available', 'stock_quantity',
+            'main_image', 'main_image_url',
+            'external_id', 'external_url', 'external_data',
+            'is_active', 'sort_order',
+            'images', 'sizes',
+        ]
+
+    def get_name(self, obj):
+        return _get_variant_draft_title(obj, "ru") or obj.name
+
+    def get_name_en(self, obj):
+        return _get_variant_draft_title(obj, "en") or obj.name_en
+
+    def get_description(self, obj):
+        return _get_variant_draft_description(obj, "ru") or getattr(obj.product, "description", "") or ""
+
+    def get_main_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if obj.main_image:
+            return _resolve_media_url(obj.main_image, request)
+        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        if img:
+            file_url = _resolve_file_url(getattr(img, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(img.image_url, request)
+        return None
+
 class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
@@ -6120,6 +6283,14 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
     
     dynamic_attributes = serializers.SerializerMethodField()
     sizes = HeadwearProductSizeSerializer(many=True, read_only=True)
@@ -6135,6 +6306,9 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
+            'variants', 'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url', 'active_variant_old_price_formatted',
             'size', 'color', 'video_url', 'sizes', 
             'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -6171,6 +6345,59 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             return ProductDynamicAttributeSerializer(obj.dynamic_attributes.all(), many=True, context=self.context).data
         except Exception:
             return []
+
+    def _get_default_variant(self, obj):
+        return obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
+
+    def _get_active_variant(self, obj):
+        active_slug = self.context.get("active_variant_slug")
+        if active_slug:
+            return obj.variants.filter(slug=active_slug, is_active=True).first()
+        return self._get_default_variant(obj)
+
+    def get_variants(self, obj):
+        qs = obj.variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
+        return HeadwearVariantSerializer(qs, many=True, context=self.context).data
+
+    def get_default_variant_slug(self, obj):
+        variant = self._get_default_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_slug(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_price(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return f"{variant.price} {variant.currency or obj.currency}"
+        if obj.price is not None:
+            return f"{obj.price} {obj.currency}"
+        return None
+
+    def get_active_variant_currency(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return variant.currency or obj.currency
+        return obj.currency
+
+    def get_active_variant_stock_quantity(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.stock_quantity if variant else None
+
+    def get_active_variant_main_image_url(self, obj):
+        variant = self._get_active_variant(obj)
+        if not variant:
+            return None
+        return HeadwearVariantSerializer(variant, context=self.context).data.get("main_image_url")
+
+    def get_active_variant_old_price_formatted(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.old_price is not None:
+            return f"{variant.old_price} {variant.currency or obj.currency}"
+        if obj.old_price is not None:
+            return f"{obj.old_price} {obj.currency}"
+        return None
 
     def get_product_type(self, obj):
         return _SimpleDomainMixin.get_product_type(self, obj)

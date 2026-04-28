@@ -19,6 +19,7 @@ from .forms import (
     CATEGORY_PARENT_HELP,
     PRODUCT_CATEGORY_HELP,
 )
+from .admin_variant_ai import VariantAIAdminMixin
 from .models import (
     CategoryType, Category, CategoryTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
@@ -1135,7 +1136,7 @@ class ClothingProductSizeInline(admin.TabularInline):
 
 
 @admin.register(ClothingVariant)
-class ClothingVariantAdmin(admin.ModelAdmin):
+class ClothingVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     """Отдельная админка варианта одежды (для картинок)."""
     list_display = (
         'name',
@@ -1519,7 +1520,7 @@ class ShoeVariantSizeInline(admin.TabularInline):
 
 
 @admin.register(ShoeVariant)
-class ShoeVariantAdmin(admin.ModelAdmin):
+class ShoeVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     """Отдельная админка варианта обуви (для картинок)."""
     list_display = (
         'name',
@@ -1975,7 +1976,7 @@ class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.
 
 
 @admin.register(FurnitureVariant)
-class FurnitureVariantAdmin(admin.ModelAdmin):
+class FurnitureVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     """Отдельная админка варианта мебели (для картинок)."""
     list_display = ('name', 'product', 'color', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'color', 'currency', 'created_at')
@@ -2083,7 +2084,7 @@ class JewelryVariantInline(admin.TabularInline):
 
 
 @admin.register(JewelryVariant)
-class JewelryVariantAdmin(admin.ModelAdmin):
+class JewelryVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     """Админка варианта украшения — здесь добавляются размеры (кольца, браслеты)."""
     list_display = ('name', 'product', 'gender', 'price', 'currency', 'is_available', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'is_available', 'gender', 'currency', 'created_at')

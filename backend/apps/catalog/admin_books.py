@@ -14,6 +14,7 @@ from .models import (
     ProductGenre, CategoryTranslation
 )
 from .admin_base import AIStatusFilter, RunAIActionMixin
+from .admin_variant_ai import VariantAIAdminMixin
 
 
 @admin.action(description=_("Сделать активными"))
@@ -41,7 +42,7 @@ class BookVariantImageInline(admin.TabularInline):
 
 
 @admin.register(BookVariant)
-class BookVariantAdmin(admin.ModelAdmin):
+class BookVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     """Админка для вариантов книг."""
     list_display = ('name', 'product', 'cover_type', 'format_type', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'cover_type', 'format_type', 'currency', 'created_at')

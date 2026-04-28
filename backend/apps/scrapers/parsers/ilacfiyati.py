@@ -247,6 +247,77 @@ class IlacFiyatiParser(BaseScraper):
             if not external_id:
                 external_id = name
 
+            # 5. Аналоги (Eşdeğeri / SGK Eşdeğeri)
+            # На сайте ilacfiyati аналоги лежат на отдельных подстраницах /esdegeri и /sgk-esdegeri
+            analogs = []
+            sub_paths = ['/esdegeri', '/sgk-esdegeri']
+            
+            for path in sub_paths:
+                sub_url = product_url.rstrip('/') + path
+                try:
+                    # Добавляем небольшую паузу, чтобы не злить сервер
+                    import time
+                    time.sleep(1.5)
+                    
+                    sub_html = self._make_request(sub_url)
+                    if sub_html:
+                        sub_soup = BeautifulSoup(sub_html, 'html.parser')
+                        # Ищем все ссылки на лекарства на этой странице
+                        # Обычно они в таблицах или списках в центральной колонке
+                        links = sub_soup.find_all('a', href=True)
+                        for a in links:
+                            href = a.get('href', '')
+                            if '/ilaclar/' in href and not any(x in href for x in ['#', '?']):
+                                analog_url = urljoin(self.base_url, href)
+                                
+                                # 1. Проверка по иерархии: ссылка на лекарство должна иметь ровно 2 сегмента после домена
+                                # Пример: /ilaclar/maprofen-100-mg (2 сегмента)
+                                # Пример: /ilaclar/maprofen/ilac-bilgileri (3 сегмента) - это вкладка
+                                url_path = urlparse(analog_url).path.strip('/')
+                                path_segments = [s for s in url_path.split('/') if s]
+                                if len(path_segments) != 2:
+                                    continue
+                                    
+                                if analog_url.rstrip('/') == product_url.rstrip('/'):
+                                    continue
+                                    
+                                # 2. Проверка по тексту (на случай если слаги совпадут)
+                                analog_name = clean_text(a.text)
+                                norm_name = analog_name.lower().replace('i̇', 'i').replace('ı', 'i').strip()
+                                
+                                ignore_names = {
+                                    'ilaç bilgileri', 'ilac bilgileri', 'ilaç sınıfı', 'ilac sinifi', 
+                                    'sgk ödeme durumu', 'sgk odeme durumu', 'reçete kuralı', 'recete kurali', 
+                                    'sut açıklama', 'sut aciklama', 'aç-tok bilgisi', 'ac-tok bilgisi', 
+                                    'besin etkileşimi', 'besin etkilesimi', 'özet', 'ozet', 
+                                    'ne için kullanılır', 'ne icin kullanilir', 'yan etkileri', 
+                                    'saklanması', 'saklanmasi', 'kullanma talimatı', 'kullanma talimati', 
+                                    'kısa ürün bilgisi', 'kisa urun bilgisi', 'eşdeğeri', 'esdegeri', 
+                                    'sgk eşdeğeri', 'sgk esdegeri'
+                                }
+                                
+                                if len(norm_name) < 3 or norm_name in ignore_names:
+                                    continue
+                                    
+                                if analog_name:
+                                    analogs.append({
+                                        'name': analog_name,
+                                        'url': analog_url,
+                                        'price': None
+                                    })
+                except Exception as e:
+                    self.logger.error(f"Error fetching analogs from {sub_url}: {e}")
+            
+            # Удаляем дубликаты по URL
+            seen_urls = set()
+            unique_analogs = []
+            for an in analogs:
+                if an['url'] not in seen_urls:
+                    seen_urls.add(an['url'])
+                    unique_analogs.append(an)
+            
+            self.logger.info(f"Товар {name}: найдено аналогов {len(unique_analogs)}")
+
             return ScrapedProduct(
                 name=name,
                 description=description,
@@ -260,7 +331,8 @@ class IlacFiyatiParser(BaseScraper):
                 is_available=True,      
                 stock_quantity=3,       
                 source=self.get_name(),
-                attributes=attributes
+                attributes=attributes,
+                analogs=unique_analogs
             )
             
         except Exception as e:

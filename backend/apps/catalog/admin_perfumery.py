@@ -4,6 +4,7 @@ from django.contrib import admin, messages
 from django.utils.translation import gettext_lazy as _
 from django.utils.html import format_html
 from django.db import models as django_models
+from .admin_variant_ai import VariantAIAdminMixin
 from .models import (
     PerfumeryProduct,
     PerfumeryProductTranslation, PerfumeryProductImage,
@@ -31,7 +32,7 @@ class PerfumeryVariantImageInline(admin.TabularInline):
 
 
 @admin.register(PerfumeryVariant)
-class PerfumeryVariantAdmin(admin.ModelAdmin):
+class PerfumeryVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     """Админка для вариантов парфюмерии."""
     list_display = ('name', 'product', 'volume', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'currency', 'created_at')

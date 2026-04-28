@@ -44,6 +44,8 @@ done
 #   --logs           - Показать логи после запуска
 #   --fast, --quick  - Быстрый перезапуск: только stop + up без пересборки и prune (рекомендуется для повседневного рестарта)
 #   --fast-rebuild   - Быстрая пересборка только frontend и backend (больше чем --fast, но быстрее чем полная сборка)
+#   --with-seed      - Принудительно выполнить seed_catalog_data при старте backend
+#   --skip-seed      - Пропустить seed_catalog_data при старте backend
 #   --help           - Показать справку
 
 # set -e  # Отключено, чтобы скрипт продолжал работу даже если контейнеры не запущены
@@ -62,6 +64,10 @@ SHOW_LOGS=false
 NO_PRUNE=false
 FAST=false
 FAST_REBUILD=false
+WITH_SEED=false
+SKIP_SEED=false
+UP_FAILED=false
+LOGS_FAILED=false
 
 # Функция для вывода сообщений
 info() {
@@ -96,6 +102,8 @@ show_help() {
     --logs           Показать логи после запуска
     --fast, --quick  Быстрый перезапуск: только остановка и запуск контейнеров, без пересборки и prune (для повседневного рестарта)
     --fast-rebuild   Быстрая пересборка только frontend и backend (быстрее, чем полная пересборка всех сервисов)
+    --with-seed      Принудительно выполнить seed_catalog_data при старте backend
+    --skip-seed      Пропустить seed_catalog_data при старте backend
     --help           Показать эту справку
 
 Примеры:
@@ -106,6 +114,8 @@ show_help() {
     ./restart.sh --clean            # С очисткой базы данных
     ./restart.sh --rebuild --logs   # Полная пересборка с логами
     ./restart.sh --fast-rebuild     # Пересобрать только frontend и backend
+    ./restart.sh --fast --skip-seed # Самый лёгкий dev-старт без seed каталога
+    ./restart.sh --fast --with-seed # Быстрый рестарт, но с восстановлением каталога
 
 EOF
 }
@@ -142,6 +152,14 @@ while [[ $# -gt 0 ]]; do
             FAST_REBUILD=true
             shift
             ;;
+        --with-seed)
+            WITH_SEED=true
+            shift
+            ;;
+        --skip-seed)
+            SKIP_SEED=true
+            shift
+            ;;
         --help|-h)
             show_help
             exit 0
@@ -153,6 +171,11 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [ "$WITH_SEED" = true ] && [ "$SKIP_SEED" = true ]; then
+    error "Нельзя одновременно использовать --with-seed и --skip-seed"
+    exit 1
+fi
 
 # Проверка наличия docker-compose
 if ! command -v docker &> /dev/null; then
@@ -166,6 +189,19 @@ if ! command -v docker compose &> /dev/null; then
 fi
 
 info "Начинаем перезапуск проекта ${COMPOSE_PROJECT_NAME}..."
+
+RUN_SEED_CATALOG_VALUE=1
+if [ "$FAST" = true ] && [ "$WITH_SEED" = false ] && [ "$SKIP_SEED" = false ]; then
+    RUN_SEED_CATALOG_VALUE=0
+fi
+if [ "$WITH_SEED" = true ]; then
+    RUN_SEED_CATALOG_VALUE=1
+fi
+if [ "$SKIP_SEED" = true ]; then
+    RUN_SEED_CATALOG_VALUE=0
+fi
+
+export RUN_SEED_CATALOG="$RUN_SEED_CATALOG_VALUE"
 
 # КАПИТАЛЬНАЯ ОЧИСТКА КЭША ПЕРЕД ОСТАНОВКОЙ
 info "🧹 Очищаем весь кэш перед перезапуском..."
@@ -265,8 +301,19 @@ UP_OPTS="-d"
 if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
     UP_OPTS="-d --no-build"
 fi
+if [ "$RUN_SEED_CATALOG" = "1" ]; then
+    info "Seed каталога при старте backend: включен"
+else
+    info "Seed каталога при старте backend: пропущен"
+fi
 docker compose -p pharmaturk $COMPOSE_FLAGS up $UP_OPTS
-success "Контейнеры запущены"
+UP_EXIT_CODE=$?
+if [ $UP_EXIT_CODE -eq 0 ]; then
+    success "Контейнеры запущены"
+else
+    UP_FAILED=true
+    error "Ошибка при запуске контейнеров (docker compose up завершился с кодом $UP_EXIT_CODE)"
+fi
 
 # Краткая пауза: backend уже ждёт postgres (healthcheck), миграции выполняет entrypoint
 info "Проверяем статус контейнеров..."
@@ -281,12 +328,28 @@ docker compose -p pharmaturk $COMPOSE_FLAGS ps
 if [ "$SHOW_LOGS" = true ]; then
     info "Показываем логи (Ctrl+C для выхода)..."
     docker compose -p pharmaturk $COMPOSE_FLAGS logs -f
+    LOGS_EXIT_CODE=$?
+    if [ $LOGS_EXIT_CODE -ne 0 ]; then
+        LOGS_FAILED=true
+        error "Ошибка при чтении логов (docker compose logs завершился с кодом $LOGS_EXIT_CODE)"
+    fi
 else
     info "Для просмотра логов используйте: docker compose logs -f"
     info ""
     info "Чтобы restart.sh останавливал логи в другом терминале, в терминале 1 запускайте из корня проекта:"
     info "  cd $SCRIPT_DIR && docker compose up"
     info "  или:  cd $SCRIPT_DIR && docker compose logs -f"
+fi
+
+if [ "$UP_FAILED" = true ] || [ "$LOGS_FAILED" = true ]; then
+    error "Проект перезапущен с ошибками"
+    if [ "$UP_FAILED" = true ]; then
+        warning "Контейнеры поднялись не полностью. Проверьте вывод docker compose up и docker compose ps."
+    fi
+    if [ "$LOGS_FAILED" = true ]; then
+        warning "Чтение логов завершилось ошибкой. Это часто указывает на проблему Docker storage, volume или json logs."
+    fi
+    exit 1
 fi
 
 success "Проект успешно перезапущен!"

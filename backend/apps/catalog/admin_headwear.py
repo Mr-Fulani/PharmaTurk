@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from decimal import Decimal
 
 from .models import (
@@ -9,6 +9,7 @@ from .models import (
 )
 from .admin_base import AIStatusFilter, RunAIActionMixin
 from .admin import activate_variants, deactivate_variants, PRODUCT_CATEGORY_HELP, ProductAttributeValueInline
+from .admin_variant_ai import VariantAIAdminMixin
 
 class CategoryFieldFilterMixin:
     category_field_name: str | None = None
@@ -73,7 +74,7 @@ class HeadwearVariantImageInline(admin.TabularInline):
 
 
 @admin.register(HeadwearVariant)
-class HeadwearVariantAdmin(admin.ModelAdmin):
+class HeadwearVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     list_display = (
         'name', 'product', 'color', 'price', 'currency', 'effective_base', 'is_active', 'sort_order', 'created_at',
     )
@@ -191,4 +192,3 @@ class HeadwearProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         footer = format_html('</tbody></table>')
         return format_html('{}{}{}', header, body, footer)
     variant_prices_overview.short_description = _('Цены вариантов')
-

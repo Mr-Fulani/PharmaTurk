@@ -1,9 +1,12 @@
 """Админ-интерфейс для управления парсерами."""
 
+import logging
+
 from django import forms
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db import transaction
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.urls import reverse
@@ -24,6 +27,8 @@ from .models import (
     SiteScraperTask,
 )
 from .tasks import run_scraper_task
+
+logger = logging.getLogger(__name__)
 
 
 def _category_breadcrumb_labels_and_order():
@@ -375,7 +380,29 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         "finished_at",
     ]
 
-    actions = ["run_site_scraping", "rerun_site_scraping", "run_ai_for_tasks"]
+    actions = ["run_site_scraping", "rerun_site_scraping", "force_rerun_site_scraping", "run_ai_for_tasks"]
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+
+        # При создании задачи в админке запускаем её автоматически:
+        # это соответствует ожидаемому UX "создал задачу -> она пошла в очередь".
+        if not change and obj.status == "pending" and not obj.task_id:
+            task_pk = obj.pk
+
+            def enqueue_after_commit():
+                try:
+                    task = SiteScraperTask.objects.get(pk=task_pk)
+                    celery_task = self._enqueue_site_task(task, reset_stats=True)
+                    logger.info(
+                        "Admin auto-started SiteScraperTask #%s with Celery task %s",
+                        task.id,
+                        celery_task.id,
+                    )
+                except Exception:
+                    logger.exception("Failed to auto-start SiteScraperTask #%s after admin save", task_pk)
+
+            transaction.on_commit(enqueue_after_commit)
 
     def status_badge(self, obj):
         colors = {"pending": "blue", "running": "orange", "completed": "green", "failed": "red"}
@@ -475,15 +502,32 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
     ai_status_display.short_description = "AI обработка"
 
     def actions_column(self, obj):
+        if obj.status != "running":
+            run_label = "Запустить" if obj.status == "pending" else "Перезапустить"
+            run_url = reverse("admin:scrapers_sitescrapertask_rerun", args=[obj.pk])
+            run_button = format_html(
+                '<a href="{}" class="button" style="margin-right:4px;">{}</a>',
+                run_url,
+                run_label,
+            )
+        else:
+            force_run_url = reverse("admin:scrapers_sitescrapertask_force_rerun", args=[obj.pk])
+            run_button = format_html(
+                '<span style="color: orange; margin-right:4px;">Выполняется...</span>'
+                '<a href="{}" class="button" style="margin-right:4px; background:#b91c1c; color:#fff;">Принудительно перезапустить</a>',
+                force_run_url,
+            )
+
         if obj.status == "completed" and obj.session_id:
             run_ai_url = reverse("admin:scrapers_sitescrapertask_run_ai", args=[obj.pk])
             task_id_html = f'<span style="font-size:11px;color:gray;">{obj.task_id or "-"}</span>'
             return format_html(
-                '{} <a href="{}" class="button" style="margin-left:4px;">Запустить AI</a>',
+                '{}{} <a href="{}" class="button" style="margin-left:4px;">Запустить AI</a>',
+                run_button,
                 task_id_html,
                 run_ai_url,
             )
-        return format_html("<span>{}</span>", obj.task_id or "-")
+        return format_html("{}<span>{}</span>", run_button, obj.task_id or "-")
 
     actions_column.short_description = "ID задачи / Действия"
 
@@ -493,12 +537,125 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path(
+                "<int:task_id>/rerun/",
+                self.admin_site.admin_view(self.rerun_task_view),
+                name="scrapers_sitescrapertask_rerun",
+            ),
+            path(
+                "<int:task_id>/force-rerun/",
+                self.admin_site.admin_view(self.force_rerun_task_view),
+                name="scrapers_sitescrapertask_force_rerun",
+            ),
+            path(
                 "<int:task_id>/run-ai/",
                 self.admin_site.admin_view(self.run_ai_view),
                 name="scrapers_sitescrapertask_run_ai",
             ),
         ]
         return custom_urls + urls
+
+    def _enqueue_site_task(self, task, *, reset_stats: bool):
+        from django.utils import timezone
+
+        if reset_stats:
+            task.products_found = 0
+            task.products_created = 0
+            task.products_updated = 0
+            task.products_skipped = 0
+            task.pages_processed = 0
+            task.errors_count = 0
+
+        task.status = "running"
+        task.started_at = timezone.now()
+        task.finished_at = None
+        task.error_message = ""
+        task.log_output = ""
+        task.session = None
+        task.task_id = ""
+        task.save()
+
+        celery_task = run_scraper_task.delay(
+            task.scraper_config_id,
+            start_url=task.start_url,
+            max_pages=task.max_pages,
+            max_products=task.max_products,
+            max_images_per_product=task.max_images_per_product,
+            site_task_id=task.id,
+        )
+        task.task_id = celery_task.id
+        task.save(update_fields=["task_id"])
+        logger.info(
+            "Enqueued SiteScraperTask #%s for scraper '%s' as Celery task %s",
+            task.id,
+            task.scraper_config.name,
+            celery_task.id,
+        )
+        return celery_task
+
+    def rerun_task_view(self, request, task_id):
+        try:
+            task = SiteScraperTask.objects.get(id=task_id)
+        except SiteScraperTask.DoesNotExist:
+            messages.error(request, "Задача парсинга не найдена")
+            return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+        if task.status == "running":
+            messages.warning(
+                request,
+                f"Задача #{task.id} помечена как выполняющаяся. "
+                "Если это зависший статус после рестарта контейнеров, используй кнопку "
+                "'Принудительно перезапустить'.",
+            )
+            return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+        try:
+            celery_task = self._enqueue_site_task(task, reset_stats=True)
+            messages.success(
+                request,
+                f"Задача #{task.id} поставлена в очередь. Celery task id: {celery_task.id}",
+            )
+        except Exception as e:
+            task.status = "failed"
+            task.error_message = str(e)
+            task.finished_at = timezone.now()
+            task.save(update_fields=["status", "error_message", "finished_at"])
+            messages.error(request, f"Ошибка запуска задачи: {e}")
+
+        return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+    def force_rerun_task_view(self, request, task_id):
+        try:
+            task = SiteScraperTask.objects.get(id=task_id)
+        except SiteScraperTask.DoesNotExist:
+            messages.error(request, "Задача парсинга не найдена")
+            return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+        previous_status = task.status
+        previous_task_id = task.task_id
+
+        try:
+            task.status = "failed"
+            task.error_message = (
+                "Предыдущий запуск был принудительно сброшен из админки перед повторным запуском."
+            )
+            task.finished_at = timezone.now()
+            task.save(update_fields=["status", "error_message", "finished_at"])
+
+            celery_task = self._enqueue_site_task(task, reset_stats=True)
+            messages.success(
+                request,
+                f"Задача #{task.id} принудительно перезапущена. "
+                f"Старый статус: {previous_status}, старый Celery task id: {previous_task_id or '-'}, "
+                f"новый Celery task id: {celery_task.id}",
+            )
+        except Exception as e:
+            task.status = "failed"
+            task.error_message = str(e)
+            task.finished_at = timezone.now()
+            task.save(update_fields=["status", "error_message", "finished_at"])
+            messages.error(request, f"Ошибка принудительного перезапуска: {e}")
+
+        return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
 
     def run_ai_view(self, request, task_id):
         try:
@@ -543,84 +700,87 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
 
     def run_site_scraping(self, request, queryset):
-        from django.utils import timezone
+        eligible_tasks = list(queryset.filter(status="pending"))
+        if not eligible_tasks:
+            messages.warning(
+                request,
+                "Среди выбранных задач нет ни одной в статусе 'Ожидает'. "
+                "Для уже выполненных задач используй действие 'Повторно запустить парсинг сайта'.",
+            )
+            return
 
-        for task in queryset.filter(status="pending"):
+        started = 0
+        for task in eligible_tasks:
             try:
-                task.status = "running"
-                task.started_at = timezone.now()
-                task.finished_at = None
-                task.error_message = ""
-                task.log_output = ""
-                task.products_found = 0
-                task.products_created = 0
-                task.products_updated = 0
-                task.products_skipped = 0
-                task.pages_processed = 0
-                task.errors_count = 0
-                task.save()
-
-                celery_task = run_scraper_task.delay(
-                    task.scraper_config_id,
-                    start_url=task.start_url,
-                    max_pages=task.max_pages,
-                    max_products=task.max_products,
-                    max_images_per_product=task.max_images_per_product,
-                    site_task_id=task.id,
-                )
-                task.task_id = celery_task.id
-                task.save()
-
-                messages.success(request, f"Запущена задача для {task.scraper_config.name}")
+                self._enqueue_site_task(task, reset_stats=True)
+                started += 1
             except Exception as e:
                 task.status = "failed"
                 task.error_message = str(e)
                 task.finished_at = timezone.now()
-                task.save()
+                task.save(update_fields=["status", "error_message", "finished_at"])
                 messages.error(request, f"Ошибка запуска задачи: {e}")
+
+        if started:
+            messages.success(request, f"Запущено задач: {started}")
 
     run_site_scraping.short_description = "Запустить парсинг сайта"
 
     def rerun_site_scraping(self, request, queryset):
-        from django.utils import timezone
+        eligible_tasks = list(queryset.exclude(status="running"))
+        if not eligible_tasks:
+            messages.warning(
+                request,
+                "Среди выбранных задач нет ни одной доступной для повторного запуска.",
+            )
+            return
 
-        for task in queryset.exclude(status="running"):
+        started = 0
+        for task in eligible_tasks:
             try:
-                task.status = "running"
-                task.started_at = timezone.now()
-                task.finished_at = None
-                task.error_message = ""
-                task.log_output = ""
-                task.products_found = 0
-                task.products_created = 0
-                task.products_updated = 0
-                task.products_skipped = 0
-                task.pages_processed = 0
-                task.errors_count = 0
-                task.save()
-
-                celery_task = run_scraper_task.delay(
-                    task.scraper_config_id,
-                    start_url=task.start_url,
-                    max_pages=task.max_pages,
-                    max_products=task.max_products,
-                    max_images_per_product=task.max_images_per_product,
-                    site_task_id=task.id,
-                )
-                task.task_id = celery_task.id
-                task.save()
-
-                messages.success(
-                    request, f"Повторно запущена задача для {task.scraper_config.name}"
-                )
+                self._enqueue_site_task(task, reset_stats=True)
+                started += 1
             except Exception as e:
                 task.status = "failed"
                 task.error_message = str(e)
                 task.finished_at = timezone.now()
-                task.save()
+                task.save(update_fields=["status", "error_message", "finished_at"])
                 messages.error(request, f"Ошибка повторного запуска: {e}")
 
+        if started:
+            messages.success(request, f"Повторно запущено задач: {started}")
+
     rerun_site_scraping.short_description = "Повторно запустить парсинг сайта"
+
+    def force_rerun_site_scraping(self, request, queryset):
+        eligible_tasks = list(queryset)
+        if not eligible_tasks:
+            messages.warning(request, "Не выбрано ни одной задачи для принудительного перезапуска.")
+            return
+
+        started = 0
+        for task in eligible_tasks:
+            try:
+                task.status = "failed"
+                task.error_message = (
+                    "Предыдущий запуск был принудительно сброшен через bulk-action перед повторным запуском."
+                )
+                task.finished_at = timezone.now()
+                task.save(update_fields=["status", "error_message", "finished_at"])
+
+                self._enqueue_site_task(task, reset_stats=True)
+                started += 1
+            except Exception as e:
+                task.status = "failed"
+                task.error_message = str(e)
+                task.finished_at = timezone.now()
+                task.save(update_fields=["status", "error_message", "finished_at"])
+                messages.error(request, f"Ошибка принудительного перезапуска задачи #{task.id}: {e}")
+
+        if started:
+            messages.success(request, f"Принудительно перезапущено задач: {started}")
+
+    force_rerun_site_scraping.short_description = "Принудительно перезапустить выбранные задачи"
 
     def run_ai_for_tasks(self, request, queryset):
         """Запустить AI обработку для всех товаров выбранных задач."""

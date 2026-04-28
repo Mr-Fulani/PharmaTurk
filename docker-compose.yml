@@ -63,6 +63,7 @@ services:
     environment:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+      RUN_SEED_CATALOG: ${RUN_SEED_CATALOG:-0}
     volumes:
       - ./backend:/app
       - staticfiles:/app/staticfiles

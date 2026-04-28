@@ -1218,5 +1218,19 @@
   "nfc_code": "NFC Code",
   "sgk_equivalent_code": "SGK Equivalent Code",
   "sgk_active_ingredient_code": "SGK Active Ingredient Code",
-  "sgk_public_no": "SGK Public Number"
+  "sgk_public_no": "SGK Public Number",
+
+  "analogs_title": "Generic Equivalents (Eşdeğerleri)",
+  "analog_substance": "Active ingredient: {{substance}}",
+  "analog_saving": "Save {{amount}}",
+  "in_stock": "In stock",
+  "out_of_stock": "Out of stock",
+  "similar_products": "Similar products",
+  "badge_recommend": "Recommended",
+  "badge_similar_style": "Very similar style",
+  "badge_similar_design": "Similar design",
+  "badge_brand": "Brand {{brand}}",
+  "months": "mo.",
+  "years": "yr.",
+  "product_featured": "Popular"
 }

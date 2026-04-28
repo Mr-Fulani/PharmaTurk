@@ -166,6 +166,7 @@ def register_default_parsers():
         from .ummaland import UmmalandParser
         from .ilacfiyati import IlacFiyatiParser
         from .ikea import IkeaParser
+        from .lcw import LcwParser
         
         _registry.register(IlacabakParser)
         _registry.register(ZaraParser)
@@ -173,6 +174,7 @@ def register_default_parsers():
         _registry.register(UmmalandParser)
         _registry.register(IlacFiyatiParser)
         _registry.register(IkeaParser)
+        _registry.register(LcwParser)
         
     except ImportError as e:
         logging.getLogger(__name__).warning(f"Не удалось импортировать некоторые парсеры: {e}")

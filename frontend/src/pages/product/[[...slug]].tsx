@@ -12,6 +12,7 @@ import ServiceAttributes from '../../components/ServiceAttributes'
 import FavoriteButton from '../../components/FavoriteButton'
 import ShareButton from '../../components/ShareButton'
 import SimilarProducts from '../../components/SimilarProducts'
+import AnalogProducts from '../../components/AnalogProducts'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
@@ -419,6 +420,8 @@ interface Variant {
   id: number
   slug: string
   name?: string
+  name_en?: string
+  description?: string
   color?: string
   sku?: string
   price?: number | string | null
@@ -489,7 +492,6 @@ export default function ProductPage({
   const localizedProductName = product
     ? getLocalizedProductName(product.name, t, product.translations, router.locale)
     : ''
-  const displayProductName = localizedProductName || product?.name || ''
   const localeKey = (router.locale || '').toLowerCase()
   const isEnglishLocale = localeKey.startsWith('en')
 
@@ -530,6 +532,12 @@ export default function ProductPage({
 
   const [selectedVariantSlug, setSelectedVariantSlug] = useState<string | null>(initialVariant?.slug || null)
   const selectedVariant = variants.find((v) => v.slug === selectedVariantSlug) || initialVariant
+  const displayProductName = (
+    (isEnglishLocale ? selectedVariant?.name_en : selectedVariant?.name) ||
+    localizedProductName ||
+    product?.name ||
+    ''
+  )
 
   /** IKEA и др.: варианты есть, но color не заполнен — фолбэк на slug/sku для селектора */
   const furnitureVariantPickerBySlug =
@@ -643,13 +651,16 @@ export default function ProductPage({
 
   const localizedDescriptionHtml = useMemo(() => {
     if (!product) return ''
+    if (selectedVariant?.description?.trim()) {
+      return selectedVariant.description.trim()
+    }
     return getLocalizedProductDescription(
       product.description,
       t,
       product.translations,
       router.locale
     )
-  }, [product, t, router.locale])
+  }, [product, selectedVariant?.description, t, router.locale])
 
   const descriptionSections = useMemo(
     () => splitDescriptionIntoSections(localizedDescriptionHtml),
@@ -658,7 +669,7 @@ export default function ProductPage({
 
   useEffect(() => {
     setDescriptionAccordionOpen({})
-  }, [product?.slug])
+  }, [product?.slug, selectedVariantSlug])
 
   const maxAvailable = product ? resolveAvailableStock(product, selectedVariant, selectedSize) : null
   const sizeHintMessage = t(
@@ -1093,7 +1104,7 @@ export default function ProductPage({
   const apiTranslation = product.translations?.find(
     (tr) => tr.locale === router.locale || tr.locale === router.locale?.split('-')[0]
   )
-  const localizedDescription = apiTranslation?.description || product.description
+  const localizedDescription = selectedVariant?.description || apiTranslation?.description || product.description
 
   const metaTitle = (
     apiTranslation?.meta_title || 
@@ -2323,6 +2334,16 @@ export default function ProductPage({
               )
             })}
           </div>
+        )}
+
+        {/* Аналоги препарата (Eşdeğerleri) — только для лекарств и БАДов */}
+        {(productType === 'medicines' || productType === 'supplements') && (
+          <AnalogProducts
+            medicineSlug={product.slug}
+            currentPrice={product.price !== null ? Number(product.price) : null}
+            currency={product.currency || 'TRY'}
+            limit={8}
+          />
         )}
 
         {/* Похожие товары (RecSys когда доступен) */}

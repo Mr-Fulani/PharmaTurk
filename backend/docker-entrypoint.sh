@@ -33,8 +33,12 @@ echo "Сборка статических файлов (collectstatic)..."
 poetry run python manage.py collectstatic --noinput
 
 # Восстанавливаем категории и бренды после пересоздания БД (идемпотентно)
-echo "Восстанавливаем категории и бренды (seed_catalog_data)..."
-poetry run python manage.py seed_catalog_data 2>/dev/null || true
+if [ "${RUN_SEED_CATALOG:-0}" = "1" ]; then
+  echo "Восстанавливаем категории и бренды (seed_catalog_data)..."
+  poetry run python manage.py seed_catalog_data 2>/dev/null || true
+else
+  echo "Пропускаем seed_catalog_data (RUN_SEED_CATALOG=${RUN_SEED_CATALOG})"
+fi
 
 # Статические страницы (privacy, delivery, returns) — создаём только если ещё нет
 echo "Загружаем статические страницы (load_initial_pages)..."
@@ -64,4 +68,3 @@ else
         exec poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers "$WORKERS"
     fi
 fi
-

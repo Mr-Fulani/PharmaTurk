@@ -134,9 +134,12 @@ def _resolve_variant_translations(product):
     translations = _serialize_translations_qs(getattr(base_product, "translations", None))
     if translations:
         return translations
-    name_en = getattr(variant, "name_en", "")
+    draft = _get_variant_applied_ai_draft(variant)
+    en = draft.get("en") or {}
+    name_en = (en.get("generated_title") or getattr(variant, "name_en", "") or "").strip()
+    description_en = (en.get("generated_description") or "").strip()
     if name_en:
-        return [{"locale": "en", "name": name_en, "description": ""}]
+        return [{"locale": "en", "name": name_en, "description": description_en}]
     return []
 
 
@@ -153,6 +156,17 @@ PRODUCT_TYPE_ALIASES = {
     'underwear': 'underwear',
     'headwear': 'headwear',
 }
+
+
+def _get_variant_applied_ai_draft(variant):
+    external_data = getattr(variant, "external_data", None)
+    if not isinstance(external_data, dict):
+        return {}
+    payload = external_data.get("ai_variant_applied")
+    if not isinstance(payload, dict):
+        return {}
+    draft = payload.get("draft")
+    return draft if isinstance(draft, dict) else {}
 
 
 BASE_PRODUCT_TYPES = {
@@ -324,10 +338,17 @@ def ensure_product_from_variant(variant, source_type: str, effective_type: str) 
     base_currency = variant_currency
     if variant_price_with_margin is None and parent_product is not None:
         base_currency = parent_product.currency or base_currency or 'RUB'
+    applied_draft = _get_variant_applied_ai_draft(variant)
+    applied_ru = applied_draft.get("ru") or {}
+    applied_description = (
+        applied_ru.get("generated_description")
+        or (applied_draft.get("en") or {}).get("generated_description")
+        or ""
+    )
     defaults = {
         'name': display_name,
         'slug': base_slug,
-        'description': getattr(variant, 'description', '') or (getattr(parent_product, "description", "") if parent_product else ''),
+        'description': applied_description or getattr(variant, 'description', '') or (getattr(parent_product, "description", "") if parent_product else ''),
         'price': base_price,
         'currency': base_currency,
         'old_price': desired_old_price,

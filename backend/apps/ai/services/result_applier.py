@@ -4,9 +4,13 @@ import re
 from typing import Any, Dict, Optional, List
 from django.db import transaction
 from django.utils.text import slugify as django_slugify
-from apps.catalog.models import Product
+from apps.catalog.models import Product, GlobalAttributeKey, ProductAttributeValue
 
 logger = logging.getLogger(__name__)
+
+
+def _canonical_attr_slug(slug: str) -> str:
+    return str(slug or "").strip().lower().replace("_", "-")
 
 
 def _make_unique_slug_for_domain(name: str, model_class, current_pk: Optional[int] = None, max_length: int = 500) -> str:
@@ -56,6 +60,9 @@ class BaseAIApplier:
         translations = ai_data.get('translations', {})
         if translations:
             updated |= self.apply_translations(target, translations)
+
+        # 4. Динамические атрибуты
+        updated |= self._apply_dynamic_attributes(target, ai_data)
             
         if updated:
             target.save()
@@ -131,6 +138,74 @@ class BaseAIApplier:
             if trans_updated or created:
                 trans.save()
                 updated = True
+        return updated
+
+    def _apply_dynamic_attributes(self, target: Any, ai_data: Dict[str, Any]) -> bool:
+        """Применяет динамические атрибуты из AI к товару/доменной модели."""
+        if not hasattr(target, "dynamic_attributes"):
+            return False
+
+        attrs = ai_data.get("extracted_attributes") or {}
+        raw_dynamic = attrs.get("dynamic_attributes")
+        if not isinstance(raw_dynamic, list) or not raw_dynamic:
+            return False
+
+        updated = False
+        existing = {
+            _canonical_attr_slug(pav.attribute_key.slug): pav
+            for pav in target.dynamic_attributes.select_related("attribute_key").all()
+            if pav.attribute_key_id and pav.attribute_key and pav.attribute_key.slug
+        }
+
+        for idx, row in enumerate(raw_dynamic):
+            if not isinstance(row, dict):
+                continue
+            slug = _canonical_attr_slug(row.get("slug") or "")
+            if not slug:
+                continue
+            key = GlobalAttributeKey.objects.filter(slug=slug).first()
+            if not key:
+                legacy_slug = slug.replace("-", "_")
+                key = GlobalAttributeKey.objects.filter(slug=legacy_slug).first()
+            if not key:
+                continue
+
+            value = str(row.get("value") or row.get("value_ru") or row.get("value_en") or "").strip()
+            value_ru = str(row.get("value_ru") or value or "").strip() or None
+            value_en = str(row.get("value_en") or "").strip() or None
+            if not value:
+                continue
+
+            current = existing.get(slug)
+            if current:
+                changed = False
+                if current.value != value:
+                    current.value = value
+                    changed = True
+                if (current.value_ru or None) != value_ru:
+                    current.value_ru = value_ru
+                    changed = True
+                if (current.value_en or None) != value_en:
+                    current.value_en = value_en
+                    changed = True
+                if current.sort_order != idx:
+                    current.sort_order = idx
+                    changed = True
+                if changed:
+                    current.save(update_fields=["value", "value_ru", "value_en", "sort_order"])
+                    updated = True
+                continue
+
+            ProductAttributeValue.objects.create(
+                content_object=target,
+                attribute_key=key,
+                value=value[:500],
+                value_ru=(value_ru[:500] if value_ru else None),
+                value_en=(value_en[:500] if value_en else None),
+                sort_order=idx,
+            )
+            updated = True
+
         return updated
 
 class BookAIApplier(BaseAIApplier):

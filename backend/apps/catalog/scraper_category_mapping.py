@@ -10,6 +10,8 @@ name_en). Дополнительные алиасы (book, книга, jewellery
 Обработчики по типам (sync_metadata, get_domain, update_attributes) добавляются по мере
 появления парсеров для этих типов.
 """
+import re
+import unicodedata
 from typing import Tuple, Optional
 
 from django.utils.text import slugify
@@ -17,6 +19,15 @@ from django.utils.text import slugify
 from .constants import ROOT_CATEGORIES, get_or_create_root_category
 from .models import Category
 from transliterate import slugify as trans_slugify
+
+
+def _normalize_category_alias_key(value: str) -> str:
+    """Нормализует ключ категории для устойчивого матчинга алиасов."""
+    normalized = unicodedata.normalize("NFKD", value or "")
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    normalized = normalized.casefold().replace("_", " ")
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
 
 
 def _build_category_aliases() -> dict:
@@ -28,11 +39,11 @@ def _build_category_aliases() -> dict:
         name_ru = (row[1] or "").strip().lower()
         name_en = (row[2] or "").strip().lower()
         if cat_slug:
-            aliases[cat_slug] = cat_slug
+            aliases[_normalize_category_alias_key(cat_slug)] = cat_slug
         if name_ru:
-            aliases[name_ru] = cat_slug
+            aliases[_normalize_category_alias_key(name_ru)] = cat_slug
         if name_en:
-            aliases[name_en] = cat_slug
+            aliases[_normalize_category_alias_key(name_en)] = cat_slug
     return aliases
 
 
@@ -42,6 +53,31 @@ EXTRA_ALIASES = {
     "книга": "books",   # единственное число; «книги» даёт _build_category_aliases()
     "book": "books",    # en единственное число; «books» даёт build
     "jewellery": "jewelry",
+    "aksesuar": "accessories",
+    "canta": "accessories",
+    "çanta": "accessories",
+    "kemer": "accessories",
+    "cuzdan": "accessories",
+    "cüzdan": "accessories",
+    "saat": "accessories",
+    "seyahat": "accessories",
+    "travel": "accessories",
+    "taki": "jewelry",
+    "takı": "jewelry",
+    "kozmetik": "perfumery",
+    "kisisel bakim": "perfumery",
+    "kişisel bakım": "perfumery",
+    "kozmetik | kisisel bakim": "perfumery",
+    "kozmetik | kişisel bakım": "perfumery",
+    "makyaj": "perfumery",
+    "cilt bakim": "perfumery",
+    "cilt bakım": "perfumery",
+    "gunes bakim": "perfumery",
+    "güneş bakım": "perfumery",
+    "vucut bakim": "perfumery",
+    "vücut bakım": "perfumery",
+    "parfum": "perfumery",
+    "parfüm": "perfumery",
     "бады": "supplements",
     "медицина": "medicines",
     "медтехника": "medical-equipment",
@@ -55,7 +91,10 @@ EXTRA_ALIASES = {
     "благовония": "incense",
 }
 
-CATEGORY_NAME_ALIASES = {**_build_category_aliases(), **EXTRA_ALIASES}
+CATEGORY_NAME_ALIASES = {
+    **_build_category_aliases(),
+    **{_normalize_category_alias_key(key): value for key, value in EXTRA_ALIASES.items()},
+}
 ALLOWED_ROOT_SLUGS = {r[0] for r in ROOT_CATEGORIES}
 
 
@@ -73,7 +112,7 @@ def resolve_category_and_product_type(category_value: str) -> Tuple[Optional[Cat
     if not raw:
         return None, None
 
-    normalized_name = raw.lower()
+    normalized_name = _normalize_category_alias_key(raw)
     # Сначала проверяем алиасы
     slug_from_alias = CATEGORY_NAME_ALIASES.get(normalized_name)
     if slug_from_alias:

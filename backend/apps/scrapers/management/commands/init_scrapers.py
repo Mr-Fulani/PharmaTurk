@@ -131,6 +131,36 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.WARNING('Конфигурация парсера zara уже существует')
             )
+
+        lcw_config, created = ScraperConfig.objects.get_or_create(
+            name='lcw',
+            defaults={
+                'parser_class': 'lcw',
+                'base_url': 'https://www.lcw.com',
+                'description': 'Парсер для одежды, обуви, аксессуаров и home-товаров с сайта lcw.com',
+                'status': 'active',
+                'is_enabled': True,
+                'priority': 25,
+                'delay_min': 1.5,
+                'delay_max': 3.5,
+                'timeout': 30,
+                'max_retries': 3,
+                'max_pages_per_run': 10,
+                'max_products_per_run': 100,
+                'sync_enabled': False,
+                'sync_interval_hours': 24,
+                'use_proxy': False,
+            }
+        )
+
+        if created:
+            self.stdout.write(
+                self.style.SUCCESS('Создана конфигурация парсера lcw')
+            )
+        else:
+            self.stdout.write(
+                self.style.WARNING('Конфигурация парсера lcw уже существует')
+            )
         
         # Создаем конфигурацию для umma-land.com
         ummaland_config, created = ScraperConfig.objects.get_or_create(

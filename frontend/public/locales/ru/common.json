@@ -1160,5 +1160,19 @@
   "nfc_code": "NFC код",
   "sgk_equivalent_code": "Код эквивалента SGK",
   "sgk_active_ingredient_code": "Код активного вещества SGK",
-  "sgk_public_no": "Публичный номер SGK"
+  "sgk_public_no": "Публичный номер SGK",
+
+  "analogs_title": "Аналоги (Eşdeğerleri)",
+  "analog_substance": "Действующее вещество: {{substance}}",
+  "analog_saving": "Выгода {{amount}}",
+  "in_stock": "В наличии",
+  "out_of_stock": "Нет в наличии",
+  "similar_products": "Похожие товары",
+  "badge_recommend": "Рекомендуем",
+  "badge_similar_style": "Очень похожий стиль",
+  "badge_similar_design": "Похожий дизайн",
+  "badge_brand": "Бренд {{brand}}",
+  "months": "мес.",
+  "years": "лет",
+  "product_featured": "Хит"
 }

@@ -3430,6 +3430,131 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
+    @action(detail=True, methods=['get'])
+    @extend_schema(
+        summary="Аналоги (эквиваленты) препарата",
+        description=(
+            "Возвращает список аналогов (Eşdeğerleri) — препаратов с тем же "
+            "действующим веществом (active_ingredient) или кодом АТХ (atc_code). "
+            "Сортировка: сначала доступные, затем по цене (от дешёвых к дорогим). "
+            "Для каждого аналога возвращается экономия относительно текущего товара."
+        ),
+        parameters=[
+            OpenApiParameter(name="limit", type=int, required=False, default=10, description="Количество аналогов"),
+        ],
+    )
+    def analogs(self, request, slug=None):
+        """GET /api/catalog/medicines/{slug}/analogs/ — препараты-аналоги по active_ingredient / atc_code."""
+        product = self.get_object()
+        limit = min(int(request.query_params.get('limit', 10)), 50)
+
+        # Предпочитаемая валюта (как в ProductSerializer.get_prices_in_currencies)
+        preferred_currency = (
+            request.headers.get('X-Currency') or
+            request.query_params.get('currency') or
+            'TRY'
+        ).upper()
+
+        # Получаем действующее вещество и/или ATC-код
+        active_ingredient = (product.active_ingredient or '').strip()
+        atc_code = (product.atc_code or '').strip()
+
+        if not active_ingredient and not atc_code:
+            return Response({'count': 0, 'active_ingredient': None, 'atc_code': None, 'results': []})
+
+        # Строим queryset аналогов (исключаем сам товар)
+        from django.db.models import Q as _Q
+        q = _Q()
+        if active_ingredient:
+            q |= _Q(active_ingredient__iexact=active_ingredient)
+        if atc_code:
+            q |= _Q(atc_code__iexact=atc_code)
+
+        analogs_qs = (
+            MedicineProduct.objects
+            .filter(q, is_active=True)
+            .exclude(pk=product.pk)
+            .select_related('brand', 'category')
+            .prefetch_related('gallery_images')
+            .order_by('-is_available', 'price')[:limit]
+        )
+
+        # Конвертируем текущую цену в preferred_currency для сравнения
+        def _convert(price, currency):
+            """Конвертирует price из currency в preferred_currency с маржой."""
+            if price is None:
+                return None
+            try:
+                _original, _converted, price_with_margin = currency_converter.convert_price(
+                    price, currency or 'TRY', preferred_currency, apply_margin=True
+                )
+                return float(price_with_margin)
+            except Exception:
+                return float(price)
+
+        try:
+            from .utils.currency_converter import currency_converter as _cc
+            currency_converter = _cc
+        except Exception:
+            currency_converter = None
+
+        def _safe_convert(price, from_currency):
+            if currency_converter is None or price is None:
+                return float(price) if price else None
+            return _convert(price, from_currency)
+
+        current_price_converted = _safe_convert(product.price, product.currency or 'TRY')
+
+        results = []
+        for analog in analogs_qs:
+            # Основное изображение
+            main_img = analog.main_image or ''
+            if not main_img:
+                first_gallery = analog.gallery_images.first()
+                if first_gallery:
+                    main_img = first_gallery.image_url or ''
+            if main_img and request and not main_img.startswith('http'):
+                main_img = request.build_absolute_uri(main_img)
+            # Конвертируем цену аналога в preferred_currency
+            analog_price_converted = _safe_convert(analog.price, analog.currency or 'TRY')
+            analog_old_price_converted = _safe_convert(analog.old_price, analog.currency or 'TRY')
+
+            # Расчёт экономии vs текущий товар (в той же preferred_currency)
+            saving_percent = None
+            saving_amount = None
+            if (current_price_converted and analog_price_converted and
+                    analog_price_converted < current_price_converted):
+                saving_amount = round(current_price_converted - analog_price_converted, 2)
+                saving_percent = round(saving_amount / current_price_converted * 100)
+
+            results.append({
+                'id': analog.pk,
+                'slug': analog.slug,
+                'name': analog.name,
+                'brand': analog.brand.name if analog.brand else None,
+                # Цена в preferred_currency с маржой
+                'price': round(analog_price_converted, 2) if analog_price_converted else None,
+                'old_price': round(analog_old_price_converted, 2) if analog_old_price_converted else None,
+                'original_price': float(analog.price) if analog.price else None,
+                'original_currency': analog.currency or 'TRY',
+                'display_currency': preferred_currency,
+                'is_available': analog.is_available,
+                'main_image_url': main_img or None,
+                'dosage_form': analog.dosage_form or None,
+                'active_ingredient': analog.active_ingredient or None,
+                'saving_percent': saving_percent,
+                'saving_amount': saving_amount,
+            })
+
+        return Response({
+            'count': len(results),
+            'active_ingredient': active_ingredient or None,
+            'atc_code': atc_code or None,
+            'display_currency': preferred_currency,
+            'results': results,
+        })
+
+
 
 # ─── БАДы ───
 

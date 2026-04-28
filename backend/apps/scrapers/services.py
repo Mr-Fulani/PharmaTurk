@@ -33,6 +33,7 @@ def scraping_in_progress_context():
 
 from .models import ScraperConfig, ScrapingSession, ScrapedProductLog
 from .parsers.registry import get_parser
+from .parsers.lcw import LcwParser
 from .base.scraper import ScrapedProduct, _json_safe_scraped_value
 from apps.catalog.services import CatalogNormalizer
 from apps.catalog.models import (
@@ -56,6 +57,11 @@ _DOMAIN_GETTER_NAMES = {
     "jewelry": "_get_jewelry_product",
     "medicines": "_get_medicine_product",
     "furniture": "_get_furniture_product",
+    "clothing": "_get_clothing_product",
+    "shoes": "_get_shoe_product",
+    "headwear": "_get_headwear_product",
+    "underwear": "_get_underwear_product",
+    "islamic_clothing": "_get_islamic_clothing_product",
 }
 
 # Реестр: product_type → метод обновления атрибутов доменной модели из attrs
@@ -64,6 +70,11 @@ _ATTRIBUTE_UPDATE_HANDLER_NAMES = {
     "jewelry": "_update_jewelry_attributes",
     "medicines": "_update_medicine_attributes",
     "furniture": "_update_furniture_attributes",
+    "clothing": "_update_clothing_attributes",
+    "shoes": "_update_shoe_attributes",
+    "headwear": "_update_headwear_attributes",
+    "underwear": "_update_underwear_attributes",
+    "islamic_clothing": "_update_islamic_clothing_attributes",
 }
 
 
@@ -228,10 +239,12 @@ class ScraperIntegrationService:
             
             host = (parsed_url.netloc or "").lower()
             is_ikea_host = host == "ikea.com.tr" or host.endswith(".ikea.com.tr")
+            is_lcw_host = host == "lcw.com" or host.endswith(".lcw.com")
 
             is_category = (
                 "/category/" in start_url or "/kategori/" in start_url or 
-                (len(path_parts) == 1 and path_parts[0] in ('ilaclar', 'takviye-edici-gida'))
+                (len(path_parts) == 1 and path_parts[0] in ('ilaclar', 'takviye-edici-gida')) or
+                (is_lcw_host and LcwParser.is_lcw_category_url(start_url))
             )
             is_search = "/search" in start_url or "/arama" in start_url
             # IKEA TR/COM: карточка товара — /urun/, /product/ или /p/
@@ -239,11 +252,13 @@ class ScraperIntegrationService:
                 is_ikea_host
                 and any(p in path_parts for p in ("urun", "product", "p"))
             )
+            is_lcw_product = is_lcw_host and LcwParser.is_lcw_product_url(start_url)
             is_product = (
                 "/product/" in start_url or 
                 ("/p/" in start_url and "instagram.com" not in start_url) or
                 (len(path_parts) >= 2 and path_parts[0] in ('ilaclar', 'takviye-edici-gida')) or
-                is_ikea_product
+                is_ikea_product or
+                is_lcw_product
             )
 
             # Определяем тип парсинга по URL
@@ -794,6 +809,99 @@ class ScraperIntegrationService:
         product.furniture_item = item
         return item
 
+    def _get_or_create_domain_product(
+        self,
+        product: Product,
+        *,
+        cache_attr: str,
+        model_path: str,
+        slug_prefix: str,
+    ):
+        item = getattr(product, cache_attr, None)
+        if item:
+            return item
+
+        module_path, class_name = model_path.rsplit(".", 1)
+        module = __import__(module_path, fromlist=[class_name])
+        DomainModel = getattr(module, class_name)
+
+        from django.utils.text import slugify
+
+        base_slug = product.slug or slugify(product.name)
+        slug = f"{slug_prefix}-{base_slug}"
+        if len(slug) > 490:
+            slug = slug[:490]
+
+        i = 2
+        while DomainModel.objects.filter(slug=slug).exists():
+            suffix = f"-{i}"
+            slug = f"{slug[:500-len(suffix)]}{suffix}"
+            i += 1
+
+        item = DomainModel(
+            base_product=product,
+            name=product.name,
+            slug=slug,
+            description=product.description or "",
+            category=product.category,
+            brand=product.brand,
+            price=product.price,
+            currency=product.currency or "RUB",
+            old_price=product.old_price,
+            external_id=product.external_id or "",
+            external_url=product.external_url or "",
+            external_data=product.external_data or {},
+            is_active=product.is_active,
+            is_available=product.is_available,
+            main_image=product.main_image or "",
+            video_url=product.video_url or "",
+        )
+        if hasattr(item, "stock_quantity"):
+            item.stock_quantity = product.stock_quantity
+        item.save()
+        setattr(product, cache_attr, item)
+        return item
+
+    def _get_clothing_product(self, product: Product):
+        return self._get_or_create_domain_product(
+            product,
+            cache_attr="clothing_item",
+            model_path="apps.catalog.models.ClothingProduct",
+            slug_prefix="clothing",
+        )
+
+    def _get_shoe_product(self, product: Product):
+        return self._get_or_create_domain_product(
+            product,
+            cache_attr="shoe_item",
+            model_path="apps.catalog.models.ShoeProduct",
+            slug_prefix="shoe",
+        )
+
+    def _get_headwear_product(self, product: Product):
+        return self._get_or_create_domain_product(
+            product,
+            cache_attr="headwear_item",
+            model_path="apps.catalog.models.HeadwearProduct",
+            slug_prefix="headwear",
+        )
+
+    def _get_underwear_product(self, product: Product):
+        return self._get_or_create_domain_product(
+            product,
+            cache_attr="underwear_item",
+            model_path="apps.catalog.models.UnderwearProduct",
+            slug_prefix="underwear",
+        )
+
+    def _get_islamic_clothing_product(self, product: Product):
+        return self._get_or_create_domain_product(
+            product,
+            cache_attr="islamic_clothing_item",
+            model_path="apps.catalog.models.IslamicClothingProduct",
+            slug_prefix="islamic-clothing",
+        )
+
     def _safe_decimal(self, val: Any) -> Optional[Decimal]:
         if val is None:
             return None
@@ -965,6 +1073,304 @@ class ScraperIntegrationService:
             product.save()
         return changed or product_dirty
 
+    def _fashion_model_config(self, product_type: str) -> Optional[Dict[str, Any]]:
+        from apps.catalog import models as catalog_models
+
+        configs = {
+            "clothing": {
+                "getter": self._get_clothing_product,
+                "variant_model": catalog_models.ClothingVariant,
+                "variant_image_model": catalog_models.ClothingVariantImage,
+                "variant_size_model": catalog_models.ClothingVariantSize,
+                "product_size_model": catalog_models.ClothingProductSize,
+            },
+            "shoes": {
+                "getter": self._get_shoe_product,
+                "variant_model": catalog_models.ShoeVariant,
+                "variant_image_model": catalog_models.ShoeVariantImage,
+                "variant_size_model": catalog_models.ShoeVariantSize,
+                "product_size_model": catalog_models.ShoeProductSize,
+            },
+            "headwear": {
+                "getter": self._get_headwear_product,
+                "variant_model": catalog_models.HeadwearVariant,
+                "variant_image_model": catalog_models.HeadwearVariantImage,
+                "variant_size_model": catalog_models.HeadwearVariantSize,
+                "product_size_model": catalog_models.HeadwearProductSize,
+            },
+            "underwear": {
+                "getter": self._get_underwear_product,
+                "variant_model": catalog_models.UnderwearVariant,
+                "variant_image_model": catalog_models.UnderwearVariantImage,
+                "variant_size_model": catalog_models.UnderwearVariantSize,
+                "product_size_model": catalog_models.UnderwearProductSize,
+            },
+            "islamic_clothing": {
+                "getter": self._get_islamic_clothing_product,
+                "variant_model": catalog_models.IslamicClothingVariant,
+                "variant_image_model": catalog_models.IslamicClothingVariantImage,
+                "variant_size_model": catalog_models.IslamicClothingVariantSize,
+                "product_size_model": catalog_models.IslamicClothingProductSize,
+            },
+        }
+        return configs.get(product_type)
+
+    def _normalize_variant_sizes_payload(self, raw_sizes: Any) -> List[Dict[str, Any]]:
+        normalized: List[Dict[str, Any]] = []
+        if not raw_sizes:
+            return normalized
+
+        for idx, raw in enumerate(raw_sizes):
+            if isinstance(raw, dict):
+                size_value = str(raw.get("size") or "").strip()
+                if not size_value:
+                    continue
+                normalized.append(
+                    {
+                        "size": size_value[:50],
+                        "is_available": bool(raw.get("is_available", True)),
+                        "stock_quantity": raw.get("stock_quantity"),
+                        "sort_order": int(raw.get("sort_order") or idx),
+                    }
+                )
+                continue
+
+            if isinstance(raw, str):
+                size_value = raw.strip()
+                if not size_value:
+                    continue
+                normalized.append(
+                    {
+                        "size": size_value[:50],
+                        "is_available": True,
+                        "stock_quantity": None,
+                        "sort_order": idx,
+                    }
+                )
+        return normalized
+
+    def _sync_product_size_rows(
+        self,
+        product_item,
+        product_size_model,
+        *,
+        variants: List[Any],
+    ) -> bool:
+        aggregate: Dict[str, Dict[str, Any]] = {}
+        for variant in variants:
+            for size_row in variant.sizes.all().order_by("sort_order", "id"):
+                size_key = (size_row.size or "").strip()
+                if not size_key:
+                    continue
+                bucket = aggregate.setdefault(
+                    size_key,
+                    {
+                        "size": size_key,
+                        "is_available": False,
+                        "stock_quantity": 0,
+                        "sort_order": len(aggregate),
+                    },
+                )
+                bucket["is_available"] = bucket["is_available"] or bool(size_row.is_available)
+                if size_row.stock_quantity is not None:
+                    bucket["stock_quantity"] = (bucket["stock_quantity"] or 0) + size_row.stock_quantity
+
+        product_item.sizes.all().delete()
+        bulk = []
+        for idx, row in enumerate(aggregate.values()):
+            stock_value = row["stock_quantity"] if row["stock_quantity"] > 0 else None
+            bulk.append(
+                product_size_model(
+                    product=product_item,
+                    size=row["size"],
+                    is_available=bool(row["is_available"] or stock_value),
+                    stock_quantity=stock_value,
+                    sort_order=idx,
+                )
+            )
+        if bulk:
+            product_size_model.objects.bulk_create(bulk)
+        return bool(bulk)
+
+    def _sync_fashion_variants(
+        self,
+        product: Product,
+        *,
+        variants: List[Dict[str, Any]],
+    ) -> bool:
+        config = self._fashion_model_config(product.product_type)
+        if not config:
+            return False
+
+        domain_product = config["getter"](product)
+        VariantModel = config["variant_model"]
+        VariantImageModel = config["variant_image_model"]
+        VariantSizeModel = config["variant_size_model"]
+        ProductSizeModel = config["product_size_model"]
+
+        changed = False
+        seen_external_ids: List[str] = []
+
+        for idx, spec in enumerate(variants):
+            if not isinstance(spec, dict):
+                continue
+
+            ext = str(spec.get("external_id") or "").strip()
+            if not ext:
+                continue
+            seen_external_ids.append(ext)
+
+            avail = bool(spec.get("is_available", True))
+            raw_stock = spec.get("stock_quantity")
+            if raw_stock is not None:
+                try:
+                    stock_quantity = int(raw_stock)
+                except (TypeError, ValueError):
+                    stock_quantity = 3 if avail else 0
+            else:
+                stock_quantity = 3 if avail else 0
+
+            price_dec = self._safe_decimal(spec.get("price"))
+            color_value = str(spec.get("color") or "").strip()[:50]
+            defaults = {
+                "name": (spec.get("display_name") or domain_product.name or "")[:500],
+                "color": color_value,
+                "sku": str(spec.get("sku") or ext)[:100],
+                "barcode": str(spec.get("barcode") or "")[:100],
+                "gtin": str(spec.get("gtin") or "")[:100],
+                "mpn": str(spec.get("mpn") or "")[:100],
+                "price": price_dec,
+                "currency": (spec.get("currency") or domain_product.currency or "TRY")[:5],
+                "external_url": (spec.get("external_url") or "")[:2000],
+                "sort_order": int(spec.get("sort_order") or idx),
+                "stock_quantity": stock_quantity,
+                "is_available": bool(avail and stock_quantity > 0),
+                "is_active": True,
+            }
+
+            variant, created = VariantModel.objects.get_or_create(
+                product=domain_product,
+                external_id=ext,
+                defaults=defaults,
+            )
+            if not created:
+                for field, value in defaults.items():
+                    if value is not None and getattr(variant, field) != value:
+                        setattr(variant, field, value)
+                        changed = True
+                variant.save()
+            changed = changed or created
+
+            images = [u for u in (spec.get("images") or []) if isinstance(u, str) and u]
+            if images:
+                variant.images.all().delete()
+                VariantImageModel.objects.bulk_create(
+                    [
+                        VariantImageModel(
+                            variant=variant,
+                            image_url=url,
+                            sort_order=image_idx,
+                            is_main=(image_idx == 0),
+                        )
+                        for image_idx, url in enumerate(images)
+                    ]
+                )
+                if variant.main_image != images[0]:
+                    variant.main_image = images[0]
+                    variant.save(update_fields=["main_image"])
+                changed = True
+
+            size_payload = self._normalize_variant_sizes_payload(spec.get("sizes") or [])
+            variant.sizes.all().delete()
+            if size_payload:
+                VariantSizeModel.objects.bulk_create(
+                    [
+                        VariantSizeModel(
+                            variant=variant,
+                            size=row["size"],
+                            is_available=row["is_available"],
+                            stock_quantity=row["stock_quantity"],
+                            sort_order=row["sort_order"],
+                        )
+                        for row in size_payload
+                    ]
+                )
+                changed = True
+
+            variant_external = dict(variant.external_data) if isinstance(variant.external_data, dict) else {}
+            next_external = {
+                "source": "scraper",
+                "source_variant_id": ext,
+                "sizes_payload": size_payload,
+            }
+            if color_value:
+                next_external["color"] = color_value
+            if variant_external != next_external:
+                variant.external_data = next_external
+                variant.save(update_fields=["external_data"])
+                changed = True
+
+        stale_qs = domain_product.variants.exclude(external_id__in=seen_external_ids)
+        if stale_qs.filter(is_active=True).exists():
+            stale_qs.update(is_active=False, is_available=False, stock_quantity=0)
+            changed = True
+
+        active_variants = list(domain_product.variants.filter(is_active=True).order_by("sort_order", "id"))
+        if active_variants:
+            default_variant = next(
+                (row for row in active_variants if row.price is not None),
+                active_variants[0],
+            )
+            if domain_product.price != default_variant.price:
+                domain_product.price = default_variant.price
+                changed = True
+            if (default_variant.currency or "") and domain_product.currency != default_variant.currency:
+                domain_product.currency = default_variant.currency
+                changed = True
+            if default_variant.main_image and domain_product.main_image != default_variant.main_image:
+                domain_product.main_image = default_variant.main_image
+                changed = True
+
+            any_avail = any(v.is_available for v in active_variants)
+            total_stock = sum((v.stock_quantity or 0) for v in active_variants if v.stock_quantity)
+            new_sq = total_stock if total_stock > 0 else None
+            if domain_product.is_available != any_avail:
+                domain_product.is_available = any_avail
+                changed = True
+            if getattr(domain_product, "stock_quantity", None) != new_sq:
+                domain_product.stock_quantity = new_sq
+                changed = True
+
+        if changed:
+            domain_product.save()
+
+        self._sync_product_size_rows(
+            domain_product,
+            ProductSizeModel,
+            variants=active_variants if active_variants else [],
+        )
+
+        product_dirty = False
+        if product.price != domain_product.price:
+            product.price = domain_product.price
+            product_dirty = True
+        if product.currency != domain_product.currency:
+            product.currency = domain_product.currency
+            product_dirty = True
+        if product.is_available != domain_product.is_available:
+            product.is_available = domain_product.is_available
+            product_dirty = True
+        if getattr(product, "stock_quantity", None) != getattr(domain_product, "stock_quantity", None):
+            product.stock_quantity = getattr(domain_product, "stock_quantity", None)
+            product_dirty = True
+        if domain_product.main_image and product.main_image != domain_product.main_image:
+            product.main_image = domain_product.main_image
+            product_dirty = True
+        if product_dirty:
+            product.save()
+
+        return changed or product_dirty
+
     def _update_furniture_attributes(
         self,
         product: Product,
@@ -985,6 +1391,15 @@ class ScraperIntegrationService:
             updated = True
         if product.category != item.category:
             item.category = product.category
+            updated = True
+        if product.name and product.name != item.name:
+            item.name = product.name
+            updated = True
+        if product.description != item.description:
+            item.description = product.description or ""
+            updated = True
+        if product.external_url != item.external_url:
+            item.external_url = product.external_url or ""
             updated = True
 
         if "dimensions" in attrs and attrs["dimensions"] and attrs["dimensions"] != item.dimensions:
@@ -1030,6 +1445,100 @@ class ScraperIntegrationService:
                 updated = True
 
         return updated
+
+    def _update_fashion_attributes_common(
+        self,
+        product: Product,
+        attrs: Dict[str, Any],
+        *,
+        color_variants_key: str = "fashion_variants",
+    ) -> bool:
+        domain_config = self._fashion_model_config(product.product_type)
+        if not domain_config:
+            return False
+
+        domain_product = domain_config["getter"](product)
+        updated = False
+
+        if product.brand != domain_product.brand:
+            domain_product.brand = product.brand
+            updated = True
+        if product.category != domain_product.category:
+            domain_product.category = product.category
+            updated = True
+        if product.name and product.name != domain_product.name:
+            domain_product.name = product.name
+            updated = True
+        if product.description != domain_product.description:
+            domain_product.description = product.description or ""
+            updated = True
+        if product.external_url != domain_product.external_url:
+            domain_product.external_url = product.external_url or ""
+            updated = True
+
+        color_value = str(attrs.get("color") or "").strip()
+        if color_value and getattr(domain_product, "color", "") != color_value[:50]:
+            domain_product.color = color_value[:50]
+            updated = True
+
+        if "video_url" in attrs and attrs["video_url"] and getattr(domain_product, "video_url", "") != attrs["video_url"]:
+            domain_product.video_url = attrs["video_url"]
+            updated = True
+
+        if updated:
+            domain_product.save()
+
+        variants = attrs.get(color_variants_key) or []
+        if isinstance(variants, list) and variants:
+            if self._sync_fashion_variants(product, variants=variants):
+                updated = True
+
+        return updated
+
+    def _update_clothing_attributes(
+        self,
+        product: Product,
+        attrs: Dict[str, Any],
+        *,
+        session: Optional[ScrapingSession] = None,
+    ) -> bool:
+        return self._update_fashion_attributes_common(product, attrs)
+
+    def _update_shoe_attributes(
+        self,
+        product: Product,
+        attrs: Dict[str, Any],
+        *,
+        session: Optional[ScrapingSession] = None,
+    ) -> bool:
+        return self._update_fashion_attributes_common(product, attrs)
+
+    def _update_headwear_attributes(
+        self,
+        product: Product,
+        attrs: Dict[str, Any],
+        *,
+        session: Optional[ScrapingSession] = None,
+    ) -> bool:
+        return self._update_fashion_attributes_common(product, attrs)
+
+    def _update_underwear_attributes(
+        self,
+        product: Product,
+        attrs: Dict[str, Any],
+        *,
+        session: Optional[ScrapingSession] = None,
+    ) -> bool:
+        return self._update_fashion_attributes_common(product, attrs)
+
+    def _update_islamic_clothing_attributes(
+        self,
+        product: Product,
+        attrs: Dict[str, Any],
+        *,
+        session: Optional[ScrapingSession] = None,
+    ) -> bool:
+        return self._update_fashion_attributes_common(product, attrs)
 
     def _update_existing_product(
         self,
@@ -1077,6 +1586,17 @@ class ScraperIntegrationService:
                 existing_product.brand = brand
                 updated = True
 
+        if scraped_product.description is not None:
+            next_description = str(scraped_product.description).strip()
+            current_description = (existing_product.description or "").strip()
+            if (
+                next_description
+                and next_description != current_description
+                and (not is_variant_update or not current_description)
+            ):
+                existing_product.description = next_description
+                updated = True
+
         if not is_variant_update:
             # Обновляем изображения, если их нет
             if not existing_product.main_image and scraped_product.images:
@@ -1103,6 +1623,9 @@ class ScraperIntegrationService:
                     self.logger.info(
                         f"Updated video_url for existing product {existing_product.id} to {existing_product.video_url}"
                     )
+            if scraped_product.url and scraped_product.url != existing_product.external_url:
+                existing_product.external_url = scraped_product.url
+                updated = True
 
         if scraped_product.category and not existing_product.category:
             category, product_type = resolve_category_and_product_type(scraped_product.category)
@@ -1131,9 +1654,29 @@ class ScraperIntegrationService:
         if scraped_product.scraped_at:
             existing_product.external_data["scraped_at"] = scraped_product.scraped_at
         if isinstance(scraped_product.attributes, dict):
-            existing_product.external_data["attributes"] = _json_safe_scraped_value(
-                scraped_product.attributes
-            )
+            if is_variant_update:
+                variant_content = existing_product.external_data.get("variant_content") or {}
+                if not isinstance(variant_content, dict):
+                    variant_content = {}
+                snapshot = dict(variant_content.get(str(scraped_product.external_id)) or {})
+                safe_attrs = _json_safe_scraped_value(scraped_product.attributes)
+                if snapshot.get("attributes") != safe_attrs:
+                    snapshot["attributes"] = safe_attrs
+                if scraped_product.description:
+                    next_description = str(scraped_product.description).strip()
+                    if next_description and snapshot.get("description") != next_description:
+                        snapshot["description"] = next_description
+                if scraped_product.url and snapshot.get("url") != scraped_product.url:
+                    snapshot["url"] = scraped_product.url
+                snapshot["updated_at"] = timezone.now().isoformat()
+                if variant_content.get(str(scraped_product.external_id)) != snapshot:
+                    variant_content[str(scraped_product.external_id)] = snapshot
+                    existing_product.external_data["variant_content"] = variant_content
+                    updated = True
+            else:
+                existing_product.external_data["attributes"] = _json_safe_scraped_value(
+                    scraped_product.attributes
+                )
 
         source_info = {
             "source": scraped_product.source,
@@ -1158,6 +1701,10 @@ class ScraperIntegrationService:
 
         if updated:
             existing_product.save()
+
+        # Обрабатываем аналоги, если это медицина
+        if existing_product.product_type == "medicines" and getattr(scraped_product, "analogs", None):
+            self._process_medicine_analogs(existing_product, scraped_product, session)
 
         # Всегда нормализуем медиа (обновляем галереи) независимо от того,
         # поменялись ли текстовые атрибуты, так как могли измениться лимиты или тип продукта
@@ -1472,6 +2019,64 @@ class ScraperIntegrationService:
             medicine_product.save()
         return updated
 
+    def _process_medicine_analogs(
+        self, product: Product, scraped_product: ScrapedProduct, session: ScrapingSession
+    ) -> None:
+        """Обрабатывает спарсенные аналоги (создает заглушки, если их нет)."""
+        if not getattr(scraped_product, 'analogs', None):
+            return
+            
+        medicine_product = self._get_medicine_product(product)
+        active_ingredient = medicine_product.active_ingredient
+        atc_code = medicine_product.atc_code
+        
+        # Если у основного препарата нет ни active_ingredient, ни atc_code, мы не сможем их неявно связать
+        if not active_ingredient and not atc_code:
+            return
+            
+        for analog_data in scraped_product.analogs:
+            analog_name = analog_data.get('name')
+            if not analog_name:
+                continue
+                
+            # Проверяем, существует ли уже такой препарат
+            existing = Product.objects.filter(name__iexact=analog_name, product_type="medicines").first()
+            if existing:
+                med = self._get_medicine_product(existing)
+                updated = False
+                if active_ingredient and not med.active_ingredient:
+                    med.active_ingredient = active_ingredient
+                    updated = True
+                if atc_code and not med.atc_code:
+                    med.atc_code = atc_code
+                    updated = True
+                if updated:
+                    med.save()
+                continue
+                
+            # Если не существует, создаем базовую заглушку
+            # Парсер затем сможет ее обновить при прямом парсинге
+            analog_price = analog_data.get('price')
+            analog_url = analog_data.get('url', '')
+            
+            stub_scraped = ScrapedProduct(
+                name=analog_name,
+                price=analog_price,
+                url=analog_url,
+                category=scraped_product.category,
+                source=scraped_product.source,
+                is_available=True,
+                attributes={
+                    'active_ingredient': active_ingredient,
+                    'atc_code': atc_code
+                }
+            )
+            # Чтобы избежать зацикливания, не передаем analogs
+            try:
+                self._create_new_product(session, stub_scraped)
+            except Exception as e:
+                self.logger.error(f"Ошибка создания аналога {analog_name}: {e}")
+
     def _update_product_attributes(
         self,
         product: Product,
@@ -1536,8 +2141,8 @@ class ScraperIntegrationService:
             updated = True
 
         # OG-данные от источника (на языке источника) — сохраняем в external_data для справки AI,
-        # но НЕ устанавливаем в EN SEO поля модели (og_image_url, og_title, og_description).
-        # Эти поля заполняет AI при ручной обработке.
+        # но `og_image_url` сохраняем и в модель, чтобы AI/SEO могли использовать исходное фото товара.
+        # Текстовые OG-поля по-прежнему оставляем только как source-* для справки AI.
         og_keys = {
             "og_image_url": "source_og_image_url",
             "og_title": "source_og_title",
@@ -1551,6 +2156,14 @@ class ScraperIntegrationService:
                 if attr_key in attrs and attrs[attr_key] and data_key not in product.external_data["seo_data"]:
                     product.external_data["seo_data"][data_key] = attrs[attr_key]
                     updated = True
+
+        if attrs.get("og_image_url") and not product.og_image_url:
+            product.og_image_url = str(attrs["og_image_url"])[:2000]
+            updated = True
+            domain_item = getattr(product, "domain_item", None)
+            if domain_item is not None and hasattr(domain_item, "og_image_url") and not getattr(domain_item, "og_image_url", ""):
+                domain_item.og_image_url = product.og_image_url
+                domain_item.save(update_fields=["og_image_url"])
 
         return updated
 
@@ -1606,6 +2219,10 @@ class ScraperIntegrationService:
         if scraped_product.attributes:
             if self._update_product_attributes(product, scraped_product.attributes, session=session):
                 product.save()
+
+        # Обрабатываем аналоги, если это медицина
+        if product.product_type == "medicines" and getattr(scraped_product, "analogs", None):
+            self._process_medicine_analogs(product, scraped_product, session)
 
         # После создания доменной модели нужно переназначить галерею на неё, а не на Product.
         # normalize_product вызывал _normalize_product_images до появления domain_item,

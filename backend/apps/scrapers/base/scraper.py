@@ -61,6 +61,9 @@ class ScrapedProduct:
     source: str = ""
     scraped_at: Optional[str] = None
     
+    # Аналоги (muadilleri/eşdeğerleri)
+    analogs: List[Dict[str, Any]] = field(default_factory=list)
+    
     def to_dict(self) -> Dict[str, Any]:
         """Преобразует объект в словарь."""
         safe_attrs = _json_safe_scraped_value(self.attributes)
@@ -84,6 +87,7 @@ class ScrapedProduct:
             'attributes': safe_attrs,
             'source': self.source,
             'scraped_at': self.scraped_at,
+            'analogs': self.analogs,
             'metadata': {
                 'stock_quantity': self.stock_quantity,
                 'source': self.source,
@@ -143,20 +147,28 @@ class BaseScraper(ABC):
         self._setup_client()
     
     def _setup_client(self):
-        """Настройка HTTP клиента."""
+        # Настройка HTTP клиента
+        self.ua = UserAgent()
         headers = {
-            'User-Agent': self.user_agent,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate',
+            'User-Agent': self.ua.random,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Referer': 'https://www.google.com/',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'cross-site',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
         }
         
         self.client = httpx.Client(
             headers=headers,
             timeout=self.timeout,
             follow_redirects=True,
+            http2=True, # Включаем HTTP/2 для большей реалистичности
         )
     
     def __enter__(self):
@@ -188,10 +200,12 @@ class BaseScraper(ABC):
                 response = self.client.get(url, **kwargs)
                 response.raise_for_status()
                 
-                # Задержка между запросами
+                # Задержка между запросами со случайным разбросом (jitter)
                 if attempt < self.max_retries:
-                    delay = self.delay_range[0] + (self.delay_range[1] - self.delay_range[0]) * (attempt / self.max_retries)
-                    time.sleep(delay)
+                    import random
+                    base_delay = self.delay_range[0] + (self.delay_range[1] - self.delay_range[0]) * (attempt / self.max_retries)
+                    jitter = random.uniform(0.5, 2.0) # Добавляем от 0.5 до 2.0 сек рандома
+                    time.sleep(base_delay + jitter)
                 
                 return response.text
                 
@@ -340,4 +354,5 @@ class BaseScraper(ABC):
             attributes=raw_data.get('attributes', {}),
             source=self.get_name(),
             scraped_at=datetime.now().isoformat(),
+            analogs=raw_data.get('analogs', []),
         )

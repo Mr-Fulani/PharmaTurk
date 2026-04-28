@@ -235,19 +235,19 @@ class CatalogNormalizer:
         publisher = attrs.get("publisher")
         if publisher:
             v = self._normalize_publisher(str(publisher))
-            if v and v != (book_product.publisher or ""):
+            if v and not book_product.publisher:
                 book_product.publisher = v
                 book_updated = True
         cover_type = attrs.get("cover_type")
         if cover_type:
             v = str(cover_type).strip()
-            if v and v != (book_product.cover_type or ""):
+            if v and not book_product.cover_type:
                 book_product.cover_type = v
                 book_updated = True
         language = attrs.get("language")
         if language:
             v = str(language).strip()
-            if v and v != (book_product.language or ""):
+            if v and not book_product.language:
                 book_product.language = v
                 book_updated = True
         publication_year = attrs.get("publication_year")
@@ -276,35 +276,35 @@ class CatalogNormalizer:
         valid_jewelry_types = {"ring", "bracelet", "necklace", "earrings", "pendant"}
         if "jewelry_type" in attrs and attrs["jewelry_type"]:
             v = str(attrs["jewelry_type"]).strip().lower()
-            if v in valid_jewelry_types and v != (jewelry_product.jewelry_type or ""):
+            if v in valid_jewelry_types and not jewelry_product.jewelry_type:
                 jewelry_product.jewelry_type = v
                 jewelry_updated = True
         if "material" in attrs and attrs["material"]:
             v = str(attrs["material"]).strip()[:100]
-            if v != (jewelry_product.material or ""):
+            if v and not jewelry_product.material:
                 jewelry_product.material = v
                 jewelry_updated = True
         if "metal_purity" in attrs and attrs["metal_purity"]:
             v = str(attrs["metal_purity"]).strip()[:50]
-            if v != (jewelry_product.metal_purity or ""):
+            if v and not jewelry_product.metal_purity:
                 jewelry_product.metal_purity = v
                 jewelry_updated = True
         if "stone_type" in attrs and attrs["stone_type"]:
             v = str(attrs["stone_type"]).strip()[:100]
-            if v != (jewelry_product.stone_type or ""):
+            if v and not jewelry_product.stone_type:
                 jewelry_product.stone_type = v
                 jewelry_updated = True
         if "carat_weight" in attrs and attrs["carat_weight"] is not None:
             try:
                 v = Decimal(str(attrs["carat_weight"]).strip().replace(",", "."))
-                if v >= 0 and (jewelry_product.carat_weight is None or jewelry_product.carat_weight != v):
+                if v >= 0 and jewelry_product.carat_weight is None:
                     jewelry_product.carat_weight = v
                     jewelry_updated = True
             except (ValueError, TypeError):
                 pass
         if "gender" in attrs and attrs["gender"]:
             v = str(attrs["gender"]).strip()[:10]
-            if v != (jewelry_product.gender or ""):
+            if v and not jewelry_product.gender:
                 jewelry_product.gender = v
                 jewelry_updated = True
         if jewelry_updated:
@@ -350,7 +350,9 @@ class CatalogNormalizer:
         for attr_key, model_field, max_len in field_mapping:
             if attr_key in attrs and attrs[attr_key]:
                 v = str(attrs[attr_key]).strip()[:max_len]
-                if v != (getattr(medicine_product, model_field) or ""):
+                current_val = getattr(medicine_product, model_field)
+                # Обновляем только если поле сейчас пустое (защищаем данные ИИ-агента)
+                if not current_val:
                     setattr(medicine_product, model_field, v)
                     medicine_updated = True
                 
@@ -383,7 +385,8 @@ class CatalogNormalizer:
         for attr_key, (model_field, max_len) in fields_map.items():
             if attr_key in attrs and attrs[attr_key]:
                 val = str(attrs[attr_key]).strip()[:max_len]
-                if val != (getattr(furniture_product, model_field) or ""):
+                current_val = getattr(furniture_product, model_field)
+                if not current_val:
                     setattr(furniture_product, model_field, val)
                     updated = True
 
@@ -511,23 +514,41 @@ class CatalogNormalizer:
         name = brand_data.get("name", "Неизвестный бренд")
         
         # Генерируем slug
-        base_slug = trans_slugify(name, language_code='ru') or slugify(name)
+        base_slug = trans_slugify(name, language_code='ru') or slugify(name, allow_unicode=False)
         if not base_slug:
+            # Если латиница/кириллица не сработали, пробуем unicode-slugify
+            base_slug = slugify(name, allow_unicode=True)
+            
+        if not base_slug or len(base_slug) < 2:
             base_slug = "brand"
+            
         slug = f"{base_slug}-{external_id}" if external_id else base_slug
         
-        # Ищем существующий бренд по external_id
-        brand, created = Brand.objects.get_or_create(
-            external_id=external_id,
-            defaults={
-                "name": name,
-                "slug": slug,
-                "description": brand_data.get("description", ""),
-                "logo": brand_data.get("logo", ""),
-                "website": brand_data.get("website", ""),
-                "external_data": brand_data,
-            }
-        )
+        # Ищем существующий бренд
+        if external_id:
+            brand, created = Brand.objects.get_or_create(
+                external_id=external_id,
+                defaults={
+                    "name": name,
+                    "slug": slug,
+                    "description": brand_data.get("description", ""),
+                    "logo": brand_data.get("logo", ""),
+                    "website": brand_data.get("website", ""),
+                    "external_data": brand_data,
+                }
+            )
+        else:
+            # Если нет внешнего ID, ищем по имени
+            brand, created = Brand.objects.get_or_create(
+                name=name,
+                defaults={
+                    "slug": slug,
+                    "description": brand_data.get("description", ""),
+                    "logo": brand_data.get("logo", ""),
+                    "website": brand_data.get("website", ""),
+                    "external_data": brand_data,
+                }
+            )
         
         if not created:
             # Обновляем существующий бренд
@@ -650,7 +671,13 @@ class CatalogNormalizer:
                 product.description = product_data.description
             
             product.is_available = product_data.availability
-            product.external_data = safe_external_meta
+            
+            # Мержим external_data вместо полной перезаписи, чтобы сохранить данные ИИ-агента
+            if isinstance(product.external_data, dict):
+                product.external_data.update(safe_external_meta)
+            else:
+                product.external_data = safe_external_meta
+                
             product.last_synced_at = timezone.now()
             
             # Обновляем цену и сохраняем историю

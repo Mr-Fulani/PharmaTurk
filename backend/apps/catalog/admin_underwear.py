@@ -9,6 +9,7 @@ from .models import (
 )
 from .admin_base import AIStatusFilter, RunAIActionMixin
 from .admin import activate_variants, deactivate_variants, PRODUCT_CATEGORY_HELP, ProductAttributeValueInline
+from .admin_variant_ai import VariantAIAdminMixin
 
 class CategoryFieldFilterMixin:
     category_field_name: str | None = None
@@ -73,7 +74,7 @@ class UnderwearVariantImageInline(admin.TabularInline):
 
 
 @admin.register(UnderwearVariant)
-class UnderwearVariantAdmin(admin.ModelAdmin):
+class UnderwearVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     list_display = (
         'name', 'product', 'color', 'price', 'currency', 'effective_base', 'is_active', 'sort_order', 'created_at',
     )
@@ -191,4 +192,3 @@ class UnderwearProductAdmin(RunAIActionMixin, admin.ModelAdmin):
         footer = format_html('</tbody></table>')
         return format_html('{}{}{}', header, body, footer)
     variant_prices_overview.short_description = _('Цены вариантов')
-
