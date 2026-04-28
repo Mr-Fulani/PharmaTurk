@@ -27,6 +27,7 @@ interface Product {
   is_new?: boolean
   translations?: ProductTranslation[]
   base_product_id?: number | null
+  gender?: string | null
 }
 
 interface SimilarProductResult {

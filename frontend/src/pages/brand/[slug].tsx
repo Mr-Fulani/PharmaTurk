@@ -30,6 +30,7 @@ interface Product {
   og_description?: string | null
   og_image_url?: string | null
   translations?: ProductTranslation[]
+  gender?: string | null
 }
 
 interface Category {

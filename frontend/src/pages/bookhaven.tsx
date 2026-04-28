@@ -35,6 +35,7 @@ interface Product {
   is_new?: boolean;
   book_authors?: { id: number; author: { full_name: string } }[];
   translations?: ProductTranslation[];
+  gender?: string | null;
 }
 
 interface Category {

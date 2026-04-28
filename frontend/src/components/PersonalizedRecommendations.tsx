@@ -27,6 +27,7 @@ interface Product {
   is_featured?: boolean
   is_new?: boolean
   translations?: ProductTranslation[]
+  gender?: string | null
 }
 
 const parsePriceWithCurrency = (value?: string | number | null) => {

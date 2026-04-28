@@ -46,6 +46,7 @@ interface Product {
   is_new?: boolean
   product_type?: string
   translations?: ProductTranslation[]
+  gender?: string | null
 }
 
 interface PopularProductsCarouselProps {

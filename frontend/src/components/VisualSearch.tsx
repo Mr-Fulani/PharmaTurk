@@ -26,6 +26,7 @@ interface Product {
   is_bestseller?: boolean
   is_featured?: boolean
   translations?: ProductTranslation[]
+  gender?: string | null
 }
 
 interface SearchResult {
