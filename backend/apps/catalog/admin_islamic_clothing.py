@@ -1,13 +1,13 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from decimal import Decimal
 
 from .models import (
     IslamicClothingProduct, IslamicClothingProductTranslation, IslamicClothingProductImage, IslamicClothingProductSize,
     IslamicClothingVariant, IslamicClothingVariantSize, IslamicClothingVariantImage, Category
 )
-from .admin_base import AIStatusFilter, RunAIActionMixin
+from .admin_base import AIStatusFilter, RunAIActionMixin, ShadowProductCleanupAdminMixin
 from .admin import activate_variants, deactivate_variants, PRODUCT_CATEGORY_HELP, ProductAttributeValueInline
 from .admin_variant_ai import VariantAIAdminMixin
 
@@ -116,7 +116,7 @@ class IslamicClothingVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(IslamicClothingProduct)
-class IslamicClothingProductAdmin(RunAIActionMixin, admin.ModelAdmin):
+class IslamicClothingProductAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     category_field_name = "islamic-clothing"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]

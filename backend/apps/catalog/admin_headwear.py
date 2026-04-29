@@ -7,7 +7,7 @@ from .models import (
     HeadwearProduct, HeadwearProductTranslation, HeadwearProductImage, HeadwearProductSize,
     HeadwearVariant, HeadwearVariantSize, HeadwearVariantImage, Category
 )
-from .admin_base import AIStatusFilter, RunAIActionMixin
+from .admin_base import AIStatusFilter, RunAIActionMixin, ShadowProductCleanupAdminMixin
 from .admin import activate_variants, deactivate_variants, PRODUCT_CATEGORY_HELP, ProductAttributeValueInline
 from .admin_variant_ai import VariantAIAdminMixin
 
@@ -116,7 +116,7 @@ class HeadwearVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(HeadwearProduct)
-class HeadwearProductAdmin(RunAIActionMixin, admin.ModelAdmin):
+class HeadwearProductAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     category_field_name = "headwear"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]

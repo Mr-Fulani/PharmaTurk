@@ -8,7 +8,9 @@ from django.dispatch import receiver
 from .models import (
     BannerMedia,
     AccessoryProduct,
+    AccessoryProductImage,
     AutoPartProduct,
+    AutoPartProductImage,
     BookProduct,
     BookProductImage,
     BookVariantImage,
@@ -25,15 +27,27 @@ from .models import (
     FurnitureVariant,
     FurnitureVariantImage,
     HeadwearProduct,
+    HeadwearProductImage,
+    HeadwearVariant,
+    HeadwearVariantImage,
     IncenseProduct,
+    IncenseProductImage,
     IslamicClothingProduct,
+    IslamicClothingProductImage,
+    IslamicClothingVariant,
+    IslamicClothingVariantImage,
     JewelryProduct,
     JewelryProductImage,
     JewelryVariant,
     JewelryVariantImage,
     MedicalEquipmentProduct,
+    MedicalEquipmentProductImage,
     MedicineProduct,
+    MedicineProductImage,
     PerfumeryProduct,
+    PerfumeryProductImage,
+    PerfumeryVariant,
+    PerfumeryVariantImage,
     Product,
     ProductImage,
     Service,
@@ -43,17 +57,15 @@ from .models import (
     ShoeVariant,
     ShoeVariantImage,
     SportsProduct,
-    SupplementProduct,
-    TablewareProduct,
-    UnderwearProduct,
-    # Доменные модели изображений без покрытия
-    TablewareProductImage,
-    AccessoryProductImage,
-    IncenseProductImage,
     SportsProductImage,
-    AutoPartProductImage,
-    HeadwearProductImage,
+    SupplementProduct,
+    SupplementProductImage,
+    TablewareProduct,
+    TablewareProductImage,
+    UnderwearProduct,
     UnderwearProductImage,
+    UnderwearVariant,
+    UnderwearVariantImage,
 )
 
 logger = logging.getLogger(__name__)
@@ -158,12 +170,30 @@ def delete_file_from_storage(file_field, storage=None):
 
 def delete_url_from_storage(url):
     """
-    Удаление файла по строковому URL.
-    ОТКЛЮЧЕНО: Удаление файлов по URL в сигналах приводит к удалению медиа, 
-    которые шарятся между несколькими объектами (например FurnitureProductImage и FurnitureVariantImage из парсера).
-    Сборку мусора (очистку неиспользуемых файлов) выполняет Celery-задача cleanup_orphaned_media.
+    Удаление внутреннего файла по URL из R2/локального storage.
+    Файл удаляется только если после удаления записи на него больше не осталось ссылок в БД.
     """
-    pass
+    path = _get_path_from_storage_url(url)
+    if not path:
+        return
+    normalized_path = _normalize_storage_key_for_file_field(path)
+    if not normalized_path:
+        return
+    try:
+        from django.core.files.storage import default_storage
+        from .tasks import _collect_db_media_paths, _normalize_media_path
+
+        db_paths = _collect_db_media_paths()
+        if _normalize_media_path(normalized_path) in db_paths:
+            logger.info("Skip deleting shared internal URL from storage: %s", normalized_path)
+            return
+        if default_storage.exists(normalized_path):
+            default_storage.delete(normalized_path)
+            logger.info("Deleted internal URL from storage: %s", normalized_path)
+        else:
+            logger.warning("Internal URL path not found in storage (already deleted?): %s", normalized_path)
+    except Exception as e:
+        logger.warning("Failed to delete internal URL %s: %s", normalized_path, e)
 
 
 def _get_path_from_storage_url(url: str) -> str | None:
@@ -736,6 +766,27 @@ def delete_headwear_product_image_files(sender, instance, **kwargs):
     delete_url_from_storage(instance.image_url)
 
 
+@receiver(post_delete, sender=HeadwearProduct)
+def delete_headwear_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    if hasattr(instance, "main_video_file"):
+        delete_file_from_storage(instance.main_video_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+    delete_url_from_storage(getattr(instance, "video_url", ""))
+
+
+@receiver(post_delete, sender=HeadwearVariant)
+def delete_headwear_variant_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=HeadwearVariantImage)
+def delete_headwear_variant_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
 # --- Underwear ---
 
 
@@ -751,6 +802,153 @@ def auto_download_underwear_product_image(sender, instance, **kwargs):
 def delete_underwear_product_image_files(sender, instance, **kwargs):
     delete_file_from_storage(instance.image_file)
     delete_url_from_storage(instance.image_url)
+
+
+@receiver(post_delete, sender=UnderwearProduct)
+def delete_underwear_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    if hasattr(instance, "main_video_file"):
+        delete_file_from_storage(instance.main_video_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+    delete_url_from_storage(getattr(instance, "video_url", ""))
+
+
+@receiver(post_delete, sender=UnderwearVariant)
+def delete_underwear_variant_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=UnderwearVariantImage)
+def delete_underwear_variant_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+# --- Islamic clothing ---
+
+
+@receiver(post_delete, sender=IslamicClothingProduct)
+def delete_islamic_clothing_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    if hasattr(instance, "main_video_file"):
+        delete_file_from_storage(instance.main_video_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+    delete_url_from_storage(getattr(instance, "video_url", ""))
+
+
+@receiver(post_delete, sender=IslamicClothingProductImage)
+def delete_islamic_clothing_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+@receiver(post_delete, sender=IslamicClothingVariant)
+def delete_islamic_clothing_variant_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=IslamicClothingVariantImage)
+def delete_islamic_clothing_variant_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+# --- Perfumery ---
+
+
+@receiver(post_delete, sender=PerfumeryProduct)
+def delete_perfumery_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=PerfumeryProductImage)
+def delete_perfumery_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+@receiver(post_delete, sender=PerfumeryVariant)
+def delete_perfumery_variant_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=PerfumeryVariantImage)
+def delete_perfumery_variant_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+# --- Wave 2 simple domains ---
+
+
+@receiver(post_delete, sender=MedicineProduct)
+def delete_medicine_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=MedicineProductImage)
+def delete_medicine_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+@receiver(post_delete, sender=SupplementProduct)
+def delete_supplement_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=SupplementProductImage)
+def delete_supplement_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+@receiver(post_delete, sender=MedicalEquipmentProduct)
+def delete_medical_equipment_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=MedicalEquipmentProductImage)
+def delete_medical_equipment_product_image_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.image_file)
+    delete_url_from_storage(instance.image_url)
+
+
+@receiver(post_delete, sender=TablewareProduct)
+def delete_tableware_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=AccessoryProduct)
+def delete_accessory_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=IncenseProduct)
+def delete_incense_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=SportsProduct)
+def delete_sports_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
+
+
+@receiver(post_delete, sender=AutoPartProduct)
+def delete_autopart_product_files(sender, instance, **kwargs):
+    delete_file_from_storage(instance.main_image_file)
+    delete_url_from_storage(getattr(instance, "main_image", ""))
 
 
 # --- Banner ---

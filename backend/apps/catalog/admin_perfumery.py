@@ -12,6 +12,7 @@ from .models import (
     Category,
     FRAGRANCE_TYPE_CHOICES, FRAGRANCE_FAMILY_CHOICES,
 )
+from .admin_base import ShadowProductCleanupAdminMixin
 
 
 @admin.action(description=_("Сделать активными"))
@@ -84,7 +85,7 @@ class PerfumeryVariantInline(admin.TabularInline):
 
 
 @admin.register(PerfumeryProduct)
-class PerfumeryProductAdmin(admin.ModelAdmin):
+class PerfumeryProductAdmin(ShadowProductCleanupAdminMixin, admin.ModelAdmin):
     """Админка для товаров парфюмерии."""
     list_display = (
         'name', 'slug', 'category', 'brand',

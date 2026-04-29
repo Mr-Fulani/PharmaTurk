@@ -219,6 +219,27 @@ class MediaEnrichmentMixin:
         )
     run_media_enrichment.short_description = _("Обогатить медиа (картинки)")
 
+
+class ShadowProductCleanupAdminMixin:
+    """Гарантирует удаление shadow Product при удалении доменного товара из админки."""
+
+    def delete_queryset(self, request, queryset):
+        from apps.catalog.models import Product
+
+        base_ids = list(queryset.values_list("base_product_id", flat=True).distinct())
+        super().delete_queryset(request, queryset)
+        live_ids = [pk for pk in base_ids if pk]
+        if live_ids:
+            Product.objects.filter(pk__in=live_ids).delete()
+
+    def delete_model(self, request, obj):
+        from apps.catalog.models import Product
+
+        base_id = getattr(obj, "base_product_id", None)
+        super().delete_model(request, obj)
+        if base_id:
+            Product.objects.filter(pk=base_id).delete()
+
     def get_media_enrichment_status(self, obj):
         """Отображение статуса медиа с цветовой индикацией."""
         from apps.catalog.models import MediaEnrichmentStatus

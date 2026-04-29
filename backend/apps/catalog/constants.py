@@ -3089,65 +3089,6 @@ ACCESSORIES_SUBCATEGORIES = [
         ],
     ),
     (
-        "Ювелирные украшения",
-        "Jewelry",
-        "acc-jewelry",
-        "Ювелирные украшения",
-        "Jewelry",
-        [
-            (
-                "Кольца",
-                "Rings",
-                "acc-rings",
-                "Кольца",
-                "Rings",
-                [
-                    ("Обручальные", "Wedding Rings", "acc-wedding-rings", "Обручальные кольца", "Wedding rings"),
-                    ("Помолвочные", "Engagement Rings", "acc-engagement-rings", "Помолвочные кольца", "Engagement rings"),
-                    ("Коктейльные", "Cocktail Rings", "acc-cocktail-rings", "Коктейльные кольца", "Cocktail rings"),
-                ],
-            ),
-            (
-                "Серьги",
-                "Earrings",
-                "acc-earrings",
-                "Серьги",
-                "Earrings",
-                [
-                    ("Пусеты", "Studs", "acc-stud-earrings", "Пусеты", "Stud earrings"),
-                    ("Подвески", "Drop Earrings", "acc-drop-earrings", "Серьги-подвески", "Drop earrings"),
-                    ("Кольца", "Hoop Earrings", "acc-hoop-earrings", "Серьги-кольца", "Hoop earrings"),
-                    ("Клипсы", "Clip-On Earrings", "acc-clip-earrings", "Клипсы", "Clip-on earrings"),
-                ],
-            ),
-            (
-                "Ожерелья и цепочки",
-                "Necklaces & Chains",
-                "acc-necklaces",
-                "Ожерелья и цепочки",
-                "Necklaces and chains",
-                [
-                    ("Колье", "Collar Necklaces", "acc-collar-necklaces", "Колье", "Collar necklaces"),
-                    ("Цепочки", "Chains", "acc-chains", "Цепочки", "Chains"),
-                    ("Подвески", "Pendants", "acc-pendants", "Подвески", "Pendants"),
-                ],
-            ),
-            (
-                "Браслеты",
-                "Bracelets",
-                "acc-bracelets",
-                "Браслеты",
-                "Bracelets",
-                [
-                    ("Жёсткие", "Bangles", "acc-bangles", "Жёсткие браслеты", "Bangles"),
-                    ("Цепочки", "Chain Bracelets", "acc-chain-bracelets", "Цепочные браслеты", "Chain bracelets"),
-                    ("Кожаные", "Leather Bracelets", "acc-leather-bracelets", "Кожаные браслеты", "Leather bracelets"),
-                ],
-            ),
-            ("Броши", "Brooches", "acc-brooches", "Броши", "Brooches"),
-        ],
-    ),
-    (
         "Бижутерия",
         "Fashion Jewelry",
         "fashion-jewelry",
@@ -3343,10 +3284,10 @@ ACCESSORIES_SUBCATEGORIES = [
         ],
     ),
     (
-        "Галстуки и платки для пиджака",
+        "Галстуки и платки",
         "Ties & Pocket Squares",
         "ties-pocket-squares",
-        "Галстуки и платки для пиджака",
+        "Галстуки и платки",
         "Ties and pocket squares",
         [
             ("Галстуки", "Neckties", "neckties", "Галстуки", "Neckties"),

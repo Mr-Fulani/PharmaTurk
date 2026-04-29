@@ -133,7 +133,7 @@ class ActiveRootFilter(SimpleListFilter):
         return queryset
 
 
-from .admin_base import AIStatusFilter, RunAIActionMixin
+from .admin_base import AIStatusFilter, RunAIActionMixin, ShadowProductCleanupAdminMixin
 
 
 PRODUCT_TRANSLATION_SEO_FIELDS = (
@@ -1260,7 +1260,7 @@ def _product_category_path(obj):
 
 
 @admin.register(ClothingProduct)
-class ClothingProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
+class ClothingProductAdmin(CategoryFieldFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров одежды."""
     category_field_name = "clothing_type"
@@ -1681,7 +1681,7 @@ class ShoeProductListScopeFilter(SimpleListFilter):
 
 
 @admin.register(ShoeProduct)
-class ShoeProductAdmin(RunAIActionMixin, admin.ModelAdmin):
+class ShoeProductAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров обуви."""
 
@@ -1943,7 +1943,7 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
 
 
 @admin.register(ElectronicsProduct)
-class ElectronicsProductAdmin(CategoryFieldFilterMixin, RunAIActionMixin, admin.ModelAdmin):
+class ElectronicsProductAdmin(CategoryFieldFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров электроники."""
     category_field_name = "device_type"
@@ -2015,7 +2015,7 @@ class FurnitureVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(FurnitureProduct)
-class FurnitureProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.ModelAdmin):
+class FurnitureProductAdmin(CategoryTypeFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров мебели."""
     category_type_slug = "furniture"
@@ -2118,7 +2118,7 @@ class JewelryVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(JewelryProduct)
-class JewelryProductAdmin(CategoryTypeFilterMixin, RunAIActionMixin, admin.ModelAdmin):
+class JewelryProductAdmin(CategoryTypeFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Товары украшений с вариантами и размерами (кольца, браслеты и т.д.)."""
     category_type_slug = "jewelry"

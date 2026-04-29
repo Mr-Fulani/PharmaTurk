@@ -30,6 +30,52 @@ class LcwParser(BaseScraper):
         "payment",
         "social",
     )
+    NAVIGATION_NOISE_MARKERS = (
+        "Giriş Yap",
+        "Favorilerim",
+        "Sepetim",
+        "KADIN",
+        "ERKEK",
+        "KIZ ÇOCUK",
+        "ERKEK ÇOCUK",
+        "BEBEK",
+        "EV | YAŞAM",
+        "MARKALAR",
+        "Ana Sayfa",
+        "Kategoriler",
+    )
+    SIZE_NOISE_TOKENS = (
+        "giris yap",
+        "favorilerim",
+        "sepetim",
+        "kadin",
+        "erkek",
+        "cocuk",
+        "bebek",
+        "markalar",
+        "ana sayfa",
+        "kategoriler",
+        "satici",
+        "satıcı",
+        "degerlendirme",
+        "değerlendirme",
+        "renk",
+        "fiyat",
+    )
+    ONE_SIZE_TOKENS = {
+        "standart",
+        "tek beden",
+        "tek ebat",
+        "one size",
+        "std",
+    }
+    ALPHA_SIZE_RE = re.compile(r"^(?:xxs|xs|s|m|l|xl|xxl|xxxl|\d{1,2}xl)$", re.IGNORECASE)
+    NUMERIC_SIZE_RE = re.compile(r"^\d{2,3}(?:[.,]\d)?$")
+    BRA_SIZE_RE = re.compile(r"^\d{2,3}[a-z]{1,3}$", re.IGNORECASE)
+    FRACTIONAL_SIZE_RE = re.compile(r"^\d{2,3}\s*/\s*\d{2,3}$")
+    RANGE_SIZE_RE = re.compile(r"^\d{1,3}\s*-\s*\d{1,3}$")
+    AGE_SIZE_RE = re.compile(r"^\(?\d{1,2}\s*-\s*\d{1,2}\s*(?:yas|yaş|ay)\)?$", re.IGNORECASE)
+    SINGLE_AGE_SIZE_RE = re.compile(r"^\d{1,2}\s*(?:yas|yaş|ay)$", re.IGNORECASE)
 
     def __init__(self, base_url: str = "https://www.lcw.com", **kwargs):
         super().__init__(base_url=base_url, delay_range=(1.5, 3.5), **kwargs)
@@ -289,14 +335,18 @@ class LcwParser(BaseScraper):
         sku = self._extract_sku(page_text)
         brand = self._extract_attribute_value(page_text, "Marka")
         category = self._extract_heading_category(soup) or self._extract_attribute_value(page_text, "Ürün Tipi")
-        description = self._extract_description_from_soup(soup) or self._extract_description(page_text)
-        images = self._extract_images(soup, name)
+        description = self._extract_description_from_soup(soup)
+        if not description:
+            fallback_description = self._extract_description(page_text)
+            if fallback_description and not self._looks_like_navigation_dump(fallback_description):
+                description = fallback_description
         attributes = self._extract_attributes(page_text)
         og_image_url = self._extract_og_image_url(soup)
         color = self._extract_color(page_text)
         sizes = self._extract_sizes(soup, page_text)
         is_available = "tukendi" not in page_text.lower() and "tükendi" not in page_text.lower()
         group_sku = self._extract_group_sku(page_text, sku)
+        images = self._extract_images(soup, name, sku=sku or group_sku or "")
         if og_image_url:
             attributes["og_image_url"] = og_image_url
 
@@ -357,12 +407,21 @@ class LcwParser(BaseScraper):
     def _extract_description(self, page_text: str) -> str:
         return self._build_rich_description(page_text)
 
+    def _looks_like_navigation_dump(self, text: str) -> bool:
+        value = clean_text(text)
+        if not value:
+            return False
+        matches = sum(1 for marker in self.NAVIGATION_NOISE_MARKERS if marker in value)
+        return matches >= 4
+
     def _extract_description_from_soup(self, soup: BeautifulSoup) -> str:
         rich_from_text = self._build_rich_description(soup.get_text("\n", strip=True))
         if rich_from_text and not any(
             marker in rich_from_text
             for marker in ("Ürün İçeriği ve Özellikleri", "Bakım Bilgileri", "Kumaş Rehberi")
         ):
+            if self._looks_like_navigation_dump(rich_from_text):
+                return ""
             return rich_from_text
 
         stop_markers = (
@@ -418,6 +477,8 @@ class LcwParser(BaseScraper):
         description = re.sub(r"^(?:Kampanyalar\s*)+", "", description, flags=re.IGNORECASE).strip()
         description = re.sub(r"^:\s*", "", description).strip()
         description = re.sub(r"^[A-Z0-9-]+\s*-\s*", "", description).strip()
+        if self._looks_like_navigation_dump(description):
+            return ""
         return description
 
     def _build_rich_description(self, page_text: str) -> str:
@@ -553,7 +614,10 @@ class LcwParser(BaseScraper):
         if care_lines:
             sections.append("\n".join(care_lines))
 
-        return "\n\n".join(section for section in sections if section).strip()
+        description = "\n\n".join(section for section in sections if section).strip()
+        if self._looks_like_navigation_dump(description):
+            return ""
+        return description
 
     def _extract_og_image_url(self, soup: BeautifulSoup) -> str:
         og_image = soup.find("meta", property="og:image")
@@ -598,7 +662,7 @@ class LcwParser(BaseScraper):
         )
         return clean_text(match.group(1)) if match else ""
 
-    def _extract_images(self, soup: BeautifulSoup, product_name: str) -> List[str]:
+    def _extract_images(self, soup: BeautifulSoup, product_name: str, *, sku: str = "") -> List[str]:
         images_by_key: Dict[str, str] = {}
         scores_by_key: Dict[str, int] = {}
         og_image_url = ""
@@ -618,6 +682,8 @@ class LcwParser(BaseScraper):
                 continue
 
             full_url = urljoin(self.base_url, source)
+            if not self._matches_gallery_sku(full_url, sku):
+                continue
             alt_text = clean_text(img.get("alt", ""))
             if (
                 alt_text
@@ -636,6 +702,8 @@ class LcwParser(BaseScraper):
                 continue
             full_url = urljoin(self.base_url, href)
             if not self._looks_like_image_url(full_url):
+                continue
+            if not self._matches_gallery_sku(full_url, sku):
                 continue
             self._store_image_candidate(full_url, images_by_key, scores_by_key)
 
@@ -672,6 +740,25 @@ class LcwParser(BaseScraper):
             return True
         return self._is_lcw_product_gallery_image_url(lowered)
 
+    def _matches_gallery_sku(self, url: str, sku: str) -> bool:
+        if not sku or not self._is_lcw_product_gallery_image_url(url):
+            return True
+        return self._normalize_ascii_sku(sku) in self._normalize_ascii_sku(url)
+
+    @staticmethod
+    def _normalize_ascii_sku(value: str) -> str:
+        return (
+            str(value or "")
+            .strip()
+            .lower()
+            .replace("ç", "c")
+            .replace("ğ", "g")
+            .replace("ı", "i")
+            .replace("ö", "o")
+            .replace("ş", "s")
+            .replace("ü", "u")
+        )
+
     def _is_lcw_product_gallery_image_url(self, url: str) -> bool:
         lowered = url.lower()
         return "img-lcwaikiki.mncdn.com" in lowered and "/productimages/" in lowered
@@ -693,10 +780,58 @@ class LcwParser(BaseScraper):
 
     def _extract_sizes(self, soup: BeautifulSoup, page_text: str) -> List[Dict[str, Any]]:
         soup_sizes = self._extract_sizes_from_soup(soup)
+        text_sizes = self._extract_sizes_from_text(page_text)
+        if soup_sizes and text_sizes:
+            soup_keys = [clean_text(row.get("size", "")) for row in soup_sizes if clean_text(row.get("size", ""))]
+            text_keys = [clean_text(row.get("size", "")) for row in text_sizes if clean_text(row.get("size", ""))]
+            if soup_keys == text_keys or set(soup_keys) == set(text_keys):
+                return soup_sizes
+            return text_sizes
         if soup_sizes:
             return soup_sizes
+        return text_sizes
 
-        return self._extract_sizes_from_text(page_text)
+    def _is_invalid_size_candidate(self, candidate: str) -> bool:
+        value = clean_text(candidate)
+        if not value:
+            return True
+        if len(value) > 20:
+            return True
+
+        normalized = self._normalize_ascii_sku(value)
+        if any(token in normalized for token in self.SIZE_NOISE_TOKENS):
+            return True
+        if any(token in normalized for token in ("beden", "kesfet", "sepete", "ekle", "urun", "urun tipi")):
+            return True
+        if re.search(r"\d+[.,]\d+\s*(tl|try|usd|eur|rub|kzt)\b", normalized, flags=re.IGNORECASE):
+            return True
+        return False
+
+    def _looks_like_valid_size_candidate(self, candidate: str) -> bool:
+        value = clean_text(candidate)
+        if self._is_invalid_size_candidate(value):
+            return False
+
+        normalized = self._normalize_ascii_sku(value)
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+
+        if normalized in self.ONE_SIZE_TOKENS:
+            return True
+        if self.ALPHA_SIZE_RE.fullmatch(normalized):
+            return True
+        if self.NUMERIC_SIZE_RE.fullmatch(normalized):
+            return True
+        if self.BRA_SIZE_RE.fullmatch(normalized):
+            return True
+        if self.FRACTIONAL_SIZE_RE.fullmatch(normalized):
+            return True
+        if self.RANGE_SIZE_RE.fullmatch(normalized):
+            return True
+        if self.AGE_SIZE_RE.fullmatch(normalized):
+            return True
+        if self.SINGLE_AGE_SIZE_RE.fullmatch(normalized):
+            return True
+        return False
 
     def _extract_sizes_from_soup(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
         heading = soup.find(
@@ -709,16 +844,19 @@ class LcwParser(BaseScraper):
         if not heading:
             return []
 
-        stop_markers = ("Bedenini Keşfet", "Sepete Ekle", "Ürün Açıklaması", "Renk seçenekleri")
+        stop_markers = (
+            "Bedenini Keşfet",
+            "Sepete Ekle",
+            "Ürün Açıklaması",
+            "Kargo ve İade",
+            "Renk seçenekleri",
+        )
         sizes: List[Dict[str, Any]] = []
         seen = set()
 
         def add_candidate(text_value: str, available: bool) -> None:
             candidate = clean_text(text_value)
-            if not candidate or len(candidate) > 20:
-                return
-            lowered = candidate.lower()
-            if any(token in lowered for token in ("beden", "keşfet", "sepete", "ekle", "urun", "ürün")):
+            if not self._looks_like_valid_size_candidate(candidate):
                 return
             if candidate in seen:
                 return
@@ -732,33 +870,20 @@ class LcwParser(BaseScraper):
                 }
             )
 
-        container = getattr(heading, "parent", None)
-        if container is None:
-            return []
+        def add_candidates_from_text_block(text_value: str, available: bool) -> None:
+            raw = clean_text(text_value)
+            if not raw:
+                return
+            parts = [clean_text(part) for part in self.SIZE_SPLIT_RE.split(raw) if clean_text(part)]
+            if len(parts) <= 1 and "  " not in raw:
+                parts = [raw]
+            for part in parts:
+                add_candidate(part, available)
 
-        for node in container.next_elements:
-            if node is heading:
-                continue
-            if isinstance(node, str):
-                raw_text = clean_text(node)
-                if not raw_text:
-                    continue
-                if any(raw_text.startswith(marker) for marker in stop_markers):
-                    break
-                continue
-
+        def extract_from_node(node, *, include_self: bool = True) -> None:
             tag_name = getattr(node, "name", None)
-            if tag_name not in {"button", "span", "label", "div", "li", "a"}:
-                continue
-
-            node_text = clean_text(node.get_text(" ", strip=True))
-            if not node_text:
-                continue
-            if any(node_text.startswith(marker) for marker in stop_markers):
-                break
-
-            if tag_name == "div" and len(node_text.split()) > 4:
-                continue
+            if tag_name is None:
+                return
 
             classes = " ".join(node.get("class", [])).lower()
             available = not (
@@ -769,7 +894,53 @@ class LcwParser(BaseScraper):
                     for hint in ("disabled", "passive", "inactive", "out-of-stock", "outofstock", "sold-out")
                 )
             )
-            add_candidate(node_text, available)
+
+            candidates = []
+            if include_self:
+                candidates.append(node)
+            if hasattr(node, "select"):
+                candidates.extend(node.select("button, span, label, li, a"))
+
+            seen_nodes = set()
+            for candidate_node in candidates:
+                node_id = id(candidate_node)
+                if node_id in seen_nodes:
+                    continue
+                seen_nodes.add(node_id)
+                text_value = clean_text(candidate_node.get_text(" ", strip=True))
+                if not text_value:
+                    continue
+                if any(text_value.startswith(marker) for marker in stop_markers):
+                    continue
+                add_candidates_from_text_block(text_value, available)
+
+        anchor = getattr(heading, "parent", None)
+        if anchor is None:
+            return []
+
+        sibling = getattr(anchor, "next_sibling", None)
+        inspected = 0
+        while sibling is not None and inspected < 12:
+            inspected += 1
+            if isinstance(sibling, str):
+                raw_text = clean_text(sibling)
+                if not raw_text:
+                    sibling = getattr(sibling, "next_sibling", None)
+                    continue
+                if any(raw_text.startswith(marker) for marker in stop_markers):
+                    break
+                add_candidates_from_text_block(raw_text, True)
+                sibling = getattr(sibling, "next_sibling", None)
+                continue
+
+            node_text = clean_text(getattr(sibling, "get_text", lambda *args, **kwargs: "")(" ", strip=True))
+            if not node_text:
+                sibling = getattr(sibling, "next_sibling", None)
+                continue
+            if any(node_text.startswith(marker) for marker in stop_markers):
+                break
+            extract_from_node(sibling)
+            sibling = getattr(sibling, "next_sibling", None)
 
         return sizes
 
@@ -779,14 +950,13 @@ class LcwParser(BaseScraper):
             return []
 
         raw_block = match.group(1)
+        if self._looks_like_navigation_dump(raw_block):
+            return []
         candidates = [clean_text(part) for part in self.SIZE_SPLIT_RE.split(raw_block) if clean_text(part)]
         sizes: List[Dict[str, Any]] = []
         seen = set()
         for idx, candidate in enumerate(candidates):
-            if len(candidate) > 20:
-                continue
-            lowered = candidate.lower()
-            if any(token in lowered for token in ("beden", "keşfet", "sepete", "ekle")):
+            if not self._looks_like_valid_size_candidate(candidate):
                 continue
             if candidate in seen:
                 continue

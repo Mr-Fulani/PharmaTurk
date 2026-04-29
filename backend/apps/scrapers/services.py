@@ -1025,6 +1025,49 @@ class ScraperIntegrationService:
                 return media_url
         return media_urls[0] if media_urls else None
 
+    @staticmethod
+    def _lcw_canonical_media_url(url: str) -> str:
+        canonical = re.sub(r"/mnpadding/\d+/\d+/ffffff/", "/", str(url or ""))
+        canonical = re.sub(r"/mnpadding/\d+/\d+/", "/", canonical)
+        return canonical
+
+    @staticmethod
+    def _lcw_media_resolution_score(url: str) -> int:
+        match = re.search(r"/mnpadding/(\d+)/(\d+)/", str(url or ""))
+        if not match:
+            return 0
+        return int(match.group(1)) * int(match.group(2))
+
+    def _collapse_lcw_media_urls(self, urls: List[str]) -> List[str]:
+        """Убирает LCW preview/OG-дубли и оставляет самую крупную версию изображения."""
+        result: List[str] = []
+        index_by_key: Dict[str, int] = {}
+        score_by_key: Dict[str, int] = {}
+
+        for raw_url in urls or []:
+            if not isinstance(raw_url, str) or not raw_url:
+                continue
+            parsed = urlparse(raw_url)
+            host = (parsed.netloc or "").lower()
+            if "img-lcwaikiki.mncdn.com" not in host:
+                if raw_url not in result:
+                    result.append(raw_url)
+                continue
+
+            key = self._lcw_canonical_media_url(raw_url)
+            score = self._lcw_media_resolution_score(raw_url)
+            if key not in index_by_key:
+                index_by_key[key] = len(result)
+                score_by_key[key] = score
+                result.append(raw_url)
+                continue
+
+            if score > score_by_key.get(key, -1):
+                result[index_by_key[key]] = raw_url
+                score_by_key[key] = score
+
+        return result
+
     def _download_parsed_media_urls(
         self,
         session: ScrapingSession,
@@ -1045,7 +1088,11 @@ class ScraperIntegrationService:
         """
         scraper_config = session.scraper_config
         max_images = session.max_images_per_product or scraper_config.max_images_per_product or 0
-        urls = source_urls[:max_images] if max_images else list(source_urls)
+        urls = list(source_urls)
+        if (parser_name or "").strip().lower() == "lcw":
+            urls = self._collapse_lcw_media_urls(urls)
+        if max_images:
+            urls = urls[:max_images]
         headers = dict(scraper_config.headers or {})
         if scraper_config.user_agent:
             headers.setdefault("User-Agent", scraper_config.user_agent)

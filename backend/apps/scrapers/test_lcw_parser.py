@@ -163,6 +163,56 @@ LCW_DETAIL_WITH_OG_PREVIEW_AND_REAL_GALLERY_HTML = """
 """
 
 
+LCW_DETAIL_WITH_FOREIGN_VARIANT_PREVIEWS_HTML = """
+<html>
+  <head>
+    <title>LCW ACCESSORIES Test Product - W5J962Z8-DWP</title>
+  </head>
+  <body>
+    <h1>LCW ACCESSORIES Test Product - W5J962Z8-DWP</h1>
+    <img
+      src="https://img-lcwaikiki.mncdn.com/mnpadding/1020/1360/ffffff/pim/productimages/20252/8463191/v1/l_20252-w5j962z8-dwp_a.jpg"
+      alt="LCW ACCESSORIES Test Product"
+    />
+    <img
+      src="https://img-lcwaikiki.mncdn.com/mnpadding/1020/1360/ffffff/pim/productimages/20252/8463191/v1/l_20252-w5j962z8-dwp_a1.jpg"
+      alt="LCW ACCESSORIES Test Product"
+    />
+    <img
+      src="https://img-lcwaikiki.mncdn.com/mnpadding/320/426/ffffff/pim/productimages/20252/8463191/v1/l_20252-w5j962z8-vc4_u.jpg"
+      alt="Beyaz"
+    />
+    <img
+      src="https://img-lcwaikiki.mncdn.com/mnpadding/320/426/ffffff/pim/productimages/20252/8463191/v1/l_20252-w5j962z8-cvl_a.jpg"
+      alt="Siyah"
+    />
+  </body>
+</html>
+"""
+
+
+LCW_NAVIGATION_DUMP_TEXT = """
+Giriş Yap
+Favorilerim
+Sepetim
+KADIN
+ERKEK
+KIZ ÇOCUK
+BEBEK
+EV | YAŞAM
+MARKALAR
+Ana Sayfa
+Kategoriler
+Sepetim
+Erkek
+Erkek İç Giyim
+Erkek Boxer
+LC WAIKIKI
+399,99 TL
+Renk: Yeni Siyah
+"""
+
+
 def _white_cap_variant_html():
     return (
         LCW_DETAIL_WITH_EMBEDDED_VARIANTS_HTML
@@ -253,6 +303,106 @@ def test_extract_images_does_not_mix_og_preview_into_real_gallery():
         "https://img-lcwaikiki.mncdn.com/mnpadding/1020/1360/ffffff/pim/productimages/20261/1234567/v1/l_20261-test_a.jpg",
         "https://img-lcwaikiki.mncdn.com/mnpadding/1020/1360/ffffff/pim/productimages/20261/1234567/v1/l_20261-test_a1.jpg",
     ]
+
+
+def test_extract_images_skips_foreign_variant_previews_by_sku():
+    parser = LcwParser()
+
+    images = parser._extract_images(
+        BeautifulSoup(LCW_DETAIL_WITH_FOREIGN_VARIANT_PREVIEWS_HTML, "html.parser"),
+        "LCW ACCESSORIES Test Product - W5J962Z8-DWP",
+        sku="W5J962Z8-DWP",
+    )
+
+    assert images == [
+        "https://img-lcwaikiki.mncdn.com/mnpadding/1020/1360/ffffff/pim/productimages/20252/8463191/v1/l_20252-w5j962z8-dwp_a.jpg",
+        "https://img-lcwaikiki.mncdn.com/mnpadding/1020/1360/ffffff/pim/productimages/20252/8463191/v1/l_20252-w5j962z8-dwp_a1.jpg",
+    ]
+
+
+def test_navigation_dump_is_not_used_as_description():
+    parser = LcwParser()
+
+    assert parser._looks_like_navigation_dump(LCW_NAVIGATION_DUMP_TEXT) is True
+    assert parser._extract_description(LCW_NAVIGATION_DUMP_TEXT) == ""
+
+
+def test_navigation_dump_is_not_used_as_sizes():
+    parser = LcwParser()
+
+    assert parser._extract_sizes_from_text(f"Beden: {LCW_NAVIGATION_DUMP_TEXT}") == []
+
+
+def test_invalid_size_candidate_rejects_navigation_noise():
+    parser = LcwParser()
+
+    assert parser._is_invalid_size_candidate("Giriş Yap") is True
+    assert parser._is_invalid_size_candidate("Erkek Boxer") is True
+    assert parser._is_invalid_size_candidate("399,99 TL") is True
+    assert parser._is_invalid_size_candidate("M") is False
+    assert parser._is_invalid_size_candidate("2XL") is False
+
+
+def test_valid_size_candidate_accepts_only_real_sizes():
+    parser = LcwParser()
+
+    assert parser._looks_like_valid_size_candidate("XS") is True
+    assert parser._looks_like_valid_size_candidate("2XL") is True
+    assert parser._looks_like_valid_size_candidate("85") is True
+    assert parser._looks_like_valid_size_candidate("75B") is True
+    assert parser._looks_like_valid_size_candidate("34/32") is True
+    assert parser._looks_like_valid_size_candidate("Standart") is True
+    assert parser._looks_like_valid_size_candidate("3-6 Ay") is True
+    assert parser._looks_like_valid_size_candidate("YENI GELENLER") is False
+    assert parser._looks_like_valid_size_candidate("Bluz") is False
+    assert parser._looks_like_valid_size_candidate("Runner") is False
+    assert parser._looks_like_valid_size_candidate("Adidas") is False
+    assert parser._looks_like_valid_size_candidate("Bordo") is False
+
+
+def test_navigation_dump_lines_are_filtered_from_soup_size_block():
+    parser = LcwParser()
+    html = """
+    <html>
+      <body>
+        <div>Beden:</div>
+        <div>YENİ GELENLER</div>
+        <div>Bluz</div>
+        <div>Adidas</div>
+        <div>Bordo</div>
+        <div>Standart</div>
+        <div>Sepete Ekle</div>
+      </body>
+    </html>
+    """
+
+    sizes = parser._extract_sizes_from_soup(BeautifulSoup(html, "html.parser"))
+
+    assert sizes == [
+        {"size": "Standart", "is_available": True, "stock_quantity": 1000, "sort_order": 0},
+    ]
+
+
+def test_extract_sizes_prefers_text_block_when_soup_wanders_into_page_noise():
+    parser = LcwParser()
+    html = """
+    <html>
+      <body>
+        <div>Beden:</div>
+        <div>S  M  L  XL  2XL  3XL  4XL</div>
+        <div>
+          <span>2-3 Yaş</span>
+          <span>3-4 Yaş</span>
+          <span>4-5 Yaş</span>
+        </div>
+        <div>Sepete Ekle</div>
+      </body>
+    </html>
+    """
+
+    sizes = parser._extract_sizes(BeautifulSoup(html, "html.parser"), "Beden: S  M  L  XL  2XL  3XL  4XL Sepete Ekle")
+
+    assert [row["size"] for row in sizes] == ["S", "M", "L", "XL", "2XL", "3XL", "4XL"]
 
 
 def test_parse_product_detail(monkeypatch):

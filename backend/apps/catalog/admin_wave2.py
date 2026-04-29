@@ -14,7 +14,7 @@ from .models import (
     AccessoryProduct, AccessoryProductTranslation, AccessoryProductImage,
     IncenseProduct, IncenseProductTranslation, IncenseProductImage,
 )
-from .admin_base import AIStatusFilter, RunAIActionMixin, MediaEnrichmentStatusFilter, MediaEnrichmentMixin
+from .admin_base import AIStatusFilter, RunAIActionMixin, MediaEnrichmentStatusFilter, MediaEnrichmentMixin, ShadowProductCleanupAdminMixin
 
 
 # ─────────────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ def _make_image_inline(model_class):
 #  Базовый Admin для простых доменов
 # ─────────────────────────────────────────────────────────────
 
-class _SimpleDomainAdmin(RunAIActionMixin, admin.ModelAdmin):
+class _SimpleDomainAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     """Базовый ModelAdmin для простых доменных моделей без вариантов."""
     ai_logs_prefetch_path = "base_product__ai_logs"
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
