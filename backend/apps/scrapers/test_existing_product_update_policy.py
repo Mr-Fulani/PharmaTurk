@@ -1,0 +1,97 @@
+import pytest
+
+from apps.catalog.models import Brand, Product
+from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
+from apps.scrapers.base.scraper import ScrapedProduct
+from apps.scrapers.services import ScraperIntegrationService
+
+
+@pytest.mark.django_db
+def test_repeat_scrape_preserves_semantic_fields_but_updates_price_and_stock():
+    service = ScraperIntegrationService()
+    old_brand = Brand.objects.create(name="Edited Brand")
+
+    product = Product.objects.create(
+        name="Edited Product",
+        slug="edited-product",
+        description="Agent-written description",
+        category=None,
+        product_type="",
+        brand=old_brand,
+        price=100,
+        currency="TRY",
+        stock_quantity=5,
+        is_available=True,
+        external_id="repeat-1",
+        external_url="https://example.com/original",
+        external_data={},
+    )
+
+    scraped = ScrapedProduct(
+        name="Parser Product",
+        description="Parser description that should not overwrite",
+        price=149.99,
+        currency="TRY",
+        category="Parfüm",
+        brand="Parser Brand",
+        url="https://example.com/parser",
+        external_id=product.external_id,
+        stock_quantity=1000,
+        is_available=True,
+        source="lcw",
+        attributes={"ürün_tipi": "Parfüm"},
+    )
+
+    status, updated_product = service._update_existing_product(None, scraped, product)
+    updated_product.refresh_from_db()
+
+    assert status == "updated"
+    assert updated_product.description == "Agent-written description"
+    assert updated_product.brand_id == old_brand.id
+    assert float(updated_product.price) == 149.99
+    assert updated_product.stock_quantity == 1000
+    assert updated_product.external_url == "https://example.com/parser"
+
+
+@pytest.mark.django_db
+def test_repeat_scrape_does_not_overwrite_existing_domain_gender_and_size():
+    service = ScraperIntegrationService()
+    category, product_type = resolve_category_and_product_type("Kep Şapka")
+    product = Product.objects.create(
+        name="Existing Cap",
+        slug="existing-cap",
+        category=category,
+        product_type=product_type,
+        price=100,
+        currency="TRY",
+        external_id="headwear-repeat-1",
+        external_data={},
+    )
+    headwear = service._get_headwear_product(product)
+    headwear.gender = "women"
+    headwear.size = "XS"
+    headwear.save()
+
+    changed = service._update_product_attributes(
+        product,
+        {
+            "gender": "men",
+            "default_size": "Standart",
+            "fashion_variants": [
+                {
+                    "external_id": "headwear-var-1",
+                    "images": [],
+                    "sizes": [{"size": "Standart", "is_available": True, "stock_quantity": 1000}],
+                    "price": 100,
+                    "currency": "TRY",
+                    "is_available": True,
+                }
+            ],
+        },
+    )
+
+    headwear.refresh_from_db()
+
+    assert changed is True
+    assert headwear.gender == "women"
+    assert headwear.size == "XS"
