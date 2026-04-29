@@ -1,3 +1,5 @@
+from bs4 import BeautifulSoup
+
 from apps.scrapers.parsers.lcw import LcwParser
 
 
@@ -140,6 +142,27 @@ LCW_DETAIL_WITH_DISABLED_SIZES_HTML = """
 """
 
 
+LCW_DETAIL_WITH_OG_PREVIEW_AND_REAL_GALLERY_HTML = """
+<html>
+  <head>
+    <title>LCW ACCESSORIES Test Product</title>
+    <meta property="og:image" content="https://cdn.example.com/preview-only.jpg" />
+  </head>
+  <body>
+    <h1>LCW ACCESSORIES Test Product</h1>
+    <img
+      src="https://img-lcwaikiki.mncdn.com/mnpadding/1020/1360/ffffff/pim/productimages/20261/1234567/v1/l_20261-test_a.jpg"
+      alt="LCW ACCESSORIES Test Product"
+    />
+    <img
+      src="https://img-lcwaikiki.mncdn.com/mnpadding/1020/1360/ffffff/pim/productimages/20261/1234567/v1/l_20261-test_a1.jpg"
+      alt="LCW ACCESSORIES Test Product"
+    />
+  </body>
+</html>
+"""
+
+
 def _white_cap_variant_html():
     return (
         LCW_DETAIL_WITH_EMBEDDED_VARIANTS_HTML
@@ -215,6 +238,20 @@ def test_parse_categories_from_homepage(monkeypatch):
     assert [item["url"] for item in categories] == [
         "https://www.lcw.com/erkek-tisort-t-345",
         "https://www.lcw.com/kadin-elbise-t-120",
+    ]
+
+
+def test_extract_images_does_not_mix_og_preview_into_real_gallery():
+    parser = LcwParser()
+
+    images = parser._extract_images(
+        BeautifulSoup(LCW_DETAIL_WITH_OG_PREVIEW_AND_REAL_GALLERY_HTML, "html.parser"),
+        "LCW ACCESSORIES Test Product",
+    )
+
+    assert images == [
+        "https://img-lcwaikiki.mncdn.com/mnpadding/1020/1360/ffffff/pim/productimages/20261/1234567/v1/l_20261-test_a.jpg",
+        "https://img-lcwaikiki.mncdn.com/mnpadding/1020/1360/ffffff/pim/productimages/20261/1234567/v1/l_20261-test_a1.jpg",
     ]
 
 

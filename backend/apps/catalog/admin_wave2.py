@@ -293,15 +293,12 @@ class TablewareProductAdmin(_SimpleDomainAdmin):
 @admin.register(AccessoryProduct)
 class AccessoryProductAdmin(_SimpleDomainAdmin):
     _category_type_slug = "accessories"
-    _domain_fieldset = (_('Специфика аксессуара'), {
-        'fields': ('accessory_type', 'material'),
-    })
     list_display = [
-        'name', 'get_ai_status', 'category', 'accessory_type', 'material',
+        'name', 'get_ai_status', 'category',
         'price', 'old_price', 'is_available', 'is_new', 'created_at',
     ]
     list_filter = [
-        AIStatusFilter, 'category', 'is_available', 'accessory_type', 'is_new', 'created_at',
+        AIStatusFilter, 'category', 'is_available', 'is_new', 'created_at',
     ]
     inlines = [
         _make_translation_inline(AccessoryProductTranslation),

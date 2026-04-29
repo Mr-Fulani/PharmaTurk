@@ -181,11 +181,11 @@ class ScrapingSession(models.Model):
 
     # Параметры запуска
     start_url = models.URLField(_("Начальный URL"), blank=True)
-    max_pages = models.PositiveIntegerField(_("Макс. страниц"), default=10)
-    max_products = models.PositiveIntegerField(_("Макс. товаров"), default=100)
+    max_pages = models.PositiveIntegerField(_("Макс. страниц"), default=1)
+    max_products = models.PositiveIntegerField(_("Макс. товаров"), default=50)
     max_images_per_product = models.PositiveIntegerField(
         _("Макс. медиа на товар"),
-        default=5,
+        default=20,
         validators=[MinValueValidator(1), MaxValueValidator(20)],
     )
     target_category = models.ForeignKey(
@@ -523,14 +523,14 @@ class SiteScraperTask(models.Model):
     )
     start_url = models.URLField(_("Начальный URL"))
     max_pages = models.PositiveIntegerField(
-        _("Макс. страниц"), default=10, validators=[MinValueValidator(1), MaxValueValidator(1000)]
+        _("Макс. страниц"), default=1, validators=[MinValueValidator(1), MaxValueValidator(1000)]
     )
     max_products = models.PositiveIntegerField(
-        _("Макс. товаров"), default=100, validators=[MinValueValidator(1), MaxValueValidator(10000)]
+        _("Макс. товаров"), default=50, validators=[MinValueValidator(1), MaxValueValidator(10000)]
     )
     max_images_per_product = models.PositiveIntegerField(
         _("Макс. медиа на товар"),
-        default=5,
+        default=20,
         validators=[MinValueValidator(1), MaxValueValidator(20)],
     )
 

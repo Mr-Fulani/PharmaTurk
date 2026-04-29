@@ -10,6 +10,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Any, Tuple
 from django.utils import timezone
 from django.db import transaction
+from django.contrib.contenttypes.models import ContentType
 
 # Флаг потока — True во время активного парсинга.
 # Используется ai/signals.py чтобы не запускать AI во время сохранения спарсенных товаров.
@@ -42,6 +43,9 @@ from apps.catalog.models import (
     JewelryProduct,
     Author,
     ProductAuthor,
+    GlobalAttributeKey,
+    GlobalAttributeKeyTranslation,
+    ProductAttributeValue,
 )
 from apps.catalog.seo_defaults import resolve_book_seo_value
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
@@ -484,6 +488,101 @@ class ScraperIntegrationService:
                 return label
         cleaned = re.sub(r"\s+", " ", raw_value).strip(" ,.;-")
         return cleaned[:100]
+
+    def _ensure_global_attribute_key(
+        self,
+        *,
+        slug: str,
+        name_ru: str,
+        name_en: str,
+        category=None,
+        sort_order: int = 0,
+    ) -> GlobalAttributeKey:
+        key, created = GlobalAttributeKey.objects.get_or_create(
+            slug=slug,
+            defaults={"sort_order": sort_order},
+        )
+        if not created and key.sort_order != sort_order and sort_order:
+            key.sort_order = sort_order
+            key.save(update_fields=["sort_order"])
+
+        for locale, name in (("ru", name_ru), ("en", name_en)):
+            if not name:
+                continue
+            GlobalAttributeKeyTranslation.objects.get_or_create(
+                key_obj=key,
+                locale=locale,
+                defaults={"name": name},
+            )
+
+        if category is not None:
+            cat = category
+            while cat is not None:
+                key.categories.add(cat)
+                cat = getattr(cat, "parent", None)
+
+        return key
+
+    def _upsert_product_dynamic_attribute(
+        self,
+        target: Any,
+        *,
+        slug: str,
+        value: str,
+        name_ru: str,
+        name_en: str,
+        sort_order: int = 0,
+        value_ru: Optional[str] = None,
+        value_en: Optional[str] = None,
+    ) -> bool:
+        clean_value = str(value or "").strip()
+        if not clean_value:
+            return False
+
+        key = self._ensure_global_attribute_key(
+            slug=slug,
+            name_ru=name_ru,
+            name_en=name_en,
+            category=getattr(target, "category", None),
+            sort_order=sort_order,
+        )
+
+        content_type = ContentType.objects.get_for_model(type(target))
+        dynamic_attr, created = ProductAttributeValue.objects.get_or_create(
+            content_type=content_type,
+            object_id=target.pk,
+            attribute_key=key,
+            defaults={
+                "value": clean_value[:500],
+                "value_ru": (value_ru or clean_value)[:500] if (value_ru or clean_value) else None,
+                "value_en": value_en[:500] if value_en else None,
+                "sort_order": sort_order,
+            },
+        )
+        if created:
+            return True
+
+        changed = False
+        next_value = clean_value[:500]
+        next_value_ru = (value_ru or clean_value)[:500] if (value_ru or clean_value) else None
+        next_value_en = value_en[:500] if value_en else None
+
+        if dynamic_attr.value != next_value:
+            dynamic_attr.value = next_value
+            changed = True
+        if (dynamic_attr.value_ru or None) != next_value_ru:
+            dynamic_attr.value_ru = next_value_ru
+            changed = True
+        if (dynamic_attr.value_en or None) != next_value_en:
+            dynamic_attr.value_en = next_value_en
+            changed = True
+        if dynamic_attr.sort_order != sort_order:
+            dynamic_attr.sort_order = sort_order
+            changed = True
+
+        if changed:
+            dynamic_attr.save(update_fields=["value", "value_ru", "value_en", "sort_order"])
+        return changed
 
     def _enrich_accessory_attrs(
         self,
@@ -2633,17 +2732,29 @@ class ScraperIntegrationService:
         updated = False
 
         accessory_type = self._normalize_accessory_type(str(attrs.get("accessory_type") or ""))
-        if accessory_type and not accessory_product.accessory_type:
-            accessory_product.accessory_type = accessory_type[:100]
-            updated = True
+        if accessory_type:
+            updated = self._upsert_product_dynamic_attribute(
+                accessory_product,
+                slug="accessory-type",
+                value=accessory_type,
+                name_ru="Тип аксессуара",
+                name_en="Accessory Type",
+                sort_order=60,
+                value_ru=accessory_type,
+            ) or updated
 
         material = self._normalize_accessory_material(str(attrs.get("material") or ""))
-        if material and not accessory_product.material:
-            accessory_product.material = material[:100]
-            updated = True
+        if material:
+            updated = self._upsert_product_dynamic_attribute(
+                accessory_product,
+                slug="material",
+                value=material,
+                name_ru="Материал",
+                name_en="Material",
+                sort_order=1,
+                value_ru=material,
+            ) or updated
 
-        if updated:
-            accessory_product.save()
         return updated
 
     def _process_medicine_analogs(

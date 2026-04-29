@@ -601,13 +601,10 @@ class LcwParser(BaseScraper):
     def _extract_images(self, soup: BeautifulSoup, product_name: str) -> List[str]:
         images_by_key: Dict[str, str] = {}
         scores_by_key: Dict[str, int] = {}
-
+        og_image_url = ""
         og_image = soup.find("meta", property="og:image")
         if og_image and og_image.get("content"):
-            image_url = urljoin(self.base_url, og_image["content"])
-            image_key = self._canonicalize_image_url(image_url)
-            images_by_key[image_key] = image_url
-            scores_by_key[image_key] = self._image_resolution_score(image_url)
+            og_image_url = urljoin(self.base_url, og_image["content"])
 
         for img in soup.select("img[src], img[data-src], img[data-zoom], img[data-image], img[data-original]"):
             source = (
@@ -641,6 +638,13 @@ class LcwParser(BaseScraper):
             if not self._looks_like_image_url(full_url):
                 continue
             self._store_image_candidate(full_url, images_by_key, scores_by_key)
+
+        # OG-изображение используем только как fallback для SEO/карточек,
+        # если реальная галерея на странице не нашлась.
+        if not images_by_key and og_image_url:
+            image_key = self._canonicalize_image_url(og_image_url)
+            images_by_key[image_key] = og_image_url
+            scores_by_key[image_key] = self._image_resolution_score(og_image_url)
 
         return list(images_by_key.values())
 
