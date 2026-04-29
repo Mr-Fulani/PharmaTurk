@@ -10,8 +10,25 @@ import pytest
 from django.test import RequestFactory
 from rest_framework import status
 
-from apps.catalog.models import Brand, Category, PerfumeryProduct
-from apps.catalog.serializers import PerfumeryProductSerializer
+from apps.catalog.models import (
+    AutoPartProduct,
+    AutoPartVariant,
+    BookProduct,
+    BookVariant,
+    Brand,
+    Category,
+    HeadwearProduct,
+    HeadwearVariant,
+    IslamicClothingProduct,
+    IslamicClothingVariant,
+    PerfumeryProduct,
+    PerfumeryVariant,
+    SportsProduct,
+    SportsVariant,
+    UnderwearProduct,
+    UnderwearVariant,
+)
+from apps.catalog.serializers import AutoPartProductDetailSerializer, PerfumeryProductSerializer, SportsProductDetailSerializer
 from apps.catalog.services.product_resolve import (
     BASE_PRODUCT_TYPES,
     TYPES_NEEDING_PATH,
@@ -154,3 +171,190 @@ def test_perfumery_serializer_exposes_product_type_and_dynamic_attributes():
 
     assert data["product_type"] == "perfumery"
     assert "dynamic_attributes" in data
+
+
+@pytest.mark.django_db
+def test_resolve_api_underwear_variant_slug_returns_all_variants():
+    from rest_framework.test import APIClient
+
+    category = Category.objects.create(name="Нижнее бельё", slug=f"underwear-{uuid.uuid4().hex[:8]}")
+    brand = Brand.objects.create(name=f"LCW UW {uuid.uuid4().hex[:6]}", slug=f"lcw-uw-{uuid.uuid4().hex[:8]}")
+    product = UnderwearProduct.objects.create(
+        name="Комплект белья",
+        slug=f"underwear-set-{uuid.uuid4().hex[:8]}",
+        category=category,
+        brand=brand,
+        price=199,
+        currency="TRY",
+        is_active=True,
+    )
+    first_variant = UnderwearVariant.objects.create(
+        product=product,
+        name="Красный",
+        slug=f"underwear-red-{uuid.uuid4().hex[:8]}",
+        color="red",
+        price=199,
+        currency="TRY",
+        is_active=True,
+        sort_order=0,
+    )
+    second_variant = UnderwearVariant.objects.create(
+        product=product,
+        name="Черный",
+        slug=f"underwear-black-{uuid.uuid4().hex[:8]}",
+        color="black",
+        price=209,
+        currency="TRY",
+        is_active=True,
+        sort_order=1,
+    )
+
+    client = APIClient()
+    response = client.get(f"/api/catalog/products/resolve/{first_variant.slug}")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["product_type"] == "underwear"
+    assert response.data["canonical_path"] == f"/product/underwear/{product.slug}"
+    payload = response.data["payload"]
+    assert payload["slug"] == product.slug
+    assert payload["active_variant_slug"] == first_variant.slug
+    assert payload["default_variant_slug"] == first_variant.slug
+    assert [variant["slug"] for variant in payload["variants"]] == [first_variant.slug, second_variant.slug]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("product_model", "variant_model", "slug_prefix", "product_type"),
+    [
+        (HeadwearProduct, HeadwearVariant, "headwear", "headwear"),
+        (IslamicClothingProduct, IslamicClothingVariant, "islamic", "islamic-clothing"),
+        (BookProduct, BookVariant, "book", "books"),
+        (PerfumeryProduct, PerfumeryVariant, "perfume", "perfumery"),
+    ],
+)
+def test_resolve_api_variant_slug_redirect_contract_for_variant_domains(
+    product_model,
+    variant_model,
+    slug_prefix,
+    product_type,
+):
+    from rest_framework.test import APIClient
+
+    category = Category.objects.create(name=f"{slug_prefix} category", slug=f"{slug_prefix}-cat-{uuid.uuid4().hex[:8]}")
+    brand = Brand.objects.create(name=f"{slug_prefix} brand", slug=f"{slug_prefix}-brand-{uuid.uuid4().hex[:8]}")
+    product = product_model.objects.create(
+        name=f"{slug_prefix} product",
+        slug=f"{slug_prefix}-product-{uuid.uuid4().hex[:8]}",
+        category=category,
+        brand=brand,
+        price=199,
+        currency="TRY",
+        is_active=True,
+    )
+
+    variant_kwargs = {
+        "product": product,
+        "name": f"{slug_prefix} variant",
+        "slug": f"{slug_prefix}-variant-{uuid.uuid4().hex[:8]}",
+        "price": 205,
+        "currency": "TRY",
+        "is_active": True,
+        "sort_order": 0,
+    }
+    if product_type in {"headwear", "islamic-clothing"}:
+        variant_kwargs["color"] = "black"
+    if product_type == "books":
+        variant_kwargs["format_type"] = "paperback"
+    if product_type == "perfumery":
+        variant_kwargs["volume"] = "50 ml"
+
+    variant = variant_model.objects.create(**variant_kwargs)
+
+    client = APIClient()
+    response = client.get(f"/api/catalog/products/resolve/{variant.slug}")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["product_type"] == product_type
+    payload = response.data["payload"]
+    assert payload["slug"] == product.slug
+    assert payload["active_variant_slug"] == variant.slug
+    assert payload["default_variant_slug"] == variant.slug
+    assert payload["variants"][0]["slug"] == variant.slug
+
+
+@pytest.mark.django_db
+def test_sports_serializer_exposes_active_variant_contract():
+    category = Category.objects.create(name="Sports", slug=f"sports-{uuid.uuid4().hex[:8]}")
+    brand = Brand.objects.create(name=f"Sport Brand {uuid.uuid4().hex[:6]}", slug=f"sport-brand-{uuid.uuid4().hex[:8]}")
+    product = SportsProduct.objects.create(
+        name="Sports Product",
+        slug=f"sports-product-{uuid.uuid4().hex[:8]}",
+        category=category,
+        brand=brand,
+        price=100,
+        old_price=150,
+        currency="TRY",
+        is_active=True,
+    )
+    first_variant = SportsVariant.objects.create(
+        product=product,
+        color="blue",
+        size="M",
+        sku="SP-1",
+        price=110,
+        old_price=160,
+        stock_quantity=3,
+        is_available=True,
+    )
+    SportsVariant.objects.create(
+        product=product,
+        color="red",
+        size="L",
+        sku="SP-2",
+        price=120,
+        stock_quantity=1,
+        is_available=True,
+    )
+
+    data = SportsProductDetailSerializer(product, context={"active_variant_slug": f"sports-variant-{first_variant.pk}"}).data
+
+    assert data["default_variant_slug"] == f"sports-variant-{first_variant.pk}"
+    assert data["active_variant_slug"] == f"sports-variant-{first_variant.pk}"
+    assert data["active_variant_currency"] == "TRY"
+    assert data["active_variant_stock_quantity"] == 3
+    assert data["variants"][0]["slug"] == f"sports-variant-{first_variant.pk}"
+    assert data["variants"][0]["sizes"][0]["size"] == "M"
+
+
+@pytest.mark.django_db
+def test_auto_part_serializer_exposes_active_variant_contract():
+    category = Category.objects.create(name="Auto", slug=f"auto-{uuid.uuid4().hex[:8]}")
+    brand = Brand.objects.create(name=f"Auto Brand {uuid.uuid4().hex[:6]}", slug=f"auto-brand-{uuid.uuid4().hex[:8]}")
+    product = AutoPartProduct.objects.create(
+        name="Auto Part",
+        slug=f"auto-part-{uuid.uuid4().hex[:8]}",
+        category=category,
+        brand=brand,
+        price=300,
+        old_price=350,
+        currency="TRY",
+        is_active=True,
+    )
+    first_variant = AutoPartVariant.objects.create(
+        product=product,
+        condition="new",
+        sku="AP-1",
+        manufacturer="OEM",
+        price=310,
+        old_price=360,
+        stock_quantity=4,
+        is_available=True,
+    )
+
+    data = AutoPartProductDetailSerializer(product, context={"active_variant_slug": f"auto-part-variant-{first_variant.pk}"}).data
+
+    assert data["default_variant_slug"] == f"auto-part-variant-{first_variant.pk}"
+    assert data["active_variant_slug"] == f"auto-part-variant-{first_variant.pk}"
+    assert data["active_variant_currency"] == "TRY"
+    assert data["active_variant_stock_quantity"] == 4
+    assert data["variants"][0]["slug"] == f"auto-part-variant-{first_variant.pk}"

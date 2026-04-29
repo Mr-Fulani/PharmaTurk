@@ -5897,31 +5897,58 @@ class SportsVariantImageSerializer(serializers.ModelSerializer):
 
 
 class SportsVariantSerializer(serializers.ModelSerializer):
+    slug = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
     images = SportsVariantImageSerializer(many=True, read_only=True)
+    sizes = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
 
     class Meta:
         model = SportsVariant
         fields = [
-            'id', 'color', 'size', 'sku', 'price', 'old_price', 
-            'stock_quantity', 'is_available', 'images',
+            'id', 'slug', 'color', 'size', 'sku', 'price', 'old_price',
+            'currency', 'stock_quantity', 'is_available', 'images', 'sizes',
             'price_formatted', 'old_price_formatted'
         ]
 
+    def get_slug(self, obj):
+        return f"sports-variant-{obj.pk}"
+
+    def get_currency(self, obj):
+        return obj.product.currency
+
+    def get_sizes(self, obj):
+        if not obj.size:
+            return []
+        return [{
+            "id": obj.pk,
+            "size": obj.size,
+            "is_available": obj.is_available,
+            "stock_quantity": obj.stock_quantity,
+            "sort_order": 0,
+        }]
+
     def get_price_formatted(self, obj):
         if obj.price is None: return None
-        return f"{obj.price} RUB"
+        return f"{obj.price} {obj.product.currency}"
 
     def get_old_price_formatted(self, obj):
         if obj.old_price is None: return None
-        return f"{obj.old_price} RUB"
+        return f"{obj.old_price} {obj.product.currency}"
 
 
 class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     """Списковый сериализатор для спорттоваров."""
     variants = SportsVariantSerializer(many=True, read_only=True)
     main_image_url = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
 
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
@@ -5939,10 +5966,64 @@ class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
             'is_available', 'is_new', 'is_featured', 'main_image', 'main_image_url',
             'sport_type', 'equipment_type', 'product_type',
             'price_formatted', 'old_price_formatted',
-            'variants',
+            'variants', 'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url', 'active_variant_old_price_formatted',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
         ]
+
+    def _get_default_variant(self, obj):
+        return obj.variants.filter(is_available=True).order_by('id').first() or obj.variants.order_by('id').first()
+
+    def _get_active_variant(self, obj):
+        active_slug = self.context.get('active_variant_slug')
+        if active_slug:
+            match = obj.variants.filter(pk=str(active_slug).replace('sports-variant-', '')).first()
+            if match:
+                return match
+        return self._get_default_variant(obj)
+
+    def get_default_variant_slug(self, obj):
+        variant = self._get_default_variant(obj)
+        return SportsVariantSerializer().get_slug(variant) if variant else None
+
+    def get_active_variant_slug(self, obj):
+        variant = self._get_active_variant(obj)
+        return SportsVariantSerializer().get_slug(variant) if variant else None
+
+    def get_active_variant_price(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return f"{variant.price} {obj.currency}"
+        if obj.price is not None:
+            return f"{obj.price} {obj.currency}"
+        return None
+
+    def get_active_variant_currency(self, obj):
+        return obj.currency
+
+    def get_active_variant_stock_quantity(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.stock_quantity if variant else None
+
+    def get_active_variant_main_image_url(self, obj):
+        variant = self._get_active_variant(obj)
+        if not variant:
+            return None
+        request = self.context.get('request')
+        main_image = variant.images.filter(is_main=True).first() or variant.images.first()
+        if not main_image:
+            return None
+        return _resolve_file_url(main_image.image_file, request)
+
+    def get_active_variant_old_price_formatted(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.old_price is not None:
+            return f"{variant.old_price} {obj.currency}"
+        if obj.old_price is not None:
+            return f"{obj.old_price} {obj.currency}"
+        return None
 
 
 class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
@@ -5954,6 +6035,13 @@ class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeriali
     brand = BrandSerializer(read_only=True)
     
     main_image_url = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     meta_title = serializers.SerializerMethodField()
@@ -5976,6 +6064,9 @@ class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeriali
             'created_at', 'updated_at',
             'category', 'brand', 'main_image', 'main_image_url',
             'translations', 'images', 'variants',
+            'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url', 'active_variant_old_price_formatted',
             'sport_type', 'equipment_type', 'material', 'product_type',
             'price_formatted', 'old_price_formatted', 
             'similar_products',
@@ -5985,6 +6076,58 @@ class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeriali
 
     def get_similar_products(self, obj):
         return []
+
+    def _get_default_variant(self, obj):
+        return obj.variants.filter(is_available=True).order_by('id').first() or obj.variants.order_by('id').first()
+
+    def _get_active_variant(self, obj):
+        active_slug = self.context.get('active_variant_slug')
+        if active_slug:
+            match = obj.variants.filter(pk=str(active_slug).replace('sports-variant-', '')).first()
+            if match:
+                return match
+        return self._get_default_variant(obj)
+
+    def get_default_variant_slug(self, obj):
+        variant = self._get_default_variant(obj)
+        return SportsVariantSerializer().get_slug(variant) if variant else None
+
+    def get_active_variant_slug(self, obj):
+        variant = self._get_active_variant(obj)
+        return SportsVariantSerializer().get_slug(variant) if variant else None
+
+    def get_active_variant_price(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return f"{variant.price} {obj.currency}"
+        if obj.price is not None:
+            return f"{obj.price} {obj.currency}"
+        return None
+
+    def get_active_variant_currency(self, obj):
+        return obj.currency
+
+    def get_active_variant_stock_quantity(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.stock_quantity if variant else None
+
+    def get_active_variant_main_image_url(self, obj):
+        variant = self._get_active_variant(obj)
+        if not variant:
+            return None
+        request = self.context.get('request')
+        main_image = variant.images.filter(is_main=True).first() or variant.images.first()
+        if not main_image:
+            return None
+        return _resolve_file_url(main_image.image_file, request)
+
+    def get_active_variant_old_price_formatted(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.old_price is not None:
+            return f"{variant.old_price} {obj.currency}"
+        if obj.old_price is not None:
+            return f"{obj.old_price} {obj.currency}"
+        return None
 
 
 # ============================================================================
@@ -6022,20 +6165,35 @@ class AutoPartVariantImageSerializer(serializers.ModelSerializer):
 
 
 class AutoPartVariantSerializer(serializers.ModelSerializer):
+    slug = serializers.SerializerMethodField()
+    currency = serializers.SerializerMethodField()
     images = AutoPartVariantImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = AutoPartVariant
         fields = [
-            'id', 'condition', 'sku', 'manufacturer', 'price', 'old_price', 
-            'stock_quantity', 'is_available', 'images'
+            'id', 'slug', 'condition', 'sku', 'manufacturer', 'price', 'old_price',
+            'currency', 'stock_quantity', 'is_available', 'images'
         ]
+
+    def get_slug(self, obj):
+        return f"auto-part-variant-{obj.pk}"
+
+    def get_currency(self, obj):
+        return obj.product.currency
 
 
 class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     """Списковый сериализатор для автозапчастей."""
     variants = AutoPartVariantSerializer(many=True, read_only=True)
     main_image_url = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     meta_title = serializers.SerializerMethodField()
@@ -6052,10 +6210,64 @@ class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'is_available', 'is_new', 'is_featured', 'main_image', 'main_image_url',
             'part_number', 'car_brand', 'car_model', 'product_type',
             'price_formatted', 'old_price_formatted',
-            'variants',
+            'variants', 'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url', 'active_variant_old_price_formatted',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
         ]
+
+    def _get_default_variant(self, obj):
+        return obj.variants.filter(is_available=True).order_by('id').first() or obj.variants.order_by('id').first()
+
+    def _get_active_variant(self, obj):
+        active_slug = self.context.get('active_variant_slug')
+        if active_slug:
+            match = obj.variants.filter(pk=str(active_slug).replace('auto-part-variant-', '')).first()
+            if match:
+                return match
+        return self._get_default_variant(obj)
+
+    def get_default_variant_slug(self, obj):
+        variant = self._get_default_variant(obj)
+        return AutoPartVariantSerializer().get_slug(variant) if variant else None
+
+    def get_active_variant_slug(self, obj):
+        variant = self._get_active_variant(obj)
+        return AutoPartVariantSerializer().get_slug(variant) if variant else None
+
+    def get_active_variant_price(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return f"{variant.price} {obj.currency}"
+        if obj.price is not None:
+            return f"{obj.price} {obj.currency}"
+        return None
+
+    def get_active_variant_currency(self, obj):
+        return obj.currency
+
+    def get_active_variant_stock_quantity(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.stock_quantity if variant else None
+
+    def get_active_variant_main_image_url(self, obj):
+        variant = self._get_active_variant(obj)
+        if not variant:
+            return None
+        request = self.context.get('request')
+        main_image = variant.images.filter(is_main=True).first() or variant.images.first()
+        if not main_image:
+            return None
+        return _resolve_file_url(main_image.image_file, request)
+
+    def get_active_variant_old_price_formatted(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.old_price is not None:
+            return f"{variant.old_price} {obj.currency}"
+        if obj.old_price is not None:
+            return f"{obj.old_price} {obj.currency}"
+        return None
 
 
 class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
@@ -6067,6 +6279,13 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
     brand = BrandSerializer(read_only=True)
     
     main_image_url = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     meta_title = serializers.SerializerMethodField()
@@ -6089,6 +6308,9 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
             'created_at', 'updated_at',
             'category', 'brand', 'main_image', 'main_image_url',
             'translations', 'images', 'variants',
+            'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url', 'active_variant_old_price_formatted',
             'part_number', 'car_brand', 'car_model', 'compatibility_years', 'product_type',
             'price_formatted', 'old_price_formatted', 
             'similar_products',
@@ -6099,6 +6321,58 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
     def get_similar_products(self, obj):
         return []
 
+    def _get_default_variant(self, obj):
+        return obj.variants.filter(is_available=True).order_by('id').first() or obj.variants.order_by('id').first()
+
+    def _get_active_variant(self, obj):
+        active_slug = self.context.get('active_variant_slug')
+        if active_slug:
+            match = obj.variants.filter(pk=str(active_slug).replace('auto-part-variant-', '')).first()
+            if match:
+                return match
+        return self._get_default_variant(obj)
+
+    def get_default_variant_slug(self, obj):
+        variant = self._get_default_variant(obj)
+        return AutoPartVariantSerializer().get_slug(variant) if variant else None
+
+    def get_active_variant_slug(self, obj):
+        variant = self._get_active_variant(obj)
+        return AutoPartVariantSerializer().get_slug(variant) if variant else None
+
+    def get_active_variant_price(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return f"{variant.price} {obj.currency}"
+        if obj.price is not None:
+            return f"{obj.price} {obj.currency}"
+        return None
+
+    def get_active_variant_currency(self, obj):
+        return obj.currency
+
+    def get_active_variant_stock_quantity(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.stock_quantity if variant else None
+
+    def get_active_variant_main_image_url(self, obj):
+        variant = self._get_active_variant(obj)
+        if not variant:
+            return None
+        request = self.context.get('request')
+        main_image = variant.images.filter(is_main=True).first() or variant.images.first()
+        if not main_image:
+            return None
+        return _resolve_file_url(main_image.image_file, request)
+
+    def get_active_variant_old_price_formatted(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.old_price is not None:
+            return f"{variant.old_price} {obj.currency}"
+        if obj.old_price is not None:
+            return f"{obj.old_price} {obj.currency}"
+        return None
+
 # ============================================================================
 # ДОМЕН Headwear
 # ============================================================================
@@ -6107,7 +6381,9 @@ from .models import (
     HeadwearProduct, HeadwearProductImage, HeadwearProductSize, HeadwearVariant,
     HeadwearVariantImage, HeadwearVariantSize,
     UnderwearProduct, UnderwearProductImage, UnderwearProductSize, UnderwearVariant,
-    IslamicClothingProduct, IslamicClothingProductImage, IslamicClothingProductSize, IslamicClothingVariant
+    UnderwearVariantImage, UnderwearVariantSize,
+    IslamicClothingProduct, IslamicClothingProductImage, IslamicClothingProductSize, IslamicClothingVariant,
+    IslamicClothingVariantImage, IslamicClothingVariantSize
 )
 
 class HeadwearProductImageSerializer(serializers.ModelSerializer):
@@ -6345,6 +6621,73 @@ class UnderwearProductSizeSerializer(serializers.ModelSerializer):
         model = UnderwearProductSize
         fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
 
+class UnderwearVariantImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UnderwearVariantImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image_file:
+            return _resolve_file_url(obj.image_file, request)
+        return _resolve_media_url(obj.image_url, request)
+
+class UnderwearVariantSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UnderwearVariantSize
+        fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
+
+class UnderwearVariantSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    name_en = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
+    description_en = serializers.SerializerMethodField()
+    images = UnderwearVariantImageSerializer(many=True, read_only=True)
+    sizes = UnderwearVariantSizeSerializer(many=True, read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UnderwearVariant
+        fields = [
+            'id', 'name', 'name_en', 'description', 'description_en', 'slug', 'color', 'size',
+            'sku', 'barcode', 'gtin', 'mpn',
+            'price', 'currency', 'old_price',
+            'is_available', 'stock_quantity',
+            'main_image', 'main_image_url',
+            'external_id', 'external_url', 'external_data',
+            'is_active', 'sort_order',
+            'images', 'sizes',
+        ]
+
+    def get_name(self, obj):
+        return _get_variant_draft_title(obj, "ru") or obj.name
+
+    def get_name_en(self, obj):
+        return _get_variant_draft_title(obj, "en") or obj.name_en
+
+    def get_description(self, obj):
+        return _get_variant_localized_description(obj, "ru")
+
+    def get_description_en(self, obj):
+        return _get_variant_localized_description(obj, "en")
+
+    def get_main_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if obj.main_image:
+            return _resolve_media_url(obj.main_image, request)
+        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        if img:
+            file_url = _resolve_file_url(getattr(img, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(img.image_url, request)
+        return None
+
 class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
@@ -6359,6 +6702,14 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
     
     dynamic_attributes = serializers.SerializerMethodField()
     sizes = UnderwearProductSizeSerializer(many=True, read_only=True)
@@ -6373,6 +6724,9 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
+            'variants', 'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url', 'active_variant_old_price_formatted',
             'size', 'color', 'video_url', 'sizes', 
             'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -6409,6 +6763,59 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             return ProductDynamicAttributeSerializer(obj.dynamic_attributes.all(), many=True, context=self.context).data
         except Exception:
             return []
+
+    def _get_default_variant(self, obj):
+        return obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
+
+    def _get_active_variant(self, obj):
+        active_slug = self.context.get("active_variant_slug")
+        if active_slug:
+            return obj.variants.filter(slug=active_slug, is_active=True).first()
+        return self._get_default_variant(obj)
+
+    def get_variants(self, obj):
+        qs = obj.variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
+        return UnderwearVariantSerializer(qs, many=True, context=self.context).data
+
+    def get_default_variant_slug(self, obj):
+        variant = self._get_default_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_slug(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_price(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return f"{variant.price} {variant.currency or obj.currency}"
+        if obj.price is not None:
+            return f"{obj.price} {obj.currency}"
+        return None
+
+    def get_active_variant_currency(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return variant.currency or obj.currency
+        return obj.currency
+
+    def get_active_variant_stock_quantity(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.stock_quantity if variant else None
+
+    def get_active_variant_main_image_url(self, obj):
+        variant = self._get_active_variant(obj)
+        if not variant:
+            return None
+        return UnderwearVariantSerializer(variant, context=self.context).data.get("main_image_url")
+
+    def get_active_variant_old_price_formatted(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.old_price is not None:
+            return f"{variant.old_price} {variant.currency or obj.currency}"
+        if obj.old_price is not None:
+            return f"{obj.old_price} {obj.currency}"
+        return None
 
     def get_product_type(self, obj):
         return _SimpleDomainMixin.get_product_type(self, obj)
@@ -6431,6 +6838,73 @@ class IslamicClothingProductSizeSerializer(serializers.ModelSerializer):
         model = IslamicClothingProductSize
         fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
 
+class IslamicClothingVariantImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IslamicClothingVariantImage
+        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image_file:
+            return _resolve_file_url(obj.image_file, request)
+        return _resolve_media_url(obj.image_url, request)
+
+class IslamicClothingVariantSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IslamicClothingVariantSize
+        fields = ['id', 'size', 'is_available', 'stock_quantity', 'sort_order']
+
+class IslamicClothingVariantSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    name_en = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
+    description_en = serializers.SerializerMethodField()
+    images = IslamicClothingVariantImageSerializer(many=True, read_only=True)
+    sizes = IslamicClothingVariantSizeSerializer(many=True, read_only=True)
+    main_image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IslamicClothingVariant
+        fields = [
+            'id', 'name', 'name_en', 'description', 'description_en', 'slug', 'color', 'size',
+            'sku', 'barcode', 'gtin', 'mpn',
+            'price', 'currency', 'old_price',
+            'is_available', 'stock_quantity',
+            'main_image', 'main_image_url',
+            'external_id', 'external_url', 'external_data',
+            'is_active', 'sort_order',
+            'images', 'sizes',
+        ]
+
+    def get_name(self, obj):
+        return _get_variant_draft_title(obj, "ru") or obj.name
+
+    def get_name_en(self, obj):
+        return _get_variant_draft_title(obj, "en") or obj.name_en
+
+    def get_description(self, obj):
+        return _get_variant_localized_description(obj, "ru")
+
+    def get_description_en(self, obj):
+        return _get_variant_localized_description(obj, "en")
+
+    def get_main_image_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "main_image_file", None), request)
+        if file_url:
+            return file_url
+        if obj.main_image:
+            return _resolve_media_url(obj.main_image, request)
+        img = obj.images.filter(is_main=True).first() or obj.images.first()
+        if img:
+            file_url = _resolve_file_url(getattr(img, "image_file", None), request)
+            if file_url:
+                return file_url
+            return _resolve_media_url(img.image_url, request)
+        return None
+
 class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
@@ -6445,6 +6919,14 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
     price_formatted = serializers.SerializerMethodField()
     old_price_formatted = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
+    default_variant_slug = serializers.SerializerMethodField()
+    active_variant_slug = serializers.SerializerMethodField()
+    active_variant_price = serializers.SerializerMethodField()
+    active_variant_currency = serializers.SerializerMethodField()
+    active_variant_stock_quantity = serializers.SerializerMethodField()
+    active_variant_main_image_url = serializers.SerializerMethodField()
+    active_variant_old_price_formatted = serializers.SerializerMethodField()
     
     dynamic_attributes = serializers.SerializerMethodField()
     sizes = IslamicClothingProductSizeSerializer(many=True, read_only=True)
@@ -6459,6 +6941,9 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
             'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
+            'variants', 'default_variant_slug', 'active_variant_slug',
+            'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
+            'active_variant_main_image_url', 'active_variant_old_price_formatted',
             'size', 'color', 'video_url', 'sizes', 
             'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -6495,6 +6980,59 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
             return ProductDynamicAttributeSerializer(obj.dynamic_attributes.all(), many=True, context=self.context).data
         except Exception:
             return []
+
+    def _get_default_variant(self, obj):
+        return obj.variants.filter(is_active=True).order_by("sort_order", "id").first()
+
+    def _get_active_variant(self, obj):
+        active_slug = self.context.get("active_variant_slug")
+        if active_slug:
+            return obj.variants.filter(slug=active_slug, is_active=True).first()
+        return self._get_default_variant(obj)
+
+    def get_variants(self, obj):
+        qs = obj.variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images", "sizes")
+        return IslamicClothingVariantSerializer(qs, many=True, context=self.context).data
+
+    def get_default_variant_slug(self, obj):
+        variant = self._get_default_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_slug(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.slug if variant else None
+
+    def get_active_variant_price(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return f"{variant.price} {variant.currency or obj.currency}"
+        if obj.price is not None:
+            return f"{obj.price} {obj.currency}"
+        return None
+
+    def get_active_variant_currency(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.price is not None:
+            return variant.currency or obj.currency
+        return obj.currency
+
+    def get_active_variant_stock_quantity(self, obj):
+        variant = self._get_active_variant(obj)
+        return variant.stock_quantity if variant else None
+
+    def get_active_variant_main_image_url(self, obj):
+        variant = self._get_active_variant(obj)
+        if not variant:
+            return None
+        return IslamicClothingVariantSerializer(variant, context=self.context).data.get("main_image_url")
+
+    def get_active_variant_old_price_formatted(self, obj):
+        variant = self._get_active_variant(obj)
+        if variant and variant.old_price is not None:
+            return f"{variant.old_price} {variant.currency or obj.currency}"
+        if obj.old_price is not None:
+            return f"{obj.old_price} {obj.currency}"
+        return None
 
     def get_product_type(self, obj):
         return _SimpleDomainMixin.get_product_type(self, obj)

@@ -36,17 +36,17 @@ from .models import (
     ShoeProduct, ShoeVariant,
     ElectronicsProduct,
     FurnitureProduct, FurnitureVariant,
-    JewelryProduct,
-    BookProduct,
-    PerfumeryProduct,
+    JewelryProduct, JewelryVariant,
+    BookProduct, BookVariant,
+    PerfumeryProduct, PerfumeryVariant,
     MedicineProduct,
     SupplementProduct,
     MedicalEquipmentProduct,
     TablewareProduct,
     AccessoryProduct,
     IncenseProduct,
-    SportsProduct,
-    AutoPartProduct,
+    SportsProduct, SportsVariant,
+    AutoPartProduct, AutoPartVariant,
     Service,
     Banner, BannerMedia,
 )
@@ -172,6 +172,13 @@ class SmartSlugLookupMixin:
                                 
                 # Если ничего не помогло - выбрасываем 404 через стандартный метод
                 return super().get_object()
+
+
+def _resolve_active_variant_from_request(request, explicit_slug: str | None = None) -> str | None:
+    if explicit_slug:
+        return explicit_slug
+    raw = request.query_params.get('active_variant_slug')
+    return raw.strip() if isinstance(raw, str) and raw.strip() else None
 
 
 def _get_preferred_currency(request) -> str:
@@ -2133,10 +2140,28 @@ class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, view
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        active_slug = self.request.query_params.get('active_variant_slug')
+        active_slug = _resolve_active_variant_from_request(self.request)
         if active_slug:
             context['active_variant_slug'] = active_slug
         return context
+
+    def retrieve(self, request, *args, **kwargs):
+        slug = kwargs.get("slug")
+        active_variant_slug = None
+        obj = None
+        if slug:
+            variant = JewelryVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            if variant:
+                obj = variant.product
+                active_variant_slug = variant.slug
+        if obj is None:
+            obj = self.get_object()
+        active_variant_slug = _resolve_active_variant_from_request(request, active_variant_slug)
+        serializer = self.get_serializer(
+            obj,
+            context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}
+        )
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='featured', url_name='featured')
     def featured(self, request):
@@ -2284,6 +2309,31 @@ class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vi
             models.Q(external_data__has_key='source_variant_slug')
         ).order_by('-created_at')[:10]
         serializer = self.get_serializer(featured_products, many=True)
+        return Response(serializer.data)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        active_slug = _resolve_active_variant_from_request(self.request)
+        if active_slug:
+            context['active_variant_slug'] = active_slug
+        return context
+
+    def retrieve(self, request, *args, **kwargs):
+        slug = kwargs.get("slug")
+        active_variant_slug = None
+        obj = None
+        if slug:
+            variant = FurnitureVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            if variant:
+                obj = variant.product
+                active_variant_slug = variant.slug
+        if obj is None:
+            obj = self.get_object()
+        active_variant_slug = _resolve_active_variant_from_request(request, active_variant_slug)
+        serializer = self.get_serializer(
+            obj,
+            context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}
+        )
         return Response(serializer.data)
 
 
@@ -3214,9 +3264,31 @@ class BookProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        active_slug = _resolve_active_variant_from_request(self.request)
+        if active_slug:
+            context['active_variant_slug'] = active_slug
+        return context
+
     @extend_schema(summary="Получить книгу по slug")
     def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
+        slug = kwargs.get("slug")
+        active_variant_slug = None
+        obj = None
+        if slug:
+            variant = BookVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            if variant:
+                obj = variant.product
+                active_variant_slug = variant.slug
+        if obj is None:
+            obj = self.get_object()
+        active_variant_slug = _resolve_active_variant_from_request(request, active_variant_slug)
+        serializer = self.get_serializer(
+            obj,
+            context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}
+        )
+        return Response(serializer.data)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -3331,9 +3403,31 @@ class PerfumeryProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSe
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        active_slug = _resolve_active_variant_from_request(self.request)
+        if active_slug:
+            context['active_variant_slug'] = active_slug
+        return context
+
     @extend_schema(summary="Получить товар парфюмерии по slug")
     def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
+        slug = kwargs.get("slug")
+        active_variant_slug = None
+        obj = None
+        if slug:
+            variant = PerfumeryVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            if variant:
+                obj = variant.product
+                active_variant_slug = variant.slug
+        if obj is None:
+            obj = self.get_object()
+        active_variant_slug = _resolve_active_variant_from_request(request, active_variant_slug)
+        serializer = self.get_serializer(
+            obj,
+            context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}
+        )
+        return Response(serializer.data)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -3761,6 +3855,13 @@ class SportsProductViewSet(_SimpleDomainViewSet):
             return SportsProductDetailSerializer
         return SportsProductSerializer
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        active_slug = _resolve_active_variant_from_request(self.request)
+        if active_slug:
+            context['active_variant_slug'] = active_slug
+        return context
+
     def _apply_domain_filters(self, queryset):
         sport_type = self.request.query_params.get('sport_type')
         if sport_type:
@@ -3797,6 +3898,13 @@ class AutoPartProductViewSet(_SimpleDomainViewSet):
             return AutoPartProductDetailSerializer
         return AutoPartProductSerializer
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        active_slug = _resolve_active_variant_from_request(self.request)
+        if active_slug:
+            context['active_variant_slug'] = active_slug
+        return context
+
     def _apply_domain_filters(self, queryset):
         car_brand = self.request.query_params.get('car_brand')
         if car_brand:
@@ -3821,7 +3929,7 @@ class AutoPartProductViewSet(_SimpleDomainViewSet):
 # ДОМЕН Headwear
 # ============================================================================
 
-from .models import HeadwearProduct, UnderwearProduct, IslamicClothingProduct
+from .models import HeadwearProduct, HeadwearVariant, UnderwearProduct, UnderwearVariant, IslamicClothingProduct, IslamicClothingVariant
 from .serializers import HeadwearProductSerializer, UnderwearProductSerializer, IslamicClothingProductSerializer
 
 class HeadwearProductViewSet(_SimpleDomainViewSet):
@@ -3835,7 +3943,22 @@ class HeadwearProductViewSet(_SimpleDomainViewSet):
 
     @extend_schema(summary="Получить детали головного убора")
     def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
+        slug = kwargs.get("slug")
+        active_variant_slug = None
+        obj = None
+        if slug:
+            variant = HeadwearVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            if variant:
+                obj = variant.product
+                active_variant_slug = variant.slug
+        if obj is None:
+            obj = self.get_object()
+        active_variant_slug = _resolve_active_variant_from_request(request, active_variant_slug)
+        serializer = self.get_serializer(
+            obj,
+            context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}
+        )
+        return Response(serializer.data)
 
 class UnderwearProductViewSet(_SimpleDomainViewSet):
     """API для работы с нижним бельем."""
@@ -3848,7 +3971,22 @@ class UnderwearProductViewSet(_SimpleDomainViewSet):
 
     @extend_schema(summary="Получить детали нижнего белья")
     def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
+        slug = kwargs.get("slug")
+        active_variant_slug = None
+        obj = None
+        if slug:
+            variant = UnderwearVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            if variant:
+                obj = variant.product
+                active_variant_slug = variant.slug
+        if obj is None:
+            obj = self.get_object()
+        active_variant_slug = _resolve_active_variant_from_request(request, active_variant_slug)
+        serializer = self.get_serializer(
+            obj,
+            context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}
+        )
+        return Response(serializer.data)
 
 class IslamicClothingProductViewSet(_SimpleDomainViewSet):
     """API для работы с исламской одеждой."""
@@ -3861,4 +3999,19 @@ class IslamicClothingProductViewSet(_SimpleDomainViewSet):
 
     @extend_schema(summary="Получить детали исламской одежды")
     def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
+        slug = kwargs.get("slug")
+        active_variant_slug = None
+        obj = None
+        if slug:
+            variant = IslamicClothingVariant.objects.filter(slug=slug, is_active=True).select_related('product').first()
+            if variant:
+                obj = variant.product
+                active_variant_slug = variant.slug
+        if obj is None:
+            obj = self.get_object()
+        active_variant_slug = _resolve_active_variant_from_request(request, active_variant_slug)
+        serializer = self.get_serializer(
+            obj,
+            context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}
+        )
+        return Response(serializer.data)
