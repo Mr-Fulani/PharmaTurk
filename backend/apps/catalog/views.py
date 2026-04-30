@@ -3,6 +3,7 @@
 from typing import List
 from decimal import Decimal
 from datetime import timedelta
+import re
 
 from django.shortcuts import get_object_or_404
 from django.contrib.contenttypes.models import ContentType
@@ -51,6 +52,10 @@ from .models import (
     Banner, BannerMedia,
 )
 from .services import CatalogService
+from .attribute_specs import (
+    canonicalize_dynamic_attribute_value,
+    is_facet_attribute_allowed,
+)
 from .serializers import (
     CategorySerializer,
     BrandSerializer,
@@ -84,6 +89,65 @@ from .serializers import (
     ServiceSerializer,
     BannerSerializer
 )
+
+_GENDER_INFERENCE_PATTERNS = {
+    "women": (
+        r"(^|[^a-zа-я])women('?s)?([^a-zа-я]|$)",
+        r"(^|[^a-zа-я])woman([^a-zа-я]|$)",
+        r"(^|[^a-zа-я])female([^a-zа-я]|$)",
+        r"жен",
+        r"kadin",
+        r"kadın",
+    ),
+    "men": (
+        r"(^|[^a-zа-я])men('?s)?([^a-zа-я]|$)",
+        r"(^|[^a-zа-я])man([^a-zа-я]|$)",
+        r"(^|[^a-zа-я])male([^a-zа-я]|$)",
+        r"муж",
+        r"erkek",
+    ),
+    "kids": (
+        r"(^|[^a-zа-я])kids?([^a-zа-я]|$)",
+        r"(^|[^a-zа-я])children('?s)?([^a-zа-я]|$)",
+        r"(^|[^a-zа-я])child([^a-zа-я]|$)",
+        r"(^|[^a-zа-я])baby([^a-zа-я]|$)",
+        r"дет",
+        r"реб",
+        r"cocuk",
+        r"çocuk",
+        r"bebek",
+    ),
+    "unisex": (
+        r"(^|[^a-zа-я])unisex([^a-zа-я]|$)",
+        r"унисекс",
+    ),
+}
+
+def _infer_gender_values_from_text(*values: str | None) -> set[str]:
+    inferred: set[str] = set()
+    haystack = " ".join(str(value or "").strip().lower() for value in values if value).strip()
+    if not haystack:
+        return inferred
+    for gender, patterns in _GENDER_INFERENCE_PATTERNS.items():
+        if any(re.search(pattern, haystack, flags=re.IGNORECASE) for pattern in patterns):
+            inferred.add(gender)
+    return inferred
+
+
+def _get_inferred_category_gender_ids(gender_slugs: list[str]) -> set[int]:
+    normalized = {str(slug or "").strip().lower() for slug in gender_slugs if str(slug or "").strip()}
+    if not normalized:
+        return set()
+    matched_ids: set[int] = set()
+    for category in Category.objects.filter(is_active=True).only("id", "slug", "name"):
+        inferred = _infer_gender_values_from_text(category.slug, category.name)
+        if inferred.intersection(normalized):
+            matched_ids.add(category.id)
+    return matched_ids
+
+
+def _canonicalize_attribute_value(slug: str, value: str | None) -> str:
+    return canonicalize_dynamic_attribute_value(str(slug or "").strip().lower(), value)
 
 
 def _get_category_ids_with_descendants(slugs: list[str]) -> set[int]:
@@ -232,9 +296,11 @@ def _apply_gender_filter(queryset, request, multi_param: bool = True):
         slugs = [raw] if raw and str(raw).strip() else []
     if not slugs:
         return queryset
-    return queryset.filter(
-        models.Q(gender__in=slugs) | models.Q(category__gender__in=slugs)
-    )
+    category_ids = _get_inferred_category_gender_ids(slugs)
+    gender_q = models.Q(gender__in=slugs) | models.Q(category__gender__in=slugs)
+    if category_ids:
+        gender_q |= models.Q(category_id__in=category_ids)
+    return queryset.filter(gender_q).distinct()
 
 
 def _parse_multi_param(request, param_name: str) -> list[str]:
@@ -407,6 +473,7 @@ def _apply_attr_filters(queryset, request):
     model = queryset.model
     if not hasattr(model, 'dynamic_attributes'):
         return queryset
+    model_product_type = getattr(model, '_domain_product_type', None)
     ct = ContentType.objects.get_for_model(model)
     product_ids = list(queryset.values_list('id', flat=True))
     if not product_ids:
@@ -415,20 +482,26 @@ def _apply_attr_filters(queryset, request):
         slug = param_key[5:]  # убираем "attr_"
         if not slug:
             continue
-        values = [s.strip() for s in param_val.split(',') if s.strip()]
+        if not is_facet_attribute_allowed(model_product_type, slug):
+            continue
+        values = [_canonicalize_attribute_value(slug, s) for s in param_val.split(',') if s.strip()]
         if not values:
             continue
-        matching_ids = set(
-            ProductAttributeValue.objects.filter(
-                content_type=ct,
-                object_id__in=product_ids,
-                attribute_key__slug=slug,
-            ).filter(
-                models.Q(value__in=values) |
-                models.Q(value_ru__in=values) |
-                models.Q(value_en__in=values)
-            ).values_list('object_id', flat=True).distinct()
-        )
+        matching_ids = set()
+        attr_rows = ProductAttributeValue.objects.filter(
+            content_type=ct,
+            object_id__in=product_ids,
+            attribute_key__slug=slug,
+        ).values_list('object_id', 'value', 'value_ru', 'value_en')
+        expected_values = {value for value in values if value}
+        for object_id, value, value_ru, value_en in attr_rows:
+            row_values = {
+                _canonicalize_attribute_value(slug, value),
+                _canonicalize_attribute_value(slug, value_ru),
+                _canonicalize_attribute_value(slug, value_en),
+            }
+            if row_values.intersection(expected_values):
+                matching_ids.add(object_id)
         product_ids = [pid for pid in product_ids if pid in matching_ids]
         if not product_ids:
             return queryset.none()
@@ -458,6 +531,8 @@ class FacetedModelViewSetMixin:
             for v in queryset.exclude(category__gender__in=[None, '']).values_list('category__gender', flat=True).distinct():
                 if v and str(v).strip().lower() in valid:
                     seen.add(str(v).strip().lower())
+            for slug, name in queryset.exclude(category__isnull=True).values_list('category__slug', 'category__name').distinct():
+                seen.update(_infer_gender_values_from_text(slug, name).intersection(valid))
         return sorted(seen)
 
     def _calculate_available_attributes(self, queryset):
@@ -465,6 +540,7 @@ class FacetedModelViewSetMixin:
         model = queryset.model
         if not hasattr(model, 'dynamic_attributes'):
             return []
+        model_product_type = getattr(model, '_domain_product_type', None)
         ct = ContentType.objects.get_for_model(model)
         product_ids = list(queryset.values_list('id', flat=True)[:5000])
         if not product_ids:
@@ -484,12 +560,14 @@ class FacetedModelViewSetMixin:
             key_slug = pav.attribute_key.slug if pav.attribute_key else ''
             if not key_slug:
                 continue
+            if not is_facet_attribute_allowed(model_product_type, key_slug):
+                continue
             if key_slug not in grouped:
                 grouped[key_slug] = set()
                 key_names[key_slug] = pav.attribute_key.name if pav.attribute_key else key_slug
             val = (pav.value_ru or pav.value) if use_ru else (pav.value_en or pav.value)
             if val:
-                grouped[key_slug].add(val)
+                grouped[key_slug].add(_canonicalize_attribute_value(key_slug, val))
         return [
             {'key': k, 'name': key_names.get(k, k), 'values': sorted(grouped[k])}
             for k in sorted(grouped.keys())
@@ -528,25 +606,51 @@ class FacetedModelViewSetMixin:
             
         return qs
 
+    def _get_gender_facet_queryset(self):
+        """Возвращает queryset для gender facets без влияния текущего gender/attr/brand фильтра."""
+        original_get = self.request._request.GET
+        mutable_get = original_get.copy()
+
+        keys_to_remove = []
+        for key in mutable_get.keys():
+            if (
+                key in ('gender', 'gender[]', 'brand_slug', 'brand_slug[]')
+                or key.startswith('attr_')
+                or key in ('brand_id', 'brand_id[]')
+            ):
+                keys_to_remove.append(key)
+
+        for key in keys_to_remove:
+            del mutable_get[key]
+
+        try:
+            self.request._request.GET = mutable_get
+            qs = self.filter_queryset(self.get_queryset())
+        finally:
+            self.request._request.GET = original_get
+
+        return qs
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
         
         # Получаем базовый queryset для фасетов, чтобы они не пропадали при выборе
         facet_queryset = self._get_facet_queryset()
+        gender_facet_queryset = self._get_gender_facet_queryset()
         
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             data = self.get_paginated_response(serializer.data).data
             data['available_attributes'] = self._calculate_available_attributes(facet_queryset)
-            data['available_genders'] = self._calculate_available_genders(facet_queryset)
+            data['available_genders'] = self._calculate_available_genders(gender_facet_queryset)
             data['available_fragrance_types'] = self._calculate_available_fragrance_types(facet_queryset)
             return Response(data)
         serializer = self.get_serializer(queryset, many=True)
         return Response({
             'results': serializer.data,
             'available_attributes': self._calculate_available_attributes(facet_queryset),
-            'available_genders': self._calculate_available_genders(facet_queryset),
+            'available_genders': self._calculate_available_genders(gender_facet_queryset),
             'available_fragrance_types': self._calculate_available_fragrance_types(facet_queryset),
         })
 

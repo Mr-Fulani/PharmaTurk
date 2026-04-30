@@ -47,6 +47,7 @@ from apps.catalog.models import (
     GlobalAttributeKeyTranslation,
     ProductAttributeValue,
 )
+from apps.catalog.attribute_specs import extract_dynamic_attribute_candidates
 from apps.catalog.seo_defaults import resolve_book_seo_value
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
 from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
@@ -183,6 +184,44 @@ class ScraperIntegrationService:
         "polar": "Флис",
         "hasir": "Соломка",
         "hasır": "Соломка",
+        "tekstil": "Текстиль",
+        "textile": "Текстиль",
+        "rezin": "Резина",
+        "rubber": "Резина",
+        "kaucuk": "Каучук",
+        "kauçuk": "Каучук",
+        "eva": "EVA",
+        "poliuretan": "Полиуретан",
+        "polyurethane": "Полиуретан",
+    }
+    SHOE_CLOSURE_TRANSLATIONS = {
+        "bagcik": "Шнуровка",
+        "bağcık": "Шнуровка",
+        "lace": "Шнуровка",
+        "lace-up": "Шнуровка",
+        "laces": "Шнуровка",
+        "schnur": "Шнуровка",
+        "шнур": "Шнуровка",
+        "fermuar": "Молния",
+        "zip": "Молния",
+        "zipper": "Молния",
+        "молн": "Молния",
+        "cirt cirt": "Липучка",
+        "cırt cırt": "Липучка",
+        "velcro": "Липучка",
+        "липуч": "Липучка",
+        "tokali": "Пряжка",
+        "tokalı": "Пряжка",
+        "buckle": "Пряжка",
+        "пряж": "Пряжка",
+        "slip on": "Без застёжки",
+        "slip-on": "Без застёжки",
+        "gecirmeli": "Без застёжки",
+        "geçirmeli": "Без застёжки",
+        "без заст": "Без застёжки",
+        "lastik": "Резинка",
+        "elastic": "Резинка",
+        "резин": "Резинка",
     }
     FASHION_PRODUCT_TYPES = {
         "clothing",
@@ -489,6 +528,55 @@ class ScraperIntegrationService:
         cleaned = re.sub(r"\s+", " ", raw_value).strip(" ,.;-")
         return cleaned[:100]
 
+    def _find_attribute_value(self, attrs: Dict[str, Any], keys: tuple[str, ...], contains: tuple[str, ...] = ()) -> str:
+        for key in keys:
+            value = attrs.get(key)
+            if value:
+                clean = str(value).strip()
+                if clean:
+                    return clean
+        if not contains:
+            return ""
+        for raw_key, value in attrs.items():
+            normalized_key = self._normalize_ascii_text(str(raw_key or "")).replace(" ", "_")
+            if any(marker in normalized_key for marker in contains):
+                clean = str(value or "").strip()
+                if clean:
+                    return clean
+        return ""
+
+    def _normalize_shoe_closure_type(self, value: str) -> str:
+        raw_value = str(value or "").strip()
+        if not raw_value:
+            return ""
+        normalized = self._normalize_ascii_text(raw_value)
+        for key, label in self.SHOE_CLOSURE_TRANSLATIONS.items():
+            if key in normalized:
+                return label
+        cleaned = re.sub(r"\s+", " ", raw_value).strip(" ,.;-")
+        return cleaned[:100]
+
+    def _apply_dynamic_attribute_specs(
+        self,
+        *,
+        target: Any,
+        product_type: str,
+        attrs: Dict[str, Any],
+    ) -> bool:
+        updated = False
+        for candidate in extract_dynamic_attribute_candidates(product_type, attrs):
+            updated = self._upsert_product_dynamic_attribute(
+                target,
+                slug=candidate.slug,
+                value=candidate.value,
+                name_ru=candidate.name_ru,
+                name_en=candidate.name_en,
+                sort_order=candidate.sort_order,
+                value_ru=candidate.value_ru,
+                value_en=candidate.value_en,
+            ) or updated
+        return updated
+
     def _ensure_global_attribute_key(
         self,
         *,
@@ -625,6 +713,22 @@ class ScraperIntegrationService:
         material = self._normalize_accessory_material(str(material_source or ""))
         if material:
             enriched["material"] = material
+
+        inferred_gender = self._normalize_perfume_gender(
+            " ".join(
+                part
+                for part in (
+                    str(enriched.get("gender") or ""),
+                    str(enriched.get("cinsiyet") or ""),
+                    str(name or ""),
+                    str(category or ""),
+                    str(description or ""),
+                )
+                if part
+            )
+        )
+        if inferred_gender:
+            enriched["gender"] = inferred_gender
 
         return enriched
 
@@ -2192,7 +2296,14 @@ class ScraperIntegrationService:
         *,
         session: Optional[ScrapingSession] = None,
     ) -> bool:
-        return self._update_fashion_attributes_common(product, attrs)
+        updated = self._update_fashion_attributes_common(product, attrs)
+        shoe_product = self._get_shoe_product(product)
+        updated = self._apply_dynamic_attribute_specs(
+            target=shoe_product,
+            product_type="shoes",
+            attrs=attrs,
+        ) or updated
+        return updated
 
     def _update_headwear_attributes(
         self,
@@ -2772,36 +2883,22 @@ class ScraperIntegrationService:
     def _update_accessory_attributes(
         self, product: Product, attrs: Dict[str, Any], *, session: Optional[ScrapingSession] = None
     ) -> bool:
-        if not any(attrs.get(key) for key in ("accessory_type", "material")):
+        if not any(attrs.get(key) for key in ("accessory_type", "material", "gender", "cinsiyet")):
             return False
 
         accessory_product = self._get_accessory_product(product)
         updated = False
 
-        accessory_type = self._normalize_accessory_type(str(attrs.get("accessory_type") or ""))
-        if accessory_type:
-            updated = self._upsert_product_dynamic_attribute(
-                accessory_product,
-                slug="accessory-type",
-                value=accessory_type,
-                name_ru="Тип аксессуара",
-                name_en="Accessory Type",
-                sort_order=60,
-                value_ru=accessory_type,
-            ) or updated
-
-        material = self._normalize_accessory_material(str(attrs.get("material") or ""))
-        if material:
-            updated = self._upsert_product_dynamic_attribute(
-                accessory_product,
-                slug="material",
-                value=material,
-                name_ru="Материал",
-                name_en="Material",
-                sort_order=1,
-                value_ru=material,
-            ) or updated
-
+        gender_value = self._normalize_perfume_gender(str(attrs.get("gender") or attrs.get("cinsiyet") or ""))
+        if gender_value and not accessory_product.gender:
+            accessory_product.gender = gender_value
+            accessory_product.save(update_fields=["gender"])
+            updated = True
+        updated = self._apply_dynamic_attribute_specs(
+            target=accessory_product,
+            product_type="accessories",
+            attrs=attrs,
+        ) or updated
         return updated
 
     def _process_medicine_analogs(
@@ -2894,6 +2991,11 @@ class ScraperIntegrationService:
                     updated = True
             except (ValueError, TypeError):
                 pass
+
+        gender_value = self._normalize_perfume_gender(str(attrs.get("gender") or attrs.get("cinsiyet") or ""))
+        if gender_value and not product.gender:
+            product.gender = gender_value
+            updated = True
 
         # SEO Fields
         # Внимание: Спарсенные SEO данные обычно на языке источника (Русский для Ummaland).
