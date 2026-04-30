@@ -54,6 +54,7 @@ from .models import (
 from .services import CatalogService
 from .attribute_specs import (
     canonicalize_dynamic_attribute_value,
+    get_dynamic_attribute_spec,
     is_facet_attribute_allowed,
 )
 from .serializers import (
@@ -536,7 +537,13 @@ class FacetedModelViewSetMixin:
         return sorted(seen)
 
     def _calculate_available_attributes(self, queryset):
-        """Вычисляет доступные атрибуты для текущего отфильтрованного queryset."""
+        """Вычисляет доступные атрибуты для текущего отфильтрованного queryset.
+
+        В сайдбар отдаём только shopper-friendly facets:
+        - атрибут разрешён схемой,
+        - у него больше одного значения в текущей выборке,
+        - кардинальность не превышает лимит схемы.
+        """
         model = queryset.model
         if not hasattr(model, 'dynamic_attributes'):
             return []
@@ -568,10 +575,20 @@ class FacetedModelViewSetMixin:
             val = (pav.value_ru or pav.value) if use_ru else (pav.value_en or pav.value)
             if val:
                 grouped[key_slug].add(_canonicalize_attribute_value(key_slug, val))
-        return [
-            {'key': k, 'name': key_names.get(k, k), 'values': sorted(grouped[k])}
-            for k in sorted(grouped.keys())
-        ]
+        result = []
+        for key_slug in sorted(grouped.keys()):
+            values = sorted(value for value in grouped[key_slug] if value)
+            if len(values) < 2:
+                continue
+            spec = get_dynamic_attribute_spec(model_product_type, key_slug)
+            if spec and len(values) > spec.max_facet_values:
+                continue
+            result.append({
+                'key': key_slug,
+                'name': key_names.get(key_slug, key_slug),
+                'values': values,
+            })
+        return result
 
     def _calculate_available_fragrance_types(self, queryset):
         """Вычисляет доступные типы аромата для парфюмерии."""
@@ -607,29 +624,49 @@ class FacetedModelViewSetMixin:
         return qs
 
     def _get_gender_facet_queryset(self):
-        """Возвращает queryset для gender facets без влияния текущего gender/attr/brand фильтра."""
+        """Возвращает queryset для gender facets без влияния текущего gender/attr/brand фильтра.
+
+        Если текущий category/subcategory slug не существует в БД и схлопывает выдачу в пустой queryset,
+        делаем мягкий fallback на более широкий срез каталога, чтобы gender facet не пропадал полностью.
+        """
         original_get = self.request._request.GET
-        mutable_get = original_get.copy()
 
-        keys_to_remove = []
-        for key in mutable_get.keys():
-            if (
-                key in ('gender', 'gender[]', 'brand_slug', 'brand_slug[]')
-                or key.startswith('attr_')
-                or key in ('brand_id', 'brand_id[]')
-            ):
-                keys_to_remove.append(key)
+        def build_queryset(drop_category_filters: bool = False):
+            mutable_get = original_get.copy()
+            ignored_keys = {
+                'gender',
+                'gender[]',
+                'brand_slug',
+                'brand_slug[]',
+                'brand_id',
+                'brand_id[]',
+            }
+            if drop_category_filters:
+                ignored_keys.update({
+                    'category_slug',
+                    'subcategory_slug',
+                    'category_id',
+                    'category_id[]',
+                })
 
-        for key in keys_to_remove:
-            del mutable_get[key]
+            keys_to_remove = []
+            for key in mutable_get.keys():
+                if key in ignored_keys or key.startswith('attr_'):
+                    keys_to_remove.append(key)
+
+            for key in keys_to_remove:
+                del mutable_get[key]
+
+            self.request._request.GET = mutable_get
+            return self.filter_queryset(self.get_queryset())
 
         try:
-            self.request._request.GET = mutable_get
-            qs = self.filter_queryset(self.get_queryset())
+            qs = build_queryset()
+            if qs.exists():
+                return qs
+            return build_queryset(drop_category_filters=True)
         finally:
             self.request._request.GET = original_get
-
-        return qs
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())

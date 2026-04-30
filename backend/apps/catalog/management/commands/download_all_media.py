@@ -7,18 +7,18 @@ Management command: download_all_media
 
 Использование:
     # Сухой прогон — показывает что будет скачано, ничего не делает
-    docker exec -it pharmaturk-backend-1 poetry run python manage.py download_all_media --dry-run
+    docker compose exec backend poetry run python manage.py download_all_media --dry-run
 
     # Скачать всё
-    docker exec -it pharmaturk-backend-1 poetry run python manage.py download_all_media
+    docker compose exec backend poetry run python manage.py download_all_media
 
     # Только конкретные разделы
-    docker exec -it pharmaturk-backend-1 poetry run python manage.py download_all_media --only products
-    docker exec -it pharmaturk-backend-1 poetry run python manage.py download_all_media --only testimonials
-    docker exec -it pharmaturk-backend-1 poetry run python manage.py download_all_media --only services
+    docker compose exec backend poetry run python manage.py download_all_media --only products
+    docker compose exec backend poetry run python manage.py download_all_media --only testimonials
+    docker compose exec backend poetry run python manage.py download_all_media --only services
 
     # Принудительная перезакачка (даже если файл уже есть)
-    docker exec -it pharmaturk-backend-1 poetry run python manage.py download_all_media --force
+    docker compose exec backend poetry run python manage.py download_all_media --force
 
 Разделы (--only):
     products       — все ProductImage, доменные *ProductImage и *VariantImage

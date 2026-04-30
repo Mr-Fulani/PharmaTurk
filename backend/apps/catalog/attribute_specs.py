@@ -50,6 +50,7 @@ class DynamicAttributeSpec:
     auto_apply: bool = True
     max_length: int = 100
     max_words: int = 8
+    max_facet_values: int = 12
 
 
 @dataclass(frozen=True)
@@ -205,6 +206,7 @@ ATTRIBUTE_SPECS: tuple[DynamicAttributeSpec, ...] = (
             ("шаль", "Шаль"),
             ("платок", "Платок"),
         ),
+        facet_enabled=False,
         max_words=4,
     ),
     DynamicAttributeSpec(

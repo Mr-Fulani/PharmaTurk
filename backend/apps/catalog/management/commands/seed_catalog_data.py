@@ -8,8 +8,12 @@
     python manage.py seed_catalog_data --attributes-only
     python manage.py seed_catalog_data --brands-only
     python manage.py seed_catalog_data --fix-hierarchy
+    python manage.py seed_catalog_data --category-seo-only
 """
 
+import re
+
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils.text import slugify
 from django.db import transaction
@@ -295,10 +299,20 @@ class Command(BaseCommand):
             action="store_true",
             help="Создать только типы динамических атрибутов (GlobalAttributeKey)",
         )
+        parser.add_argument(
+            "--category-seo-only",
+            action="store_true",
+            help="Заполнить пустые SEO-поля категорий и обновить category metadata",
+        )
 
     def handle(self, *args, **options):
         if options["fix_hierarchy"]:
             self._fix_hierarchy()
+            return
+
+        if options["category_seo_only"]:
+            self._backfill_category_metadata()
+            self.stdout.write(self.style.SUCCESS("Готово."))
             return
 
         if options["attributes_only"]:
@@ -383,10 +397,57 @@ class Command(BaseCommand):
             category.sort_order = sort_order
             update_fields.append("sort_order")
 
+        metadata_updates = self._collect_category_metadata_updates(
+            category=category,
+            name=name,
+            description=description or "",
+            parent=parent,
+        )
+        for field_name, field_value in metadata_updates.items():
+            if getattr(category, field_name) != field_value:
+                setattr(category, field_name, field_value)
+                update_fields.append(field_name)
+
         if update_fields:
             category.save(update_fields=update_fields)
 
         return category, created, bool(update_fields)
+
+    def _collect_category_metadata_updates(self, *, category, name: str, description: str, parent):
+        updates = {}
+        inferred_gender = _infer_category_gender(name, category.slug)
+        if inferred_gender:
+            updates["gender"] = inferred_gender
+
+        seo_defaults = _build_category_seo_defaults(
+            name=name,
+            slug=category.slug,
+            description=description,
+            parent=parent,
+        )
+        for field_name, field_value in seo_defaults.items():
+            current_value = str(getattr(category, field_name, "") or "").strip()
+            if not current_value:
+                updates[field_name] = field_value
+        return updates
+
+    def _backfill_category_metadata(self):
+        self.stdout.write("Заполнение SEO и metadata для категорий...")
+        updated = 0
+        for category in Category.objects.select_related("parent").order_by("id"):
+            updates = self._collect_category_metadata_updates(
+                category=category,
+                name=category.name,
+                description=category.description or "",
+                parent=category.parent,
+            )
+            if not updates:
+                continue
+            for field_name, field_value in updates.items():
+                setattr(category, field_name, field_value)
+            category.save(update_fields=list(updates.keys()))
+            updated += 1
+        self.stdout.write(f"Обновлено категорий: {updated}")
 
     def _seed_category_types(self):
         self.stdout.write("Создание типов категорий...")
@@ -1453,3 +1514,84 @@ def _ensure_brand_translations(brand, name: str, desc_ru: str, desc_en: str):
             locale=locale,
             defaults={"name": name, "description": desc or ""},
         )
+
+
+def _category_site_label() -> str:
+    for attr in ("SITE_NAME", "PROJECT_NAME"):
+        value = str(getattr(settings, attr, "") or "").strip()
+        if value:
+            return value
+    return "Mudaroba"
+
+
+def _normalize_seed_text(value: str | None) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    return text.translate(str.maketrans({
+        "ç": "c",
+        "ğ": "g",
+        "ı": "i",
+        "İ": "i",
+        "ö": "o",
+        "ş": "s",
+        "ü": "u",
+    }))
+
+
+def _infer_category_gender(name: str | None, slug: str | None) -> str:
+    haystack = f"{name or ''} {slug or ''}".strip().lower()
+    normalized = _normalize_seed_text(haystack)
+    if re.search(r"(^|[^a-zа-я])(women('?s)?|woman)([^a-zа-я]|$)", haystack) or "жен" in haystack or "kadin" in normalized:
+        return "women"
+    if re.search(r"(^|[^a-zа-я])(men('?s)?|man)([^a-zа-я]|$)", haystack) or "муж" in haystack or "erkek" in normalized:
+        return "men"
+    if "unisex" in haystack or "унисекс" in haystack:
+        return "unisex"
+    if re.search(r"(^|[^a-zа-я])(kids?|children|child|baby)([^a-zа-я]|$)", haystack) or "дет" in haystack or "cocuk" in normalized or "bebek" in normalized:
+        return "kids"
+    return ""
+
+
+def _build_category_seo_defaults(*, name: str, slug: str, description: str, parent) -> dict[str, str]:
+    site_label = _category_site_label()
+    parent_name = str(getattr(parent, "name", "") or "").strip()
+    root_name = parent_name
+    current_parent = parent
+    while getattr(current_parent, "parent", None):
+        current_parent = current_parent.parent
+        root_name = str(getattr(current_parent, "name", "") or "").strip() or root_name
+
+    keyword_values = []
+    for value in (name, parent_name, root_name):
+        cleaned = str(value or "").strip()
+        if cleaned and cleaned not in keyword_values:
+            keyword_values.append(cleaned)
+
+    meta_title_parts = [name]
+    if parent_name and parent_name != name:
+        meta_title_parts.append(parent_name)
+    meta_title_parts.append(site_label)
+    meta_title = " | ".join(part for part in meta_title_parts if part)
+
+    if description:
+        meta_description = description.strip()
+    elif parent_name:
+        meta_description = f"{name} в категории {parent_name} на {site_label}."
+    else:
+        meta_description = f"{name} на {site_label}."
+
+    if root_name and root_name not in keyword_values:
+        keyword_values.append(root_name)
+    slug_token = str(slug or "").replace("-", " ").strip()
+    if slug_token and slug_token not in keyword_values:
+        keyword_values.append(slug_token)
+
+    meta_keywords = ", ".join(keyword_values)
+    return {
+        "meta_title": meta_title[:255],
+        "meta_description": meta_description[:500],
+        "meta_keywords": meta_keywords[:500],
+        "og_title": meta_title[:255],
+        "og_description": meta_description[:500],
+    }

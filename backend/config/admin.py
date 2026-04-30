@@ -144,4 +144,4 @@ class MudarobaAdminSite(AdminSite):
 
 
 # Создаем экземпляр кастомной админки
-admin_site = MudarobaAdminSite(name='pharmaturk_admin')
+admin_site = MudarobaAdminSite(name='mudaroba_admin')

@@ -251,7 +251,7 @@ def _send_email_via_resend(message) -> bool:
         ]
 
     base_url = (getattr(settings, "RESEND_API_URL", "") or "https://api.resend.com").rstrip("/")
-    user_agent = getattr(settings, "RESEND_USER_AGENT", "") or "pharmaturk/1.0"
+    user_agent = getattr(settings, "RESEND_USER_AGENT", "") or "mudaroba/1.0"
     timeout = getattr(settings, "EMAIL_API_TIMEOUT", 15)
     headers = {
         "Authorization": f"Bearer {api_key}",

@@ -65,8 +65,6 @@ class ProductImageInlineFormSet(BaseInlineFormSet):
             video_file = form.cleaned_data.get("video_file")
             if video_file:
                 validate_card_media_file_size(video_file)
-        if len(media_items) > 5:
-            raise ValidationError(_("Можно загрузить не более 5 медиафайлов товара."))
         images = [
             form for form in active_forms
             if form.cleaned_data.get("image_url") or form.cleaned_data.get("image_file")
@@ -93,11 +91,9 @@ class VariantImageInlineFormSet(BaseInlineFormSet):
             image_file = form.cleaned_data.get("image_file")
             if image_file:
                 validate_card_media_file_size(image_file)
-        if len(images) > 5:
-            raise ValidationError(_("Можно загрузить не более 5 изображений варианта."))
         if images and not any(img.cleaned_data.get("is_main") for img in images):
             if not _parent_has_main_media(self):
-                raise ValidationError(_("Необходимо отметить как минимум одно изображение варианта как главное, или заполнить поле 'Главное изображение (файл)'."))
+                raise ValidationError(_("Необходимо отметить как минимум одно изображение варианта как главное, или заполнить поле 'Главное изображение (файл)'."))        
 
 
 class ProductForm(forms.ModelForm):

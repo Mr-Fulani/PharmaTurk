@@ -119,7 +119,7 @@ ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres://pharmaturk:pharmaturk@localhost:5432/pharmaturk",
+        default="postgres://mudaroba:mudaroba@localhost:5432/mudaroba",
     )
 }
 
@@ -389,7 +389,7 @@ SMTP2GO_API_KEY = env("SMTP2GO_API_KEY", default="")
 SMTP2GO_API_URL = env("SMTP2GO_API_URL", default="https://api.smtp2go.com/v3")
 RESEND_API_KEY = env("RESEND_API_KEY", default="")
 RESEND_API_URL = env("RESEND_API_URL", default="https://api.resend.com")
-RESEND_USER_AGENT = env("RESEND_USER_AGENT", default="pharmaturk/1.0")
+RESEND_USER_AGENT = env("RESEND_USER_AGENT", default="mudaroba/1.0")
 COMPANY_NAME = env("COMPANY_NAME", default="Mudaroba")
 COMPANY_SUPPORT_EMAIL = env("COMPANY_SUPPORT_EMAIL", default=DEFAULT_FROM_EMAIL)
 COMPANY_SUPPORT_PHONE = env("COMPANY_SUPPORT_PHONE", default="+90 (000) 000-00-00")
@@ -529,4 +529,3 @@ VK_USER_TOKEN = env("VK_USER_TOKEN", default="")
 
 # Increase data upload fields because admin uses filter_horizontal for thousands of categories
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
-
