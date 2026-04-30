@@ -21,6 +21,12 @@ from apps.catalog.models import (
     GlobalAttributeKey,
 )
 from apps.catalog.constants import ECOMMERCE_ATTRIBUTES
+from apps.catalog.utils.variant_titles import (
+    build_variant_display_title,
+    should_replace_variant_title,
+    strip_price_and_codes_from_title,
+    translate_common_color,
+)
 from apps.ai.models import AIProcessingLog, AIProcessingStatus, AITemplate, AIModerationQueue
 from apps.ai.services.llm_client import LLMClient
 from apps.ai.services.media_processor import R2MediaProcessor
@@ -37,19 +43,6 @@ class ContentGenerator:
     """
 
     RETRY_COUNT = 3
-    COLOR_TRANSLATIONS = {
-        "beyaz": {"ru": "Белый", "en": "White"},
-        "lacivert": {"ru": "Темно-синий", "en": "Navy"},
-        "siyah": {"ru": "Черный", "en": "Black"},
-        "mavi": {"ru": "Синий", "en": "Blue"},
-        "gri": {"ru": "Серый", "en": "Gray"},
-        "kahverengi": {"ru": "Коричневый", "en": "Brown"},
-        "bej": {"ru": "Бежевый", "en": "Beige"},
-        "kirmizi": {"ru": "Красный", "en": "Red"},
-        "kırmızı": {"ru": "Красный", "en": "Red"},
-        "yeşil": {"ru": "Зеленый", "en": "Green"},
-        "yesil": {"ru": "Зеленый", "en": "Green"},
-    }
     GENERIC_PHRASES = (
         "идеально подходит для повседневной носки",
         "provide comfort throughout the day",
@@ -644,39 +637,68 @@ class ContentGenerator:
         }
 
     def _translate_common_color(self, raw_color: str, locale: str) -> str:
-        color = (raw_color or "").strip()
-        if not color:
-            return ""
-        mapping = self.COLOR_TRANSLATIONS.get(color.lower())
-        if mapping:
-            return mapping.get(locale) or color
-        return color
+        return translate_common_color(raw_color, locale)
 
     def _strip_price_and_codes_from_title(self, title: str) -> str:
-        if not title:
-            return ""
-        cleaned = str(title)
-        cleaned = re.sub(r"\b[A-Z0-9]{2,}-[A-Z0-9]+\b", "", cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r"\b\d+[.,]\d+\s*(TL|TRY|USD|EUR|RUB|KZT|USDT)\b", "", cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r"\b\d+[.,]\d+\b", "", cleaned)
-        cleaned = re.sub(r"\(\s*\)", "", cleaned)
-        cleaned = re.sub(r"\s+-\s+$", "", cleaned)
-        cleaned = re.sub(r"\s{2,}", " ", cleaned)
-        return cleaned.strip(" -–—,")
+        return strip_price_and_codes_from_title(title)
 
     def _build_variant_suggested_titles(self, variant, preferred_parent_name: str) -> Dict[str, str]:
         base_name = self._strip_price_and_codes_from_title(preferred_parent_name or getattr(variant, "name", "") or "")
         if not base_name:
             base_name = self._normalize_product_name(getattr(variant, "name", "") or "Вариант товара")
-        ru_color = self._translate_common_color(getattr(variant, "color", "") or "", "ru")
-        en_color = self._translate_common_color(getattr(variant, "color", "") or "", "en")
-        ru_title = f"{base_name} - {ru_color}" if ru_color else base_name
-        en_base = self._strip_price_and_codes_from_title(getattr(variant, "name_en", "") or "") or base_name
-        en_title = f"{en_base} - {en_color}" if en_color else en_base
+        ru_title = build_variant_display_title(variant, "ru") or base_name
+        en_title = build_variant_display_title(variant, "en") or base_name
         return {
             "ru": self._strip_price_and_codes_from_title(ru_title),
             "en": self._strip_price_and_codes_from_title(en_title),
         }
+
+    def sync_variant_titles_from_parent(self, product: Product, log_entry: Optional[AIProcessingLog] = None) -> int:
+        """Дешёвая нормализация названий вариантов: базовая модель + цвет, без LLM."""
+        domain = getattr(product, "domain_item", None)
+        variants_manager = getattr(domain, "variants", None) if domain is not None else None
+        if variants_manager is None:
+            return 0
+
+        seo_translations = {}
+        if log_entry and isinstance(getattr(log_entry, "extracted_attributes", None), dict):
+            seo_translations = dict((log_entry.extracted_attributes or {}).get("seo_translations") or {})
+        preferred_parent_ru = (
+            str(((seo_translations.get("ru") or {}).get("generated_title")) or "").strip()
+            or str(getattr(product, "name", "") or "").strip()
+        )
+        preferred_parent_en = (
+            str(((seo_translations.get("en") or {}).get("generated_title")) or "").strip()
+            or preferred_parent_ru
+        )
+
+        updated = 0
+        for variant in variants_manager.filter(is_active=True).order_by("sort_order", "id"):
+            update_fields = []
+            suggested_ru = strip_price_and_codes_from_title(preferred_parent_ru)
+            translated_color_ru = translate_common_color(getattr(variant, "color", "") or "", "ru")
+            if suggested_ru and translated_color_ru and translated_color_ru.lower() not in suggested_ru.lower():
+                suggested_ru = f"{suggested_ru} - {translated_color_ru}"
+
+            current_ru = getattr(variant, "name", "") or ""
+            if suggested_ru and should_replace_variant_title(current_ru, preferred_parent_ru, getattr(variant, "color", "") or ""):
+                variant.name = suggested_ru
+                update_fields.append("name")
+
+            if hasattr(variant, "name_en"):
+                suggested_en = strip_price_and_codes_from_title(preferred_parent_en)
+                translated_color_en = translate_common_color(getattr(variant, "color", "") or "", "en")
+                if suggested_en and translated_color_en and translated_color_en.lower() not in suggested_en.lower():
+                    suggested_en = f"{suggested_en} - {translated_color_en}"
+                current_en = getattr(variant, "name_en", "") or ""
+                if suggested_en and should_replace_variant_title(current_en, preferred_parent_en, getattr(variant, "color", "") or ""):
+                    variant.name_en = suggested_en
+                    update_fields.append("name_en")
+
+            if update_fields:
+                variant.save(update_fields=update_fields)
+                updated += 1
+        return updated
 
     def _normalize_variant_generated_titles(self, content: Dict, input_data: Dict) -> Dict:
         if not isinstance(content, dict):

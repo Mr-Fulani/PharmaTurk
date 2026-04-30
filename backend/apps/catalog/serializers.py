@@ -34,6 +34,7 @@ from .models import (
 from .seo_defaults import resolve_book_seo_value
 from .utils.media_path import normalize_duplicated_media_path
 from .utils.storage_paths import detect_media_type
+from .utils.variant_titles import build_variant_display_title
 
 TRANSLATION_SEO_FIELDS = [
     'meta_title',
@@ -163,10 +164,12 @@ def _get_variant_applied_ai_draft(variant):
 
 def _get_variant_draft_title(variant, locale: str) -> str:
     draft = _get_variant_applied_ai_draft(variant)
-    if not draft:
-        return ""
-    bucket = draft.get(locale) or {}
-    return str(bucket.get("generated_title") or "").strip()
+    if draft:
+        bucket = draft.get(locale) or {}
+        generated = str(bucket.get("generated_title") or "").strip()
+        if generated:
+            return generated
+    return build_variant_display_title(variant, locale)
 
 
 def _get_variant_draft_description(variant, locale: str) -> str:

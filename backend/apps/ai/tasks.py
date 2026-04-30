@@ -42,6 +42,11 @@ def process_product_ai_task(
             auto_apply=auto_apply,
             options=options,
         )
+        try:
+            product = Product.objects.get(id=product_id)
+            generator.sync_variant_titles_from_parent(product, log_entry=log_entry)
+        except Exception:
+            logger.exception("Variant title sync failed for product %s", product_id)
 
         if log_entry.status in [AIProcessingStatus.COMPLETED, AIProcessingStatus.APPROVED, AIProcessingStatus.MODERATION] and not force:
              # Если статус уже финальный и мы не форсировали, значит лог был возвращен существующий
