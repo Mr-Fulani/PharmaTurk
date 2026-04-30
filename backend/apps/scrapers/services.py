@@ -37,6 +37,12 @@ from .parsers.registry import get_parser
 from .parsers.lcw import LcwParser
 from .base.scraper import ScrapedProduct, _json_safe_scraped_value
 from apps.catalog.services import CatalogNormalizer
+from apps.catalog.utils.tr_vocab import (
+    match_turkish_product_term,
+    normalize_ascii_text as normalize_tr_ascii_text,
+    translate_turkish_color,
+    translate_turkish_product_term,
+)
 from apps.catalog.models import (
     Product,
     BookProduct,
@@ -154,18 +160,6 @@ class ScraperIntegrationService:
         "ozel hediye kutusu",
     )
     ACCESSORY_TYPE_TRANSLATIONS = {
-        "kemer": "Пояс / ремень",
-        "kep sapka": "Кепка",
-        "kep şapka": "Кепка",
-        "sapka": "Шапка",
-        "şapka": "Шапка",
-        "cuzdan": "Кошелек",
-        "cüzdan": "Кошелек",
-        "cantа": "Сумка",
-        "canta": "Сумка",
-        "çanta": "Сумка",
-        "gozluk": "Очки",
-        "gözlük": "Очки",
         "sal": "Шаль",
         "şal": "Шаль",
         "esarp": "Платок",
@@ -231,20 +225,6 @@ class ScraperIntegrationService:
         "islamic_clothing",
     }
 
-    VARIANT_COLOR_TRANSLATIONS = {
-        "beyaz": {"ru": "Белый", "en": "White"},
-        "lacivert": {"ru": "Темно-синий", "en": "Navy"},
-        "siyah": {"ru": "Черный", "en": "Black"},
-        "mavi": {"ru": "Синий", "en": "Blue"},
-        "gri": {"ru": "Серый", "en": "Gray"},
-        "kahverengi": {"ru": "Коричневый", "en": "Brown"},
-        "bej": {"ru": "Бежевый", "en": "Beige"},
-        "kirmizi": {"ru": "Красный", "en": "Red"},
-        "kırmızı": {"ru": "Красный", "en": "Red"},
-        "yeşil": {"ru": "Зеленый", "en": "Green"},
-        "yesil": {"ru": "Зеленый", "en": "Green"},
-    }
-
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.catalog_normalizer = CatalogNormalizer()
@@ -295,13 +275,10 @@ class ScraperIntegrationService:
         return value.strip(" -")
 
     def _translate_variant_color(self, color: str, locale: str = "ru") -> str:
-        normalized = str(color or "").strip().lower()
+        normalized = str(color or "").strip()
         if not normalized:
             return ""
-        bucket = self.VARIANT_COLOR_TRANSLATIONS.get(normalized)
-        if bucket:
-            return bucket.get(locale) or color
-        return str(color).strip()
+        return translate_turkish_color(normalized, locale) or normalized
 
     def _build_variant_names(self, base_name: str, color: str) -> Tuple[str, str]:
         cleaned_base = self._strip_variant_noise(base_name)
@@ -312,19 +289,7 @@ class ScraperIntegrationService:
         return ru_name[:500], en_name[:500]
 
     def _normalize_ascii_text(self, value: str) -> str:
-        value = str(value or "").strip().lower()
-        if not value:
-            return ""
-        replacements = str.maketrans({
-            "ç": "c",
-            "ğ": "g",
-            "ı": "i",
-            "İ": "i",
-            "ö": "o",
-            "ş": "s",
-            "ü": "u",
-        })
-        return value.translate(replacements)
+        return normalize_tr_ascii_text(value)
 
     def _normalize_perfume_gender(self, value: str) -> str:
         normalized = self._normalize_ascii_text(value)
@@ -511,6 +476,11 @@ class ScraperIntegrationService:
         raw_value = str(value or "").strip()
         if not raw_value:
             return ""
+        translated_term = translate_turkish_product_term(raw_value, "ru")
+        if translated_term in {"Сумка", "Кошелек", "Ремень", "Часы", "Очки", "Шапка", "Кепка", "Берет"}:
+            if translated_term == "Ремень":
+                return "Пояс / ремень"
+            return translated_term
         normalized = self._normalize_ascii_text(raw_value)
         for key, label in self.ACCESSORY_TYPE_TRANSLATIONS.items():
             if key in normalized:

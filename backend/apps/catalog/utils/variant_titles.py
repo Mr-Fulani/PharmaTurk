@@ -1,19 +1,5 @@
 import re
-
-
-COLOR_TRANSLATIONS = {
-    "beyaz": {"ru": "Белый", "en": "White"},
-    "lacivert": {"ru": "Темно-синий", "en": "Navy"},
-    "siyah": {"ru": "Черный", "en": "Black"},
-    "mavi": {"ru": "Синий", "en": "Blue"},
-    "gri": {"ru": "Серый", "en": "Gray"},
-    "kahverengi": {"ru": "Коричневый", "en": "Brown"},
-    "bej": {"ru": "Бежевый", "en": "Beige"},
-    "kirmizi": {"ru": "Красный", "en": "Red"},
-    "kırmızı": {"ru": "Красный", "en": "Red"},
-    "yeşil": {"ru": "Зеленый", "en": "Green"},
-    "yesil": {"ru": "Зеленый", "en": "Green"},
-}
+from .tr_vocab import translate_turkish_color
 
 
 def strip_price_and_codes_from_title(title: str) -> str:
@@ -33,10 +19,7 @@ def translate_common_color(raw_color: str, locale: str) -> str:
     color = (raw_color or "").strip()
     if not color:
         return ""
-    mapping = COLOR_TRANSLATIONS.get(color.lower())
-    if mapping:
-        return mapping.get(locale) or color
-    return color
+    return translate_turkish_color(color, locale) or color
 
 
 def get_parent_localized_name(variant, locale: str) -> str:

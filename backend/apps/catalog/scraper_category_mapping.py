@@ -19,6 +19,7 @@ from django.utils.text import slugify
 from .constants import ROOT_CATEGORIES, get_or_create_root_category
 from .models import Category
 from transliterate import slugify as trans_slugify
+from .utils.tr_vocab import TR_PRODUCT_TERM_DICTIONARY
 
 
 def _normalize_category_alias_key(value: str) -> str:
@@ -102,6 +103,25 @@ EXTRA_ALIASES = {
     "исламская одежда": "islamic-clothing",
     "благовония": "incense",
 }
+
+for term_key, localized in TR_PRODUCT_TERM_DICTIONARY.items():
+    ru_value = (localized.get("ru") or "").strip().lower()
+    en_value = (localized.get("en") or "").strip().lower()
+    mapped_root = None
+    if en_value in {"bag", "wallet", "belt", "watch", "glasses"}:
+        mapped_root = "accessories"
+    elif en_value in {"hat", "cap", "beret"}:
+        mapped_root = "headwear"
+    elif en_value in {"dress", "shirt", "t-shirt", "pants", "skirt", "jacket", "cardigan", "sweater"}:
+        mapped_root = "clothing"
+    elif en_value in {"shoes", "sneakers", "boots", "slippers", "sandals"}:
+        mapped_root = "shoes"
+    if mapped_root:
+        EXTRA_ALIASES.setdefault(term_key, mapped_root)
+        if ru_value:
+            EXTRA_ALIASES.setdefault(ru_value, mapped_root)
+        if en_value:
+            EXTRA_ALIASES.setdefault(en_value, mapped_root)
 
 CATEGORY_NAME_ALIASES = {
     **_build_category_aliases(),
