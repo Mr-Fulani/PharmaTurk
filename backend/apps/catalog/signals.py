@@ -299,7 +299,9 @@ def delete_service_files(sender, instance, **kwargs):
 def delete_service_image_files(sender, instance, **kwargs):
     """Удалить файлы из галереи услуги при удалении из БД."""
     delete_file_from_storage(instance.image_file)
+    delete_file_from_storage(instance.video_file)
     delete_url_from_storage(instance.image_url)
+    delete_url_from_storage(instance.video_url)
 
 
 @receiver(pre_save, sender=ProductImage)
@@ -353,8 +355,9 @@ def auto_download_domain_image_from_url(sender, instance, **kwargs):
 
 @receiver(pre_save, sender=ServiceImage)
 def auto_download_service_image_gallery(sender, instance, **kwargs):
-    """Автоматически скачивать изображения для галереи услуг."""
+    """Автоматически скачивать изображения и видео для галереи услуг."""
     _auto_download_impl(instance, "image_file", "image_url")
+    _auto_download_impl(instance, "video_file", "video_url")
 
 
 # --- Category, Brand ---

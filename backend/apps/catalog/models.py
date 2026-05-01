@@ -46,6 +46,8 @@ CURRENCY_CHOICES = [
 
 CARD_MEDIA_ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"]
 CARD_MEDIA_MAX_SIZE_MB = 50
+SERVICE_VIDEO_ALLOWED_EXTENSIONS = ["mp4", "mov", "webm", "m4v", "avi", "mkv"]
+SERVICE_VIDEO_MAX_SIZE_MB = 100
 
 TOP_CATEGORY_SLUG_CHOICES = [
     ("medicines", "medicines"),
@@ -173,6 +175,23 @@ def validate_card_media_file_size(value):
         raise ValidationError(
             _("Размер файла превышает %(size)s МБ"),
             params={"size": CARD_MEDIA_MAX_SIZE_MB},
+        )
+
+
+def validate_service_video_file_size(value):
+    """Проверяет, что размер видео услуги не превышает допустимый лимит."""
+    max_bytes = SERVICE_VIDEO_MAX_SIZE_MB * 1024 * 1024
+    try:
+        size = value.size
+    except FileNotFoundError:
+        raise ValidationError(_("Файл не найден в хранилище. Обновите видеофайл или очистите поле и сохраните снова."))
+    except Exception as e:
+        logger.warning("Не удалось проверить размер видеофайла %s: %s", getattr(value, "name", "<unknown>"), e)
+        raise ValidationError(_("Не удалось проверить размер видеофайла. Попробуйте заново выбрать файл."))
+    if size > max_bytes:
+        raise ValidationError(
+            _("Размер видео превышает %(size)s МБ"),
+            params={"size": SERVICE_VIDEO_MAX_SIZE_MB},
         )
 
 
@@ -3112,14 +3131,14 @@ class Service(models.Model):
     main_image = models.URLField(
         _("Главное изображение"),
         blank=True,
-        help_text=_("URL основного изображения (ссылка на CDN или внутреннее хранилище).")
+        help_text=_("URL основного изображения (ссылка на CDN или внутреннее хранилище). Если главным медиа выбрано видео, укажите изображение для превью.")
     )
     main_image_file = models.ImageField(
         _("Главное изображение (файл)"),
         upload_to=get_service_upload_path,
         null=True,
         blank=True,
-        help_text=_("Загрузите основное изображение для услуги.")
+        help_text=_("Загрузите основное изображение для услуги. Можно использовать и GIF. Если главным медиа выбрано видео, это изображение будет использоваться как превью.")
     )
     video_url = models.URLField(
         _("URL видео"),
@@ -3131,8 +3150,11 @@ class Service(models.Model):
         upload_to=get_service_upload_path,
         null=True,
         blank=True,
-        validators=[FileExtensionValidator(allowed_extensions=['mp4', 'mov', 'webm'])],
-        help_text=_("Загрузите основное видео для услуги.")
+        validators=[
+            FileExtensionValidator(allowed_extensions=SERVICE_VIDEO_ALLOWED_EXTENSIONS),
+            validate_service_video_file_size,
+        ],
+        help_text=_("Загрузите основное видео для услуги. Поддерживаются MP4, MOV, WEBM, M4V, AVI, MKV до 100 МБ. Для корректного превью в карточке также заполните поле главного изображения.")
     )
     gif_file = models.FileField(
         _("GIF (файл)"),
@@ -3414,7 +3436,7 @@ class ServiceAttribute(models.Model):
 
 
 class ServiceImage(models.Model):
-    """Изображения в галерее услуги."""
+    """Медиа в галерее услуги."""
 
     service = models.ForeignKey(
         Service,
@@ -3426,12 +3448,30 @@ class ServiceImage(models.Model):
         _("Изображение (файл)"),
         upload_to=get_service_image_upload_path,
         null=True,
-        blank=True
+        blank=True,
+        help_text=_("Изображение или GIF для галереи услуги.")
     )
     image_url = models.URLField(
         _("URL изображения"),
         blank=True,
-        help_text=_("Внешняя ссылка (если есть)")
+        help_text=_("Внешняя ссылка на изображение или GIF (если есть)")
+    )
+    video_url = models.URLField(
+        _("URL видео"),
+        max_length=2000,
+        blank=True,
+        help_text=_("Внешняя ссылка на видео для галереи услуги.")
+    )
+    video_file = models.FileField(
+        _("Видео (файл)"),
+        upload_to=get_service_image_upload_path,
+        null=True,
+        blank=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=SERVICE_VIDEO_ALLOWED_EXTENSIONS),
+            validate_service_video_file_size,
+        ],
+        help_text=_("Загрузите видео для галереи услуги. Поддерживаются MP4, MOV, WEBM, M4V, AVI, MKV до 100 МБ.")
     )
     alt_text = models.CharField(_("Alt текст"), max_length=255, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -3439,12 +3479,12 @@ class ServiceImage(models.Model):
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
 
     class Meta:
-        verbose_name = _("Изображение услуги")
-        verbose_name_plural = _("Изображения услуг")
+        verbose_name = _("Медиа услуги")
+        verbose_name_plural = _("Медиа услуг")
         ordering = ["sort_order", "created_at"]
 
     def __str__(self):
-        return f"Image for {self.service.name}"
+        return f"Media for {self.service.name}"
 
 
 class ServiceTranslation(models.Model):

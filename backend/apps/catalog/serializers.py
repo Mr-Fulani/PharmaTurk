@@ -4218,17 +4218,29 @@ class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeria
 # ============================================================================
 
 class ServiceImageSerializer(serializers.ModelSerializer):
-    """Сериализатор для галереи изображений услуги."""
+    """Сериализатор для галереи медиа услуги."""
     image_url = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
+    video_file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceImage
-        fields = ['id', 'image_url', 'alt_text', 'sort_order', 'is_main']
+        fields = ['id', 'image_url', 'video_url', 'video_file_url', 'alt_text', 'sort_order', 'is_main']
 
     def get_image_url(self, obj):
         if obj.image_file:
             return obj.image_file.url
         return obj.image_url
+
+    def get_video_url(self, obj):
+        if obj.video_file:
+            return obj.video_file.url
+        return obj.video_url
+
+    def get_video_file_url(self, obj):
+        if obj.video_file:
+            return obj.video_file.url
+        return None
 
 
 class ServicePriceSerializer(serializers.ModelSerializer):

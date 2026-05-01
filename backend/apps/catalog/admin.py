@@ -324,9 +324,9 @@ class ServiceImageInline(admin.TabularInline):
     """Inline для галереи изображений услуги."""
     model = ServiceImage
     extra = 1
-    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main')
-    verbose_name = _("Изображение в галерее")
-    verbose_name_plural = _("Галерея изображений")
+    fields = ('image_file', 'image_url', 'video_file', 'video_url', 'alt_text', 'sort_order', 'is_main')
+    verbose_name = _("Медиа в галерее")
+    verbose_name_plural = _("Галерея медиа")
 
 class ServiceAttributeInline(admin.TabularInline):
     """Inline для атрибутов услуги (площадь, срок, формат и т.д.)."""
