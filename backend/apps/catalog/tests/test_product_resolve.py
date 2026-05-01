@@ -11,24 +11,45 @@ from django.test import RequestFactory
 from rest_framework import status
 
 from apps.catalog.models import (
+    AccessoryProduct,
     AutoPartProduct,
     AutoPartVariant,
     BookProduct,
     BookVariant,
     Brand,
     Category,
+    GlobalAttributeKey,
     HeadwearProduct,
     HeadwearVariant,
     IslamicClothingProduct,
     IslamicClothingVariant,
+    IncenseProduct,
+    MedicalEquipmentProduct,
+    MedicineProduct,
     PerfumeryProduct,
+    ProductAttributeValue,
     PerfumeryVariant,
     SportsProduct,
     SportsVariant,
+    SupplementProduct,
+    TablewareProduct,
     UnderwearProduct,
     UnderwearVariant,
 )
-from apps.catalog.serializers import AutoPartProductDetailSerializer, PerfumeryProductSerializer, SportsProductDetailSerializer
+from django.contrib.contenttypes.models import ContentType
+from apps.catalog.serializers import (
+    AccessoryProductSerializer,
+    AutoPartProductSerializer,
+    AutoPartProductDetailSerializer,
+    IncenseProductSerializer,
+    MedicalEquipmentProductSerializer,
+    MedicineProductSerializer,
+    PerfumeryProductSerializer,
+    SportsProductDetailSerializer,
+    SportsProductSerializer,
+    SupplementProductSerializer,
+    TablewareProductSerializer,
+)
 from apps.catalog.services.product_resolve import (
     BASE_PRODUCT_TYPES,
     TYPES_NEEDING_PATH,
@@ -171,6 +192,97 @@ def test_perfumery_serializer_exposes_product_type_and_dynamic_attributes():
 
     assert data["product_type"] == "perfumery"
     assert "dynamic_attributes" in data
+
+
+@pytest.mark.django_db
+def test_accessory_serializer_exposes_dynamic_attributes():
+    category = Category.objects.create(name="Аксессуары", slug=f"accessories-{uuid.uuid4().hex[:8]}")
+    brand = Brand.objects.create(name=f"ACC {uuid.uuid4().hex[:6]}", slug=f"acc-{uuid.uuid4().hex[:8]}")
+    product = AccessoryProduct.objects.create(
+        name="Bag Test",
+        slug=f"bag-test-{uuid.uuid4().hex[:8]}",
+        category=category,
+        brand=brand,
+        price=100,
+        currency="TRY",
+        is_active=True,
+    )
+    key = GlobalAttributeKey.objects.create(
+        slug=f"material-{uuid.uuid4().hex[:8]}",
+        name="Материал",
+    )
+    ProductAttributeValue.objects.create(
+        content_type=ContentType.objects.get_for_model(AccessoryProduct),
+        object_id=product.pk,
+        attribute_key=key,
+        value="Кожа",
+        sort_order=0,
+    )
+
+    data = product.__class__.objects.get(pk=product.pk)
+    serialized = AccessoryProductSerializer(data).data
+
+    assert "dynamic_attributes" in serialized
+    assert len(serialized["dynamic_attributes"]) == 1
+    assert serialized["dynamic_attributes"][0]["key"] == key.slug
+    assert serialized["dynamic_attributes"][0]["key_display"] == "Материал"
+    assert serialized["dynamic_attributes"][0]["value"] == "Кожа"
+    assert serialized["dynamic_attributes"][0]["sort_order"] == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("product_model", "serializer_class", "extra_fields"),
+    [
+        (MedicineProduct, MedicineProductSerializer, {"prescription_required": False}),
+        (SupplementProduct, SupplementProductSerializer, {}),
+        (MedicalEquipmentProduct, MedicalEquipmentProductSerializer, {}),
+        (TablewareProduct, TablewareProductSerializer, {}),
+        (IncenseProduct, IncenseProductSerializer, {}),
+        (SportsProduct, SportsProductSerializer, {}),
+        (SportsProduct, SportsProductDetailSerializer, {}),
+        (AutoPartProduct, AutoPartProductSerializer, {}),
+        (AutoPartProduct, AutoPartProductDetailSerializer, {}),
+    ],
+)
+def test_remaining_product_serializers_expose_dynamic_attributes(
+    product_model,
+    serializer_class,
+    extra_fields,
+):
+    suffix = uuid.uuid4().hex[:8]
+    category = Category.objects.create(name=f"Категория {suffix}", slug=f"category-{suffix}")
+    brand = Brand.objects.create(name=f"Brand {suffix}", slug=f"brand-{suffix}")
+    product = product_model.objects.create(
+        name=f"Product {suffix}",
+        slug=f"product-{suffix}",
+        category=category,
+        brand=brand,
+        price=100,
+        currency="TRY",
+        is_active=True,
+        **extra_fields,
+    )
+    key = GlobalAttributeKey.objects.create(
+        slug=f"attribute-{suffix}",
+        name="Атрибут",
+    )
+    ProductAttributeValue.objects.create(
+        content_type=ContentType.objects.get_for_model(product_model),
+        object_id=product.pk,
+        attribute_key=key,
+        value="Значение",
+        sort_order=0,
+    )
+
+    serialized = serializer_class(product).data
+
+    assert "dynamic_attributes" in serialized
+    assert len(serialized["dynamic_attributes"]) == 1
+    assert serialized["dynamic_attributes"][0]["key"] == key.slug
+    assert serialized["dynamic_attributes"][0]["key_display"] == "Атрибут"
+    assert serialized["dynamic_attributes"][0]["value"] == "Значение"
+    assert serialized["dynamic_attributes"][0]["sort_order"] == 0
 
 
 @pytest.mark.django_db

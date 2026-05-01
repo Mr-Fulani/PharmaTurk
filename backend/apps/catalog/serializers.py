@@ -5449,6 +5449,7 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
     images = serializers.SerializerMethodField()
     translations = MedicineProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
     meta_keywords = serializers.SerializerMethodField()
@@ -5547,6 +5548,7 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'usage_instructions', 'side_effects', 'contraindications',
             'storage_conditions', 'indications',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'dynamic_attributes',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id', 'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url'
@@ -5588,6 +5590,7 @@ class SupplementProductSerializer(_SimpleDomainMixin, serializers.ModelSerialize
     images = serializers.SerializerMethodField()
     translations = SupplementProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
     meta_keywords = serializers.SerializerMethodField()
@@ -5634,6 +5637,7 @@ class SupplementProductSerializer(_SimpleDomainMixin, serializers.ModelSerialize
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
             'dosage_form', 'active_ingredient', 'serving_size',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images', 'product_type',
+            'dynamic_attributes',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -5676,6 +5680,7 @@ class MedicalEquipmentProductSerializer(_SimpleDomainMixin, serializers.ModelSer
     images = serializers.SerializerMethodField()
     translations = MedicalEquipmentProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
     meta_keywords = serializers.SerializerMethodField()
@@ -5690,6 +5695,7 @@ class MedicalEquipmentProductSerializer(_SimpleDomainMixin, serializers.ModelSer
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
             'equipment_type', 'warranty_months',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'dynamic_attributes',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -5732,6 +5738,7 @@ class TablewareProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
     images = serializers.SerializerMethodField()
     translations = TablewareProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
     meta_keywords = serializers.SerializerMethodField()
@@ -5746,6 +5753,7 @@ class TablewareProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
             'material', 'set_pieces_count',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'dynamic_attributes',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -5788,6 +5796,7 @@ class AccessoryProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
     images = serializers.SerializerMethodField()
     translations = AccessoryProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
     meta_keywords = serializers.SerializerMethodField()
@@ -5802,6 +5811,7 @@ class AccessoryProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
             'accessory_type', 'material',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'dynamic_attributes',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -5844,6 +5854,7 @@ class IncenseProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
     translations = IncenseProductTranslationSerializer(many=True, read_only=True)
     base_product_id = serializers.IntegerField(read_only=True, source='base_product.id', default=None)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     meta_title = serializers.SerializerMethodField()
     meta_description = serializers.SerializerMethodField()
     meta_keywords = serializers.SerializerMethodField()
@@ -5858,6 +5869,7 @@ class IncenseProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
             'scent_type', 'burn_time', 'weight_grams',
             'is_available', 'stock_quantity', 'main_image', 'main_image_url', 'images',
+            'dynamic_attributes',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations',
             'base_product_id', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
@@ -5944,6 +5956,7 @@ class SportsVariantSerializer(serializers.ModelSerializer):
 class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     """Списковый сериализатор для спорттоваров."""
     variants = SportsVariantSerializer(many=True, read_only=True)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     main_image_url = serializers.SerializerMethodField()
     default_variant_slug = serializers.SerializerMethodField()
     active_variant_slug = serializers.SerializerMethodField()
@@ -5968,6 +5981,7 @@ class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
             'id', 'slug', 'name', 'price', 'old_price', 'currency', 
             'is_available', 'is_new', 'is_featured', 'main_image', 'main_image_url',
             'sport_type', 'equipment_type', 'product_type',
+            'dynamic_attributes',
             'price_formatted', 'old_price_formatted',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
@@ -6034,6 +6048,7 @@ class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeriali
     translations = SportsProductTranslationSerializer(many=True, read_only=True)
     images = SportsProductImageSerializer(many=True, read_only=True)
     variants = SportsVariantSerializer(many=True, read_only=True)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     
@@ -6066,7 +6081,7 @@ class SportsProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeriali
             'is_new', 'is_featured', 
             'created_at', 'updated_at',
             'category', 'brand', 'main_image', 'main_image_url',
-            'translations', 'images', 'variants',
+            'translations', 'images', 'variants', 'dynamic_attributes',
             'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
@@ -6189,6 +6204,7 @@ class AutoPartVariantSerializer(serializers.ModelSerializer):
 class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     """Списковый сериализатор для автозапчастей."""
     variants = AutoPartVariantSerializer(many=True, read_only=True)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     main_image_url = serializers.SerializerMethodField()
     default_variant_slug = serializers.SerializerMethodField()
     active_variant_slug = serializers.SerializerMethodField()
@@ -6212,6 +6228,7 @@ class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'id', 'slug', 'name', 'price', 'old_price', 'currency', 
             'is_available', 'is_new', 'is_featured', 'main_image', 'main_image_url',
             'part_number', 'car_brand', 'car_model', 'product_type',
+            'dynamic_attributes',
             'price_formatted', 'old_price_formatted',
             'variants', 'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
@@ -6278,6 +6295,7 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
     translations = AutoPartProductTranslationSerializer(many=True, read_only=True)
     images = AutoPartProductImageSerializer(many=True, read_only=True)
     variants = AutoPartVariantSerializer(many=True, read_only=True)
+    dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     
@@ -6310,7 +6328,7 @@ class AutoPartProductDetailSerializer(_SimpleDomainMixin, serializers.ModelSeria
             'is_new', 'is_featured', 
             'created_at', 'updated_at',
             'category', 'brand', 'main_image', 'main_image_url',
-            'translations', 'images', 'variants',
+            'translations', 'images', 'variants', 'dynamic_attributes',
             'default_variant_slug', 'active_variant_slug',
             'active_variant_price', 'active_variant_currency', 'active_variant_stock_quantity',
             'active_variant_main_image_url', 'active_variant_old_price_formatted',
