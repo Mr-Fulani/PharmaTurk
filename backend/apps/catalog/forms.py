@@ -144,6 +144,18 @@ class CategoryFormCatalogHints(forms.ModelForm):
             self.fields["name"].widget.attrs.setdefault("placeholder", CATEGORY_NAME_PLACEHOLDER)
         if "parent" in self.fields:
             self.fields["parent"].help_text = CATEGORY_PARENT_HELP
+        if "card_media" in self.fields:
+            self.fields["card_media"].help_text = _(
+                "Медиа самой категории: используется в карточках/hero категории и как fallback для OG image."
+            )
+        if "card_media_external_url" in self.fields:
+            self.fields["card_media_external_url"].help_text = _(
+                "Внешняя ссылка на медиа категории. Если заполнена, приоритетнее загруженного файла."
+            )
+        if "og_image_url" in self.fields:
+            self.fields["og_image_url"].help_text = _(
+                "Можно оставить пустым: поле автоматически заполнится ссылкой из превью категории (card media)."
+            )
 
 
 class CategoryForm(forms.ModelForm):
@@ -159,6 +171,18 @@ class CategoryForm(forms.ModelForm):
             self.fields["name"].widget.attrs.setdefault("placeholder", CATEGORY_NAME_PLACEHOLDER)
         if "parent" in self.fields:
             self.fields["parent"].help_text = CATEGORY_PARENT_HELP
+        if "card_media" in self.fields:
+            self.fields["card_media"].help_text = _(
+                "Медиа самой категории: используется в карточках/hero категории и как fallback для OG image."
+            )
+        if "card_media_external_url" in self.fields:
+            self.fields["card_media_external_url"].help_text = _(
+                "Внешняя ссылка на медиа категории. Если заполнена, приоритетнее загруженного файла."
+            )
+        if "og_image_url" in self.fields:
+            self.fields["og_image_url"].help_text = _(
+                "Можно оставить пустым: поле автоматически заполнится ссылкой из превью категории (card media)."
+            )
     
     def clean_category_type(self):
         category_type = self.cleaned_data.get("category_type")

@@ -6,6 +6,7 @@ import { useTranslation } from 'next-i18next'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTranslation, BrandTranslation, stripHtml } from '../../lib/i18n'
 import { getSiteOrigin } from '../../lib/urls'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
+import { SITE_NAME } from '../../lib/siteMeta'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios from 'axios'
@@ -83,6 +84,7 @@ interface Category {
   name: string
   slug: string
   description: string
+  card_media_url?: string | null
   children_count: number
   product_count?: number
   parent?: number | null
@@ -191,6 +193,12 @@ const ensureOtherBrand = (items: Brand[]) => {
     },
     ...normalized
   ]
+}
+
+const toAbsoluteUrl = (siteUrl: string, value?: string | null) => {
+  if (!value) return ''
+  if (value.startsWith('http://') || value.startsWith('https://')) return value
+  return `${siteUrl}${value.startsWith('/') ? value : `/${value}`}`
 }
 
 const filterBrandsByProducts = (
@@ -1439,11 +1447,11 @@ export default function CategoryPage({
     return v != null ? String(v) : ''
   }, [localizedCategoryName])
   const ogTitle = useMemo(() => {
-    return (currentCategory?.og_title || currentCategory?.meta_title || `${titleText} — Mudaroba`).trim()
+    return (currentCategory?.og_title || currentCategory?.meta_title || `${titleText} — ${SITE_NAME}`).trim()
   }, [currentCategory, titleText])
 
   const metaTitle = useMemo(() => {
-    return (currentCategory?.meta_title || currentCategory?.og_title || `${titleText} - Mudaroba`).trim()
+    return (currentCategory?.meta_title || currentCategory?.og_title || `${titleText} — ${SITE_NAME}`).trim()
   }, [currentCategory, titleText])
 
   const ogDescription = useMemo(() => {
@@ -1457,7 +1465,8 @@ export default function CategoryPage({
   }, [currentCategory, categoryDescription, titleText, t])
 
   const ogImageUrl = useMemo(() => {
-    return currentCategory?.og_image_url ? currentCategory.og_image_url : `${siteUrl}/apple-touch-icon.png`
+    const raw = currentCategory?.og_image_url || currentCategory?.card_media_url || '/og-default.png'
+    return toAbsoluteUrl(siteUrl, raw)
   }, [currentCategory, siteUrl])
   const breadcrumbSchema = useMemo(() => {
     const items = breadcrumbs.map((item, idx) => ({
@@ -1472,6 +1481,35 @@ export default function CategoryPage({
       itemListElement: items
     }
   }, [breadcrumbs, siteUrl])
+  const collectionPageSchema = useMemo(() => ({
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: metaTitle,
+    description: metaDescription,
+    url: canonicalUrl,
+    image: ogImageUrl,
+    isPartOf: {
+      '@type': 'WebSite',
+      name: SITE_NAME,
+      url: siteUrl,
+    },
+  }), [metaTitle, metaDescription, canonicalUrl, ogImageUrl, siteUrl])
+  const itemListSchema = useMemo(() => ({
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    itemListElement: products.slice(0, 10).map((product, index) => {
+      const effectiveProductType = product.product_type && isBaseProductType(product.product_type)
+        ? product.product_type
+        : categoryType
+      const productPath = `/product/${effectiveProductType}/${product.slug}`
+      return {
+        '@type': 'ListItem',
+        position: index + 1,
+        url: `${siteUrl}${productPath}`,
+        name: product.name,
+      }
+    }),
+  }), [products, categoryType, siteUrl])
 
   return (
     <>
@@ -1496,6 +1534,16 @@ export default function CategoryPage({
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        />
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionPageSchema) }}
+        />
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
         />
       </Head>
 

@@ -1,6 +1,6 @@
 import pytest
 
-from apps.catalog.models import Product
+from apps.catalog.models import Product, ProductImage
 from apps.catalog.services import CatalogNormalizer
 from apps.vapi.client import ProductData
 
@@ -79,3 +79,43 @@ def test_normalizer_still_skips_shared_gallery_for_clothing_variant_payloads():
     )
 
     assert product.images.count() == 0
+
+
+@pytest.mark.django_db
+def test_normalizer_sets_alt_text_for_scraped_product_images_without_overwriting_manual_values():
+    product = Product.objects.create(
+        name="LC Waikiki Basic T-Shirt",
+        slug="lcw-basic-tshirt",
+        product_type="accessories",
+        price=100,
+        currency="TRY",
+        external_id="alt-test-1",
+        external_data={
+            "source": "lcw",
+            "attributes": {
+                "color": "Siyah",
+            },
+        },
+    )
+
+    ProductImage.objects.create(
+        product=product,
+        image_url="https://example.com/existing.jpg",
+        alt_text="Ручной alt",
+        sort_order=0,
+    )
+
+    normalizer = CatalogNormalizer()
+    normalizer._normalize_product_images(
+        product,
+        [
+            "https://example.com/existing.jpg",
+            "https://example.com/new.jpg",
+        ],
+    )
+
+    existing = ProductImage.objects.get(product=product, image_url="https://example.com/existing.jpg")
+    created = ProductImage.objects.get(product=product, image_url="https://example.com/new.jpg")
+
+    assert existing.alt_text == "Ручной alt"
+    assert created.alt_text == "LC Waikiki Basic T-Shirt - Siyah - фото 2"

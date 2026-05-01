@@ -8,12 +8,14 @@ _spec.loader.exec_module(_module)
 
 CatalogNormalizer = _module.CatalogNormalizer
 CatalogService = _module.CatalogService
+build_image_alt_text = _module.build_image_alt_text
 from .medicine_media_enricher import MedicineMediaEnricher
 from .ikea_service import IkeaService
 
 __all__ = [
     "CatalogNormalizer",
     "CatalogService",
+    "build_image_alt_text",
     "MedicineMediaEnricher",
     "IkeaService",
 ]

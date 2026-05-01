@@ -457,14 +457,14 @@ class BaseCategoryAdmin(admin.ModelAdmin):
         }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url'),
-            'description': _('Можно указать файл или внешнюю ссылку (CDN/S3). Внешняя ссылка приоритетнее.'),
+            'description': _('Это медиа самой категории. Используется в карточках/hero категории и как fallback для OG image. Можно указать файл или внешнюю ссылку (CDN/S3). Внешняя ссылка приоритетнее.'),
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
         (_('SEO'), {
             'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'),
             'classes': ('collapse',),
-            'description': _('SEO-поля для поисковой оптимизации категории.'),
+            'description': _('SEO-поля для поисковой оптимизации категории. Если OG изображение не указано, оно автоматически подставляется из превью медиа категории.'),
         }),
     )
 
@@ -535,13 +535,14 @@ class AllCategoriesAdmin(admin.ModelAdmin):
         }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url'),
+            'description': _('Это медиа самой категории. Используется в карточках/hero категории и как fallback для OG image.'),
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
         (_('SEO'), {
             'fields': ('meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'),
             'classes': ('collapse',),
-            'description': _('SEO-поля для поисковой оптимизации категории.'),
+            'description': _('SEO-поля для поисковой оптимизации категории. Если OG изображение не указано, оно автоматически подставляется из превью медиа категории.'),
         }),
     )
 
@@ -2646,7 +2647,7 @@ class MarketingCategoryAdmin(admin.ModelAdmin):
         }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),
-            'description': _('Изображение, GIF или видео для карточки категории или внешняя ссылка (CDN/S3). Внешняя ссылка приоритетнее.'),
+            'description': _('Это медиа самой категории. Используется в карточках/hero категории и как fallback для OG image. Можно задать изображение, GIF, видео или внешнюю ссылку (CDN/S3).'),
         }),
         (_('Настройки'), {
             'fields': ('is_active', 'sort_order'),
@@ -2724,7 +2725,7 @@ class MarketingRootCategoryAdmin(admin.ModelAdmin):
         }),
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),
-            'description': _('Изображение, GIF или видео для карточки категории или внешняя ссылка (CDN/S3). Внешняя ссылка приоритетнее.'),
+            'description': _('Это медиа самой категории. Используется в карточках/hero категории и как fallback для OG image. Можно задать изображение, GIF, видео или внешнюю ссылку (CDN/S3).'),
         }),
         (_('Настройки'), {
             'fields': ('is_active', 'sort_order'),

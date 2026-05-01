@@ -31,6 +31,30 @@ VARIANT_GALLERY_PRODUCT_TYPES = {
 }
 
 
+def build_image_alt_text(
+    base_name: str,
+    *,
+    index: int = 0,
+    color: str = "",
+    max_length: int = 200,
+) -> str:
+    """Строит безопасный alt-текст для изображений, не затирая ручную SEO-логику."""
+    clean_name = re.sub(r"\s+", " ", str(base_name or "")).strip()
+    clean_color = re.sub(r"\s+", " ", str(color or "")).strip()
+
+    parts: List[str] = []
+    if clean_name:
+        parts.append(clean_name)
+    if clean_color and clean_color.lower() not in clean_name.lower():
+        parts.append(clean_color)
+
+    alt_text = " - ".join(parts).strip()
+    if index > 0:
+        alt_text = f"{alt_text} - фото {index + 1}" if alt_text else f"Фото {index + 1}"
+
+    return alt_text[:max_length]
+
+
 def _json_safe_for_external_data(value: Any) -> Any:
     """Рекурсивно приводит значения к типам, допустимым для JSONField (в т.ч. без Decimal)."""
     if isinstance(value, Decimal):
@@ -794,6 +818,7 @@ class CatalogNormalizer:
         image_manager = getattr(target, image_manager_name)
 
         source = metadata.get("source") or attrs.get("source")
+        default_alt_color = str(attrs.get("color") or "").strip()
         gallery_video_url = next(
             (url for url in image_urls if self._resolve_media_type(url) == "video"),
             None,
@@ -911,6 +936,16 @@ class CatalogNormalizer:
                 # и он сейчас таковым не является
                 if desired_is_main and not existing_item.is_main:
                     updates["is_main"] = desired_is_main
+
+                if hasattr(existing_item, "alt_text") and not (existing_item.alt_text or "").strip():
+                    generated_alt = build_image_alt_text(
+                        getattr(target, "name", "") or getattr(product, "name", ""),
+                        index=i,
+                        color=default_alt_color,
+                        max_length=getattr(existing_item._meta.get_field("alt_text"), "max_length", 200) or 200,
+                    )
+                    if generated_alt:
+                        updates["alt_text"] = generated_alt
                 
                 if updates:
                     existing_item.__class__.objects.filter(pk=existing_item.pk).update(**updates)
@@ -927,6 +962,16 @@ class CatalogNormalizer:
             elif media_type == "video":
                 # Модели галереи без video_url: пропускаем, иначе получится пустая «картинка».
                 continue
+
+            if hasattr(image_manager.model, "alt_text"):
+                generated_alt = build_image_alt_text(
+                    getattr(target, "name", "") or getattr(product, "name", ""),
+                    index=i,
+                    color=default_alt_color,
+                    max_length=getattr(image_manager.model._meta.get_field("alt_text"), "max_length", 200) or 200,
+                )
+                if generated_alt:
+                    create_kwargs["alt_text"] = generated_alt
             
             create_kwargs["product"] = target
             image_manager.model.objects.create(**create_kwargs)

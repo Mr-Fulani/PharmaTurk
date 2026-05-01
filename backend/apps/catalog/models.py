@@ -3,6 +3,7 @@
 import logging
 import uuid
 from urllib.parse import urlparse, urlunparse
+from django.conf import settings
 from django.db import models
 from django.db.models import Q
 from django.db.models.signals import post_delete, post_save
@@ -70,6 +71,25 @@ TOP_CATEGORY_SLUG_CHOICES = [
     ("islamic-clothing", "islamic-clothing"),
     ("incense", "incense"),
 ]
+
+
+def _catalog_site_name() -> str:
+    for attr in ("SITE_NAME", "PROJECT_NAME", "COMPANY_NAME"):
+        value = str(getattr(settings, attr, "") or "").strip()
+        if value:
+            return value
+    return "Mudaroba"
+
+
+def _plain_text(value: str) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
+def _truncate_text(value: str, max_length: int) -> str:
+    clean = _plain_text(value)
+    if len(clean) <= max_length:
+        return clean
+    return clean[: max_length - 1].rstrip(" ,.-") + "…"
 
 
 def _card_media_folder_from_filename(filename: str) -> str:
@@ -345,6 +365,16 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        should_autofill_og_image = not _plain_text(self.og_image_url)
+        super().save(*args, **kwargs)
+
+        if should_autofill_og_image:
+            effective_og_image = self.get_effective_og_image_url()
+            if effective_og_image and effective_og_image != self.og_image_url:
+                type(self).objects.filter(pk=self.pk).update(og_image_url=effective_og_image)
+                self.og_image_url = effective_og_image
+
     def get_breadcrumb_path(self, separator: str = ' › ') -> str:
         """Возвращает путь категории по иерархии: L1 › L2 › L3."""
         parts = []
@@ -387,6 +417,94 @@ class Category(models.Model):
                     category_base=_resolve_category_card_base(self),
                 )
         return ""
+
+    def _seo_name(self) -> str:
+        return _plain_text(self.name)
+
+    def _seo_parent_name(self) -> str:
+        return _plain_text(getattr(self.parent, "name", ""))
+
+    def _seo_root_name(self) -> str:
+        current = self
+        root_name = self._seo_name()
+        while getattr(current, "parent", None):
+            current = current.parent
+            root_name = _plain_text(getattr(current, "name", "")) or root_name
+        return root_name
+
+    def build_default_meta_title(self) -> str:
+        site_name = _catalog_site_name()
+        name = self._seo_name()
+        parent_name = self._seo_parent_name()
+
+        parts = [name]
+        if parent_name and parent_name.lower() not in name.lower():
+            parts.append(parent_name)
+        parts.append(site_name)
+        return _truncate_text(" | ".join(part for part in parts if part), 255)
+
+    def build_default_meta_description(self) -> str:
+        site_name = _catalog_site_name()
+        name = self._seo_name()
+        parent_name = self._seo_parent_name()
+        description = _plain_text(self.description)
+
+        if description:
+            base = description
+        elif parent_name:
+            base = (
+                f"Каталог товаров категории {name} в разделе {parent_name} на {site_name}. "
+                f"Актуальные предложения, цены и доставка."
+            )
+        else:
+            base = (
+                f"Каталог товаров категории {name} на {site_name}. "
+                f"Актуальные предложения, цены и доставка."
+            )
+
+        return _truncate_text(base, 500)
+
+    def build_default_meta_keywords(self) -> str:
+        values = []
+        for candidate in (
+            self._seo_name(),
+            self._seo_parent_name(),
+            self._seo_root_name(),
+            _plain_text((self.slug or "").replace("-", " ")),
+            _plain_text(self.clothing_type),
+            _plain_text(self.device_type),
+            _catalog_site_name(),
+        ):
+            if candidate and candidate not in values:
+                values.append(candidate)
+        return _truncate_text(", ".join(values), 500)
+
+    def get_effective_meta_title(self) -> str:
+        return _plain_text(self.meta_title) or self.build_default_meta_title()
+
+    def get_effective_meta_description(self) -> str:
+        return _plain_text(self.meta_description) or self.build_default_meta_description()
+
+    def get_effective_meta_keywords(self) -> str:
+        return _plain_text(self.meta_keywords) or self.build_default_meta_keywords()
+
+    def get_effective_og_title(self) -> str:
+        return _plain_text(self.og_title) or self.get_effective_meta_title()
+
+    def get_effective_og_description(self) -> str:
+        return _plain_text(self.og_description) or self.get_effective_meta_description()
+
+    def _card_image_url_for_og(self) -> str:
+        current = self
+        while current:
+            media_url = current.get_card_media_url()
+            if media_url and detect_media_type(media_url) != "video":
+                return media_url
+            current = getattr(current, "parent", None)
+        return ""
+
+    def get_effective_og_image_url(self) -> str:
+        return _plain_text(self.og_image_url) or self._card_image_url_for_og()
 
 
 class CategoryTranslation(models.Model):

@@ -368,6 +368,12 @@ class CategorySerializer(serializers.ModelSerializer):
     children_count = serializers.SerializerMethodField()
     products_count = serializers.SerializerMethodField()
     card_media_url = serializers.SerializerMethodField()
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
     category_type = serializers.SerializerMethodField()
     category_type_slug = serializers.SerializerMethodField()
     gender_display = serializers.SerializerMethodField()
@@ -441,6 +447,37 @@ class CategorySerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request:
             return request.build_absolute_uri(url)
+        return url
+
+    def get_meta_title(self, obj):
+        return obj.get_effective_meta_title()
+
+    def get_meta_description(self, obj):
+        return obj.get_effective_meta_description()
+
+    def get_meta_keywords(self, obj):
+        return obj.get_effective_meta_keywords()
+
+    def get_og_title(self, obj):
+        return obj.get_effective_og_title()
+
+    def get_og_description(self, obj):
+        return obj.get_effective_og_description()
+
+    def get_og_image_url(self, obj):
+        url = obj.get_effective_og_image_url()
+        if not url:
+            return None
+        resolved = _resolve_media_url(url, self.context.get('request'))
+        if resolved:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(resolved)
+            return resolved
+        if url.startswith('/'):
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(url)
         return url
 
     def get_category_type(self, obj):

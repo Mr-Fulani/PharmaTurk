@@ -95,3 +95,50 @@ def test_repeat_scrape_does_not_overwrite_existing_domain_gender_and_size():
     assert changed is True
     assert headwear.gender == "women"
     assert headwear.size == "XS"
+
+
+@pytest.mark.django_db
+def test_fashion_variant_gallery_gets_generated_alt_text():
+    service = ScraperIntegrationService()
+    category, product_type = resolve_category_and_product_type("Kep Şapka")
+    product = Product.objects.create(
+        name="Existing Cap",
+        slug="existing-cap-alt",
+        category=category,
+        product_type=product_type,
+        price=100,
+        currency="TRY",
+        external_id="headwear-alt-1",
+        external_data={},
+    )
+
+    changed = service._update_product_attributes(
+        product,
+        {
+            "fashion_variants": [
+                {
+                    "external_id": "headwear-var-alt-1",
+                    "display_name": "Existing Cap",
+                    "color": "Siyah",
+                    "images": [
+                        "https://example.com/cap-1.jpg",
+                        "https://example.com/cap-2.jpg",
+                    ],
+                    "sizes": [{"size": "Standart", "is_available": True, "stock_quantity": 1000}],
+                    "price": 100,
+                    "currency": "TRY",
+                    "is_available": True,
+                }
+            ],
+        },
+    )
+
+    headwear = service._get_headwear_product(product)
+    variant = headwear.variants.get(external_id="headwear-var-alt-1")
+    images = list(variant.images.order_by("sort_order"))
+
+    assert changed is True
+    assert [img.alt_text for img in images] == [
+        "Existing Cap - Siyah",
+        "Existing Cap - Siyah - фото 2",
+    ]

@@ -36,7 +36,7 @@ from .models import ScraperConfig, ScrapingSession, ScrapedProductLog
 from .parsers.registry import get_parser
 from .parsers.lcw import LcwParser
 from .base.scraper import ScrapedProduct, _json_safe_scraped_value
-from apps.catalog.services import CatalogNormalizer
+from apps.catalog.services import CatalogNormalizer, build_image_alt_text
 from apps.catalog.utils.tr_vocab import (
     match_turkish_product_term,
     normalize_ascii_text as normalize_tr_ascii_text,
@@ -1718,6 +1718,11 @@ class ScraperIntegrationService:
                     FurnitureVariantImage(
                         variant=variant,
                         image_url=u,
+                        alt_text=build_image_alt_text(
+                            variant.name or furniture_product.name or product.name or "",
+                            index=i,
+                            color=raw_color,
+                        ),
                         sort_order=i,
                         is_main=(i == 0),
                     )
@@ -2009,6 +2014,11 @@ class ScraperIntegrationService:
                         VariantImageModel(
                             variant=variant,
                             image_url=url,
+                            alt_text=build_image_alt_text(
+                                defaults["name"] or getattr(domain_product, "name", "") or getattr(product, "name", ""),
+                                index=image_idx,
+                                color=color_value,
+                            ),
                             sort_order=image_idx,
                             is_main=(image_idx == 0),
                         )
