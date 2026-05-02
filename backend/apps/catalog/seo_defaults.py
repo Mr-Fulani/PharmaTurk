@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, Iterable
 from django.conf import settings
+from django.utils.html import strip_tags
 
 
 DEFAULT_BOOK_OG_IMAGE_URL = ""
@@ -31,6 +32,18 @@ def _get_site_label() -> str:
 def _normalize_lang(lang: str | None) -> str:
     raw = (lang or "ru").strip().lower()
     return raw.split("-")[0] if raw else "ru"
+
+
+def _plain_text(value: str | None) -> str:
+    return " ".join(strip_tags(str(value or "")).replace("\xa0", " ").split()).strip()
+
+
+def _truncate(value: str, limit: int) -> str:
+    cleaned = _plain_text(value)
+    if len(cleaned) <= limit:
+        return cleaned
+    shortened = cleaned[: limit - 1].rsplit(" ", 1)[0].strip()
+    return (shortened or cleaned[: limit - 1]).rstrip(",.;: ") + "…"
 
 
 def _get_translation_value(container, field_name: str, lang: str) -> str | None:
@@ -144,6 +157,83 @@ def build_book_seo_defaults(product) -> Dict[str, str]:
         "og_title": meta_title[:255],
         "og_description": meta_description[:500],
         "og_image_url": DEFAULT_BOOK_OG_IMAGE_URL,
+    }
+
+
+def build_catalog_item_seo_defaults(
+    *,
+    name: str,
+    description: str = "",
+    category_name: str = "",
+    brand_name: str = "",
+    product_type: str = "",
+    lang: str | None = None,
+    is_service: bool = False,
+    site_name: str | None = None,
+) -> Dict[str, str]:
+    lang = _normalize_lang(lang)
+    site_label = (site_name or _get_site_label()).strip() or "Mudaroba"
+    clean_name = _plain_text(name) or ("Service" if lang == "en" and is_service else "Product" if lang == "en" else "Услуга" if is_service else "Товар")
+    clean_description = _plain_text(description)
+    clean_category = _plain_text(category_name)
+    clean_brand = _plain_text(brand_name)
+    clean_type = _plain_text(str(product_type or "").replace("_", " ").replace("-", " "))
+
+    context_parts = _unique_values([clean_category, clean_brand, clean_type])
+
+    if lang == "en":
+        action = "Book" if is_service else "Buy"
+        title_parts = [clean_name]
+        if clean_category and clean_category.lower() not in clean_name.lower():
+            title_parts.append(clean_category)
+        title_parts.append(site_label)
+        meta_title = " | ".join(title_parts)
+
+        if clean_description:
+            meta_description = clean_description
+        else:
+            sentence = f"{action} {clean_name}"
+            if clean_brand:
+                sentence += f" by {clean_brand}"
+            if clean_category:
+                sentence += f" in {clean_category}"
+            sentence += f" at {site_label}."
+            extra = " Prices, availability and delivery details." if not is_service else " Service details, pricing and request options."
+            meta_description = sentence + extra
+
+        keyword_values = [clean_name, *context_parts, "services" if is_service else "product", site_label]
+    else:
+        verb = "Заказать" if is_service else "Купить"
+        title_parts = [clean_name]
+        if clean_category and clean_category.lower() not in clean_name.lower():
+            title_parts.append(clean_category)
+        title_parts.append(site_label)
+        meta_title = " | ".join(title_parts)
+
+        if clean_description:
+            meta_description = clean_description
+        else:
+            sentence = f"{verb} {clean_name}"
+            if clean_brand:
+                sentence += f" бренда {clean_brand}"
+            if clean_category:
+                sentence += f" в категории {clean_category}"
+            sentence += f" на {site_label}."
+            extra = " Актуальные цены, наличие и условия доставки." if not is_service else " Описание услуги, стоимость и условия заказа."
+            meta_description = sentence + extra
+
+        keyword_values = [clean_name, *context_parts, "услуги" if is_service else "товары", site_label]
+
+    meta_title = _truncate(meta_title, 255)
+    meta_description = _truncate(meta_description, 500)
+    meta_keywords = _truncate(", ".join(_unique_values(keyword_values)), 500)
+    return {
+        "meta_title": meta_title,
+        "meta_description": meta_description,
+        "meta_keywords": meta_keywords,
+        "og_title": meta_title,
+        "og_description": meta_description,
+        "og_image_url": "",
     }
 
 

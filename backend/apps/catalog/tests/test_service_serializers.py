@@ -43,6 +43,24 @@ def test_service_serializer_includes_gallery_video_url():
     assert data["gallery"][0]["is_main"] is True
 
 
+def test_service_serializer_generates_seo_fallbacks(settings):
+    settings.SITE_NAME = "Mudaroba"
+
+    service = Service.objects.create(
+        name="Установка кондиционера",
+        slug="svc-ac-install",
+        description="",
+    )
+
+    data = ServiceSerializer(service).data
+
+    assert data["meta_title"] == "Установка кондиционера | Mudaroba"
+    assert "Заказать Установка кондиционера" in data["meta_description"]
+    assert data["og_title"] == data["meta_title"]
+    assert data["og_description"] == data["meta_description"]
+    assert "Установка кондиционера" in data["meta_keywords"]
+
+
 class _FakeSizedFile:
     def __init__(self, size):
         self.size = size

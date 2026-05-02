@@ -4,7 +4,7 @@ import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTranslation, BrandTranslation, stripHtml } from '../../lib/i18n'
-import { getSiteOrigin } from '../../lib/urls'
+import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { GetServerSideProps } from 'next'
@@ -1501,7 +1501,7 @@ export default function CategoryPage({
       const effectiveProductType = product.product_type && isBaseProductType(product.product_type)
         ? product.product_type
         : categoryType
-      const productPath = `/product/${effectiveProductType}/${product.slug}`
+      const productPath = buildProductUrl(effectiveProductType, product.slug)
       return {
         '@type': 'ListItem',
         position: index + 1,
@@ -1714,7 +1714,7 @@ export default function CategoryPage({
                     const displayPriceFormatted = displayPrice ? formatPrice(displayPrice) : null
                     const displayOldPriceFormatted = displayOldPrice ? formatPrice(displayOldPrice) : null
                     const effectiveProductType = (product.product_type || categoryType).replace(/_/g, '-')
-                    const productHref = `/product/${effectiveProductType}/${product.slug}`
+                    const productHref = buildProductUrl(effectiveProductType, product.slug)
                     const isBaseProduct = isBaseProductType(effectiveProductType)
 
                     return (

@@ -31,7 +31,7 @@ from .models import (
     SportsProduct, SportsProductTranslation, SportsProductImage, SportsVariant, SportsVariantImage,
     AutoPartProduct, AutoPartProductTranslation, AutoPartProductImage, AutoPartVariant, AutoPartVariantImage,
 )
-from .seo_defaults import resolve_book_seo_value
+from .seo_defaults import build_catalog_item_seo_defaults, resolve_book_seo_value
 from .utils.media_path import normalize_duplicated_media_path
 from .utils.storage_paths import detect_media_type
 from .utils.variant_titles import build_variant_display_title
@@ -47,6 +47,60 @@ TRANSLATION_SEO_FIELDS = [
 
 def _request_lang(request) -> str:
     return getattr(request, 'LANGUAGE_CODE', 'ru') if request else 'ru'
+
+
+def _first_non_empty(*values):
+    for value in values:
+        if value is None:
+            continue
+        cleaned = str(value).strip()
+        if cleaned:
+            return cleaned
+    return ""
+
+
+def _localized_related_name(obj, lang: str) -> str:
+    if not obj:
+        return ""
+    fallback = str(getattr(obj, "name", "") or "").strip()
+    if lang == "ru":
+        return fallback
+    translations = getattr(obj, "translations", None)
+    try:
+        if hasattr(translations, "filter"):
+            tr = translations.filter(locale=lang).first() or translations.filter(locale="ru").first()
+            if tr and getattr(tr, "name", None):
+                return str(tr.name).strip()
+        elif translations:
+            trans_list = list(translations)
+            for locale in (lang, "ru"):
+                for tr in trans_list:
+                    if getattr(tr, "locale", None) == locale and getattr(tr, "name", None):
+                        return str(tr.name).strip()
+    except Exception:
+        pass
+    return fallback
+
+
+def _fallback_item_seo(
+    *,
+    name: str,
+    description: str,
+    category_name: str = "",
+    brand_name: str = "",
+    product_type: str = "",
+    lang: str = "ru",
+    is_service: bool = False,
+):
+    return build_catalog_item_seo_defaults(
+        name=name,
+        description=description,
+        category_name=category_name,
+        brand_name=brand_name,
+        product_type=product_type,
+        lang=lang,
+        is_service=is_service,
+    )
 
 
 class _LocalizedSeoMethodsMixin:
@@ -1042,6 +1096,36 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
             pass
 
         return obj.description
+
+    def _fallback_seo_defaults(self, obj):
+        lang = _request_lang(self.context.get('request'))
+        return _fallback_item_seo(
+            name=self.get_name(obj),
+            description=self.get_description(obj),
+            category_name=_localized_related_name(getattr(obj, "category", None), lang),
+            brand_name=_localized_related_name(getattr(obj, "brand", None), lang),
+            product_type=str(getattr(obj, "product_type", "") or "").replace("_", "-"),
+            lang=lang,
+            is_service=False,
+        )
+
+    def get_meta_title(self, obj):
+        return self._resolve_localized_seo(obj, "meta_title") or self._fallback_seo_defaults(obj)["meta_title"]
+
+    def get_meta_description(self, obj):
+        return self._resolve_localized_seo(obj, "meta_description") or self._fallback_seo_defaults(obj)["meta_description"]
+
+    def get_meta_keywords(self, obj):
+        return self._resolve_localized_seo(obj, "meta_keywords") or self._fallback_seo_defaults(obj)["meta_keywords"]
+
+    def get_og_title(self, obj):
+        return self._resolve_localized_seo(obj, "og_title") or self.get_meta_title(obj)
+
+    def get_og_description(self, obj):
+        return self._resolve_localized_seo(obj, "og_description") or self.get_meta_description(obj)
+
+    def get_og_image_url(self, obj):
+        return self._resolve_localized_seo(obj, "og_image_url") or self.get_main_image_url(obj)
 
     def get_translations(self, obj):
         # Retrieve pre-fetched translations if any
@@ -4330,6 +4414,12 @@ class ServiceSerializer(serializers.ModelSerializer):
     price = serializers.SerializerMethodField()
     currency = serializers.SerializerMethodField()
     price_formatted = serializers.SerializerMethodField()
+    meta_title = serializers.SerializerMethodField()
+    meta_description = serializers.SerializerMethodField()
+    meta_keywords = serializers.SerializerMethodField()
+    og_title = serializers.SerializerMethodField()
+    og_description = serializers.SerializerMethodField()
+    og_image_url = serializers.SerializerMethodField()
     translations = ServiceTranslationSerializer(many=True, read_only=True)
     images = ServiceImageSerializer(many=True, read_only=True)
     gallery = ServiceImageSerializer(source='images', many=True, read_only=True)
@@ -4427,6 +4517,35 @@ class ServiceSerializer(serializers.ModelSerializer):
         if price is not None:
             return f"{price} {preferred_currency}"
         return None
+
+    def _fallback_seo_defaults(self, obj):
+        lang = _request_lang(self.context.get('request'))
+        return _fallback_item_seo(
+            name=self.get_name(obj),
+            description=self.get_description(obj),
+            category_name=_localized_related_name(getattr(obj, "category", None), lang),
+            product_type="uslugi",
+            lang=lang,
+            is_service=True,
+        )
+
+    def get_meta_title(self, obj):
+        return _first_non_empty(getattr(obj, "meta_title", ""), self._fallback_seo_defaults(obj)["meta_title"])
+
+    def get_meta_description(self, obj):
+        return _first_non_empty(getattr(obj, "meta_description", ""), self._fallback_seo_defaults(obj)["meta_description"])
+
+    def get_meta_keywords(self, obj):
+        return _first_non_empty(getattr(obj, "meta_keywords", ""), self._fallback_seo_defaults(obj)["meta_keywords"])
+
+    def get_og_title(self, obj):
+        return _first_non_empty(getattr(obj, "og_title", ""), self.get_meta_title(obj))
+
+    def get_og_description(self, obj):
+        return _first_non_empty(getattr(obj, "og_description", ""), self.get_meta_description(obj))
+
+    def get_og_image_url(self, obj):
+        return _first_non_empty(getattr(obj, "og_image_url", ""), self.get_main_image_url(obj))
 
 
 def _banner_api_language(context):
@@ -5458,6 +5577,37 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
                 return ProductImageSerializer(base.images.all(), many=True, context=from_context).data
                 
         return image_serializer(imgs, many=True, context=from_context).data
+
+    def _fallback_seo_defaults(self, obj):
+        lang = _request_lang(self.context.get('request'))
+        product_type = self.get_product_type(obj) or str(getattr(obj, "product_type", "") or "").replace("_", "-")
+        return _fallback_item_seo(
+            name=str(getattr(obj, "name", "") or "").strip(),
+            description=str(getattr(obj, "description", "") or "").strip(),
+            category_name=_localized_related_name(getattr(obj, "category", None), lang),
+            brand_name=_localized_related_name(getattr(obj, "brand", None), lang),
+            product_type=product_type,
+            lang=lang,
+            is_service=False,
+        )
+
+    def get_meta_title(self, obj):
+        return self._resolve_localized_seo(obj, "meta_title") or self._fallback_seo_defaults(obj)["meta_title"]
+
+    def get_meta_description(self, obj):
+        return self._resolve_localized_seo(obj, "meta_description") or self._fallback_seo_defaults(obj)["meta_description"]
+
+    def get_meta_keywords(self, obj):
+        return self._resolve_localized_seo(obj, "meta_keywords") or self._fallback_seo_defaults(obj)["meta_keywords"]
+
+    def get_og_title(self, obj):
+        return self._resolve_localized_seo(obj, "og_title") or self.get_meta_title(obj)
+
+    def get_og_description(self, obj):
+        return self._resolve_localized_seo(obj, "og_description") or self.get_meta_description(obj)
+
+    def get_og_image_url(self, obj):
+        return self._resolve_localized_seo(obj, "og_image_url") or self.get_main_image_url(obj)
 
 # ─── МЕДИКАМЕНТЫ ───
 

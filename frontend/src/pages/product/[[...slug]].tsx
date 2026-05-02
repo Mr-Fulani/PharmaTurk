@@ -19,6 +19,7 @@ import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, get
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl, pickPreferredVideoUrl } from '../../lib/media'
 import { getSiteOrigin } from '../../lib/urls'
 import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
+import { SITE_NAME } from '../../lib/siteMeta'
 import { useTheme } from '../../context/ThemeContext'
 
 type CategoryType = string
@@ -1253,6 +1254,31 @@ export default function ProductPage({
     (isEnglishLocale ? selectedVariant?.description_en : selectedVariant?.description) ||
     apiTranslation?.description ||
     product.description
+  const isService = productType === 'uslugi'
+  const seoCategoryName = product.category
+    ? getLocalizedCategoryName(product.category.slug, product.category.name, t, undefined, router.locale)
+    : ''
+  const seoBrandName = (product.brand?.name || '').trim()
+  const defaultMetaTitle = [
+    (displayProductName || product.name || '').trim(),
+    seoCategoryName && !String(displayProductName || product.name || '').toLowerCase().includes(seoCategoryName.toLowerCase())
+      ? seoCategoryName
+      : '',
+    SITE_NAME,
+  ].filter(Boolean).join(' | ')
+  const defaultMetaDescription = stripHtmlToPlainText(
+    localizedDescription ||
+    (
+      isService
+        ? t('service_page_seo_description', 'Закажите услугу {{name}} на {{site}}. Описание, стоимость и условия выполнения.', { name: displayProductName || product.name, site: SITE_NAME })
+        : t('product_page_seo_description', 'Купить {{name}}{{category}}{{brand}} на {{site}}. Актуальные цены, наличие и условия доставки.', {
+            name: displayProductName || product.name,
+            category: seoCategoryName ? ` в категории ${seoCategoryName}` : '',
+            brand: seoBrandName ? ` бренда ${seoBrandName}` : '',
+            site: SITE_NAME,
+          })
+    )
+  ).slice(0, 200).trim()
 
   const metaTitle = (
     apiTranslation?.meta_title || 
@@ -1260,16 +1286,16 @@ export default function ProductPage({
     (product.translations && product.translations.length > 0 ? '' : product.meta_title) || 
     (product.translations && product.translations.length > 0 ? '' : product.og_title) || 
     ''
-  ).trim() || `${displayProductName || product.name} — Mudaroba`
+  ).trim() || defaultMetaTitle
 
   const metaDescription = stripHtmlToPlainText(
     apiTranslation?.meta_description ||
     apiTranslation?.og_description ||
     (product.translations && product.translations.length > 0 ? '' : product.meta_description) ||
     (product.translations && product.translations.length > 0 ? '' : product.og_description) ||
-    localizedDescription ||
+    defaultMetaDescription ||
     ''
-  ).slice(0, 200).trim() || `${displayProductName || product.name} — ${t('buy_on_mudaroba', 'купить на Mudaroba')}`
+  ).slice(0, 200).trim() || defaultMetaDescription
   const metaKeywords = (
     apiTranslation?.meta_keywords ||
     (product.translations && product.translations.length > 0 ? '' : product.meta_keywords) ||
@@ -1284,7 +1310,7 @@ export default function ProductPage({
   const currencyForSchema = selectedVariant?.currency || product.active_variant_currency || product.currency
   const productSchema = {
     '@context': 'https://schema.org',
-    '@type': productType === 'books' ? 'Book' : 'Product',
+    '@type': productType === 'books' ? 'Book' : productType === 'uslugi' ? 'Service' : 'Product',
     name: displayProductName || product.name,
     description: metaDescription,
     image: ogImage,
@@ -1305,7 +1331,16 @@ export default function ProductPage({
       }
       : undefined,
   }
-  const isService = productType === 'uslugi'
+  const breadcrumbSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: breadcrumbs.map((item, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: item.label,
+      item: item.href === '#' ? canonicalUrl : `${siteUrl}${localePrefix}${item.href}`,
+    })),
+  }
   return (
     <>
       <Head>
@@ -1328,6 +1363,11 @@ export default function ProductPage({
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
+        />
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
         />
       </Head>
       <div className="mx-auto max-w-6xl px-3 pt-3 pb-0 sm:py-3 flex items-center justify-between overflow-x-auto no-scrollbar">
@@ -2664,7 +2704,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
       return {
         redirect: {
           destination: `${localePrefix}${canonicalPath}`,
-          permanent: false,
+          permanent: true,
         },
       }
     }
@@ -2678,7 +2718,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
           return {
             redirect: {
               destination: `${localePrefix}${buildProductUrl(fromApi, String(payload.slug || productSlug))}`,
-              permanent: false,
+              permanent: true,
             },
           }
         }
@@ -2697,7 +2737,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
       return {
         redirect: {
           destination: `${localePrefix}${buildProductUrl(actualType, baseSlug)}`,
-          permanent: false,
+          permanent: true,
         },
       }
     }
