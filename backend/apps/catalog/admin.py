@@ -397,7 +397,19 @@ class ServicePortfolioItemInline(AdminMediaHelpTextMixin, admin.StackedInline):
             obj = getattr(request, '_current_obj', None)
             queryset = Service.objects.filter(is_active=True)
             if obj:
-                queryset = queryset.filter(category_id=obj.id)
+                # Включаем саму категорию и все её подкатегории (рекурсивно)
+                category_ids = {obj.id}
+                current_parent_ids = [obj.id]
+                while current_parent_ids:
+                    child_ids = list(Category.objects.filter(
+                        parent_id__in=current_parent_ids
+                    ).values_list('id', flat=True))
+                    if not child_ids:
+                        break
+                    category_ids.update(child_ids)
+                    current_parent_ids = child_ids
+                
+                queryset = queryset.filter(category_id__in=category_ids)
             kwargs['queryset'] = queryset.order_by('name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
