@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { useRouter } from 'next/router'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useEffect, useState, useRef } from 'react'
 import api, { setPreferredCurrency } from '../lib/api'
 import { useTranslation } from 'next-i18next'
+import { motion, useReducedMotion } from 'framer-motion'
 import { useCartStore } from '../store/cart'
 import { useFavoritesStore } from '../store/favorites'
 import AnimatedLogoutButton from './AnimatedLogoutButton'
@@ -27,15 +29,22 @@ export default function Header() {
   const [showCurrencyMenu, setShowCurrencyMenu] = useState(false)
   const [currency, setCurrency] = useState('RUB')
   const [scrolled, setScrolled] = useState(false)
+  const [isLogoExpanded, setIsLogoExpanded] = useState(false)
+  const [isLogoHovered, setIsLogoHovered] = useState(false)
+  const [isTouchLogoMode, setIsTouchLogoMode] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const mobileSearchRef = useRef<HTMLDivElement>(null)
   const currencyRef = useRef<HTMLDivElement>(null)
   const mobileCurrencyRef = useRef<HTMLDivElement>(null)
+  const logoRef = useRef<HTMLAnchorElement>(null)
   const favoritesRefreshedRef = useRef(false)
   const { t } = useTranslation('common')
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
+  const prefersReducedMotion = useReducedMotion()
   const currencyOptions = ['RUB', 'USD', 'EUR', 'TRY', 'KZT', 'USDT']
+  const logoLetters = 'MUDAROBA'.split('')
+  const isLogoLabelVisible = isTouchLogoMode ? isLogoExpanded : isLogoHovered
 
   useEffect(() => {
     setIsClient(true)
@@ -45,6 +54,23 @@ export default function Header() {
       refreshFavorites()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const mediaQuery = window.matchMedia('(hover: none), (pointer: coarse)')
+    const syncTouchMode = () => {
+      const nextIsTouch = mediaQuery.matches
+      setIsTouchLogoMode(nextIsTouch)
+      if (!nextIsTouch) {
+        setIsLogoExpanded(false)
+      }
+    }
+
+    syncTouchMode()
+    mediaQuery.addEventListener('change', syncTouchMode)
+    return () => mediaQuery.removeEventListener('change', syncTouchMode)
   }, [])
 
   const handleCurrencyChange = async (nextCurrency: string) => {
@@ -118,17 +144,34 @@ export default function Header() {
       if (!isInsideCurrency) {
         setShowCurrencyMenu(false)
       }
+      if (logoRef.current && !logoRef.current.contains(target)) {
+        setIsLogoExpanded(false)
+      }
     }
-    if (showSuggestions || showCurrencyMenu) {
+    if (showSuggestions || showCurrencyMenu || isLogoExpanded) {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [showSuggestions, showCurrencyMenu])
+  }, [showSuggestions, showCurrencyMenu, isLogoExpanded])
 
   const goSearch = () => {
     const q = query.trim()
     if (!q) return
     router.push({ pathname: '/search', query: { query: q } })
+  }
+
+  const handleLogoClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (!isTouchLogoMode) return
+
+    if (!isLogoExpanded) {
+      event.preventDefault()
+      setIsLogoExpanded(true)
+      setShowSuggestions(false)
+      setShowCurrencyMenu(false)
+      return
+    }
+
+    setIsLogoExpanded(false)
   }
 
   const toggleLocale = () => {
@@ -184,23 +227,84 @@ export default function Header() {
       }`}>
       <div className="mx-auto w-full max-w-6xl px-3 sm:px-6">
         <div className={`flex items-center justify-between gap-3 transition-all duration-300 ${scrolled ? 'py-1.5' : 'py-3'}`}>
-          <Link href="/" className="flex items-center gap-2.5 transition-all duration-300 hover:opacity-90 group">
-            <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className={`flex-shrink-0 transition-transform duration-300 group-hover:scale-105 ${isDark ? 'drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]' : 'drop-shadow-md'}`}>
-              <defs>
-                <linearGradient id={`logo-grad-${isDark ? 'dark' : 'light'}`} x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-                  <stop stopColor={isDark ? "#ef4444" : "#dc2626"} />
-                  <stop offset="1" stopColor={isDark ? "#b91c1c" : "#991b1b"} />
-                </linearGradient>
-              </defs>
-              <rect width="40" height="40" rx="10" fill={`url(#logo-grad-${isDark ? 'dark' : 'light'})`} />
-              <path d="M7 23H10.5L14.5 13L20 28L25.5 13L29.5 23H33" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-              <circle cx="33" cy="23" r="1.5" fill="white" />
-            </svg>
-            <div className="flex flex-col justify-center">
-              <span className={`text-xl font-black tracking-tight leading-none ${isDark ? 'text-slate-50' : 'text-gray-900'}`}>
-                MUDAROBA<sup className="text-[0.55em] font-bold ml-0.5 opacity-70">TM</sup>
-              </span>
-            </div>
+          <Link
+            href="/"
+            ref={logoRef}
+            onClick={handleLogoClick}
+            onMouseEnter={() => setIsLogoHovered(true)}
+            onMouseLeave={() => setIsLogoHovered(false)}
+            className="group relative flex items-center gap-0 overflow-visible transition-all duration-300 hover:opacity-90"
+            aria-label="MUDAROBA"
+            title="MUDAROBA"
+          >
+            <motion.div
+              animate={prefersReducedMotion ? undefined : { scale: isLogoLabelVisible ? 1.04 : 1 }}
+              transition={{ duration: 0.28, ease: 'easeOut' }}
+              className="relative z-10 flex-shrink-0"
+            >
+              <svg width="34" height="34" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className={`${isDark ? 'drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]' : 'drop-shadow-md'}`}>
+                <defs>
+                  <linearGradient id={`logo-grad-${isDark ? 'dark' : 'light'}`} x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+                    <stop stopColor={isDark ? "#ef4444" : "#dc2626"} />
+                    <stop offset="1" stopColor={isDark ? "#b91c1c" : "#991b1b"} />
+                  </linearGradient>
+                </defs>
+                <rect width="40" height="40" rx="10" fill={`url(#logo-grad-${isDark ? 'dark' : 'light'})`} />
+                <path d="M7 23H10.5L14.5 13L20 28L25.5 13L29.5 23H33" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="33" cy="23" r="1.5" fill="white" />
+              </svg>
+            </motion.div>
+            <motion.div
+              initial={false}
+              animate={prefersReducedMotion
+                ? { width: isLogoLabelVisible ? 'auto' : 0, opacity: isLogoLabelVisible ? 1 : 0 }
+                : { width: isLogoLabelVisible ? 154 : 0, opacity: isLogoLabelVisible ? 1 : 0, x: isLogoLabelVisible ? 0 : -18 }}
+              transition={prefersReducedMotion
+                ? { duration: 0.18 }
+                : { duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              className="pointer-events-none flex items-center overflow-hidden"
+            >
+              <motion.div
+                initial={false}
+                animate={prefersReducedMotion
+                  ? undefined
+                  : { filter: isLogoLabelVisible ? 'blur(0px)' : 'blur(6px)' }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className={`ml-2.5 flex items-end whitespace-nowrap ${isDark ? 'text-slate-50' : 'text-gray-900'}`}
+              >
+                <span className="flex items-center text-xl font-black tracking-[0.08em] leading-none">
+                  {logoLetters.map((letter, index) => (
+                    <motion.span
+                      key={`${letter}-${index}`}
+                      initial={false}
+                      animate={prefersReducedMotion
+                        ? { opacity: isLogoLabelVisible ? 1 : 0 }
+                        : {
+                            opacity: isLogoLabelVisible ? 1 : 0,
+                            x: isLogoLabelVisible ? 0 : -10,
+                            rotate: isLogoLabelVisible ? 0 : -8
+                          }}
+                      transition={prefersReducedMotion
+                        ? { duration: 0.12 }
+                        : { duration: 0.28, delay: isLogoLabelVisible ? index * 0.03 : 0, ease: 'easeOut' }}
+                      className="inline-block"
+                    >
+                      {letter}
+                    </motion.span>
+                  ))}
+                </span>
+                <motion.sup
+                  initial={false}
+                  animate={prefersReducedMotion
+                    ? { opacity: isLogoLabelVisible ? 0.7 : 0 }
+                    : { opacity: isLogoLabelVisible ? 0.72 : 0, y: isLogoLabelVisible ? 0 : 4 }}
+                  transition={{ duration: 0.22, delay: isLogoLabelVisible ? 0.22 : 0, ease: 'easeOut' }}
+                  className="mb-3 ml-0.5 text-[0.55em] font-bold"
+                >
+                  TM
+                </motion.sup>
+              </motion.div>
+            </motion.div>
           </Link>
           <div className="hidden flex-1 items-center gap-3 md:flex">
             <div ref={searchRef} className="relative flex w-full max-w-xl items-center">
