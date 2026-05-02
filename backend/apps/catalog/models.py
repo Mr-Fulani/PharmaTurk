@@ -4,7 +4,8 @@ import logging
 import uuid
 from urllib.parse import urlparse, urlunparse
 from django.conf import settings
-from django.db import models
+from django.db import connection, models
+from django.db.utils import OperationalError, ProgrammingError
 from django.db.models import Q
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
@@ -71,6 +72,34 @@ TOP_CATEGORY_SLUG_CHOICES = [
     ("islamic-clothing", "islamic-clothing"),
     ("incense", "incense"),
 ]
+
+
+def service_portfolio_translation_fields_ready() -> bool:
+    """
+    Проверяет, применены ли миграции EN-полей для ServicePortfolioItem.
+
+    Нужен как безопасный guard на время деплоя, когда код уже обновлён,
+    а миграции на проде ещё не применились.
+    """
+    try:
+        with connection.cursor() as cursor:
+            columns = {
+                column.name
+                for column in connection.introspection.get_table_description(
+                    cursor,
+                    "catalog_serviceportfolioitem",
+                )
+            }
+    except (OperationalError, ProgrammingError):
+        return False
+
+    required_columns = {
+        "title_en",
+        "description_en",
+        "result_summary_en",
+        "alt_text_en",
+    }
+    return required_columns.issubset(columns)
 
 
 def _catalog_site_name() -> str:
@@ -3603,6 +3632,116 @@ class ServiceImage(models.Model):
 
     def __str__(self):
         return f"Media for {self.service.name}"
+
+
+class ServicePortfolioItem(models.Model):
+    """Портфолио/кейсы работ для категорий и услуг."""
+
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.CASCADE,
+        related_name="service_portfolio_items",
+        verbose_name=_("Категория услуг"),
+    )
+    service = models.ForeignKey(
+        Service,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="portfolio_items",
+        verbose_name=_("Связанная услуга"),
+    )
+    title = models.CharField(_("Заголовок кейса"), max_length=255)
+    title_en = models.CharField(_("Заголовок кейса (EN)"), max_length=255, blank=True)
+    description = models.TextField(_("Описание кейса"), blank=True)
+    description_en = models.TextField(_("Описание кейса (EN)"), blank=True)
+    result_summary = models.CharField(
+        _("Краткий результат"),
+        max_length=255,
+        blank=True,
+        help_text=_("Короткий итог работы, например: Ремонт ванной за 12 дней."),
+    )
+    result_summary_en = models.CharField(
+        _("Краткий результат (EN)"),
+        max_length=255,
+        blank=True,
+        help_text=_("Короткий итог работы на английском языке."),
+    )
+    city = models.CharField(_("Город"), max_length=120, blank=True)
+    image_file = models.ImageField(
+        _("Изображение (файл)"),
+        upload_to=get_service_image_upload_path,
+        null=True,
+        blank=True,
+        help_text=_("Фото выполненной работы. Можно загрузить файл или указать внешний URL."),
+    )
+    image_url = models.URLField(
+        _("URL изображения"),
+        blank=True,
+        max_length=2000,
+        help_text=_("Внешняя ссылка на фото выполненной работы."),
+    )
+    before_image_file = models.ImageField(
+        _("Фото до (файл)"),
+        upload_to=get_service_image_upload_path,
+        null=True,
+        blank=True,
+        help_text=_("Фото объекта до начала работ."),
+    )
+    before_image_url = models.URLField(
+        _("URL фото до"),
+        blank=True,
+        max_length=2000,
+        help_text=_("Внешняя ссылка на фото объекта до начала работ."),
+    )
+    after_image_file = models.ImageField(
+        _("Фото после (файл)"),
+        upload_to=get_service_image_upload_path,
+        null=True,
+        blank=True,
+        help_text=_("Фото объекта после завершения работ."),
+    )
+    after_image_url = models.URLField(
+        _("URL фото после"),
+        blank=True,
+        max_length=2000,
+        help_text=_("Внешняя ссылка на фото объекта после завершения работ."),
+    )
+    video_file = models.FileField(
+        _("Видео (файл)"),
+        upload_to=get_service_image_upload_path,
+        null=True,
+        blank=True,
+        validators=[
+            FileExtensionValidator(allowed_extensions=SERVICE_VIDEO_ALLOWED_EXTENSIONS),
+            validate_service_video_file_size,
+        ],
+        help_text=_("Видео выполненной работы. Поддерживаются MP4, MOV, WEBM, M4V, AVI, MKV до 100 МБ."),
+    )
+    video_url = models.URLField(
+        _("URL видео"),
+        blank=True,
+        max_length=2000,
+        help_text=_("Внешняя ссылка на видео выполненной работы."),
+    )
+    alt_text = models.CharField(_("Alt текст"), max_length=255, blank=True)
+    alt_text_en = models.CharField(_("Alt текст (EN)"), max_length=255, blank=True)
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+    is_active = models.BooleanField(_("Активно"), default=True)
+    created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Кейс / работа услуги")
+        verbose_name_plural = _("Кейсы / работы услуг")
+        ordering = ["sort_order", "-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["category", "is_active"]),
+            models.Index(fields=["service", "is_active"]),
+        ]
+
+    def __str__(self):
+        return self.title or f"Portfolio for {self.category.name}"
 
 
 class ServiceTranslation(models.Model):

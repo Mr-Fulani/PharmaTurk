@@ -20,6 +20,7 @@ from .forms import (
     PRODUCT_CATEGORY_HELP,
 )
 from .admin_variant_ai import VariantAIAdminMixin
+from .admin_media import AdminMediaHelpTextMixin, resolve_media_url, render_media_preview
 from .models import (
     CategoryType, Category, CategoryTranslation, CategoryMedicines, CategorySupplements, CategoryMedicalEquipment,
     CategoryTableware, CategoryFurniture, CategoryAccessories, CategoryJewelry,
@@ -32,7 +33,8 @@ from .models import (
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     FurnitureProductImage,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
-    Service, ServiceTranslation, ServiceImage, ServiceAttribute, 
+    Service, ServiceTranslation, ServiceImage, ServicePortfolioItem, ServiceAttribute, 
+    service_portfolio_translation_fields_ready,
     GlobalAttributeKey, GlobalAttributeKeyTranslation, ProductAttributeValue,
     Banner, BannerMedia, BannerTranslation, BannerMediaTranslation,
     MarketingBanner, MarketingBannerMedia,
@@ -40,6 +42,16 @@ from .models import (
     # Валютные модели
     CurrencyRate, MarginSettings, ProductPrice, ServicePrice, CurrencyUpdateLog,
 )
+
+
+class MainMediaPreviewAdminMixin:
+    def main_media_preview(self, obj):
+        if not obj:
+            return _("Нет медиа")
+        image_url = resolve_media_url(obj, 'main_image_file', 'main_image') if hasattr(obj, 'main_image_file') else ""
+        video_url = resolve_media_url(obj, 'main_video_file', 'video_url') if hasattr(obj, 'main_video_file') else ""
+        return render_media_preview(image_url or video_url)
+    main_media_preview.short_description = _("Превью медиа")
 
 
 class TopLevelCategoryFilter(SimpleListFilter):
@@ -245,7 +257,7 @@ class FurnitureProductTranslationInline(admin.StackedInline):
     verbose_name_plural = _("Переводы")
 
 
-class FurnitureVariantInline(admin.TabularInline):
+class FurnitureVariantInline(AdminMediaHelpTextMixin, admin.TabularInline):
     """Инлайн для вариантов мебели (основные поля)."""
     model = FurnitureVariant
     extra = 0
@@ -261,7 +273,7 @@ class FurnitureVariantInline(admin.TabularInline):
     show_change_link = True
 
 
-class FurnitureVariantImageInline(admin.TabularInline):
+class FurnitureVariantImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     """Инлайн изображений варианта мебели."""
     model = FurnitureVariantImage
     extra = 1
@@ -269,18 +281,12 @@ class FurnitureVariantImageInline(admin.TabularInline):
     readonly_fields = ('image_preview',)
     
     def image_preview(self, obj):
-        """Превью изображения."""
         if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
-                return format_html(
-                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                    image_url
-                )
+            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'), max_width=120, max_height=60)
         return "-"
     image_preview.short_description = _("Превью")
 
-class FurnitureProductImageInline(admin.TabularInline):
+class FurnitureProductImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     """Инлайн изображений товара мебели (галерея)."""
     model = FurnitureProductImage
     extra = 1
@@ -288,14 +294,8 @@ class FurnitureProductImageInline(admin.TabularInline):
     readonly_fields = ('image_preview',)
 
     def image_preview(self, obj):
-        """Превью изображения."""
         if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
-                return format_html(
-                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                    image_url
-                )
+            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'), max_width=120, max_height=60)
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -320,13 +320,110 @@ class GlobalAttributeKeyAdmin(admin.ModelAdmin):
     inlines = [GlobalAttributeKeyTranslationInline]
     filter_horizontal = ('categories',)
 
-class ServiceImageInline(admin.TabularInline):
+class ServiceImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     """Inline для галереи изображений услуги."""
     model = ServiceImage
     extra = 1
-    fields = ('image_file', 'image_url', 'video_file', 'video_url', 'alt_text', 'sort_order', 'is_main')
+    fields = ('image_file', 'image_url', 'video_file', 'video_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
     verbose_name = _("Медиа в галерее")
     verbose_name_plural = _("Галерея медиа")
+
+    def image_preview(self, obj):
+        if obj:
+            url = resolve_media_url(obj, 'image_file', 'image_url') or resolve_media_url(obj, 'video_file', 'video_url')
+            return render_media_preview(url, max_width=120, max_height=60)
+        return "-"
+    image_preview.short_description = _("Превью")
+
+
+class ServicePortfolioItemInline(AdminMediaHelpTextMixin, admin.StackedInline):
+    """Inline для блока «Наши работы» у категорий услуг."""
+    model = ServicePortfolioItem
+    extra = 0
+    autocomplete_fields = ('service',)
+    fieldsets = (
+        (None, {
+            'fields': (
+                'service',
+                ('title', 'title_en'),
+                ('result_summary', 'result_summary_en'),
+                'city',
+                ('description', 'description_en'),
+            ),
+            'description': _('Основной контент кейса. Используйте английские поля для EN-версии сайта.'),
+        }),
+        (_('Медиа кейса'), {
+            'fields': (
+                ('image_file', 'image_url'),
+                'image_preview',
+                ('before_image_file', 'before_image_url'),
+                'before_image_preview',
+                ('after_image_file', 'after_image_url'),
+                'after_image_preview',
+                ('video_file', 'video_url'),
+                'video_preview',
+            ),
+            'description': _('Можно заполнить обычную обложку, режим до/после, видео или их комбинацию.'),
+        }),
+        (_('SEO и порядок'), {
+            'fields': (
+                ('alt_text', 'alt_text_en'),
+                ('sort_order', 'is_active'),
+            ),
+        }),
+    )
+    show_change_link = True
+    verbose_name = _("Кейс / работа")
+    verbose_name_plural = _("Наши работы")
+    readonly_fields = ('image_preview', 'before_image_preview', 'after_image_preview', 'video_preview')
+
+    def get_extra(self, request, obj=None, **kwargs):
+        if obj and obj.service_portfolio_items.exists():
+            return 0
+        return 1
+
+    def get_formset(self, request, obj=None, **kwargs):
+        request._current_obj = obj
+        return super().get_formset(request, obj, **kwargs)
+
+    def get_queryset(self, request):
+        if not service_portfolio_translation_fields_ready():
+            return super().get_queryset(request).none()
+        return super().get_queryset(request).select_related('service').order_by('sort_order', '-created_at', '-id')
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'service':
+            obj = getattr(request, '_current_obj', None)
+            queryset = Service.objects.filter(is_active=True)
+            if obj:
+                queryset = queryset.filter(category_id=obj.id)
+            kwargs['queryset'] = queryset.order_by('name')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def image_preview(self, obj):
+        if obj:
+            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'))
+        return _("Нет медиа")
+    image_preview.short_description = _("Превью обложки")
+
+    def before_image_preview(self, obj):
+        if obj:
+            return render_media_preview(resolve_media_url(obj, 'before_image_file', 'before_image_url'))
+        return _("Нет медиа")
+    before_image_preview.short_description = _("Превью «до»")
+
+    def after_image_preview(self, obj):
+        if obj:
+            return render_media_preview(resolve_media_url(obj, 'after_image_file', 'after_image_url'))
+        return _("Нет медиа")
+    after_image_preview.short_description = _("Превью «после»")
+
+    def video_preview(self, obj):
+        if obj:
+            return render_media_preview(resolve_media_url(obj, 'video_file', 'video_url'))
+        return _("Нет медиа")
+    video_preview.short_description = _("Превью видео")
 
 class ServiceAttributeInline(admin.TabularInline):
     """Inline для атрибутов услуги (площадь, срок, формат и т.д.)."""
@@ -420,7 +517,7 @@ def _category_level_display(obj):
     return "L3+"
 
 
-class BaseCategoryAdmin(admin.ModelAdmin):
+class BaseCategoryAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
     """Базовый админ для прокси категорий с фильтром по типу."""
     form = CategoryFormCatalogHints
     required_category_type_slug: str | None = None
@@ -440,8 +537,9 @@ class BaseCategoryAdmin(admin.ModelAdmin):
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
     autocomplete_fields = ('category_type',)
-    inlines = [CategoryTranslationInline]
+    inlines = [CategoryTranslationInline, ServicePortfolioItemInline]
     list_select_related = ('category_type', 'parent', 'parent__parent')
+    readonly_fields = ('card_media_preview',)
     fieldsets = (
         (None, {
             'fields': ('name', 'slug', 'description'),
@@ -456,7 +554,7 @@ class BaseCategoryAdmin(admin.ModelAdmin):
             'description': CATEGORY_HIERARCHY_DESCRIPTION,
         }),
         (_('Медиа карточки'), {
-            'fields': ('card_media', 'card_media_external_url'),
+            'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),
             'description': _('Это медиа самой категории. Используется в карточках/hero категории и как fallback для OG image. Можно указать файл или внешнюю ссылку (CDN/S3). Внешняя ссылка приоритетнее.'),
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
@@ -472,11 +570,26 @@ class BaseCategoryAdmin(admin.ModelAdmin):
         return _category_level_display(obj)
     level_display.short_description = _("Уровень")
 
+    def card_media_preview(self, obj):
+        if obj and hasattr(obj, 'get_card_media_url'):
+            return render_media_preview(obj.get_card_media_url())
+        return _("Нет медиа")
+    card_media_preview.short_description = _("Превью медиа")
+
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         if self.required_category_type_slug:
             qs = qs.filter(category_type__slug=self.required_category_type_slug)
         return qs
+
+    def get_inlines(self, request, obj):
+        if not service_portfolio_translation_fields_ready():
+            return [CategoryTranslationInline]
+        if self.required_category_type_slug == 'uslugi':
+            return self.inlines
+        if obj and getattr(getattr(obj, 'category_type', None), 'slug', None) == 'uslugi':
+            return self.inlines
+        return [CategoryTranslationInline]
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'parent' and self.required_category_type_slug:
@@ -500,7 +613,7 @@ class BaseCategoryAdmin(admin.ModelAdmin):
 
 
 @admin.register(Category)
-class AllCategoriesAdmin(admin.ModelAdmin):
+class AllCategoriesAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
     """Единый список всех категорий (корневые и подкатегории)."""
     form = CategoryFormCatalogHints
     list_display = ('name', 'slug', 'category_type', 'level_display', 'parent_display', 'is_active', 'sort_order', 'created_at')
@@ -517,9 +630,10 @@ class AllCategoriesAdmin(admin.ModelAdmin):
     ordering = ('sort_order', 'name')
     prepopulated_fields = {'slug': ('name',)}
     autocomplete_fields = ('category_type', 'parent')
-    inlines = [CategoryTranslationInline]
+    inlines = [CategoryTranslationInline, ServicePortfolioItemInline]
     list_select_related = ('category_type', 'parent', 'parent__parent')
 
+    readonly_fields = ('card_media_preview',)
     fieldsets = (
         (None, {
             'fields': ('name', 'slug', 'description'),
@@ -534,7 +648,7 @@ class AllCategoriesAdmin(admin.ModelAdmin):
             'description': CATEGORY_HIERARCHY_DESCRIPTION,
         }),
         (_('Медиа карточки'), {
-            'fields': ('card_media', 'card_media_external_url'),
+            'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),
             'description': _('Это медиа самой категории. Используется в карточках/hero категории и как fallback для OG image.'),
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
@@ -554,6 +668,12 @@ class AllCategoriesAdmin(admin.ModelAdmin):
         return obj.parent.name if obj.parent else "—"
     parent_display.short_description = _("Родитель")
 
+    def card_media_preview(self, obj):
+        if obj and hasattr(obj, 'get_card_media_url'):
+            return render_media_preview(obj.get_card_media_url())
+        return _("Нет медиа")
+    card_media_preview.short_description = _("Превью медиа")
+
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'parent':
             from .models import Category
@@ -561,6 +681,13 @@ class AllCategoriesAdmin(admin.ModelAdmin):
                 is_active=True,
             ).order_by('sort_order', 'name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_inlines(self, request, obj):
+        if not service_portfolio_translation_fields_ready():
+            return [CategoryTranslationInline]
+        if obj and getattr(getattr(obj, 'category_type', None), 'slug', None) == 'uslugi':
+            return self.inlines
+        return [CategoryTranslationInline]
 
 
 @admin.register(CategoryMedicines)
@@ -657,7 +784,7 @@ class CategoryIncenseAdmin(BaseCategoryAdmin):
 
 
 @admin.register(Brand)
-class BrandAdmin(admin.ModelAdmin):
+class BrandAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
     """Админка для брендов."""
     form = BrandAdminForm
     list_display = ('name', 'slug', 'primary_category_slug', 'is_active', 'created_at')
@@ -667,10 +794,11 @@ class BrandAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     inlines = [BrandTranslationInline]
     
+    readonly_fields = ('card_media_preview',)
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Media'), {
-            'fields': ('logo', 'card_media', 'card_media_external_url', 'website'),
+            'fields': ('logo', 'card_media', 'card_media_external_url', 'card_media_preview', 'website'),
             'description': _('Файл или внешняя ссылка (CDN/S3) для карточки бренда; ссылка приоритетнее файла.'),
         }),
         (_('Settings'), {'fields': ('is_active',)}),
@@ -681,8 +809,14 @@ class BrandAdmin(admin.ModelAdmin):
         (_('External'), {'fields': ('external_id', 'external_data')}),
     )
 
+    def card_media_preview(self, obj):
+        if obj and hasattr(obj, 'get_card_media_url'):
+            return render_media_preview(obj.get_card_media_url())
+        return _("Нет медиа")
+    card_media_preview.short_description = _("Превью медиа")
 
-class ProductImageInline(admin.TabularInline):
+
+class ProductImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     """Инлайн для изображений товара."""
     model = ProductImage
     extra = 1
@@ -691,25 +825,15 @@ class ProductImageInline(admin.TabularInline):
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
-        """Превью изображения."""
         if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
-                return format_html(
-                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                    image_url
-                )
-            video_url = obj.video_file.url if obj.video_file else obj.video_url
-            if video_url:
-                return format_html(
-                    '<video src="{}" style="max-width: 120px; max-height: 60px;" muted playsinline></video>',
-                    video_url
-                )
+            image_url = resolve_media_url(obj, 'image_file', 'image_url')
+            video_url = resolve_media_url(obj, 'video_file', 'video_url')
+            return render_media_preview(image_url or video_url, max_width=120, max_height=60)
         return "-"
     image_preview.short_description = _("Превью")
 
 
-class ShoeProductImageInline(admin.TabularInline):
+class ShoeProductImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     """Инлайн для изображений обуви."""
     model = ShoeProductImage
     extra = 1
@@ -718,19 +842,13 @@ class ShoeProductImageInline(admin.TabularInline):
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
-        """Превью изображения."""
         if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
-                return format_html(
-                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                    image_url
-                )
+            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'), max_width=120, max_height=60)
         return "-"
     image_preview.short_description = _("Превью")
 
 
-class ClothingProductImageInline(admin.TabularInline):
+class ClothingProductImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     """Инлайн для изображений одежды."""
     model = ClothingProductImage
     extra = 1
@@ -739,19 +857,13 @@ class ClothingProductImageInline(admin.TabularInline):
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
-        """Превью изображения."""
         if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
-                return format_html(
-                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                    image_url
-                )
+            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'), max_width=120, max_height=60)
         return "-"
     image_preview.short_description = _("Превью")
 
 
-class ElectronicsProductImageInline(admin.TabularInline):
+class ElectronicsProductImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     """Инлайн для изображений электроники."""
     model = ElectronicsProductImage
     extra = 1
@@ -760,19 +872,13 @@ class ElectronicsProductImageInline(admin.TabularInline):
     formset = ProductImageInlineFormSet
 
     def image_preview(self, obj):
-        """Превью изображения."""
         if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
-                return format_html(
-                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                    image_url
-                )
+            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'), max_width=120, max_height=60)
         return "-"
     image_preview.short_description = _("Превью")
 
 
-class ClothingVariantImageInline(admin.TabularInline):
+class ClothingVariantImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     """Инлайн для изображений варианта одежды."""
     model = ClothingVariantImage
     extra = 1
@@ -781,19 +887,13 @@ class ClothingVariantImageInline(admin.TabularInline):
     formset = VariantImageInlineFormSet
 
     def image_preview(self, obj):
-        """Превью изображения."""
         if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
-                return format_html(
-                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                    image_url
-                )
+            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'), max_width=120, max_height=60)
         return "-"
     image_preview.short_description = _("Превью")
 
 
-class ShoeVariantImageInline(admin.TabularInline):
+class ShoeVariantImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     """Инлайн для изображений варианта обуви."""
     model = ShoeVariantImage
     extra = 1
@@ -802,21 +902,15 @@ class ShoeVariantImageInline(admin.TabularInline):
     formset = VariantImageInlineFormSet
 
     def image_preview(self, obj):
-        """Превью изображения."""
         if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
-                return format_html(
-                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                    image_url
-                )
+            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'), max_width=120, max_height=60)
         return "-"
     image_preview.short_description = _("Превью")
 
 # RunAIActionMixin and get_ai_status are now imported from .admin_base
 
 
-class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
+class BaseProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, RunAIActionMixin, admin.ModelAdmin):
     """Базовый админ для товаров (используется прокси)."""
     form = ProductForm
     actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
@@ -835,7 +929,7 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     )
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
-    readonly_fields = ('last_synced_at', 'slug_preview')
+    readonly_fields = ('last_synced_at', 'slug_preview', 'main_media_preview')
     autocomplete_fields = ('category', 'brand')
     
     fieldsets = (
@@ -876,7 +970,10 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
                 "Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара."
             )
         }),
-        (_('Медиа'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
+        (_('Медиа'), {
+            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file', 'main_media_preview'),
+            'description': _('Основное медиа товара. Можно использовать внешний URL или загруженный файл.'),
+        }),
         (_('Мета'), {'fields': ('sku', 'barcode')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Синхронизация'), {'fields': ('last_synced_at',)}),
@@ -890,6 +987,14 @@ class BaseProductAdmin(RunAIActionMixin, admin.ModelAdmin):
             return format_html('<code>{}</code>', obj.slug)
         return "-"
     slug_preview.short_description = _("Slug (предпросмотр)")
+
+    def main_media_preview(self, obj):
+        if not obj:
+            return _("Нет медиа")
+        image_url = resolve_media_url(obj, 'main_image_file', 'main_image')
+        video_url = resolve_media_url(obj, 'main_video_file', 'video_url')
+        return render_media_preview(image_url or video_url)
+    main_media_preview.short_description = _("Превью медиа")
 
 
 class CategoryTypeFilterMixin:
@@ -988,7 +1093,7 @@ class ProductAdmin(BaseProductAdmin):
 
 
 @admin.register(ProductImage)
-class ProductImageAdmin(admin.ModelAdmin):
+class ProductImageAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
     """Админка для изображений товаров."""
     list_display = (
         'product',
@@ -1018,20 +1123,10 @@ class ProductImageAdmin(admin.ModelAdmin):
     )
 
     def image_preview(self, obj):
-        """Превью изображения."""
         if obj:
-            image_url = obj.image_file.url if obj.image_file else obj.image_url
-            if image_url:
-                return format_html(
-                    '<img src="{}" style="max-width: 120px; max-height: 60px;" />',
-                    image_url
-                )
-            video_url = obj.video_file.url if obj.video_file else obj.video_url
-            if video_url:
-                return format_html(
-                    '<video src="{}" style="max-width: 120px; max-height: 60px;" muted playsinline></video>',
-                    video_url
-                )
+            image_url = resolve_media_url(obj, 'image_file', 'image_url')
+            video_url = resolve_media_url(obj, 'video_file', 'video_url')
+            return render_media_preview(image_url or video_url, max_width=120, max_height=60)
         return "-"
     image_preview.short_description = _("Превью")
 @admin.register(PriceHistory)
@@ -1153,7 +1248,7 @@ class ClothingProductSizeInline(admin.TabularInline):
 
 
 @admin.register(ClothingVariant)
-class ClothingVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
+class ClothingVariantAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, VariantAIAdminMixin, admin.ModelAdmin):
     """Отдельная админка варианта одежды (для картинок)."""
     list_display = (
         'name',
@@ -1175,7 +1270,7 @@ class ClothingVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     list_filter = ('is_active', 'color', 'currency', 'created_at')
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
-    readonly_fields = ('slug',)
+    readonly_fields = ('slug', 'main_media_preview')
     actions = [activate_variants, deactivate_variants]
     fieldsets = (
         (None, {'fields': ('product', 'name', 'name_en', 'slug')}),
@@ -1184,7 +1279,10 @@ class ClothingVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
             'description': _("Размеры задайте в таблице размеров ниже.")
         }),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Медиа'), {
+            'fields': ('main_image', 'main_image_file', 'main_media_preview'),
+            'description': _("Можно использовать внешний URL или загруженный файл."),
+        }),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
@@ -1252,6 +1350,11 @@ class ClothingVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
         return '-' if val is None else val
     try_price_with_margin.short_description = _('TRY*')
 
+    def main_media_preview(self, obj):
+        if not obj:
+            return _("Нет медиа")
+        return render_media_preview(resolve_media_url(obj, 'main_image_file', 'main_image'))
+
 
 def _product_category_path(obj):
     """Путь категории для отображения в списке товаров: L1 › L2 › L3."""
@@ -1261,7 +1364,7 @@ def _product_category_path(obj):
 
 
 @admin.register(ClothingProduct)
-class ClothingProductAdmin(CategoryFieldFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
+class ClothingProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, CategoryFieldFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров одежды."""
     category_field_name = "clothing_type"
@@ -1286,7 +1389,7 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, ShadowProductCleanupAdminMi
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
     exclude = ('size', 'color')
-    readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
+    readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview', 'main_media_preview')
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
@@ -1303,7 +1406,10 @@ class ClothingProductAdmin(CategoryFieldFilterMixin, ShadowProductCleanupAdminMi
             ),
             'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
-        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Media'), {
+            'fields': ('main_image', 'main_image_file', 'main_media_preview'),
+            'description': _("Основное медиа товара. Можно использовать внешний URL или загруженный файл."),
+        }),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
@@ -1537,7 +1643,7 @@ class ShoeVariantSizeInline(admin.TabularInline):
 
 
 @admin.register(ShoeVariant)
-class ShoeVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
+class ShoeVariantAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, VariantAIAdminMixin, admin.ModelAdmin):
     """Отдельная админка варианта обуви (для картинок)."""
     list_display = (
         'name',
@@ -1559,7 +1665,7 @@ class ShoeVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     list_filter = ('is_active', 'color', 'currency', 'created_at')
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn')
     ordering = ('product', 'sort_order', '-created_at')
-    readonly_fields = ('slug',)
+    readonly_fields = ('slug', 'main_media_preview')
     actions = [activate_variants, deactivate_variants]
     fieldsets = (
         (None, {'fields': ('product', 'name', 'name_en', 'slug')}),
@@ -1568,7 +1674,10 @@ class ShoeVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
             'description': _("Размеры задайте в таблице размеров ниже.")
         }),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Медиа'), {
+            'fields': ('main_image', 'main_image_file', 'main_media_preview'),
+            'description': _("Можно использовать внешний URL или загруженный файл."),
+        }),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
@@ -1636,6 +1745,11 @@ class ShoeVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
         return '-' if val is None else val
     try_price_with_margin.short_description = _('TRY*')
 
+    def main_media_preview(self, obj):
+        if not obj:
+            return _("Нет медиа")
+        return render_media_preview(resolve_media_url(obj, 'main_image_file', 'main_image'))
+
 
 def shoe_product_changelist_canonical_queryset(queryset):
     """
@@ -1682,7 +1796,7 @@ class ShoeProductListScopeFilter(SimpleListFilter):
 
 
 @admin.register(ShoeProduct)
-class ShoeProductAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
+class ShoeProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров обуви."""
 
@@ -1726,7 +1840,7 @@ class ShoeProductAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.M
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
     exclude = ('size', 'color')
-    readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
+    readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview', 'main_media_preview')
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
@@ -1743,7 +1857,10 @@ class ShoeProductAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.M
             ),
             'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
-        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Media'), {
+            'fields': ('main_image', 'main_image_file', 'main_media_preview'),
+            'description': _("Основное медиа товара. Можно использовать внешний URL или загруженный файл."),
+        }),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
@@ -1944,7 +2061,7 @@ class ElectronicsCategoryAdmin(admin.ModelAdmin):
 
 
 @admin.register(ElectronicsProduct)
-class ElectronicsProductAdmin(CategoryFieldFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
+class ElectronicsProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, CategoryFieldFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров электроники."""
     category_field_name = "device_type"
@@ -1968,6 +2085,7 @@ class ElectronicsProductAdmin(CategoryFieldFilterMixin, ShadowProductCleanupAdmi
     search_fields = ('name', 'slug', 'description', 'model')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ('main_media_preview',)
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
@@ -1985,7 +2103,10 @@ class ElectronicsProductAdmin(CategoryFieldFilterMixin, ShadowProductCleanupAdmi
             ),
             'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
-        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Media'), {
+            'fields': ('main_image', 'main_image_file', 'main_media_preview'),
+            'description': _("Основное медиа товара. Можно использовать внешний URL или загруженный файл."),
+        }),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
@@ -1993,13 +2114,13 @@ class ElectronicsProductAdmin(CategoryFieldFilterMixin, ShadowProductCleanupAdmi
 
 
 @admin.register(FurnitureVariant)
-class FurnitureVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
+class FurnitureVariantAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, VariantAIAdminMixin, admin.ModelAdmin):
     """Отдельная админка варианта мебели (для картинок)."""
     list_display = ('name', 'product', 'color', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'color', 'currency', 'created_at')
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn', 'external_id')
     ordering = ('product', 'sort_order', '-created_at')
-    readonly_fields = ('slug',)
+    readonly_fields = ('slug', 'main_media_preview')
     actions = [activate_variants, deactivate_variants]
     fieldsets = (
         (None, {'fields': ('product', 'name', 'name_en', 'slug')}),
@@ -2007,7 +2128,10 @@ class FurnitureVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
             'fields': ('color',),
         }),
         (_('Цены и наличие'), {'fields': ('price', 'currency', 'old_price')}),
-        (_('Медиа'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Медиа'), {
+            'fields': ('main_image', 'main_image_file', 'main_media_preview'),
+            'description': _("Можно использовать внешний URL или загруженный файл."),
+        }),
         (_('Идентификаторы'), {'fields': ('sku', 'barcode', 'gtin', 'mpn')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('Статус'), {'fields': ('is_active', 'sort_order')}),
@@ -2016,7 +2140,7 @@ class FurnitureVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(FurnitureProduct)
-class FurnitureProductAdmin(CategoryTypeFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
+class FurnitureProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, CategoryTypeFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров мебели."""
     category_type_slug = "furniture"
@@ -2026,6 +2150,7 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, ShadowProductCleanupAdminMi
     search_fields = ('name', 'slug', 'description', 'material', 'furniture_type', 'external_id')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ('main_media_preview',)
     
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
@@ -2043,7 +2168,10 @@ class FurnitureProductAdmin(CategoryTypeFilterMixin, ShadowProductCleanupAdminMi
             ),
             'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
-        (_('Media'), {'fields': ('main_image', 'main_image_file')}),
+        (_('Media'), {
+            'fields': ('main_image', 'main_image_file', 'main_media_preview'),
+            'description': _("Основное медиа товара. Можно использовать внешний URL или загруженный файл."),
+        }),
         (_('Settings'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
@@ -2060,7 +2188,7 @@ class JewelryProductTranslationInline(admin.StackedInline):
     fieldsets = PRODUCT_TRANSLATION_INLINE_FIELDSETS
 
 
-class JewelryProductImageInline(admin.TabularInline):
+class JewelryProductImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     model = JewelryProductImage
     extra = 1
     fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
@@ -2069,9 +2197,7 @@ class JewelryProductImageInline(admin.TabularInline):
 
     def image_preview(self, obj):
         if obj and (obj.image_file or obj.image_url):
-            url = obj.image_file.url if obj.image_file else obj.image_url
-            if url:
-                return format_html('<img src="{}" style="max-width: 120px; max-height: 60px;" />', url)
+            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'), max_width=120, max_height=60)
         return "-"
     image_preview.short_description = _("Превью")
 
@@ -2084,11 +2210,17 @@ class JewelryVariantSizeInline(admin.TabularInline):
     ordering = ('sort_order', 'size_display')
 
 
-class JewelryVariantImageInline(admin.TabularInline):
+class JewelryVariantImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     model = JewelryVariantImage
     extra = 0
-    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main')
+    fields = ('image_file', 'image_url', 'alt_text', 'sort_order', 'is_main', 'image_preview')
+    readonly_fields = ('image_preview',)
     formset = VariantImageInlineFormSet
+
+    def image_preview(self, obj):
+        if obj:
+            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'), max_width=120, max_height=60)
+        return "-"
 
 
 class JewelryVariantInline(admin.TabularInline):
@@ -2119,7 +2251,7 @@ class JewelryVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(JewelryProduct)
-class JewelryProductAdmin(CategoryTypeFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
+class JewelryProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, CategoryTypeFilterMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Товары украшений с вариантами и размерами (кольца, браслеты и т.д.)."""
     category_type_slug = "jewelry"
@@ -2129,7 +2261,7 @@ class JewelryProductAdmin(CategoryTypeFilterMixin, ShadowProductCleanupAdminMixi
     search_fields = ('name', 'slug', 'description', 'material', 'metal_purity', 'stone_type')
     ordering = ('-created_at',)
     prepopulated_fields = {'slug': ('name',)}
-    readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview')
+    readonly_fields = ('variant_prices_overview', 'variant_prices_converted_overview', 'main_media_preview')
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Категоризация'), {
@@ -2146,7 +2278,10 @@ class JewelryProductAdmin(CategoryTypeFilterMixin, ShadowProductCleanupAdminMixi
             ),
             'description': _("Общие fallback/англоязычные SEO-поля. Локализованные SEO редактируются в переводах товара.")
         }),
-        (_('Медиа'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file')}),
+        (_('Медиа'), {
+            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file', 'main_media_preview'),
+            'description': _("Основное медиа товара. Можно использовать внешний URL или загруженные файлы."),
+        }),
         (_('Настройки'), {'fields': ('is_active', 'is_new', 'is_featured')}),
         (_('Внешние данные'), {'fields': ('external_id', 'external_url', 'external_data')}),
     )
@@ -2291,7 +2426,7 @@ class JewelryProductAdmin(CategoryTypeFilterMixin, ShadowProductCleanupAdminMixi
 
 
 @admin.register(Service)
-class ServiceAdmin(admin.ModelAdmin):
+class ServiceAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, admin.ModelAdmin):
     """Админка для услуг."""
     list_display = ('name', 'slug', 'category', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_featured', 'category', 'currency', 'created_at')
@@ -2300,6 +2435,7 @@ class ServiceAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     autocomplete_fields = ('category',)
 
+    readonly_fields = ('main_media_preview',)
     fieldsets = (
         (None, {'fields': ('name', 'slug', 'description')}),
         (_('Категория'), {
@@ -2307,7 +2443,10 @@ class ServiceAdmin(admin.ModelAdmin):
             'description': _('Выберите категорию услуги (ремонт, отделка, сантехника и т.д.).'),
         }),
         (_('Pricing'), {'fields': ('price', 'currency')}),
-        (_('Media Assets'), {'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file', 'gif_file')}),
+        (_('Media Assets'), {
+            'fields': ('main_image', 'main_image_file', 'video_url', 'main_video_file', 'gif_file', 'main_media_preview'),
+            'description': _('Основное медиа услуги. Можно использовать внешний URL или загруженные файлы.'),
+        }),
         (_('Settings'), {'fields': ('is_active', 'is_featured')}),
         (_('External'), {'fields': ('external_id', 'external_url', 'external_data')}),
         (_('SEO'), {
@@ -2326,6 +2465,21 @@ class ServiceAdmin(admin.ModelAdmin):
                 is_active=True,
             ).order_by('sort_order', 'name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def main_media_preview(self, obj):
+        if not obj:
+            return _("Нет медиа")
+        image_url = resolve_media_url(obj, 'main_image_file', 'main_image')
+        video_url = resolve_media_url(obj, 'main_video_file', 'video_url')
+        gif_field = getattr(obj, 'gif_file', None)
+        gif_url = ''
+        if gif_field:
+            try:
+                gif_url = gif_field.url
+            except Exception:
+                gif_url = ''
+        return render_media_preview(image_url or video_url or gif_url)
+    main_media_preview.short_description = _("Превью медиа")
 
 
 class BannerTranslationNestedInline(nested_admin.NestedTabularInline):

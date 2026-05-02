@@ -15,6 +15,7 @@ import ProductCard from '../../components/ProductCard'
 import CategorySidebar, { FilterState, SidebarTreeItem, SidebarTreeSection, AvailableAttribute } from '../../components/CategorySidebar'
 import Pagination from '../../components/Pagination'
 import CategoryHero from '../../components/CategoryHero'
+import ServicePortfolioGallery, { ServicePortfolioItem } from '../../components/ServicePortfolioGallery'
 
 interface Product {
   id: number
@@ -101,6 +102,7 @@ interface Category {
   og_title?: string | null
   og_description?: string | null
   og_image_url?: string | null
+  portfolio_items?: ServicePortfolioItem[]
 }
 
 interface Brand {
@@ -1510,6 +1512,23 @@ export default function CategoryPage({
       }
     }),
   }), [products, categoryType, siteUrl])
+  const portfolioSchema = useMemo(() => {
+    const items = currentCategory?.portfolio_items || []
+    if (!items.length) return null
+    return {
+      '@context': 'https://schema.org',
+      '@type': 'ItemList',
+      name: `${titleText} — ${t('service_portfolio_title', 'Примеры выполненных работ')}`,
+      itemListElement: items.slice(0, 12).map((item, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        name: item.title,
+        url: item.service_slug ? `${siteUrl}${buildProductUrl('uslugi', item.service_slug)}` : canonicalUrl,
+        image: item.after_image_url || item.image_url || item.before_image_url || undefined,
+        description: item.description || item.result_summary || undefined,
+      })),
+    }
+  }, [currentCategory, titleText, t, siteUrl, canonicalUrl])
 
   return (
     <>
@@ -1545,6 +1564,13 @@ export default function CategoryPage({
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
         />
+        {portfolioSchema ? (
+          <script
+            type="application/ld+json"
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(portfolioSchema) }}
+          />
+        ) : null}
       </Head>
 
       {/* Hero Section */}
@@ -1555,6 +1581,9 @@ export default function CategoryPage({
           : categoryDescription}
         totalCount={totalCount}
         categorySlug={routeSlug}
+        worksHref={currentCategory?.portfolio_items && currentCategory.portfolio_items.length > 0
+          ? `/categories/${routeSlug}/works`
+          : null}
       />
 
       {/* Breadcrumbs & View Toggles (Desktop) */}
@@ -1585,7 +1614,7 @@ export default function CategoryPage({
               ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
               : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
               }`}
-            aria-label="Grid view"
+            aria-label={t('category_view_grid', 'Сетка')}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
@@ -1597,7 +1626,7 @@ export default function CategoryPage({
               ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
               : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
               }`}
-            aria-label="List view"
+            aria-label={t('category_view_list', 'Список')}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -1656,7 +1685,7 @@ export default function CategoryPage({
                     ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
                     : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
                     }`}
-                  aria-label="Grid view"
+                  aria-label={t('category_view_grid', 'Сетка')}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
@@ -1668,7 +1697,7 @@ export default function CategoryPage({
                     ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
                     : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'
                     }`}
-                  aria-label="List view"
+                  aria-label={t('category_view_list', 'Список')}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -1763,6 +1792,14 @@ export default function CategoryPage({
                     onPageChange={handlePageChange}
                   />
                 )}
+
+                {currentCategory?.portfolio_items && currentCategory.portfolio_items.length > 0 ? (
+                  <ServicePortfolioGallery
+                    items={currentCategory.portfolio_items}
+                    categorySlug={routeSlug}
+                    compact
+                  />
+                ) : null}
               </>
             ) : (
               <div className="text-center py-20">

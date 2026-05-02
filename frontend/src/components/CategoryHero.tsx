@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { useTranslation } from 'next-i18next'
 
 interface CategoryHeroProps {
@@ -5,13 +6,14 @@ interface CategoryHeroProps {
   description?: string | null
   totalCount: number
   categorySlug?: string
+  worksHref?: string | null
 }
 
 /**
  * Адаптивный баннер для страниц категорий.
  * Отображает название, описание, количество товаров и ссылку на WhatsApp.
  */
-export default function CategoryHero({ title, description, totalCount, categorySlug }: CategoryHeroProps) {
+export default function CategoryHero({ title, description, totalCount, categorySlug, worksHref }: CategoryHeroProps) {
   const { t } = useTranslation('common')
   
   const whatsappNumber = '905525821497'
@@ -40,7 +42,17 @@ export default function CategoryHero({ title, description, totalCount, categoryS
             </div>
           </div>
           
-          <div className="flex-shrink-0 pb-1">
+          <div className="flex flex-shrink-0 flex-col gap-3 pb-1 sm:flex-row sm:items-center">
+            {worksHref ? (
+              <Link
+                href={worksHref}
+                className="inline-flex items-center justify-center gap-3 rounded-2xl bg-white px-8 py-4 text-base font-bold uppercase tracking-wider text-[var(--accent)] shadow-lg transition-all duration-300 hover:scale-105 active:scale-95"
+              >
+                <span>{t('service_portfolio_view_all', 'Смотреть все кейсы')}</span>
+                <span aria-hidden="true">→</span>
+              </Link>
+            ) : null}
+
             <a 
               href={whatsappUrl}
               target="_blank"

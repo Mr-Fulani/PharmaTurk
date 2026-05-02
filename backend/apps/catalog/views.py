@@ -50,6 +50,7 @@ from .models import (
     AutoPartProduct, AutoPartVariant,
     Service,
     Banner, BannerMedia,
+    service_portfolio_translation_fields_ready,
 )
 from .services import CatalogService
 from .attribute_specs import (
@@ -90,6 +91,13 @@ from .serializers import (
     ServiceSerializer,
     BannerSerializer
 )
+
+
+def _category_prefetches():
+    prefetches = ['translations']
+    if service_portfolio_translation_fields_ready():
+        prefetches.extend(['service_portfolio_items', 'service_portfolio_items__service'])
+    return prefetches
 
 _GENDER_INFERENCE_PATTERNS = {
     "women": (
@@ -708,8 +716,10 @@ class CategoryPagination(PageNumberPagination):
 
 class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями."""
-    
-    queryset = Category.objects.filter(is_active=True).select_related('category_type').prefetch_related('translations')
+
+    queryset = Category.objects.filter(is_active=True).select_related('category_type').prefetch_related(
+        *_category_prefetches()
+    )
     serializer_class = CategorySerializer
     pagination_class = CategoryPagination
 
@@ -749,7 +759,9 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         - parent_slug            — вернуть только детей указанного родителя (slug).
         - parent_id              — вернуть только детей указанного родителя (id).
         """
-        base_qs = Category.objects.filter(is_active=True).select_related('category_type').prefetch_related('translations').order_by('sort_order', 'name')
+        base_qs = Category.objects.filter(is_active=True).select_related('category_type').prefetch_related(
+            *_category_prefetches()
+        ).order_by('sort_order', 'name')
 
         # Явный запрос "все категории"
         if self._parse_bool(self.request.query_params.get('all')) is True:
@@ -828,7 +840,9 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     def children(self, request, pk=None):
         """Получить подкатегории."""
         category = self.get_object()
-        children = Category.objects.filter(parent=category, is_active=True).select_related('category_type').prefetch_related('translations')
+        children = Category.objects.filter(parent=category, is_active=True).select_related('category_type').prefetch_related(
+            *_category_prefetches()
+        )
         serializer = self.get_serializer(children, many=True)
         return Response(serializer.data)
 
