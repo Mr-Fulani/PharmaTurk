@@ -1793,13 +1793,7 @@ export default function CategoryPage({
                   />
                 )}
 
-                {currentCategory?.portfolio_items && currentCategory.portfolio_items.length > 0 ? (
-                  <ServicePortfolioGallery
-                    items={currentCategory.portfolio_items}
-                    categorySlug={routeSlug}
-                    compact
-                  />
-                ) : null}
+
               </>
             ) : (
               <div className="text-center py-20">
@@ -2159,10 +2153,19 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     const categoryNames = getCategoryNames(context.locale)
     const fallbackName = context.locale === 'en' ? 'Products' : 'Товары'
+    // Выбираем локализованное описание из переводов API, если язык не RU
+    const mainCatLocalizedDescription = (() => {
+      if (!mainCat) return ''
+      const locale = context.locale || 'ru'
+      const translations = Array.isArray(mainCat.translations) ? mainCat.translations : []
+      const tr = translations.find((t: any) => t.locale === locale || t.locale === locale.split('-')[0])
+      return (tr?.description) || mainCat.description || ''
+    })()
     const fallbackInfo =
-      (mainCat && { name: mainCat.name, description: mainCat.description || '' }) ||
+      (mainCat && { name: mainCat.name, description: mainCatLocalizedDescription }) ||
       { name: fallbackName, description: '' }
-    const categoryInfo = categoryNames[categoryType] || fallbackInfo
+    // Пробуем по categoryType, потом по slug (для кастомных типов), потом fallbackInfo
+    const categoryInfo = categoryNames[categoryType] || categoryNames[routeSlug || ''] || fallbackInfo
 
     // Заменяем categories на уже отфильтрованный список для сайтбара,
     // чтобы на клиенте не пришёл полный набор и не затёр отображение.

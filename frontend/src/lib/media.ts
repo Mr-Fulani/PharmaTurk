@@ -84,7 +84,7 @@ function buildYouTubeEmbedUrl(videoId: string, mode: VideoEmbedMode): string {
   if (mode === 'ambient') {
     return `${base}?autoplay=1&loop=1&muted=1&playlist=${encodeURIComponent(videoId)}&controls=0&showinfo=0&rel=0`
   }
-  return `${base}?autoplay=0&controls=1&rel=0`
+  return `${base}?autoplay=0&controls=1&rel=0&mute=1`
 }
 
 /**
@@ -123,7 +123,7 @@ export function getVideoEmbedUrl(url: string, mode: VideoEmbedMode = 'player'): 
       }
       return trimmed
     }
-    return trimmed.includes('?') ? trimmed : `${trimmed}?autoplay=0&muted=0`
+    return trimmed.includes('?') ? trimmed : `${trimmed}?autoplay=0&muted=1`
   }
 
   const vimeoMatch = trimmed.match(/(?:vimeo\.com\/)(\d+)/)
@@ -132,7 +132,7 @@ export function getVideoEmbedUrl(url: string, mode: VideoEmbedMode = 'player'): 
     if (mode === 'ambient') {
       return `https://player.vimeo.com/video/${id}?autoplay=1&loop=1&muted=1&background=1`
     }
-    return `https://player.vimeo.com/video/${id}?autoplay=0&muted=0`
+    return `https://player.vimeo.com/video/${id}?autoplay=0&muted=1`
   }
 
   return null

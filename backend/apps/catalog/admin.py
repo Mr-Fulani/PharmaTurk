@@ -33,7 +33,7 @@ from .models import (
     FurnitureProduct, FurnitureProductTranslation, FurnitureVariant, FurnitureVariantImage,
     FurnitureProductImage,
     JewelryProduct, JewelryProductTranslation, JewelryProductImage, JewelryVariant, JewelryVariantImage, JewelryVariantSize,
-    Service, ServiceTranslation, ServiceImage, ServicePortfolioItem, ServiceAttribute, 
+    Service, ServiceTranslation, ServiceImage, ServicePortfolioItem, ServicePortfolioMedia, ServiceAttribute, 
     service_portfolio_translation_fields_ready,
     GlobalAttributeKey, GlobalAttributeKeyTranslation, ProductAttributeValue,
     Banner, BannerMedia, BannerTranslation, BannerMediaTranslation,
@@ -196,7 +196,7 @@ class CategoryTypeAdmin(admin.ModelAdmin):
     categories_count.short_description = _("Количество категорий")
 
 
-class CategoryTranslationInline(admin.TabularInline):
+class CategoryTranslationInline(nested_admin.NestedTabularInline):
     """Inline для редактирования переводов категорий."""
     model = CategoryTranslation
     extra = 1
@@ -300,7 +300,7 @@ class FurnitureProductImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     image_preview.short_description = _("Превью")
 
 
-class ServiceTranslationInline(admin.TabularInline):
+class ServiceTranslationInline(nested_admin.NestedTabularInline):
     """Inline для редактирования переводов услуг."""
     model = ServiceTranslation
     extra = 1
@@ -320,7 +320,7 @@ class GlobalAttributeKeyAdmin(admin.ModelAdmin):
     inlines = [GlobalAttributeKeyTranslationInline]
     filter_horizontal = ('categories',)
 
-class ServiceImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
+class ServiceImageInline(AdminMediaHelpTextMixin, nested_admin.NestedTabularInline):
     """Inline для галереи изображений услуги."""
     model = ServiceImage
     extra = 1
@@ -337,10 +337,17 @@ class ServiceImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
     image_preview.short_description = _("Превью")
 
 
-class ServicePortfolioItemInline(AdminMediaHelpTextMixin, admin.StackedInline):
+class ServicePortfolioMediaInline(nested_admin.NestedTabularInline):
+    """Inline для добавления множества медиа в кейс."""
+    model = ServicePortfolioMedia
+    extra = 1
+    fields = ('media_type', 'badge', 'media_file', 'media_url', 'sort_order')
+
+class ServicePortfolioItemInline(AdminMediaHelpTextMixin, nested_admin.NestedStackedInline):
     """Inline для блока «Наши работы» у категорий услуг."""
     model = ServicePortfolioItem
     extra = 0
+    inlines = [ServicePortfolioMediaInline]
     autocomplete_fields = ('service',)
     fieldsets = (
         (None, {
@@ -348,23 +355,10 @@ class ServicePortfolioItemInline(AdminMediaHelpTextMixin, admin.StackedInline):
                 'service',
                 ('title', 'title_en'),
                 ('result_summary', 'result_summary_en'),
-                'city',
+                ('city', 'city_en'),
                 ('description', 'description_en'),
             ),
             'description': _('Основной контент кейса. Используйте английские поля для EN-версии сайта.'),
-        }),
-        (_('Медиа кейса'), {
-            'fields': (
-                ('image_file', 'image_url'),
-                'image_preview',
-                ('before_image_file', 'before_image_url'),
-                'before_image_preview',
-                ('after_image_file', 'after_image_url'),
-                'after_image_preview',
-                ('video_file', 'video_url'),
-                'video_preview',
-            ),
-            'description': _('Можно заполнить обычную обложку, режим до/после, видео или их комбинацию.'),
         }),
         (_('SEO и порядок'), {
             'fields': (
@@ -376,7 +370,7 @@ class ServicePortfolioItemInline(AdminMediaHelpTextMixin, admin.StackedInline):
     show_change_link = True
     verbose_name = _("Кейс / работа")
     verbose_name_plural = _("Наши работы")
-    readonly_fields = ('image_preview', 'before_image_preview', 'after_image_preview', 'video_preview')
+    readonly_fields = ()
 
     def get_extra(self, request, obj=None, **kwargs):
         if obj and obj.service_portfolio_items.exists():
@@ -413,31 +407,9 @@ class ServicePortfolioItemInline(AdminMediaHelpTextMixin, admin.StackedInline):
             kwargs['queryset'] = queryset.order_by('name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
-    def image_preview(self, obj):
-        if obj:
-            return render_media_preview(resolve_media_url(obj, 'image_file', 'image_url'))
-        return _("Нет медиа")
-    image_preview.short_description = _("Превью обложки")
 
-    def before_image_preview(self, obj):
-        if obj:
-            return render_media_preview(resolve_media_url(obj, 'before_image_file', 'before_image_url'))
-        return _("Нет медиа")
-    before_image_preview.short_description = _("Превью «до»")
 
-    def after_image_preview(self, obj):
-        if obj:
-            return render_media_preview(resolve_media_url(obj, 'after_image_file', 'after_image_url'))
-        return _("Нет медиа")
-    after_image_preview.short_description = _("Превью «после»")
-
-    def video_preview(self, obj):
-        if obj:
-            return render_media_preview(resolve_media_url(obj, 'video_file', 'video_url'))
-        return _("Нет медиа")
-    video_preview.short_description = _("Превью видео")
-
-class ServiceAttributeInline(admin.TabularInline):
+class ServiceAttributeInline(nested_admin.NestedTabularInline):
     """Inline для атрибутов услуги (площадь, срок, формат и т.д.)."""
     model = ServiceAttribute
     extra = 0
@@ -492,7 +464,7 @@ class ProductAttributeValueInline(GenericTabularInline):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 
-class ServicePriceInline(admin.StackedInline):
+class ServicePriceInline(nested_admin.NestedStackedInline):
     """Inline для просмотра конвертированных цен услуги."""
     model = ServicePrice
     can_delete = False
@@ -529,7 +501,7 @@ def _category_level_display(obj):
     return "L3+"
 
 
-class BaseCategoryAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
+class BaseCategoryAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
     """Базовый админ для прокси категорий с фильтром по типу."""
     form = CategoryFormCatalogHints
     required_category_type_slug: str | None = None
@@ -625,7 +597,7 @@ class BaseCategoryAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
 
 
 @admin.register(Category)
-class AllCategoriesAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
+class AllCategoriesAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
     """Единый список всех категорий (корневые и подкатегории)."""
     form = CategoryFormCatalogHints
     list_display = ('name', 'slug', 'category_type', 'level_display', 'parent_display', 'is_active', 'sort_order', 'created_at')
@@ -2438,7 +2410,7 @@ class JewelryProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, C
 
 
 @admin.register(Service)
-class ServiceAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, admin.ModelAdmin):
+class ServiceAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
     """Админка для услуг."""
     list_display = ('name', 'slug', 'category', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_featured', 'category', 'currency', 'created_at')
@@ -2467,7 +2439,7 @@ class ServiceAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, admin.Mo
             'description': _('SEO-поля для поисковой оптимизации услуги.'),
         }),
     )
-    inlines = [ServiceTranslationInline, ServiceImageInline, ServiceAttributeInline, ServicePriceInline]
+    inlines = [ServiceTranslationInline, ServiceImageInline, ServiceAttributeInline, ServicePriceInline, ServicePortfolioItemInline]
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         """Ограничиваем выбор категории только категориями типа «Услуги»."""

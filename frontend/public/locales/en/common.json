@@ -438,6 +438,7 @@
   "service_portfolio_page_description": "A collection of real cases, service examples, and completed projects from this category.",
   "service_portfolio_before": "Before",
   "service_portfolio_after": "After",
+  "service_portfolio_view_case": "View case",
   "category": "Category",
   "products_not_found": "Products not found",
   "products_not_found_description": "Try changing filter parameters or select another category",

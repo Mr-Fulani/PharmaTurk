@@ -13,6 +13,8 @@ import FavoriteButton from '../../components/FavoriteButton'
 import ShareButton from '../../components/ShareButton'
 import SimilarProducts from '../../components/SimilarProducts'
 import AnalogProducts from '../../components/AnalogProducts'
+import ServicePortfolioGallery, { ServicePortfolioItem } from '../../components/ServicePortfolioGallery'
+import ServicePortfolioStaticList from '../../components/ServicePortfolioStaticList'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
@@ -2630,6 +2632,14 @@ export default function ProductPage({
             currentPrice={product.price !== null ? Number(product.price) : null}
             currency={product.currency || 'TRY'}
             limit={8}
+          />
+        )}
+
+
+        {/* Примеры работ — только для услуг */}
+        {isService && Array.isArray((product as any).portfolio_items) && (product as any).portfolio_items.length > 0 && (
+          <ServicePortfolioStaticList
+            items={(product as any).portfolio_items as ServicePortfolioItem[]}
           />
         )}
 

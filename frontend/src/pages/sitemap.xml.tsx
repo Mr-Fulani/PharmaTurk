@@ -147,7 +147,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
 
   // Категории из API
   try {
-    const categoriesRes = await axios.get(getInternalApiUrl('catalog/categories/'), {
+    const categoriesRes = await axios.get(getInternalApiUrl('catalog/categories'), {
       params: { lang: 'en', page_size: 200 },
       timeout: 5000,
     })

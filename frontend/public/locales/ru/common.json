@@ -437,6 +437,7 @@
   "service_portfolio_page_description": "Подборка реальных кейсов, примеров услуг и реализованных проектов по этой категории.",
   "service_portfolio_before": "До",
   "service_portfolio_after": "После",
+  "service_portfolio_view_case": "Смотреть кейс",
   "category": "Категория",
   "products_not_found": "Товары не найдены",
   "products_not_found_description": "Попробуйте изменить параметры фильтров или выберите другую категорию",

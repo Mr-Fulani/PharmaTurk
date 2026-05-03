@@ -25,7 +25,7 @@ from .models import (
     TablewareProduct, TablewareProductTranslation, TablewareProductImage,
     AccessoryProduct, AccessoryProductTranslation, AccessoryProductImage,
     IncenseProduct, IncenseProductTranslation, IncenseProductImage,
-    Service, ServiceTranslation, ServiceImage, ServicePortfolioItem, ServicePrice, ServiceAttribute,
+    Service, ServiceTranslation, ServiceImage, ServicePortfolioItem, ServicePortfolioMedia, ServicePrice, ServiceAttribute,
     service_portfolio_translation_fields_ready,
     GlobalAttributeKey, ProductAttributeValue,
     Banner, BannerMedia, Author, ProductAuthor, ProductGenre, BookVariant, BookVariantSize, BookVariantImage,
@@ -538,11 +538,22 @@ class CategorySerializer(serializers.ModelSerializer):
         return url
 
     def get_portfolio_items(self, obj):
-        category_type_slug = getattr(getattr(obj, 'category_type', None), 'slug', None)
-        if category_type_slug != 'uslugi':
+        # Проверяем, относится ли категория к "Услугам" (по типу или по иерархии)
+        is_service_category = False
+        curr = obj
+        while curr:
+            t_slug = getattr(getattr(curr, 'category_type', None), 'slug', None)
+            if t_slug == 'uslugi' or curr.slug == 'uslugi':
+                is_service_category = True
+                break
+            curr = curr.parent
+            
+        if not is_service_category:
             return []
+            
         if not service_portfolio_translation_fields_ready():
             return []
+            
         category_ids = _get_category_ids_with_descendants([obj.slug])
         if not category_ids:
             return []
@@ -4382,34 +4393,42 @@ class ServiceImageSerializer(serializers.ModelSerializer):
         return None
 
 
+class ServicePortfolioMediaSerializer(serializers.ModelSerializer):
+    media_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ServicePortfolioMedia
+        fields = ['id', 'media_type', 'badge', 'media_url', 'sort_order']
+
+    def get_media_url(self, obj):
+        request = self.context.get('request')
+        file_url = _resolve_file_url(getattr(obj, "media_file", None), request)
+        if file_url:
+            return file_url
+        return _resolve_media_url(obj.media_url, request)
+
+
 class ServicePortfolioItemSerializer(serializers.ModelSerializer):
     title = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
     result_summary = serializers.SerializerMethodField()
-    image_url = serializers.SerializerMethodField()
-    before_image_url = serializers.SerializerMethodField()
-    after_image_url = serializers.SerializerMethodField()
-    video_url = serializers.SerializerMethodField()
+    city = serializers.SerializerMethodField()
+
     alt_text = serializers.SerializerMethodField()
     service_slug = serializers.SerializerMethodField()
     service_name = serializers.SerializerMethodField()
     category_slug = serializers.SerializerMethodField()
+    
+    media_items = ServicePortfolioMediaSerializer(many=True, read_only=True)
 
     class Meta:
         model = ServicePortfolioItem
         fields = [
             'id', 'title', 'description', 'result_summary', 'city',
-            'image_url', 'before_image_url', 'after_image_url', 'video_url',
+            'media_items',
             'alt_text', 'sort_order',
             'service_slug', 'service_name', 'category_slug',
         ]
-
-    def get_image_url(self, obj):
-        request = self.context.get('request')
-        file_url = _resolve_file_url(getattr(obj, "image_file", None), request)
-        if file_url:
-            return file_url
-        return _resolve_media_url(obj.image_url, request)
 
     def _get_portfolio_lang(self) -> str:
         request = self.context.get('request')
@@ -4433,32 +4452,19 @@ class ServicePortfolioItemSerializer(serializers.ModelSerializer):
             return obj.result_summary_en
         return obj.result_summary
 
+    def get_city(self, obj):
+        lang = self._get_portfolio_lang()
+        if lang == 'en' and obj.city_en:
+            return obj.city_en
+        return obj.city
+
     def get_alt_text(self, obj):
         lang = self._get_portfolio_lang()
         if lang == 'en' and obj.alt_text_en:
             return obj.alt_text_en
         return obj.alt_text
 
-    def get_before_image_url(self, obj):
-        request = self.context.get('request')
-        file_url = _resolve_file_url(getattr(obj, "before_image_file", None), request)
-        if file_url:
-            return file_url
-        return _resolve_media_url(obj.before_image_url, request)
 
-    def get_after_image_url(self, obj):
-        request = self.context.get('request')
-        file_url = _resolve_file_url(getattr(obj, "after_image_file", None), request)
-        if file_url:
-            return file_url
-        return _resolve_media_url(obj.after_image_url, request)
-
-    def get_video_url(self, obj):
-        request = self.context.get('request')
-        file_url = _resolve_file_url(getattr(obj, "video_file", None), request)
-        if file_url:
-            return file_url
-        return _resolve_media_url(obj.video_url, request)
 
     def get_service_slug(self, obj):
         return getattr(getattr(obj, 'service', None), 'slug', None)
@@ -4535,6 +4541,7 @@ class ServiceSerializer(serializers.ModelSerializer):
     gallery = ServiceImageSerializer(source='images', many=True, read_only=True)
     prices_info = ServicePriceSerializer(source='price_info', read_only=True)
     service_attributes = ServiceAttributeSerializer(many=True, read_only=True)
+    portfolio_items = serializers.SerializerMethodField()
     
     class Meta:
         model = Service
@@ -4544,6 +4551,7 @@ class ServiceSerializer(serializers.ModelSerializer):
             'main_image', 'main_image_url', 'video_url', 'main_video_url', 'main_gif_url',
             'gallery', 'images',
             'service_attributes',
+            'portfolio_items',
             'is_active', 'is_featured', 'created_at', 'updated_at', 'translations',
             'meta_title', 'meta_description', 'meta_keywords', 'og_title', 'og_description', 'og_image_url'
         ]
@@ -4656,6 +4664,13 @@ class ServiceSerializer(serializers.ModelSerializer):
 
     def get_og_image_url(self, obj):
         return _first_non_empty(getattr(obj, "og_image_url", ""), self.get_main_image_url(obj))
+
+    def get_portfolio_items(self, obj):
+        """Возвращает кейсы, привязанные конкретно к этой услуге."""
+        if not service_portfolio_translation_fields_ready():
+            return []
+        qs = obj.portfolio_items.filter(is_active=True).order_by('sort_order', '-created_at')
+        return ServicePortfolioItemSerializer(qs, many=True, context=self.context).data
 
 
 def _banner_api_language(context):

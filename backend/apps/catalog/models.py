@@ -3668,62 +3668,8 @@ class ServicePortfolioItem(models.Model):
         help_text=_("Короткий итог работы на английском языке."),
     )
     city = models.CharField(_("Город"), max_length=120, blank=True)
-    image_file = models.ImageField(
-        _("Изображение (файл)"),
-        upload_to=get_service_image_upload_path,
-        null=True,
-        blank=True,
-        help_text=_("Фото выполненной работы. Можно загрузить файл или указать внешний URL."),
-    )
-    image_url = models.URLField(
-        _("URL изображения"),
-        blank=True,
-        max_length=2000,
-        help_text=_("Внешняя ссылка на фото выполненной работы."),
-    )
-    before_image_file = models.ImageField(
-        _("Фото до (файл)"),
-        upload_to=get_service_image_upload_path,
-        null=True,
-        blank=True,
-        help_text=_("Фото объекта до начала работ."),
-    )
-    before_image_url = models.URLField(
-        _("URL фото до"),
-        blank=True,
-        max_length=2000,
-        help_text=_("Внешняя ссылка на фото объекта до начала работ."),
-    )
-    after_image_file = models.ImageField(
-        _("Фото после (файл)"),
-        upload_to=get_service_image_upload_path,
-        null=True,
-        blank=True,
-        help_text=_("Фото объекта после завершения работ."),
-    )
-    after_image_url = models.URLField(
-        _("URL фото после"),
-        blank=True,
-        max_length=2000,
-        help_text=_("Внешняя ссылка на фото объекта после завершения работ."),
-    )
-    video_file = models.FileField(
-        _("Видео (файл)"),
-        upload_to=get_service_image_upload_path,
-        null=True,
-        blank=True,
-        validators=[
-            FileExtensionValidator(allowed_extensions=SERVICE_VIDEO_ALLOWED_EXTENSIONS),
-            validate_service_video_file_size,
-        ],
-        help_text=_("Видео выполненной работы. Поддерживаются MP4, MOV, WEBM, M4V, AVI, MKV до 100 МБ."),
-    )
-    video_url = models.URLField(
-        _("URL видео"),
-        blank=True,
-        max_length=2000,
-        help_text=_("Внешняя ссылка на видео выполненной работы."),
-    )
+    city_en = models.CharField(_("Город (EN)"), max_length=120, blank=True)
+
     alt_text = models.CharField(_("Alt текст"), max_length=255, blank=True)
     alt_text_en = models.CharField(_("Alt текст (EN)"), max_length=255, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -3742,6 +3688,54 @@ class ServicePortfolioItem(models.Model):
 
     def __str__(self):
         return self.title or f"Portfolio for {self.category.name}"
+
+
+class ServicePortfolioMedia(models.Model):
+    """Медиафайлы для кейса (галерея картинок, видео, гифок)."""
+    
+    MEDIA_TYPE_CHOICES = (
+        ('image', _('Изображение/GIF')),
+        ('video', _('Видео')),
+    )
+    
+    BADGE_CHOICES = (
+        ('none', _('Без плашки')),
+        ('before', _('До')),
+        ('after', _('После')),
+    )
+
+    portfolio_item = models.ForeignKey(
+        ServicePortfolioItem,
+        on_delete=models.CASCADE,
+        related_name="media_items",
+        verbose_name=_("Кейс")
+    )
+    media_type = models.CharField(_("Тип медиа"), max_length=10, choices=MEDIA_TYPE_CHOICES, default='image')
+    badge = models.CharField(_("Плашка"), max_length=10, choices=BADGE_CHOICES, default='none')
+    
+    media_file = models.FileField(
+        _("Файл"),
+        upload_to=get_service_image_upload_path,
+        null=True,
+        blank=True,
+        help_text=_("Изображение, GIF или видео.")
+    )
+    media_url = models.URLField(
+        _("Внешний URL"),
+        blank=True,
+        max_length=2000,
+        help_text=_("Ссылка на видео (YouTube) или картинку, если файл не загружается напрямую.")
+    )
+    sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
+
+    class Meta:
+        verbose_name = _("Медиафайл кейса")
+        verbose_name_plural = _("Медиафайлы кейса")
+        ordering = ["sort_order", "id"]
+
+    def __str__(self):
+        return f"{self.get_media_type_display()} - {self.get_badge_display()}"
+
 
 
 class ServiceTranslation(models.Model):

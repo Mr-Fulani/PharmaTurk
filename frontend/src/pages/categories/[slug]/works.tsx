@@ -171,10 +171,17 @@ export default function CategoryWorksPage({
         </nav>
       </div>
 
+      <div className="mx-auto max-w-7xl px-3 pt-8 pb-4 sm:px-6 lg:px-8">
+        <h1 className="text-3xl font-extrabold tracking-tight text-[var(--text-strong)] sm:text-4xl lg:text-5xl">
+          {t('service_portfolio_page_title', 'Все кейсы и примеры')}
+        </h1>
+        <p className="mt-4 max-w-3xl text-base leading-7 text-main sm:text-lg">
+          {description}
+        </p>
+      </div>
+
       <ServicePortfolioGallery
         items={portfolioItems}
-        title={t('service_portfolio_page_title', 'Все кейсы и примеры')}
-        description={description}
       />
     </>
   )
@@ -187,7 +194,7 @@ export const getServerSideProps: GetServerSideProps<WorksPageProps> = async (con
   }
 
   try {
-    const res = await axios.get(getInternalApiUrl('catalog/categories/'), {
+    const res = await axios.get(getInternalApiUrl('catalog/categories'), {
       params: {
         slug,
         include_children: false,
@@ -209,11 +216,22 @@ export const getServerSideProps: GetServerSideProps<WorksPageProps> = async (con
       return { notFound: true }
     }
 
+    // Берём локализованное описание: сначала из переводов API, потом fallback на основное поле
+    const locale = context.locale || 'ru'
+    const translations: Array<{ locale: string; description?: string }> = Array.isArray(category.translations)
+      ? category.translations
+      : []
+    const localizedTranslation = translations.find(
+      (tr) => tr.locale === locale || tr.locale === locale.split('-')[0]
+    )
+    const localizedDescription =
+      (localizedTranslation?.description) || category.description || ''
+
     return {
       props: {
         slug,
         categoryName: category.name || slug,
-        categoryDescription: category.description || '',
+        categoryDescription: localizedDescription,
         portfolioItems,
         ...(await serverSideTranslations(context.locale ?? 'ru', ['common'])),
       },
