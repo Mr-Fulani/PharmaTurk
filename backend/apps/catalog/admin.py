@@ -373,8 +373,13 @@ class ServicePortfolioItemInline(AdminMediaHelpTextMixin, nested_admin.NestedSta
     readonly_fields = ()
 
     def get_extra(self, request, obj=None, **kwargs):
-        if obj and obj.service_portfolio_items.exists():
-            return 0
+        if obj:
+            # Если родитель — категория (related_name="service_portfolio_items")
+            if hasattr(obj, 'service_portfolio_items') and obj.service_portfolio_items.exists():
+                return 0
+            # Если родитель — конкретная услуга (related_name="portfolio_items")
+            if hasattr(obj, 'portfolio_items') and obj.portfolio_items.exists():
+                return 0
         return 1
 
     def get_formset(self, request, obj=None, **kwargs):
@@ -391,19 +396,23 @@ class ServicePortfolioItemInline(AdminMediaHelpTextMixin, nested_admin.NestedSta
             obj = getattr(request, '_current_obj', None)
             queryset = Service.objects.filter(is_active=True)
             if obj:
-                # Включаем саму категорию и все её подкатегории (рекурсивно)
-                category_ids = {obj.id}
-                current_parent_ids = [obj.id]
-                while current_parent_ids:
-                    child_ids = list(Category.objects.filter(
-                        parent_id__in=current_parent_ids
-                    ).values_list('id', flat=True))
-                    if not child_ids:
-                        break
-                    category_ids.update(child_ids)
-                    current_parent_ids = child_ids
+                if isinstance(obj, Category):
+                    # Включаем саму категорию и все её подкатегории (рекурсивно)
+                    category_ids = {obj.id}
+                    current_parent_ids = [obj.id]
+                    while current_parent_ids:
+                        child_ids = list(Category.objects.filter(
+                            parent_id__in=current_parent_ids
+                        ).values_list('id', flat=True))
+                        if not child_ids:
+                            break
+                        category_ids.update(child_ids)
+                        current_parent_ids = child_ids
+                    queryset = queryset.filter(category_id__in=category_ids)
+                elif isinstance(obj, Service):
+                    # Если родитель — сама услуга, ограничиваем выбор этой услугой
+                    queryset = queryset.filter(id=obj.id)
                 
-                queryset = queryset.filter(category_id__in=category_ids)
             kwargs['queryset'] = queryset.order_by('name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
