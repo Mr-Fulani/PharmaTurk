@@ -711,7 +711,7 @@ class CategoryPagination(PageNumberPagination):
     """Пагинация для категорий: допускает больший page_size для полного дерева (услуги и др.)."""
     page_size = 100
     page_size_query_param = 'page_size'
-    max_page_size = 500
+    max_page_size = 1000
 
 
 class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):

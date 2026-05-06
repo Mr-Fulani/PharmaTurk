@@ -194,30 +194,50 @@ for (const [slug, type] of syncCases) {
 
 // ─── Тест логики fetchAllPages pagination ────────────────────────────────────
 
-console.log('\nТест логики пагинации fetchAllPages:')
+console.log('\nТест логики пагинации fetchAllPages (все категории):')
 
-// Симуляция: items.length — реальный размер страницы от API (ограничен max_page_size)
+// Новый алгоритм: items.length первой страницы = реальный page_size от API
 function calcTotalPages(count, actualPageSize) {
   if (!count || actualPageSize <= 0) return 1
   return Math.ceil(count / actualPageSize)
 }
 
-const paginationCases = [
-  // [count, actualPageSize(реально пришло), expectedPages, desc]
-  [205,  100, 3,  '205 лекарств, max_page_size=100 → 3 страницы'],
-  [205, 1000, 1,  '205 лекарств, max_page_size=1000 → 1 страница'],
-  [100,  100, 1,  'ровно 100 товаров, 1 стр'],
-  [101,  100, 2,  '101 товар → 2 страницы'],
-  [1000, 100, 10, '1000 товаров → 10 страниц'],
-  [1000,1000, 1,  '1000 товаров с max_page_size=1000 → 1 страница'],
-  [5000, 100, 50, '5000 товаров → 50 страниц'],
-  [0,    100, 1,  '0 товаров → 1 страница (нет данных)'],
-]
-
-// OLD (баг): всегда делит на 1000
+// OLD (баг): делил count на запрошенный page_size=1000
 function oldCalcTotalPages(count) {
   return count ? Math.ceil(count / 1000) : 1
 }
+
+const paginationCases = [
+  // [count, actualPageSize, expectedPages, desc]
+
+  // --- Текущий каталог ---
+  [205,  1000, 1,  'medicines 205 шт,    max=1000 → 1 стр'],
+  [205,   100, 3,  'medicines 205 шт,    max=100  → 3 стр  (старый баг)'],
+
+  // --- Все типы товаров при росте до 10 000 ---
+  [10000, 1000, 10, 'medicines 10k,       max=1000 → 10 стр'],
+  [10000, 1000, 10, 'clothing 10k,        max=1000 → 10 стр'],
+  [10000, 1000, 10, 'shoes 10k,           max=1000 → 10 стр'],
+  [10000, 1000, 10, 'headwear 10k,        max=1000 → 10 стр'],
+  [10000, 1000, 10, 'supplements 10k,     max=1000 → 10 стр'],
+  [10000, 1000, 10, 'electronics 10k,     max=1000 → 10 стр'],
+  [10000, 1000, 10, 'jewelry 10k,         max=1000 → 10 стр'],
+  [10000, 1000, 10, 'underwear 10k,       max=1000 → 10 стр'],
+  [10000, 1000, 10, 'furniture 10k,       max=1000 → 10 стр'],
+  [10000, 1000, 10, 'books 10k,           max=1000 → 10 стр'],
+  [10000, 1000, 10, 'perfumery 10k,       max=1000 → 10 стр'],
+  [10000, 1000, 10, 'services 10k,        max=1000 → 10 стр'],
+  [10000, 1000, 10, 'categories 10k,      max=1000 → 10 стр'],
+
+  // --- Граничные случаи ---
+  [1,    1000, 1,  '1 товар              → 1 стр'],
+  [1000, 1000, 1,  '1000 товаров, ровно  → 1 стр'],
+  [1001, 1000, 2,  '1001 товар           → 2 стр'],
+  [50000,1000, 50, '50k товаров (maxPages=50 покрывает всё)'],
+  [0,    1000, 1,  '0 товаров            → 1 стр'],
+  [500,   500, 1,  '500 категорий, max=500 → 1 стр'],
+  [501,   500, 2,  '501 категория, max=500 → 2 стр'],
+]
 
 for (const [count, actualPageSize, expectedPages, desc] of paginationCases) {
   const got = calcTotalPages(count, actualPageSize)
@@ -225,7 +245,7 @@ for (const [count, actualPageSize, expectedPages, desc] of paginationCases) {
   const ok = got === expectedPages
   if (ok) {
     passed++
-    const fixed = old !== expectedPages ? ` (старый: ${old} ← БАГ!)` : ''
+    const fixed = old !== expectedPages ? ` ← старый код давал ${old} (БАГ)` : ''
     console.log(`  OK  ${desc}${fixed}`)
   } else {
     failed++

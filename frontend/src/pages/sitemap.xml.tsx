@@ -219,13 +219,9 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     console.error('Sitemap: Failed to fetch dynamic pages', err)
   }
 
-  // 3. Категории
+  // 3. Категории — fetchAllPages чтобы не пропустить категории при росте каталога
   try {
-    const categoriesRes = await axios.get(getInternalApiUrl('catalog/categories'), {
-      params: { lang: 'en', page_size: 200 },
-      timeout: 5000,
-    })
-    const categories = categoriesRes.data?.results || categoriesRes.data || []
+    const categories = await fetchAllPages('catalog/categories', { lang: 'en', page_size: 1000 })
     for (const cat of categories) {
       if (cat.slug) {
         urls.push(buildUrl(`/categories/${cat.slug}`, `/categories/${cat.slug}`, 'daily', 0.8))
