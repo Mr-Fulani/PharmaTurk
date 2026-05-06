@@ -68,10 +68,31 @@ const DOMAIN_ENDPOINTS: Array<{ path: string; type: string }> = [
 
 function buildProductPath(slug: string, productType?: string | null): string {
   const normalizedType = (productType || '').trim().replace(/_/g, '-')
-  if (!normalizedType || BASE_PRODUCT_TYPES.has(normalizedType)) {
-    return `/product/${slug}`
+
+  // Deduplicate repeated slug halves (e.g. "cap-cap" → "cap")
+  const rawSlug = (slug || '').trim().replace(/_/g, '-')
+  const parts = rawSlug.split('-')
+  let deduplicatedSlug = rawSlug
+  if (parts.length >= 4 && parts.length % 2 === 0) {
+    const half = parts.length / 2
+    if (parts.slice(0, half).join('-') === parts.slice(half).join('-')) {
+      deduplicatedSlug = parts.slice(0, half).join('-')
+    }
   }
-  return `/product/${normalizedType}/${slug}`
+
+  if (!normalizedType || BASE_PRODUCT_TYPES.has(normalizedType)) {
+    return `/product/${deduplicatedSlug}`
+  }
+
+  // Strip type prefix from slug so sitemap URL matches canonical
+  // e.g. headwear-carhartt-cap → /product/headwear/carhartt-cap  (not /product/headwear/headwear-carhartt-cap)
+  const prefix = `${normalizedType}-`
+  let cleanedSlug = deduplicatedSlug
+  while (cleanedSlug.startsWith(prefix)) {
+    cleanedSlug = cleanedSlug.slice(prefix.length)
+  }
+
+  return `/product/${normalizedType}/${cleanedSlug || deduplicatedSlug}`
 }
 
 function buildUrl(
