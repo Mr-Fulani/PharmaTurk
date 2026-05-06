@@ -4,7 +4,7 @@ import { getInternalApiUrl } from '../lib/urls'
 
 /**
  * Динамический sitemap.xml с поддержкой мультиязычных (hreflang) URL.
- * Включает: главную, категории, товары, статические страницы.
+ * Включает: главную, категории, товары (generic + все доменные), услуги, статические страницы.
  *
  * Доступен по адресу: /sitemap.xml
  */
@@ -19,6 +19,8 @@ interface SitemapUrl {
   alternates?: { lang: string; href: string }[]
 }
 
+// Типы, для которых URL = /product/{slug} (без типа в пути).
+// Синхронизировать с backend TYPES_NEEDING_PATH и frontend needsTypeInPath.
 const BASE_PRODUCT_TYPES = new Set([
   '',
   'product',
@@ -29,14 +31,40 @@ const BASE_PRODUCT_TYPES = new Set([
   'supplements',
   'medical_equipment',
   'medical-equipment',
+  'furniture',
   'tableware',
   'accessory',
   'accessories',
+  'books',
+  'perfumery',
   'incense',
   'sports',
   'auto_parts',
   'auto-parts',
 ])
+
+// Доменные эндпоинты: [путь API, product_type для buildProductPath]
+// Порядок: сначала самые крупные каталоги.
+const DOMAIN_ENDPOINTS: Array<{ path: string; type: string }> = [
+  { path: 'catalog/medicines/products', type: 'medicines' },
+  { path: 'catalog/supplements/products', type: 'supplements' },
+  { path: 'catalog/medical-equipment/products', type: 'medical-equipment' },
+  { path: 'catalog/furniture/products', type: 'furniture' },
+  { path: 'catalog/books/products', type: 'books' },
+  { path: 'catalog/perfumery/products', type: 'perfumery' },
+  { path: 'catalog/tableware/products', type: 'tableware' },
+  { path: 'catalog/accessories/products', type: 'accessories' },
+  { path: 'catalog/incense/products', type: 'incense' },
+  { path: 'catalog/sports/products', type: 'sports' },
+  { path: 'catalog/auto-parts/products', type: 'auto-parts' },
+  { path: 'catalog/clothing/products', type: 'clothing' },
+  { path: 'catalog/shoes/products', type: 'shoes' },
+  { path: 'catalog/electronics/products', type: 'electronics' },
+  { path: 'catalog/jewelry/products', type: 'jewelry' },
+  { path: 'catalog/headwear/products', type: 'headwear' },
+  { path: 'catalog/underwear/products', type: 'underwear' },
+  { path: 'catalog/islamic-clothing/products', type: 'islamic-clothing' },
+]
 
 function buildProductPath(slug: string, productType?: string | null): string {
   const normalizedType = (productType || '').trim().replace(/_/g, '-')
@@ -52,8 +80,8 @@ function buildUrl(
   changefreq: SitemapUrl['changefreq'] = 'weekly',
   priority = 0.8
 ): SitemapUrl {
-  const ruHref = `${SITE_URL}${ruPath}`        // ru — без префикса (основной)
-  const enHref = `${SITE_URL}/en${enPath}`    // en — с /en
+  const ruHref = `${SITE_URL}${ruPath}`
+  const enHref = `${SITE_URL}/en${enPath}`
   return {
     loc: ruHref,
     changefreq,
@@ -95,6 +123,30 @@ ${urlsXml}
 </urlset>`
 }
 
+async function fetchAllPages(
+  apiPath: string,
+  params: Record<string, unknown>,
+  maxPages = 50
+): Promise<any[]> {
+  const results: any[] = []
+  let page = 1
+  let totalPages = 1
+
+  while (page <= totalPages && page <= maxPages) {
+    const res = await axios.get(getInternalApiUrl(apiPath), {
+      params: { ...params, page },
+      timeout: 10000,
+    })
+    const data = res.data
+    const items = data?.results || data || []
+    if (data?.count) totalPages = Math.ceil(data.count / 1000)
+    results.push(...items)
+    page++
+  }
+
+  return results
+}
+
 // Этот компонент не рендерится — данные отдаются через getServerSideProps
 export default function Sitemap() {
   return null
@@ -105,7 +157,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
 
   const urls: SitemapUrl[] = []
 
-  // 1. Статические страницы (базовые роуты)
+  // 1. Статические страницы
   const basePages: Array<[string, string, SitemapUrl['changefreq'], number]> = [
     ['/', '/', 'daily', 1.0],
     ['/categories', '/categories', 'daily', 0.9],
@@ -119,7 +171,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     urls.push(buildUrl(enPath, ruPath, changefreq, priority))
   }
 
-  // 2. Динамические страницы из базы (О нас, Доставка, Возврат и т.д.)
+  // 2. Динамические CMS-страницы (О нас, Доставка, Возврат и т.д.)
   try {
     const pagesRes = await axios.get(getInternalApiUrl('pages/'), {
       params: { is_active: true },
@@ -128,14 +180,11 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     const pages = pagesRes.data?.results || pagesRes.data || []
     for (const page of pages) {
       if (page.slug) {
-        // Пропускаем те, что уже добавлены вручную (на всякий случай)
         const path = `/${page.slug}`
         if (urls.some(u => u.loc.endsWith(path))) continue
-
         const lastmod = page.updated_at
           ? new Date(page.updated_at).toISOString().split('T')[0]
           : today
-        
         const url = buildUrl(path, path, 'monthly', 0.6)
         url.lastmod = lastmod
         urls.push(url)
@@ -145,7 +194,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     console.error('Sitemap: Failed to fetch dynamic pages', err)
   }
 
-  // Категории из API
+  // 3. Категории
   try {
     const categoriesRes = await axios.get(getInternalApiUrl('catalog/categories'), {
       params: { lang: 'en', page_size: 200 },
@@ -154,96 +203,81 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     const categories = categoriesRes.data?.results || categoriesRes.data || []
     for (const cat of categories) {
       if (cat.slug) {
-        urls.push(
-          buildUrl(
-            `/categories/${cat.slug}`,
-            `/categories/${cat.slug}`,
-            'daily',
-            0.8
-          )
-        )
+        urls.push(buildUrl(`/categories/${cat.slug}`, `/categories/${cat.slug}`, 'daily', 0.8))
       }
     }
   } catch {
-    // Если API недоступен — продолжаем без категорий
+    // продолжаем без категорий
   }
 
-  // Товары из API
+  // 4. Товары: generic Product + все доменные модели
+  // seenSlugs предотвращает дубли когда доменный товар уже есть в generic таблице через shadow-запись
+  const seenSlugs = new Set<string>()
+
+  // 4a. Generic Product (те, у кого есть shadow-запись в базовой таблице)
   try {
-    let currentPage = 1
-    let totalPages = 1
-    const maxPagesLimit = 50 // Limit to 50,000 products to avoid timeout
-
-    while (currentPage <= totalPages && currentPage <= maxPagesLimit) {
-      const productsRes = await axios.get(getInternalApiUrl('catalog/products/'), {
-        params: { lang: 'en', page_size: 1000, is_active: true, page: currentPage },
-        timeout: 10000,
-      })
-      const data = productsRes.data
-      const products = data?.results || data || []
-
-      if (data?.count) {
-        totalPages = Math.ceil(data.count / 1000)
-      } else {
-        totalPages = 1
-      }
-
-      for (const product of products) {
-        if (product.slug) {
-          const lastmod = product.updated_at
-            ? new Date(product.updated_at).toISOString().split('T')[0]
-            : today
-          const productPath = buildProductPath(product.slug, product.product_type)
-          const url = buildUrl(productPath, productPath, 'weekly', 0.7)
-          url.lastmod = lastmod
-          urls.push(url)
-        }
-      }
-      currentPage++
+    const products = await fetchAllPages('catalog/products/', {
+      lang: 'en', page_size: 1000, is_active: true,
+    })
+    for (const product of products) {
+      if (!product.slug) continue
+      seenSlugs.add(product.slug)
+      const lastmod = product.updated_at
+        ? new Date(product.updated_at).toISOString().split('T')[0]
+        : today
+      const path = buildProductPath(product.slug, product.product_type)
+      const url = buildUrl(path, path, 'weekly', 0.7)
+      url.lastmod = lastmod
+      urls.push(url)
     }
   } catch {
-    // Если API недоступен — продолжаем без товаров
+    // продолжаем без generic товаров
   }
 
-  // Услуги из API
-  try {
-    let currentPage = 1
-    let totalPages = 1
-    const maxPagesLimit = 50
-
-    while (currentPage <= totalPages && currentPage <= maxPagesLimit) {
-      const servicesRes = await axios.get(getInternalApiUrl('catalog/services/'), {
-        params: { lang: 'en', page_size: 1000, is_active: true, page: currentPage },
-        timeout: 10000,
+  // 4b. Доменные товары (medicines, clothing, books и т.д.)
+  // Добавляем только те, чьего slug ещё нет — чтобы не дублировать generic-записи
+  for (const endpoint of DOMAIN_ENDPOINTS) {
+    try {
+      const items = await fetchAllPages(endpoint.path, {
+        page_size: 1000, is_active: true,
       })
-      const data = servicesRes.data
-      const services = data?.results || data || []
-
-      if (data?.count) {
-        totalPages = Math.ceil(data.count / 1000)
-      } else {
-        totalPages = 1
+      for (const item of items) {
+        if (!item.slug || seenSlugs.has(item.slug)) continue
+        seenSlugs.add(item.slug)
+        const lastmod = item.updated_at
+          ? new Date(item.updated_at).toISOString().split('T')[0]
+          : today
+        const path = buildProductPath(item.slug, endpoint.type)
+        const url = buildUrl(path, path, 'weekly', 0.7)
+        url.lastmod = lastmod
+        urls.push(url)
       }
+    } catch {
+      // продолжаем без этого домена
+    }
+  }
 
-      for (const service of services) {
-        if (service.slug) {
-          const lastmod = service.updated_at
-            ? new Date(service.updated_at).toISOString().split('T')[0]
-            : today
-          const url = buildUrl(
-            `/product/uslugi/${service.slug}`,
-            `/product/uslugi/${service.slug}`,
-            'weekly',
-            0.75
-          )
-          url.lastmod = lastmod
-          urls.push(url)
-        }
-      }
-      currentPage++
+  // 5. Услуги
+  try {
+    const services = await fetchAllPages('catalog/services/', {
+      lang: 'en', page_size: 1000, is_active: true,
+    })
+    for (const service of services) {
+      if (!service.slug) continue
+      const lastmod = service.updated_at
+        ? new Date(service.updated_at).toISOString().split('T')[0]
+        : today
+      const url = buildUrl(
+        `/product/uslugi/${service.slug}`,
+        `/product/uslugi/${service.slug}`,
+        'weekly',
+        0.75
+      )
+      url.lastmod = lastmod
+      urls.push(url)
     }
   } catch {
-    // Если API недоступен — продолжаем без услуг
+    // продолжаем без услуг
   }
 
   const sitemap = generateSitemapXml(urls)
