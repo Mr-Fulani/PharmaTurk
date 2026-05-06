@@ -42,6 +42,7 @@ export default function GenericStaticPage({ pageData }: { pageData: PageData | n
         {pageData.meta_description && (
           <meta property="og:description" content={pageData.meta_description} />
         )}
+        <link rel="canonical" href={`${SITE_URL}/${pageData.slug}`} />
         <meta property="og:type" content="website" />
         <meta property="og:url" content={`${SITE_URL}/${pageData.slug}`} />
         {pageData.og_image && (

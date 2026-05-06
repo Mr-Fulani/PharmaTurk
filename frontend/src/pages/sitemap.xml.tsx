@@ -249,7 +249,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
   const sitemap = generateSitemapXml(urls)
 
   res.setHeader('Content-Type', 'application/xml; charset=utf-8')
-  res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400')
+  res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
   res.write(sitemap)
   res.end()
 

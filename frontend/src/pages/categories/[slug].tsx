@@ -1536,6 +1536,7 @@ export default function CategoryPage({
         <title>{metaTitle}</title>
         <meta name="description" content={metaDescription} />
         {currentCategory?.meta_keywords && <meta name="keywords" content={currentCategory.meta_keywords} />}
+        {currentPage > 1 && <meta name="robots" content="noindex, follow" />}
         <link rel="canonical" href={canonicalUrl} />
         <link rel="alternate" hrefLang="ru" href={ruUrl} />
         <link rel="alternate" hrefLang="en" href={enUrl} />
