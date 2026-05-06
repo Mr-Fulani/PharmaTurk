@@ -192,6 +192,48 @@ for (const [slug, type] of syncCases) {
   }
 }
 
+// ─── Тест логики fetchAllPages pagination ────────────────────────────────────
+
+console.log('\nТест логики пагинации fetchAllPages:')
+
+// Симуляция: items.length — реальный размер страницы от API (ограничен max_page_size)
+function calcTotalPages(count, actualPageSize) {
+  if (!count || actualPageSize <= 0) return 1
+  return Math.ceil(count / actualPageSize)
+}
+
+const paginationCases = [
+  // [count, actualPageSize(реально пришло), expectedPages, desc]
+  [205,  100, 3,  '205 лекарств, max_page_size=100 → 3 страницы'],
+  [205, 1000, 1,  '205 лекарств, max_page_size=1000 → 1 страница'],
+  [100,  100, 1,  'ровно 100 товаров, 1 стр'],
+  [101,  100, 2,  '101 товар → 2 страницы'],
+  [1000, 100, 10, '1000 товаров → 10 страниц'],
+  [1000,1000, 1,  '1000 товаров с max_page_size=1000 → 1 страница'],
+  [5000, 100, 50, '5000 товаров → 50 страниц'],
+  [0,    100, 1,  '0 товаров → 1 страница (нет данных)'],
+]
+
+// OLD (баг): всегда делит на 1000
+function oldCalcTotalPages(count) {
+  return count ? Math.ceil(count / 1000) : 1
+}
+
+for (const [count, actualPageSize, expectedPages, desc] of paginationCases) {
+  const got = calcTotalPages(count, actualPageSize)
+  const old = oldCalcTotalPages(count)
+  const ok = got === expectedPages
+  if (ok) {
+    passed++
+    const fixed = old !== expectedPages ? ` (старый: ${old} ← БАГ!)` : ''
+    console.log(`  OK  ${desc}${fixed}`)
+  } else {
+    failed++
+    console.error(`  FAIL ${desc}`)
+    console.error(`    expected: ${expectedPages}, got: ${got}`)
+  }
+}
+
 console.log(`\n${'─'.repeat(50)}`)
 console.log(`Итого: ${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

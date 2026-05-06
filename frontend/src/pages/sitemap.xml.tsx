@@ -160,7 +160,11 @@ async function fetchAllPages(
     })
     const data = res.data
     const items = data?.results || data || []
-    if (data?.count) totalPages = Math.ceil(data.count / 1000)
+    // Use actual items returned on page 1 to calculate real page count.
+    // Backend max_page_size may be lower than the requested page_size.
+    if (data?.count && page === 1 && items.length > 0) {
+      totalPages = Math.ceil(data.count / items.length)
+    }
     results.push(...items)
     page++
   }
