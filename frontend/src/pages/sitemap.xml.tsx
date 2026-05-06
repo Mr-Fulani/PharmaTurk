@@ -237,7 +237,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
 
   // 4a. Generic Product (те, у кого есть shadow-запись в базовой таблице)
   try {
-    const products = await fetchAllPages('catalog/products/', {
+    const products = await fetchAllPages('catalog/products', {
       lang: 'en', page_size: 1000, is_active: true,
     })
     for (const product of products) {
@@ -280,7 +280,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
 
   // 5. Услуги
   try {
-    const services = await fetchAllPages('catalog/services/', {
+    const services = await fetchAllPages('catalog/services', {
       lang: 'en', page_size: 1000, is_active: true,
     })
     for (const service of services) {
