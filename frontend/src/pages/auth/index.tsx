@@ -102,8 +102,8 @@ function TelegramLoginWidget() {
       }
     }
 
-    if (containerRef.current && containerRef.current.children.length === 0) {
-      const botName = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'Turk_ExportBot'
+    const botName = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+    if (botName && containerRef.current && containerRef.current.children.length === 0) {
       const script = document.createElement('script')
       script.src = 'https://telegram.org/js/telegram-widget.js?22'
       script.setAttribute('data-telegram-login', botName)
