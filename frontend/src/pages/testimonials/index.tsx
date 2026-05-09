@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
+import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
 import Link from 'next/link'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
@@ -543,7 +544,21 @@ export default function TestimonialsPage() {
   return (
     <>
       <Head>
-        <title>{t('testimonials_page_title', 'Отзывы клиентов')} - Mudaroba</title>
+        <title>{`${t('testimonials_page_title', 'Отзывы клиентов')} — ${SITE_NAME}`}</title>
+        <meta name="description" content={t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')} />
+        <link rel="canonical" href={`${SITE_URL}/testimonials`} />
+        <link rel="alternate" hrefLang="ru" href={`${SITE_URL}/testimonials`} />
+        <link rel="alternate" hrefLang="en" href={`${SITE_URL}/en/testimonials`} />
+        <link rel="alternate" hrefLang="x-default" href={`${SITE_URL}/testimonials`} />
+        <meta property="og:title" content={`${t('testimonials_page_title', 'Отзывы клиентов')} — ${SITE_NAME}`} />
+        <meta property="og:description" content={t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')} />
+        <meta property="og:url" content={`${SITE_URL}/testimonials`} />
+        <meta property="og:type" content="website" />
+        <meta property="og:image" content={`${SITE_URL}/og-default.png`} />
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:title" content={`${t('testimonials_page_title', 'Отзывы клиентов')} — ${SITE_NAME}`} />
+        <meta property="twitter:description" content={t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')} />
+        <meta property="twitter:image" content={`${SITE_URL}/og-default.png`} />
       </Head>
 
       {/* Success notification */}

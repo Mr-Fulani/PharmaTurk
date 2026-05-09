@@ -287,7 +287,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
   if (!cart || cart.items.length === 0) {
     return (
       <>
-              <Head><title>{t('checkout_page_title', 'Оформление заказа')} — {SITE_NAME}</title><meta name="robots" content="noindex, nofollow" /></Head>
+              <Head><title>{`${t('checkout_page_title', 'Оформление заказа')} — ${SITE_NAME}`}</title><meta name="robots" content="noindex, nofollow" /></Head>
         <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-12 text-center">
             <h3 className="text-lg font-semibold text-gray-900">{t('cart_empty', 'Корзина пуста')}</h3>
@@ -305,7 +305,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
 
   return (
     <>
-            <Head><title>{t('checkout_page_title', 'Оформление заказа')} — {SITE_NAME}</title><meta name="robots" content="noindex, nofollow" /></Head>
+            <Head><title>{`${t('checkout_page_title', 'Оформление заказа')} — ${SITE_NAME}`}</title><meta name="robots" content="noindex, nofollow" /></Head>
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">{t('checkout_title', 'Оформление заказа')}</h1>

@@ -45,7 +45,7 @@ export default function RegisterPage() {
   return (
     <>
       <Head>
-        <title>{t('register', 'Регистрация')} — {SITE_NAME}</title>
+        <title>{`${t('register', 'Регистрация')} — ${SITE_NAME}`}</title>
         <meta name="robots" content="noindex, nofollow" />
       </Head>
       <main className="mx-auto max-w-md p-6">

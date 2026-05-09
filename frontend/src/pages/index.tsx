@@ -226,9 +226,13 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
         <meta property="og:description" content={pageDescription} />
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:type" content="website" />
+        <meta property="og:image" content={`${siteUrl}/og-default.png`} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
         <meta property="twitter:title" content={pageTitle} />
         <meta property="twitter:description" content={pageDescription} />
         <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:image" content={`${siteUrl}/og-default.png`} />
       </Head>
 
       <main className="bg-page text-main min-h-screen transition-colors duration-200">

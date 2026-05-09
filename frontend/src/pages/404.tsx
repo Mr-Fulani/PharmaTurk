@@ -6,7 +6,8 @@ export default function Custom404() {
   return (
     <>
       <Head>
-        <title>404</title>
+        <title>404 — Страница не найдена</title>
+        <meta name="robots" content="noindex, nofollow" />
       </Head>
       <div className="errorPage">
         <div className="errorInner">

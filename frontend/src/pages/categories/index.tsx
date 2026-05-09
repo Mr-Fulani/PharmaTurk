@@ -40,7 +40,7 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
   return (
     <>
       <Head>
-        <title>{t('menu_categories', 'Категории')} — {SITE_NAME}</title>
+        <title>{`${t('menu_categories', 'Категории')} — ${SITE_NAME}`}</title>
       </Head>
       <main className="min-h-screen bg-page text-main transition-colors duration-200">
         {/* Hero banner */}

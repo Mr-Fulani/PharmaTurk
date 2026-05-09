@@ -15,7 +15,7 @@ export default function ReturnsPage({ pageData, footerSettings }: { pageData: an
     return (
         <>
             <Head>
-                <title>{pageData?.meta_title || pageData?.title || t('returns_title', 'Возврат и обмен')} — {SITE_NAME}</title>
+                <title>{`${pageData?.meta_title || pageData?.title || t('returns_title', 'Возврат и обмен')} — ${SITE_NAME}`}</title>
                 <meta name="description" content={pageData?.meta_description || t('returns_subtitle', 'Условия возврата и обмена товаров')} />
                 
                 <meta property="og:title" content={pageData?.meta_title || pageData?.title || t('returns_title', 'Возврат и обмен')} />
@@ -23,6 +23,14 @@ export default function ReturnsPage({ pageData, footerSettings }: { pageData: an
                 <meta property="og:type" content="website" />
                 <meta property="og:url" content={`${SITE_URL}/returns`} />
                 <meta property="og:image" content={pageData?.og_image?.startsWith('http') ? pageData.og_image : `${SITE_URL}${pageData?.og_image || '/og-default.png'}`} />
+                <link rel="canonical" href={`${SITE_URL}/returns`} />
+                <link rel="alternate" hrefLang="ru" href={`${SITE_URL}/returns`} />
+                <link rel="alternate" hrefLang="en" href={`${SITE_URL}/en/returns`} />
+                <link rel="alternate" hrefLang="x-default" href={`${SITE_URL}/returns`} />
+                <meta property="twitter:card" content="summary_large_image" />
+                <meta property="twitter:title" content={pageData?.meta_title || pageData?.title || t('returns_title', 'Возврат и обмен')} />
+                <meta property="twitter:description" content={pageData?.meta_description || t('returns_subtitle', 'Условия возврата и обмена товаров')} />
+                <meta property="twitter:image" content={pageData?.og_image?.startsWith('http') ? pageData.og_image : `${SITE_URL}${pageData?.og_image || '/og-default.png'}`} />
             </Head>
             <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
                 <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">

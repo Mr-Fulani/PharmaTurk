@@ -276,7 +276,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
   return (
     <>
       <Head>
-        <title>{t('menu_cart', 'Корзина')} — {SITE_NAME}</title>
+        <title>{`${t('menu_cart', 'Корзина')} — ${SITE_NAME}`}</title>
         <meta name="robots" content="noindex, nofollow" />
       </Head>
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">

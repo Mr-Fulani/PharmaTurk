@@ -13,7 +13,7 @@ export default function PrivacyPage({ pageData }: { pageData: any }) {
     return (
         <>
             <Head>
-                <title>{pageData?.meta_title || pageData?.title || t('privacy_title', 'Политика конфиденциальности')} — {SITE_NAME}</title>
+                <title>{`${pageData?.meta_title || pageData?.title || t('privacy_title', 'Политика конфиденциальности')} — ${SITE_NAME}`}</title>
                 <meta name="description" content={pageData?.meta_description || t('privacy_subtitle', 'Политика конфиденциальности и защиты данных')} />
                 
                 <meta property="og:title" content={pageData?.meta_title || pageData?.title || t('privacy_title', 'Политика конфиденциальности')} />

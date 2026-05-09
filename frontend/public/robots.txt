@@ -4,10 +4,10 @@ User-agent: *
 Allow: /
 
 Disallow: /api/
-Disallow: /profile/
-Disallow: /cart/
-Disallow: /checkout/
-Disallow: /auth/
+Disallow: /profile
+Disallow: /cart
+Disallow: /checkout
+Disallow: /auth
 Disallow: /_next/
 
 # Sitemap

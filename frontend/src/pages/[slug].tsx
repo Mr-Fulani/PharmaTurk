@@ -45,9 +45,7 @@ export default function GenericStaticPage({ pageData }: { pageData: PageData | n
         <link rel="canonical" href={`${SITE_URL}/${pageData.slug}`} />
         <meta property="og:type" content="website" />
         <meta property="og:url" content={`${SITE_URL}/${pageData.slug}`} />
-        {pageData.og_image && (
-          <meta property="og:image" content={pageData.og_image} />
-        )}
+        <meta property="og:image" content={pageData.og_image || `${SITE_URL}/og-default.png`} />
       </Head>
       <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">

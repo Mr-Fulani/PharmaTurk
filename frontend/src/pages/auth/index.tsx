@@ -36,7 +36,7 @@ export default function AuthIndexPage() {
   return (
     <>
       <Head>
-        <title>{tab === 'login' ? t('login') : t('register')} — {SITE_NAME}</title>
+        <title>{`${tab === 'login' ? t('login') : t('register')} — ${SITE_NAME}`}</title>
         <meta name="robots" content="noindex, nofollow" />
       </Head>
       <main className="flex min-h-[80vh] items-center justify-center p-4">
