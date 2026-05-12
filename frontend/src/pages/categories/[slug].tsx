@@ -269,6 +269,7 @@ const resolveProductsEndpoint = (categoryType: string) => {
     case 'underwear': return '/api/catalog/underwear/products'
     case 'islamic-clothing': return '/api/catalog/islamic-clothing/products'
     case 'uslugi': return '/api/catalog/services'
+    case 'medicines': return '/api/catalog/medicines/products'
     default: return '/api/catalog/products'
   }
 }
@@ -793,6 +794,8 @@ export default function CategoryPage({
   const showGenderFilter = (availableGenders || []).length > 0
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
+  const [letterFilter, setLetterFilter] = useState('')
+  const [letterMode, setLetterMode] = useState<'name' | 'ingredient'>('name')
 
   useEffect(() => {
     setIsMounted(true)
@@ -1187,6 +1190,15 @@ export default function CategoryPage({
           }
         }
 
+        if (categoryType === 'medicines' && letterFilter) {
+          if (letterMode === 'name') {
+            params.name_starts_with = letterFilter
+          } else {
+            params.active_ingredient_starts_with = letterFilter
+          }
+          if (!params.ordering) params.ordering = 'name'
+        }
+
         // Используем тот же эндпоинт, что и SSR — это гарантирует согласованность
         // между серверным рендером и клиентской перезагрузкой при смене фильтров.
         const productsEndpoint = resolveProductsEndpoint(categoryType).replace('/api/', '')
@@ -1257,7 +1269,9 @@ export default function CategoryPage({
     filters.sortBy,
     JSON.stringify(filters.attributes || {}),
     currentPage,
-    categoryType
+    categoryType,
+    letterFilter,
+    letterMode,
   ])
 
   const handlePageChange = (page: number) => {
@@ -1794,7 +1808,6 @@ export default function CategoryPage({
                   />
                 )}
 
-
               </>
             ) : (
               <div className="text-center py-20">
@@ -1813,10 +1826,103 @@ export default function CategoryPage({
                 </button>
               </div>
             )}
+
+            {categoryType === 'medicines' && (
+              <MedicineAlphabetSection
+                activeLetter={letterFilter}
+                mode={letterMode}
+                onLetterClick={(l) => {
+                  setLetterFilter(prev => prev === l ? '' : l)
+                  setCurrentPage(1)
+                }}
+                onModeChange={(m) => {
+                  setLetterMode(m)
+                  setLetterFilter('')
+                  setCurrentPage(1)
+                }}
+                t={t}
+              />
+            )}
           </div>
         </div>
       </div>
     </>
+  )
+}
+
+// ─── Alphabet section for medicines ───────────────────────────────────────────
+
+const ALPHABET_LETTERS = '0-9,A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z'.split(',')
+
+function MedicineAlphabetSection({
+  activeLetter,
+  mode,
+  onLetterClick,
+  onModeChange,
+  t,
+}: {
+  activeLetter: string
+  mode: 'name' | 'ingredient'
+  onLetterClick: (l: string) => void
+  onModeChange: (m: 'name' | 'ingredient') => void
+  t: (key: string, fallback: string) => string
+}) {
+  return (
+    <div className="mt-8 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+          {t('medicines_browse_by', 'Поиск по алфавиту')}:
+        </span>
+        <div className="flex gap-1 rounded-lg border border-[var(--border)] p-0.5 bg-[var(--bg)]">
+          <button
+            onClick={() => onModeChange('name')}
+            className={`rounded-md px-3 py-1 text-xs font-semibold transition-all ${
+              mode === 'name'
+                ? 'bg-[var(--accent)] text-white shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+            }`}
+          >
+            {t('medicines_by_name', 'По названию')}
+          </button>
+          <button
+            onClick={() => onModeChange('ingredient')}
+            className={`rounded-md px-3 py-1 text-xs font-semibold transition-all ${
+              mode === 'ingredient'
+                ? 'bg-[var(--accent)] text-white shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+            }`}
+          >
+            {t('medicines_by_active_ingredient', 'По действующему веществу')}
+          </button>
+        </div>
+        {activeLetter && (
+          <button
+            onClick={() => onLetterClick(activeLetter)}
+            className="ml-auto flex items-center gap-1 rounded-lg border border-[var(--border)] px-2.5 py-1 text-xs text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+          >
+            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            {t('reset_filter', 'Сбросить')}
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {ALPHABET_LETTERS.map((l) => (
+          <button
+            key={l}
+            onClick={() => onLetterClick(l)}
+            className={`min-w-[2.1rem] rounded-lg border px-1.5 py-1 text-sm font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-[var(--accent)] ${
+              activeLetter === l
+                ? 'border-[var(--accent)] bg-[var(--accent)] text-white shadow-sm'
+                : 'border-[var(--border)] bg-[var(--bg)] text-[var(--text-main)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
+            }`}
+          >
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 

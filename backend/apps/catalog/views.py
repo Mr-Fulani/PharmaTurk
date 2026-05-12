@@ -1070,6 +1070,10 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
     queryset = Product.objects.filter(is_active=True).exclude(
         models.Q(external_data__has_key='source_variant_id') |
         models.Q(external_data__has_key='source_variant_slug')
+    ).exclude(
+        models.Q(product_type='medicines') &
+        models.Q(external_data__has_key='is_stub') &
+        models.Q(external_data__is_stub=True)
     )
     serializer_class = ProductSerializer
     pagination_class = StandardPagination
@@ -1133,6 +1137,13 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
         queryset = queryset.exclude(
             models.Q(external_data__has_key='source_variant_id') |
             models.Q(external_data__has_key='source_variant_slug')
+        )
+        # Medicine-заглушки нужны для связывания аналогов в админке, но не являются
+        # полноценными карточками товара и не должны попадать на витрину/поиск.
+        queryset = queryset.exclude(
+            models.Q(product_type='medicines') &
+            models.Q(external_data__has_key='is_stub') &
+            models.Q(external_data__is_stub=True)
         )
         
         # Фильтр по категории (поддержка массивов)
@@ -3671,6 +3682,16 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
     queryset = MedicineProduct.objects.filter(is_active=True)
     serializer_class = MedicineProductSerializer
 
+    def _base_queryset(self):
+        return (
+            super()
+            ._base_queryset()
+            .exclude(
+                models.Q(external_data__has_key='is_stub') &
+                models.Q(external_data__is_stub=True)
+            )
+        )
+
     def _apply_domain_filters(self, queryset):
         dosage_form = self.request.query_params.get('dosage_form')
         if dosage_form:
@@ -3681,7 +3702,41 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
         prescription = self.request.query_params.get('prescription_required')
         if prescription and prescription.lower() in ('true', '1', 'yes'):
             queryset = queryset.filter(prescription_required=True)
+        name_starts_with = self.request.query_params.get('name_starts_with', '').strip()
+        if name_starts_with:
+            if name_starts_with == '0-9':
+                queryset = queryset.filter(name__regex=r'^[0-9]')
+            else:
+                queryset = queryset.filter(name__istartswith=name_starts_with[:1])
+        active_ingredient_starts_with = self.request.query_params.get('active_ingredient_starts_with', '').strip()
+        if active_ingredient_starts_with:
+            if active_ingredient_starts_with == '0-9':
+                queryset = queryset.filter(active_ingredient__regex=r'^[0-9]')
+            else:
+                queryset = queryset.filter(active_ingredient__istartswith=active_ingredient_starts_with[:1])
         return queryset
+
+    @action(detail=False, methods=['get'], url_path='active-ingredients')
+    @extend_schema(
+        summary="Список уникальных действующих веществ",
+        parameters=[
+            OpenApiParameter(name="starts_with", type=str, required=False, description="Первая буква"),
+        ],
+    )
+    def active_ingredients_list(self, request):
+        starts_with = request.query_params.get('starts_with', '').strip()
+        qs = self._base_queryset().exclude(active_ingredient='')
+        if starts_with:
+            if starts_with == '0-9':
+                qs = qs.filter(active_ingredient__regex=r'^[0-9]')
+            else:
+                qs = qs.filter(active_ingredient__istartswith=starts_with[:1])
+        ingredients = (
+            qs.values_list('active_ingredient', flat=True)
+            .distinct()
+            .order_by('active_ingredient')[:300]
+        )
+        return Response({'results': list(ingredients)})
 
     @extend_schema(
         summary="Получить список медикаментов",
@@ -3692,6 +3747,8 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
             OpenApiParameter(name="dosage_form", type=str, required=False, description="Лекарственная форма"),
             OpenApiParameter(name="active_ingredient", type=str, required=False, description="Действующее вещество"),
             OpenApiParameter(name="prescription_required", type=bool, required=False, description="Требуется рецепт"),
+            OpenApiParameter(name="name_starts_with", type=str, required=False, description="Первая буква названия (или '0-9')"),
+            OpenApiParameter(name="active_ingredient_starts_with", type=str, required=False, description="Первая буква действующего вещества (или '0-9')"),
             OpenApiParameter(name="search", type=str, required=False, description="Поисковый запрос"),
             OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка"),
         ],
@@ -3731,21 +3788,51 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
         # Получаем действующее вещество и/или ATC-код
         active_ingredient = (product.active_ingredient or '').strip()
         atc_code = (product.atc_code or '').strip()
+        sgk_equivalent_code = (product.sgk_equivalent_code or '').strip()
 
-        if not active_ingredient and not atc_code:
-            return Response({'count': 0, 'active_ingredient': None, 'atc_code': None, 'results': []})
-
-        # Строим queryset аналогов (исключаем сам товар)
+        # Строим queryset аналогов (исключаем сам товар). Старый путь остается:
+        # active_ingredient / ATC. Новый путь добавляет явные строки MedicineAnalog
+        # из вкладок Eşdeğeri и SGK Eşdeğeri.
         from django.db.models import Q as _Q
         q = _Q()
+        has_filters = False
         if active_ingredient:
             q |= _Q(active_ingredient__iexact=active_ingredient)
+            has_filters = True
         if atc_code:
             q |= _Q(atc_code__iexact=atc_code)
+            has_filters = True
+        if sgk_equivalent_code:
+            q |= _Q(sgk_equivalent_code__iexact=sgk_equivalent_code)
+            has_filters = True
+
+        explicit_refs = list(product.analogs.all())
+        for ref in explicit_refs:
+            ref_q = _Q()
+            if ref.analog_product_id:
+                ref_q |= _Q(pk=ref.analog_product_id)
+            if ref.barcode:
+                ref_q |= _Q(barcode=ref.barcode)
+            if ref.external_id:
+                ref_q |= _Q(external_id=ref.external_id)
+            if ref.sgk_equivalent_code:
+                ref_q |= _Q(sgk_equivalent_code=ref.sgk_equivalent_code)
+            if ref.name:
+                ref_q |= _Q(name__iexact=ref.name)
+            if ref_q.children:
+                q |= ref_q
+                has_filters = True
+
+        if not has_filters:
+            return Response({'count': 0, 'active_ingredient': None, 'atc_code': None, 'results': []})
 
         analogs_qs = (
             MedicineProduct.objects
             .filter(q, is_active=True)
+            .exclude(
+                models.Q(external_data__has_key='is_stub') &
+                models.Q(external_data__is_stub=True)
+            )
             .exclude(pk=product.pk)
             .select_related('brand', 'category')
             .prefetch_related('gallery_images')
@@ -3823,6 +3910,7 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
             'count': len(results),
             'active_ingredient': active_ingredient or None,
             'atc_code': atc_code or None,
+            'sgk_equivalent_code': sgk_equivalent_code or None,
             'display_currency': preferred_currency,
             'results': results,
         })
