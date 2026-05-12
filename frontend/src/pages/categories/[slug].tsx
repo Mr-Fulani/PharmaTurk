@@ -1722,7 +1722,7 @@ export default function CategoryPage({
             </div>
 
             {/* Products */}
-            {loading ? (
+            {loading && products.length === 0 ? (
               <div className="flex items-center justify-center py-20">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-600"></div>
               </div>
@@ -1730,9 +1730,10 @@ export default function CategoryPage({
               <>
                 <div
                   className={
-                    viewMode === 'grid'
+                    (viewMode === 'grid'
                       ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 mb-8'
-                      : 'space-y-4 mb-8'
+                      : 'space-y-4 mb-8') +
+                    (loading ? ' opacity-40 pointer-events-none transition-opacity duration-150' : ' transition-opacity duration-150')
                   }
                 >
                   {products.map((product) => {
