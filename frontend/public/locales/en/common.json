@@ -1190,6 +1190,7 @@
   "indications": "Indications",
   "side_effects": "Side Effects",
   "contraindications": "Contraindications",
+  "before_use_warnings": "Before Use",
   "storage_conditions": "Storage Conditions",
   "special_notes": "Special Notes",
   "prescription_required": "Prescription Required",
@@ -1270,5 +1271,19 @@
   "badge_brand": "Brand {{brand}}",
   "months": "mo.",
   "years": "yr.",
-  "product_featured": "Popular"
+  "product_featured": "Popular",
+
+  "medicines_directory_title": "Drug Directory",
+  "medicines_directory_subtitle": "Browse medicines by alphabet or active ingredient",
+  "medicines_by_alphabet": "By Alphabet",
+  "medicines_by_active_ingredient": "By Active Ingredient",
+  "medicines_letter_select": "Select a letter",
+  "medicines_no_results": "No medicines found for this letter",
+  "medicines_select_letter": "Select a letter to start browsing",
+  "medicines_active_ingredients_title": "Active ingredients starting with «{{letter}}»",
+  "medicines_loading": "Loading…",
+  "medicines_found": "Found: {{count}}",
+  "medicines_back_to_ingredients": "Back to ingredients",
+  "medicines_browse_by": "Browse by alphabet",
+  "medicines_by_name": "By name"
 }

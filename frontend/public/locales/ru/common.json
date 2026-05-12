@@ -1132,6 +1132,7 @@
   "indications": "Показания к применению",
   "side_effects": "Побочные действия",
   "contraindications": "Противопоказания",
+  "before_use_warnings": "Перед применением",
   "storage_conditions": "Условия хранения",
   "special_notes": "Особые сведения",
   "prescription_required": "Отпускается по рецепту",
@@ -1212,5 +1213,19 @@
   "badge_brand": "Бренд {{brand}}",
   "months": "мес.",
   "years": "лет",
-  "product_featured": "Хит"
+  "product_featured": "Хит",
+
+  "medicines_directory_title": "Список лекарств",
+  "medicines_directory_subtitle": "Поиск препаратов по алфавиту или действующему веществу",
+  "medicines_by_alphabet": "По алфавиту",
+  "medicines_by_active_ingredient": "По действующему веществу",
+  "medicines_letter_select": "Выберите букву",
+  "medicines_no_results": "Препаратов на эту букву не найдено",
+  "medicines_select_letter": "Выберите букву для начала поиска",
+  "medicines_active_ingredients_title": "Действующие вещества на «{{letter}}»",
+  "medicines_loading": "Загрузка…",
+  "medicines_found": "Найдено: {{count}}",
+  "medicines_back_to_ingredients": "К списку веществ",
+  "medicines_browse_by": "Поиск по алфавиту",
+  "medicines_by_name": "По названию"
 }
