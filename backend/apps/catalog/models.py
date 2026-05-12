@@ -4677,27 +4677,46 @@ class MedicineAnalog(models.Model):
         related_name="analogs",
         verbose_name=_("Препарат"),
     )
+    analog_product = models.ForeignKey(
+        MedicineProduct,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="referenced_by_analog_rows",
+        verbose_name=_("Связанный товар-аналóг"),
+        help_text=_("Заполняется, когда аналог уже найден или создан в каталоге."),
+    )
     name = models.CharField(_("Название"), max_length=500)
     barcode = models.CharField(_("Штрих-код"), max_length=50, blank=True, db_index=True)
     atc_code = models.CharField(_("Код АТХ"), max_length=20, blank=True)
+    sgk_equivalent_code = models.CharField(_("SGK Eşdeğer Kodu"), max_length=100, blank=True)
     external_id = models.CharField(_("Внешний ID"), max_length=200, blank=True)
     source = models.CharField(
         _("Источник"), max_length=100, blank=True,
         help_text=_("ilacfiyati, ilacabak, и т.д.")
     )
+    source_tab = models.CharField(_("Вкладка источника"), max_length=100, blank=True)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)
 
     class Meta:
         verbose_name = _("Аналог препарата")
         verbose_name_plural = _("Аналоги препарата")
         ordering = ["name"]
-        unique_together = [("product", "barcode", "source")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["product", "source", "barcode"],
+                condition=~models.Q(barcode=""),
+                name="uniq_medicine_analog_barcode_per_source",
+            ),
+            models.UniqueConstraint(
+                fields=["product", "source", "external_id"],
+                condition=~models.Q(external_id=""),
+                name="uniq_medicine_analog_external_per_source",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.name} (аналог {self.product.name})"
-
-    def __str__(self):
-        return f"Изображение {self.product.name}"
 
 
 # ============================================================================

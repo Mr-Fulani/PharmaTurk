@@ -48,11 +48,7 @@ class AIProcessingLogViewSet(viewsets.ReadOnlyModelViewSet):
             )
         from .services.content_generator import ContentGenerator
         gen = ContentGenerator()
-        gen._apply_changes_to_product(log.product, log)
-        log.status = AIProcessingStatus.APPROVED
-        log.processed_by = request.user
-        log.moderation_date = timezone.now()
-        log.save()
+        gen.apply_log_to_product(log, user=request.user)
         if getattr(log, "moderation_queue", None):
             log.moderation_queue.resolved_at = timezone.now()
             log.moderation_queue.save(update_fields=["resolved_at"])
@@ -113,11 +109,7 @@ class AIModerationQueueViewSet(viewsets.ModelViewSet):
         if action_type == "approve":
             from .services.content_generator import ContentGenerator
             gen = ContentGenerator()
-            gen._apply_changes_to_product(log.product, log)
-            log.status = AIProcessingStatus.APPROVED
-            log.processed_by = request.user
-            log.moderation_date = timezone.now()
-            log.save()
+            gen.apply_log_to_product(log, user=request.user)
         elif action_type == "reject":
             log.status = AIProcessingStatus.REJECTED
             log.processed_by = request.user

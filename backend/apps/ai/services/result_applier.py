@@ -451,10 +451,12 @@ class MedicineAIApplier(BaseAIApplier):
         return updated
 
     def apply_translations(self, target: Any, translations_data: Dict[str, Any]) -> bool:
-        """Override: добавляем обработку поля indications в переводах."""
+        """Override: добавляем медицинские поля, сохраняя базовое применение SEO."""
         if not hasattr(target, 'translations'):
             return False
-        updated = False
+
+        updated = super().apply_translations(target, translations_data)
+
         for locale, data in translations_data.items():
             if not isinstance(data, dict):
                 continue
@@ -464,12 +466,6 @@ class MedicineAIApplier(BaseAIApplier):
                 trans = target.translations.model(product=target, locale=locale)
                 created = True
             trans_updated = False
-            # Базовые поля
-            for field in ['name', 'description']:
-                val = data.get(f'generated_{field}') or data.get(field)
-                if val and getattr(trans, field, None) != val:
-                    setattr(trans, field, val)
-                    trans_updated = True
             # Медицинские поля
             # Маппинг для обрезания длины в переводах
             limits = {
@@ -480,11 +476,13 @@ class MedicineAIApplier(BaseAIApplier):
                 'origin_country': 500,
             }
             for field in self._TRANSLATION_FIELDS:
-                val = data.get(field)
-                if val and getattr(trans, field, None) != val:
-                    val_str = str(val).strip()
-                    if field in limits:
-                        val_str = val_str[:limits[field]]
+                if field not in data:
+                    continue
+                val = data[field]
+                val_str = str(val).strip() if val is not None else ""
+                if field in limits:
+                    val_str = val_str[:limits[field]]
+                if getattr(trans, field, None) != val_str:
                     setattr(trans, field, val_str)
                     trans_updated = True
             if trans_updated or created:

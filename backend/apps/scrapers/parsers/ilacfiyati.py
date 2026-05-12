@@ -1,6 +1,7 @@
 """Парсер для сайта ilacfiyati.com (лекарства и добавки)."""
 
 import logging
+import re
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
@@ -12,6 +13,68 @@ from ..base.utils import clean_text, normalize_price, extract_currency
 class IlacFiyatiParser(BaseScraper):
     """Парсер для сайта ilacfiyati.com."""
 
+    DETAIL_TABS = {
+        "ilac_bilgileri": {
+            "path": "ilac-bilgileri",
+            "title": "İlaç Bilgileri",
+            "keywords": ("İLAÇ BİLGİLERİ", "ILAC BILGILERI"),
+        },
+        "equivalents": {
+            "path": "esdegeri",
+            "title": "Eşdeğeri",
+            "keywords": ("EŞDEĞER", "ESDEGER"),
+        },
+        "sgk_equivalents": {
+            "path": "sgk-esdegeri",
+            "title": "SGK Eşdeğeri",
+            "keywords": ("SGK EŞDEĞER", "SGK ESDEGER"),
+        },
+        "summary": {
+            "path": "ozet",
+            "title": "Özet",
+            "keywords": ("KULLANMA TALİMATI", "KULLANMA TALIMATI", "ÖZET", "OZET"),
+        },
+        "indications": {
+            "path": "ne-icin-kullanilir",
+            "title": "Ne İçin Kullanılır",
+            "keywords": ("NE İÇİN KULLANILIR", "NE ICIN KULLANILIR"),
+        },
+        "before_use_warnings": {
+            "path": "kullanmadan-dikkat-edilecekler",
+            "title": "Kullanmadan Dikkat Edilecekler",
+            "keywords": ("KULLANMADAN ÖNCE", "KULLANMADAN ONCE", "DİKKAT EDİLMESİ", "DIKKAT EDILMESI"),
+        },
+        "usage_instructions": {
+            "path": "nasil-kullanilir",
+            "title": "Nasıl Kullanılır",
+            "keywords": ("NASIL KULLANILIR",),
+        },
+        "side_effects": {
+            "path": "yan-etkileri",
+            "title": "Yan Etkileri",
+            "keywords": ("YAN ETKİLER", "YAN ETKILER"),
+        },
+        "storage_conditions": {
+            "path": "saklanmasi",
+            "title": "Saklanması",
+            "keywords": ("SAKLANMASI", "NASIL SAKLANIR"),
+        },
+    }
+
+    NOISE_MARKERS = (
+        "İlaç Hasta Payı Hesapla",
+        "Reçeteye Ekle",
+        "İlaç Katılım Payı Hesaplama",
+        "Perakende Satış Fiyatı",
+        "Hasta İlaç Katılım Payı",
+        "Eczaneye Ödenecek Tutar",
+        "Maaştan Kesilecek Tutar",
+        "Hemen İndirin",
+        "UYARI: Bu sitede yer alan bilgilerin kullanılmasının sorumluluğu",
+        "Copyright ©",
+        "Sitemizde yer alan içerik bilgi amaçlı",
+    )
+
     def get_name(self) -> str:
         """Возвращает уникальное имя парсера."""
         return "ilacfiyati"
@@ -19,6 +82,193 @@ class IlacFiyatiParser(BaseScraper):
     def get_supported_domains(self) -> List[str]:
         """Возвращает список поддерживаемых доменов."""
         return ["ilacfiyati.com", "www.ilacfiyati.com"]
+
+    @staticmethod
+    def _normalize_tr_key(value: str) -> str:
+        normalized = (value or "").strip().upper()
+        replacements = {
+            "İ": "I",
+            "İ": "I",
+            "ı": "I",
+            "Ğ": "G",
+            "Ü": "U",
+            "Ş": "S",
+            "Ö": "O",
+            "Ç": "C",
+        }
+        for old, new in replacements.items():
+            normalized = normalized.replace(old, new)
+        return re.sub(r"\s+", " ", normalized)
+
+    def _canonical_product_url(self, product_url: str) -> str:
+        parsed = urlparse(product_url)
+        parts = [p for p in parsed.path.strip("/").split("/") if p]
+        if len(parts) >= 3 and parts[0] in ("ilaclar", "takviye-edici-gida"):
+            parts = parts[:2]
+        path = "/" + "/".join(parts)
+        return parsed._replace(path=path, params="", query="", fragment="").geturl().rstrip("/")
+
+    def _clean_tab_text(self, text: str) -> str:
+        text = str(text or "").strip()
+        if not text:
+            return ""
+        kept = []
+        for line in re.split(r"\n+|(?<=\.)\s{2,}", text):
+            line = clean_text(line)
+            if not line:
+                continue
+            if any(marker.lower() in line.lower() for marker in self.NOISE_MARKERS):
+                break
+            if line in {"KAPAT", "Evet", "Çalışan", "Emekli", "İlaç Adedi"}:
+                continue
+            kept.append(line)
+        text = "\n".join(kept)
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
+        return text[:12000]
+
+    def _extract_tab_text(self, soup: BeautifulSoup, tab_key: str) -> str:
+        tab = self.DETAIL_TABS.get(tab_key) or {}
+        keywords = tuple(self._normalize_tr_key(k) for k in tab.get("keywords", ()))
+
+        for selector in ("script", "style", "nav", "header", "footer", "form", "input", "select", "button"):
+            for node in soup.select(selector):
+                node.decompose()
+
+        headings = soup.find_all(["h1", "h2", "h3", "h4", "h5"])
+        start = None
+        for heading in headings:
+            heading_text = self._normalize_tr_key(heading.get_text(" ", strip=True))
+            if any(keyword and keyword in heading_text for keyword in keywords):
+                start = heading
+                break
+
+        if start is not None:
+            chunks = [start.get_text("\n", strip=True)]
+            for sibling in start.next_siblings:
+                if getattr(sibling, "name", None) in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                    sibling_text = sibling.get_text(" ", strip=True)
+                    if "İlaç Katılım Payı" in sibling_text or "Ilac Katilim Payi" in self._normalize_tr_key(sibling_text):
+                        break
+                if hasattr(sibling, "get_text"):
+                    text = sibling.get_text("\n", strip=True)
+                else:
+                    text = str(sibling).strip()
+                if text:
+                    chunks.append(text)
+            extracted = self._clean_tab_text("\n".join(chunks))
+            if extracted:
+                return extracted
+
+        body = soup.body or soup
+        text = body.get_text("\n", strip=True)
+        lines = []
+        seen_title = False
+        for raw_line in text.splitlines():
+            line = clean_text(raw_line)
+            if not line:
+                continue
+            norm = self._normalize_tr_key(line)
+            if any(keyword and keyword in norm for keyword in keywords):
+                seen_title = True
+            if seen_title:
+                lines.append(line)
+            if seen_title and "ILAC KATILIM PAYI" in norm:
+                break
+        return self._clean_tab_text("\n".join(lines))
+
+    def _fetch_detail_tabs(self, product_url: str) -> Dict[str, Dict[str, str]]:
+        base_url = self._canonical_product_url(product_url)
+        tabs: Dict[str, Dict[str, str]] = {}
+        for key, tab in self.DETAIL_TABS.items():
+            tab_url = f"{base_url}/{tab['path']}"
+            try:
+                html = self._make_request(tab_url)
+                if not html:
+                    continue
+                soup = BeautifulSoup(html, "html.parser")
+                text = self._extract_tab_text(soup, key)
+                if text:
+                    tabs[key] = {
+                        "title": tab["title"],
+                        "url": tab_url,
+                        "text": text,
+                    }
+            except Exception as e:
+                self.logger.warning(f"Не удалось получить вкладку {tab['path']} для {product_url}: {e}")
+        return tabs
+
+    @staticmethod
+    def _extract_external_id_from_url(url: str) -> str:
+        parsed = urlparse(url or "")
+        parts = [part for part in parsed.path.strip("/").split("/") if part]
+        if len(parts) >= 2 and parts[0] in ("ilaclar", "takviye-edici-gida"):
+            return parts[1]
+        return parts[-1] if parts else ""
+
+    def _extract_analog_codes(self, text: str) -> Dict[str, str]:
+        text = clean_text(text or "")
+        codes: Dict[str, str] = {}
+
+        barcode_match = re.search(r"\b(\d{13})\b", text)
+        if barcode_match:
+            codes["barcode"] = barcode_match.group(1)
+
+        atc_match = re.search(r"\b([A-Z]\d{2}[A-Z]{2}\d{2})\b", text.upper())
+        if atc_match:
+            codes["atc_code"] = atc_match.group(1)
+
+        sgk_match = re.search(r"\b(E\d{3,}[A-Z]?)\b", text.upper())
+        if sgk_match:
+            codes["sgk_equivalent_code"] = sgk_match.group(1)
+
+        return codes
+
+    def _extract_analog_from_link(
+        self,
+        link,
+        *,
+        current_product_url: str,
+        source_tab: str,
+    ) -> Optional[Dict[str, Any]]:
+        href = link.get("href", "")
+        if "/ilaclar/" not in href or any(x in href for x in ["#", "?"]):
+            return None
+
+        analog_url = urljoin(self.base_url, href)
+        url_path = urlparse(analog_url).path.strip("/")
+        path_segments = [s for s in url_path.split("/") if s]
+        if len(path_segments) != 2:
+            return None
+
+        if analog_url.rstrip("/") == current_product_url.rstrip("/"):
+            return None
+
+        analog_name = clean_text(link.text)
+        norm_name = analog_name.lower().replace("i̇", "i").replace("ı", "i").strip()
+        ignore_names = {
+            "ilaç bilgileri", "ilac bilgileri", "ilaç sınıfı", "ilac sinifi",
+            "sgk ödeme durumu", "sgk odeme durumu", "reçete kuralı", "recete kurali",
+            "sut açıklama", "sut aciklama", "aç-tok bilgisi", "ac-tok bilgisi",
+            "besin etkileşimi", "besin etkilesimi", "özet", "ozet",
+            "ne için kullanılır", "ne icin kullanilir", "yan etkileri",
+            "saklanması", "saklanmasi", "kullanma talimatı", "kullanma talimati",
+            "kısa ürün bilgisi", "kisa urun bilgisi", "eşdeğeri", "esdegeri",
+            "sgk eşdeğeri", "sgk esdegeri",
+        }
+        if len(norm_name) < 3 or norm_name in ignore_names:
+            return None
+
+        row = link.find_parent("tr")
+        context = row.get_text(" ", strip=True) if row else link.parent.get_text(" ", strip=True)
+        analog = {
+            "name": analog_name,
+            "url": analog_url,
+            "price": normalize_price(context) if "TL" in context or "₺" in context else None,
+            "external_id": self._extract_external_id_from_url(analog_url),
+            "source_tab": source_tab,
+        }
+        analog.update(self._extract_analog_codes(context))
+        return analog
 
     def parse_product_list(self, category_url: str, max_pages: int = 10) -> List[ScrapedProduct]:
         """
@@ -210,12 +460,36 @@ class IlacFiyatiParser(BaseScraper):
 
                         description_lines.append(f"{cols[0].text.strip()}: {val}")
             
-            # Дополнительно вытаскиваем вкладки с описанием
-            tabs_content = soup.select('.tab-content, .panel-body, #ozet, #kullanim, #yan-etkiler')
-            for tab in tabs_content:
-                text = clean_text(tab.text)
-                if text:
-                    description_lines.append(text)
+            # 4. Вкладки инструкции препарата.
+            # ilacfiyati держит важные разделы на отдельных URL вида /{slug}/nasil-kullanilir.
+            # Сохраняем турецкий source структурированно, чтобы AI только переводил, а не додумывал.
+            detail_tabs = self._fetch_detail_tabs(product_url)
+            if detail_tabs:
+                attributes["source_tabs"] = detail_tabs
+                description_tab_order = (
+                    "summary",
+                    "indications",
+                    "before_use_warnings",
+                    "usage_instructions",
+                    "side_effects",
+                    "storage_conditions",
+                )
+                for attr_key, tab_key in (
+                    ("indications_source", "indications"),
+                    ("contraindications_source", "before_use_warnings"),
+                    ("usage_instructions_source", "usage_instructions"),
+                    ("side_effects_source", "side_effects"),
+                    ("storage_conditions_source", "storage_conditions"),
+                    ("summary_source", "summary"),
+                ):
+                    tab_payload = detail_tabs.get(tab_key) or {}
+                    if tab_payload.get("text"):
+                        attributes[attr_key] = tab_payload["text"]
+                for tab_key in description_tab_order:
+                    tab_payload = detail_tabs.get(tab_key) or {}
+                    tab_text = tab_payload.get("text")
+                    if tab_text:
+                        description_lines.append(f"{tab_payload.get('title') or tab_key}:\n{tab_text}")
             
             description = "\n\n".join(description_lines)
             
@@ -243,17 +517,18 @@ class IlacFiyatiParser(BaseScraper):
                     if full_img_url not in images:
                         images.append(full_img_url)
 
-            external_id = product_url.rstrip("/").split("/")[-1]
+            external_id = self._extract_external_id_from_url(product_url)
             if not external_id:
                 external_id = name
 
             # 5. Аналоги (Eşdeğeri / SGK Eşdeğeri)
             # На сайте ilacfiyati аналоги лежат на отдельных подстраницах /esdegeri и /sgk-esdegeri
             analogs = []
-            sub_paths = ['/esdegeri', '/sgk-esdegeri']
+            sub_paths = [('/esdegeri', 'Eşdeğeri'), ('/sgk-esdegeri', 'SGK Eşdeğeri')]
+            canonical_product_url = self._canonical_product_url(product_url)
             
-            for path in sub_paths:
-                sub_url = product_url.rstrip('/') + path
+            for path, source_tab in sub_paths:
+                sub_url = canonical_product_url + path
                 try:
                     # Добавляем небольшую паузу, чтобы не злить сервер
                     import time
@@ -266,45 +541,13 @@ class IlacFiyatiParser(BaseScraper):
                         # Обычно они в таблицах или списках в центральной колонке
                         links = sub_soup.find_all('a', href=True)
                         for a in links:
-                            href = a.get('href', '')
-                            if '/ilaclar/' in href and not any(x in href for x in ['#', '?']):
-                                analog_url = urljoin(self.base_url, href)
-                                
-                                # 1. Проверка по иерархии: ссылка на лекарство должна иметь ровно 2 сегмента после домена
-                                # Пример: /ilaclar/maprofen-100-mg (2 сегмента)
-                                # Пример: /ilaclar/maprofen/ilac-bilgileri (3 сегмента) - это вкладка
-                                url_path = urlparse(analog_url).path.strip('/')
-                                path_segments = [s for s in url_path.split('/') if s]
-                                if len(path_segments) != 2:
-                                    continue
-                                    
-                                if analog_url.rstrip('/') == product_url.rstrip('/'):
-                                    continue
-                                    
-                                # 2. Проверка по тексту (на случай если слаги совпадут)
-                                analog_name = clean_text(a.text)
-                                norm_name = analog_name.lower().replace('i̇', 'i').replace('ı', 'i').strip()
-                                
-                                ignore_names = {
-                                    'ilaç bilgileri', 'ilac bilgileri', 'ilaç sınıfı', 'ilac sinifi', 
-                                    'sgk ödeme durumu', 'sgk odeme durumu', 'reçete kuralı', 'recete kurali', 
-                                    'sut açıklama', 'sut aciklama', 'aç-tok bilgisi', 'ac-tok bilgisi', 
-                                    'besin etkileşimi', 'besin etkilesimi', 'özet', 'ozet', 
-                                    'ne için kullanılır', 'ne icin kullanilir', 'yan etkileri', 
-                                    'saklanması', 'saklanmasi', 'kullanma talimatı', 'kullanma talimati', 
-                                    'kısa ürün bilgisi', 'kisa urun bilgisi', 'eşdeğeri', 'esdegeri', 
-                                    'sgk eşdeğeri', 'sgk esdegeri'
-                                }
-                                
-                                if len(norm_name) < 3 or norm_name in ignore_names:
-                                    continue
-                                    
-                                if analog_name:
-                                    analogs.append({
-                                        'name': analog_name,
-                                        'url': analog_url,
-                                        'price': None
-                                    })
+                            analog = self._extract_analog_from_link(
+                                a,
+                                current_product_url=canonical_product_url,
+                                source_tab=source_tab,
+                            )
+                            if analog:
+                                analogs.append(analog)
                 except Exception as e:
                     self.logger.error(f"Error fetching analogs from {sub_url}: {e}")
             

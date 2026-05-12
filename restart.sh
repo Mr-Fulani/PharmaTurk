@@ -237,28 +237,28 @@ else
         success "Контейнеры остановлены"
 fi
 
-# Docker compose up и logs -f в других терминалах не завершаются при down — отправляем SIGTERM.
-# Часто запускают ./restart.sh --fast --logs: в первом терминале остаётся logs -f от прошлого запуска.
-pkill -TERM -f "docker compose.* up" 2>/dev/null || true
-pkill -TERM -f "docker compose.* logs" 2>/dev/null || true
-pkill -TERM -f "docker-compose.* up" 2>/dev/null || true
-pkill -TERM -f "docker-compose.* logs" 2>/dev/null || true
+# Завершаем зависшие docker compose процессы из других терминалов.
+# Используем SIGINT вместо SIGTERM — compose обрабатывает его корректно и успевает записать конфиг,
+# что предотвращает уведомление Docker Desktop "Another application changed your configurations".
+pkill -INT -f "docker compose.* up" 2>/dev/null || true
+pkill -INT -f "docker compose.* logs" 2>/dev/null || true
+pkill -INT -f "docker-compose.* up" 2>/dev/null || true
+pkill -INT -f "docker-compose.* logs" 2>/dev/null || true
 
 # Пауза: даём процессам время завершиться
-sleep 3
+sleep 2
 
 # Очистка неиспользуемых Docker ресурсов (по умолчанию включена)
+# Намеренно НЕ используем --volumes, чтобы не затронуть postgres_data и другие именованные тома
+# других проектов, которые после docker compose down становятся "dangling" для Docker.
 if [ "$NO_PRUNE" = false ] && [ "$FAST" = false ]; then
     info "Очищаем неиспользуемые Docker ресурсы..."
-    PRUNED=$(docker system prune -a --volumes -f 2>&1 | grep -i "reclaimed" || echo "")
-    if [ -n "$PRUNED" ]; then
-        success "Очистка завершена: $PRUNED"
-    else
-        success "Очистка завершена (неиспользуемых ресурсов не найдено)"
-    fi
+    docker image prune -f > /dev/null 2>&1 || true
+    docker builder prune -f --filter "until=168h" > /dev/null 2>&1 || true
+    success "Очистка завершена (dangling образы и build cache старше 1 недели)"
 else
     if [ "$FAST" = true ]; then
-        info "FAST режим: пропускаем очистку docker system prune"
+        info "FAST режим: пропускаем очистку"
     else
         info "Пропускаем очистку неиспользуемых ресурсов (--no-prune)"
     fi

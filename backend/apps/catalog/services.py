@@ -372,7 +372,7 @@ class CatalogNormalizer:
             "dosage_form", "active_ingredient", "prescription_required", "prescription_type", "volume", 
             "origin_country", "sgk_status", "administration_route", "barcode", "atc_code",
             "nfc_code", "sgk_equivalent_code", "sgk_active_ingredient_code", "sgk_public_no",
-            "shelf_life", "storage_conditions"
+            "shelf_life", "storage_conditions", "special_notes"
         )
         if not any(k in attrs for k in medicine_keys):
             return
@@ -401,11 +401,14 @@ class CatalogNormalizer:
             ("sgk_public_no", "sgk_public_no", 100),
             ("shelf_life", "shelf_life", 200),
             ("storage_conditions", "storage_conditions", 500),
+            ("special_notes", "special_notes", None),
         ]
 
         for attr_key, model_field, max_len in field_mapping:
             if attr_key in attrs and attrs[attr_key]:
-                v = str(attrs[attr_key]).strip()[:max_len]
+                v = str(attrs[attr_key]).strip()
+                if max_len:
+                    v = v[:max_len]
                 current_val = getattr(medicine_product, model_field)
                 # Обновляем только если поле сейчас пустое (защищаем данные ИИ-агента)
                 if not current_val:

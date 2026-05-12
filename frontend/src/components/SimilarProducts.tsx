@@ -28,6 +28,8 @@ interface Product {
   translations?: ProductTranslation[]
   base_product_id?: number | null
   gender?: string | null
+  saving_percent?: number | null
+  saving_amount?: number | null
 }
 
 interface SimilarProductResult {
@@ -62,6 +64,9 @@ const parsePriceWithCurrency = (value?: string | number | null) => {
   return { price: trimmed, currency: null as string | null }
 }
 
+const normalizeProductType = (value?: string | null) =>
+  (value || '').toString().trim().replace(/_/g, '-').toLowerCase()
+
 /**
  * Компонент для отображения похожих товаров
  */
@@ -77,11 +82,58 @@ export default function SimilarProducts({
   const [products, setProducts] = useState<Product[]>([])
   const [reasons, setReasons] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
+  const [showingAnalogs, setShowingAnalogs] = useState(false)
 
   useEffect(() => {
     const fetchSimilarProducts = async () => {
       try {
         setLoading(true)
+        setShowingAnalogs(false)
+        const normalizedProductType = normalizeProductType(productType)
+
+        if (normalizedProductType === 'medicines' && currentProductSlug) {
+          const analogResponse = await api.get(
+            `/catalog/medicines/products/${encodeURIComponent(currentProductSlug)}/analogs`,
+            { params: { limit } }
+          )
+          const analogResults = analogResponse.data?.results || []
+          if (analogResults.length > 0) {
+            const mappedProducts: Product[] = analogResults
+              .filter((analog: any) => {
+                if (currentProductId && analog.id === currentProductId) return false
+                if (currentProductSlug && analog.slug === currentProductSlug) return false
+                return true
+              })
+              .slice(0, limit)
+              .map((analog: any) => ({
+                id: analog.id,
+                name: analog.name,
+                slug: analog.slug,
+                price: analog.price,
+                currency: analog.display_currency || analog.original_currency || 'RUB',
+                old_price: analog.old_price,
+                main_image_url: analog.main_image_url,
+                product_type: 'medicines',
+                is_new: false,
+                is_featured: false,
+                is_available: analog.is_available,
+                saving_percent: analog.saving_percent,
+                saving_amount: analog.saving_amount,
+              }))
+
+            setProducts(mappedProducts)
+            const reasonMap: Record<number, string> = {}
+            mappedProducts.forEach((analog) => {
+              if (analog.saving_percent && analog.saving_percent > 0) {
+                reasonMap[analog.id] = `Выгода -${analog.saving_percent}%`
+              }
+            })
+            setReasons(reasonMap)
+            setShowingAnalogs(true)
+            return
+          }
+        }
+
         // RecSys similar только для Product; jewelry — в JewelryProductViewSet, эндпоинта /similar нет
         if (useRecsys && currentProductSlug && productType !== 'jewelry') {
           const response = await api.get(
@@ -109,6 +161,7 @@ export default function SimilarProducts({
               if (r.product?.id && r.reason) reasonMap[r.product.id] = r.reason
             })
             setReasons(reasonMap)
+            setShowingAnalogs(false)
             return
           }
         }
@@ -144,25 +197,34 @@ export default function SimilarProducts({
         })
         setProducts(filteredProducts.slice(0, limit))
         setReasons({})
+        setShowingAnalogs(false)
       } catch (error) {
         console.error('Error fetching similar products:', error)
         setProducts([])
         setReasons({})
+        setShowingAnalogs(false)
       } finally {
         setLoading(false)
       }
     }
 
     fetchSimilarProducts()
-  }, useRecsys
-    ? [currentProductSlug, limit, useRecsys]
-    : [productType, currentProductId, currentProductSlug, limit, useRecsys])
+  }, [
+    useRecsys,
+    currentProductSlug,
+    currentProductId,
+    currentBaseProductId,
+    productType,
+    limit,
+  ])
 
   if (loading) {
     return (
       <div className="mt-8">
         <h2 className="text-2xl font-bold text-[var(--text-strong)] mb-6">
-          {t('similar_products', 'Похожие товары')}
+          {normalizeProductType(productType) === 'medicines'
+            ? t('analogs_title_short', 'Аналоги')
+            : t('similar_products', 'Похожие товары')}
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
@@ -206,7 +268,9 @@ export default function SimilarProducts({
   return (
     <div className="mt-8">
       <h2 className="text-2xl font-bold text-[var(--text-strong)] mb-6">
-        {t('similar_products', 'Похожие товары')}
+        {showingAnalogs
+          ? t('analogs_title_short', 'Аналоги')
+          : t('similar_products', 'Похожие товары')}
       </h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {products.map((product) => {

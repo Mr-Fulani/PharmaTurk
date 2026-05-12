@@ -106,23 +106,11 @@ class RunAIActionMixin:
     def run_ai_auto_apply(self, request, queryset):
         """Один запуск: полная обработка + авто-применение."""
         from apps.ai.tasks import process_product_ai_task
-        from apps.ai.models import AIProcessingLog, AIProcessingStatus
-
-        is_domain = hasattr(queryset.model, "base_product")
-        id_field = "base_product_id" if is_domain else "id"
-        product_ids = queryset.values_list(id_field, flat=True)
-
-        processed_ids = set(AIProcessingLog.objects.filter(
-            product_id__in=product_ids,
-            status__in=[AIProcessingStatus.COMPLETED, AIProcessingStatus.APPROVED, AIProcessingStatus.MODERATION]
-        ).values_list("product_id", flat=True))
 
         queued = 0
-        skipped = 0
         for obj in queryset:
             pid = self._resolve_base_product_id(obj)
-            if pid in processed_ids:
-                skipped += 1
+            if not pid:
                 continue
 
             process_product_ai_task.delay(
@@ -132,11 +120,14 @@ class RunAIActionMixin:
             )
             queued += 1
 
-        msg = _("Запущена полная AI обработка с авто-применением для %(count)s товаров.") % {"count": queued}
-        if skipped:
-            msg += " " + _("Пропущено %(skipped)s уже обработанных товаров.") % {"skipped": skipped}
-
-        self.message_user(request, msg, level=messages.SUCCESS)
+        self.message_user(
+            request,
+            _(
+                "Запущена полная AI обработка/авто-применение для %(count)s товаров. "
+                "Если у товара уже есть готовый AI-лог, будет применен он."
+            ) % {"count": queued},
+            level=messages.SUCCESS,
+        )
     run_ai_auto_apply.short_description = _("Полная AI обработка + авто-применение")
 
     def run_find_merge_duplicates(self, request, queryset):

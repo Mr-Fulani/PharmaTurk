@@ -12,7 +12,6 @@ import ServiceAttributes from '../../components/ServiceAttributes'
 import FavoriteButton from '../../components/FavoriteButton'
 import ShareButton from '../../components/ShareButton'
 import SimilarProducts from '../../components/SimilarProducts'
-import AnalogProducts from '../../components/AnalogProducts'
 import ServicePortfolioGallery, { ServicePortfolioItem } from '../../components/ServicePortfolioGallery'
 import ServicePortfolioStaticList from '../../components/ServicePortfolioStaticList'
 import { useTranslation } from 'next-i18next'
@@ -2543,7 +2542,7 @@ export default function ProductPage({
               { id: 'indications', title: t('indications', 'Показания к применению'), content: product.indications, fieldName: 'indications' },
               { id: 'usage', title: t('usage_instructions', 'Способ применения'), content: product.usage_instructions, fieldName: 'usage_instructions' },
               { id: 'side_effects', title: t('side_effects', 'Побочные действия'), content: product.side_effects, fieldName: 'side_effects' },
-              { id: 'contraindications', title: t('contraindications', 'Противопоказания'), content: product.contraindications, fieldName: 'contraindications' },
+              { id: 'contraindications', title: t('before_use_warnings', 'Перед применением'), content: product.contraindications, fieldName: 'contraindications' },
               { id: 'storage', title: t('storage_conditions', 'Условия хранения'), content: product.storage_conditions, fieldName: 'storage_conditions' },
               { id: 'special_notes', title: t('special_notes', 'Особые сведения'), content: product.special_notes, fieldName: 'special_notes' },
             ].map((section: any) => {
@@ -2624,17 +2623,6 @@ export default function ProductPage({
             })}
           </div>
         )}
-
-        {/* Аналоги препарата (Eşdeğerleri) — только для лекарств и БАДов */}
-        {(productType === 'medicines' || productType === 'supplements') && (
-          <AnalogProducts
-            medicineSlug={product.slug}
-            currentPrice={product.price !== null ? Number(product.price) : null}
-            currency={product.currency || 'TRY'}
-            limit={8}
-          />
-        )}
-
 
         {/* Примеры работ — только для услуг */}
         {isService && Array.isArray((product as any).portfolio_items) && (product as any).portfolio_items.length > 0 && (

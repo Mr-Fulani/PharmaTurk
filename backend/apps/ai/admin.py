@@ -511,11 +511,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             try:
                 from .services.content_generator import ContentGenerator
                 gen = ContentGenerator()
-                gen._apply_changes_to_product(obj.product, obj)
-                obj.status = AIProcessingStatus.APPROVED
-                obj.processed_by = request.user
-                obj.moderation_date = timezone.now()
-                obj.save(update_fields=["status", "processed_by", "moderation_date"])
+                gen.apply_log_to_product(obj, user=request.user)
                 messages.success(
                     request,
                     f"Лог #{obj.id}: результаты применены к товару «{obj.product.name}».",
@@ -598,11 +594,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
             if not log.product_id:
                 continue
             try:
-                gen._apply_changes_to_product(log.product, log)
-                log.status = AIProcessingStatus.APPROVED
-                log.processed_by = request.user
-                log.moderation_date = timezone.now()
-                log.save(update_fields=["status", "processed_by", "moderation_date"])
+                gen.apply_log_to_product(log, user=request.user)
                 applied += 1
             except Exception as e:
                 messages.error(

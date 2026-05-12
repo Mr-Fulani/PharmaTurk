@@ -47,6 +47,8 @@ from apps.catalog.models import (
     Product,
     BookProduct,
     JewelryProduct,
+    MedicineAnalog,
+    MedicineProduct,
     Author,
     ProductAuthor,
     GlobalAttributeKey,
@@ -97,6 +99,42 @@ _ATTRIBUTE_UPDATE_HANDLER_NAMES = {
 
 class ScraperIntegrationService:
     """Сервис интеграции парсеров с каталогом."""
+
+    PRODUCT_DOMAIN_RELATED_NAMES = (
+        "accessory_item",
+        "auto_part_item",
+        "book_item",
+        "clothing_item",
+        "headwear_item",
+        "incense_item",
+        "islamic_clothing_item",
+        "jewelry_item",
+        "medical_equipment_item",
+        "medicine_item",
+        "perfumery_item",
+        "shoe_item",
+        "sports_item",
+        "supplement_item",
+        "tableware_item",
+    )
+
+    ILACFIYATI_DETAIL_TAB_EXTERNAL_IDS = {
+        "ilac-bilgileri",
+        "ilac-sinifi",
+        "sgk-odeme-durumu",
+        "recete-kurali",
+        "sut-aciklama",
+        "sgk-esdegeri",
+        "esdegeri",
+        "ac-tok-bilgisi",
+        "besin-etkilesimi",
+        "ozet",
+        "ne-icin-kullanilir",
+        "kullanmadan-dikkat-edilecekler",
+        "nasil-kullanilir",
+        "yan-etkileri",
+        "saklanmasi",
+    }
 
     PERFUMERY_GENDER_MAP = {
         "erkek": "men",
@@ -1346,6 +1384,22 @@ class ScraperIntegrationService:
                     existing_by_external_id,
                 )
 
+        existing_by_ilacfiyati_url = self._find_ilacfiyati_medicine_product_by_source_url(scraped_product)
+        if existing_by_ilacfiyati_url:
+            return self._update_existing_product(
+                session,
+                scraped_product,
+                existing_by_ilacfiyati_url,
+            )
+
+        legacy_ilacfiyati_product = self._find_legacy_ilacfiyati_medicine_product(scraped_product)
+        if legacy_ilacfiyati_product:
+            return self._update_existing_product(
+                session,
+                scraped_product,
+                legacy_ilacfiyati_product,
+            )
+
         # Проверяем дубликаты по названию и бренду
         similar_products = Product.objects.filter(
             name__iexact=scraped_product.name, brand__name__iexact=scraped_product.brand
@@ -1368,6 +1422,46 @@ class ScraperIntegrationService:
 
         # Создаем новый товар
         return self._create_new_product(session, scraped_product)
+
+    def _find_ilacfiyati_medicine_product_by_source_url(
+        self, scraped_product: ScrapedProduct
+    ) -> Optional[Product]:
+        """Находит medicine-заглушку по исходному ilacfiyati URL, даже если external_id пустой."""
+        if scraped_product.source != "ilacfiyati" or not scraped_product.external_id:
+            return None
+        source_slug = str(scraped_product.external_id or "").strip()
+        if not source_slug:
+            return None
+        url_marker = f"/ilaclar/{source_slug}"
+        return Product.objects.filter(
+            product_type="medicines",
+            external_url__contains=url_marker,
+        ).first()
+
+    def _find_legacy_ilacfiyati_medicine_product(
+        self, scraped_product: ScrapedProduct
+    ) -> Optional[Product]:
+        """Находит старую medicine-запись, если раньше external_id был slug вкладки."""
+        if scraped_product.source != "ilacfiyati" or not scraped_product.external_id:
+            return None
+        source_slug = str(scraped_product.external_id or "").strip()
+        if source_slug:
+            url_marker = f"/ilaclar/{source_slug}"
+            by_source_url = Product.objects.filter(
+                product_type="medicines",
+                external_id__in=self.ILACFIYATI_DETAIL_TAB_EXTERNAL_IDS,
+                external_url__contains=url_marker,
+            ).first()
+            if by_source_url:
+                return by_source_url
+
+        if not scraped_product.name:
+            return None
+        return Product.objects.filter(
+            product_type="medicines",
+            name__iexact=scraped_product.name,
+            external_id__in=self.ILACFIYATI_DETAIL_TAB_EXTERNAL_IDS,
+        ).first()
 
     def _handle_api_conflict(
         self, scraped_product: ScrapedProduct, api_product: Product
@@ -2321,15 +2415,28 @@ class ScraperIntegrationService:
         """Обновляет существующий товар."""
         updated = False
         prepared_attrs = self._prepare_scraped_attributes(scraped_product, existing_product.product_type)
+        should_repair_ilacfiyati_external_id = self._should_repair_ilacfiyati_external_id(
+            existing_product,
+            scraped_product,
+        )
+        external_id_for_variant_check = (
+            scraped_product.external_id
+            if should_repair_ilacfiyati_external_id
+            else existing_product.external_id
+        )
 
         # Флаг, указывающий, что мы обновляем базовый товар пришедшими данными его варианта
         # В этом случае мы НЕ должны перезатирать общие поля базового товара (фото, цену, url)
         # специфичными данными конкретного варианта (цвета/ножек), чтобы не "создавать дублей/миксов"
         is_variant_update = bool(
             scraped_product.external_id 
-            and existing_product.external_id 
-            and str(scraped_product.external_id) != str(existing_product.external_id)
+            and external_id_for_variant_check
+            and str(scraped_product.external_id) != str(external_id_for_variant_check)
         )
+
+        if should_repair_ilacfiyati_external_id:
+            existing_product.external_id = scraped_product.external_id
+            updated = True
 
         if not is_variant_update:
             # Обновляем цену, если она изменилась (только для базового товара)
@@ -2365,7 +2472,15 @@ class ScraperIntegrationService:
             current_description = (existing_product.description or "").strip()
             if (
                 next_description
-                and not current_description
+                and (
+                    not current_description
+                    or self._should_replace_existing_description(
+                        existing_product,
+                        scraped_product,
+                        current_description,
+                        next_description,
+                    )
+                )
                 and (not is_variant_update or not current_description)
             ):
                 existing_product.description = next_description
@@ -2444,6 +2559,14 @@ class ScraperIntegrationService:
                 existing_product.external_data["attributes"] = _json_safe_scraped_value(
                     prepared_attrs
                 )
+                if (
+                    existing_product.product_type == "medicines"
+                    and scraped_product.source == "ilacfiyati"
+                    and not prepared_attrs.get("is_stub")
+                    and existing_product.external_data.get("is_stub")
+                ):
+                    existing_product.external_data["is_stub"] = False
+                    updated = True
 
         source_info = {
             "source": scraped_product.source,
@@ -2459,7 +2582,15 @@ class ScraperIntegrationService:
         existing_product.last_synced_at = timezone.now()
         updated = True
 
-        # Обновляем атрибуты книги (ISBN, издательство, страницы и т.д.)
+        # Сначала сохраняем базовую карточку. Доменные модели при save()
+        # синхронизируют себя обратно в Product, поэтому им нужно видеть уже
+        # обновленные общие поля, иначе старая заглушка может затереть описание/цену.
+        if updated:
+            existing_product.save()
+            self._clear_product_domain_cache(existing_product)
+            updated = False
+
+        # Обновляем доменные и общие атрибуты (ISBN, medicine-коды и т.д.)
         if prepared_attrs:
             if self._update_product_attributes(
                 existing_product, prepared_attrs, session=session
@@ -2507,9 +2638,72 @@ class ScraperIntegrationService:
                 except Exception as e:
                     self.logger.error(
                         f"Ошибка при обновлении авторов для товара {existing_product.id}: {e}"
-                    )
+                )
 
         return "updated", existing_product
+
+    def _clear_product_domain_cache(self, product: Product) -> None:
+        fields_cache = getattr(getattr(product, "_state", None), "fields_cache", None)
+        if not isinstance(fields_cache, dict):
+            return
+        for related_name in self.PRODUCT_DOMAIN_RELATED_NAMES:
+            fields_cache.pop(related_name, None)
+
+    def _should_repair_ilacfiyati_external_id(
+        self,
+        existing_product: Product,
+        scraped_product: ScrapedProduct,
+    ) -> bool:
+        if existing_product.product_type != "medicines":
+            return False
+        if scraped_product.source != "ilacfiyati" or not scraped_product.external_id:
+            return False
+        current_external_id = str(existing_product.external_id or "").strip()
+        if not current_external_id:
+            return True
+        return (
+            current_external_id in self.ILACFIYATI_DETAIL_TAB_EXTERNAL_IDS
+            and current_external_id != str(scraped_product.external_id).strip()
+        )
+
+    def _should_replace_existing_description(
+        self,
+        existing_product: Product,
+        scraped_product: ScrapedProduct,
+        current_description: str,
+        next_description: str,
+    ) -> bool:
+        """Разрешает безопасно обновить source-описание для расширенных medicine tabs."""
+        if existing_product.product_type != "medicines":
+            return False
+        if scraped_product.source != "ilacfiyati":
+            return False
+        attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
+        if not isinstance(attrs.get("source_tabs"), dict) or not attrs["source_tabs"]:
+            return False
+
+        tab_titles = (
+            "Ne İçin Kullanılır:",
+            "Kullanmadan Dikkat Edilecekler:",
+            "Nasıl Kullanılır:",
+            "Yan Etkileri:",
+            "Saklanması:",
+        )
+        next_tab_count = sum(1 for title in tab_titles if title in next_description)
+        current_tab_count = sum(1 for title in tab_titles if title in current_description)
+        if next_tab_count <= current_tab_count:
+            return False
+
+        source_markers = (
+            "İLAÇ DURUMU:",
+            "SGK Ödeme Durumu:",
+            "İLAÇ FİYATI:",
+            "Özet:",
+            "KULLANMA TALİMATI",
+        )
+        current_looks_like_source = any(marker in current_description for marker in source_markers)
+        next_is_much_richer = len(next_description) > max(len(current_description) + 500, len(current_description) * 2)
+        return current_looks_like_source or next_is_much_richer
 
     def _get_book_product(self, product: Product) -> "BookProduct":
         """Находит или создаёт BookProduct для Product с product_type='books'."""
@@ -2744,38 +2938,45 @@ class ScraperIntegrationService:
         """Обновляет медицинские атрибуты в MedicineProduct."""
         medicine_keys = (
             "dosage_form", "active_ingredient", "prescription_required", "volume", 
-            "origin_country", "sgk_status", "administration_route"
+            "origin_country", "sgk_status", "administration_route", "prescription_type",
+            "barcode", "atc_code", "nfc_code", "sgk_equivalent_code",
+            "sgk_active_ingredient_code", "sgk_public_no", "shelf_life",
+            "storage_conditions", "special_notes"
         )
         if not any(k in attrs for k in medicine_keys):
             return False
             
         medicine_product = self._get_medicine_product(product)
         updated = False
-        
-        if "dosage_form" in attrs and attrs["dosage_form"]:
-            v = str(attrs["dosage_form"]).strip()[:100]
-            if v and not medicine_product.dosage_form:
-                medicine_product.dosage_form = v
+
+        field_mapping = [
+            ("dosage_form", "dosage_form", 100),
+            ("active_ingredient", "active_ingredient", 300),
+            ("volume", "volume", 100),
+            ("origin_country", "origin_country", 500),
+            ("sgk_status", "sgk_status", 500),
+            ("administration_route", "administration_route", 500),
+            ("prescription_type", "prescription_type", 500),
+            ("barcode", "barcode", 100),
+            ("atc_code", "atc_code", 100),
+            ("nfc_code", "nfc_code", 100),
+            ("sgk_equivalent_code", "sgk_equivalent_code", 100),
+            ("sgk_active_ingredient_code", "sgk_active_ingredient_code", 100),
+            ("sgk_public_no", "sgk_public_no", 100),
+            ("shelf_life", "shelf_life", 200),
+            ("storage_conditions", "storage_conditions", 500),
+            ("special_notes", "special_notes", None),
+        ]
+        for attr_key, model_field, max_len in field_mapping:
+            if attr_key not in attrs or not attrs[attr_key]:
+                continue
+            v = str(attrs[attr_key]).strip()
+            if max_len:
+                v = v[:max_len]
+            if v and not getattr(medicine_product, model_field):
+                setattr(medicine_product, model_field, v)
                 updated = True
-                
-        if "active_ingredient" in attrs and attrs["active_ingredient"]:
-            v = str(attrs["active_ingredient"]).strip()[:300]
-            if v and not medicine_product.active_ingredient:
-                medicine_product.active_ingredient = v
-                updated = True
-                
-        if "volume" in attrs and attrs["volume"]:
-            v = str(attrs["volume"]).strip()[:100]
-            if v and not medicine_product.volume:
-                medicine_product.volume = v
-                updated = True
-                
-        if "origin_country" in attrs and attrs["origin_country"]:
-            v = str(attrs["origin_country"]).strip()[:200]
-            if v and not medicine_product.origin_country:
-                medicine_product.origin_country = v
-                updated = True
-                
+
         if "prescription_required" in attrs:
             val = bool(attrs["prescription_required"])
             if val != medicine_product.prescription_required:
@@ -2881,6 +3082,138 @@ class ScraperIntegrationService:
         ) or updated
         return updated
 
+    def _upsert_medicine_analog_reference(
+        self,
+        product: MedicineProduct,
+        *,
+        name: str,
+        barcode: str,
+        atc_code: str,
+        sgk_equivalent_code: str,
+        external_id: str,
+        source: str,
+        source_tab: str,
+        analog_product: Optional[MedicineProduct] = None,
+    ) -> MedicineAnalog:
+        """Сохраняет явную строку аналога из Eşdeğeri / SGK Eşdeğeri."""
+        barcode = str(barcode or "").strip()
+        external_id = str(external_id or "").strip()
+        source = str(source or "").strip()
+        atc_code = str(atc_code or "").strip()
+        sgk_equivalent_code = str(sgk_equivalent_code or "").strip()
+        source_tab = str(source_tab or "").strip()
+        name = str(name or "").strip()
+
+        qs = MedicineAnalog.objects.filter(product=product, source=source[:100])
+        analog = None
+        if external_id:
+            analog = qs.filter(external_id=external_id[:200]).first()
+        if analog is None and barcode:
+            analog = qs.filter(barcode=barcode[:50]).first()
+        if analog is None and name:
+            analog = qs.filter(name=name[:500], source_tab=source_tab[:100]).first()
+        if analog is None:
+            analog = MedicineAnalog(product=product, source=source[:100])
+
+        changed = False
+        field_values = {
+            "name": name[:500],
+            "barcode": barcode[:50],
+            "atc_code": atc_code[:20],
+            "sgk_equivalent_code": sgk_equivalent_code[:100],
+            "external_id": external_id[:200],
+            "source_tab": source_tab[:100],
+        }
+        if analog_product is not None:
+            field_values["analog_product"] = analog_product
+
+        for field_name, value in field_values.items():
+            if value and getattr(analog, field_name) != value:
+                setattr(analog, field_name, value)
+                changed = True
+
+        if analog.pk is None:
+            analog.save()
+        elif changed:
+            analog.save(
+                update_fields=[
+                    "name",
+                    "barcode",
+                    "atc_code",
+                    "sgk_equivalent_code",
+                    "external_id",
+                    "source_tab",
+                    "analog_product",
+                ]
+            )
+        return analog
+
+    def _link_medicine_analog_reference(
+        self,
+        analog: MedicineAnalog,
+        analog_product: MedicineProduct,
+        *,
+        barcode: str,
+        atc_code: str,
+        sgk_equivalent_code: str,
+    ) -> None:
+        changed = False
+        if analog.analog_product_id != analog_product.pk:
+            analog.analog_product = analog_product
+            changed = True
+        if barcode and not analog.barcode:
+            analog.barcode = barcode[:50]
+            changed = True
+        if atc_code and not analog.atc_code:
+            analog.atc_code = atc_code[:20]
+            changed = True
+        if sgk_equivalent_code and not analog.sgk_equivalent_code:
+            analog.sgk_equivalent_code = sgk_equivalent_code[:100]
+            changed = True
+        if changed:
+            analog.save(update_fields=["analog_product", "barcode", "atc_code", "sgk_equivalent_code"])
+
+    def _find_existing_medicine_analog_product(
+        self,
+        *,
+        name: str,
+        barcode: str,
+        external_id: str,
+        url: str = "",
+    ) -> Optional[Product]:
+        if barcode:
+            med = MedicineProduct.objects.filter(barcode=barcode).select_related("base_product").first()
+            if med and med.base_product:
+                return med.base_product
+            product = Product.objects.filter(barcode=barcode, product_type="medicines").first()
+            if product:
+                return product
+
+        if external_id:
+            product = Product.objects.filter(external_id=external_id, product_type="medicines").first()
+            if product:
+                return product
+            med = MedicineProduct.objects.filter(external_id=external_id).select_related("base_product").first()
+            if med and med.base_product:
+                return med.base_product
+            url_marker = f"/ilaclar/{external_id}"
+            product = Product.objects.filter(
+                product_type="medicines",
+                external_url__contains=url_marker,
+            ).first()
+            if product:
+                return product
+
+        if url:
+            product = Product.objects.filter(
+                product_type="medicines",
+                external_url=url,
+            ).first()
+            if product:
+                return product
+
+        return Product.objects.filter(name__iexact=name, product_type="medicines").first()
+
     def _process_medicine_analogs(
         self, product: Product, scraped_product: ScrapedProduct, session: ScrapingSession
     ) -> None:
@@ -2900,26 +3233,66 @@ class ScraperIntegrationService:
             analog_name = analog_data.get('name')
             if not analog_name:
                 continue
-                
-            # Проверяем, существует ли уже такой препарат
-            existing = Product.objects.filter(name__iexact=analog_name, product_type="medicines").first()
+
+            analog_url = analog_data.get('url', '')
+            analog_external_id = str(
+                analog_data.get("external_id")
+                or (urlparse(analog_url).path.rstrip("/").split("/")[-1] if analog_url else "")
+                or ""
+            ).strip()
+            analog_barcode = str(analog_data.get("barcode") or "").strip()
+            analog_atc_code = str(analog_data.get("atc_code") or "").strip()
+            analog_sgk_code = str(analog_data.get("sgk_equivalent_code") or "").strip()
+            analog_source_tab = str(analog_data.get("source_tab") or "").strip()
+
+            analog_ref = self._upsert_medicine_analog_reference(
+                medicine_product,
+                name=analog_name,
+                barcode=analog_barcode,
+                atc_code=analog_atc_code or atc_code,
+                sgk_equivalent_code=analog_sgk_code,
+                external_id=analog_external_id,
+                source=scraped_product.source,
+                source_tab=analog_source_tab,
+            )
+
+            # Проверяем, существует ли уже такой препарат. Коды надежнее названия:
+            # названия на ilacfiyati часто отличаются процентами, пробелами и упаковкой.
+            existing = self._find_existing_medicine_analog_product(
+                name=analog_name,
+                barcode=analog_barcode,
+                external_id=analog_external_id,
+                url=analog_url,
+            )
             if existing:
                 med = self._get_medicine_product(existing)
                 updated = False
+                if analog_barcode and not med.barcode:
+                    med.barcode = analog_barcode[:100]
+                    updated = True
                 if active_ingredient and not med.active_ingredient:
                     med.active_ingredient = active_ingredient
                     updated = True
-                if atc_code and not med.atc_code:
-                    med.atc_code = atc_code
+                if (analog_atc_code or atc_code) and not med.atc_code:
+                    med.atc_code = (analog_atc_code or atc_code)[:100]
+                    updated = True
+                if analog_sgk_code and not med.sgk_equivalent_code:
+                    med.sgk_equivalent_code = analog_sgk_code[:100]
                     updated = True
                 if updated:
                     med.save()
+                self._link_medicine_analog_reference(
+                    analog_ref,
+                    med,
+                    barcode=analog_barcode,
+                    atc_code=analog_atc_code or atc_code,
+                    sgk_equivalent_code=analog_sgk_code,
+                )
                 continue
                 
             # Если не существует, создаем базовую заглушку
             # Парсер затем сможет ее обновить при прямом парсинге
             analog_price = analog_data.get('price')
-            analog_url = analog_data.get('url', '')
             
             stub_scraped = ScrapedProduct(
                 name=analog_name,
@@ -2927,15 +3300,28 @@ class ScraperIntegrationService:
                 url=analog_url,
                 category=scraped_product.category,
                 source=scraped_product.source,
+                external_id=analog_external_id,
+                barcode=analog_barcode,
                 is_available=True,
                 attributes={
+                    'is_stub': True,
                     'active_ingredient': active_ingredient,
-                    'atc_code': atc_code
+                    'atc_code': analog_atc_code or atc_code,
+                    'barcode': analog_barcode,
+                    'sgk_equivalent_code': analog_sgk_code,
                 }
             )
             # Чтобы избежать зацикливания, не передаем analogs
             try:
-                self._create_new_product(session, stub_scraped)
+                _, created_product = self._create_new_product(session, stub_scraped)
+                created_med = self._get_medicine_product(created_product)
+                self._link_medicine_analog_reference(
+                    analog_ref,
+                    created_med,
+                    barcode=analog_barcode,
+                    atc_code=analog_atc_code or atc_code,
+                    sgk_equivalent_code=analog_sgk_code,
+                )
             except Exception as e:
                 self.logger.error(f"Ошибка создания аналога {analog_name}: {e}")
 
@@ -3087,6 +3473,13 @@ class ScraperIntegrationService:
 
         # Создаем товар через CatalogNormalizer
         product = self.catalog_normalizer.normalize_product(product_data)
+
+        if product.product_type == "medicines" and prepared_attrs.get("is_stub"):
+            if not isinstance(product.external_data, dict):
+                product.external_data = {}
+            if product.external_data.get("is_stub") is not True:
+                product.external_data["is_stub"] = True
+                product.save(update_fields=["external_data"])
 
         # Свежеспарсенный товар — отмечаем как новинку
         if not product.is_new:

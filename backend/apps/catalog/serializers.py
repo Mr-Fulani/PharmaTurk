@@ -5841,13 +5841,13 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
         return self._get_translation_field(obj, 'contraindications')
 
     def get_storage_conditions(self, obj):
-        return self._get_translation_field(obj, 'storage_conditions', obj.storage_conditions)
+        return self._get_translation_field(obj, 'storage_conditions')
 
     def get_indications(self, obj):
         return self._get_translation_field(obj, 'indications')
 
     def get_special_notes(self, obj):
-        return self._get_translation_field(obj, 'special_notes', obj.special_notes)
+        return self._get_translation_field(obj, 'special_notes')
 
     def get_administration_route(self, obj):
         return self._get_translation_field(obj, 'administration_route', obj.administration_route)

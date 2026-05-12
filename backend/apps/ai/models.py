@@ -60,6 +60,7 @@ class AIProcessingLog(models.Model):
     )
     input_images_urls = models.JSONField(
         default=list,
+        blank=True,
         verbose_name='URL изображений (вход)',
         help_text='Ссылки на R2 или оригинальные URL'
     )
@@ -124,6 +125,7 @@ class AIProcessingLog(models.Model):
     # Анализ изображений (если применялся)
     image_analysis = models.JSONField(
         default=dict,
+        blank=True,
         verbose_name='Анализ изображений',
         help_text='{"dominant_colors": ["#FF0000"], "detected_objects": ["dress"], "quality_score": 0.85}'
     )

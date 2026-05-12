@@ -174,6 +174,55 @@ class _SimpleDomainAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin
 #  МЕДИКАМЕНТЫ
 # ─────────────────────────────────────────────────────────────
 
+def _medicine_stub_display_flag(obj):
+    external_data = obj.external_data if isinstance(obj.external_data, dict) else {}
+    attrs = external_data.get('attributes') if isinstance(external_data.get('attributes'), dict) else {}
+    return (
+        external_data.get('is_stub') is True
+        or attrs.get('is_stub') is True
+        or (
+            str(external_data.get('source') or '').strip() == 'ilacfiyati'
+            and not str(obj.description or '').strip()
+            and obj.price is None
+        )
+    )
+
+
+class MedicineStubStatusFilter(admin.SimpleListFilter):
+    title = _('Техпризнак')
+    parameter_name = 'medicine_stub_status'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('parsed', _('Спарсен')),
+            ('stub', _('Заглушка')),
+        )
+
+    def _stub_q(self):
+        explicit_stub_q = (
+            django_models.Q(external_data__has_key='is_stub') &
+            django_models.Q(external_data__is_stub=True)
+        )
+        attrs_stub_q = (
+            django_models.Q(external_data__attributes__has_key='is_stub') &
+            django_models.Q(external_data__attributes__is_stub=True)
+        )
+        legacy_stub_q = (
+            django_models.Q(external_data__source='ilacfiyati') &
+            django_models.Q(description='') &
+            django_models.Q(price__isnull=True)
+        )
+        return explicit_stub_q | attrs_stub_q | legacy_stub_q
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == 'stub':
+            return queryset.filter(self._stub_q())
+        if value == 'parsed':
+            return queryset.exclude(self._stub_q())
+        return queryset
+
+
 @admin.register(MedicineProduct)
 class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     _category_type_slug = "medicines"
@@ -187,12 +236,12 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
         ),
     })
     list_display = [
-        'name', 'get_ai_status', 'get_media_enrichment_status', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code', 'nfc_code', 'sgk_public_no',
+        'name', 'stub_status', 'get_ai_status', 'get_media_enrichment_status', 'category', 'dosage_form', 'active_ingredient', 'barcode', 'atc_code', 'nfc_code', 'sgk_public_no',
         'prescription_required', 'price', 'old_price',
         'is_available', 'is_new', 'created_at',
     ]
     list_filter = [
-        AIStatusFilter, MediaEnrichmentStatusFilter, 'category', 'is_available', 'prescription_required',
+        MedicineStubStatusFilter, AIStatusFilter, MediaEnrichmentStatusFilter, 'category', 'is_available', 'prescription_required',
         'dosage_form', 'is_new', 'created_at',
     ]
     inlines = [
@@ -204,14 +253,30 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
         _make_image_inline(MedicineProductImage),
         type('MedicineAnalogInline', (admin.TabularInline,), {
             'model': MedicineAnalog,
+            'fk_name': 'product',
             'extra': 0,
-            'fields': ('name', 'barcode', 'atc_code', 'source', 'external_id'),
+            'fields': (
+                'name', 'analog_product', 'barcode', 'atc_code',
+                'sgk_equivalent_code', 'source', 'source_tab', 'external_id',
+            ),
             'verbose_name': _('Аналог'),
             'verbose_name_plural': _('Аналоги (из Eşdeğeri)'),
         }),
     ]
 
     actions = ["run_ai", "run_ai_auto_apply", "run_media_enrichment"]
+
+    @admin.display(description=_('Тип'), ordering='external_data')
+    def stub_status(self, obj):
+        if _medicine_stub_display_flag(obj):
+            return format_html(
+                '<span style="display:inline-block;padding:2px 6px;border-radius:6px;'
+                'background:#fff3cd;color:#8a5a00;font-weight:600;">Заглушка</span>'
+            )
+        return format_html(
+            '<span style="display:inline-block;padding:2px 6px;border-radius:6px;'
+            'background:#d1e7dd;color:#0f5132;font-weight:600;">Спарсен</span>'
+        )
 
 
 # ─────────────────────────────────────────────────────────────
