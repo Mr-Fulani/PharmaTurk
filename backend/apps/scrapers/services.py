@@ -836,6 +836,7 @@ class ScraperIntegrationService:
         max_products: int = None,
         max_images_per_product: int = None,
         target_category=None,
+        start_page: int = 1,
     ) -> ScrapingSession:
         """Запускает парсер и создает сессию.
 
@@ -890,7 +891,8 @@ class ScraperIntegrationService:
                     parser.max_products = session.max_products
 
                 scraped_products, incremental_results = self._run_parser_scraping(
-                    parser, session, start_url or scraper_config.base_url
+                    parser, session, start_url or scraper_config.base_url,
+                    start_page=start_page,
                 )
 
                 # Если _run_parser_scraping обработал товары инкрементально, берём его счётчики;
@@ -939,7 +941,7 @@ class ScraperIntegrationService:
             scraped_products.append(detail_result)
 
     def _run_parser_scraping(
-        self, parser, session: ScrapingSession, start_url: str
+        self, parser, session: ScrapingSession, start_url: str, start_page: int = 1
     ):
         """Выполняет парсинг с помощью парсера.
 
@@ -985,7 +987,7 @@ class ScraperIntegrationService:
                 # сохраняется в БД сразу после парсинга, не накапливается в памяти.
                 incremental_results = {"found": 0, "created": 0, "updated": 0, "skipped": 0, "errors": 0}
                 checkpoint = 0
-                for product in parser.parse_product_list(start_url, max_pages=session.max_pages):
+                for product in parser.parse_product_list(start_url, max_pages=session.max_pages, start_page=start_page):
                     r = self._process_scraped_products(session, [product])
                     for k in incremental_results:
                         incremental_results[k] += r.get(k, 0)

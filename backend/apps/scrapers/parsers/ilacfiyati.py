@@ -270,19 +270,22 @@ class IlacFiyatiParser(BaseScraper):
         analog.update(self._extract_analog_codes(context))
         return analog
 
-    def parse_product_list(self, category_url: str, max_pages: int = 10):
+    def parse_product_list(self, category_url: str, max_pages: int = 10, start_page: int = 1):
         """
         Парсит список товаров из указанной категории.
         Поддерживает пагинацию через параметр `?pg=`.
         Генератор: отдаёт каждый товар сразу после парсинга.
+        start_page — с какой страницы начинать (для авточепочки задач).
+        max_pages — сколько страниц обработать в этом вызове (размер чанка).
         """
         count = 0
-        page = 1
+        page = start_page
+        pages_parsed = 0
 
         try:
-            self.logger.info(f"Начинаем парсинг товаров: {category_url}")
+            self.logger.info(f"Начинаем парсинг товаров: {category_url} (страницы {start_page}+{max_pages})")
 
-            while page <= max_pages:
+            while pages_parsed < max_pages:
                 url = f"{category_url}?pg={page}" if page > 1 else category_url
                 self.logger.info(f"Запрос страницы {page}: {url}")
 
@@ -318,6 +321,7 @@ class IlacFiyatiParser(BaseScraper):
                         count += 1
                         yield detail
 
+                pages_parsed += 1
                 page += 1
 
         except Exception as e:

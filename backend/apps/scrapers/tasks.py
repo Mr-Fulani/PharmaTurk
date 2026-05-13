@@ -4,6 +4,7 @@ import logging
 from typing import Dict, List, Optional
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
+from django.db.models import F
 from django.utils import timezone
 
 from .models import ScraperConfig, ScrapingSession, SiteScraperTask
@@ -13,23 +14,20 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def run_scraper_task(self, 
+def run_scraper_task(self,
                     scraper_config_id: int,
                     start_url: Optional[str] = None,
                     max_pages: Optional[int] = None,
                     max_products: Optional[int] = None,
                     max_images_per_product: Optional[int] = None,
-                    site_task_id: Optional[int] = None) -> Dict:
+                    site_task_id: Optional[int] = None,
+                    start_page: int = 1,
+                    total_scraped: int = 0) -> Dict:
     """Задача: запуск парсера.
-    
-    Args:
-        scraper_config_id: ID конфигурации парсера
-        start_url: Начальный URL
-        max_pages: Максимальное количество страниц
-        max_products: Максимальное количество товаров
-        
-    Returns:
-        Результаты парсинга
+
+    start_page / total_scraped используются для авточепочки при парсинге больших каталогов.
+    Каждый чанк (max_pages страниц) самостоятельно планирует следующий чанк через apply_async,
+    пока не будет достигнут лимит max_products или каталог не исчерпан.
     """
     site_task = None
     if site_task_id:
@@ -73,14 +71,16 @@ def run_scraper_task(self,
         log_lines = [
             f"Парсер: {scraper_config.name}",
             f"URL: {start_url or scraper_config.base_url}",
-            f"Макс. страниц: {max_pages or scraper_config.max_pages_per_run}",
-            f"Макс. товаров: {max_products or scraper_config.max_products_per_run}",
+            f"Страница старт: {start_page}",
+            f"Страниц в чанке: {max_pages or scraper_config.max_pages_per_run}",
+            f"Макс. товаров всего: {max_products or scraper_config.max_products_per_run}",
             f"Макс. медиа: {max_images_per_product or scraper_config.max_images_per_product}",
             f"Старт: {timezone.now().isoformat()}"
         ]
 
         target_category = None
         if site_task:
+            # Первый чанк: переводим в 'running'. Последующие: already running, условие не сработает.
             SiteScraperTask.objects.filter(id=site_task.id, status='pending').update(
                 status='running'
             )
@@ -106,12 +106,14 @@ def run_scraper_task(self,
             max_products=max_products,
             max_images_per_product=max_images_per_product,
             target_category=target_category,
+            start_page=start_page,
         )
-        
+
         result = {
             'status': 'success',
             'scraper_name': scraper_config.name,
             'session_id': session.id,
+            'start_page': start_page,
             'products_found': session.products_found,
             'products_created': session.products_created,
             'products_updated': session.products_updated,
@@ -123,7 +125,7 @@ def run_scraper_task(self,
         }
 
         log_lines.extend([
-            f"Найдено товаров: {session.products_found}",
+            f"Найдено товаров (чанк): {session.products_found}",
             f"Создано: {session.products_created}",
             f"Обновлено: {session.products_updated}",
             f"Пропущено: {session.products_skipped}",
@@ -133,20 +135,55 @@ def run_scraper_task(self,
         ])
 
         if site_task:
-            SiteScraperTask.objects.filter(id=site_task.id).update(
-                status='completed',
+            products_this_chunk = session.products_found
+            new_total = total_scraped + products_this_chunk
+            chunk_pages = max_pages or scraper_config.max_pages_per_run
+            effective_max = site_task.max_products
+
+            # Продолжаем цепочку если: нашли хоть что-то И не достигли лимита
+            should_chain = products_this_chunk > 0 and new_total < effective_max
+
+            common_updates = dict(
                 session=session,
-                products_found=session.products_found,
-                products_created=session.products_created,
-                products_updated=session.products_updated,
-                products_skipped=session.products_skipped,
-                pages_processed=session.pages_processed,
-                errors_count=session.errors_count,
+                products_found=F('products_found') + session.products_found,
+                products_created=F('products_created') + session.products_created,
+                products_updated=F('products_updated') + session.products_updated,
+                products_skipped=F('products_skipped') + session.products_skipped,
+                pages_processed=F('pages_processed') + session.pages_processed,
+                errors_count=F('errors_count') + session.errors_count,
                 log_output="\n".join(log_lines),
-                finished_at=timezone.now()
             )
-        
-        logger.info(f"Парсер {scraper_config.name} завершен успешно: {session.products_found} товаров найдено")
+
+            if should_chain:
+                SiteScraperTask.objects.filter(id=site_task.id).update(**common_updates)
+                run_scraper_task.apply_async(kwargs=dict(
+                    scraper_config_id=scraper_config_id,
+                    start_url=start_url,
+                    max_pages=max_pages,
+                    max_products=max_products,
+                    max_images_per_product=max_images_per_product,
+                    site_task_id=site_task_id,
+                    start_page=start_page + chunk_pages,
+                    total_scraped=new_total,
+                ))
+                logger.info(
+                    f"Парсер {scraper_config.name}: чанк стр.{start_page} готов "
+                    f"({products_this_chunk} товаров, всего {new_total}/{effective_max}). "
+                    f"Следующий чанк со стр.{start_page + chunk_pages}"
+                )
+            else:
+                SiteScraperTask.objects.filter(id=site_task.id).update(
+                    **common_updates,
+                    status='completed',
+                    finished_at=timezone.now(),
+                )
+                logger.info(
+                    f"Парсер {scraper_config.name} завершён: "
+                    f"всего {new_total} товаров за {start_page + chunk_pages - 1} страниц"
+                )
+        else:
+            logger.info(f"Парсер {scraper_config.name} завершен успешно: {session.products_found} товаров найдено")
+
         return result
         
     except SoftTimeLimitExceeded:

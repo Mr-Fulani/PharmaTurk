@@ -526,7 +526,7 @@ class SiteScraperTask(models.Model):
         _("Макс. страниц"), default=1, validators=[MinValueValidator(1), MaxValueValidator(1000)]
     )
     max_products = models.PositiveIntegerField(
-        _("Макс. товаров"), default=50, validators=[MinValueValidator(1), MaxValueValidator(10000)]
+        _("Макс. товаров"), default=50, validators=[MinValueValidator(1), MaxValueValidator(100000)]
     )
     max_images_per_product = models.PositiveIntegerField(
         _("Макс. медиа на товар"),
