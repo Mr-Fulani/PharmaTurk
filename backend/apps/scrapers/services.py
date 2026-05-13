@@ -32,7 +32,7 @@ def scraping_in_progress_context():
         _scraping_thread_local.in_progress = False
 
 
-from .models import ScraperConfig, ScrapingSession, ScrapedProductLog
+from .models import ScraperConfig, ScrapingSession, ScrapedProductLog, SiteScraperTask
 from .parsers.registry import get_parser
 from .parsers.lcw import LcwParser
 from .base.scraper import ScrapedProduct, _json_safe_scraped_value
@@ -836,6 +836,9 @@ class ScraperIntegrationService:
         max_products: int = None,
         max_images_per_product: int = None,
         target_category=None,
+        start_page: int = 1,
+        site_task_id: Optional[int] = None,
+        total_scraped: int = 0,
     ) -> ScrapingSession:
         """Запускает парсер и создает сессию.
 
@@ -889,12 +892,19 @@ class ScraperIntegrationService:
                 if session.max_products:
                     parser.max_products = session.max_products
 
-                scraped_products = self._run_parser_scraping(
-                    parser, session, start_url or scraper_config.base_url
+                scraped_products, incremental_results = self._run_parser_scraping(
+                    parser, session, start_url or scraper_config.base_url,
+                    start_page=start_page,
+                    site_task_id=site_task_id,
+                    total_scraped=total_scraped,
                 )
 
-                # Обрабатываем результаты
-                results = self._process_scraped_products(session, scraped_products)
+                # Если _run_parser_scraping обработал товары инкрементально, берём его счётчики;
+                # иначе обрабатываем накопленный список как раньше.
+                if incremental_results is not None:
+                    results = incremental_results
+                else:
+                    results = self._process_scraped_products(session, scraped_products)
 
                 # Обновляем сессию
                 session.status = "completed"
@@ -935,22 +945,29 @@ class ScraperIntegrationService:
             scraped_products.append(detail_result)
 
     def _run_parser_scraping(
-        self, parser, session: ScrapingSession, start_url: str
-    ) -> List[ScrapedProduct]:
-        """Выполняет парсинг с помощью парсера."""
+        self, parser, session: ScrapingSession, start_url: str,
+        start_page: int = 1, site_task_id: Optional[int] = None, total_scraped: int = 0,
+    ):
+        """Выполняет парсинг с помощью парсера.
+
+        Returns:
+            (scraped_products, incremental_results): для категорий — пустой список и словарь
+            со счётчиками (товары уже сохранены); для остальных — список товаров и None.
+        """
         scraped_products = []
+        incremental_results = None
 
         try:
             # Анализируем URL
             parsed_url = urlparse(start_url)
             path_parts = [p for p in parsed_url.path.strip('/').split('/') if p]
-            
+
             host = (parsed_url.netloc or "").lower()
             is_ikea_host = host == "ikea.com.tr" or host.endswith(".ikea.com.tr")
             is_lcw_host = host == "lcw.com" or host.endswith(".lcw.com")
 
             is_category = (
-                "/category/" in start_url or "/kategori/" in start_url or 
+                "/category/" in start_url or "/kategori/" in start_url or
                 (len(path_parts) == 1 and path_parts[0] in ('ilaclar', 'takviye-edici-gida')) or
                 (is_lcw_host and LcwParser.is_lcw_category_url(start_url))
             )
@@ -962,7 +979,7 @@ class ScraperIntegrationService:
             )
             is_lcw_product = is_lcw_host and LcwParser.is_lcw_product_url(start_url)
             is_product = (
-                "/product/" in start_url or 
+                "/product/" in start_url or
                 ("/p/" in start_url and "instagram.com" not in start_url) or
                 (len(path_parts) >= 2 and path_parts[0] in ('ilaclar', 'takviye-edici-gida')) or
                 is_ikea_product or
@@ -971,10 +988,28 @@ class ScraperIntegrationService:
 
             # Определяем тип парсинга по URL
             if is_category:
-                # Парсинг категории
-                products = parser.parse_product_list(start_url, max_pages=session.max_pages)
-                scraped_products.extend(products)
-                session.pages_processed += len(products) // 20 + 1  # Примерная оценка
+                # Парсинг категории — инкрементальная обработка: каждый товар
+                # сохраняется в БД сразу после парсинга, не накапливается в памяти.
+                incremental_results = {"found": 0, "created": 0, "updated": 0, "skipped": 0, "errors": 0}
+                checkpoint = 0
+                for product in parser.parse_product_list(start_url, max_pages=session.max_pages, start_page=start_page):
+                    r = self._process_scraped_products(session, [product])
+                    for k in incremental_results:
+                        incremental_results[k] += r.get(k, 0)
+                    checkpoint += 1
+                    if checkpoint % 10 == 0:
+                        session.products_found = incremental_results["found"]
+                        session.products_created = incremental_results["created"]
+                        session.products_updated = incremental_results["updated"]
+                        session.products_skipped = incremental_results["skipped"]
+                        session.errors_count = incremental_results["errors"]
+                        session.save()
+                        if site_task_id:
+                            # Абсолютное значение с учётом предыдущих чанков — виден прогресс в админке
+                            SiteScraperTask.objects.filter(id=site_task_id).update(
+                                products_found=total_scraped + incremental_results["found"]
+                            )
+                session.pages_processed += incremental_results["found"] // 20 + 1
 
             elif is_search:
                 # Поиск товаров
@@ -1042,7 +1077,7 @@ class ScraperIntegrationService:
             session.save()
             raise
 
-        return scraped_products
+        return scraped_products, incremental_results
 
     def _process_scraped_products(
         self, session: ScrapingSession, products: List[ScrapedProduct]

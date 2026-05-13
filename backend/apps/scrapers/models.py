@@ -523,10 +523,23 @@ class SiteScraperTask(models.Model):
     )
     start_url = models.URLField(_("Начальный URL"))
     max_pages = models.PositiveIntegerField(
-        _("Макс. страниц"), default=1, validators=[MinValueValidator(1), MaxValueValidator(1000)]
+        _("Страниц за один запуск"),
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(1000)],
+        help_text=_(
+            "Сколько страниц обрабатывать в одном запуске Celery. "
+            "Для ilacfiyati рекомендуется 20–50 (≈30–60 мин). "
+            "При больших каталогах задачи выстраиваются в цепочку автоматически."
+        ),
     )
     max_products = models.PositiveIntegerField(
-        _("Макс. товаров"), default=50, validators=[MinValueValidator(1), MaxValueValidator(10000)]
+        _("Макс. товаров (всего)"),
+        default=50,
+        validators=[MinValueValidator(1), MaxValueValidator(100000)],
+        help_text=_(
+            "Суммарный лимит товаров по всей цепочке запусков. "
+            "Для полного каталога ilacfiyati ~10 000–30 000."
+        ),
     )
     max_images_per_product = models.PositiveIntegerField(
         _("Макс. медиа на товар"),
