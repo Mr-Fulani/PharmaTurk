@@ -122,7 +122,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
   return (
     <footer suppressHydrationWarning className="mt-10 border-t border-main shadow-xl transition-colors duration-200 dark:bg-[#0c1628] dark:border-[#1f2a3d] dark:shadow-[0_-10px_40px_rgba(0,0,0,0.55)]" style={{ backgroundColor: 'var(--surface)', borderColor: 'var(--border)' }}>
       <div className="mx-auto max-w-6xl px-3 sm:px-6 py-10 text-sm text-main">
-        <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 items-start gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
           <div className="flex items-start justify-center sm:justify-start">
             {/* Логотип/изображение оплат — увеличенный размер и правильное выравнивание */}
             <div className="group relative">
@@ -271,7 +271,7 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
               </div>
             </div>
           </div>
-          <div className="text-center sm:text-left">
+          <div className="text-center sm:text-left lg:pl-6 xl:pl-10">
             <div className="mb-2 text-sm font-medium text-main">{t('footer_information')}</div>
             <ul className="space-y-1 text-sm text-main/80">
               {footerLinks.length > 0 ? (
@@ -293,6 +293,45 @@ export default function Footer({ initialSettings }: { initialSettings?: Partial<
                 </>
               )}
             </ul>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-4 xl:col-span-1 xl:justify-self-end">
+            <div className="group relative">
+              <div className="absolute -top-2 left-1/2 z-20 -translate-x-1/2 -translate-y-full opacity-0 transition-opacity duration-200 pointer-events-none group-hover:opacity-100">
+                <div className="bg-[var(--text-strong)] dark:!bg-[#1f2937] text-[var(--bg)] dark:!text-white dark:border dark:border-gray-600 rounded px-2 py-1 text-xs whitespace-nowrap shadow-lg">
+                  {t('footer_testimonials_tooltip', 'Отзывы')}
+                </div>
+                <div className="absolute top-full left-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-[var(--text-strong)] dark:!bg-[#1f2937] dark:border-r dark:border-b dark:border-gray-600" />
+              </div>
+              <Link
+                href="/testimonials"
+                className="block overflow-hidden rounded-[24px] border transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-2xl"
+                style={{
+                  borderColor: theme.theme === 'dark' ? 'rgba(71, 85, 105, 0.85)' : 'rgba(226, 232, 240, 0.95)',
+                  backgroundColor: theme.theme === 'dark' ? 'rgba(15, 23, 42, 0.68)' : 'rgba(255,255,255,0.94)',
+                  boxShadow: theme.theme === 'dark'
+                    ? '0 16px 40px rgba(2, 6, 23, 0.35)'
+                    : '0 14px 34px rgba(15, 23, 42, 0.09)',
+                }}
+              >
+              <div className="relative aspect-[16/10] overflow-hidden">
+                <img
+                  src="/footer-testimonials-promo.png"
+                  alt={t('testimonials_page_title', 'Отзывы клиентов')}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                />
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background: theme.theme === 'dark'
+                      ? 'linear-gradient(180deg, rgba(15,23,42,0.02) 0%, rgba(15,23,42,0.55) 100%)'
+                      : 'linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(15,23,42,0.18) 100%)',
+                  }}
+                />
+              </div>
+              </Link>
+            </div>
           </div>
         </div>
         <div className="mt-8 border-t border-main pt-4 text-center text-xs text-main/70">

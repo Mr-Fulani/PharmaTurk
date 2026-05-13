@@ -19,6 +19,10 @@ interface SitemapUrl {
   alternates?: { lang: string; href: string }[]
 }
 
+interface SitemapTestimonial {
+  id: number
+}
+
 // Типы, для которых URL = /product/{slug} (без типа в пути).
 // Синхронизировать с backend TYPES_NEEDING_PATH и frontend needsTypeInPath.
 const BASE_PRODUCT_TYPES = new Set([
@@ -219,7 +223,21 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     console.error('Sitemap: Failed to fetch dynamic pages', err)
   }
 
-  // 3. Категории — fetchAllPages чтобы не пропустить категории при росте каталога
+  // 3. Отзывы — отдельные страницы для индексации каждого отзыва
+  try {
+    const testimonialsRes = await axios.get(getInternalApiUrl('feedback/testimonials'), {
+      timeout: 5000,
+    })
+    const testimonials: SitemapTestimonial[] = testimonialsRes.data?.results || testimonialsRes.data || []
+    for (const testimonial of testimonials) {
+      if (!testimonial?.id) continue
+      urls.push(buildUrl(`/testimonials/${testimonial.id}`, `/testimonials/${testimonial.id}`, 'weekly', 0.5))
+    }
+  } catch (err) {
+    console.error('Sitemap: Failed to fetch testimonials', err)
+  }
+
+  // 4. Категории — fetchAllPages чтобы не пропустить категории при росте каталога
   try {
     const categories = await fetchAllPages('catalog/categories', { lang: 'en', page_size: 1000 })
     for (const cat of categories) {
@@ -231,11 +249,11 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     // продолжаем без категорий
   }
 
-  // 4. Товары: generic Product + все доменные модели
+  // 5. Товары: generic Product + все доменные модели
   // seenSlugs предотвращает дубли когда доменный товар уже есть в generic таблице через shadow-запись
   const seenSlugs = new Set<string>()
 
-  // 4a. Generic Product (те, у кого есть shadow-запись в базовой таблице)
+  // 5a. Generic Product (те, у кого есть shadow-запись в базовой таблице)
   try {
     const products = await fetchAllPages('catalog/products', {
       lang: 'en', page_size: 1000, is_active: true,

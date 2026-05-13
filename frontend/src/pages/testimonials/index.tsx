@@ -11,27 +11,8 @@ import { useAuth } from '../../context/AuthContext'
 import { StarIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/20/solid'
 import { PhotoIcon, VideoCameraIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from '@heroicons/react/24/outline'
 import { getPlaceholderImageUrl, resolveMediaUrl } from '../../lib/media'
-
-interface TestimonialMedia {
-  id: number
-  media_type: 'image' | 'video' | 'video_file'
-  image_url: string | null
-  video_url: string | null
-  video_file_url: string | null
-  order: number
-}
-
-interface Testimonial {
-  id: number
-  author_name: string
-  author_avatar_url: string | null
-  text: string
-  rating: number | null
-  media: TestimonialMedia[]
-  created_at: string
-  user_id?: number | null
-  user_username?: string | null
-}
+import { getInternalApiUrl } from '../../lib/urls'
+import { buildTestimonialUrl, Testimonial, TestimonialMedia } from '../../lib/testimonials'
 
 interface MediaItem {
   type: 'image' | 'video' | 'video_file'
@@ -40,12 +21,20 @@ interface MediaItem {
   preview?: string
 }
 
-export default function TestimonialsPage() {
+interface TestimonialsPageProps {
+  initialTestimonials: Testimonial[]
+  initialUsernameFilter: string | null
+}
+
+export default function TestimonialsPage({
+  initialTestimonials,
+  initialUsernameFilter,
+}: TestimonialsPageProps) {
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const { user } = useAuth()
-  const [testimonials, setTestimonials] = useState<Testimonial[]>([])
-  const [loading, setLoading] = useState(true)
+  const [testimonials, setTestimonials] = useState<Testimonial[]>(initialTestimonials)
+  const [loading, setLoading] = useState(false)
   const [selectedTestimonial, setSelectedTestimonial] = useState<Testimonial | null>(null)
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0)
   const [showForm, setShowForm] = useState(false)
@@ -72,25 +61,22 @@ export default function TestimonialsPage() {
   const showAllTestimonialsLabel = isRu
     ? t('show_all_testimonials', { lng: 'ru', defaultValue: 'Показать все отзывы' })
     : t('show_all_testimonials', 'Show all reviews')
+  const pageTitle = `${t('testimonials_page_title', 'Отзывы клиентов')} — ${SITE_NAME}`
+  const pageDescription = t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')
+  const metaKeywords = [
+    t('testimonials_page_title', 'Отзывы клиентов'),
+    t('footer_testimonials_tooltip', 'Отзывы'),
+    SITE_NAME,
+    'отзывы клиентов',
+    'reviews',
+    'customer reviews',
+  ].filter(Boolean).join(', ')
+  const testimonialsOgImage = `${SITE_URL}/footer-testimonials-promo.png`
 
   useEffect(() => {
-    const fetchTestimonials = async () => {
-      try {
-        // Получаем параметр username из URL для фильтрации
-        const username = router.query.username as string | undefined
-        const params = username ? { username } : {}
-
-        const response = await api.get('/feedback/testimonials/', { params })
-        const data = response.data
-        setTestimonials(Array.isArray(data) ? data : data.results || [])
-      } catch (error) {
-        console.error('Failed to fetch testimonials:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchTestimonials()
-  }, [router.query.username])
+    setTestimonials(initialTestimonials)
+    setLoading(false)
+  }, [initialTestimonials])
 
   // Открываем форму, если есть параметр action=add
   useEffect(() => {
@@ -544,21 +530,22 @@ export default function TestimonialsPage() {
   return (
     <>
       <Head>
-        <title>{`${t('testimonials_page_title', 'Отзывы клиентов')} — ${SITE_NAME}`}</title>
-        <meta name="description" content={t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')} />
+        <title>{pageTitle}</title>
+        <meta name="description" content={pageDescription} />
+        <meta name="keywords" content={metaKeywords} />
         <link rel="canonical" href={`${SITE_URL}/testimonials`} />
         <link rel="alternate" hrefLang="ru" href={`${SITE_URL}/testimonials`} />
         <link rel="alternate" hrefLang="en" href={`${SITE_URL}/en/testimonials`} />
         <link rel="alternate" hrefLang="x-default" href={`${SITE_URL}/testimonials`} />
-        <meta property="og:title" content={`${t('testimonials_page_title', 'Отзывы клиентов')} — ${SITE_NAME}`} />
-        <meta property="og:description" content={t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')} />
+        <meta property="og:title" content={pageTitle} />
+        <meta property="og:description" content={pageDescription} />
         <meta property="og:url" content={`${SITE_URL}/testimonials`} />
         <meta property="og:type" content="website" />
-        <meta property="og:image" content={`${SITE_URL}/og-default.png`} />
+        <meta property="og:image" content={testimonialsOgImage} />
         <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:title" content={`${t('testimonials_page_title', 'Отзывы клиентов')} — ${SITE_NAME}`} />
-        <meta property="twitter:description" content={t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')} />
-        <meta property="twitter:image" content={`${SITE_URL}/og-default.png`} />
+        <meta property="twitter:title" content={pageTitle} />
+        <meta property="twitter:description" content={pageDescription} />
+        <meta property="twitter:image" content={testimonialsOgImage} />
       </Head>
 
       {/* Success notification */}
@@ -597,23 +584,23 @@ export default function TestimonialsPage() {
       <div className="min-h-screen bg-gray-50 py-12">
         <div className="mx-auto max-w-6xl px-4">
           <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <div>
+            <div className="mb-4 flex flex-col items-center gap-4 text-center">
+              <div className="max-w-3xl">
                 <h1 className="text-4xl font-bold text-gray-900 mb-2">
                   {t('testimonials_page_title', 'Отзывы клиентов')}
                 </h1>
-                {router.query.username && (
+                {initialUsernameFilter && (
                   <p className="text-lg text-gray-700">
-                    {filteredByUserLabel}: <span className="font-semibold">@{router.query.username}</span>
+                    {filteredByUserLabel}: <span className="font-semibold">@{initialUsernameFilter}</span>
                   </p>
                 )}
-                {!router.query.username && (
+                {!initialUsernameFilter && (
                   <p className="text-gray-600">
                     {t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')}
                   </p>
                 )}
               </div>
-              {router.query.username && (
+              {initialUsernameFilter && (
                 <Link
                   href="/testimonials"
                   className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
@@ -635,70 +622,64 @@ export default function TestimonialsPage() {
               {testimonials.map((testimonial) => (
                 <div
                   key={testimonial.id}
-                  onClick={() => {
-                    setSelectedTestimonial(testimonial)
-                    setCurrentMediaIndex(0)
-                  }}
-                  className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer transform hover:-translate-y-2 flex flex-col"
+                  id={`testimonial-${testimonial.id}`}
+                  className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group transform hover:-translate-y-2 flex flex-col"
                 >
-                  {testimonial.media && testimonial.media.length > 0 && (() => {
-                    const cardMedia = testimonial.media[0]
-                    return (
-                      <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100">
-                        {cardMedia.media_type === 'image' && cardMedia.image_url && (
-                          <img
-                            src={resolveMediaUrl(cardMedia.image_url)}
-                            alt={testimonial.author_name}
-                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                          />
-                        )}
-                        {cardMedia.media_type === 'video' && cardMedia.video_url && (
-                          (() => {
-                            const thumbnail = getExternalVideoThumbnail(cardMedia.video_url || '')
-                            if (thumbnail) {
+                  <Link href={buildTestimonialUrl(testimonial.id)} className="block">
+                    {testimonial.media && testimonial.media.length > 0 && (() => {
+                      const cardMedia = testimonial.media[0]
+                      return (
+                        <div className="relative w-full aspect-[9/16] overflow-hidden bg-gray-100">
+                          {cardMedia.media_type === 'image' && cardMedia.image_url && (
+                            <img
+                              src={resolveMediaUrl(cardMedia.image_url)}
+                              alt={testimonial.author_name}
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                            />
+                          )}
+                          {cardMedia.media_type === 'video' && cardMedia.video_url && (
+                            (() => {
+                              const thumbnail = getExternalVideoThumbnail(cardMedia.video_url || '')
+                              if (thumbnail) {
+                                return (
+                                  <img
+                                    src={thumbnail}
+                                    alt={testimonial.author_name}
+                                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                  />
+                                )
+                              }
                               return (
-                                <img
-                                  src={thumbnail}
-                                  alt={testimonial.author_name}
-                                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                />
+                                <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white">
+                                  {t('video_preview_unavailable', 'Предпросмотр недоступен')}
+                                </div>
                               )
-                            }
-                            return (
-                              <div className="w-full h-full flex items-center justify-center bg-gray-900 text-white">
-                                {t('video_preview_unavailable', 'Предпросмотр недоступен')}
-                              </div>
-                            )
-                          })()
-                        )}
-                        {cardMedia.media_type === 'video_file' && cardMedia.video_file_url && (
-                          <video
-                            src={`${resolveMediaUrl(cardMedia.video_file_url)}#t=0.5`}
-                            muted
-                            playsInline
-                            preload="metadata"
-                            className="w-full h-full object-cover"
-                          />
-                        )}
-                      </div>
-                    )
-                  })()}
+                            })()
+                          )}
+                          {cardMedia.media_type === 'video_file' && cardMedia.video_file_url && (
+                            <video
+                              src={`${resolveMediaUrl(cardMedia.video_file_url)}#t=0.5`}
+                              muted
+                              playsInline
+                              preload="metadata"
+                              className="w-full h-full object-cover"
+                            />
+                          )}
+                        </div>
+                      )
+                    })()}
 
-                  {/* Текст отзыва - по центру */}
-                  <div className="flex-1 p-4 min-h-[100px]">
-                    <p className="text-gray-600 text-sm line-clamp-4">
-                      &quot;{testimonial.text}&quot;
-                    </p>
-                  </div>
+                    <div className="flex-1 p-4 min-h-[100px]">
+                      <p className="text-gray-600 text-sm line-clamp-4">
+                        &quot;{testimonial.text}&quot;
+                      </p>
+                    </div>
+                  </Link>
 
-                  {/* Нижняя часть: аватарка + имя слева, звездочки справа */}
                   <div className="p-4 pt-0 flex items-center justify-between border-t border-gray-100 mt-auto">
                     {testimonial.user_id && testimonial.user_username ? (
                       <Link
                         href={`/user/${testimonial.user_username}?testimonial_id=${testimonial.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation() // Предотвращаем открытие модалки
-                        }}
                         className="flex items-center flex-1 min-w-0 hover:opacity-80 transition-opacity"
                       >
                         {testimonial.author_avatar_url && (
@@ -1068,10 +1049,27 @@ export default function TestimonialsPage() {
   )
 }
 
-export const getServerSideProps: GetServerSideProps = async ({ locale }) => {
+export const getServerSideProps: GetServerSideProps = async ({ locale, query }) => {
+  let initialTestimonials: Testimonial[] = []
+  const username = typeof query.username === 'string' ? query.username : null
+
+  try {
+    const response = await fetch(
+      `${getInternalApiUrl('feedback/testimonials')}${username ? `?username=${encodeURIComponent(username)}` : ''}`
+    )
+    if (response.ok) {
+      const data = await response.json()
+      initialTestimonials = Array.isArray(data) ? data : data.results || []
+    }
+  } catch (error) {
+    console.error('SSR testimonials fetch failed:', error)
+  }
+
   return {
     props: {
       ...(await serverSideTranslations(locale || 'ru', ['common'])),
+      initialTestimonials,
+      initialUsernameFilter: username,
     },
   }
 }

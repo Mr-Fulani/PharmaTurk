@@ -2,12 +2,13 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.views import APIView
 from django.utils.text import slugify
 import os
 import uuid
 from api.authentication import JWTSafeAuthentication
-from .models import Testimonial
-from .serializers import TestimonialSerializer, TestimonialCreateSerializer
+from .models import Testimonial, TestimonialSectionSettings
+from .serializers import TestimonialSerializer, TestimonialCreateSerializer, TestimonialSectionSettingsSerializer
 
 
 def _build_testimonial_media_filename(user, media_type, original_name):
@@ -133,3 +134,12 @@ class TestimonialViewSet(viewsets.ModelViewSet):
         # Возвращаем созданный отзыв
         response_serializer = TestimonialSerializer(testimonial, context={'request': request})
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class TestimonialSectionSettingsView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        settings_obj = TestimonialSectionSettings.load()
+        serializer = TestimonialSectionSettingsSerializer(settings_obj)
+        return Response(serializer.data)

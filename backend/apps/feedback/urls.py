@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import TestimonialViewSet
+from .views import TestimonialViewSet, TestimonialSectionSettingsView
 
 router = DefaultRouter()
 router.register(r'testimonials', TestimonialViewSet, basename='testimonial')
@@ -13,5 +13,6 @@ testimonials_list = TestimonialViewSet.as_view({
 
 urlpatterns = [
     path('testimonials', testimonials_list),
+    path('testimonials-section-settings', TestimonialSectionSettingsView.as_view()),
     path('', include(router.urls)),
 ]
