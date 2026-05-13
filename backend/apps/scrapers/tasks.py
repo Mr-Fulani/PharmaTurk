@@ -577,12 +577,147 @@ def update_scraper_status(self, scraper_config_id: int, status: str) -> Dict:
     except Exception as e:
         error_msg = f"Ошибка при обновлении статуса парсера: {e}"
         logger.error(error_msg)
-        
+
         if self.request.retries < self.max_retries:
             raise self.retry(exc=e)
-        
+
         return {
             'status': 'error',
             'error': error_msg,
             'timestamp': timezone.now().isoformat()
         }
+
+
+_STUB_REFRESH_BATCH_SIZE = 50
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offset: int = 0) -> Dict:
+    """Обходит товары-заглушки и парсит каждую по URL через основной парсер."""
+    site_task = SiteScraperTask.objects.filter(id=site_task_id).first()
+
+    try:
+        from apps.catalog.models import MedicineProduct
+        from .parsers.registry import get_parser
+
+        scraper_config = ScraperConfig.objects.get(id=scraper_config_id)
+
+        SiteScraperTask.objects.filter(id=site_task_id, status='pending').update(status='running')
+        SiteScraperTask.objects.filter(id=site_task_id, started_at__isnull=True).update(started_at=timezone.now())
+        if site_task:
+            site_task.refresh_from_db()
+
+        batch = list(
+            MedicineProduct.objects
+            .filter(external_data__is_stub=True, external_url__gt='')
+            .select_related('base_product')
+            .order_by('id')[offset:offset + _STUB_REFRESH_BATCH_SIZE]
+        )
+
+        if not batch:
+            SiteScraperTask.objects.filter(id=site_task_id).update(
+                status='completed',
+                finished_at=timezone.now(),
+                log_output='Нет заглушек с external_url для обновления.',
+            )
+            return {'status': 'completed', 'message': 'Нет заглушек'}
+
+        parser_class = get_parser(scraper_config.parser_class)
+        if not parser_class:
+            raise ValueError(f"Парсер {scraper_config.parser_class} не найден")
+
+        session = ScrapingSession.objects.create(
+            scraper_config=scraper_config,
+            max_pages=1,
+            max_products=site_task.max_products if site_task else _STUB_REFRESH_BATCH_SIZE,
+            status='running',
+            started_at=timezone.now(),
+        )
+
+        integration_service = ScraperIntegrationService()
+        chunk_updated = chunk_skipped = chunk_errors = 0
+
+        with parser_class(
+            base_url=scraper_config.base_url,
+            timeout=scraper_config.timeout,
+            max_retries=scraper_config.max_retries,
+            use_proxy=scraper_config.use_proxy,
+            username=scraper_config.scraper_username,
+            password=scraper_config.scraper_password,
+        ) as parser:
+            parser.delay_range = (scraper_config.delay_min, scraper_config.delay_max)
+            if scraper_config.user_agent:
+                parser.user_agent = scraper_config.user_agent
+
+            for i, stub in enumerate(batch):
+                try:
+                    scraped = parser.parse_product_detail(stub.external_url)
+                    if not scraped:
+                        chunk_skipped += 1
+                    else:
+                        integration_service._update_existing_product(session, scraped, stub.base_product)
+                        chunk_updated += 1
+                except Exception as exc:
+                    chunk_errors += 1
+                    logger.error(f"Ошибка обновления заглушки {stub.external_url}: {exc}")
+
+                if (i + 1) % 10 == 0:
+                    SiteScraperTask.objects.filter(id=site_task_id).update(
+                        products_found=offset + i + 1,
+                        products_updated=F('products_updated') + chunk_updated,
+                        products_skipped=F('products_skipped') + chunk_skipped,
+                        errors_count=F('errors_count') + chunk_errors,
+                    )
+                    chunk_updated = chunk_skipped = chunk_errors = 0
+
+        new_offset = offset + len(batch)
+        SiteScraperTask.objects.filter(id=site_task_id).update(
+            products_found=new_offset,
+            products_updated=F('products_updated') + chunk_updated,
+            products_skipped=F('products_skipped') + chunk_skipped,
+            errors_count=F('errors_count') + chunk_errors,
+        )
+
+        session.status = 'completed'
+        session.finished_at = timezone.now()
+        session.save(update_fields=['status', 'finished_at'])
+
+        effective_max = site_task.max_products if site_task else new_offset
+        should_chain = len(batch) == _STUB_REFRESH_BATCH_SIZE and new_offset < effective_max
+
+        if should_chain:
+            run_stub_refresh_task.apply_async(kwargs=dict(
+                site_task_id=site_task_id,
+                scraper_config_id=scraper_config_id,
+                offset=new_offset,
+            ))
+            logger.info(f"stub_refresh: обработано {new_offset} заглушек, продолжаем со смещения {new_offset}")
+        else:
+            SiteScraperTask.objects.filter(id=site_task_id).update(
+                status='completed',
+                finished_at=timezone.now(),
+                session=session,
+            )
+            logger.info(f"stub_refresh: завершено, обработано {new_offset} заглушек")
+
+        return {'status': 'success', 'offset': offset, 'batch_size': len(batch)}
+
+    except ScraperConfig.DoesNotExist:
+        error_msg = f"Конфигурация парсера с ID {scraper_config_id} не найдена"
+        logger.error(error_msg)
+        if site_task:
+            SiteScraperTask.objects.filter(id=site_task_id).update(
+                status='failed', error_message=error_msg, finished_at=timezone.now()
+            )
+        return {'status': 'error', 'error': error_msg}
+
+    except Exception as e:
+        error_msg = f"Ошибка обновления заглушек: {e}"
+        logger.error(error_msg)
+        if site_task:
+            SiteScraperTask.objects.filter(id=site_task_id).update(
+                status='failed', error_message=error_msg, finished_at=timezone.now()
+            )
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e)
+        return {'status': 'error', 'error': error_msg, 'timestamp': timezone.now().isoformat()}

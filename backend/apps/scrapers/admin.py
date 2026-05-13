@@ -26,7 +26,7 @@ from .models import (
     InstagramScraperTask,
     SiteScraperTask,
 )
-from .tasks import run_scraper_task
+from .tasks import run_scraper_task, run_stub_refresh_task
 
 logger = logging.getLogger(__name__)
 
@@ -334,6 +334,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             {
                 "fields": [
                     "scraper_config",
+                    "task_type",
                     "target_category",
                     "target_subcategory",
                     "start_url",
@@ -341,7 +342,11 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     "max_products",
                     "max_images_per_product",
                 ],
-                "description": "Выберите целевую категорию — товары будут сохранены в неё. Если не указана, используется категория по умолчанию из конфигурации парсера.",
+                "description": (
+                    "Тип «Парсинг каталога» — стандартный режим постраничного обхода. "
+                    "Тип «Обновление заглушек» — обходит товары с флагом is_stub и дополняет их данными; "
+                    "start_url в этом режиме не нужен."
+                ),
             },
         ),
         (
@@ -590,19 +595,27 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         task.task_id = ""
         task.save()
 
-        celery_task = run_scraper_task.delay(
-            task.scraper_config_id,
-            start_url=task.start_url,
-            max_pages=task.max_pages,
-            max_products=task.max_products,
-            max_images_per_product=task.max_images_per_product,
-            site_task_id=task.id,
-        )
+        if getattr(task, 'task_type', 'catalog') == 'stub_refresh':
+            celery_task = run_stub_refresh_task.delay(
+                site_task_id=task.id,
+                scraper_config_id=task.scraper_config_id,
+                offset=0,
+            )
+        else:
+            celery_task = run_scraper_task.delay(
+                task.scraper_config_id,
+                start_url=task.start_url,
+                max_pages=task.max_pages,
+                max_products=task.max_products,
+                max_images_per_product=task.max_images_per_product,
+                site_task_id=task.id,
+            )
         task.task_id = celery_task.id
         task.save(update_fields=["task_id"])
         logger.info(
-            "Enqueued SiteScraperTask #%s for scraper '%s' as Celery task %s",
+            "Enqueued SiteScraperTask #%s (type=%s) for scraper '%s' as Celery task %s",
             task.id,
+            getattr(task, 'task_type', 'catalog'),
             task.scraper_config.name,
             celery_task.id,
         )

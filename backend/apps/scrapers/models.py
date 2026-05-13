@@ -496,6 +496,10 @@ class SiteScraperTask(models.Model):
         ("completed", _("Завершено")),
         ("failed", _("Ошибка")),
     ]
+    TASK_TYPE_CHOICES = [
+        ("catalog", _("Парсинг каталога")),
+        ("stub_refresh", _("Обновление заглушек")),
+    ]
 
     scraper_config = models.ForeignKey(
         ScraperConfig,
@@ -521,7 +525,13 @@ class SiteScraperTask(models.Model):
         verbose_name=_("Подкатегория"),
         help_text=_("Опционально. Узкая подкатегория (например, жанр книги или тип одежды). Если выбрано, товары будут сохранены сюда."),
     )
-    start_url = models.URLField(_("Начальный URL"))
+    task_type = models.CharField(
+        _("Тип задачи"),
+        max_length=20,
+        choices=TASK_TYPE_CHOICES,
+        default="catalog",
+    )
+    start_url = models.URLField(_("Начальный URL"), blank=True)
     max_pages = models.PositiveIntegerField(
         _("Страниц за один запуск"),
         default=1,
