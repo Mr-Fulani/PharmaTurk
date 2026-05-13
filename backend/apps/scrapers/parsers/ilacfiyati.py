@@ -270,35 +270,33 @@ class IlacFiyatiParser(BaseScraper):
         analog.update(self._extract_analog_codes(context))
         return analog
 
-    def parse_product_list(self, category_url: str, max_pages: int = 10) -> List[ScrapedProduct]:
+    def parse_product_list(self, category_url: str, max_pages: int = 10):
         """
         Парсит список товаров из указанной категории.
         Поддерживает пагинацию через параметр `?pg=`.
+        Генератор: отдаёт каждый товар сразу после парсинга.
         """
-        products = []
+        count = 0
         page = 1
-        
+
         try:
             self.logger.info(f"Начинаем парсинг товаров: {category_url}")
-            
+
             while page <= max_pages:
                 url = f"{category_url}?pg={page}" if page > 1 else category_url
                 self.logger.info(f"Запрос страницы {page}: {url}")
-                
+
                 html = self._make_request(url)
                 if not html:
                     break
 
                 soup = BeautifulSoup(html, 'html.parser')
-                
-                # Ищем все ссылки на товары. 
-                # Исходя из структуры, ссылки на товары содержат /ilaclar/ или /takviye-edici-gida/
+
                 product_links = soup.select('a[href*="/ilaclar/"], a[href*="/takviye-edici-gida/"]')
                 product_urls = []
-                
+
                 for link in product_links:
                     href = link.get('href')
-                    # Отсекаем ссылки на пагинацию или категории
                     if href and 'pg=' not in href:
                         path = urlparse(href).path.strip('/')
                         path_parts = path.split('/')
@@ -306,25 +304,24 @@ class IlacFiyatiParser(BaseScraper):
                             full_url = urljoin(self.base_url, href)
                             if full_url not in product_urls:
                                 product_urls.append(full_url)
-                
+
                 if not product_urls:
                     self.logger.info("Ссылки на товары не найдены, завершаем пагинацию.")
                     break
-                    
+
                 for product_url in product_urls:
-                    if self.max_products and len(products) >= self.max_products:
-                        return products
-                        
+                    if self.max_products and count >= self.max_products:
+                        return
+
                     detail = self.parse_product_detail(product_url)
                     if detail and self.validate_product(detail):
-                        products.append(detail)
-                        
+                        count += 1
+                        yield detail
+
                 page += 1
-                
+
         except Exception as e:
             self.logger.error(f"Ошибка при парсимге списка товаров: {e}")
-            
-        return products
 
     def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
         """

@@ -3,6 +3,7 @@
 import logging
 from typing import Dict, List, Optional
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 from django.utils import timezone
 
 from .models import ScraperConfig, ScrapingSession, SiteScraperTask
@@ -148,6 +149,18 @@ def run_scraper_task(self,
         logger.info(f"Парсер {scraper_config.name} завершен успешно: {session.products_found} товаров найдено")
         return result
         
+    except SoftTimeLimitExceeded:
+        error_msg = "Задача превысила лимит времени (soft limit)"
+        logger.warning(f"SoftTimeLimitExceeded для задачи парсера {scraper_config_id}")
+        if site_task:
+            SiteScraperTask.objects.filter(id=site_task.id).update(
+                status='failed',
+                error_message=error_msg,
+                log_output=error_msg,
+                finished_at=timezone.now()
+            )
+        raise
+
     except ScraperConfig.DoesNotExist:
         error_msg = f"Конфигурация парсера с ID {scraper_config_id} не найдена"
         logger.error(error_msg)
@@ -163,7 +176,7 @@ def run_scraper_task(self,
             'error': error_msg,
             'timestamp': timezone.now().isoformat()
         }
-        
+
     except Exception as e:
         error_msg = f"Ошибка в задаче парсинга: {e}"
         logger.error(error_msg)
