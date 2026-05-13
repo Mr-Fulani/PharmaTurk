@@ -32,7 +32,7 @@ def scraping_in_progress_context():
         _scraping_thread_local.in_progress = False
 
 
-from .models import ScraperConfig, ScrapingSession, ScrapedProductLog
+from .models import ScraperConfig, ScrapingSession, ScrapedProductLog, SiteScraperTask
 from .parsers.registry import get_parser
 from .parsers.lcw import LcwParser
 from .base.scraper import ScrapedProduct, _json_safe_scraped_value
@@ -837,6 +837,8 @@ class ScraperIntegrationService:
         max_images_per_product: int = None,
         target_category=None,
         start_page: int = 1,
+        site_task_id: Optional[int] = None,
+        total_scraped: int = 0,
     ) -> ScrapingSession:
         """Запускает парсер и создает сессию.
 
@@ -893,6 +895,8 @@ class ScraperIntegrationService:
                 scraped_products, incremental_results = self._run_parser_scraping(
                     parser, session, start_url or scraper_config.base_url,
                     start_page=start_page,
+                    site_task_id=site_task_id,
+                    total_scraped=total_scraped,
                 )
 
                 # Если _run_parser_scraping обработал товары инкрементально, берём его счётчики;
@@ -941,7 +945,8 @@ class ScraperIntegrationService:
             scraped_products.append(detail_result)
 
     def _run_parser_scraping(
-        self, parser, session: ScrapingSession, start_url: str, start_page: int = 1
+        self, parser, session: ScrapingSession, start_url: str,
+        start_page: int = 1, site_task_id: Optional[int] = None, total_scraped: int = 0,
     ):
         """Выполняет парсинг с помощью парсера.
 
@@ -999,6 +1004,11 @@ class ScraperIntegrationService:
                         session.products_skipped = incremental_results["skipped"]
                         session.errors_count = incremental_results["errors"]
                         session.save()
+                        if site_task_id:
+                            # Абсолютное значение с учётом предыдущих чанков — виден прогресс в админке
+                            SiteScraperTask.objects.filter(id=site_task_id).update(
+                                products_found=total_scraped + incremental_results["found"]
+                            )
                 session.pages_processed += incremental_results["found"] // 20 + 1
 
             elif is_search:

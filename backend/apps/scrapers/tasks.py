@@ -107,6 +107,8 @@ def run_scraper_task(self,
             max_images_per_product=max_images_per_product,
             target_category=target_category,
             start_page=start_page,
+            site_task_id=site_task_id,
+            total_scraped=total_scraped,
         )
 
         result = {
@@ -145,7 +147,7 @@ def run_scraper_task(self,
 
             common_updates = dict(
                 session=session,
-                products_found=F('products_found') + session.products_found,
+                products_found=new_total,  # абсолютное значение, не F() — midway уже ставит абсолютные
                 products_created=F('products_created') + session.products_created,
                 products_updated=F('products_updated') + session.products_updated,
                 products_skipped=F('products_skipped') + session.products_skipped,
