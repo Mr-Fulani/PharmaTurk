@@ -519,6 +519,7 @@ interface Product {
   sgk_public_no?: string | null
   sgk_status?: string | null
   special_notes?: string | null
+  manufacturer?: string | null
   serving_size?: string | null
   fragrance_type?: string | null
   fragrance_family?: string | null
@@ -1256,6 +1257,7 @@ export default function ProductPage({
     apiTranslation?.description ||
     product.description
   const isService = productType === 'uslugi'
+  const isMedicine = productType === 'medicines' || product.product_type === 'medicines'
   const seoCategoryName = product.category
     ? getLocalizedCategoryName(product.category.slug, product.category.name, t, undefined, router.locale)
     : ''
@@ -1342,6 +1344,74 @@ export default function ProductPage({
       item: item.href === '#' ? canonicalUrl : `${siteUrl}${localePrefix}${item.href}`,
     })),
   }
+  const medicineDisclaimer = isMedicine ? (
+    <div
+      className="rounded-2xl border px-4 py-4 text-xs leading-relaxed shadow-sm sm:px-5"
+      style={{
+        color: theme === 'dark' ? '#FDE68A' : '#92400E',
+        background: theme === 'dark' ? 'rgba(120, 53, 15, 0.28)' : '#FFFBEB',
+        borderColor: theme === 'dark' ? 'rgba(245, 158, 11, 0.35)' : '#FCD34D',
+      }}
+    >
+      <div className="mb-2 flex items-start gap-2">
+        <svg
+          className="mt-0.5 h-4 w-4 flex-shrink-0"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden
+        >
+          <path
+            fillRule="evenodd"
+            d="M8.257 3.099c.765-1.36 2.72-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.981-1.742 2.981H4.42c-1.53 0-2.492-1.647-1.743-2.98l5.58-9.921zM11 13a1 1 0 10-2 0 1 1 0 002 0zm-1-6a1 1 0 00-1 1v3a1 1 0 102 0V8a1 1 0 00-1-1z"
+            clipRule="evenodd"
+          />
+        </svg>
+        <p className="text-sm font-semibold">
+          {t('important_information', 'Важная информация')}
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        <p>{t('medicine_disclaimer_line1', 'Наш сайт не продает лекарства.')}</p>
+        <p>{t('medicine_disclaimer_line2', 'Указанные цены призваны способствовать рациональному использованию лекарственных средств.')}</p>
+        <p>{t('medicine_disclaimer_line3', 'Цены на лекарства взяты из еженедельных списков, публикуемых Министерством здравоохранения Турции и Турецким агентством по лекарственным средствам и медицинским изделиям (TİTCK).')}</p>
+        <p>{t('medicine_disclaimer_line4', 'Указанные цены являются рекомендованными розничными ценами для аптек и могут меняться.')}</p>
+        <p>{t('medicine_disclaimer_line5', 'Цены могут быть неактуальными.')}</p>
+      </div>
+    </div>
+  ) : null
+  const medicineFacts = isMedicine
+    ? [
+      product.brand ? {
+        label: t('brand', 'Бренд'),
+        value: getLocalizedBrandName(product.brand.slug || '', product.brand.name, t, product.brand.translations, router.locale),
+      } : null,
+      product.manufacturer ? {
+        label: t('manufacturer', 'Производитель'),
+        value: product.manufacturer,
+      } : null,
+      product.dosage_form ? { label: t('dosage_form', 'Лекарственная форма'), value: getDosageFormLabel(product.dosage_form, t) } : null,
+      product.active_ingredient ? { label: t('active_ingredient', 'Действующее вещество'), value: product.active_ingredient } : null,
+      product.volume ? { label: t('volume', 'Объем/Количество'), value: product.volume } : null,
+      product.origin_country ? {
+        label: t('origin_country', 'Страна производства'),
+        value:
+          product.origin_country.toUpperCase() === 'İTHAL' || product.origin_country.toUpperCase() === 'ITHAL'
+            ? t('imported', 'Импортное')
+            : product.origin_country.toUpperCase() === 'YERLİ' || product.origin_country.toUpperCase() === 'YERLI'
+              ? t('domestic', 'Турция (Местное)')
+              : product.origin_country,
+      } : null,
+      product.administration_route ? { label: t('administration_route', 'Путь введения'), value: getAdministrationRouteLabel(product.administration_route, t) } : null,
+      product.shelf_life ? { label: t('shelf_life', 'Срок годности'), value: formatShelfLife(product.shelf_life, t) } : null,
+      product.prescription_type ? { label: t('prescription_type', 'Тип рецепта'), value: getPrescriptionTypeLabel(product.prescription_type, t) } : null,
+      product.barcode ? { label: t('barcode', 'Штрих-код'), value: product.barcode, mono: true } : null,
+      product.atc_code ? { label: t('atc_code', 'АТХ код'), value: product.atc_code, mono: true } : null,
+      product.nfc_code ? { label: t('nfc_code', 'NFC код'), value: product.nfc_code, mono: true } : null,
+      product.sgk_equivalent_code ? { label: t('sgk_equivalent_code', 'Код эквивалента SGK'), value: product.sgk_equivalent_code, mono: true } : null,
+      product.sgk_active_ingredient_code ? { label: t('sgk_active_ingredient_code', 'Код акт. вещ-ва SGK'), value: product.sgk_active_ingredient_code, mono: true } : null,
+      product.sgk_public_no ? { label: t('sgk_public_no', 'Публичный номер SGK'), value: product.sgk_public_no, mono: true } : null,
+    ].filter(Boolean) as Array<{ label: string; value: string; mono?: boolean }>
+    : []
   return (
     <>
       <Head>
@@ -1392,66 +1462,88 @@ export default function ProductPage({
       </div>
       <main className="mx-auto max-w-6xl px-3 pt-0 pb-8 sm:py-8">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1.3fr_1fr] md:items-start">
-          <div className="flex flex-col md:flex-row gap-4 md:h-[calc(100vh-22rem)] md:sticky md:top-6 md:self-start">
-            
-            {/* --- МOБИЛЬНАЯ КАРУСЕЛЬ (Скрыта на десктопе) --- */}
-            <div className="flex md:hidden overflow-x-auto snap-x snap-mandatory gap-4 pb-2 -mx-6 px-6 hide-scrollbar flex-shrink-0">
-              {gallerySource.length > 0 ? gallerySource.map((img) => {
-                const isVideoItem = (img as GalleryItem).isVideo === true
-                const resolvedUrl = resolveMediaUrl(img.image_url)
-                const thumbKey = `mobile-${String(img.id)}`
-                return (
-                  <div key={thumbKey} className="relative shrink-0 w-full aspect-[4/5] snap-center rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
-                    {isVideoItem && img.video_url ? (
-                      (() => {
-                        const embedUrl = getVideoEmbedUrl(img.video_url)
-                        if (embedUrl) {
+          <div className="flex flex-col md:sticky md:top-6 md:self-start">
+            <div className="flex flex-col md:flex-row gap-4 md:h-[calc(100vh-22rem)]">
+              {/* --- МOБИЛЬНАЯ КАРУСЕЛЬ (Скрыта на десктопе) --- */}
+              <div className="flex md:hidden overflow-x-auto snap-x snap-mandatory gap-4 pb-2 -mx-6 px-6 hide-scrollbar flex-shrink-0">
+                {gallerySource.length > 0 ? gallerySource.map((img) => {
+                  const isVideoItem = (img as GalleryItem).isVideo === true
+                  const resolvedUrl = resolveMediaUrl(img.image_url)
+                  const thumbKey = `mobile-${String(img.id)}`
+                  return (
+                    <div key={thumbKey} className="relative shrink-0 w-full aspect-[4/5] snap-center rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
+                      {isVideoItem && img.video_url ? (
+                        (() => {
+                          const embedUrl = getVideoEmbedUrl(img.video_url)
+                          if (embedUrl) {
+                            return (
+                              <iframe
+                                src={embedUrl}
+                                className="w-full h-full border-0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                                title={img.alt_text || displayProductName}
+                              />
+                            )
+                          }
+                          const prodAny = product as any
+                          const productFallbackImage = prodAny.main_image_url || prodAny.main_image || prodAny.image_url
+                          const videoPoster =
+                            (img.image_url && !isVideoUrl(img.image_url)
+                              ? resolveMediaUrl(img.image_url)
+                              : null) ||
+                            (productFallbackImage ? resolveMediaUrl(productFallbackImage) : null) ||
+                            undefined
                           return (
-                            <iframe
-                              src={embedUrl}
-                              className="w-full h-full border-0"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                              title={img.alt_text || displayProductName}
+                            <video
+                              src={resolveMediaUrl(img.video_url)}
+                              poster={videoPoster}
+                              controls
+                              playsInline
+                              muted
+                              preload="metadata"
+                              className="w-full h-full object-contain"
                             />
                           )
-                        }
-                        const prodAny = product as any
-                        const productFallbackImage = prodAny.main_image_url || prodAny.main_image || prodAny.image_url
-                        const videoPoster =
-                          (img.image_url && !isVideoUrl(img.image_url)
-                            ? resolveMediaUrl(img.image_url)
-                            : null) ||
-                          (productFallbackImage ? resolveMediaUrl(productFallbackImage) : null) ||
-                          undefined
-                        return (
-                          <video
-                            src={resolveMediaUrl(img.video_url)}
-                            poster={videoPoster}
-                            controls
-                            playsInline
-                            muted
-                            preload="metadata"
-                            className="w-full h-full object-contain"
-                          />
-                        )
-                      })()
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={resolvedUrl || getPlaceholderImageUrl({ type: 'product', id: product.id })}
-                        alt={img.alt_text || displayProductName || product.name}
-                        className="w-full h-full object-contain"
-                        onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
-                      />
-                    )}
-                    {/* Индикация фото (точки) как в kiton */}
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1 z-10 opacity-70">
-                      {gallerySource.map((_, i) => (
-                        <div key={i} className={`w-1.5 h-1.5 rounded-full shadow-sm ${i === 0 ? 'bg-white scale-125' : 'bg-white/60'}`} />
-                      ))}
+                        })()
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={resolvedUrl || getPlaceholderImageUrl({ type: 'product', id: product.id })}
+                          alt={img.alt_text || displayProductName || product.name}
+                          className="w-full h-full object-contain"
+                          onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
+                        />
+                      )}
+                      {/* Индикация фото (точки) как в kiton */}
+                      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1 z-10 opacity-70">
+                        {gallerySource.map((_, i) => (
+                          <div key={i} className={`w-1.5 h-1.5 rounded-full shadow-sm ${i === 0 ? 'bg-white scale-125' : 'bg-white/60'}`} />
+                        ))}
+                      </div>
+
+                      <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
+                        <FavoriteButton
+                          productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
+                          productType={productType}
+                          productSlug={product.slug}
+                          favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
+                          favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
+                          cornerIcon={true}
+                        />
+                        <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
+                      </div>
                     </div>
-                    
+                  )
+                }) : (
+                  <div className="relative shrink-0 w-full aspect-[4/5] snap-center rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={getPlaceholderImageUrl({ type: 'product', id: product.id, width: 800, height: 800 })}
+                      alt="No image"
+                      className="w-full h-full object-contain"
+                      onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
+                    />
                     <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
                       <FavoriteButton
                         productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
@@ -1464,235 +1556,219 @@ export default function ProductPage({
                       <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
                     </div>
                   </div>
-                )
-              }) : (
-                <div className="relative shrink-0 w-full aspect-[4/5] snap-center rounded-xl overflow-hidden bg-gray-50 border border-gray-100">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={getPlaceholderImageUrl({ type: 'product', id: product.id, width: 800, height: 800 })}
-                    alt="No image"
-                    className="w-full h-full object-contain"
-                    onError={(e) => { e.currentTarget.src = '/product-placeholder.svg' }}
-                  />
-                  <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation() }}>
-                    <FavoriteButton
-                      productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
-                      productType={productType}
-                      productSlug={product.slug}
-                      favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
-                      favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
-                      cornerIcon={true}
-                    />
-                    <ShareButton title={metaTitle} description={metaDescription} imageUrl={ogImage} slug={product.slug} productType={productType} pageUrl={canonicalUrl} cornerIcon={true} />
-                  </div>
+                )}
+              </div>
+
+              {/* --- ДЕСКТОПНЫЕ МИНИАТЮРЫ СЛЕВА (Скрыты на мобильных) --- */}
+              {gallerySource.length > 0 && (
+                <div className="hidden md:flex flex-col gap-3 overflow-y-auto flex-shrink-0">
+                  {gallerySource.map((img) => {
+                    const resolvedThumbnail = resolveMediaUrl(img.image_url)
+                    const thumbKey = String(img.id)
+                    const placeholderId = `${product.id}-thumb-${img.id}`
+                    const placeholderSmall = getPlaceholderImageUrl({ type: 'product', id: placeholderId, width: 200, height: 200 })
+                    const placeholderLarge = getPlaceholderImageUrl({ type: 'product', id: placeholderId, width: 800, height: 800 })
+                    const effectiveThumbUrl = thumbPlaceholderByKey[thumbKey] || resolvedThumbnail || placeholderLarge
+                    const isVideoItem = (img as GalleryItem).isVideo === true
+                    const isActive =
+                      isVideoItem
+                        ? activeMediaType === 'video' && Boolean(img.video_url && img.video_url === activeVideoUrl)
+                        : activeMediaType === 'image' && (activeImage === resolvedThumbnail || activeImage === effectiveThumbUrl)
+                    return (
+                      <button
+                        key={thumbKey}
+                        type="button"
+                        className={`relative w-28 h-28 rounded-lg overflow-hidden border flex-shrink-0 cursor-pointer ${isActive ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200 hover:border-gray-300'}`}
+                        onClick={() => {
+                          if (isVideoItem) {
+                            setActiveMediaType('video')
+                            if (img.video_url) {
+                              setActiveVideoUrl(img.video_url)
+                            }
+                          } else {
+                            setActiveMediaType('image')
+                            const nextUrl = effectiveThumbUrl || resolvedThumbnail || null
+                            if (nextUrl !== activeImage) {
+                              setMainImageLoading(true)
+                              setActiveImage(nextUrl)
+                            }
+                          }
+                        }}
+                      >
+                        {isVideoItem && img.video_url ? (
+                          (() => {
+                            const embedUrl = getVideoEmbedUrl(img.video_url)
+                            if (embedUrl) {
+                              return (
+                                <div className="w-full h-full bg-black flex items-center justify-center">
+                                  <svg className="w-8 h-8 text-white/80" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M8 5v14l11-7z" />
+                                  </svg>
+                                </div>
+                              )
+                            }
+                            return (
+                              <video
+                                src={resolveMediaUrl(img.video_url)}
+                                muted
+                                playsInline
+                                preload="metadata"
+                                className="w-full h-full object-cover pointer-events-none"
+                                aria-label={img.alt_text || displayProductName || product.name}
+                              />
+                            )
+                          })()
+                        ) : (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={resolvedThumbnail || placeholderSmall}
+                            alt={img.alt_text || displayProductName || product.name}
+                            className="w-full h-full object-cover pointer-events-none"
+                            onError={(e) => {
+                              setThumbPlaceholderByKey((prev) => ({ ...prev, [thumbKey]: placeholderLarge }))
+                              e.currentTarget.src = placeholderSmall
+                            }}
+                          />
+                        )}
+                        {isVideoItem && (
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg" aria-hidden>
+                            <svg className="w-10 h-10 text-white drop-shadow" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
               )}
-            </div>
-
-            {/* --- ДЕСКТОПНЫЕ МИНИАТЮРЫ СЛЕВА (Скрыты на мобильных) --- */}
-            {gallerySource.length > 0 && (
-              <div className="hidden md:flex flex-col gap-3 overflow-y-auto flex-shrink-0">
-                {gallerySource.map((img) => {
-                  const resolvedThumbnail = resolveMediaUrl(img.image_url)
-                  const thumbKey = String(img.id)
-                  const placeholderId = `${product.id}-thumb-${img.id}`
-                  const placeholderSmall = getPlaceholderImageUrl({ type: 'product', id: placeholderId, width: 200, height: 200 })
-                  const placeholderLarge = getPlaceholderImageUrl({ type: 'product', id: placeholderId, width: 800, height: 800 })
-                  const effectiveThumbUrl = thumbPlaceholderByKey[thumbKey] || resolvedThumbnail || placeholderLarge
-                  const isVideoItem = (img as GalleryItem).isVideo === true
-                  const isActive =
-                    isVideoItem
-                      ? activeMediaType === 'video' && Boolean(img.video_url && img.video_url === activeVideoUrl)
-                      : activeMediaType === 'image' && (activeImage === resolvedThumbnail || activeImage === effectiveThumbUrl)
-                  return (
-                    <button
-                      key={thumbKey}
-                      type="button"
-                      className={`relative w-28 h-28 rounded-lg overflow-hidden border flex-shrink-0 cursor-pointer ${isActive ? 'border-violet-500 ring-2 ring-violet-300' : 'border-gray-200 hover:border-gray-300'}`}
-                      onClick={() => {
-                        if (isVideoItem) {
-                          setActiveMediaType('video')
-                          if (img.video_url) {
-                            setActiveVideoUrl(img.video_url)
-                          }
-                        } else {
-                          setActiveMediaType('image')
-                          const nextUrl = effectiveThumbUrl || resolvedThumbnail || null
-                          if (nextUrl !== activeImage) {
-                            setMainImageLoading(true)
-                            setActiveImage(nextUrl)
-                          }
-                        }
-                      }}
-                    >
-                      {isVideoItem && img.video_url ? (
-                        (() => {
-                          const embedUrl = getVideoEmbedUrl(img.video_url)
-                          if (embedUrl) {
-                            return (
-                              <div className="w-full h-full bg-black flex items-center justify-center">
-                                <svg className="w-8 h-8 text-white/80" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M8 5v14l11-7z" />
-                                </svg>
-                              </div>
-                            )
-                          }
-                          return (
-                            <video
-                              src={resolveMediaUrl(img.video_url)}
-                              muted
-                              playsInline
-                              preload="metadata"
-                              className="w-full h-full object-cover pointer-events-none"
-                              aria-label={img.alt_text || displayProductName || product.name}
-                            />
-                          )
-                        })()
-                      ) : (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={resolvedThumbnail || placeholderSmall}
-                          alt={img.alt_text || displayProductName || product.name}
-                          className="w-full h-full object-cover pointer-events-none"
-                          onError={(e) => {
-                            setThumbPlaceholderByKey((prev) => ({ ...prev, [thumbKey]: placeholderLarge }))
-                            e.currentTarget.src = placeholderSmall
-                          }}
+              {/* Главная область (Десктоп): видео или выбранное фото */}
+              <div className="hidden md:flex flex-1 h-full items-start justify-start rounded-xl relative">
+                {activeMediaType === 'video' && activeVideoUrl && isVideoUrl(activeVideoUrl) ? (
+                  (() => {
+                    const embedUrl = getVideoEmbedUrl(activeVideoUrl)
+                    if (embedUrl) {
+                      return (
+                        <iframe
+                          src={embedUrl}
+                          className="w-full aspect-video rounded-xl border-0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          title="Product Video"
                         />
-                      )}
-                      {isVideoItem && (
-                        <span className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg" aria-hidden>
-                          <svg className="w-10 h-10 text-white drop-shadow" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            {/* Главная область (Десктоп): видео или выбранное фото */}
-            <div className="hidden md:flex flex-1 h-full items-start justify-start rounded-xl relative">
-              {activeMediaType === 'video' && activeVideoUrl && isVideoUrl(activeVideoUrl) ? (
-                (() => {
-                  const embedUrl = getVideoEmbedUrl(activeVideoUrl)
-                  if (embedUrl) {
+                      )
+                    }
                     return (
-                      <iframe
-                        src={embedUrl}
-                        className="w-full aspect-video rounded-xl border-0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                        title="Product Video"
+                      <video
+                        key={activeVideoUrl || 'product-video'}
+                        src={resolveMediaUrl(activeVideoUrl)}
+                        controls
+                        playsInline
+                        muted
+                        preload="metadata"
+                        className="max-w-full max-h-full rounded-xl object-contain"
                       />
                     )
-                  }
-                  return (
-                    <video
-                      key={activeVideoUrl || 'product-video'}
-                      src={resolveMediaUrl(activeVideoUrl)}
-                      controls
-                      playsInline
-                      muted
-                      preload="metadata"
-                      className="max-w-full max-h-full rounded-xl object-contain"
+                  })()
+                ) : activeImage ? (
+                  <div className="relative w-full h-full min-h-[200px]">
+                    {mainImageLoading && (
+                      <div
+                        className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse"
+                        aria-hidden
+                      />
+                    )}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={activeImage}
+                      alt={displayProductName || product.name}
+                      className={`max-w-full max-h-full rounded-xl object-contain transition-opacity duration-150 ${mainImageLoading ? 'opacity-0' : 'opacity-100'}`}
+                      decoding="async"
+                      onLoad={() => setMainImageLoading(false)}
+                      onError={(e) => {
+                        // Фолбек на picsum, завязанный на id товара
+                        const { getPlaceholderImageUrl } = require('../../lib/media')
+                        setMainImageLoading(false)
+                        e.currentTarget.src = getPlaceholderImageUrl({
+                          type: 'product',
+                          id: product.id,
+                          width: 800,
+                          height: 800,
+                        })
+                      }}
                     />
-                  )
-                })()
-              ) : activeImage ? (
-                <div className="relative w-full h-full min-h-[200px]">
-                  {mainImageLoading && (
+                    {/* Иконки в углу главного изображения: избранное + шаринг */}
                     <div
-                      className="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse"
-                      aria-hidden
-                    />
-                  )}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={activeImage}
-                    alt={displayProductName || product.name}
-                    className={`max-w-full max-h-full rounded-xl object-contain transition-opacity duration-150 ${mainImageLoading ? 'opacity-0' : 'opacity-100'}`}
-                    decoding="async"
-                    onLoad={() => setMainImageLoading(false)}
-                    onError={(e) => {
-                      // Фолбек на picsum, завязанный на id товара
-                      const { getPlaceholderImageUrl } = require('../../lib/media')
-                      setMainImageLoading(false)
-                      e.currentTarget.src = getPlaceholderImageUrl({
+                      className="absolute top-3 right-3 z-20 flex flex-col gap-1.5"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                    >
+                      <FavoriteButton
+                        productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
+                        productType={productType}
+                        productSlug={product.slug}
+                        favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
+                        favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
+                        cornerIcon={true}
+                      />
+                      <ShareButton
+                        title={metaTitle}
+                        description={metaDescription}
+                        imageUrl={ogImage}
+                        slug={product.slug}
+                        productType={productType}
+                        pageUrl={canonicalUrl}
+                        cornerIcon={true}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative w-full h-full min-h-[200px]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={require('../../lib/media').getPlaceholderImageUrl({
                         type: 'product',
                         id: product.id,
                         width: 800,
                         height: 800,
-                      })
-                    }}
-                  />
-                  {/* Иконки в углу главного изображения: избранное + шаринг */}
-                  <div
-                    className="absolute top-3 right-3 z-20 flex flex-col gap-1.5"
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
-                  >
-                    <FavoriteButton
-                      productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
-                      productType={productType}
-                      productSlug={product.slug}
-                      favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
-                      favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
-                      cornerIcon={true}
+                      })}
+                      alt="No image"
+                      className="max-w-full max-h-full rounded-xl object-contain"
+                      onError={(e) => {
+                        e.currentTarget.src = '/product-placeholder.svg'
+                      }}
                     />
-                    <ShareButton
-                      title={metaTitle}
-                      description={metaDescription}
-                      imageUrl={ogImage}
-                      slug={product.slug}
-                      productType={productType}
-                      pageUrl={canonicalUrl}
-                      cornerIcon={true}
-                    />
+                    {/* Иконки в углу плейсхолдера: избранное + шаринг */}
+                    <div
+                      className="absolute top-3 right-3 z-20 flex flex-col gap-1.5"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                    >
+                      <FavoriteButton
+                        productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
+                        productType={productType}
+                        productSlug={product.slug}
+                        favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
+                        favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
+                        cornerIcon={true}
+                      />
+                      <ShareButton
+                        title={metaTitle}
+                        description={metaDescription}
+                        imageUrl={ogImage}
+                        slug={product.slug}
+                        productType={productType}
+                        pageUrl={canonicalUrl}
+                        cornerIcon={true}
+                      />
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="relative w-full h-full min-h-[200px]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={require('../../lib/media').getPlaceholderImageUrl({
-                      type: 'product',
-                      id: product.id,
-                      width: 800,
-                      height: 800,
-                    })}
-                    alt="No image"
-                    className="max-w-full max-h-full rounded-xl object-contain"
-                    onError={(e) => {
-                      e.currentTarget.src = '/product-placeholder.svg'
-                    }}
-                  />
-                  {/* Иконки в углу плейсхолдера: избранное + шаринг */}
-                  <div
-                    className="absolute top-3 right-3 z-20 flex flex-col gap-1.5"
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
-                  >
-                    <FavoriteButton
-                      productId={favoriteUsesVariantSlug ? undefined : favoriteApiProductId(product, productType)}
-                      productType={productType}
-                      productSlug={product.slug}
-                      favoriteProductSlug={favoriteUsesVariantSlug ? favoriteProductSlugForApi : undefined}
-                      favoriteSize={favoriteUsesVariantSlug ? favoriteSizeForApi : undefined}
-                      cornerIcon={true}
-                    />
-                    <ShareButton
-                      title={metaTitle}
-                      description={metaDescription}
-                      imageUrl={ogImage}
-                      slug={product.slug}
-                      productType={productType}
-                      pageUrl={canonicalUrl}
-                      cornerIcon={true}
-                    />
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
+            {medicineDisclaimer && (
+              <div className="mt-2 md:max-w-[calc(100%-8rem)]">
+                {medicineDisclaimer}
+              </div>
+            )}
           </div>
           <div>
             <h1
@@ -1710,7 +1786,7 @@ export default function ProductPage({
               </p>
             )}
             {/* Основные характеристики (Бренд и Артикул) */}
-            {productType !== 'uslugi' && product.product_type !== 'uslugi' && productType !== 'books' && (
+            {productType !== 'uslugi' && product.product_type !== 'uslugi' && productType !== 'books' && !isMedicine && (
               <div
                 className="mt-3 space-y-1.5 text-sm"
                 style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
@@ -1851,122 +1927,46 @@ export default function ProductPage({
               </div>
             )}
             {/* Блок «Медикамент»: полная карточка характеристик */}
-            {(productType === 'medicines' || product.product_type === 'medicines') && (
+            {isMedicine && (
               <div
-                className="mt-3 space-y-1.5 text-sm"
-                style={{ color: theme === 'dark' ? '#D1D5DB' : '#4B5563' }}
+                className="mt-4 rounded-2xl border px-4 py-3 sm:px-5"
+                style={{
+                  borderColor: theme === 'dark' ? 'rgba(75, 85, 99, 0.7)' : '#E5E7EB',
+                  background: theme === 'dark' ? 'rgba(17, 24, 39, 0.32)' : 'rgba(255,255,255,0.78)',
+                }}
               >
-                {/* Лекарственная форма */}
-                {product.dosage_form && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('dosage_form', 'Лекарственная форма')}: </span>
-                    {getDosageFormLabel(product.dosage_form, t)}
-                  </p>
-                )}
-                {/* Действующее вещество */}
-                {product.active_ingredient && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('active_ingredient', 'Действующее вещество')}: </span>
-                    {product.active_ingredient}
-                  </p>
-                )}
                 {/* Рецепт */}
                 {product.prescription_required && (
-                  <p className="flex items-center gap-1.5">
+                  <p className="mb-2 flex items-center gap-1.5 text-sm">
                     <svg className="h-4 w-4 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <span className="font-medium text-orange-600 dark:text-orange-400">{t('prescription_required', 'Отпускается по рецепту')}</span>
                   </p>
                 )}
-                {/* Объем/Количество */}
-                {product.volume && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('volume', 'Объем/Количество')}: </span>
-                    {product.volume}
-                  </p>
-                )}
-                {/* Страна производства */}
-                {product.origin_country && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('origin_country', 'Страна производства')}: </span>
-                    {product.origin_country.toUpperCase() === 'İTHAL' || product.origin_country.toUpperCase() === 'ITHAL' 
-                      ? t('imported', 'Импортное')
-                      : product.origin_country.toUpperCase() === 'YERLİ' || product.origin_country.toUpperCase() === 'YERLI'
-                        ? t('domestic', 'Турция (Местное)')
-                        : product.origin_country}
-                  </p>
-                )}
-                {/* Путь введения */}
-                {product.administration_route && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('administration_route', 'Путь введения')}: </span>
-                    {getAdministrationRouteLabel(product.administration_route, t)}
-                  </p>
-                )}
-                {/* Срок годности */}
-                {product.shelf_life && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('shelf_life', 'Срок годности')}: </span>
-                    {formatShelfLife(product.shelf_life, t)}
-                  </p>
-                )}
-                {/* СГК / страховка */}
-                {product.sgk_status && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_status', 'СГК')}: </span>
-                    {getSgkStatusLabel(product.sgk_status, t)}
-                  </p>
-                )}
-                {/* Тип рецепта */}
-                {product.prescription_type && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('prescription_type', 'Тип рецепта')}: </span>
-                    {getPrescriptionTypeLabel(product.prescription_type, t)}
-                  </p>
-                )}
-                {/* Штрих-код */}
-                {product.barcode && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('barcode', 'Штрих-код')}: </span>
-                    <span className="font-mono">{product.barcode}</span>
-                  </p>
-                )}
-                {/* ATC-код */}
-                {product.atc_code && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('atc_code', 'АТХ код')}: </span>
-                    <span className="font-mono">{product.atc_code}</span>
-                  </p>
-                )}
-                {/* NFC Код */}
-                {product.nfc_code && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('nfc_code', 'NFC код')}: </span>
-                    <span className="font-mono">{product.nfc_code}</span>
-                  </p>
-                )}
-                {/* SGK Эквивалент */}
-                {product.sgk_equivalent_code && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_equivalent_code', 'Код эквивалента SGK')}: </span>
-                    <span className="font-mono">{product.sgk_equivalent_code}</span>
-                  </p>
-                )}
-                {/* SGK Код акт. вещ-ва */}
-                {product.sgk_active_ingredient_code && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_active_ingredient_code', 'Код акт. вещ-ва SGK')}: </span>
-                    <span className="font-mono">{product.sgk_active_ingredient_code}</span>
-                  </p>
-                )}
-                {/* SGK Публичный номер */}
-                {product.sgk_public_no && (
-                  <p>
-                    <span className="font-medium" style={{ color: theme === 'dark' ? '#E5E7EB' : '#374151' }}>{t('sgk_public_no', 'Публичный номер SGK')}: </span>
-                    <span className="font-mono">{product.sgk_public_no}</span>
-                  </p>
-                )}
+                <div className="space-y-2">
+                  {medicineFacts.map((item) => (
+                    <div key={item.label} className="flex flex-col gap-1 sm:flex-row sm:items-end sm:gap-3">
+                      <span
+                        className="shrink-0 text-[13px] leading-5 sm:text-sm"
+                        style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}
+                      >
+                        {item.label}:
+                      </span>
+                      <span
+                        className="hidden sm:block sm:flex-1 sm:border-b sm:border-dotted"
+                        style={{ borderColor: theme === 'dark' ? 'rgba(156, 163, 175, 0.35)' : 'rgba(107, 114, 128, 0.35)' }}
+                        aria-hidden
+                      />
+                      <span
+                        className={`text-sm leading-5 sm:max-w-[52%] sm:text-right ${item.mono ? 'font-mono text-[13px]' : ''}`}
+                        style={{ color: theme === 'dark' ? '#F3F4F6' : '#1F2937' }}
+                      >
+                        {item.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             {/* Блок «БАД»: карточка характеристик */}
@@ -2146,18 +2146,6 @@ export default function ProductPage({
                     </p>
                   </div>
                 )}
-              </div>
-            )}
-            {(productType === 'medicines' || product.product_type === 'medicines') && (
-              <div
-                className="mt-2 text-xs leading-relaxed"
-                style={{ color: theme === 'dark' ? '#9CA3AF' : '#6B7280' }}
-              >
-                <p>{t('medicine_disclaimer_line1', 'Наш сайт не продает лекарства.')}</p>
-                <p>{t('medicine_disclaimer_line2', 'Указанные цены призваны способствовать рациональному использованию лекарственных средств.')}</p>
-                <p>{t('medicine_disclaimer_line3', 'Цены на лекарства взяты из еженедельных списков, публикуемых Министерством здравоохранения Турции и Турецким агентством по лекарственным средствам и медицинским изделиям (TİTCK).')}</p>
-                <p>{t('medicine_disclaimer_line4', 'Указанные цены являются рекомендованными розничными ценами для аптек и могут меняться.')}</p>
-                <p>{t('medicine_disclaimer_line5', 'Цены могут быть неактуальными.')}</p>
               </div>
             )}
             {productType !== 'furniture' && (colorPickerValues.length > 0 || sizesForColor.length > 0) && (

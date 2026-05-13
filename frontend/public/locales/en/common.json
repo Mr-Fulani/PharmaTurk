@@ -56,6 +56,7 @@
   "cart_delivery_info_title": "Free Delivery",
   "cart_delivery_info_text": "On orders from {{minAmount}} {{currency}} (subtotal excluding shipping)",
   "product_details": "Details",
+  "important_information": "Important information",
   "price_on_request": "Price on request",
   "section_daily_deals": "Deals of the day",
   "section_best_sellers": "Bestsellers",
