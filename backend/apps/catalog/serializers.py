@@ -5868,6 +5868,7 @@ class MedicineProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
             'price', 'price_formatted', 'old_price', 'old_price_formatted', 'currency',
             'dosage_form', 'active_ingredient', 'prescription_required', 'prescription_type',
             'volume', 'origin_country', 'administration_route', 'shelf_life',
+            'manufacturer',
             'barcode', 'atc_code', 'nfc_code', 'sgk_status', 'sgk_equivalent_code', 'sgk_active_ingredient_code', 'sgk_public_no', 'special_notes',
             'usage_instructions', 'side_effects', 'contraindications',
             'storage_conditions', 'indications',

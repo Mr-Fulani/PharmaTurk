@@ -4558,6 +4558,10 @@ class MedicineProduct(AbstractDomainProduct):
     sgk_public_no = models.CharField(
         _("SGK Kamu No"), max_length=100, blank=True,
     )
+    manufacturer = models.CharField(
+        _("Производитель"), max_length=500, blank=True,
+        help_text=_("Фирма-производитель препарата (Firma). Не путать с торговой маркой (Brand)."),
+    )
 
     # Статус обогащения медиа (по аналогии с AI)
     media_enrichment_status = models.CharField(

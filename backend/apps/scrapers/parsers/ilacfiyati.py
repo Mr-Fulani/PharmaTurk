@@ -378,7 +378,6 @@ class IlacFiyatiParser(BaseScraper):
             # 3. Дополнительные атрибуты (таблицы, характеристики)
             attributes = {}
             description_lines = []
-            brand = ""
             
             tables = soup.find_all('table')
             for table in tables:
@@ -395,8 +394,8 @@ class IlacFiyatiParser(BaseScraper):
                         if 'barkod' in key_norm or 'barcode' in key_norm:
                             attributes['barcode'] = val
                         elif ('fi' in key_norm and 'rma' in key_norm) or 'manufacturer' in key_norm:
-                            if not brand:
-                                brand = val
+                            if not attributes.get('manufacturer'):
+                                attributes['manufacturer'] = val
                         elif 'atc' in key_norm:
                             attributes['atc_code'] = val
                         elif 'etki' in key_norm and 'madde' in key_norm and 'kodu' in key_norm:
@@ -570,7 +569,6 @@ class IlacFiyatiParser(BaseScraper):
                 url=product_url,
                 images=images,
                 external_id=external_id,
-                brand=brand,            
                 barcode=attributes.get('barcode', ''),
                 is_available=True,      
                 stock_quantity=3,       

@@ -3004,15 +3004,15 @@ class ScraperIntegrationService:
     ) -> bool:
         """Обновляет медицинские атрибуты в MedicineProduct."""
         medicine_keys = (
-            "dosage_form", "active_ingredient", "prescription_required", "volume", 
+            "dosage_form", "active_ingredient", "prescription_required", "volume",
             "origin_country", "sgk_status", "administration_route", "prescription_type",
             "barcode", "atc_code", "nfc_code", "sgk_equivalent_code",
             "sgk_active_ingredient_code", "sgk_public_no", "shelf_life",
-            "storage_conditions", "special_notes"
+            "storage_conditions", "special_notes", "manufacturer"
         )
         if not any(k in attrs for k in medicine_keys):
             return False
-            
+
         medicine_product = self._get_medicine_product(product)
         updated = False
 
@@ -3033,6 +3033,7 @@ class ScraperIntegrationService:
             ("shelf_life", "shelf_life", 200),
             ("storage_conditions", "storage_conditions", 500),
             ("special_notes", "special_notes", None),
+            ("manufacturer", "manufacturer", 500),
         ]
         for attr_key, model_field, max_len in field_mapping:
             if attr_key not in attrs or not attrs[attr_key]:
