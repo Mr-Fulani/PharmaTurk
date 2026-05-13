@@ -1,6 +1,8 @@
 from django.contrib import admin
+from django.http import HttpResponseRedirect
+from django.urls import reverse
 from django.utils.html import format_html
-from .models import Testimonial, TestimonialMedia
+from .models import Testimonial, TestimonialMedia, TestimonialSectionSettings
 
 
 class TestimonialMediaInline(admin.TabularInline):
@@ -51,3 +53,30 @@ class TestimonialMediaAdmin(admin.ModelAdmin):
             return format_html('<span>🔗 {}...</span>', obj.video_url[:30])
         return '—'
     preview.short_description = 'Превью'
+
+
+@admin.register(TestimonialSectionSettings)
+class TestimonialSectionSettingsAdmin(admin.ModelAdmin):
+    list_display = ('show_on_homepage',)
+    readonly_fields = ()
+
+    fieldsets = (
+        ('Главная страница', {
+            'description': 'Включает или скрывает блок отзывов на главной странице без правок в коде.',
+            'fields': ('show_on_homepage',),
+        }),
+    )
+
+    def has_add_permission(self, request):
+        return not TestimonialSectionSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        settings_obj = TestimonialSectionSettings.load()
+        change_url = reverse(
+            f'admin:{settings_obj._meta.app_label}_{settings_obj._meta.model_name}_change',
+            args=[settings_obj.pk],
+        )
+        return HttpResponseRedirect(change_url)

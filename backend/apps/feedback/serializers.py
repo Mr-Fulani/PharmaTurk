@@ -1,7 +1,7 @@
 from urllib.parse import quote, urlparse
 from django.conf import settings
 from rest_framework import serializers
-from .models import Testimonial, TestimonialMedia
+from .models import Testimonial, TestimonialMedia, TestimonialSectionSettings
 
 
 def _build_proxy_media_url(file_field, request):
@@ -228,3 +228,9 @@ class TestimonialCreateSerializer(serializers.ModelSerializer):
                 )
         
         return testimonial
+
+
+class TestimonialSectionSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TestimonialSectionSettings
+        fields = ('show_on_homepage',)

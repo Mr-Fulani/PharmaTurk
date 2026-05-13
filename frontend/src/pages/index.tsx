@@ -2,6 +2,7 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import dynamic from 'next/dynamic'
+import { useEffect, useRef } from 'react'
 import {
   getPlaceholderImageUrl,
   resolveMediaUrl,
@@ -27,7 +28,7 @@ const PersonalizedRecommendations = dynamic(() => import('../components/Personal
   ssr: false,
   loading: () => <div className="w-full min-h-[400px] animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl mb-12" />
 })
-const TestimonialsCarousel = dynamic(() => import('../components/TestimonialsCarousel'), { 
+const TestimonialsCarousel = dynamic(() => import('../components/TestimonialsCarousel'), {
   ssr: false,
   loading: () => <div className="w-full min-h-[400px] animate-pulse bg-gray-100 dark:bg-gray-800 rounded-2xl mb-12" />
 })
@@ -76,14 +77,16 @@ interface HomePageProps {
   beforeFooterBanners: any[]
   afterPopularBanners: any[]
   footerSettings: any
+  showTestimonialsSection: boolean
 }
 
 // @ts-ignore: нет типов для @egjs/react-grid
 import Masonry from 'react-masonry-css'
 
-export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners }: HomePageProps) {
+export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, showTestimonialsSection }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
+  const mobileBrandsRef = useRef<HTMLDivElement | null>(null)
   const tileHeights = [280, 320, 360]
   const brandTileHeights = [280, 320, 360]
 
@@ -204,6 +207,52 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
   const pageTitle = 'Mudaroba — Главная'
   const pageDescription = 'Mudaroba: турецкие товары — лекарства, одежда, обувь, электроника, аксессуары и мебель с доставкой.'
 
+  useEffect(() => {
+    const container = mobileBrandsRef.current
+    if (!container || brands.length <= 1) return
+
+    let isUserInteracting = false
+    let interactionTimeout: ReturnType<typeof setTimeout> | null = null
+
+    const markInteraction = () => {
+      isUserInteracting = true
+      if (interactionTimeout) clearTimeout(interactionTimeout)
+      interactionTimeout = setTimeout(() => {
+        isUserInteracting = false
+      }, 2500)
+    }
+
+    const getStep = () => {
+      const firstCard = container.children[0] as HTMLElement | undefined
+      if (!firstCard) return 108
+      const gap = 8
+      return firstCard.offsetWidth + gap
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (window.innerWidth >= 768 || isUserInteracting) return
+
+      const maxScrollLeft = container.scrollWidth - container.clientWidth
+      if (maxScrollLeft <= 0) return
+
+      const nextScrollLeft = container.scrollLeft + getStep()
+      const target = nextScrollLeft >= maxScrollLeft - 4 ? 0 : nextScrollLeft
+      container.scrollTo({ left: target, behavior: 'smooth' })
+    }, 7000)
+
+    container.addEventListener('touchstart', markInteraction, { passive: true })
+    container.addEventListener('pointerdown', markInteraction)
+    container.addEventListener('scroll', markInteraction, { passive: true })
+
+    return () => {
+      window.clearInterval(intervalId)
+      if (interactionTimeout) clearTimeout(interactionTimeout)
+      container.removeEventListener('touchstart', markInteraction)
+      container.removeEventListener('pointerdown', markInteraction)
+      container.removeEventListener('scroll', markInteraction)
+    }
+  }, [brands.length])
+
   return (
     <>
       <Head>
@@ -258,6 +307,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
             </h2>
             {/* Мобильные: горизонтальный скролл */}
             <div
+              ref={mobileBrandsRef}
               className="flex overflow-x-auto snap-x snap-mandatory gap-2 pb-4 hide-scrollbar -mr-3 pr-3 sm:-mr-4 sm:pr-4 md:hidden"
               style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
@@ -441,8 +491,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
             <BannerCarousel position="after_popular_products" initialBanners={afterPopularBanners} />
           </div>
 
-          {/* Отзывы клиентов */}
-          <TestimonialsCarousel />
+          {showTestimonialsSection && <TestimonialsCarousel />}
         </div>
       </main>
     </>
@@ -465,6 +514,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     let afterBrandsBanners: any[] = []
     let beforeFooterBanners: any[] = []
     let afterPopularBanners: any[] = []
+    let showTestimonialsSection = false
 
     // Загружаем все позиции баннеров параллельно — устраняет 6,530мс задержку LCP
     try {
@@ -489,6 +539,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
     } catch {
       // Не блокируем рендер — баннеры необязательны
+    }
+
+    try {
+      const testimonialsSettingsRes = await axios.get(getInternalApiUrl('feedback/testimonials-section-settings'), { timeout: 3000 })
+      showTestimonialsSection = Boolean(testimonialsSettingsRes.data?.show_on_homepage)
+    } catch {
+      // Оставляем выключенным по умолчанию
     }
 
     // Загружаем все бренды из API с пагинацией
@@ -594,6 +651,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         beforeFooterBanners,
         afterPopularBanners,
         footerSettings,
+        showTestimonialsSection,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }
@@ -611,6 +669,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
         beforeFooterBanners: [],
         afterPopularBanners: [],
         footerSettings,
+        showTestimonialsSection: false,
         ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
       },
     }

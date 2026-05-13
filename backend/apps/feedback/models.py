@@ -57,6 +57,31 @@ class Testimonial(models.Model):
         return self.media.all().order_by('order')
 
 
+class TestimonialSectionSettings(models.Model):
+    """Singleton-настройки раздела отзывов."""
+    show_on_homepage = models.BooleanField(
+        default=False,
+        verbose_name='Показывать блок отзывов на главной',
+        help_text='Управляет показом карусели отзывов на главной странице сайта.'
+    )
+
+    class Meta:
+        verbose_name = '💬 Настройки блока отзывов'
+        verbose_name_plural = '💬 Отзывы — Настройки блока'
+
+    def __str__(self):
+        return 'Настройки блока отзывов'
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
 class TestimonialMedia(models.Model):
     """
     Модель для хранения медиа файлов отзывов (поддержка нескольких медиа).
