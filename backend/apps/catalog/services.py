@@ -369,20 +369,20 @@ class CatalogNormalizer:
     def _sync_medicines_metadata(self, product: Product, attrs: Dict[str, Any]) -> None:
         """Синхронизирует атрибуты медикаментов в MedicineProduct."""
         medicine_keys = (
-            "dosage_form", "active_ingredient", "prescription_required", "prescription_type", "volume", 
+            "dosage_form", "active_ingredient", "prescription_required", "prescription_type", "volume",
             "origin_country", "sgk_status", "administration_route", "barcode", "atc_code",
             "nfc_code", "sgk_equivalent_code", "sgk_active_ingredient_code", "sgk_public_no",
-            "shelf_life", "storage_conditions", "special_notes"
+            "shelf_life", "storage_conditions", "special_notes", "manufacturer"
         )
         if not any(k in attrs for k in medicine_keys):
             return
-            
+
         medicine_product = getattr(product, "medicine_item", None)
         if not medicine_product:
             return  # домен создаётся сигналом ensure_domain_product_for_base при save Product
-            
+
         medicine_updated = False
-        
+
         # Маппинг ключей из attrs в поля модели и их лимиты (чтобы не было DataError)
         # (attr_key, model_field, max_len)
         field_mapping = [
@@ -402,6 +402,7 @@ class CatalogNormalizer:
             ("shelf_life", "shelf_life", 200),
             ("storage_conditions", "storage_conditions", 500),
             ("special_notes", "special_notes", None),
+            ("manufacturer", "manufacturer", 500),
         ]
 
         for attr_key, model_field, max_len in field_mapping:

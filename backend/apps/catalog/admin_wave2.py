@@ -228,6 +228,7 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     _category_type_slug = "medicines"
     _domain_fieldset = (_('Специфика медикамента'), {
         'fields': (
+            'manufacturer',
             'dosage_form', 'active_ingredient', 'prescription_required', 'prescription_type',
             'volume', 'origin_country',
             'barcode', 'atc_code', 'nfc_code', 'administration_route',

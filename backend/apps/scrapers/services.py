@@ -97,6 +97,32 @@ _ATTRIBUTE_UPDATE_HANDLER_NAMES = {
 }
 
 
+def _make_unique_brand_slug(name: str) -> str:
+    """Генерирует уникальный slug для бренда по его имени."""
+    from django.utils.text import slugify as _slugify
+
+    base_slug = ""
+    try:
+        from transliterate import slugify as _trans_slugify
+        base_slug = _trans_slugify(name, language_code='ru') or ""
+    except Exception:
+        pass
+
+    if not base_slug or len(base_slug) < 2:
+        base_slug = _slugify(name, allow_unicode=False) or _slugify(name, allow_unicode=True) or ""
+
+    if not base_slug or len(base_slug) < 2:
+        base_slug = "brand"
+
+    from apps.catalog.models import Brand
+    slug = base_slug
+    counter = 1
+    while Brand.objects.filter(slug=slug).exists():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    return slug
+
+
 class ScraperIntegrationService:
     """Сервис интеграции парсеров с каталогом."""
 
@@ -2497,21 +2523,14 @@ class ScraperIntegrationService:
         if scraped_product.brand:
             from apps.catalog.models import Brand
             from django.utils.text import slugify as _slugify
-            from transliterate import slugify as _trans_slugify
             brand_name = scraped_product.brand.strip()
             if not existing_product.brand:
                 brand = Brand.objects.filter(name__iexact=brand_name).first()
                 if not brand:
-                    base_slug = _trans_slugify(brand_name, language_code='tr') or _trans_slugify(brand_name, language_code='ru') or _slugify(brand_name, allow_unicode=False) or _slugify(brand_name, allow_unicode=True)
-                    if not base_slug or len(base_slug) < 2:
-                        base_slug = "brand"
-                    # Гарантируем уникальность slug
-                    slug = base_slug
-                    counter = 1
-                    while Brand.objects.filter(slug=slug).exists():
-                        slug = f"{base_slug}-{counter}"
-                        counter += 1
-                    brand = Brand.objects.create(name=brand_name, slug=slug)
+                    brand = Brand.objects.create(
+                        name=brand_name,
+                        slug=_make_unique_brand_slug(brand_name),
+                    )
                 existing_product.brand = brand
                 updated = True
 
@@ -2985,15 +3004,15 @@ class ScraperIntegrationService:
     ) -> bool:
         """Обновляет медицинские атрибуты в MedicineProduct."""
         medicine_keys = (
-            "dosage_form", "active_ingredient", "prescription_required", "volume", 
+            "dosage_form", "active_ingredient", "prescription_required", "volume",
             "origin_country", "sgk_status", "administration_route", "prescription_type",
             "barcode", "atc_code", "nfc_code", "sgk_equivalent_code",
             "sgk_active_ingredient_code", "sgk_public_no", "shelf_life",
-            "storage_conditions", "special_notes"
+            "storage_conditions", "special_notes", "manufacturer"
         )
         if not any(k in attrs for k in medicine_keys):
             return False
-            
+
         medicine_product = self._get_medicine_product(product)
         updated = False
 
@@ -3014,6 +3033,7 @@ class ScraperIntegrationService:
             ("shelf_life", "shelf_life", 200),
             ("storage_conditions", "storage_conditions", 500),
             ("special_notes", "special_notes", None),
+            ("manufacturer", "manufacturer", 500),
         ]
         for attr_key, model_field, max_len in field_mapping:
             if attr_key not in attrs or not attrs[attr_key]:
