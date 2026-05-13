@@ -382,6 +382,22 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
 
     actions = ["run_site_scraping", "rerun_site_scraping", "force_rerun_site_scraping", "run_ai_for_tasks"]
 
+    def changelist_view(self, request, extra_context=None):
+        response = super().changelist_view(request, extra_context=extra_context)
+        if SiteScraperTask.objects.filter(status="running").exists():
+            response["Refresh"] = "5"
+        return response
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        response = super().change_view(request, object_id, form_url, extra_context)
+        try:
+            obj = SiteScraperTask.objects.get(pk=object_id)
+            if obj.status == "running":
+                response["Refresh"] = "5"
+        except SiteScraperTask.DoesNotExist:
+            pass
+        return response
+
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
 
