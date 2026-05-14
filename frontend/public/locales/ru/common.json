@@ -1015,6 +1015,7 @@
   "badge_similar_style": "Очень похожий стиль",
   "badge_similar_design": "Похожий дизайн",
   "badge_brand": "Бренд {{brand}}",
+  "badge_brand": "Бренд {{brand}}",
   "not_found": "Товар не найден",
   "color": "Цвет",
   "size": "Размер",

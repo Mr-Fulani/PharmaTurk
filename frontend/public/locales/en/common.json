@@ -1073,6 +1073,7 @@
   "badge_similar_style": "Very similar style",
   "badge_similar_design": "Similar design",
   "badge_brand": "Brand {{brand}}",
+  "badge_brand": "Brand {{brand}}",
   "not_found": "Product not found",
   "color": "Color",
   "size": "Size",
