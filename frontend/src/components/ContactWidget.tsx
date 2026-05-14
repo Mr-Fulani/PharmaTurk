@@ -425,7 +425,7 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
         })}
 
         <div className={`group relative cw-shell${open || isDragging ? ' cw-active' : ''}`}>
-          <div className="absolute -top-2 left-1/2 z-20 -translate-x-1/2 -translate-y-full opacity-0 transition-opacity duration-200 pointer-events-none group-hover:opacity-100">
+          <div className="pointer-events-none absolute -top-2 left-1/2 z-20 hidden -translate-x-1/2 -translate-y-full opacity-0 transition-opacity duration-200 md:block md:group-hover:opacity-100">
             <div className="bg-[var(--text-strong)] dark:!bg-[#1f2937] text-[var(--bg)] dark:!text-white dark:border dark:border-gray-600 rounded px-2 py-1 text-xs whitespace-nowrap shadow-lg">
               {t('contact_widget_tooltip', 'Поддержка')}
             </div>
