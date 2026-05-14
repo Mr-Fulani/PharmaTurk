@@ -145,7 +145,7 @@ class ActiveRootFilter(SimpleListFilter):
         return queryset
 
 
-from .admin_base import AIStatusFilter, RunAIActionMixin, ShadowProductCleanupAdminMixin
+from .admin_base import AIStatusFilter, GlobalActivationActionsMixin, RunAIActionMixin, ShadowProductCleanupAdminMixin
 
 
 PRODUCT_TRANSLATION_SEO_FIELDS = (
@@ -906,7 +906,6 @@ class ShoeVariantImageInline(AdminMediaHelpTextMixin, admin.TabularInline):
 class BaseProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, RunAIActionMixin, admin.ModelAdmin):
     """Базовый админ для товаров (используется прокси)."""
     form = ProductForm
-    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = (
         'name', 'slug', 'get_ai_status', 'product_type', 'category', 'brand', 'gender', 'price', 'currency',
         'availability_status', 'is_active', 'created_at'
@@ -1243,6 +1242,7 @@ class ClothingProductSizeInline(admin.TabularInline):
 @admin.register(ClothingVariant)
 class ClothingVariantAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, VariantAIAdminMixin, admin.ModelAdmin):
     """Отдельная админка варианта одежды (для картинок)."""
+    variant_activation_action_names = ("activate_variants", "deactivate_variants")
     list_display = (
         'name',
         'product',
@@ -1361,7 +1361,6 @@ class ClothingProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, 
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров одежды."""
     category_field_name = "clothing_type"
-    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
 
     def get_category_queryset(self):
         """Показываем все категории одежды (L1, L2, L3) для выбора при привязке товара."""
@@ -1638,6 +1637,7 @@ class ShoeVariantSizeInline(admin.TabularInline):
 @admin.register(ShoeVariant)
 class ShoeVariantAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, VariantAIAdminMixin, admin.ModelAdmin):
     """Отдельная админка варианта обуви (для картинок)."""
+    variant_activation_action_names = ("activate_variants", "deactivate_variants")
     list_display = (
         'name',
         'product',
@@ -1792,8 +1792,6 @@ class ShoeProductListScopeFilter(SimpleListFilter):
 class ShoeProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров обуви."""
-
-    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -2058,7 +2056,6 @@ class ElectronicsProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixi
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров электроники."""
     category_field_name = "device_type"
-    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
 
     def get_category_queryset(self):
         """Показываем все категории электроники (L1, L2, L3) для выбора при привязке товара."""
@@ -2109,6 +2106,7 @@ class ElectronicsProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixi
 @admin.register(FurnitureVariant)
 class FurnitureVariantAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, VariantAIAdminMixin, admin.ModelAdmin):
     """Отдельная админка варианта мебели (для картинок)."""
+    variant_activation_action_names = ("activate_variants", "deactivate_variants")
     list_display = ('name', 'product', 'color', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'color', 'currency', 'created_at')
     search_fields = ('name', 'product__name', 'slug', 'color', 'sku', 'barcode', 'gtin', 'mpn', 'external_id')
@@ -2137,7 +2135,6 @@ class FurnitureProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin,
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Админка для товаров мебели."""
     category_type_slug = "furniture"
-    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'get_ai_status', 'category', 'brand', 'gender', 'price', 'currency', 'is_active', 'created_at')
     list_filter = (AIStatusFilter, 'is_active', 'is_new', 'is_featured', 'category', 'brand', 'gender', 'furniture_type', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'furniture_type', 'external_id')
@@ -2228,6 +2225,7 @@ class JewelryVariantInline(admin.TabularInline):
 @admin.register(JewelryVariant)
 class JewelryVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     """Админка варианта украшения — здесь добавляются размеры (кольца, браслеты)."""
+    variant_activation_action_names = ("activate_variants", "deactivate_variants")
     list_display = ('name', 'product', 'gender', 'price', 'currency', 'is_available', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'is_available', 'gender', 'currency', 'created_at')
     search_fields = ('name', 'product__name', 'slug')
@@ -2248,7 +2246,6 @@ class JewelryProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, C
     ai_logs_prefetch_path = "base_product__ai_logs"
     """Товары украшений с вариантами и размерами (кольца, браслеты и т.д.)."""
     category_type_slug = "jewelry"
-    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = ('name', 'slug', 'get_ai_status', 'category', 'brand', 'jewelry_type', 'gender', 'material', 'price', 'currency', 'is_active', 'created_at')
     list_filter = (AIStatusFilter, 'is_active', 'is_new', 'is_featured', 'jewelry_type', 'gender', 'category', 'brand', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description', 'material', 'metal_purity', 'stone_type')
@@ -2419,8 +2416,10 @@ class JewelryProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, C
 
 
 @admin.register(Service)
-class ServiceAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
+class ServiceAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, GlobalActivationActionsMixin, nested_admin.NestedModelAdmin):
     """Админка для услуг."""
+    declared_admin_actions = ()
+    admin_action_order = GlobalActivationActionsMixin.global_activation_action_names
     list_display = ('name', 'slug', 'category', 'price', 'currency', 'is_active', 'created_at')
     list_filter = ('is_active', 'is_featured', 'category', 'currency', 'created_at')
     search_fields = ('name', 'slug', 'description')

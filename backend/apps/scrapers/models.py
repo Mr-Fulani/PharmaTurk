@@ -1,5 +1,6 @@
 """Модели для системы парсеров."""
 
+from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -362,6 +363,73 @@ class ScrapedProductLog(models.Model):
 
     def __str__(self):
         return f"{self.product_name} - {self.get_action_display()}"
+
+
+class ProductDuplicateCandidate(models.Model):
+    """Кандидат в дубликаты товаров для ручной модерации."""
+
+    STATUS_CHOICES = [
+        ("pending", _("Ожидает модерации")),
+        ("approved", _("Одобрено к объединению")),
+        ("rejected", _("Отклонено")),
+        ("merged", _("Объединено")),
+    ]
+
+    pair_key = models.CharField(_("Ключ пары"), max_length=64, unique=True)
+    canonical_product = models.ForeignKey(
+        "catalog.Product",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="duplicate_candidates_as_canonical",
+        verbose_name=_("Основной товар"),
+    )
+    duplicate_product = models.ForeignKey(
+        "catalog.Product",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="duplicate_candidates_as_duplicate",
+        verbose_name=_("Товар-кандидат на объединение"),
+    )
+    canonical_product_name = models.CharField(_("Название основного товара"), max_length=500)
+    duplicate_product_name = models.CharField(_("Название товара-дубликата"), max_length=500)
+    score = models.FloatField(_("Оценка совпадения"), default=0.0)
+    reasons = models.JSONField(_("Причины совпадения"), default=list, blank=True)
+    signals = models.JSONField(_("Сигналы сравнения"), default=dict, blank=True)
+    status = models.CharField(
+        _("Статус"),
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="pending",
+        db_index=True,
+    )
+    moderator_note = models.TextField(_("Комментарий модератора"), blank=True)
+    reviewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_duplicate_candidates",
+        verbose_name=_("Проверил"),
+    )
+    detected_at = models.DateTimeField(_("Дата обнаружения"), auto_now_add=True)
+    reviewed_at = models.DateTimeField(_("Дата решения"), null=True, blank=True)
+    merged_at = models.DateTimeField(_("Дата объединения"), null=True, blank=True)
+    updated_at = models.DateTimeField(_("Дата обновления"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Кандидат в дубликаты")
+        verbose_name_plural = _("Кандидаты в дубликаты")
+        ordering = ["status", "-score", "-detected_at"]
+        indexes = [
+            models.Index(fields=["status", "-score"]),
+            models.Index(fields=["canonical_product"]),
+            models.Index(fields=["duplicate_product"]),
+        ]
+
+    def __str__(self):
+        return f"{self.canonical_product_name} ↔ {self.duplicate_product_name}"
 
 
 class InstagramScraperTask(models.Model):

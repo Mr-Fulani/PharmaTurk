@@ -191,11 +191,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60 * 60 * 24 * 7,  # неделя
         "args": (30,),  # хранить 30 дней
     },
-    # Поиск и объединение дубликатов — только ручной запуск (см. CELERY_TASKS.md)
-    # "find-merge-duplicates": {
-    #     "task": "apps.scrapers.tasks.find_and_merge_duplicates",
-    #     "schedule": 60 * 60 * 24,  # день
-    # },
+    # Поиск кандидатов в дубликаты товаров — раз в неделю, с уведомлением админа
+    "scrapers-weekly-duplicate-candidates": {
+        "task": "apps.scrapers.tasks.find_and_merge_duplicates",
+        "schedule": crontab(hour=4, minute=30, day_of_week=1),  # понедельник в 4:30
+    },
     # Очистка неиспользуемых медиа из R2/локального хранилища ежедневно в 3:00
     "cleanup-orphaned-media": {
         "task": "catalog.cleanup_orphaned_media",

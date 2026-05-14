@@ -18,6 +18,7 @@ from django.http import HttpResponseRedirect
 from django.db.models import Count, Case, When, IntegerField
 from apps.catalog.models import Product, Category
 from .models import (
+    ProductDuplicateCandidate,
     ScraperConfig,
     ScrapingSession,
     CategoryMapping,
@@ -27,6 +28,7 @@ from .models import (
     SiteScraperTask,
 )
 from .tasks import run_scraper_task, run_stub_refresh_task, revoke_site_scraper_task
+from .services import DeduplicationService
 
 logger = logging.getLogger(__name__)
 
@@ -1168,6 +1170,149 @@ class ScrapedProductLogAdmin(admin.ModelAdmin):
         )
 
     action_badge.short_description = "Действие"
+
+
+@admin.register(ProductDuplicateCandidate)
+class ProductDuplicateCandidateAdmin(admin.ModelAdmin):
+    """Модерация кандидатов в дубликаты товаров."""
+
+    list_display = [
+        "status_badge",
+        "score_display",
+        "canonical_product_link",
+        "duplicate_product_link",
+        "reasons_preview",
+        "detected_at",
+        "reviewed_at",
+    ]
+    list_filter = ["status", "detected_at", "reviewed_at"]
+    search_fields = [
+        "canonical_product_name",
+        "duplicate_product_name",
+        "pair_key",
+        "moderator_note",
+    ]
+    ordering = ["status", "-score", "-detected_at"]
+    actions = [
+        "approve_candidates",
+        "reject_candidates",
+        "merge_approved_candidates",
+    ]
+    readonly_fields = [
+        "pair_key",
+        "canonical_product",
+        "duplicate_product",
+        "canonical_product_name",
+        "duplicate_product_name",
+        "score",
+        "reasons",
+        "signals",
+        "detected_at",
+        "reviewed_at",
+        "merged_at",
+        "updated_at",
+    ]
+
+    fieldsets = [
+        (
+            "Пара товаров",
+            {
+                "fields": [
+                    "pair_key",
+                    ("canonical_product", "duplicate_product"),
+                    ("canonical_product_name", "duplicate_product_name"),
+                ]
+            },
+        ),
+        (
+            "Оценка совпадения",
+            {"fields": ["score", "reasons", "signals"]},
+        ),
+        (
+            "Модерация",
+            {"fields": ["status", "moderator_note", "reviewer", "detected_at", "reviewed_at", "merged_at", "updated_at"]},
+        ),
+    ]
+
+    def status_badge(self, obj):
+        colors = {
+            "pending": "#1d4ed8",
+            "approved": "#15803d",
+            "rejected": "#b91c1c",
+            "merged": "#6b7280",
+        }
+        return format_html(
+            '<span style="color:{}; font-weight:bold;">●</span> {}',
+            colors.get(obj.status, "#6b7280"),
+            obj.get_status_display(),
+        )
+
+    status_badge.short_description = "Статус"
+
+    def score_display(self, obj):
+        return f"{obj.score:.1f}"
+
+    score_display.short_description = "Скор"
+
+    def _product_link(self, product, fallback_name):
+        if not product:
+            return fallback_name
+        url = reverse("admin:catalog_product_change", args=[product.pk])
+        return format_html('<a href="{}">#{} {}</a>', url, product.pk, fallback_name)
+
+    def canonical_product_link(self, obj):
+        return self._product_link(obj.canonical_product, obj.canonical_product_name)
+
+    canonical_product_link.short_description = "Основной товар"
+
+    def duplicate_product_link(self, obj):
+        return self._product_link(obj.duplicate_product, obj.duplicate_product_name)
+
+    duplicate_product_link.short_description = "Кандидат"
+
+    def reasons_preview(self, obj):
+        if not obj.reasons:
+            return "—"
+        return "; ".join(obj.reasons[:3])
+
+    reasons_preview.short_description = "Причины"
+
+    @admin.action(description="Одобрить выбранные кандидаты")
+    def approve_candidates(self, request, queryset):
+        updated = queryset.exclude(status="merged").update(
+            status="approved",
+            reviewer=request.user,
+            reviewed_at=timezone.now(),
+        )
+        self.message_user(request, f"Одобрено кандидатов: {updated}", level=messages.SUCCESS)
+
+    @admin.action(description="Отклонить выбранные кандидаты")
+    def reject_candidates(self, request, queryset):
+        updated = queryset.exclude(status="merged").update(
+            status="rejected",
+            reviewer=request.user,
+            reviewed_at=timezone.now(),
+        )
+        self.message_user(request, f"Отклонено кандидатов: {updated}", level=messages.WARNING)
+
+    @admin.action(description="Объединить одобренные кандидаты")
+    def merge_approved_candidates(self, request, queryset):
+        dedup_service = DeduplicationService()
+        merged = 0
+        skipped = 0
+        for candidate in queryset.select_related("canonical_product", "duplicate_product"):
+            if candidate.status != "approved":
+                skipped += 1
+                continue
+            if dedup_service.merge_candidate(candidate, reviewer=request.user):
+                merged += 1
+            else:
+                skipped += 1
+        self.message_user(
+            request,
+            f"Объединено кандидатов: {merged}. Пропущено: {skipped}.",
+            level=messages.SUCCESS if merged else messages.WARNING,
+        )
 
 
 @admin.register(InstagramScraperTask)

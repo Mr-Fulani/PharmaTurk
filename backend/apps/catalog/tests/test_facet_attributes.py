@@ -11,7 +11,6 @@ from apps.catalog.models import (
     GlobalAttributeKey,
     ProductAttributeValue,
 )
-from apps.catalog.views import FacetedModelViewSetMixin
 
 
 def _build_request():
@@ -21,6 +20,8 @@ def _build_request():
 
 @pytest.mark.django_db
 def test_available_attributes_excludes_single_value_and_non_facet_dynamic_attributes():
+    from apps.catalog.views import FacetedModelViewSetMixin
+
     category_type = CategoryType.objects.create(slug="accessories", name="Accessories")
     category = Category.objects.create(
         name="Аксессуары",

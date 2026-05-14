@@ -4,11 +4,6 @@ import pytest
 from django.http import QueryDict
 
 from apps.catalog.models import Category, Product
-from apps.catalog.views import FacetedModelViewSetMixin, _apply_gender_filter
-
-
-class _DummyFacetView(FacetedModelViewSetMixin):
-    pass
 
 
 def _build_request(query: str):
@@ -22,6 +17,8 @@ def _build_facet_request(query: str):
 
 @pytest.mark.django_db
 def test_gender_filter_matches_product_by_inferred_category_gender():
+    from apps.catalog.views import _apply_gender_filter
+
     category = Category.objects.create(
         name="Женские часы",
         slug="womens-watches",
@@ -44,6 +41,11 @@ def test_gender_filter_matches_product_by_inferred_category_gender():
 
 @pytest.mark.django_db
 def test_available_genders_infers_values_from_category_slug():
+    from apps.catalog.views import FacetedModelViewSetMixin
+
+    class _DummyFacetView(FacetedModelViewSetMixin):
+        pass
+
     category = Category.objects.create(
         name="Женские часы",
         slug="womens-watches",
@@ -67,6 +69,8 @@ def test_available_genders_infers_values_from_category_slug():
 
 @pytest.mark.django_db
 def test_gender_facet_queryset_falls_back_when_requested_category_slug_is_missing():
+    from apps.catalog.views import FacetedModelViewSetMixin
+
     category = Category.objects.create(
         name="Женские часы",
         slug="womens-watches",

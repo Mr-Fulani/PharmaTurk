@@ -139,6 +139,30 @@ def test_fashion_variant_gallery_gets_generated_alt_text():
 
     assert changed is True
     assert [img.alt_text for img in images] == [
-        "Existing Cap - Siyah",
-        "Existing Cap - Siyah - фото 2",
+        "Existing Cap - Черный - Siyah",
+        "Existing Cap - Черный - Siyah - фото 2",
     ]
+
+
+@pytest.mark.django_db
+def test_clear_product_domain_cache_covers_all_supported_domain_relations():
+    service = ScraperIntegrationService()
+    product = Product.objects.create(
+        name="Cache Probe",
+        slug="cache-probe",
+        product_type="electronics",
+        price=100,
+        currency="TRY",
+        external_id="cache-probe-1",
+        external_data={},
+    )
+    product._state.fields_cache = {
+        "electronics_item": object(),
+        "furniture_item": object(),
+        "underwear_item": object(),
+        "book_item": object(),
+    }
+
+    service._clear_product_domain_cache(product)
+
+    assert product._state.fields_cache == {}

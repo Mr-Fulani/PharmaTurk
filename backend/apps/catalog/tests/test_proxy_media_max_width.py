@@ -8,8 +8,6 @@ from django.core.cache import cache
 from django.test import RequestFactory, override_settings
 from PIL import Image
 
-from apps.catalog.views import proxy_media
-
 
 @pytest.fixture
 def rf():
@@ -25,6 +23,8 @@ def small_jpeg_bytes():
 
 @pytest.mark.django_db
 def test_proxy_media_max_width_returns_smaller_webp(rf, small_jpeg_bytes):
+    from apps.catalog.views import proxy_media
+
     cache.clear()
     mock_storage = MagicMock()
     cm = MagicMock()
