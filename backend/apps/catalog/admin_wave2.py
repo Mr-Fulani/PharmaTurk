@@ -88,7 +88,6 @@ def _make_image_inline(model_class):
 class _SimpleDomainAdmin(ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     """Базовый ModelAdmin для простых доменных моделей без вариантов."""
     ai_logs_prefetch_path = "base_product__ai_logs"
-    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
 
     list_display = [
         'name', 'get_ai_status', 'category', 'gender', 'price', 'old_price',
@@ -226,6 +225,10 @@ class MedicineStubStatusFilter(admin.SimpleListFilter):
 @admin.register(MedicineProduct)
 class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     _category_type_slug = "medicines"
+    declared_admin_actions = _SimpleDomainAdmin.declared_admin_actions + (
+        "run_media_enrichment",
+    )
+    admin_action_order = declared_admin_actions
     _domain_fieldset = (_('Специфика медикамента'), {
         'fields': (
             'manufacturer',
@@ -265,8 +268,6 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
         }),
     ]
 
-    actions = ["run_ai", "run_ai_auto_apply", "run_media_enrichment"]
-
     @admin.display(description=_('Тип'), ordering='external_data')
     def stub_status(self, obj):
         if _medicine_stub_display_flag(obj):
@@ -287,6 +288,10 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
 @admin.register(SupplementProduct)
 class SupplementProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     _category_type_slug = "supplements"
+    declared_admin_actions = _SimpleDomainAdmin.declared_admin_actions + (
+        "run_media_enrichment",
+    )
+    admin_action_order = declared_admin_actions
     _domain_fieldset = (_('Специфика БАД'), {
         'fields': ('dosage_form', 'active_ingredient'),
     })
@@ -297,7 +302,6 @@ class SupplementProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
     list_filter = [
         AIStatusFilter, MediaEnrichmentStatusFilter, 'category', 'is_available', 'dosage_form', 'is_new', 'created_at',
     ]
-    actions = ["run_ai", "run_ai_auto_apply", "run_media_enrichment"]
     inlines = [
         _make_translation_inline(SupplementProductTranslation, extra_fields=(
             'dosage_form', 'active_ingredient', 'serving_size'

@@ -2,8 +2,11 @@
 
 import logging
 from typing import Dict, List, Optional
+
+import requests
 from celery import shared_task, current_app
 from celery.exceptions import SoftTimeLimitExceeded
+from django.conf import settings
 from django.db.models import F
 from django.utils import timezone
 
@@ -11,6 +14,66 @@ from .models import ScraperConfig, ScrapingSession, SiteScraperTask
 from .services import ScraperIntegrationService, DeduplicationService, ScraperTaskCancelled
 
 logger = logging.getLogger(__name__)
+
+
+def _build_duplicate_candidates_notification_text(result: Dict) -> str:
+    duplicates_found = result.get("duplicates_found", 0)
+    created = result.get("candidates_created", 0)
+    updated = result.get("candidates_updated", 0)
+    admin_url = f"{getattr(settings, 'SITE_URL', '').rstrip('/')}/admin/scrapers/productduplicatecandidate/"
+
+    lines = [
+        "🔎 Найдены кандидаты в дубликаты товаров",
+        "",
+        f"Всего найдено: {duplicates_found}",
+        f"Создано новых: {created}",
+        f"Обновлено существующих: {updated}",
+    ]
+
+    duplicates = result.get("duplicates") or []
+    if duplicates:
+        lines.extend(["", "Примеры:"])
+        for item in duplicates[:5]:
+            lines.append(
+                f"- {item.get('canonical_product_name')} ↔ {item.get('duplicate_product_name')} "
+                f"(скор {float(item.get('score', 0)):.1f})"
+            )
+
+    if admin_url and admin_url.startswith(("http://", "https://")):
+        lines.extend(["", f"Модерация: {admin_url}"])
+
+    return "\n".join(lines)
+
+
+def _send_duplicate_candidates_notification(result: Dict) -> bool:
+    bot_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "") or ""
+    chat_id = getattr(settings, "TELEGRAM_CHAT_ID", "") or ""
+    if not bot_token or not chat_id:
+        logger.info("Telegram не настроен — уведомление о дубликатах пропущено")
+        return False
+
+    duplicates_found = int(result.get("duplicates_found", 0) or 0)
+    created = int(result.get("candidates_created", 0) or 0)
+    updated = int(result.get("candidates_updated", 0) or 0)
+    if duplicates_found <= 0 and created <= 0 and updated <= 0:
+        logger.info("Новых или обновлённых кандидатов в дубликаты нет — уведомление не отправляем")
+        return False
+
+    text = _build_duplicate_candidates_notification_text(result)
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text},
+            timeout=10,
+        )
+        if not response.ok:
+            logger.warning("Не удалось отправить Telegram-уведомление о дубликатах: %s", response.text)
+            return False
+        logger.info("Telegram-уведомление о кандидатах в дубликаты отправлено")
+        return True
+    except requests.RequestException as exc:
+        logger.warning("Ошибка отправки Telegram-уведомления о дубликатах: %s", exc)
+        return False
 
 
 def _is_site_task_cancelled(site_task_id: Optional[int]) -> bool:
@@ -530,64 +593,51 @@ def cleanup_old_sessions(self, days_to_keep: int = 30) -> Dict:
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)
 def find_and_merge_duplicates(self) -> Dict:
-    """Задача: поиск и объединение дубликатов товаров.
+    """Задача: поиск кандидатов в дубликаты товаров для ручной модерации.
     
     Returns:
-        Результаты дедупликации
+        Результаты поиска кандидатов
     """
     try:
         dedup_service = DeduplicationService()
         
-        # Находим дубликаты
+        # Находим кандидатов в дубликаты
         duplicates = dedup_service.find_duplicates()
+        stored = dedup_service.store_candidates(duplicates)
         
         result = {
             'status': 'success',
             'duplicates_found': len(duplicates),
-            'merged_count': 0,
-            'errors_count': 0,
+            'candidates_created': stored['created'],
+            'candidates_updated': stored['updated'],
             'duplicates': [],
             'timestamp': timezone.now().isoformat()
         }
         
-        # Обрабатываем каждую группу дубликатов
+        # Сохраняем краткую сводку для логов/админки
         for duplicate_group in duplicates:
-            try:
-                api_products = duplicate_group['api_products']
-                scraped_products = duplicate_group['scraped_products']
-                
-                if api_products and scraped_products:
-                    # Берем первый API товар как основной
-                    main_api_product_id = api_products[0]['id']
-                    scraped_product_ids = [p['id'] for p in scraped_products]
-                    
-                    # Объединяем дубликаты
-                    success = dedup_service.merge_duplicates(main_api_product_id, scraped_product_ids)
-                    
-                    if success:
-                        result['merged_count'] += 1
-                        result['duplicates'].append({
-                            'name': duplicate_group['name'],
-                            'main_product_id': main_api_product_id,
-                            'merged_ids': scraped_product_ids,
-                            'status': 'merged'
-                        })
-                    else:
-                        result['errors_count'] += 1
-                        result['duplicates'].append({
-                            'name': duplicate_group['name'],
-                            'status': 'error'
-                        })
-                        
-            except Exception as e:
-                logger.error(f"Ошибка при объединении дубликатов для {duplicate_group['name']}: {e}")
-                result['errors_count'] += 1
+            result['duplicates'].append({
+                'pair_key': duplicate_group['pair_key'],
+                'score': duplicate_group['score'],
+                'canonical_product_id': duplicate_group['canonical_product'].id,
+                'duplicate_product_id': duplicate_group['duplicate_product'].id,
+                'canonical_product_name': duplicate_group['canonical_product'].name,
+                'duplicate_product_name': duplicate_group['duplicate_product'].name,
+                'reasons': duplicate_group['reasons'],
+                'status': 'pending_moderation',
+            })
         
-        logger.info(f"Дедупликация завершена: найдено {len(duplicates)} групп, объединено {result['merged_count']}")
+        logger.info(
+            "Поиск кандидатов в дубликаты завершён: найдено %s, создано %s, обновлено %s",
+            len(duplicates),
+            stored['created'],
+            stored['updated'],
+        )
+        _send_duplicate_candidates_notification(result)
         return result
         
     except Exception as e:
-        error_msg = f"Ошибка при дедупликации: {e}"
+        error_msg = f"Ошибка при поиске кандидатов в дубликаты: {e}"
         logger.error(error_msg)
         
         if self.request.retries < self.max_retries:

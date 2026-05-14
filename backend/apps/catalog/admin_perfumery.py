@@ -12,7 +12,7 @@ from .models import (
     Category,
     FRAGRANCE_TYPE_CHOICES, FRAGRANCE_FAMILY_CHOICES,
 )
-from .admin_base import ShadowProductCleanupAdminMixin
+from .admin_base import RunAIActionMixin, ShadowProductCleanupAdminMixin
 
 
 @admin.action(description=_("Сделать активными"))
@@ -35,6 +35,10 @@ class PerfumeryVariantImageInline(admin.TabularInline):
 @admin.register(PerfumeryVariant)
 class PerfumeryVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     """Админка для вариантов парфюмерии."""
+    variant_activation_action_names = (
+        "activate_perfumery_variants",
+        "deactivate_perfumery_variants",
+    )
     list_display = ('name', 'product', 'volume', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'currency', 'created_at')
     search_fields = ('name', 'product__name', 'slug', 'volume', 'sku', 'barcode')
@@ -85,7 +89,7 @@ class PerfumeryVariantInline(admin.TabularInline):
 
 
 @admin.register(PerfumeryProduct)
-class PerfumeryProductAdmin(ShadowProductCleanupAdminMixin, admin.ModelAdmin):
+class PerfumeryProductAdmin(RunAIActionMixin, ShadowProductCleanupAdminMixin, admin.ModelAdmin):
     """Админка для товаров парфюмерии."""
     list_display = (
         'name', 'slug', 'category', 'brand',
@@ -151,20 +155,3 @@ class PerfumeryProductAdmin(ShadowProductCleanupAdminMixin, admin.ModelAdmin):
         PerfumeryProductImageInline,
         PerfumeryVariantInline,
     ]
-
-    @admin.action(description=_("Сделать активными"))
-    def make_active(self, request, queryset):
-        updated = queryset.update(is_active=True)
-        self.message_user(request, _(f"{updated} товаров активировано."), messages.SUCCESS)
-
-    @admin.action(description=_("Сделать неактивными"))
-    def make_inactive(self, request, queryset):
-        updated = queryset.update(is_active=False)
-        self.message_user(request, _(f"{updated} товаров деактивировано."), messages.SUCCESS)
-
-    @admin.action(description=_("Отметить как бестселлер"))
-    def mark_featured(self, request, queryset):
-        updated = queryset.update(is_featured=True)
-        self.message_user(request, _(f"{updated} товаров отмечено."), messages.SUCCESS)
-
-    actions = [make_active, make_inactive, mark_featured]

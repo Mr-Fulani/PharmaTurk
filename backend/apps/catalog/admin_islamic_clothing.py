@@ -93,6 +93,7 @@ class IslamicClothingVariantImageInline(AdminMediaHelpTextMixin, admin.TabularIn
 
 @admin.register(IslamicClothingVariant)
 class IslamicClothingVariantAdmin(AdminMediaHelpTextMixin, VariantAIAdminMixin, admin.ModelAdmin):
+    variant_activation_action_names = ("activate_variants", "deactivate_variants")
     list_display = (
         'name', 'product', 'color', 'price', 'currency', 'effective_base', 'is_active', 'sort_order', 'created_at',
     )
@@ -140,7 +141,6 @@ class IslamicClothingVariantAdmin(AdminMediaHelpTextMixin, VariantAIAdminMixin, 
 class IslamicClothingProductAdmin(AdminMediaHelpTextMixin, ShadowProductCleanupAdminMixin, RunAIActionMixin, admin.ModelAdmin):
     ai_logs_prefetch_path = "base_product__ai_logs"
     category_field_name = "islamic-clothing"
-    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
 
     def category_path(self, obj):
         return _product_category_path(obj)

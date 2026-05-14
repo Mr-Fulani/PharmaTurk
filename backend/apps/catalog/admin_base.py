@@ -3,6 +3,95 @@ from django.utils.translation import gettext_lazy as _
 from django.utils.html import format_html
 
 
+class OrderedAdminActionsMixin:
+    """Централизует состав и порядок actions в Django admin."""
+
+    declared_admin_actions = ()
+    admin_action_order = ()
+    excluded_admin_actions = ()
+
+    def get_declared_admin_actions(self):
+        return tuple(self.declared_admin_actions)
+
+    def get_admin_action_order(self):
+        order = self.admin_action_order or self.get_declared_admin_actions()
+        return tuple(order)
+
+    def get_excluded_admin_actions(self):
+        return tuple(self.excluded_admin_actions)
+
+    def _build_admin_action_tuple(self, action_name):
+        action = getattr(self, action_name, None)
+        if action is None:
+            return None
+
+        action_func = getattr(type(self), action_name, None)
+        if action_func is None:
+            return None
+
+        return (
+            action_func,
+            action_name,
+            getattr(action, "short_description", action_name),
+        )
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+
+        for action_name in self.get_declared_admin_actions():
+            action_tuple = self._build_admin_action_tuple(action_name)
+            if action_tuple is not None:
+                actions[action_name] = action_tuple
+
+        for action_name in self.get_excluded_admin_actions():
+            actions.pop(action_name, None)
+
+        ordered_actions = {}
+        for action_name in self.get_admin_action_order():
+            if action_name in actions:
+                ordered_actions[action_name] = actions.pop(action_name)
+
+        ordered_actions.update(actions)
+        return ordered_actions
+
+
+class GlobalActivationActionsMixin(OrderedAdminActionsMixin):
+    """Глобальные actions, которые должны быть доступны всем товарам и услугам."""
+
+    global_activation_action_names = (
+        "make_active",
+        "make_inactive",
+    )
+
+    def get_declared_admin_actions(self):
+        return tuple(self.global_activation_action_names) + tuple(super().get_declared_admin_actions())
+
+    def get_admin_action_order(self):
+        current_order = tuple(super().get_admin_action_order())
+        prefixed = [action_name for action_name in self.global_activation_action_names if action_name not in current_order]
+        return tuple(prefixed) + current_order
+
+    def make_active(self, request, queryset):
+        updated = queryset.update(is_active=True)
+        self.message_user(
+            request,
+            _("Активировано записей: %(count)s.") % {"count": updated},
+            level=messages.SUCCESS,
+        )
+
+    make_active.short_description = _("[Общее] Сделать активными")
+
+    def make_inactive(self, request, queryset):
+        updated = queryset.update(is_active=False)
+        self.message_user(
+            request,
+            _("Деактивировано записей: %(count)s.") % {"count": updated},
+            level=messages.SUCCESS,
+        )
+
+    make_inactive.short_description = _("[Общее] Сделать неактивными")
+
+
 class AIStatusFilter(admin.SimpleListFilter):
     """Фильтр товаров по статусу их AI-обработки."""
     title = _("Статус AI")
@@ -58,8 +147,15 @@ class MediaEnrichmentStatusFilter(admin.SimpleListFilter):
         return queryset.filter(media_enrichment_status=self.value())
 
 
-class RunAIActionMixin:
+class RunAIActionMixin(GlobalActivationActionsMixin):
     """Общий миксин для запуска задач AI из админки."""
+
+    declared_admin_actions = (
+        "run_ai",
+        "run_ai_auto_apply",
+        "run_find_merge_duplicates",
+    )
+    admin_action_order = declared_admin_actions
 
     def _resolve_base_product_id(self, obj):
         """Пытаемся достать base_product_id (для прокси или доменных моделей)."""
@@ -101,7 +197,7 @@ class RunAIActionMixin:
             msg += " " + _("Пропущено %(skipped)s уже обработанных товаров.") % {"skipped": skipped}
         
         self.message_user(request, msg, level=messages.SUCCESS)
-    run_ai.short_description = _("Полная AI обработка (без авто-применения)")
+    run_ai.short_description = _("[AI] Полная AI обработка (без авто-применения)")
 
     def run_ai_auto_apply(self, request, queryset):
         """Один запуск: полная обработка + авто-применение."""
@@ -128,23 +224,28 @@ class RunAIActionMixin:
             ) % {"count": queued},
             level=messages.SUCCESS,
         )
-    run_ai_auto_apply.short_description = _("Полная AI обработка + авто-применение")
+    run_ai_auto_apply.short_description = _("[AI] Полная AI обработка + авто-применение")
 
     def run_find_merge_duplicates(self, request, queryset):
-        """Запуск поиска и объединения дубликатов по всему каталогу."""
+        """Запуск поиска кандидатов в дубликаты по всему каталогу."""
         from apps.scrapers.tasks import find_and_merge_duplicates
         find_and_merge_duplicates.delay()
         self.message_user(
             request,
-            _("Запущен поиск и объединение дубликатов по всему каталогу. Результаты будут в логах Celery."),
+            _("Запущен поиск кандидатов в дубликаты по всему каталогу. Кандидаты появятся в модерации админки."),
             level=messages.SUCCESS,
         )
-    run_find_merge_duplicates.short_description = _("Поиск и объединение дубликатов")
+    run_find_merge_duplicates.short_description = _("[Общее] Поиск кандидатов в дубликаты (на модерацию)")
 
     ai_logs_prefetch_path = "ai_logs"
 
+    def get_ai_logs_prefetch_path(self):
+        if hasattr(getattr(self, "model", None), "base_product"):
+            return "base_product__ai_logs"
+        return self.ai_logs_prefetch_path
+
     def get_queryset(self, request):
-        return super().get_queryset(request).prefetch_related(self.ai_logs_prefetch_path)
+        return super().get_queryset(request).prefetch_related(self.get_ai_logs_prefetch_path())
 
     def get_ai_status(self, obj):
         from apps.ai.models import AIProcessingStatus, AIProcessingLog
@@ -208,7 +309,7 @@ class MediaEnrichmentMixin:
             _("Запущено обогащение медиа для %(count)s товаров.") % {"count": len(product_ids)},
             level=messages.SUCCESS
         )
-    run_media_enrichment.short_description = _("Обогатить медиа (картинки)")
+    run_media_enrichment.short_description = _("[Категория] Обогатить медиа (картинки)")
 
 
 class ShadowProductCleanupAdminMixin:

@@ -44,6 +44,7 @@ class BookVariantImageInline(admin.TabularInline):
 @admin.register(BookVariant)
 class BookVariantAdmin(VariantAIAdminMixin, admin.ModelAdmin):
     """Админка для вариантов книг."""
+    variant_activation_action_names = ("activate_book_variants", "deactivate_book_variants")
     list_display = ('name', 'product', 'cover_type', 'format_type', 'price', 'currency', 'is_active', 'sort_order', 'created_at')
     list_filter = ('is_active', 'cover_type', 'format_type', 'currency', 'created_at')
     search_fields = ('name', 'product__name', 'slug', 'cover_type', 'format_type', 'sku', 'barcode')
@@ -143,7 +144,6 @@ class BookVariantInline(admin.TabularInline):
 class BookProductAdmin(RunAIActionMixin, admin.ModelAdmin):
     """Админка для товаров-книг."""
     ai_logs_prefetch_path = "base_product__ai_logs"
-    actions = ["run_ai", "run_ai_auto_apply", "run_find_merge_duplicates"]
     list_display = [
         'name', 'get_ai_status', 'authors_list', 'category', 'price', 
         'old_price', 'is_available', 'is_bestseller',

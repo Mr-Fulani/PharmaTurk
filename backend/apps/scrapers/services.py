@@ -32,7 +32,13 @@ def scraping_in_progress_context():
         _scraping_thread_local.in_progress = False
 
 
-from .models import ScraperConfig, ScrapingSession, ScrapedProductLog, SiteScraperTask
+from .models import (
+    ProductDuplicateCandidate,
+    ScraperConfig,
+    ScrapingSession,
+    ScrapedProductLog,
+    SiteScraperTask,
+)
 from .parsers.registry import get_parser
 from .parsers.lcw import LcwParser
 from .base.scraper import ScrapedProduct, _json_safe_scraped_value
@@ -136,6 +142,8 @@ class ScraperIntegrationService:
         "auto_part_item",
         "book_item",
         "clothing_item",
+        "electronics_item",
+        "furniture_item",
         "headwear_item",
         "incense_item",
         "islamic_clothing_item",
@@ -147,6 +155,7 @@ class ScraperIntegrationService:
         "sports_item",
         "supplement_item",
         "tableware_item",
+        "underwear_item",
     )
 
     ILACFIYATI_DETAIL_TAB_EXTERNAL_IDS = {
@@ -3689,57 +3698,234 @@ class ScraperIntegrationService:
 class DeduplicationService:
     """Сервис дедупликации товаров между API и парсерами."""
 
+    SCORE_THRESHOLD = 60.0
+    STRONG_MATCH_FIELDS = ("external_id", "external_url", "barcode", "sku", "gtin", "mpn")
+
     def __init__(self):
         self.logger = logging.getLogger(__name__)
 
+    @staticmethod
+    def _safe_external_data(product: Product) -> Dict[str, Any]:
+        return product.external_data if isinstance(product.external_data, dict) else {}
+
+    @classmethod
+    def _is_shadow_variant_product(cls, product: Product) -> bool:
+        external = cls._safe_external_data(product)
+        return bool(external.get("source_variant_id") or external.get("source_variant_slug"))
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        return re.sub(r"\s+", " ", (value or "").strip()).casefold()
+
+    def _source_priority(self, product: Product) -> int:
+        source = str(self._safe_external_data(product).get("source") or "").strip().casefold()
+        if source == "api":
+            return 300
+        if source:
+            return 200
+        return 100
+
+    def _choose_canonical_product(self, left: Product, right: Product) -> Tuple[Product, Product]:
+        left_priority = self._source_priority(left)
+        right_priority = self._source_priority(right)
+        if left_priority != right_priority:
+            return (left, right) if left_priority > right_priority else (right, left)
+        if (left.updated_at or left.created_at) != (right.updated_at or right.created_at):
+            left_dt = left.updated_at or left.created_at
+            right_dt = right.updated_at or right.created_at
+            return (left, right) if left_dt <= right_dt else (right, left)
+        return (left, right) if left.pk <= right.pk else (right, left)
+
+    def _build_pair_key(self, left: Product, right: Product) -> str:
+        low_id, high_id = sorted([left.pk, right.pk])
+        return f"{low_id}:{high_id}"
+
+    def _compare_products(self, left: Product, right: Product) -> Optional[Dict[str, Any]]:
+        score = 0.0
+        reasons: List[str] = []
+        signals: Dict[str, Any] = {}
+
+        left_name = self._normalize_text(left.name)
+        right_name = self._normalize_text(right.name)
+        if left_name and left_name == right_name:
+            score += 35.0
+            reasons.append("Совпадает нормализованное название")
+            signals["normalized_name"] = left_name
+
+        for field_name, field_score, reason in (
+            ("external_id", 100.0, "Совпадает внешний ID"),
+            ("external_url", 90.0, "Совпадает внешняя ссылка"),
+            ("barcode", 95.0, "Совпадает штрихкод"),
+            ("sku", 75.0, "Совпадает SKU"),
+            ("gtin", 95.0, "Совпадает GTIN"),
+            ("mpn", 85.0, "Совпадает MPN"),
+        ):
+            left_value = self._normalize_text(getattr(left, field_name, ""))
+            right_value = self._normalize_text(getattr(right, field_name, ""))
+            if left_value and left_value == right_value:
+                score += field_score
+                reasons.append(reason)
+                signals[field_name] = left_value
+
+        if left.brand_id and right.brand_id and left.brand_id == right.brand_id:
+            score += 15.0
+            reasons.append("Совпадает бренд")
+            signals["brand_id"] = left.brand_id
+
+        if left.category_id and right.category_id and left.category_id == right.category_id:
+            score += 10.0
+            reasons.append("Совпадает категория")
+            signals["category_id"] = left.category_id
+
+        if left.product_type and right.product_type and left.product_type == right.product_type:
+            score += 10.0
+            reasons.append("Совпадает тип товара")
+            signals["product_type"] = left.product_type
+
+        left_source = str(self._safe_external_data(left).get("source") or "").strip()
+        right_source = str(self._safe_external_data(right).get("source") or "").strip()
+        if left_source and right_source and left_source != right_source:
+            score += 5.0
+            reasons.append("Товары пришли из разных источников")
+            signals["source_pair"] = sorted([left_source, right_source])
+
+        has_strong_identifier = any(field in signals for field in self.STRONG_MATCH_FIELDS)
+        has_contextual_match = any(field in signals for field in ("brand_id", "category_id", "product_type"))
+
+        qualifies = has_strong_identifier or (
+            signals.get("normalized_name") and has_contextual_match and score >= self.SCORE_THRESHOLD
+        )
+        if not qualifies:
+            return None
+
+        canonical_product, duplicate_product = self._choose_canonical_product(left, right)
+        return {
+            "pair_key": self._build_pair_key(left, right),
+            "score": score,
+            "reasons": reasons,
+            "signals": signals,
+            "canonical_product": canonical_product,
+            "duplicate_product": duplicate_product,
+        }
+
     def find_duplicates(self) -> List[Dict[str, Any]]:
-        """Находит потенциальные дубликаты товаров."""
-        duplicates = []
+        """Находит кандидатов в дубликаты товаров по набору сигналов."""
+        candidates: List[Dict[str, Any]] = []
+        seen_pair_keys: set[str] = set()
+        products = list(
+            Product.objects.select_related("brand", "category").all()
+        )
+        products = [product for product in products if not self._is_shadow_variant_product(product)]
 
-        # Ищем товары с одинаковыми названиями
-        products_by_name = {}
-        for product in Product.objects.all():
-            name_key = product.name.lower().strip()
-            if name_key not in products_by_name:
-                products_by_name[name_key] = []
-            products_by_name[name_key].append(product)
+        buckets: Dict[Tuple[str, str], List[Product]] = {}
+        for product in products:
+            for field_name in ("external_id", "external_url", "barcode", "sku", "gtin", "mpn"):
+                value = self._normalize_text(getattr(product, field_name, ""))
+                if value:
+                    buckets.setdefault((field_name, value), []).append(product)
 
-        for name, products in products_by_name.items():
-            if len(products) > 1:
-                # Группируем по источникам
-                api_products = [p for p in products if p.external_data.get("source") == "api"]
-                scraped_products = [p for p in products if p.external_data.get("source") != "api"]
+            normalized_name = self._normalize_text(product.name)
+            if normalized_name:
+                buckets.setdefault(("name", normalized_name), []).append(product)
 
-                if api_products and scraped_products:
-                    duplicates.append(
-                        {
-                            "name": name,
-                            "api_products": [{"id": p.id, "name": p.name} for p in api_products],
-                            "scraped_products": [
-                                {
-                                    "id": p.id,
-                                    "name": p.name,
-                                    "source": p.external_data.get("source"),
-                                }
-                                for p in scraped_products
-                            ],
-                        }
-                    )
+        for grouped_products in buckets.values():
+            if len(grouped_products) < 2:
+                continue
+            unique_products = {product.pk: product for product in grouped_products}
+            products_list = list(unique_products.values())
+            for index, left in enumerate(products_list):
+                for right in products_list[index + 1 :]:
+                    pair_key = self._build_pair_key(left, right)
+                    if pair_key in seen_pair_keys:
+                        continue
+                    seen_pair_keys.add(pair_key)
+                    comparison = self._compare_products(left, right)
+                    if comparison:
+                        candidates.append(comparison)
 
-        return duplicates
+        candidates.sort(key=lambda item: (-item["score"], item["pair_key"]))
+        return candidates
+
+    def store_candidates(self, duplicates: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Создаёт/обновляет кандидатов в дубликаты для ручной модерации."""
+        created = 0
+        updated = 0
+
+        for duplicate in duplicates:
+            pair_key = duplicate["pair_key"]
+            defaults = {
+                "canonical_product": duplicate["canonical_product"],
+                "duplicate_product": duplicate["duplicate_product"],
+                "canonical_product_name": duplicate["canonical_product"].name,
+                "duplicate_product_name": duplicate["duplicate_product"].name,
+                "score": duplicate["score"],
+                "reasons": duplicate["reasons"],
+                "signals": duplicate["signals"],
+            }
+            candidate, was_created = ProductDuplicateCandidate.objects.get_or_create(
+                pair_key=pair_key,
+                defaults=defaults,
+            )
+            if was_created:
+                created += 1
+                continue
+
+            for field_name, value in defaults.items():
+                setattr(candidate, field_name, value)
+            if candidate.status == "merged":
+                candidate.status = "pending"
+                candidate.reviewer = None
+                candidate.reviewed_at = None
+                candidate.merged_at = None
+                candidate.moderator_note = ""
+            candidate.save(
+                update_fields=[
+                    "canonical_product",
+                    "duplicate_product",
+                    "canonical_product_name",
+                    "duplicate_product_name",
+                    "score",
+                    "reasons",
+                    "signals",
+                    "status",
+                    "reviewer",
+                    "reviewed_at",
+                    "merged_at",
+                    "moderator_note",
+                    "updated_at",
+                ]
+            )
+            updated += 1
+
+        return {"created": created, "updated": updated}
 
     def merge_duplicates(self, api_product_id: int, scraped_product_ids: List[int]) -> bool:
-        """Объединяет дубликаты, оставляя API товар."""
+        """Объединяет дубликаты товаров, оставляя основной товар."""
         try:
             with transaction.atomic():
                 api_product = Product.objects.get(id=api_product_id)
+                if self._is_shadow_variant_product(api_product):
+                    self.logger.warning(
+                        "Нельзя объединять теневой variant Product как основной товар: %s",
+                        api_product_id,
+                    )
+                    return False
                 scraped_products = Product.objects.filter(id__in=scraped_product_ids)
 
                 # Собираем дополнительную информацию из спарсенных товаров
                 additional_images = []
                 additional_sources = []
+                merged_any = False
 
                 for scraped_product in scraped_products:
+                    if self._is_shadow_variant_product(scraped_product):
+                        self.logger.warning(
+                            "Пропускаем объединение теневого variant Product %s в товар %s",
+                            scraped_product.pk,
+                            api_product.pk,
+                        )
+                        continue
+
                     # Собираем изображения
                     if (
                         scraped_product.main_image
@@ -3758,6 +3944,14 @@ class DeduplicationService:
 
                     # Удаляем спарсенный товар
                     scraped_product.delete()
+                    merged_any = True
+
+                if not merged_any:
+                    self.logger.warning(
+                        "Объединение дублей остановлено: для товара %s не найдено допустимых кандидатов",
+                        api_product.pk,
+                    )
+                    return False
 
                 # Обновляем API товар дополнительной информацией
                 if "additional_images" not in api_product.external_data:
@@ -3776,3 +3970,27 @@ class DeduplicationService:
         except Exception as e:
             self.logger.error(f"Ошибка при объединении дубликатов: {e}")
             return False
+
+    def merge_candidate(self, candidate: ProductDuplicateCandidate, *, reviewer=None) -> bool:
+        """Объединяет кандидата, если он был одобрен модератором."""
+        if candidate.status != "approved":
+            self.logger.warning(
+                "Попытка объединить кандидата %s без статуса approved", candidate.pk
+            )
+            return False
+        if not candidate.canonical_product_id or not candidate.duplicate_product_id:
+            self.logger.warning(
+                "Кандидат %s не может быть объединён: потеряна ссылка на товары", candidate.pk
+            )
+            return False
+
+        success = self.merge_duplicates(candidate.canonical_product_id, [candidate.duplicate_product_id])
+        if not success:
+            return False
+
+        candidate.status = "merged"
+        candidate.reviewer = reviewer
+        candidate.reviewed_at = timezone.now()
+        candidate.merged_at = timezone.now()
+        candidate.save(update_fields=["status", "reviewer", "reviewed_at", "merged_at", "updated_at"])
+        return True

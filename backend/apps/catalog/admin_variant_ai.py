@@ -4,9 +4,14 @@ from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 
+from .admin_base import OrderedAdminActionsMixin
 
-class VariantAIAdminMixin:
+
+class VariantAIAdminMixin(OrderedAdminActionsMixin):
     """Общий UI для ручного запуска AI-обработки варианта товара."""
+
+    variant_ai_action_names = ("run_variant_ai", "apply_variant_ai_draft")
+    variant_activation_action_names = ()
 
     def get_actions(self, request):
         actions = super().get_actions(request)
@@ -20,7 +25,17 @@ class VariantAIAdminMixin:
             "apply_variant_ai_draft",
             self.apply_variant_ai_draft.short_description,
         )
-        return actions
+
+        ordered_actions = {}
+        for action_name in self.get_admin_action_order():
+            if action_name in actions:
+                ordered_actions[action_name] = actions.pop(action_name)
+
+        ordered_actions.update(actions)
+        return ordered_actions
+
+    def get_admin_action_order(self):
+        return tuple(self.variant_activation_action_names) + tuple(self.variant_ai_action_names)
 
     def get_list_display(self, request):
         list_display = list(super().get_list_display(request))
