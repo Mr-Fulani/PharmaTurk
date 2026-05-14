@@ -4,6 +4,7 @@ import Script from 'next/script'
 import '../../styles/globals.css'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
+import ContactWidget from '../components/ContactWidget'
 import CookieBanner from '../components/CookieBanner'
 import NavigationProgress from '../components/NavigationProgress'
 import { AuthProvider } from '../context/AuthContext'
@@ -162,6 +163,7 @@ gtag('config', '${GA4_ID.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', { send_p
             <div className="flex-1 pt-[calc(124px+env(safe-area-inset-top))] md:pt-[calc(72px+env(safe-area-inset-top))]">
               <Component {...pageProps} />
             </div>
+            <ContactWidget initialSettings={(pageProps as Record<string, unknown>)?.footerSettings} />
             <Footer initialSettings={(pageProps as Record<string, unknown>)?.footerSettings} />
           </div>
         )}
