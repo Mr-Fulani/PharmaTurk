@@ -1221,6 +1221,7 @@
   "analogs_title_short": "Аналоги",
   "analog_substance": "Действующее вещество: {{substance}}",
   "analog_saving": "Выгода {{amount}}",
+  "analog_saving_percent": "Выгода -{{percent}}%",
   "in_stock": "В наличии",
   "out_of_stock": "Нет в наличии",
   "similar_products": "Похожие товары",

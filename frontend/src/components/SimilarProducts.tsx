@@ -125,7 +125,7 @@ export default function SimilarProducts({
             const reasonMap: Record<number, string> = {}
             mappedProducts.forEach((analog) => {
               if (analog.saving_percent && analog.saving_percent > 0) {
-                reasonMap[analog.id] = `Выгода -${analog.saving_percent}%`
+                reasonMap[analog.id] = `__saving__${analog.saving_percent}`
               }
             })
             setReasons(reasonMap)
@@ -248,6 +248,8 @@ export default function SimilarProducts({
   const translateBadge = (reason: string): string => {
     if (!reason?.trim()) return ''
     const trimmed = reason.trim()
+    const savingMatch = trimmed.match(/^__saving__(\d+(?:\.\d+)?)$/)
+    if (savingMatch) return t('analog_saving_percent', { percent: savingMatch[1], defaultValue: `-${savingMatch[1]}%` })
     if (trimmed === 'Рекомендуем') return t('badge_recommend', 'Рекомендуем')
     if (trimmed === 'Очень похожий стиль') return t('badge_similar_style', 'Очень похожий стиль')
     if (trimmed === 'Похожий дизайн') return t('badge_similar_design', 'Похожий дизайн')
