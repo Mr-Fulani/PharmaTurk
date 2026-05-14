@@ -12,6 +12,31 @@ type ContactItem = {
 }
 
 const RADIUS = 58
+const WIDGET_SIZE = 76
+const ACTION_SIZE = 42
+const EDGE_PADDING = 12
+const DRAG_THRESHOLD = 6
+const POSITION_STORAGE_KEY = 'contact-widget-position'
+
+type WidgetPosition = {
+  x: number
+  y: number
+}
+
+type DragState = {
+  active: boolean
+  moved: boolean
+  pointerId: number | null
+  startX: number
+  startY: number
+  originX: number
+  originY: number
+}
+
+const SSR_DEFAULT_POSITION: WidgetPosition = {
+  x: WIDGET_SIZE / 2,
+  y: WIDGET_SIZE / 2,
+}
 
 function getInitialSettings(initialSettings?: Partial<FooterSettingsData>): FooterSettingsData {
   return {
@@ -52,11 +77,75 @@ function getPos(i: number, count: number) {
   }
 }
 
+function getSafeMargin() {
+  return Math.max(WIDGET_SIZE / 2, RADIUS + ACTION_SIZE / 2 + EDGE_PADDING)
+}
+
+function clampPosition(x: number, y: number) {
+  if (typeof window === 'undefined') {
+    return { x, y }
+  }
+
+  const safeMargin = getSafeMargin()
+
+  return {
+    x: Math.min(Math.max(x, safeMargin), window.innerWidth - safeMargin),
+    y: Math.min(Math.max(y, safeMargin), window.innerHeight - safeMargin),
+  }
+}
+
+function getDefaultPosition() {
+  if (typeof window === 'undefined') {
+    return {
+      x: WIDGET_SIZE / 2,
+      y: WIDGET_SIZE / 2,
+    }
+  }
+
+  const safeMargin = getSafeMargin()
+
+  return {
+    x: window.innerWidth - safeMargin,
+    y: window.innerHeight - safeMargin,
+  }
+}
+
+function loadSavedPosition() {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const rawValue = window.localStorage.getItem(POSITION_STORAGE_KEY)
+    if (!rawValue) return null
+
+    const parsed = JSON.parse(rawValue) as Partial<WidgetPosition>
+    if (typeof parsed.x !== 'number' || typeof parsed.y !== 'number') {
+      return null
+    }
+
+    return clampPosition(parsed.x, parsed.y)
+  } catch {
+    return null
+  }
+}
+
 export default function ContactWidget({ initialSettings: _initialSettings }: { initialSettings?: unknown }) {
   const { t } = useTranslation('common')
   const [open, setOpen] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const dragStateRef = useRef<DragState>({
+    active: false,
+    moved: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+  })
+  const suppressClickRef = useRef(false)
   const [settings, setSettings] = useState<FooterSettingsData>(getInitialSettings(_initialSettings as Partial<FooterSettingsData> | undefined))
+  const [position, setPosition] = useState<WidgetPosition>(SSR_DEFAULT_POSITION)
 
   useEffect(() => {
     setSettings((prev) => ({
@@ -96,6 +185,31 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
   }, [_initialSettings])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const savedPosition = loadSavedPosition()
+    setPosition(savedPosition || getDefaultPosition())
+    setIsMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!isMounted || typeof window === 'undefined') return
+
+    window.localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(position))
+  }, [isMounted, position])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handleResize = () => {
+      setPosition((prev) => clampPosition(prev.x, prev.y))
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  useEffect(() => {
     if (!open) return
 
     const handler = (event: MouseEvent) => {
@@ -108,6 +222,57 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragState = dragStateRef.current
+      if (!dragState.active || dragState.pointerId !== event.pointerId) return
+
+      const deltaX = event.clientX - dragState.startX
+      const deltaY = event.clientY - dragState.startY
+
+      if (!dragState.moved && Math.hypot(deltaX, deltaY) >= DRAG_THRESHOLD) {
+        dragState.moved = true
+        suppressClickRef.current = true
+        setIsDragging(true)
+        setOpen(false)
+      }
+
+      if (!dragState.moved) return
+
+      setPosition(clampPosition(dragState.originX + deltaX, dragState.originY + deltaY))
+    }
+
+    const stopDragging = (pointerId?: number) => {
+      const dragState = dragStateRef.current
+      if (!dragState.active) return
+      if (typeof pointerId === 'number' && dragState.pointerId !== pointerId) return
+
+      dragState.active = false
+      dragState.pointerId = null
+      setIsDragging(false)
+    }
+
+    const handlePointerUp = (event: PointerEvent) => {
+      stopDragging(event.pointerId)
+    }
+
+    const handlePointerCancel = (event: PointerEvent) => {
+      stopDragging(event.pointerId)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerCancel)
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerCancel)
+    }
+  }, [])
+
   const items: ContactItem[] = [
     { key: 'telegram', label: 'Telegram', color: '#0088cc', icon: <TelegramIcon />, href: settings.telegram_url || '' },
     { key: 'whatsapp', label: 'WhatsApp', color: '#25d366', icon: <WhatsAppIcon />, href: toWhatsAppUrl(settings.whatsapp_url, settings.phone) },
@@ -117,6 +282,27 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
   ].filter((item) => Boolean(item.href))
 
   const count = items.length
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    dragStateRef.current = {
+      active: true,
+      moved: false,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: position.x,
+      originY: position.y,
+    }
+  }
+
+  const handleToggle = () => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false
+      return
+    }
+
+    setOpen((prev) => !prev)
+  }
 
   return (
     <>
@@ -156,6 +342,11 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
           color: var(--cw-clr);
           flex-shrink: 0;
         }
+        .cw-media {
+          pointer-events: none;
+          user-select: none;
+          -webkit-user-drag: none;
+        }
         .cw-btn:hover {
           transform: scale(1.12);
           box-shadow: 0 0 0 2.5px var(--cw-clr), 0 4px 14px rgba(0,0,0,0.18);
@@ -163,16 +354,44 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
         .cw-btn:active {
           transform: scale(0.94);
         }
+        .cw-shell {
+          animation: cw-heartbeat 2.8s ease-in-out infinite;
+          transform-origin: center;
+        }
+        .cw-shell.cw-active {
+          animation: none;
+        }
+        @keyframes cw-heartbeat {
+          0% {
+            transform: scale(1);
+          }
+          8% {
+            transform: scale(1.03);
+          }
+          14% {
+            transform: scale(0.99);
+          }
+          22% {
+            transform: scale(1.075);
+          }
+          30% {
+            transform: scale(1);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
       `}</style>
 
       <div
         ref={containerRef}
         className="fixed z-[90]"
         style={{
-          width: 76,
-          height: 76,
-          right: '3.5rem',
-          bottom: 'calc(3.5rem + env(safe-area-inset-bottom))',
+          width: WIDGET_SIZE,
+          height: WIDGET_SIZE,
+          left: position.x - WIDGET_SIZE / 2,
+          top: position.y - WIDGET_SIZE / 2,
+          visibility: isMounted ? 'visible' : 'hidden',
           transform: 'translate3d(0, 0, 0)',
         }}
       >
@@ -205,7 +424,7 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
           )
         })}
 
-        <div className="group relative">
+        <div className={`group relative cw-shell${open || isDragging ? ' cw-active' : ''}`}>
           <div className="absolute -top-2 left-1/2 z-20 -translate-x-1/2 -translate-y-full opacity-0 transition-opacity duration-200 pointer-events-none group-hover:opacity-100">
             <div className="bg-[var(--text-strong)] dark:!bg-[#1f2937] text-[var(--bg)] dark:!text-white dark:border dark:border-gray-600 rounded px-2 py-1 text-xs whitespace-nowrap shadow-lg">
               {t('contact_widget_tooltip', 'Поддержка')}
@@ -215,26 +434,32 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
 
           <button
             type="button"
-            onClick={() => setOpen((prev) => !prev)}
+            onClick={handleToggle}
+            onPointerDown={handlePointerDown}
             aria-expanded={open}
             aria-label={t('contact_widget_tooltip', 'Поддержка')}
             className="relative z-[2] flex h-[76px] w-[76px] items-center justify-center rounded-full border bg-[var(--surface)] p-1 shadow-[0_18px_40px_rgba(15,23,42,0.18)] transition-all duration-300 hover:-translate-y-0.5"
             style={{
+              cursor: isDragging ? 'grabbing' : 'grab',
+              touchAction: 'none',
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
               borderColor: open ? 'rgba(0,0,0,0.2)' : 'var(--border)',
               boxShadow: open
                 ? '0 0 0 3px rgba(0,0,0,0.08), 0 12px 28px rgba(0,0,0,0.18)'
                 : '0 18px 40px rgba(15,23,42,0.18)',
               transform: open ? 'rotate(360deg)' : 'rotate(0deg)',
             }}
-          >
-            <span className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.38),transparent_58%)] opacity-70" />
-            <span className="relative block h-[66px] w-[66px] overflow-hidden rounded-full border border-[rgba(67,113,247,0.18)]">
+            >
+            <span className="cw-media absolute inset-0 rounded-full bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.38),transparent_58%)] opacity-70" />
+            <span className="cw-media relative block h-[66px] w-[66px] overflow-hidden rounded-full border border-[rgba(67,113,247,0.18)]">
               <img
                 src="/support-contact-logo.jpg"
                 alt={t('contact_widget_tooltip', 'Поддержка')}
                 className="h-full w-full object-cover object-top"
                 loading="lazy"
                 decoding="async"
+                draggable={false}
               />
             </span>
           </button>
