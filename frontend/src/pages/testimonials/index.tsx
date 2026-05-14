@@ -13,6 +13,7 @@ import { PhotoIcon, VideoCameraIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from '@
 import { getPlaceholderImageUrl, resolveMediaUrl } from '../../lib/media'
 import { getInternalApiUrl } from '../../lib/urls'
 import { buildTestimonialUrl, Testimonial, TestimonialMedia } from '../../lib/testimonials'
+import { buildAuthRedirectQuery } from '../../lib/authRedirect'
 
 interface MediaItem {
   type: 'image' | 'video' | 'video_file'
@@ -72,6 +73,7 @@ export default function TestimonialsPage({
     'customer reviews',
   ].filter(Boolean).join(', ')
   const testimonialsOgImage = `${SITE_URL}/footer-testimonials-promo.png`
+  const authRedirectQuery = buildAuthRedirectQuery(router.asPath || '/testimonials?action=add')
 
   useEffect(() => {
     setTestimonials(initialTestimonials)
@@ -216,7 +218,7 @@ export default function TestimonialsPage({
 
     if (!user) {
       alert(t('login_required_to_submit_testimonial', 'Для отправки отзыва необходимо войти.'))
-      router.push('/auth')
+      router.push({ pathname: '/auth', query: authRedirectQuery })
       return
     }
 
@@ -748,7 +750,7 @@ export default function TestimonialsPage({
                 {t('login_required_to_submit_testimonial', 'Для отправки отзыва необходимо войти.')}
               </p>
               <button
-                onClick={() => router.push('/auth')}
+                onClick={() => router.push({ pathname: '/auth', query: authRedirectQuery })}
                 className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
               >
                 {t('login', 'Войти')}

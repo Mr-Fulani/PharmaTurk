@@ -7,14 +7,15 @@ import { useTheme } from '../../context/ThemeContext'
 import { useRouter } from 'next/router'
 import styles from './Auth.module.css'
 import { SITE_NAME } from '../../lib/siteMeta'
+import { sanitizeNextPath } from '../../lib/authRedirect'
 
 // ─── Утилита: редирект после входа ──────────────────────────────────────────
 
 function usePostLoginRedirect() {
   const router = useRouter()
   return () => {
-    const next = router.query.next as string
-    if (next && next.startsWith('/')) router.push(next)
+    const next = sanitizeNextPath(router.query.next)
+    if (next) router.push(next)
     else router.push('/')
   }
 }
@@ -619,4 +620,3 @@ function RegisterForm() {
     </div>
   )
 }
-

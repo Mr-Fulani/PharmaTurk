@@ -121,7 +121,7 @@ export default function GenericStaticPage({ pageData, pageLocale }: GenericStati
   const seoTitle = pageData.meta_title || pageData.title
   const fullTitle = `${seoTitle} — ${SITE_NAME}`
   const isAboutPage = pageData.slug === 'about-us'
-  const localizedAboutImage = isAboutPage ? `${SITE_URL}/og-about-us-${normalizedLocale}.png` : ''
+  const localizedAboutImage = isAboutPage ? `${SITE_URL}/og-about-us-${normalizedLocale}.jpg` : ''
   const canonicalUrl = `${SITE_URL}${localePrefix}/${pageData.slug}`
   const ruUrl = `${SITE_URL}/${pageData.slug}`
   const enUrl = `${SITE_URL}/en/${pageData.slug}`
@@ -130,6 +130,11 @@ export default function GenericStaticPage({ pageData, pageLocale }: GenericStati
     normalizedLocale === 'en'
       ? 'Mudaroba about us banner'
       : 'Баннер страницы О нас Mudaroba'
+  const ogLocale = normalizedLocale === 'en' ? 'en_US' : 'ru_RU'
+  const ogImageAlt =
+    normalizedLocale === 'en'
+      ? 'Mudaroba About Us social preview'
+      : 'Превью страницы О Нас Mudaroba'
   const aboutHighlights = normalizedLocale === 'en'
     ? [
       {
@@ -178,14 +183,22 @@ export default function GenericStaticPage({ pageData, pageLocale }: GenericStati
         <link rel="alternate" hrefLang="en" href={enUrl} />
         <link rel="alternate" hrefLang="x-default" href={ruUrl} />
         <meta property="og:type" content="website" />
+        <meta property="og:site_name" content={SITE_NAME} />
+        <meta property="og:locale" content={ogLocale} />
         <meta property="og:url" content={canonicalUrl} />
         <meta property="og:image" content={ogImage} />
+        <meta property="og:image:secure_url" content={ogImage} />
+        <meta property="og:image:type" content={ogImage.endsWith('.jpg') ? 'image/jpeg' : 'image/png'} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content={ogImageAlt} />
         <meta property="twitter:card" content="summary_large_image" />
         <meta property="twitter:title" content={seoTitle} />
         {pageData.meta_description && (
           <meta property="twitter:description" content={pageData.meta_description} />
         )}
         <meta property="twitter:image" content={ogImage} />
+        <meta property="twitter:image:alt" content={ogImageAlt} />
       </Head>
       <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
         {isAboutPage && (
