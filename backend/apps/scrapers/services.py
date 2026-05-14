@@ -66,6 +66,11 @@ import datetime
 BRAND_CLEAR_PRODUCT_TYPES = {"books"}
 DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
 
+
+class ScraperTaskCancelled(Exception):
+    """Задача парсинга была отменена пользователем."""
+
+
 # Реестр: product_type → метод получения/создания доменного объекта
 _DOMAIN_GETTER_NAMES = {
     "books": "_get_book_product",
@@ -865,6 +870,7 @@ class ScraperIntegrationService:
         start_page: int = 1,
         site_task_id: Optional[int] = None,
         total_scraped: int = 0,
+        celery_task_id: Optional[str] = None,
     ) -> ScrapingSession:
         """Запускает парсер и создает сессию.
 
@@ -887,6 +893,7 @@ class ScraperIntegrationService:
             max_images_per_product=max_images_per_product or scraper_config.max_images_per_product,
             target_category=target_category,
             status="running",
+            task_id=celery_task_id or "",
             started_at=timezone.now(),
         )
 
@@ -944,6 +951,14 @@ class ScraperIntegrationService:
                 # Обновляем статистику конфигурации
                 self._update_scraper_stats(scraper_config, session, success=True)
 
+        except ScraperTaskCancelled as e:
+            self.logger.info("Парсер %s был остановлен: %s", scraper_config.name, e)
+            session.status = "cancelled"
+            session.finished_at = timezone.now()
+            session.error_message = str(e)
+            session.save(update_fields=["status", "finished_at", "error_message"])
+            raise
+
         except Exception as e:
             self.logger.error(f"Ошибка при запуске парсера {scraper_config.name}: {e}")
 
@@ -984,6 +999,7 @@ class ScraperIntegrationService:
         incremental_results = None
 
         try:
+            self._ensure_site_task_not_cancelled(site_task_id)
             # Анализируем URL
             parsed_url = urlparse(start_url)
             path_parts = [p for p in parsed_url.path.strip('/').split('/') if p]
@@ -1019,6 +1035,7 @@ class ScraperIntegrationService:
                 incremental_results = {"found": 0, "created": 0, "updated": 0, "skipped": 0, "errors": 0}
                 checkpoint = 0
                 for product in parser.parse_product_list(start_url, max_pages=session.max_pages, start_page=start_page):
+                    self._ensure_site_task_not_cancelled(site_task_id)
                     r = self._process_scraped_products(session, [product])
                     for k in incremental_results:
                         incremental_results[k] += r.get(k, 0)
@@ -1039,6 +1056,7 @@ class ScraperIntegrationService:
 
             elif is_search:
                 # Поиск товаров
+                self._ensure_site_task_not_cancelled(site_task_id)
                 query = self._extract_search_query(start_url)
                 if query:
                     products = parser.search_products(query, session.max_products)
@@ -1047,6 +1065,7 @@ class ScraperIntegrationService:
 
             elif is_product:
                 # Парсинг отдельного товара (не Instagram); IKEA может вернуть список цветов
+                self._ensure_site_task_not_cancelled(site_task_id)
                 detail_result = parser.parse_product_detail(start_url)
                 self._extend_from_product_detail(scraped_products, detail_result)
                 session.pages_processed += 1
@@ -1060,6 +1079,7 @@ class ScraperIntegrationService:
                 if "/p/" in start_url or "/reel/" in start_url:
                     # Парсим один пост
                     self.logger.info("Instagram: парсинг отдельного поста %s", start_url)
+                    self._ensure_site_task_not_cancelled(site_task_id)
                     detail_result = parser.parse_product_detail(start_url)
                     self._extend_from_product_detail(scraped_products, detail_result)
                 else:
@@ -1069,6 +1089,7 @@ class ScraperIntegrationService:
                         start_url,
                         session.max_pages,
                     )
+                    self._ensure_site_task_not_cancelled(site_task_id)
                     products = parser.parse_product_list(start_url, max_pages=session.max_pages)
                     scraped_products.extend(products)
                 session.pages_processed += 1
@@ -1080,6 +1101,7 @@ class ScraperIntegrationService:
                     : session.max_pages
                 ]:  # Ограничиваем количество категорий
                     try:
+                        self._ensure_site_task_not_cancelled(site_task_id)
                         products = parser.parse_product_list(
                             category["url"], max_pages=max(1, session.max_pages // len(categories))
                         )
@@ -1104,6 +1126,17 @@ class ScraperIntegrationService:
             raise
 
         return scraped_products, incremental_results
+
+    @staticmethod
+    def _ensure_site_task_not_cancelled(site_task_id: Optional[int]) -> None:
+        """Периодически проверяет, не отменили ли задачу из админки."""
+        if not site_task_id:
+            return
+        status = (
+            SiteScraperTask.objects.filter(id=site_task_id).values_list("status", flat=True).first()
+        )
+        if status == "cancelled":
+            raise ScraperTaskCancelled("Задача остановлена пользователем.")
 
     def _process_scraped_products(
         self, session: ScrapingSession, products: List[ScrapedProduct]

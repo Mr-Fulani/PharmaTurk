@@ -2,15 +2,43 @@
 
 import logging
 from typing import Dict, List, Optional
-from celery import shared_task
+from celery import shared_task, current_app
 from celery.exceptions import SoftTimeLimitExceeded
 from django.db.models import F
 from django.utils import timezone
 
 from .models import ScraperConfig, ScrapingSession, SiteScraperTask
-from .services import ScraperIntegrationService, DeduplicationService
+from .services import ScraperIntegrationService, DeduplicationService, ScraperTaskCancelled
 
 logger = logging.getLogger(__name__)
+
+
+def _is_site_task_cancelled(site_task_id: Optional[int]) -> bool:
+    """Возвращает True, если задачу отменили из админки."""
+    if not site_task_id:
+        return False
+    status = (
+        SiteScraperTask.objects.filter(id=site_task_id).values_list("status", flat=True).first()
+    )
+    return status == "cancelled"
+
+
+def _cancel_site_task(site_task_id: int, message: str) -> None:
+    """Фиксирует отмену задачи в БД."""
+    SiteScraperTask.objects.filter(id=site_task_id).update(
+        status="cancelled",
+        error_message=message,
+        log_output=message,
+        finished_at=timezone.now(),
+    )
+
+
+def revoke_site_scraper_task(task: SiteScraperTask, *, terminate: bool = True) -> bool:
+    """Отзывает текущую Celery-задачу для SiteScraperTask, если task_id известен."""
+    if not task.task_id:
+        return False
+    current_app.control.revoke(task.task_id, terminate=terminate, signal="SIGTERM")
+    return True
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -80,13 +108,20 @@ def run_scraper_task(self,
 
         target_category = None
         if site_task:
+            if _is_site_task_cancelled(site_task.id):
+                return {
+                    "status": "cancelled",
+                    "message": "Задача остановлена пользователем до старта чанка.",
+                    "scraper_name": scraper_config.name,
+                }
             # Первый чанк: переводим в 'running'. Последующие: already running, условие не сработает.
             SiteScraperTask.objects.filter(id=site_task.id, status='pending').update(
                 status='running'
             )
-            SiteScraperTask.objects.filter(id=site_task.id, started_at__isnull=True).update(
-                started_at=timezone.now()
+            SiteScraperTask.objects.filter(id=site_task.id).update(
+                task_id=self.request.id or "",
             )
+            SiteScraperTask.objects.filter(id=site_task.id, started_at__isnull=True).update(started_at=timezone.now())
             # Получаем свежие данные задачи
             site_task.refresh_from_db()
             if max_images_per_product is None:
@@ -109,6 +144,7 @@ def run_scraper_task(self,
             start_page=start_page,
             site_task_id=site_task_id,
             total_scraped=total_scraped,
+            celery_task_id=self.request.id,
         )
 
         result = {
@@ -137,13 +173,24 @@ def run_scraper_task(self,
         ])
 
         if site_task:
+            site_task.refresh_from_db()
+            if site_task.status == "cancelled":
+                return {
+                    **result,
+                    "status": "cancelled",
+                    "message": "Задача остановлена пользователем.",
+                }
             products_this_chunk = session.products_found
             new_total = total_scraped + products_this_chunk
             chunk_pages = max_pages or scraper_config.max_pages_per_run
             effective_max = site_task.max_products
 
             # Продолжаем цепочку если: нашли хоть что-то И не достигли лимита
-            should_chain = products_this_chunk > 0 and new_total < effective_max
+            should_chain = (
+                site_task.status != "cancelled"
+                and products_this_chunk > 0
+                and new_total < effective_max
+            )
 
             common_updates = dict(
                 session=session,
@@ -157,8 +204,7 @@ def run_scraper_task(self,
             )
 
             if should_chain:
-                SiteScraperTask.objects.filter(id=site_task.id).update(**common_updates)
-                run_scraper_task.apply_async(kwargs=dict(
+                next_task = run_scraper_task.apply_async(kwargs=dict(
                     scraper_config_id=scraper_config_id,
                     start_url=start_url,
                     max_pages=max_pages,
@@ -168,6 +214,10 @@ def run_scraper_task(self,
                     start_page=start_page + chunk_pages,
                     total_scraped=new_total,
                 ))
+                SiteScraperTask.objects.filter(id=site_task.id).update(
+                    **common_updates,
+                    task_id=next_task.id,
+                )
                 logger.info(
                     f"Парсер {scraper_config.name}: чанк стр.{start_page} готов "
                     f"({products_this_chunk} товаров, всего {new_total}/{effective_max}). "
@@ -187,6 +237,18 @@ def run_scraper_task(self,
             logger.info(f"Парсер {scraper_config.name} завершен успешно: {session.products_found} товаров найдено")
 
         return result
+
+    except ScraperTaskCancelled as e:
+        error_msg = str(e)
+        logger.info("Задача парсинга %s отменена: %s", scraper_config_id, error_msg)
+        if site_task:
+            _cancel_site_task(site_task.id, error_msg)
+        return {
+            "status": "cancelled",
+            "message": error_msg,
+            "scraper_config_id": scraper_config_id,
+            "timestamp": timezone.now().isoformat(),
+        }
         
     except SoftTimeLimitExceeded:
         error_msg = "Задача превысила лимит времени (soft limit)"
@@ -602,7 +664,11 @@ def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offse
 
         scraper_config = ScraperConfig.objects.get(id=scraper_config_id)
 
+        if _is_site_task_cancelled(site_task_id):
+            return {"status": "cancelled", "message": "Задача остановлена пользователем до старта чанка."}
+
         SiteScraperTask.objects.filter(id=site_task_id, status='pending').update(status='running')
+        SiteScraperTask.objects.filter(id=site_task_id).update(task_id=self.request.id or "")
         SiteScraperTask.objects.filter(id=site_task_id, started_at__isnull=True).update(started_at=timezone.now())
         if site_task:
             site_task.refresh_from_db()
@@ -631,6 +697,7 @@ def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offse
             max_pages=1,
             max_products=site_task.max_products if site_task else _STUB_REFRESH_BATCH_SIZE,
             status='running',
+            task_id=self.request.id or "",
             started_at=timezone.now(),
         )
 
@@ -650,6 +717,8 @@ def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offse
                 parser.user_agent = scraper_config.user_agent
 
             for i, stub in enumerate(batch):
+                if _is_site_task_cancelled(site_task_id):
+                    raise ScraperTaskCancelled("Задача остановлена пользователем.")
                 try:
                     scraped = parser.parse_product_detail(stub.external_url)
                     if not scraped:
@@ -683,14 +752,21 @@ def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offse
         session.save(update_fields=['status', 'finished_at'])
 
         effective_max = site_task.max_products if site_task else new_offset
-        should_chain = len(batch) == _STUB_REFRESH_BATCH_SIZE and new_offset < effective_max
+        if site_task:
+            site_task.refresh_from_db()
+        should_chain = (
+            (not site_task or site_task.status != "cancelled")
+            and len(batch) == _STUB_REFRESH_BATCH_SIZE
+            and new_offset < effective_max
+        )
 
         if should_chain:
-            run_stub_refresh_task.apply_async(kwargs=dict(
+            next_task = run_stub_refresh_task.apply_async(kwargs=dict(
                 site_task_id=site_task_id,
                 scraper_config_id=scraper_config_id,
                 offset=new_offset,
             ))
+            SiteScraperTask.objects.filter(id=site_task_id).update(task_id=next_task.id)
             logger.info(f"stub_refresh: обработано {new_offset} заглушек, продолжаем со смещения {new_offset}")
         else:
             SiteScraperTask.objects.filter(id=site_task_id).update(
@@ -701,6 +777,13 @@ def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offse
             logger.info(f"stub_refresh: завершено, обработано {new_offset} заглушек")
 
         return {'status': 'success', 'offset': offset, 'batch_size': len(batch)}
+
+    except ScraperTaskCancelled as e:
+        error_msg = str(e)
+        logger.info("Задача обновления заглушек %s отменена: %s", site_task_id, error_msg)
+        if site_task:
+            _cancel_site_task(site_task_id, error_msg)
+        return {'status': 'cancelled', 'error': error_msg, 'timestamp': timezone.now().isoformat()}
 
     except ScraperConfig.DoesNotExist:
         error_msg = f"Конфигурация парсера с ID {scraper_config_id} не найдена"

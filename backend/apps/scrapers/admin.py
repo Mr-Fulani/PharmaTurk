@@ -26,7 +26,7 @@ from .models import (
     InstagramScraperTask,
     SiteScraperTask,
 )
-from .tasks import run_scraper_task, run_stub_refresh_task
+from .tasks import run_scraper_task, run_stub_refresh_task, revoke_site_scraper_task
 
 logger = logging.getLogger(__name__)
 
@@ -385,7 +385,13 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         "finished_at",
     ]
 
-    actions = ["run_site_scraping", "rerun_site_scraping", "force_rerun_site_scraping", "run_ai_for_tasks"]
+    actions = [
+        "run_site_scraping",
+        "rerun_site_scraping",
+        "force_rerun_site_scraping",
+        "cancel_site_scraping",
+        "run_ai_for_tasks",
+    ]
 
     def changelist_view(self, request, extra_context=None):
         response = super().changelist_view(request, extra_context=extra_context)
@@ -426,7 +432,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             transaction.on_commit(enqueue_after_commit)
 
     def status_badge(self, obj):
-        colors = {"pending": "blue", "running": "orange", "completed": "green", "failed": "red"}
+        colors = {"pending": "blue", "running": "orange", "completed": "green", "failed": "red", "cancelled": "gray"}
         color = colors.get(obj.status, "gray")
         return format_html(
             '<span style="color: {}; font-weight: bold;">●</span> {}',
@@ -533,9 +539,12 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             )
         else:
             force_run_url = reverse("admin:scrapers_sitescrapertask_force_rerun", args=[obj.pk])
+            cancel_url = reverse("admin:scrapers_sitescrapertask_cancel", args=[obj.pk])
             run_button = format_html(
                 '<span style="color: orange; margin-right:4px;">Выполняется...</span>'
+                '<a href="{}" class="button" style="margin-right:4px; background:#4b5563; color:#fff;">Остановить</a>'
                 '<a href="{}" class="button" style="margin-right:4px; background:#b91c1c; color:#fff;">Принудительно перезапустить</a>',
+                cancel_url,
                 force_run_url,
             )
 
@@ -566,6 +575,11 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                 "<int:task_id>/force-rerun/",
                 self.admin_site.admin_view(self.force_rerun_task_view),
                 name="scrapers_sitescrapertask_force_rerun",
+            ),
+            path(
+                "<int:task_id>/cancel/",
+                self.admin_site.admin_view(self.cancel_task_view),
+                name="scrapers_sitescrapertask_cancel",
             ),
             path(
                 "<int:task_id>/run-ai/",
@@ -683,6 +697,38 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             task.finished_at = timezone.now()
             task.save(update_fields=["status", "error_message", "finished_at"])
             messages.error(request, f"Ошибка принудительного перезапуска: {e}")
+
+        return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+    def cancel_task_view(self, request, task_id):
+        try:
+            task = SiteScraperTask.objects.get(id=task_id)
+        except SiteScraperTask.DoesNotExist:
+            messages.error(request, "Задача парсинга не найдена")
+            return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+        revoked = False
+        try:
+            revoked = revoke_site_scraper_task(task, terminate=True)
+        except Exception as e:
+            logger.exception("Ошибка при отзыве Celery-задачи для SiteScraperTask #%s", task.id)
+            messages.warning(request, f"Не удалось отозвать Celery-задачу: {e}")
+
+        task.status = "cancelled"
+        task.error_message = "Задача остановлена пользователем из админки."
+        task.finished_at = timezone.now()
+        task.save(update_fields=["status", "error_message", "finished_at"])
+
+        if task.session_id:
+            task.session.status = "cancelled"
+            task.session.error_message = "Задача остановлена пользователем из админки."
+            task.session.finished_at = timezone.now()
+            task.session.save(update_fields=["status", "error_message", "finished_at"])
+
+        if revoked:
+            messages.success(request, f"Задача #{task.id} остановлена, Celery task {task.task_id} отозвана.")
+        else:
+            messages.success(request, f"Задача #{task.id} помечена как остановленная.")
 
         return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
 
@@ -810,6 +856,39 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             messages.success(request, f"Принудительно перезапущено задач: {started}")
 
     force_rerun_site_scraping.short_description = "Принудительно перезапустить выбранные задачи"
+
+    def cancel_site_scraping(self, request, queryset):
+        eligible_tasks = list(queryset.filter(status__in=["pending", "running"]))
+        if not eligible_tasks:
+            messages.warning(
+                request,
+                "Среди выбранных задач нет ни одной в статусе 'Ожидает' или 'Выполняется'.",
+            )
+            return
+
+        stopped = 0
+        for task in eligible_tasks:
+            try:
+                revoke_site_scraper_task(task, terminate=True)
+            except Exception:
+                logger.exception("Ошибка при отзыве Celery-задачи для SiteScraperTask #%s", task.id)
+
+            task.status = "cancelled"
+            task.error_message = "Задача остановлена пользователем из списка задач."
+            task.finished_at = timezone.now()
+            task.save(update_fields=["status", "error_message", "finished_at"])
+
+            if task.session_id:
+                task.session.status = "cancelled"
+                task.session.error_message = "Задача остановлена пользователем из списка задач."
+                task.session.finished_at = timezone.now()
+                task.session.save(update_fields=["status", "error_message", "finished_at"])
+            stopped += 1
+
+        if stopped:
+            messages.success(request, f"Остановлено задач: {stopped}")
+
+    cancel_site_scraping.short_description = "Остановить выбранные задачи"
 
     def run_ai_for_tasks(self, request, queryset):
         """Запустить AI обработку для всех товаров выбранных задач."""
