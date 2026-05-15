@@ -126,9 +126,13 @@ export default function ShareButton({
   const [isMobile, setIsMobile] = useState(false)
   const [isClient, setIsClient] = useState(false)
   const [menuCenter, setMenuCenter] = useState<MenuCenter | null>(null)
+  const [menuMounted, setMenuMounted] = useState(false)
+  const [menuActive, setMenuActive] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const portalRef = useRef<HTMLDivElement>(null)
+  const copiedTimeoutRef = useRef<number | null>(null)
+  const closeMenuTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     setIsMobile(
@@ -136,6 +140,15 @@ export default function ShareButton({
       /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)
     )
     setIsClient(true)
+
+    return () => {
+      if (copiedTimeoutRef.current !== null) {
+        window.clearTimeout(copiedTimeoutRef.current)
+      }
+      if (closeMenuTimeoutRef.current !== null) {
+        window.clearTimeout(closeMenuTimeoutRef.current)
+      }
+    }
   }, [])
 
   const updateMenuPosition = useCallback(() => {
@@ -179,6 +192,29 @@ export default function ShareButton({
     }
   }, [open, cornerIcon, updateMenuPosition])
 
+  useEffect(() => {
+    if (!cornerIcon) return
+
+    if (open) {
+      if (closeMenuTimeoutRef.current !== null) {
+        window.clearTimeout(closeMenuTimeoutRef.current)
+        closeMenuTimeoutRef.current = null
+      }
+      updateMenuPosition()
+      setMenuMounted(true)
+      window.requestAnimationFrame(() => setMenuActive(true))
+      return
+    }
+
+    setMenuActive(false)
+
+    if (menuMounted) {
+      closeMenuTimeoutRef.current = window.setTimeout(() => {
+        setMenuMounted(false)
+      }, 380)
+    }
+  }, [cornerIcon, menuMounted, open, updateMenuPosition])
+
   const getUrl = useCallback((): string => {
     if (pageUrl) return pageUrl
     const origin = getSiteOrigin()
@@ -187,10 +223,20 @@ export default function ShareButton({
     return `${origin}${locale}${buildProductUrl(productType, slug)}`
   }, [pageUrl, i18n, productType, slug])
 
+  const showCopiedFeedback = useCallback(() => {
+    setCopied(true)
+    if (copiedTimeoutRef.current !== null) {
+      window.clearTimeout(copiedTimeoutRef.current)
+    }
+    copiedTimeoutRef.current = window.setTimeout(() => {
+      setCopied(false)
+    }, 2000)
+  }, [])
+
   const handleToggle = async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (isMobile && typeof navigator !== 'undefined' && navigator.share) {
+    if (!cornerIcon && isMobile && typeof navigator !== 'undefined' && navigator.share) {
       try {
         await navigator.share({ title, url: getUrl() })
       } catch { /* cancelled */ }
@@ -232,10 +278,9 @@ export default function ShareButton({
       document.execCommand('copy')
       document.body.removeChild(ta)
     }
-    setCopied(true)
+    showCopiedFeedback()
     setOpen(false)
-    setTimeout(() => setCopied(false), 2000)
-  }, [getUrl])
+  }, [getUrl, showCopiedFeedback])
 
   const shareViaVK = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
@@ -250,7 +295,11 @@ export default function ShareButton({
     e.preventDefault(); e.stopPropagation()
     const url = getUrl()
 
-    if (isMobile && typeof navigator !== 'undefined' && navigator.share) {
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.share &&
+      (!navigator.canShare || navigator.canShare({ title, text: title, url }))
+    ) {
       try {
         await navigator.share({ title, text: title, url })
       } catch {
@@ -270,10 +319,9 @@ export default function ShareButton({
       document.execCommand('copy')
       document.body.removeChild(ta)
     }
-    setCopied(true)
+    showCopiedFeedback()
     setOpen(false)
-    setTimeout(() => setCopied(false), 2000)
-  }, [getUrl, isMobile, title])
+  }, [getUrl, showCopiedFeedback, title])
 
   const shareViaMax = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
@@ -335,8 +383,14 @@ export default function ShareButton({
         background: open ? '#fff' : 'rgba(255,255,255,0.78)',
         backdropFilter: 'blur(6px)',
         WebkitBackdropFilter: 'blur(6px)',
-        border: open ? '1.5px solid rgba(0,0,0,0.2)' : '1.5px solid rgba(255,255,255,0.65)',
-        boxShadow: open
+        border: copied
+          ? '1.5px solid rgba(34,197,94,0.45)'
+          : open
+            ? '1.5px solid rgba(0,0,0,0.2)'
+            : '1.5px solid rgba(255,255,255,0.65)',
+        boxShadow: copied
+          ? '0 0 0 3px rgba(34,197,94,0.12), 0 6px 18px rgba(22,163,74,0.16)'
+          : open
           ? '0 0 0 3px rgba(0,0,0,0.08), 0 6px 18px rgba(0,0,0,0.18)'
           : '0 3px 8px rgba(0,0,0,0.14)',
         display: 'flex',
@@ -345,16 +399,16 @@ export default function ShareButton({
         cursor: 'pointer',
         transition: 'transform 1.25s cubic-bezier(.4,2,.3,.9), box-shadow 0.25s, background 0.25s',
         transform: open ? 'rotate(360deg)' : 'rotate(0deg)',
-        color: open ? '#111' : '#6b7280',
+        color: copied ? '#16a34a' : open ? '#111' : '#6b7280',
         flexShrink: 0,
       }}
     >
-      <ShareMainIcon />
+      {copied ? <CheckIcon /> : <ShareMainIcon />}
     </button>
   )
 
   if (cornerIcon) {
-    const portalContent = open && menuCenter && isClient
+    const portalContent = menuCenter && isClient && (menuMounted || copied)
       ? createPortal(
         <div
           ref={portalRef}
@@ -365,18 +419,18 @@ export default function ShareButton({
             zIndex: 9999,
           }}
         >
-          {items.map((item, idx) => {
+          {menuMounted && items.map((item, idx) => {
             const { x, y } = getPos(idx)
             const posVar = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`
             return (
               <div
                 key={item.key}
-                className={`sr-item${open ? ' sr-open' : ''}`}
+                className={`sr-item${menuActive ? ' sr-open' : ''}`}
                 style={{
                   top: menuCenter.y,
                   left: menuCenter.x,
                   '--sr-pos': posVar,
-                  transitionDelay: open
+                  transitionDelay: menuActive
                     ? `${idx * 0.045}s`
                     : `${(COUNT - 1 - idx) * 0.03}s`,
                 } as React.CSSProperties}
@@ -424,20 +478,19 @@ export default function ShareButton({
       <>
         <style>{`
           .sr-item {
-            position: absolute;
-            top: 50%;
-            left: 50%;
+            position: fixed;
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 3px;
             pointer-events: none;
             opacity: 0;
-            transform: translate(-50%, -50%) scale(0);
+            transform: translate(-50%, -50%) scale(0.28);
             transition:
-              opacity 0.25s ease,
-              transform 0.35s cubic-bezier(.4,2,.4,.85);
-            z-index: 10;
+              opacity 0.22s ease,
+              transform 0.42s cubic-bezier(.22,1,.36,1);
+            z-index: 10000;
+            will-change: transform, opacity;
           }
           .sr-item.sr-open {
             opacity: 1;
