@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'next-i18next'
 import { getSiteOrigin, buildProductUrl } from '../lib/urls'
 import { buildMaxShareUrl } from '../lib/shareHelpers'
@@ -53,15 +54,9 @@ const VKIcon = () => (
   </svg>
 )
 
-const MaxIcon = () => (
-  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path
-      d="M6.5 5.25h11A2.75 2.75 0 0 1 20.25 8v6A2.75 2.75 0 0 1 17.5 16.75h-4.2L9.2 19.9c-.62.47-1.5.03-1.5-.75v-2.4H6.5A2.75 2.75 0 0 1 3.75 14V8A2.75 2.75 0 0 1 6.5 5.25Z"
-      fill="currentColor"
-    />
-    <path d="M7.3 13V9.1h1.15l1.07 1.9 1.08-1.9h1.14V13h-1.02v-2.2l-.82 1.45h-.74l-.81-1.45V13H7.3Z" fill="#fff"/>
-    <path d="M12.85 13l1.37-3.9h1.29L16.88 13h-1.1l-.22-.68h-1.4l-.22.68h-1.09Zm1.57-1.53h.88l-.44-1.35-.44 1.35Z" fill="#fff"/>
-    <path d="M17.33 13l-1.17-1.95 1.12-1.95h1.2l-.73 1.19.74 1.22h-1.16Z" fill="#fff"/>
+const InstagramIcon = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/>
   </svg>
 )
 
@@ -77,10 +72,17 @@ const GitHubIcon = () => (
   </svg>
 )
 
-const YouTubeIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-  </svg>
+const MaxOfficialIcon = () => (
+  // eslint-disable-next-line @next/next/no-img-element
+  <img
+    src="/max-official.ico"
+    alt="MAX"
+    width="17"
+    height="17"
+    className="h-[17px] w-[17px] rounded-[4px] object-cover"
+    loading="lazy"
+    decoding="async"
+  />
 )
 
 const ShareMainIcon = () => (
@@ -101,6 +103,11 @@ interface ShareItem {
   onClick: (e: React.MouseEvent) => void
 }
 
+interface MenuCenter {
+  x: number
+  y: number
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ShareButton({
@@ -117,26 +124,60 @@ export default function ShareButton({
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [isClient, setIsClient] = useState(false)
+  const [menuCenter, setMenuCenter] = useState<MenuCenter | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const portalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setIsMobile(
       typeof navigator !== 'undefined' &&
       /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)
     )
+    setIsClient(true)
+  }, [])
+
+  const updateMenuPosition = useCallback(() => {
+    if (!triggerRef.current) return
+
+    const rect = triggerRef.current.getBoundingClientRect()
+    setMenuCenter({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    })
   }, [])
 
   // Закрываем при клике вне компонента
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      const clickedTrigger = containerRef.current?.contains(target)
+      const clickedPortal = portalRef.current?.contains(target)
+
+      if (!clickedTrigger && !clickedPortal) {
         setOpen(false)
       }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
+
+  useEffect(() => {
+    if (!open || !cornerIcon) return
+
+    updateMenuPosition()
+
+    const syncPosition = () => updateMenuPosition()
+    window.addEventListener('resize', syncPosition)
+    window.addEventListener('scroll', syncPosition, true)
+
+    return () => {
+      window.removeEventListener('resize', syncPosition)
+      window.removeEventListener('scroll', syncPosition, true)
+    }
+  }, [open, cornerIcon, updateMenuPosition])
 
   const getUrl = useCallback((): string => {
     if (pageUrl) return pageUrl
@@ -205,6 +246,35 @@ export default function ShareButton({
     setOpen(false)
   }, [getUrl, title, imageUrl, description])
 
+  const shareViaInstagram = useCallback(async (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    const url = getUrl()
+
+    if (isMobile && typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({ title, text: title, url })
+      } catch {
+        /* cancelled */
+      }
+      setOpen(false)
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = url
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    setCopied(true)
+    setOpen(false)
+    setTimeout(() => setCopied(false), 2000)
+  }, [getUrl, isMobile, title])
+
   const shareViaMax = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
     const url = getUrl()
@@ -220,21 +290,15 @@ export default function ShareButton({
     setOpen(false)
   }, [getUrl])
 
-  const shareViaYouTube = useCallback((e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation()
-    window.open(`https://www.youtube.com/share?url=${encodeURIComponent(getUrl())}`, '_blank', 'noopener,noreferrer')
-    setOpen(false)
-  }, [getUrl])
-
   // ─── 8 items — full circle like the example ─────────────────────────────
-  // Порядок: Facebook(0), YouTube(1), X(2), VK(3), Copy(4), MAX(5), Telegram(6), WhatsApp(7)
+  // Порядок: Facebook(0), MAX(1), X(2), VK(3), Copy(4), Instagram(5), Telegram(6), WhatsApp(7)
   const items: ShareItem[] = [
     { key: 'facebook',  label: 'Facebook',  icon: <FacebookIcon />,  color: '#1877f2', onClick: shareViaFacebook },
-    { key: 'youtube',   label: 'YouTube',   icon: <YouTubeIcon />,   color: '#ff0000', onClick: shareViaYouTube },
+    { key: 'max',       label: 'MAX',       icon: <MaxOfficialIcon />, color: '#226bff', onClick: shareViaMax },
     { key: 'twitter',   label: 'X (Twitter)', icon: <XTwitterIcon />, color: '#000000', onClick: shareViaTwitter },
     { key: 'vk',        label: 'VKontakte', icon: <VKIcon />,        color: '#4C75A3', onClick: shareViaVK },
     { key: 'copy',      label: t('copy_link', 'Копировать'), icon: copied ? <CheckIcon /> : <CopyIcon />, color: '#ff5733', onClick: copyToClipboard },
-    { key: 'max',       label: 'MAX',       icon: <MaxIcon />,       color: '#226bff', onClick: shareViaMax },
+    { key: 'instagram', label: 'Instagram', icon: <InstagramIcon />, color: '#c32aa3', onClick: shareViaInstagram },
     { key: 'telegram2', label: 'Telegram',  icon: <TelegramIcon />,  color: '#0088cc', onClick: shareViaGitHub },
     { key: 'whatsapp',  label: 'WhatsApp',  icon: <WhatsAppIcon />,  color: '#25d366', onClick: shareViaWhatsApp },
   ]
@@ -258,6 +322,7 @@ export default function ShareButton({
 
   const triggerBtn = (
     <button
+      ref={triggerRef}
       onClick={handleToggle}
       title={t('share', 'Поделиться')}
       aria-label={t('share', 'Поделиться')}
@@ -289,6 +354,72 @@ export default function ShareButton({
   )
 
   if (cornerIcon) {
+    const portalContent = open && menuCenter && isClient
+      ? createPortal(
+        <div
+          ref={portalRef}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 9999,
+          }}
+        >
+          {items.map((item, idx) => {
+            const { x, y } = getPos(idx)
+            const posVar = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`
+            return (
+              <div
+                key={item.key}
+                className={`sr-item${open ? ' sr-open' : ''}`}
+                style={{
+                  top: menuCenter.y,
+                  left: menuCenter.x,
+                  '--sr-pos': posVar,
+                  transitionDelay: open
+                    ? `${idx * 0.045}s`
+                    : `${(COUNT - 1 - idx) * 0.03}s`,
+                } as React.CSSProperties}
+              >
+                <button
+                  className="sr-btn"
+                  style={{ '--sr-clr': item.color } as React.CSSProperties}
+                  onClick={item.onClick}
+                  title={item.label}
+                  aria-label={item.label}
+                >
+                  {item.icon}
+                </button>
+              </div>
+            )
+          })}
+
+          {copied && (
+            <div
+              style={{
+                position: 'fixed',
+                top: menuCenter.y - 52,
+                left: menuCenter.x + 22,
+                zIndex: 10000,
+                whiteSpace: 'nowrap',
+                borderRadius: 8,
+                padding: '5px 10px',
+                fontSize: 11,
+                fontWeight: 600,
+                color: '#fff',
+                background: 'rgba(17,24,39,0.93)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.22)',
+                pointerEvents: 'none',
+              }}
+            >
+              {t('link_copied', 'Ссылка скопирована!')}
+            </div>
+          )}
+        </div>,
+        document.body
+      )
+      : null
+
     return (
       <>
         <style>{`
@@ -354,54 +485,8 @@ export default function ShareButton({
           style={{ width: 38, height: 38 }}
         >
           {triggerBtn}
-
-          {items.map((item, idx) => {
-            const { x, y } = getPos(idx)
-            const posVar = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`
-            return (
-              <div
-                key={item.key}
-                className={`sr-item${open ? ' sr-open' : ''}`}
-                style={{
-                  '--sr-pos': posVar,
-                  transitionDelay: open
-                    ? `${idx * 0.045}s`
-                    : `${(COUNT - 1 - idx) * 0.03}s`,
-                } as React.CSSProperties}
-              >
-                <button
-                  className="sr-btn"
-                  style={{ '--sr-clr': item.color } as React.CSSProperties}
-                  onClick={item.onClick}
-                  title={item.label}
-                  aria-label={item.label}
-                >
-                  {item.icon}
-                </button>
-              </div>
-            )
-          })}
-
-          {copied && (
-            <div style={{
-              position: 'absolute',
-              bottom: 'calc(100% + 10px)',
-              right: 0,
-              zIndex: 50,
-              whiteSpace: 'nowrap',
-              borderRadius: 8,
-              padding: '5px 10px',
-              fontSize: 11,
-              fontWeight: 600,
-              color: '#fff',
-              background: 'rgba(17,24,39,0.93)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.22)',
-              pointerEvents: 'none',
-            }}>
-              {t('link_copied', 'Ссылка скопирована!')}
-            </div>
-          )}
         </div>
+        {portalContent}
       </>
     )
   }
