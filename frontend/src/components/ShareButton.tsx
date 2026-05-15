@@ -128,6 +128,7 @@ export default function ShareButton({
   const [menuCenter, setMenuCenter] = useState<MenuCenter | null>(null)
   const [menuMounted, setMenuMounted] = useState(false)
   const [menuActive, setMenuActive] = useState(false)
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const portalRef = useRef<HTMLDivElement>(null)
@@ -202,7 +203,12 @@ export default function ShareButton({
       }
       updateMenuPosition()
       setMenuMounted(true)
-      window.requestAnimationFrame(() => setMenuActive(true))
+      setMenuActive(false)
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setMenuActive(true)
+        })
+      })
       return
     }
 
@@ -223,13 +229,41 @@ export default function ShareButton({
     return `${origin}${locale}${buildProductUrl(productType, slug)}`
   }, [pageUrl, i18n, productType, slug])
 
-  const showCopiedFeedback = useCallback(() => {
+  const copyUrlToClipboard = useCallback(async (url: string) => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url)
+        return true
+      }
+    } catch {
+      // fallback below
+    }
+
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = url
+      ta.setAttribute('readonly', '')
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const copiedSuccessfully = document.execCommand('copy')
+      document.body.removeChild(ta)
+      return copiedSuccessfully
+    } catch {
+      return false
+    }
+  }, [])
+
+  const showCopiedFeedback = useCallback((message: string) => {
     setCopied(true)
+    setFeedbackMessage(message)
     if (copiedTimeoutRef.current !== null) {
       window.clearTimeout(copiedTimeoutRef.current)
     }
     copiedTimeoutRef.current = window.setTimeout(() => {
       setCopied(false)
+      setFeedbackMessage(null)
     }, 2000)
   }, [])
 
@@ -268,19 +302,10 @@ export default function ShareButton({
   const copyToClipboard = useCallback(async (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
     const url = getUrl()
-    try {
-      await navigator.clipboard.writeText(url)
-    } catch {
-      const ta = document.createElement('textarea')
-      ta.value = url
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand('copy')
-      document.body.removeChild(ta)
-    }
-    showCopiedFeedback()
+    await copyUrlToClipboard(url)
+    showCopiedFeedback(t('link_copied', 'Ссылка скопирована!'))
     setOpen(false)
-  }, [getUrl, showCopiedFeedback])
+  }, [copyUrlToClipboard, getUrl, showCopiedFeedback, t])
 
   const shareViaVK = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
@@ -295,33 +320,13 @@ export default function ShareButton({
     e.preventDefault(); e.stopPropagation()
     const url = getUrl()
 
-    if (
-      typeof navigator !== 'undefined' &&
-      navigator.share &&
-      (!navigator.canShare || navigator.canShare({ title, text: title, url }))
-    ) {
-      try {
-        await navigator.share({ title, text: title, url })
-      } catch {
-        /* cancelled */
-      }
-      setOpen(false)
-      return
+    await copyUrlToClipboard(url)
+    showCopiedFeedback(t('link_copied', 'Ссылка скопирована!'))
+    if (!isMobile) {
+      window.open('https://www.instagram.com/', '_blank', 'noopener,noreferrer')
     }
-
-    try {
-      await navigator.clipboard.writeText(url)
-    } catch {
-      const ta = document.createElement('textarea')
-      ta.value = url
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand('copy')
-      document.body.removeChild(ta)
-    }
-    showCopiedFeedback()
     setOpen(false)
-  }, [getUrl, showCopiedFeedback, title])
+  }, [copyUrlToClipboard, getUrl, isMobile, showCopiedFeedback, t])
 
   const shareViaMax = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
@@ -466,7 +471,7 @@ export default function ShareButton({
                 pointerEvents: 'none',
               }}
             >
-              {t('link_copied', 'Ссылка скопирована!')}
+              {feedbackMessage || t('link_copied', 'Ссылка скопирована!')}
             </div>
           )}
         </div>,
