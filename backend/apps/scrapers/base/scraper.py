@@ -67,10 +67,8 @@ class ScrapedProduct:
     def to_dict(self) -> Dict[str, Any]:
         """Преобразует объект в словарь."""
         safe_attrs = _json_safe_scraped_value(self.attributes)
-        price_out = (
-            float(self.price) if self.price is not None else None
-        )
-        return {
+        price_out = float(self.price) if self.price is not None else None
+        payload = {
             'name': self.name,
             'description': self.description,
             'price': price_out,
@@ -95,6 +93,7 @@ class ScrapedProduct:
                 'attributes': safe_attrs,
             }
         }
+        return _json_safe_scraped_value(payload)
 
 
 # Один товар или несколько (например цветовые варианты IKEA)

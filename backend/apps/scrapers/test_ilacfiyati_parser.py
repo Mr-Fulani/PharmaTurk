@@ -1,3 +1,6 @@
+import json
+from decimal import Decimal
+
 from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
 
 
@@ -88,3 +91,52 @@ def test_ilacfiyati_parser_uses_product_slug_as_external_id_for_tab_urls():
     parser = IlacFiyatiParser(base_url=base_url)
 
     assert parser._extract_external_id_from_url(tab_url) == "lasirin-20-mg-tablet-20-tablet"
+
+
+def test_scraped_product_to_dict_is_json_serializable_with_decimal_analogs(monkeypatch):
+    base_url = "https://ilacfiyati.com"
+    product_url = f"{base_url}/ilaclar/zovirax-5-krem-2-gr"
+    parser = IlacFiyatiParser(base_url=base_url)
+
+    main_html = """
+    <html><body>
+      <h1>ZOVIRAX %5 KREM (2 GR)</h1>
+      <table>
+        <tr><td>İLAÇ FİYATI</td><td>152,62 TL</td></tr>
+      </table>
+    </body></html>
+    """
+    analog_tab_html = """
+      <h3>EŞDEĞERİ</h3>
+      <table>
+        <tr>
+          <td><a href="/ilaclar/asiviral-400-mg-25-tablet">ASIVIRAL 400 MG 25 TABLET</a></td>
+          <td>Fiyat: 125,45 TL</td>
+        </tr>
+      </table>
+    """
+    responses = {
+        product_url: main_html,
+        f"{product_url}/esdegeri": f"<html><body>{analog_tab_html}</body></html>",
+        f"{product_url}/sgk-esdegeri": "",
+    }
+
+    for path in (
+        "ilac-bilgileri",
+        "ozet",
+        "ne-icin-kullanilir",
+        "kullanmadan-dikkat-edilecekler",
+        "nasil-kullanilir",
+        "yan-etkileri",
+        "saklanmasi",
+    ):
+        responses[f"{product_url}/{path}"] = "<html><body></body></html>"
+
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+    monkeypatch.setattr(parser, "_make_request", lambda url: responses.get(url.rstrip("/"), ""))
+
+    product = parser.parse_product_detail(product_url)
+
+    assert product is not None
+    assert product.analogs[0]["price"] == Decimal("125.45")
+    assert json.dumps(product.to_dict())
