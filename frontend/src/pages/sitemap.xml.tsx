@@ -238,65 +238,20 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
   }
 
   // 4. Категории — fetchAllPages чтобы не пропустить категории при росте каталога
+  const HIGH_PRIORITY_CATEGORIES = new Set(['medicines', 'supplements'])
   try {
     const categories = await fetchAllPages('catalog/categories', { lang: 'en', page_size: 1000 })
     for (const cat of categories) {
       if (cat.slug) {
-        urls.push(buildUrl(`/categories/${cat.slug}`, `/categories/${cat.slug}`, 'daily', 0.8))
+        const priority = HIGH_PRIORITY_CATEGORIES.has(cat.slug) ? 0.95 : 0.8
+        urls.push(buildUrl(`/categories/${cat.slug}`, `/categories/${cat.slug}`, 'daily', priority))
       }
     }
   } catch {
     // продолжаем без категорий
   }
 
-  // 5. Товары: generic Product + все доменные модели
-  // seenSlugs предотвращает дубли когда доменный товар уже есть в generic таблице через shadow-запись
-  const seenSlugs = new Set<string>()
-
-  // 5a. Generic Product (те, у кого есть shadow-запись в базовой таблице)
-  try {
-    const products = await fetchAllPages('catalog/products', {
-      lang: 'en', page_size: 1000, is_active: true,
-    })
-    for (const product of products) {
-      if (!product.slug) continue
-      seenSlugs.add(product.slug)
-      const lastmod = product.updated_at
-        ? new Date(product.updated_at).toISOString().split('T')[0]
-        : today
-      const path = buildProductPath(product.slug, product.product_type)
-      const url = buildUrl(path, path, 'weekly', 0.7)
-      url.lastmod = lastmod
-      urls.push(url)
-    }
-  } catch {
-    // продолжаем без generic товаров
-  }
-
-  // 4b. Доменные товары (medicines, clothing, books и т.д.)
-  // Добавляем только те, чьего slug ещё нет — чтобы не дублировать generic-записи
-  for (const endpoint of DOMAIN_ENDPOINTS) {
-    try {
-      const items = await fetchAllPages(endpoint.path, {
-        page_size: 1000, is_active: true,
-      })
-      for (const item of items) {
-        if (!item.slug || seenSlugs.has(item.slug)) continue
-        seenSlugs.add(item.slug)
-        const lastmod = item.updated_at
-          ? new Date(item.updated_at).toISOString().split('T')[0]
-          : today
-        const path = buildProductPath(item.slug, endpoint.type)
-        const url = buildUrl(path, path, 'weekly', 0.7)
-        url.lastmod = lastmod
-        urls.push(url)
-      }
-    } catch {
-      // продолжаем без этого домена
-    }
-  }
-
-  // 5. Услуги
+  // 5. Услуги — в приоритете, до тяжёлых товарных эндпоинтов
   try {
     const services = await fetchAllPages('catalog/services', {
       lang: 'en', page_size: 1000, is_active: true,
@@ -317,6 +272,55 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     }
   } catch {
     // продолжаем без услуг
+  }
+
+  // 6. Товары: generic Product + все доменные модели
+  // seenSlugs предотвращает дубли когда доменный товар уже есть в generic таблице через shadow-запись
+  const seenSlugs = new Set<string>()
+
+  // 6a. Generic Product (те, у кого есть shadow-запись в базовой таблице)
+  try {
+    const products = await fetchAllPages('catalog/products', {
+      lang: 'en', page_size: 1000, is_active: true,
+    })
+    for (const product of products) {
+      if (!product.slug) continue
+      seenSlugs.add(product.slug)
+      const lastmod = product.updated_at
+        ? new Date(product.updated_at).toISOString().split('T')[0]
+        : today
+      const path = buildProductPath(product.slug, product.product_type)
+      const url = buildUrl(path, path, 'weekly', 0.7)
+      url.lastmod = lastmod
+      urls.push(url)
+    }
+  } catch {
+    // продолжаем без generic товаров
+  }
+
+  // 6b. Доменные товары (medicines, clothing, books и т.д.) — все параллельно
+  // Добавляем только те, чьего slug ещё нет — чтобы не дублировать generic-записи
+  const domainResults = await Promise.allSettled(
+    DOMAIN_ENDPOINTS.map((endpoint) =>
+      fetchAllPages(endpoint.path, { page_size: 1000, is_active: true }).then(
+        (items) => ({ items, type: endpoint.type })
+      )
+    )
+  )
+  for (const result of domainResults) {
+    if (result.status !== 'fulfilled') continue
+    const { items, type } = result.value
+    for (const item of items) {
+      if (!item.slug || seenSlugs.has(item.slug)) continue
+      seenSlugs.add(item.slug)
+      const lastmod = item.updated_at
+        ? new Date(item.updated_at).toISOString().split('T')[0]
+        : today
+      const path = buildProductPath(item.slug, type)
+      const url = buildUrl(path, path, 'weekly', 0.7)
+      url.lastmod = lastmod
+      urls.push(url)
+    }
   }
 
   const sitemap = generateSitemapXml(urls)
