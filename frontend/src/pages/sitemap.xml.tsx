@@ -193,7 +193,6 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     ['/brands', '/brands', 'weekly', 0.7],
     ['/how-to-order-medicines', '/how-to-order-medicines', 'monthly', 0.5],
     ['/testimonials', '/testimonials', 'weekly', 0.6],
-    ['/categories/uslugi', '/categories/uslugi', 'weekly', 0.8],
   ]
 
   for (const [enPath, ruPath, changefreq, priority] of basePages) {
