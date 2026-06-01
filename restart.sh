@@ -315,6 +315,14 @@ else
     error "Ошибка при запуске контейнеров (docker compose up завершился с кодом $UP_EXIT_CODE)"
 fi
 
+# Очищаем dangling образы которые остались после пересборки (не трогает volumes/БД)
+if [ "$NO_PRUNE" = false ] && [ "$FAST" = false ]; then
+    info "Очищаем dangling образы после сборки..."
+    docker image prune -f > /dev/null 2>&1 || true
+    docker builder prune -f --filter "until=24h" > /dev/null 2>&1 || true
+    success "Dangling образы очищены"
+fi
+
 # Краткая пауза: backend уже ждёт postgres (healthcheck), миграции выполняет entrypoint
 info "Проверяем статус контейнеров..."
 sleep 2
