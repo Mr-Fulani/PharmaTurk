@@ -270,6 +270,7 @@ const resolveProductsEndpoint = (categoryType: string) => {
     case 'islamic-clothing': return '/api/catalog/islamic-clothing/products'
     case 'uslugi': return '/api/catalog/services'
     case 'medicines': return '/api/catalog/medicines/products'
+    case 'supplements': return '/api/catalog/supplements/products'
     default: return '/api/catalog/products'
   }
 }

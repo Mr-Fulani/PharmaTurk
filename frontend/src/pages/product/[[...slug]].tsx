@@ -18,7 +18,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl, pickPreferredVideoUrl } from '../../lib/media'
-import { getSiteOrigin } from '../../lib/urls'
+import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
 import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { useTheme } from '../../context/ThemeContext'
@@ -1243,7 +1243,7 @@ export default function ProductPage({
         ? (selectedVariantSlug || product.slug)
         : product.slug
   const siteUrl = getSiteOrigin()
-  const productPath = isBaseProduct ? `/product/${product.slug}` : `/product/${productType}/${product.slug}`
+  const productPath = buildProductUrl(productType, product.slug)
   const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
   const canonicalUrl = `${siteUrl}${localePrefix}${productPath}`
   const ruUrl = `${siteUrl}${productPath}`

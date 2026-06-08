@@ -193,6 +193,9 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     ['/brands', '/brands', 'weekly', 0.7],
     ['/how-to-order-medicines', '/how-to-order-medicines', 'monthly', 0.5],
     ['/testimonials', '/testimonials', 'weekly', 0.6],
+    ['/delivery', '/delivery', 'monthly', 0.6],
+    ['/returns', '/returns', 'monthly', 0.5],
+    ['/privacy', '/privacy', 'monthly', 0.4],
   ]
 
   for (const [enPath, ruPath, changefreq, priority] of basePages) {
@@ -250,7 +253,23 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     // продолжаем без категорий
   }
 
-  // 5. Услуги — в приоритете, до тяжёлых товарных эндпоинтов
+  // 5. Бренды — отдельные страницы /brand/[slug]
+  try {
+    const brands = await fetchAllPages('catalog/brands', { page_size: 1000, is_active: true })
+    for (const brand of brands) {
+      if (!brand.slug) continue
+      const lastmod = brand.updated_at
+        ? new Date(brand.updated_at).toISOString().split('T')[0]
+        : today
+      const url = buildUrl(`/brand/${brand.slug}`, `/brand/${brand.slug}`, 'weekly', 0.65)
+      url.lastmod = lastmod
+      urls.push(url)
+    }
+  } catch (err) {
+    console.error('Sitemap: Failed to fetch brands', err)
+  }
+
+  // 6. Услуги — в приоритете, до тяжёлых товарных эндпоинтов
   try {
     const services = await fetchAllPages('catalog/services', {
       lang: 'en', page_size: 1000, is_active: true,
@@ -260,24 +279,20 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
       const lastmod = service.updated_at
         ? new Date(service.updated_at).toISOString().split('T')[0]
         : today
-      const url = buildUrl(
-        `/product/uslugi/${service.slug}`,
-        `/product/uslugi/${service.slug}`,
-        'weekly',
-        0.75
-      )
+      const servicePath = buildProductPath(service.slug, 'uslugi')
+      const url = buildUrl(servicePath, servicePath, 'weekly', 0.75)
       url.lastmod = lastmod
       urls.push(url)
     }
-  } catch {
-    // продолжаем без услуг
+  } catch (err) {
+    console.error('Sitemap: Failed to fetch services', err)
   }
 
-  // 6. Товары: generic Product + все доменные модели
+  // 7. Товары: generic Product + все доменные модели
   // seenSlugs предотвращает дубли когда доменный товар уже есть в generic таблице через shadow-запись
   const seenSlugs = new Set<string>()
 
-  // 6a. Generic Product (те, у кого есть shadow-запись в базовой таблице)
+  // 7a. Generic Product (те, у кого есть shadow-запись в базовой таблице)
   try {
     const products = await fetchAllPages('catalog/products', {
       lang: 'en', page_size: 1000, is_active: true,
@@ -297,7 +312,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     // продолжаем без generic товаров
   }
 
-  // 6b. Доменные товары (medicines, clothing, books и т.д.) — все параллельно
+  // 7b. Доменные товары (medicines, clothing, books и т.д.) — все параллельно
   // Добавляем только те, чьего slug ещё нет — чтобы не дублировать generic-записи
   const domainResults = await Promise.allSettled(
     DOMAIN_ENDPOINTS.map((endpoint) =>

@@ -149,6 +149,8 @@ def _domain_viewsets_order():
     from apps.catalog import views as v
 
     return [
+        (v.MedicineProductViewSet, "domain_medicines"),
+        (v.SupplementProductViewSet, "domain_supplements"),
         (v.ClothingProductViewSet, "domain_clothing"),
         (v.ShoeProductViewSet, "domain_shoes"),
         (v.ElectronicsProductViewSet, "domain_electronics"),
@@ -156,8 +158,6 @@ def _domain_viewsets_order():
         (v.FurnitureProductViewSet, "domain_furniture"),
         (v.BookProductViewSet, "domain_books"),
         (v.PerfumeryProductViewSet, "domain_perfumery"),
-        (v.MedicineProductViewSet, "domain_medicines"),
-        (v.SupplementProductViewSet, "domain_supplements"),
         (v.MedicalEquipmentProductViewSet, "domain_medical_equipment"),
         (v.TablewareProductViewSet, "domain_tableware"),
         (v.AccessoryProductViewSet, "domain_accessories"),
@@ -183,23 +183,24 @@ def resolve_product_payload(request: HttpRequest | DrfRequest, slug: str) -> tup
 
     from apps.catalog.views import ProductViewSet, ServiceViewSet
 
-    # 1) Домены — полный detail (варианты цвета, размеры и т.д. у обуви/одежды).
+    # 1) Услуги — отдельная модель, не пересекается со slug'ами товаров.
+    data = _dispatch_retrieve(ServiceViewSet, request, slug)
+    if data is not None:
+        return data, "domain_service", "uslugi"
+
+    # 2) Домены — полный detail (варианты цвета, размеры и т.д. у обуви/одежды).
+    #    Порядок: сначала медикаменты и БАДы, потом остальные.
     for view_cls, source_key in _domain_viewsets_order():
         data = _dispatch_retrieve(view_cls, request, slug)
         if data is not None:
             pt = _normalize_pt(data.get("product_type"))
             return data, source_key, pt
 
-    # 2) Generic Product (нет отдельной доменной строки с этим slug)
+    # 3) Generic Product (нет отдельной доменной строки с этим slug)
     data = _dispatch_retrieve(ProductViewSet, request, slug)
     if data is not None:
         pt = _normalize_pt(data.get("product_type"))
         return data, "generic_product", pt
-
-    # 3) Услуги (URL в каталоге: /services/{slug}/)
-    data = _dispatch_retrieve(ServiceViewSet, request, slug)
-    if data is not None:
-        return data, "domain_service", "uslugi"
 
     return None
 
