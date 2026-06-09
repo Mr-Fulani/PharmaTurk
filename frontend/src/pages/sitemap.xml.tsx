@@ -47,27 +47,12 @@ const BASE_PRODUCT_TYPES = new Set([
   'auto-parts',
 ])
 
-// Доменные эндпоинты: [путь API, product_type для buildProductPath]
-// Порядок: сначала самые крупные каталоги.
-const DOMAIN_ENDPOINTS: Array<{ path: string; type: string }> = [
-  { path: 'catalog/medicines/products', type: 'medicines' },
-  { path: 'catalog/supplements/products', type: 'supplements' },
-  { path: 'catalog/medical-equipment/products', type: 'medical-equipment' },
-  { path: 'catalog/furniture/products', type: 'furniture' },
-  { path: 'catalog/books/products', type: 'books' },
-  { path: 'catalog/perfumery/products', type: 'perfumery' },
-  { path: 'catalog/tableware/products', type: 'tableware' },
-  { path: 'catalog/accessories/products', type: 'accessories' },
-  { path: 'catalog/incense/products', type: 'incense' },
-  { path: 'catalog/sports/products', type: 'sports' },
-  { path: 'catalog/auto-parts/products', type: 'auto-parts' },
-  { path: 'catalog/clothing/products', type: 'clothing' },
-  { path: 'catalog/shoes/products', type: 'shoes' },
-  { path: 'catalog/electronics/products', type: 'electronics' },
-  { path: 'catalog/jewelry/products', type: 'jewelry' },
-  { path: 'catalog/headwear/products', type: 'headwear' },
-  { path: 'catalog/underwear/products', type: 'underwear' },
-  { path: 'catalog/islamic-clothing/products', type: 'islamic-clothing' },
+// Все доменные типы товаров для sitemap-products эндпоинта.
+// Используется лёгкий /api/catalog/sitemap-products?domain=X — только slug + updated_at.
+const SITEMAP_DOMAINS = [
+  'clothing', 'shoes', 'electronics', 'jewelry', 'headwear', 'underwear', 'islamic-clothing',
+  'medicines', 'supplements', 'medical-equipment', 'furniture', 'books',
+  'perfumery', 'tableware', 'accessories', 'incense', 'sports', 'auto-parts',
 ]
 
 function buildProductPath(slug: string, productType?: string | null): string {
@@ -160,7 +145,7 @@ async function fetchAllPages(
   while (page <= totalPages && page <= maxPages) {
     const res = await axios.get(getInternalApiUrl(apiPath), {
       params: { ...params, page },
-      timeout: 10000,
+      timeout: 30000,
     })
     const data = res.data
     const items = data?.results || data || []
@@ -288,49 +273,27 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
     console.error('Sitemap: Failed to fetch services', err)
   }
 
-  // 7. Товары: generic Product + все доменные модели
-  // seenSlugs предотвращает дубли когда доменный товар уже есть в generic таблице через shadow-запись
-  const seenSlugs = new Set<string>()
-
-  // 7a. Generic Product (те, у кого есть shadow-запись в базовой таблице)
-  try {
-    const products = await fetchAllPages('catalog/products', {
-      lang: 'en', page_size: 1000, is_active: true,
-    })
-    for (const product of products) {
-      if (!product.slug) continue
-      seenSlugs.add(product.slug)
-      const lastmod = product.updated_at
-        ? new Date(product.updated_at).toISOString().split('T')[0]
-        : today
-      const path = buildProductPath(product.slug, product.product_type)
-      const url = buildUrl(path, path, 'weekly', 0.7)
-      url.lastmod = lastmod
-      urls.push(url)
-    }
-  } catch {
-    // продолжаем без generic товаров
-  }
-
-  // 7b. Доменные товары (medicines, clothing, books и т.д.) — все параллельно
-  // Добавляем только те, чьего slug ещё нет — чтобы не дублировать generic-записи
+  // 7. Товары: лёгкий эндпоинт /api/catalog/sitemap-products?domain=X
+  // Возвращает только slug + updated_at (без тяжёлой DRF-сериализации).
+  // Все домены запрашиваются параллельно — каждый запрос < 100ms.
   const domainResults = await Promise.allSettled(
-    DOMAIN_ENDPOINTS.map((endpoint) =>
-      fetchAllPages(endpoint.path, { page_size: 1000, is_active: true }).then(
-        (items) => ({ items, type: endpoint.type })
+    SITEMAP_DOMAINS.map((domain) =>
+      fetchAllPages('catalog/sitemap-products', { domain, page_size: 500 }).then(
+        (items) => ({ items, domain })
       )
     )
   )
+  const seenSlugs = new Set<string>()
   for (const result of domainResults) {
     if (result.status !== 'fulfilled') continue
-    const { items, type } = result.value
+    const { items } = result.value
     for (const item of items) {
       if (!item.slug || seenSlugs.has(item.slug)) continue
       seenSlugs.add(item.slug)
       const lastmod = item.updated_at
         ? new Date(item.updated_at).toISOString().split('T')[0]
         : today
-      const path = buildProductPath(item.slug, type)
+      const path = buildProductPath(item.slug, item.product_type)
       const url = buildUrl(path, path, 'weekly', 0.7)
       url.lastmod = lastmod
       urls.push(url)

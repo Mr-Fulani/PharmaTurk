@@ -3686,6 +3686,8 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
         return (
             super()
             ._base_queryset()
+            .select_related('category', 'brand')
+            .prefetch_related('translations', 'gallery_images', 'dynamic_attributes')
             .exclude(
                 models.Q(external_data__has_key='is_stub') &
                 models.Q(external_data__is_stub=True)
@@ -4258,3 +4260,79 @@ class IslamicClothingProductViewSet(_SimpleDomainViewSet):
             context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}
         )
         return Response(serializer.data)
+
+
+# ─── СИТЕМАП: лёгкий эндпоинт для генерации sitemap.xml ───
+
+from rest_framework.views import APIView as _APIView
+from rest_framework.permissions import AllowAny as _AllowAny
+
+_SITEMAP_DOMAIN_MAP = {
+    'medicines':         (MedicineProduct,         'medicines'),
+    'supplements':       (SupplementProduct,        'supplements'),
+    'medical-equipment': (MedicalEquipmentProduct,  'medical-equipment'),
+    'furniture':         (FurnitureProduct,         'furniture'),
+    'books':             (BookProduct,              'books'),
+    'perfumery':         (PerfumeryProduct,         'perfumery'),
+    'tableware':         (TablewareProduct,         'tableware'),
+    'accessories':       (AccessoryProduct,         'accessories'),
+    'incense':           (IncenseProduct,           'incense'),
+    'sports':            (SportsProduct,            'sports'),
+    'auto-parts':        (AutoPartProduct,          'auto-parts'),
+    'clothing':          (ClothingProduct,          'clothing'),
+    'shoes':             (ShoeProduct,              'shoes'),
+    'electronics':       (ElectronicsProduct,       'electronics'),
+    'jewelry':           (JewelryProduct,           'jewelry'),
+}
+
+
+class SitemapProductsView(_APIView):
+    """Лёгкий эндпоинт для sitemap.xml — только slug + updated_at, без тяжёлой сериализации.
+
+    GET /api/catalog/sitemap-products/?domain=medicines&page=1&page_size=500
+    """
+    permission_classes = [_AllowAny]
+
+    def get(self, request):
+        domain = request.query_params.get('domain', '').strip()
+        try:
+            page = max(1, int(request.query_params.get('page', 1)))
+            page_size = min(500, max(1, int(request.query_params.get('page_size', 500))))
+        except (ValueError, TypeError):
+            page = 1
+            page_size = 500
+
+        if domain == 'services':
+            from .models import Service
+            qs = Service.objects.filter(is_active=True).values('slug', 'updated_at').order_by('id')
+            product_type = 'uslugi'
+        elif domain in _SITEMAP_DOMAIN_MAP:
+            model_cls, product_type = _SITEMAP_DOMAIN_MAP[domain]
+            qs = model_cls.objects.filter(is_active=True).values('slug', 'updated_at').order_by('id')
+        elif domain == 'headwear':
+            from .models import HeadwearProduct
+            qs = HeadwearProduct.objects.filter(is_active=True).values('slug', 'updated_at').order_by('id')
+            product_type = 'headwear'
+        elif domain == 'underwear':
+            from .models import UnderwearProduct
+            qs = UnderwearProduct.objects.filter(is_active=True).values('slug', 'updated_at').order_by('id')
+            product_type = 'underwear'
+        elif domain == 'islamic-clothing':
+            from .models import IslamicClothingProduct
+            qs = IslamicClothingProduct.objects.filter(is_active=True).values('slug', 'updated_at').order_by('id')
+            product_type = 'islamic-clothing'
+        else:
+            return Response({'error': f'Unknown domain: {domain}'}, status=400)
+
+        total = qs.count()
+        offset = (page - 1) * page_size
+        items = list(qs[offset:offset + page_size])
+        results = [
+            {
+                'slug': item['slug'],
+                'product_type': product_type,
+                'updated_at': item['updated_at'].isoformat() if item['updated_at'] else None,
+            }
+            for item in items
+        ]
+        return Response({'count': total, 'results': results})
