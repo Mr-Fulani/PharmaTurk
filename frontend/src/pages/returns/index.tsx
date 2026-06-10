@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { GetServerSideProps } from 'next'
@@ -9,6 +10,9 @@ import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
 
 export default function ReturnsPage({ pageData, footerSettings }: { pageData: any; footerSettings: { phone?: string | null; email?: string | null; location?: string | null; telegram_url?: string | null; whatsapp_url?: string | null; vk_url?: string | null; instagram_url?: string | null; crypto_payment_text?: string | null } }) {
     const { t } = useTranslation('common')
+    const { locale = 'ru', defaultLocale = 'ru' } = useRouter()
+    const localePrefix = locale === defaultLocale ? '' : `/${locale}`
+    const canonicalUrl = `${SITE_URL}${localePrefix}/returns`
     const hasTelegram = Boolean((footerSettings.telegram_url || '').trim())
     const hasWhatsapp = Boolean((footerSettings.whatsapp_url || '').trim())
 
@@ -21,9 +25,9 @@ export default function ReturnsPage({ pageData, footerSettings }: { pageData: an
                 <meta property="og:title" content={pageData?.meta_title || pageData?.title || t('returns_title', 'Возврат и обмен')} />
                 <meta property="og:description" content={pageData?.meta_description || t('returns_subtitle', 'Условия возврата и обмена товаров')} />
                 <meta property="og:type" content="website" />
-                <meta property="og:url" content={`${SITE_URL}/returns`} />
+                <meta property="og:url" content={canonicalUrl} />
                 <meta property="og:image" content={pageData?.og_image?.startsWith('http') ? pageData.og_image : `${SITE_URL}${pageData?.og_image || '/og-default.png'}`} />
-                <link rel="canonical" href={`${SITE_URL}/returns`} />
+                <link rel="canonical" href={canonicalUrl} />
                 <link rel="alternate" hrefLang="ru" href={`${SITE_URL}/returns`} />
                 <link rel="alternate" hrefLang="en" href={`${SITE_URL}/en/returns`} />
                 <link rel="alternate" hrefLang="x-default" href={`${SITE_URL}/returns`} />

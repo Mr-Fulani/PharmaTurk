@@ -1,4 +1,5 @@
 import Head from 'next/head'
+import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { GetServerSideProps } from 'next'
@@ -9,17 +10,23 @@ import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
 
 export default function PrivacyPage({ pageData }: { pageData: any }) {
     const { t } = useTranslation('common')
+    const { locale = 'ru', defaultLocale = 'ru' } = useRouter()
+    const localePrefix = locale === defaultLocale ? '' : `/${locale}`
+    const canonicalUrl = `${SITE_URL}${localePrefix}/privacy`
 
     return (
         <>
             <Head>
                 <title>{`${pageData?.meta_title || pageData?.title || t('privacy_title', 'Политика конфиденциальности')} — ${SITE_NAME}`}</title>
                 <meta name="description" content={pageData?.meta_description || t('privacy_subtitle', 'Политика конфиденциальности и защиты данных')} />
-                
+                <link rel="canonical" href={canonicalUrl} />
+                <link rel="alternate" hrefLang="ru" href={`${SITE_URL}/privacy`} />
+                <link rel="alternate" hrefLang="en" href={`${SITE_URL}/en/privacy`} />
+                <link rel="alternate" hrefLang="x-default" href={`${SITE_URL}/privacy`} />
                 <meta property="og:title" content={pageData?.meta_title || pageData?.title || t('privacy_title', 'Политика конфиденциальности')} />
                 <meta property="og:description" content={pageData?.meta_description || t('privacy_subtitle', 'Политика конфиденциальности и защиты данных')} />
                 <meta property="og:type" content="website" />
-                <meta property="og:url" content={`${SITE_URL}/privacy`} />
+                <meta property="og:url" content={canonicalUrl} />
                 <meta property="og:image" content={pageData?.og_image?.startsWith('http') ? pageData.og_image : `${SITE_URL}${pageData?.og_image || '/og-default.png'}`} />
             </Head>
             <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">

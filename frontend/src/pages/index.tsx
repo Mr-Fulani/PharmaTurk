@@ -83,7 +83,7 @@ interface HomePageProps {
 // @ts-ignore: нет типов для @egjs/react-grid
 import Masonry from 'react-masonry-css'
 
-export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, showTestimonialsSection }: HomePageProps) {
+export default function Home({ brands, categories, firstBannerImageUrl, firstBannerTitle, mainBanners, afterBrandsBanners, beforeFooterBanners, afterPopularBanners, footerSettings, showTestimonialsSection }: HomePageProps) {
   const { t } = useTranslation('common')
   const router = useRouter()
   const mobileBrandsRef = useRef<HTMLDivElement | null>(null)
@@ -207,6 +207,40 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
   const pageTitle = 'Mudaroba — Главная'
   const pageDescription = 'Mudaroba: турецкие товары — лекарства, одежда, обувь, электроника, аксессуары и мебель с доставкой.'
 
+  const sameAs = [
+    footerSettings?.telegram_url,
+    footerSettings?.instagram_url,
+    footerSettings?.vk_url,
+    footerSettings?.whatsapp_url,
+  ].filter(Boolean) as string[]
+
+  const organizationSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Mudaroba',
+    url: siteUrl,
+    logo: `${siteUrl}/logo.png`,
+    contactPoint: {
+      '@type': 'ContactPoint',
+      telephone: footerSettings?.phone || '+90-552-582-14-97',
+      contactType: 'customer service',
+      availableLanguage: ['Russian', 'English'],
+    },
+    ...(sameAs.length > 0 && { sameAs }),
+  }
+
+  const webSiteSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Mudaroba',
+    url: siteUrl,
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: `${siteUrl}/search?q={search_term_string}`,
+      'query-input': 'required name=search_term_string',
+    },
+  }
+
   useEffect(() => {
     const container = mobileBrandsRef.current
     if (!container || brands.length <= 1) return
@@ -282,6 +316,16 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
         <meta property="twitter:description" content={pageDescription} />
         <meta property="twitter:card" content="summary_large_image" />
         <meta property="twitter:image" content={`${siteUrl}/og-default.png`} />
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+        />
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(webSiteSchema) }}
+        />
       </Head>
 
       <main className="bg-page text-main min-h-screen transition-colors duration-200">
