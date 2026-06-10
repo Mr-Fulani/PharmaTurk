@@ -34,13 +34,8 @@ class MyDocument extends Document<MyDocumentProps> {
         <Head>
           <meta charSet="utf-8" />
 
-          {/* Preconnect для критических ресурсов */}
-          <link rel="preconnect" href="https://cdn.mudaroba.com" crossOrigin="anonymous" />
+          {/* DNS prefetch — дешёвый (только DNS, без TCP/TLS) */}
           <link rel="dns-prefetch" href="https://cdn.mudaroba.com" />
-          <link rel="preconnect" href="https://fonts.googleapis.com" />
-          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-          <link rel="preconnect" href="https://img.youtube.com" />
-          {/* DNS prefetch для некритических ресурсов */}
           <link rel="dns-prefetch" href="https://i.pinimg.com" />
           <link rel="dns-prefetch" href="https://www.youtube-nocookie.com" />
           {/* Monoton шрифт: загрузка без блокировки рендера */}

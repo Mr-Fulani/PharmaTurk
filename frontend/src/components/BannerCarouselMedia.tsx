@@ -4,7 +4,7 @@ import { useTranslation } from 'next-i18next'
 import Image from 'next/image'
 import api from '../lib/api'
 import styles from './BannerCarousel.module.css'
-import { resolveMediaUrl, getPlaceholderImageUrl, getVideoEmbedUrl } from '../lib/media'
+import { resolveMediaUrl, getPlaceholderImageUrl, getVideoEmbedUrl, withListingImageMaxWidth } from '../lib/media'
 
 interface BannerMedia {
   id: number
@@ -241,13 +241,17 @@ export default function BannerCarousel({ position, className = '', initialBanner
             ? getPlaceholderImageUrl({ type: 'product', id: media.id.toString() })
             : fullUrl
 
+          const optimizedUrl = index === 0
+            ? finalUrl
+            : withListingImageMaxWidth(finalUrl, 440)
+
           return (
             <div className="relative h-full w-full">
               <Image
-                src={finalUrl}
+                src={optimizedUrl}
                 alt={title || t('banner_image_alt', 'Banner')}
                 fill
-                priority={index === 0 && position === 'main'}
+                priority={index === 0}
                 loading={index === 0 ? 'eager' : 'lazy'}
                 sizes={index === 0
                   ? '(max-width: 480px) 480px, (max-width: 768px) 768px, 1200px'
