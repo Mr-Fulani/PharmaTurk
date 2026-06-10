@@ -21,6 +21,7 @@ import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl, 
 import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
 import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
+import { formatPrice } from '../../lib/price'
 import { useTheme } from '../../context/ThemeContext'
 
 type CategoryType = string
@@ -68,19 +69,6 @@ const parseNumber = (value: string | number | null | undefined) => {
   if (!normalized) return null
   const num = Number(normalized)
   return Number.isFinite(num) ? num : null
-}
-
-const formatPrice = (value: string | number | null | undefined): string | null => {
-  if (value === null || typeof value === 'undefined') return null
-  const num = parseNumber(value)
-  if (num === null) return String(value)
-
-  // Округляем до 2 знаков после запятой, затем убираем лишние нули и саму точку, если она не нужна
-  let str = num.toFixed(2)
-  if (str.includes('.')) {
-    str = str.replace(/0+$/, '').replace(/\.$/, '')
-  }
-  return str
 }
 
 const normalizeMediaValue = (value?: string | null) => {

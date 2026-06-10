@@ -10,6 +10,7 @@ import { needsTypeInPath } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import { SITE_NAME } from '../lib/siteMeta'
+import { formatPrice } from '../lib/price'
 
 interface CartItem {
   id: number
@@ -454,7 +455,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           <div className="text-right">
                             <div className="text-sm text-gray-500">{t('cart_item_total', 'Итого')}</div>
                             <div className="text-lg font-bold text-gray-900">
-                              {(parseFloat(item.price) * item.quantity).toFixed(2)} {item.currency}
+                              {formatPrice(parseFloat(item.price) * item.quantity)} {item.currency}
                             </div>
                           </div>
                           <button

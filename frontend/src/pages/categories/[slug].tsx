@@ -7,6 +7,7 @@ import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTrans
 import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
+import { formatPrice } from '../../lib/price'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios from 'axios'
@@ -305,19 +306,6 @@ const parseFirstNumber = (value: string | number | null | undefined) => {
   if (!match) return null
   const num = Number(match[1].replace(',', '.'))
   return Number.isFinite(num) ? num : null
-}
-
-const formatPrice = (value: string | number | null | undefined): string | null => {
-  if (value === null || typeof value === 'undefined') return null
-  const num = parseNumber(value)
-  if (num === null) return String(value)
-
-  // Округляем до 2 знаков после запятой, затем убираем лишние нули и саму точку, если она не нужна
-  let str = num.toFixed(2)
-  if (str.includes('.')) {
-    str = str.replace(/0+$/, '').replace(/\.$/, '')
-  }
-  return str
 }
 
 const areFilterArraysEqual = (left: Array<string | number>, right: Array<string | number>) =>

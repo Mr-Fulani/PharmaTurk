@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { SITE_NAME } from '../lib/siteMeta'
+import { formatPrice } from '../lib/price'
 import Link from 'next/link'
 import api from '../lib/api'
 import { resolveMediaUrl, isVideoUrl } from '../lib/media'
@@ -1074,7 +1075,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="font-bold text-gray-900 text-sm">
-                            {(parseFloat(item.price) * item.quantity).toFixed(2)} {item.currency}
+                            {formatPrice(parseFloat(item.price) * item.quantity)} {item.currency}
                           </p>
                         </div>
                       </div>
@@ -1124,10 +1125,10 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   <div className="flex justify-between items-baseline">
                     <span className="text-lg font-semibold text-gray-900">{t('cart_total', 'Итого')}</span>
                     <span className="text-2xl font-bold text-violet-600">
-                      {(
+                      {formatPrice(
                         parseFloat(cart.final_amount || cart.total_amount || '0') +
                         (cart?.shipping_requires_quote ? 0 : cart.shipping_options?.[shippingMethod] || 0)
-                      ).toFixed(2)}{' '}
+                      )}{' '}
                       {cart.currency || 'USD'}
                     </span>
                   </div>

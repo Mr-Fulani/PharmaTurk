@@ -3,6 +3,7 @@ import { useTranslation } from 'next-i18next'
 import Link from 'next/link'
 import Image from 'next/image'
 import api from '../lib/api'
+import { formatPrice as formatPriceNum } from '../lib/price'
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
@@ -49,13 +50,8 @@ interface AnalogProductsProps {
 
 function formatPrice(price: number | null, currency: string): string {
   if (price === null || price === undefined) return '—'
-  const intl = new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency: currency || 'TRY',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })
-  return intl.format(price)
+  const formatted = formatPriceNum(price)
+  return formatted !== null ? `${formatted} ${currency}` : '—'
 }
 
 // ─── Скелетон ────────────────────────────────────────────────────────────────

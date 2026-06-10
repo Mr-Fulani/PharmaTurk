@@ -13,6 +13,7 @@ import { buildProductUrl } from '../lib/urls'
 import { useAuth } from '../context/AuthContext'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import { SITE_NAME } from '../lib/siteMeta'
+import { formatPrice } from '../lib/price'
 
 interface OrderItem {
   id: number
@@ -873,7 +874,7 @@ export default function ProfilePage() {
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">{t('profile_total_spent', 'Потрачено всего')}</span>
                       <span className="text-base font-semibold text-[var(--text-strong)]">
-                        {totalSpentFromOrders.toFixed(2)} {currency}
+                        {formatPrice(totalSpentFromOrders)} {currency}
                       </span>
                     </div>
                   </div>
