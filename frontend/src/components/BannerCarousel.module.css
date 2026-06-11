@@ -10,6 +10,7 @@
   border-radius: 18px;
   box-shadow: 0 30px 50px #dbdbdb;
   overflow: visible;
+  contain: layout paint;
 }
 
 .slide {
@@ -30,16 +31,17 @@
   background-position: 50% 50%;
   background-size: cover;
   display: inline-block;
-  transition: width 0.5s ease-in-out, 
-              height 0.5s ease-in-out, 
-              left 0.5s ease-in-out, 
-              top 0.5s ease-in-out, 
+  transition: width 0.5s ease-in-out,
+              height 0.5s ease-in-out,
+              left 0.5s ease-in-out,
+              top 0.5s ease-in-out,
               transform 0.5s ease-in-out,
               border-radius 0.5s ease-in-out,
               z-index 0.5s ease-in-out,
               opacity 0.5s ease-in-out;
   cursor: pointer;
   overflow: hidden;
+  will-change: transform;
 }
 
 /* Первый элемент - активный, большой на весь экран */

@@ -9,6 +9,7 @@ import {
   isVideoUrl,
   extractYouTubeId,
   getYouTubeCardThumbnailUrl,
+  withListingImageMaxWidth,
 } from '../lib/media'
 import FallbackMediaImage from '../components/FallbackMediaImage'
 import { getSiteOrigin } from '../lib/urls'
@@ -364,7 +365,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
                     onClick={() => handleBrandClick(brand)}
                     className="relative shrink-0 w-[96px] h-[120px] snap-start rounded-[20px] overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow bg-gray-900 group"
                   >
-                    {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
+                    {renderMedia(withListingImageMaxWidth(mediaUrl || '', 300) || placeholderUrl, brand.name, placeholderUrl)}
                     <div className="absolute inset-0 bg-black/40 hidden" />
                     <div className="absolute inset-0 hidden items-center justify-center p-2 z-10">
                       <div className="text-center text-white drop-shadow w-full">
@@ -423,7 +424,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
                     className="relative isolate rounded-xl overflow-hidden cursor-pointer transform hover:scale-105 transition-transform duration-300 shadow-lg hover:shadow-xl bg-gray-900/10 group"
                   >
                     <div className="absolute inset-0 z-0 overflow-hidden">
-                      {renderMedia(mediaUrl || placeholderUrl, brand.name, placeholderUrl)}
+                      {renderMedia(withListingImageMaxWidth(mediaUrl || '', 450) || placeholderUrl, brand.name, placeholderUrl)}
                     </div>
                     <div className="absolute inset-0 z-[1] bg-black/40 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100" />
                     <div className="absolute inset-0 z-10 flex items-center justify-center p-4 md:p-6 transition-opacity duration-300 opacity-0 md:group-hover:opacity-100">
@@ -487,7 +488,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
                   >
                     <div className="absolute inset-0 z-0 overflow-hidden">
                       {renderMedia(
-                        mediaUrl || placeholderUrl,
+                        withListingImageMaxWidth(mediaUrl || '', 600) || placeholderUrl,
                         getLocalizedCategoryName(category.slug, category.name, t, category.translations, router.locale),
                         placeholderUrl
                       )}
