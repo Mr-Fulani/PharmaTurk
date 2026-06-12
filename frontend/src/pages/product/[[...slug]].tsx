@@ -1299,6 +1299,13 @@ export default function ProductPage({
       : 'https://schema.org/InStock'
   const priceForSchema = selectedVariant?.price || product.price || product.active_variant_price
   const currencyForSchema = selectedVariant?.currency || product.active_variant_currency || product.currency
+  // aggregateRating только при наличии и рейтинга, и отзывов — без счётчика схема невалидна
+  const ratingForSchema = Number(product.rating)
+  const hasRatingForSchema =
+    Number.isFinite(ratingForSchema) && ratingForSchema > 0 &&
+    product.reviews_count != null && product.reviews_count > 0
+  // Срок действия цены для сниппета Google Shopping: +30 дней от рендера
+  const priceValidUntil = new Date(Date.now() + 30 * 86400 * 1000).toISOString().split('T')[0]
   const productSchema = {
     '@context': 'https://schema.org',
     '@type': productType === 'books' ? 'Book' : productType === 'uslugi' ? 'Service' : 'Product',
@@ -1312,6 +1319,14 @@ export default function ProductPage({
     ...(productType === 'books' && product.publisher && { publisher: { '@type': 'Organization', name: product.publisher } }),
     ...(productType === 'books' && product.pages != null && { numberOfPages: product.pages }),
     sku: product.slug,
+    ...(hasRatingForSchema && {
+      aggregateRating: {
+        '@type': 'AggregateRating',
+        ratingValue: ratingForSchema.toFixed(1),
+        reviewCount: product.reviews_count,
+        bestRating: '5',
+      },
+    }),
     offers: priceForSchema
       ? {
         '@type': 'Offer',
@@ -1319,6 +1334,8 @@ export default function ProductPage({
         priceCurrency: currencyForSchema || 'USD',
         availability,
         url: canonicalUrl,
+        priceValidUntil,
+        ...(productType !== 'uslugi' && { itemCondition: 'https://schema.org/NewCondition' }),
       }
       : undefined,
   }
