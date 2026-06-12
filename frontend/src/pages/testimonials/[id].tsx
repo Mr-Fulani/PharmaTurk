@@ -5,6 +5,7 @@ import { GetServerSideProps } from 'next'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { ChevronLeftIcon, ChevronRightIcon, StarIcon } from '@heroicons/react/20/solid'
+import SEO from '../../components/SEO'
 import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
 import { getInternalApiUrl } from '../../lib/urls'
 import { getPlaceholderImageUrl, resolveMediaUrl } from '../../lib/media'
@@ -22,7 +23,7 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
   const shortDescription = plainText.length > 160
     ? `${plainText.slice(0, 157).replace(/\s+\S*$/, '')}...`
     : plainText
-  const pageTitle = `${t('testimonials_page_title', 'Отзывы клиентов')} — ${testimonial.author_name} — ${SITE_NAME}`
+  const pageTitle = `${t('testimonials_page_title', 'Отзывы клиентов')} — ${testimonial.author_name}`
   const description = shortDescription || t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')
   const metaKeywords = [
     t('testimonials_page_title', 'Отзывы клиентов'),
@@ -32,7 +33,6 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
     'отзывы клиентов',
     'customer reviews',
   ].filter(Boolean).join(', ')
-  const canonicalUrl = `${SITE_URL}${buildTestimonialUrl(testimonial.id)}`
   const ogImage = `${SITE_URL}/footer-testimonials-promo.png`
 
   const nextMedia = () => {
@@ -49,23 +49,15 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
 
   return (
     <>
+      <SEO
+        title={pageTitle}
+        description={description}
+        canonical={buildTestimonialUrl(testimonial.id)}
+        ogImage={ogImage}
+        ogType="article"
+      />
       <Head>
-        <title>{pageTitle}</title>
-        <meta name="description" content={description} />
         <meta name="keywords" content={metaKeywords} />
-        <link rel="canonical" href={canonicalUrl} />
-        <link rel="alternate" hrefLang="ru" href={canonicalUrl} />
-        <link rel="alternate" hrefLang="en" href={`${SITE_URL}/en${buildTestimonialUrl(testimonial.id)}`} />
-        <link rel="alternate" hrefLang="x-default" href={canonicalUrl} />
-        <meta property="og:title" content={pageTitle} />
-        <meta property="og:description" content={description} />
-        <meta property="og:url" content={canonicalUrl} />
-        <meta property="og:type" content="article" />
-        <meta property="og:image" content={ogImage} />
-        <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:title" content={pageTitle} />
-        <meta property="twitter:description" content={description} />
-        <meta property="twitter:image" content={ogImage} />
       </Head>
 
       <main className="min-h-screen bg-gray-50 py-10">
@@ -231,21 +223,20 @@ export const getServerSideProps: GetServerSideProps = async ({ locale, params })
   const id = Array.isArray(params?.id) ? params?.id[0] : params?.id
   if (!id) return { notFound: true }
 
-  try {
-    const response = await fetch(getInternalApiUrl(`feedback/testimonials/${encodeURIComponent(String(id))}/`))
-    if (!response.ok) {
-      return { notFound: true }
-    }
-    const testimonial = await response.json()
-
-    return {
-      props: {
-        ...(await serverSideTranslations(locale || 'ru', ['common'])),
-        testimonial,
-      },
-    }
-  } catch (error) {
-    console.error('SSR testimonial detail fetch failed:', error)
+  const response = await fetch(getInternalApiUrl(`feedback/testimonials/${encodeURIComponent(String(id))}/`))
+  if (response.status === 404) {
     return { notFound: true }
+  }
+  if (!response.ok) {
+    // 5xx и прочее — отдаём 500, чтобы бот не выкинул страницу из индекса
+    throw new Error(`SSR testimonial ${id} fetch failed: HTTP ${response.status}`)
+  }
+  const testimonial = await response.json()
+
+  return {
+    props: {
+      ...(await serverSideTranslations(locale || 'ru', ['common'])),
+      testimonial,
+    },
   }
 }

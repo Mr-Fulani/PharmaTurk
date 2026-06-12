@@ -2644,7 +2644,8 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
   const currency = currencyMatch ? currencyMatch[1] : 'RUB'
 
-  const localePrefix = ctx.locale ? `/${ctx.locale}` : ''
+  // Дефолтная локаль (ru) живёт без префикса: /ru/... отдаёт 404
+  const localePrefix = ctx.locale && ctx.locale !== ctx.defaultLocale ? `/${ctx.locale}` : ''
 
   const activeVariantFromQuery =
     typeof ctx.query.active_variant_slug === 'string'
@@ -2725,7 +2726,12 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         preferredCurrency: currency,
       },
     }
-  } catch {
-    return { notFound: true }
+  } catch (err) {
+    // 404 от API — товара нет; остальное (таймаут, 5xx) пробрасываем,
+    // чтобы бот получил 500 и не выкинул страницу из индекса
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      return { notFound: true }
+    }
+    throw err
   }
 }

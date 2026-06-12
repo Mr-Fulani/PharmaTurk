@@ -302,7 +302,10 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     const res = await axios.get(getInternalApiUrl(`pages/${slug}/`) + `?lang=${lang}`)
     pageData = res.data
   } catch (error) {
-    console.error(`Failed to fetch static page: ${slug}`)
+    // 404 от API — страницы нет; остальное пробрасываем (бот получит 500, не 404)
+    if (!(axios.isAxiosError(error) && error.response?.status === 404)) {
+      throw error
+    }
   }
 
   if (!pageData) {

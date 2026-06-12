@@ -360,15 +360,8 @@ export async function getServerSideProps(ctx: any) {
 
     const brand = allBrands.find((item) => item.slug === slugValue)
     if (!brand) {
-      return {
-        props: {
-          ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
-          brandData: null,
-          page,
-          categories: [],
-          brands: [],
-        },
-      }
+      // Бренда нет — честный 404 вместо пустой страницы с кодом 200 (soft-404)
+      return { notFound: true }
     }
 
     const primarySlug = (brand.primary_category_slug || '')
@@ -436,14 +429,10 @@ export async function getServerSideProps(ctx: any) {
       },
     }
   } catch (e) {
-    return {
-      props: {
-        ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
-        brandData: null,
-        page: 1,
-        categories: [],
-        brands: []
-      }
+    // 404 от API — нет такой страницы; остальное пробрасываем (бот получит 500, не 404)
+    if (axios.isAxiosError(e) && e.response?.status === 404) {
+      return { notFound: true }
     }
+    throw e
   }
 }

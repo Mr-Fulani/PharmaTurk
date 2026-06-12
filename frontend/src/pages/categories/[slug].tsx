@@ -1948,6 +1948,8 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     let categoryType: CategoryTypeKey = categoryTypeFromApi as CategoryTypeKey || resolveCategoryTypeFromSlug(routeSlug)
 
     const normalizedRoute = normalizeSlug(routeSlug || '')
+    // Дефолтная локаль (ru) живёт без префикса: /ru/... отдаёт 404
+    const localePrefix = context.locale && context.locale !== context.defaultLocale ? `/${context.locale}` : ''
     const isShoeCategory =
       normalizeSlug(categoryTypeFromApi || '') === 'shoes' ||
       categoryType === 'shoes' ||
@@ -1964,7 +1966,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
       return {
         redirect: {
-          destination: `/categories/shoes${query.toString() ? `?${query.toString()}` : ''}`,
+          destination: `${localePrefix}/categories/shoes${query.toString() ? `?${query.toString()}` : ''}`,
           permanent: false
         }
       }
@@ -1986,7 +1988,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
       return {
         redirect: {
-          destination: `/categories/furniture${query.toString() ? `?${query.toString()}` : ''}`,
+          destination: `${localePrefix}/categories/furniture${query.toString() ? `?${query.toString()}` : ''}`,
           permanent: false
         }
       }
@@ -2296,30 +2298,11 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       },
     }
   } catch (error) {
-    console.error('Error fetching data:', error)
-    const { fetchFooterSettings } = await import('../../lib/footerSettings')
-    const footerSettings = await fetchFooterSettings()
-    return {
-      props: {
-        products: [],
-        categories: [],
-        sidebarCategories: [],
-        footerSettings,
-        brands: [],
-        subcategories: [],
-        availableAttributes: [],
-        availableGenders: [],
-        availableFragranceTypes: [],
-        categoryName: context.locale === 'en' ? 'Products' : 'Товары',
-        categoryDescription: '',
-        totalCount: 0,
-        currentPage: 1,
-        totalPages: 1,
-        categoryType: 'medicines',
-        categoryTypeSlug: null,
-        initialRouteSlug: '',
-        ...(await serverSideTranslations(context.locale ?? 'en', ['common'])),
-      },
+    // 404 от API (в т.ч. страница пагинации за пределами диапазона) — честный 404;
+    // остальное пробрасываем, чтобы бот получил 500 и не выкинул страницу из индекса
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return { notFound: true }
     }
+    throw error
   }
 }
