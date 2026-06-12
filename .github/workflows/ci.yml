@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    name: Frontend (lint, types, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run build
+
+  backend:
+    name: Backend (flake8, pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pharmaturk
+          POSTGRES_PASSWORD: pharmaturk
+          POSTGRES_DB: pharmaturk
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pharmaturk"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://pharmaturk:pharmaturk@localhost:5432/pharmaturk
+      REDIS_URL: redis://localhost:6379/0
+      DJANGO_SECRET_KEY: ci-only-secret
+      DJANGO_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install poetry
+        run: pipx install poetry
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('backend/poetry.lock') }}
+      - name: System deps (weasyprint)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libpango-1.0-0 libpangocairo-1.0-0
+      - run: poetry install --no-interaction --no-root
+      # На 2026-06 кодовая база не проходит flake8 (~73k замечаний) — линт пока
+      # информационный. Ужесточить после чистки (отдельная задача из роадмапа).
+      - name: flake8 (informational)
+        run: poetry run flake8 --count
+        continue-on-error: true
+      # ci-known-failures.txt — реестр тестов, падавших ДО введения CI
+      # (протухли против эволюционировавших моделей; бейзлайн 2026-06-12).
+      # Чинить отдельной задачей и вычёркивать из файла. Новые падения CI ловит.
+      - name: pytest
+        run: |
+          DESELECT=$(sed 's/^/--deselect /' ci-known-failures.txt | tr '\n' ' ')
+          poetry run pytest -q $DESELECT
