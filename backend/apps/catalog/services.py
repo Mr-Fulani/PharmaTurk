@@ -664,6 +664,13 @@ class CatalogNormalizer:
             slug = f"{base_slug}-{external_id}"
         else:
             slug = f"{base_slug}-{uuid.uuid4().hex[:8]}"
+
+        # У некоторых источников (ilacfiyati) external_id — это слаг имени,
+        # и конкатенация даёт задвоение X-X. Схлопываем, если не занято.
+        from apps.catalog.services.product_resolve import deduplicate_slug
+        deduped = deduplicate_slug(slug)
+        if deduped != slug and not Product.objects.filter(slug=deduped).exists():
+            slug = deduped
         
         main_image_url = ""
         for media_url in product_data.images or []:
