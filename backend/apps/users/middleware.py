@@ -57,9 +57,10 @@ class LanguageMiddleware(MiddlewareMixin):
         # Устанавливаем язык для текущего запроса
         translation.activate(language)
         request.LANGUAGE_CODE = language
-        # Сохраняем язык в сессии для использования LocaleMiddleware (ключ по умолчанию)
-        if hasattr(request, 'session'):
-            request.session['django_language'] = language
+        # В сессию язык НЕ пишем: ключ django_language никем не читался
+        # (Django 4+ не определяет язык из сессии), а запись создавала сессию
+        # и Set-Cookie каждому анониму на каждый запрос — ломала кэширование.
+        # Язык и так определяется из заголовков на каждом запросе выше.
 
         return None
 
