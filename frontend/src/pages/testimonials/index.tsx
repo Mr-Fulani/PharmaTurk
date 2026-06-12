@@ -1042,7 +1042,9 @@ export default function TestimonialsPage({
   )
 }
 
-export const getServerSideProps: GetServerSideProps = async ({ locale, query }) => {
+export const getServerSideProps: GetServerSideProps = async ({ locale, query, res }) => {
+  // Кэшируем HTML в CDN: контент одинаков для всех посетителей локали
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400')
   let initialTestimonials: Testimonial[] = []
   const username = typeof query.username === 'string' ? query.username : null
 

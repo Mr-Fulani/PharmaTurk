@@ -341,6 +341,8 @@ export default function BrandPage({
 }
 
 export async function getServerSideProps(ctx: any) {
+  // Кэшируем HTML в CDN: контент одинаков для всех посетителей локали
+  ctx.res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400')
   try {
     const { slug } = ctx.params
     const page = Number(ctx.query?.page || 1)

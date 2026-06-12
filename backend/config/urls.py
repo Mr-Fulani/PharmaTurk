@@ -8,7 +8,6 @@ from django.views.generic import RedirectView
 from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from api import seo as seo_views
 from apps.ai.admin_views import ai_manual_tasks_view
 
 
@@ -18,9 +17,8 @@ urlpatterns = [
     # Вложенные inline в админке (django-nested-admin; путь фиксирован документацией пакета)
     path("_nested_admin/", include("nested_admin.urls")),
     path("admin/", admin.site.urls),
-    # SEO
-    path("robots.txt", seo_views.robots_txt, name="robots"),
-    path("sitemap.xml", seo_views.sitemap_xml, name="sitemap"),
+    # robots.txt и sitemap.xml отдаёт фронтенд (frontend/public/robots.txt,
+    # frontend/src/pages/sitemap.xml.tsx) — единственный источник правды.
 
     # OpenAPI / Swagger (основной UI — api/docs/; /swagger редирект для удобства)
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),

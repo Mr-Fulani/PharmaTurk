@@ -219,7 +219,9 @@ export default function TestimonialDetailPage({ testimonial }: TestimonialDetail
   )
 }
 
-export const getServerSideProps: GetServerSideProps = async ({ locale, params }) => {
+export const getServerSideProps: GetServerSideProps = async ({ locale, params, res }) => {
+  // Кэшируем HTML в CDN: контент одинаков для всех посетителей локали
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400')
   const id = Array.isArray(params?.id) ? params?.id[0] : params?.id
   if (!id) return { notFound: true }
 

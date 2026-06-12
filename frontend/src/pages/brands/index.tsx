@@ -142,6 +142,8 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
 }
 
 export const getServerSideProps = async (ctx: any) => {
+  // Кэшируем HTML в CDN: контент одинаков для всех посетителей локали
+  ctx.res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400')
   try {
     const { getInternalApiUrl } = await import('../../lib/urls')
     let allBrands: Brand[] = []

@@ -123,6 +123,8 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
 }
 
 export async function getServerSideProps(ctx: any) {
+  // Кэшируем HTML в CDN: контент одинаков для всех посетителей локали
+  ctx.res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400')
   try {
     const { getInternalApiUrl } = await import('../../lib/urls')
     const { fetchFooterSettings } = await import('../../lib/footerSettings')

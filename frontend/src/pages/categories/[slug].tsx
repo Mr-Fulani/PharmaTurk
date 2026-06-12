@@ -1921,6 +1921,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   const { slug, page = 1, brand, brand_id } = context.query
   const pageSize = 12
 
+  // HTML зависит от валюты из cookie — кэшируем в CDN только дефолтный вариант
+  const hasCurrencyCookie = /(?:^|;\s*)currency=/.test(context.req.headers.cookie || '')
+  context.res.setHeader(
+    'Cache-Control',
+    hasCurrencyCookie ? 'private, no-store' : 'public, s-maxage=300, stale-while-revalidate=86400'
+  )
+
   try {
     const routeSlug = Array.isArray(slug) ? slug[0] : (slug as string | undefined)
 

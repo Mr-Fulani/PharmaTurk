@@ -2644,6 +2644,12 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
   const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
   const currency = currencyMatch ? currencyMatch[1] : 'RUB'
 
+  // HTML зависит от валюты из cookie — кэшируем в CDN только дефолтный вариант
+  ctx.res.setHeader(
+    'Cache-Control',
+    currencyMatch ? 'private, no-store' : 'public, s-maxage=300, stale-while-revalidate=86400'
+  )
+
   // Дефолтная локаль (ru) живёт без префикса: /ru/... отдаёт 404
   const localePrefix = ctx.locale && ctx.locale !== ctx.defaultLocale ? `/${ctx.locale}` : ''
 
