@@ -10,19 +10,27 @@
 >   решается: i18n-нормализация срезает префикс до middleware/redirects).
 > - Этапы 4–5 ✅ — ветка `seo/p1-sitemap-cache` (заголовки проверены curl-ом,
 >   включая private/no-store при валютной cookie).
-> - Этапы 6–8 ✅ (код) — ветка `perf/p1-resolve-media`, коммит 692692a.
->   Resolve проверен A/B против старого кода (ответы идентичны, fallback для
->   вариантных слагов работает); proxy-media кэш-хит 1.38s → 0.016s.
->   **Открытый хвост:** nginx proxy_cache для proxy-media отдаёт MISS на
->   повторных запросах (тестовый nginx в сети compose, порт 8081). Следующий
->   шаг отладки: посмотреть полные заголовки ответа бэкенда — вероятная
->   причина: Set-Cookie от Django (нужен proxy_ignore_headers Set-Cookie или
->   убрать cookie с эндпоинта) либо Vary: Accept. Пре-существующие падения
->   тестов (16 шт. в test_product_resolve.py) — протухшие тесты против
->   эволюционировавших моделей (GlobalAttributeKey.name стал property,
->   gallery_images удалён, perfumery.gender NOT NULL); бейзлайн идентичен,
->   мои правки ничего не ломают.
-> - Этапы 9–10 — не начаты.
+> - Этапы 6–8 ✅ — ветка `perf/p1-resolve-media`. Resolve проверен A/B против
+>   старого кода (ответы идентичны, fallback для вариантных слагов работает);
+>   proxy-media кэш-хит 1.38s → 0.016s (Django) → 0.002s (nginx).
+>   nginx proxy_cache не работал из-за Set-Cookie/Vary: Cookie/X-Accel-Buffering
+>   от Django — вылечено proxy_ignore_headers + proxy_hide_header; кэшируются
+>   только картинки, видео/Range — пасс-тру (проверено: MISS→HIT, 206 BYPASS).
+> - Этап 9 ✅ — ветка `seo/p2-jsonld`: aggregateRating (только при rating>0 и
+>   reviews_count>0), priceValidUntil, itemCondition (не для услуг). Позитивный
+>   кейс рейтинга в dev-БД непроверяем — рейтинг есть только у books, книг нет.
+> - Этап 10 ✅ — ветка `ci/github-actions`. Реальный бейзлайн тестов: 34 падения
+>   в 24 тестах по всему бэкенду (протухли против моделей: GlobalAttributeKey.name
+>   стал property, gallery_images удалён, perfumery.gender NOT NULL и т.п.) —
+>   вынесены в реестр backend/ci-known-failures.txt (чинить и вычёркивать);
+>   с реестром: 197 passed, 0 failed. flake8 информационный (~73k замечаний).
+>
+> **Ручные действия владельца после деплоя:** Cloudflare Cache Rule на HTML/XML;
+> Search Console — переобход и повторная отправка sitemap; проверить
+> `curl -sI https://mudaroba.com/ru/categories` → 301.
+> Замечено по ходу (вне ТЗ, не трогал): entrypoint регистрирует Telegram webhook
+> на ngrok-URL даже в тестовых запусках; predupреждение Django «models have
+> changes not yet reflected in a migration» для ai/feedback/scrapers.
 
 ---
 
