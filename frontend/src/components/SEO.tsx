@@ -47,17 +47,18 @@ export default function SEO({
   structuredData,
   ogType = 'website',
 }: SEOProps) {
-  const { locale = 'en', asPath } = useRouter()
+  const { locale = 'ru', defaultLocale = 'ru', asPath } = useRouter()
   const ogLocale = localeMap[locale] || 'en_US'
 
-  // Строим canonical URL с учётом локали
-  const canonicalPath = canonical || asPath.split('?')[0]
-  const cleanPath = canonicalPath.replace(/^\/(ru|en)/, '') || '/'
+  // Роутинг локалей: ru (дефолт) — без префикса, en — /en. URL /ru/... не существует (404).
+  const canonicalPath = canonical || asPath.split('?')[0].split('#')[0]
+  const cleanPath = canonicalPath.replace(/^\/(ru|en)(?=\/|$)/, '') || '/'
+  const pathPart = cleanPath === '/' ? '' : cleanPath
 
-  const canonicalUrl =
-    locale === 'ru'
-      ? `${SITE_URL}/ru${cleanPath === '/' ? '' : cleanPath}`
-      : `${SITE_URL}${cleanPath === '/' ? '' : cleanPath}`
+  const localePrefix = locale === defaultLocale ? '' : `/${locale}`
+  const canonicalUrl = `${SITE_URL}${localePrefix}${pathPart}`
+  const ruUrl = `${SITE_URL}${pathPart}`
+  const enUrl = `${SITE_URL}/en${pathPart}`
 
   const fullTitle = `${title} — ${SITE_NAME}`
   const ogImageUrl = ogImage || `${SITE_URL}/og-default.png`
@@ -76,8 +77,15 @@ export default function SEO({
       <meta name="description" content={description} />
       {noindex && <meta name="robots" content="noindex, nofollow" />}
 
-      {/* Canonical */}
-      <link rel="canonical" href={canonicalUrl} />
+      {/* Canonical + hreflang — только для индексируемых страниц */}
+      {!noindex && (
+        <>
+          <link rel="canonical" href={canonicalUrl} />
+          <link rel="alternate" hrefLang="ru" href={ruUrl} />
+          <link rel="alternate" hrefLang="en" href={enUrl} />
+          <link rel="alternate" hrefLang="x-default" href={ruUrl} />
+        </>
+      )}
 
       {/* Open Graph */}
       <meta property="og:title" content={fullTitle} />

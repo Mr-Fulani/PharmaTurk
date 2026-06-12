@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import Head from 'next/head'
+import SEO from '../../components/SEO'
 import { SITE_NAME, SITE_URL } from '../../lib/siteMeta'
 import Link from 'next/link'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
@@ -62,7 +63,6 @@ export default function TestimonialsPage({
   const showAllTestimonialsLabel = isRu
     ? t('show_all_testimonials', { lng: 'ru', defaultValue: 'Показать все отзывы' })
     : t('show_all_testimonials', 'Show all reviews')
-  const pageTitle = `${t('testimonials_page_title', 'Отзывы клиентов')} — ${SITE_NAME}`
   const pageDescription = t('testimonials_page_description', 'Что говорят наши клиенты о наших товарах и услугах')
   const metaKeywords = [
     t('testimonials_page_title', 'Отзывы клиентов'),
@@ -531,23 +531,14 @@ export default function TestimonialsPage({
 
   return (
     <>
+      <SEO
+        title={t('testimonials_page_title', 'Отзывы клиентов')}
+        description={pageDescription}
+        canonical="/testimonials"
+        ogImage={testimonialsOgImage}
+      />
       <Head>
-        <title>{pageTitle}</title>
-        <meta name="description" content={pageDescription} />
         <meta name="keywords" content={metaKeywords} />
-        <link rel="canonical" href={`${SITE_URL}/testimonials`} />
-        <link rel="alternate" hrefLang="ru" href={`${SITE_URL}/testimonials`} />
-        <link rel="alternate" hrefLang="en" href={`${SITE_URL}/en/testimonials`} />
-        <link rel="alternate" hrefLang="x-default" href={`${SITE_URL}/testimonials`} />
-        <meta property="og:title" content={pageTitle} />
-        <meta property="og:description" content={pageDescription} />
-        <meta property="og:url" content={`${SITE_URL}/testimonials`} />
-        <meta property="og:type" content="website" />
-        <meta property="og:image" content={testimonialsOgImage} />
-        <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:title" content={pageTitle} />
-        <meta property="twitter:description" content={pageDescription} />
-        <meta property="twitter:image" content={testimonialsOgImage} />
       </Head>
 
       {/* Success notification */}

@@ -1,4 +1,3 @@
-import Head from 'next/head'
 import Link from 'next/link'
 import axios from 'axios'
 import { GetServerSideProps } from 'next'
@@ -6,7 +5,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import ServicePortfolioGallery, { ServicePortfolioItem } from '../../../components/ServicePortfolioGallery'
 import { buildProductUrl, getInternalApiUrl, getSiteOrigin } from '../../../lib/urls'
-import { SITE_NAME } from '../../../lib/siteMeta'
+import SEO from '../../../components/SEO'
 
 interface WorksPageProps {
   slug: string
@@ -23,8 +22,9 @@ export default function CategoryWorksPage({
 }: WorksPageProps) {
   const { t } = useTranslation('common')
   const siteUrl = getSiteOrigin()
-  const title = `${categoryName} — ${t('service_portfolio_title', 'Примеры оказанных услуг')} | ${SITE_NAME}`
+  const title = `${categoryName} — ${t('service_portfolio_title', 'Примеры оказанных услуг')}`
   const description = (categoryDescription || t('service_portfolio_page_description', 'Подборка реальных кейсов, примеров услуг и реализованных проектов по этой категории.')).trim()
+  // Используется в JSON-LD схемах; canonical в <head> строит SEO-компонент с учётом локали
   const canonicalUrl = `${siteUrl}/categories/${slug}/works`
   const ogImage = portfolioItems.find((item) => item.image_url)?.image_url || `${siteUrl}/og-default.png`
   const breadcrumbs = [
@@ -114,42 +114,18 @@ export default function CategoryWorksPage({
 
   return (
     <>
-      <Head>
-        <title>{title}</title>
-        <meta name="description" content={description} />
-        <link rel="canonical" href={canonicalUrl} />
-        <meta property="og:title" content={title} />
-        <meta property="og:description" content={description} />
-        <meta property="og:url" content={canonicalUrl} />
-        <meta property="og:type" content="website" />
-        <meta property="og:image" content={ogImage} />
-        <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:title" content={title} />
-        <meta property="twitter:description" content={description} />
-        <meta property="twitter:image" content={ogImage} />
-        <script
-          type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
-        />
-        <script
-          type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionSchema) }}
-        />
-        <script
-          type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(portfolioSchema) }}
-        />
-        {portfolioMediaSchema.length ? (
-          <script
-            type="application/ld+json"
-            // eslint-disable-next-line react/no-danger
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(portfolioMediaSchema) }}
-          />
-        ) : null}
-      </Head>
+      <SEO
+        title={title}
+        description={description}
+        canonical={`/categories/${slug}/works`}
+        ogImage={ogImage}
+        structuredData={[
+          breadcrumbSchema,
+          collectionSchema,
+          portfolioSchema,
+          ...(portfolioMediaSchema.length ? [portfolioMediaSchema] : []),
+        ]}
+      />
 
       <div className="mx-auto max-w-7xl px-3 pt-5 sm:px-6 lg:px-8">
         <nav className="mb-4 flex flex-wrap items-center gap-2 text-sm text-main">

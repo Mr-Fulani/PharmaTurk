@@ -1,33 +1,21 @@
 import Document, { Html, Head, Main, NextScript, DocumentContext, DocumentInitialProps } from 'next/document'
 
 const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
 
 interface MyDocumentProps extends DocumentInitialProps {
   locale?: string
-  path?: string
 }
 
 class MyDocument extends Document<MyDocumentProps> {
   static async getInitialProps(ctx: DocumentContext): Promise<MyDocumentProps> {
     const initialProps = await Document.getInitialProps(ctx)
     const locale = ctx.locale || 'ru'
-    // Получаем путь без локального префикса для hreflang
-    const rawPath = ctx.asPath || '/'
-    // Убираем query-string для canonical
-    const path = rawPath.split('?')[0]
-    return { ...initialProps, locale, path }
+    return { ...initialProps, locale }
   }
 
   render() {
     const siteName = process.env.NEXT_PUBLIC_SITE_NAME || 'Mudaroba'
-    const { locale = 'ru', path = '/' } = this.props
-
-    // Строим hreflang URL
-    // ru-вариант — без префикса (основной язык), en-вариант — /en/...
-    const cleanPath = path.replace(/^\/(ru|en)/, '') || '/'
-    const ruUrl = `${SITE_URL}${cleanPath === '/' ? '' : cleanPath}`
-    const enUrl = `${SITE_URL}/en${cleanPath === '/' ? '' : cleanPath}`
+    const { locale = 'ru' } = this.props
 
     return (
       <Html lang={locale}>
@@ -50,25 +38,17 @@ class MyDocument extends Document<MyDocumentProps> {
             <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Monoton&display=swap" />
           </noscript>
 
-          {/* Базовые мета-теги */}
+          {/* Базовые мета-теги. og:url/og:type/canonical/hreflang задаются постранично — здесь не дублировать */}
           <meta httpEquiv="Content-Language" content={locale} />
           <meta name="theme-color" content="#4c1d95" />
           <meta name="application-name" content={siteName} />
           <meta property="og:site_name" content={siteName} />
-          <meta property="og:type" content="website" />
-          <meta property="og:url" content={locale === 'en' ? enUrl : ruUrl} />
           <meta property="twitter:card" content="summary_large_image" />
 
           {/* ─── Yandex Webmaster (подтверждение прав) ────────────────────────── */}
           {process.env.NEXT_PUBLIC_YANDEX_VERIFICATION && (
             <meta name="yandex-verification" content={process.env.NEXT_PUBLIC_YANDEX_VERIFICATION} />
           )}
-
-          {/* ─── SEO: hreflang (мультиязычность) ─────────────────────────── */}
-          <link rel="alternate" hrefLang="ru" href={ruUrl} />
-          <link rel="alternate" hrefLang="en" href={enUrl} />
-          {/* x-default указывает на основной язык (ru без префикса) */}
-          <link rel="alternate" hrefLang="x-default" href={ruUrl} />
 
           {/* ─── Google Tag Manager (загружается только при наличии ID) ──── */}
           {GTM_ID && (

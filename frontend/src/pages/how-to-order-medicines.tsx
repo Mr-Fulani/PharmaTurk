@@ -1,10 +1,9 @@
-import Head from 'next/head'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { GetServerSideProps } from 'next'
 import axios from 'axios'
 import { getInternalApiUrl } from '../lib/urls'
-import { SITE_NAME, SITE_URL } from '../lib/siteMeta'
+import SEO from '../components/SEO'
 
 export default function HowToOrderMedicinesPage({ footerSettings }: { footerSettings: { phone?: string | null; email?: string | null; location?: string | null; telegram_url?: string | null; whatsapp_url?: string | null; vk_url?: string | null; instagram_url?: string | null; crypto_payment_text?: string | null } }) {
   const { t } = useTranslation('common')
@@ -22,23 +21,11 @@ export default function HowToOrderMedicinesPage({ footerSettings }: { footerSett
 
   return (
     <>
-      <Head>
-        <title>{`${t('medicine_how_to_order_title', 'Как заказать лекарства из Турции')} — ${SITE_NAME}`}</title>
-        <meta name="description" content={t('medicine_how_to_order_subtitle', 'Ответы на частые вопросы о заказе и доставке лекарственных препаратов из Турции.')} />
-        <link rel="canonical" href={`${SITE_URL}/how-to-order-medicines`} />
-        <link rel="alternate" hrefLang="ru" href={`${SITE_URL}/how-to-order-medicines`} />
-        <link rel="alternate" hrefLang="en" href={`${SITE_URL}/en/how-to-order-medicines`} />
-        <link rel="alternate" hrefLang="x-default" href={`${SITE_URL}/how-to-order-medicines`} />
-        <meta property="og:title" content={`${t('medicine_how_to_order_title', 'Как заказать лекарства из Турции')} — ${SITE_NAME}`} />
-        <meta property="og:description" content={t('medicine_how_to_order_subtitle', 'Ответы на частые вопросы о заказе и доставке лекарственных препаратов из Турции.')} />
-        <meta property="og:url" content={`${SITE_URL}/how-to-order-medicines`} />
-        <meta property="og:type" content="website" />
-        <meta property="og:image" content={`${SITE_URL}/og-default.png`} />
-        <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:title" content={`${t('medicine_how_to_order_title', 'Как заказать лекарства из Турции')} — ${SITE_NAME}`} />
-        <meta property="twitter:description" content={t('medicine_how_to_order_subtitle', 'Ответы на частые вопросы о заказе и доставке лекарственных препаратов из Турции.')} />
-        <meta property="twitter:image" content={`${SITE_URL}/og-default.png`} />
-      </Head>
+      <SEO
+        title={t('medicine_how_to_order_title', 'Как заказать лекарства из Турции')}
+        description={t('medicine_how_to_order_subtitle', 'Ответы на частые вопросы о заказе и доставке лекарственных препаратов из Турции.')}
+        canonical="/how-to-order-medicines"
+      />
       <main className="mx-auto max-w-5xl p-6 sm:p-10 min-h-screen">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 shadow-sm">
           <h1 className="mb-3 text-3xl font-bold text-main md:text-4xl text-center">

@@ -1,4 +1,3 @@
-import Head from 'next/head'
 import axios from 'axios'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -8,7 +7,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import BannerCarousel from '../../components/BannerCarouselMedia'
 import CardMasonryMedia from '../../components/CardMasonryMedia'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
-import { SITE_NAME } from '../../lib/siteMeta'
+import SEO from '../../components/SEO'
 
 interface CategoryTranslation {
   locale: string
@@ -39,9 +38,11 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
 
   return (
     <>
-      <Head>
-        <title>{`${t('menu_categories', 'Категории')} — ${SITE_NAME}`}</title>
-      </Head>
+      <SEO
+        title={t('menu_categories', 'Категории')}
+        description={t('categories_description', 'Выберите основную категорию — карточки и баннеры как на главной.')}
+        canonical="/categories"
+      />
       <main className="min-h-screen bg-page text-main transition-colors duration-200">
         {/* Hero banner */}
         <section className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
