@@ -267,8 +267,14 @@ def is_internal_storage_url(url):
 
 
 def _file_missing_from_storage(file_field):
-    """True если имя поля задано, но файла нет в хранилище (R2 или локальном)."""
+    """True если путь из БД задан, но файла нет в хранилище.
+    Возвращает False для новых загружаемых файлов (_committed=False),
+    чтобы не перезаписывать admin-аплоад внешней ссылкой.
+    """
     try:
+        # _committed=False — файл только что выбран в форме, ещё не в хранилище
+        if not getattr(file_field, '_committed', True):
+            return False
         name = getattr(file_field, 'name', None)
         if not name:
             return False
