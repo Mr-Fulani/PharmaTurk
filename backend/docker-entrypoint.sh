@@ -9,16 +9,21 @@ find /app -type f -name "*.pyo" -delete 2>/dev/null || true
 find /app -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 echo "✅ Кэш Python очищен"
 
-# Смонтированный ./backend может содержать обновлённый pyproject.toml / poetry.lock без пересборки образа
-echo "📦 Синхронизация зависимостей Poetry..."
-poetry install --no-interaction --no-ansi --no-root
+# Синхронизация зависимостей — только в dev (USE_RUNSERVER=1), где ./backend
+# смонтирован поверх /app и pyproject/lock могут быть новее образа.
+# В проде зависимости ставятся при сборке образа; install на буте — лишняя
+# зависимость от сети при каждом рестарте.
+if [ "$USE_RUNSERVER" = "1" ]; then
+    echo "📦 Синхронизация зависимостей Poetry (dev)..."
+    poetry install --no-interaction --no-ansi --no-root
 
-# Устанавливаем weasyprint если не установлен (требует системных библиотек Pango/Cairo из Dockerfile)
-echo "📦 Проверяем weasyprint..."
-poetry run python -c "import weasyprint" 2>/dev/null || {
-    echo "⬇️  weasyprint не найден, устанавливаем..."
-    poetry run pip install weasyprint -q && echo "✅ weasyprint установлен" || echo "⚠️  weasyprint не удалось установить (PDF-чеки будут недоступны)"
-}
+    # weasyprint требует системных библиотек Pango/Cairo из Dockerfile
+    echo "📦 Проверяем weasyprint..."
+    poetry run python -c "import weasyprint" 2>/dev/null || {
+        echo "⬇️  weasyprint не найден, устанавливаем..."
+        poetry run pip install weasyprint -q && echo "✅ weasyprint установлен" || echo "⚠️  weasyprint не удалось установить (PDF-чеки будут недоступны)"
+    }
+fi
 
 # Кэш Django при старте НЕ чистим: в Redis живут 30-дневные ресайзы картинок
 # (proxy_media) — их вайп давал всплеск латентности после каждого деплоя.
@@ -43,15 +48,17 @@ fi
 echo "Загружаем статические страницы (load_initial_pages)..."
 poetry run python manage.py load_initial_pages 2>/dev/null || true
 
-# Регистрируем Telegram webhook (если заданы TELEGRAM_BOT_TOKEN и SITE_URL)
+# Если передана команда — выполняем её (например: pytest, manage.py ...).
+# Webhook и прочие side-effects сервера для command-запусков не выполняем.
+if [ $# -gt 0 ]; then
+    exec poetry run "$@"
+fi
+
+# Регистрируем Telegram webhook — только при старте сервера
+# (если заданы TELEGRAM_BOT_TOKEN и SITE_URL)
 if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$SITE_URL" ]; then
   echo "Регистрируем Telegram webhook..."
   poetry run python manage.py set_telegram_webhook 2>/dev/null || true
-fi
-
-# Если передана команда — выполняем её (например: python manage.py seed_perfumery_brands)
-if [ $# -gt 0 ]; then
-    exec poetry run "$@"
 fi
 
 # Запускаем сервер в зависимости от режима
