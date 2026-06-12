@@ -266,6 +266,18 @@ def is_internal_storage_url(url):
         return False
 
 
+def _file_missing_from_storage(file_field):
+    """True если имя поля задано, но файла нет в хранилище (R2 или локальном)."""
+    try:
+        name = getattr(file_field, 'name', None)
+        if not name:
+            return False
+        from django.core.files.storage import default_storage
+        return not default_storage.exists(name)
+    except Exception:
+        return False
+
+
 # --- Product ---
 
 
@@ -368,7 +380,10 @@ def delete_old_category_card_media(sender, instance, **kwargs):
     """Удаляет старый файл card_media из облака при замене на новый или при переключении на external_url."""
     if not instance.pk:
         # Новая запись: пробуем сразу скачать external_url → card_media
-        if instance.card_media_external_url and not (instance.card_media and instance.card_media.name):
+        if instance.card_media_external_url and (
+            not (instance.card_media and instance.card_media.name)
+            or _file_missing_from_storage(instance.card_media)
+        ):
             if not is_internal_storage_url(instance.card_media_external_url):
                 file_obj = _download_url_to_file(instance.card_media_external_url)
                 if file_obj:
@@ -379,8 +394,11 @@ def delete_old_category_card_media(sender, instance, **kwargs):
     try:
         old = Category.objects.get(pk=instance.pk)
 
-        # Авто-скачивание: если external_url заполнен и файла нет — скачиваем
-        if instance.card_media_external_url and not (instance.card_media and instance.card_media.name):
+        # Авто-скачивание: если external_url заполнен и файла нет (или файл пропал из хранилища) — скачиваем
+        if instance.card_media_external_url and (
+            not (instance.card_media and instance.card_media.name)
+            or _file_missing_from_storage(instance.card_media)
+        ):
             if not is_internal_storage_url(instance.card_media_external_url):
                 file_obj = _download_url_to_file(instance.card_media_external_url)
                 if file_obj:
@@ -414,7 +432,10 @@ def _delete_old_brand_card_media_impl(instance):
     """Удаляет старый файл card_media из облака при замене на новый или при переключении на external_url."""
     if not instance.pk:
         # Новая запись: пробуем сразу скачать external_url → card_media
-        if instance.card_media_external_url and not (instance.card_media and instance.card_media.name):
+        if instance.card_media_external_url and (
+            not (instance.card_media and instance.card_media.name)
+            or _file_missing_from_storage(instance.card_media)
+        ):
             if not is_internal_storage_url(instance.card_media_external_url):
                 file_obj = _download_url_to_file(instance.card_media_external_url)
                 if file_obj:
@@ -425,8 +446,11 @@ def _delete_old_brand_card_media_impl(instance):
     try:
         old = Brand.objects.get(pk=instance.pk)
 
-        # Авто-скачивание: если external_url заполнен и файла нет — скачиваем
-        if instance.card_media_external_url and not (instance.card_media and instance.card_media.name):
+        # Авто-скачивание: если external_url заполнен и файла нет (или файл пропал из хранилища) — скачиваем
+        if instance.card_media_external_url and (
+            not (instance.card_media and instance.card_media.name)
+            or _file_missing_from_storage(instance.card_media)
+        ):
             if not is_internal_storage_url(instance.card_media_external_url):
                 file_obj = _download_url_to_file(instance.card_media_external_url)
                 if file_obj:
