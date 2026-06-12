@@ -396,7 +396,7 @@ def test_medicine_section_translation_overrides_bad_ru_long_section():
     assert content["ru"]["usage_instructions"].startswith("3. Как применять")
 
 
-def test_apply_log_with_turkish_ru_sections_is_rejected():
+def test_apply_log_with_turkish_ru_sections_blanks_turkish_fields():
     medicine = MedicineProduct.objects.create(
         name="AUGMENTIN 875 MG/125 MG",
         slug="augmentin-875-mg125-mg",
@@ -444,20 +444,23 @@ def test_apply_log_with_turkish_ru_sections_is_rejected():
     generator.result_applier = AIResultApplier()
     log = AIProcessingLog.objects.get(product=product)
 
-    with pytest.raises(ValueError, match="не содержит достаточного результата"):
-        generator.apply_log_to_product(
-            log,
-            allow_approved=True,
-            require_content=True,
-        )
+    # Контракт с c439591: лог применяется, турецкие RU-поля заменяются пустой строкой
+    generator.apply_log_to_product(
+        log,
+        allow_approved=True,
+        require_content=True,
+    )
 
     log.refresh_from_db()
     medicine.refresh_from_db()
-    assert log.status == AIProcessingStatus.COMPLETED
-    assert medicine.translations.count() == 0
+    assert log.status == AIProcessingStatus.APPROVED
+    ru = medicine.translations.get(locale="ru")
+    assert ru.indications == ""
+    en = medicine.translations.get(locale="en")
+    assert en.indications == "English indications."
 
 
-def test_apply_log_with_cyrillic_turkish_transliteration_is_rejected():
+def test_apply_log_with_cyrillic_turkish_transliteration_blanks_ru_field():
     medicine = MedicineProduct.objects.create(
         name="FERRO SANOL DUODENAL",
         slug="ferro-sanol-duodenal",
@@ -496,11 +499,15 @@ def test_apply_log_with_cyrillic_turkish_transliteration_is_rejected():
     generator.result_applier = AIResultApplier()
     log = AIProcessingLog.objects.get(product=product)
 
-    with pytest.raises(ValueError, match="не содержит достаточного результата"):
-        generator.apply_log_to_product(
-            log,
-            allow_approved=True,
-            require_content=True,
-        )
+    # Контракт с c439591: лог применяется, кириллизированная турецкая
+    # транслитерация в RU-полях заменяется пустой строкой
+    generator.apply_log_to_product(
+        log,
+        allow_approved=True,
+        require_content=True,
+    )
 
-    assert medicine.translations.count() == 0
+    log.refresh_from_db()
+    assert log.status == AIProcessingStatus.APPROVED
+    ru = medicine.translations.get(locale="ru")
+    assert ru.indications == ""

@@ -82,7 +82,7 @@ def test_normalizer_still_skips_shared_gallery_for_clothing_variant_payloads():
 
 
 @pytest.mark.django_db
-def test_normalizer_sets_alt_text_for_scraped_product_images_without_overwriting_manual_values():
+def test_normalizer_sets_alt_text_for_scraped_product_images_without_overwriting_manual_values(monkeypatch):
     product = Product.objects.create(
         name="LC Waikiki Basic T-Shirt",
         slug="lcw-basic-tshirt",
@@ -98,12 +98,23 @@ def test_normalizer_sets_alt_text_for_scraped_product_images_without_overwriting
         },
     )
 
-    ProductImage.objects.create(
-        product=product,
+    # Нормализатор пишет в галерею доменной модели (AccessoryProduct.gallery_images),
+    # а не в базовую ProductImage — domain_sync создаёт доменную строку автоматически
+    domain = product.domain_item
+    gallery = domain.gallery_images
+
+    gallery.create(
         image_url="https://example.com/existing.jpg",
         alt_text="Ручной alt",
         sort_order=0,
     )
+
+    # Нормализатор проверяет ручные ссылки HEAD-запросом и удаляет битые —
+    # в тесте сеть мокаем, иначе example.com отдаёт 404 и картинка удаляется
+    class _FakeResponse:
+        status_code = 200
+
+    monkeypatch.setattr("httpx.Client.head", lambda self, url: _FakeResponse())
 
     normalizer = CatalogNormalizer()
     normalizer._normalize_product_images(
@@ -114,8 +125,8 @@ def test_normalizer_sets_alt_text_for_scraped_product_images_without_overwriting
         ],
     )
 
-    existing = ProductImage.objects.get(product=product, image_url="https://example.com/existing.jpg")
-    created = ProductImage.objects.get(product=product, image_url="https://example.com/new.jpg")
+    existing = gallery.get(image_url="https://example.com/existing.jpg")
+    created = gallery.get(image_url="https://example.com/new.jpg")
 
     assert existing.alt_text == "Ручной alt"
     assert created.alt_text == "LC Waikiki Basic T-Shirt - Siyah - фото 2"

@@ -9,6 +9,7 @@ from apps.catalog.models import (
     Category,
     CategoryType,
     GlobalAttributeKey,
+    GlobalAttributeKeyTranslation,
     ProductAttributeValue,
 )
 
@@ -22,7 +23,8 @@ def _build_request():
 def test_available_attributes_excludes_single_value_and_non_facet_dynamic_attributes():
     from apps.catalog.views import FacetedModelViewSetMixin
 
-    category_type = CategoryType.objects.create(slug="accessories", name="Accessories")
+    # accessories может быть уже засеян миграциями
+    category_type, _ = CategoryType.objects.get_or_create(slug="accessories", defaults={"name": "Accessories"})
     category = Category.objects.create(
         name="Аксессуары",
         slug="test-accessories-facets",
@@ -48,9 +50,12 @@ def test_available_attributes_excludes_single_value_and_non_facet_dynamic_attrib
         is_active=True,
     )
 
-    key_material = GlobalAttributeKey.objects.create(slug="material", name="Материал")
-    key_case_material = GlobalAttributeKey.objects.create(slug="case-material", name="Материал корпуса")
-    key_accessory_type = GlobalAttributeKey.objects.create(slug="accessory-type", name="Тип аксессуара")
+    key_material, _ = GlobalAttributeKey.objects.get_or_create(slug="material")
+    GlobalAttributeKeyTranslation.objects.get_or_create(key_obj=key_material, locale="ru", defaults={"name": "Материал"})
+    key_case_material, _ = GlobalAttributeKey.objects.get_or_create(slug="case-material")
+    GlobalAttributeKeyTranslation.objects.get_or_create(key_obj=key_case_material, locale="ru", defaults={"name": "Материал корпуса"})
+    key_accessory_type, _ = GlobalAttributeKey.objects.get_or_create(slug="accessory-type")
+    GlobalAttributeKeyTranslation.objects.get_or_create(key_obj=key_accessory_type, locale="ru", defaults={"name": "Тип аксессуара"})
     content_type = ContentType.objects.get_for_model(AccessoryProduct)
 
     ProductAttributeValue.objects.create(

@@ -5612,7 +5612,9 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
             return file_url
         if obj.main_image:
             return _resolve_media_url(obj.main_image, request)
-        img = obj.gallery_images.filter(is_main=True).first() or obj.gallery_images.first()
+        # Не у всех доменных моделей есть gallery_images (Sports, AutoPart, Headwear...)
+        gallery = getattr(obj, "gallery_images", None)
+        img = (gallery.filter(is_main=True).first() or gallery.first()) if gallery is not None else None
         if img:
             file_url = _resolve_file_url(getattr(img, "image_file", None), request)
             if file_url:
@@ -5691,7 +5693,9 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
 
     def get_images(self, obj):
         from_context = self.context
-        imgs = list(obj.gallery_images.all())
+        # Не у всех доменных моделей есть gallery_images (Sports, AutoPart, Headwear...)
+        gallery = getattr(obj, "gallery_images", None)
+        imgs = list(gallery.all()) if gallery is not None else []
         image_serializer = self._image_serializer_class
         
         # Fallback to base product images if domain gallery is empty

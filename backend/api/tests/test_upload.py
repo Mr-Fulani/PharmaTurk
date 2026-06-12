@@ -53,4 +53,5 @@ class TempImageUploadTests(APITestCase):
             format="multipart",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("size", str(response.data.get("error", "")).lower())
+        # Сообщение на русском («Размер файла превышает 5 МБ») — проверяем лимит
+        self.assertIn("5 мб", str(response.data.get("error", "")).lower())

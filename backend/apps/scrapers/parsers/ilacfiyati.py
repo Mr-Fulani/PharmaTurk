@@ -260,10 +260,17 @@ class IlacFiyatiParser(BaseScraper):
 
         row = link.find_parent("tr")
         context = row.get_text(" ", strip=True) if row else link.parent.get_text(" ", strip=True)
+        # Цену берём только из числа непосредственно перед TL/₺ — normalize_price
+        # по всему тексту строки склеивала дозировку из названия с ценой
+        # («ASIVIRAL 400 MG 25 TABLET … 125,45 TL» → 40025125.45)
+        analog_price = None
+        price_match = re.search(r"(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(?:TL|₺)", context)
+        if price_match:
+            analog_price = normalize_price(price_match.group(1))
         analog = {
             "name": analog_name,
             "url": analog_url,
-            "price": normalize_price(context) if "TL" in context or "₺" in context else None,
+            "price": analog_price,
             "external_id": self._extract_external_id_from_url(analog_url),
             "source_tab": source_tab,
         }

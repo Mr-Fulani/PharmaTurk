@@ -1,7 +1,14 @@
 import pytest
 from rest_framework.test import APIRequestFactory
 
-from apps.catalog.models import Category, Service, ServicePortfolioItem, ServiceTranslation
+from apps.catalog.models import (
+    Category,
+    CategoryType,
+    Service,
+    ServicePortfolioItem,
+    ServicePortfolioMedia,
+    ServiceTranslation,
+)
 from apps.catalog.serializers import CategorySerializer
 
 
@@ -58,24 +65,37 @@ def test_category_save_persists_og_image_url_from_category_preview_when_blank():
 
 @pytest.mark.django_db
 def test_category_serializer_includes_service_portfolio_items():
+    # Портфолио отдаётся только для категорий услуг (тип uslugi)
+    uslugi_type, _ = CategoryType.objects.get_or_create(slug="uslugi", defaults={"name": "Услуги"})
     category = Category.objects.create(
         name="Ремонт",
         slug="repair-services",
+        category_type=uslugi_type,
     )
     service = Service.objects.create(
         name="Ремонт ванной",
         slug="bathroom-repair",
         category=category,
     )
-    ServicePortfolioItem.objects.create(
+    item = ServicePortfolioItem.objects.create(
         category=category,
         service=service,
         title="Капремонт ванной комнаты",
         result_summary="12 дней",
-        image_url="https://cdn.example.com/portfolio/bathroom.jpg",
-        before_image_url="https://cdn.example.com/portfolio/bathroom-before.jpg",
-        after_image_url="https://cdn.example.com/portfolio/bathroom-after.jpg",
         alt_text="Капремонт ванной комнаты",
+    )
+    # Картинки кейса живут в отдельной модели media_items с плашками до/после
+    ServicePortfolioMedia.objects.create(
+        portfolio_item=item,
+        badge="before",
+        media_url="https://cdn.example.com/portfolio/bathroom-before.jpg",
+        sort_order=0,
+    )
+    ServicePortfolioMedia.objects.create(
+        portfolio_item=item,
+        badge="after",
+        media_url="https://cdn.example.com/portfolio/bathroom-after.jpg",
+        sort_order=1,
     )
 
     data = CategorySerializer(category).data
@@ -83,15 +103,20 @@ def test_category_serializer_includes_service_portfolio_items():
     assert len(data["portfolio_items"]) == 1
     assert data["portfolio_items"][0]["title"] == "Капремонт ванной комнаты"
     assert data["portfolio_items"][0]["service_slug"] == "bathroom-repair"
-    assert data["portfolio_items"][0]["before_image_url"] == "https://cdn.example.com/portfolio/bathroom-before.jpg"
-    assert data["portfolio_items"][0]["after_image_url"] == "https://cdn.example.com/portfolio/bathroom-after.jpg"
+    media = data["portfolio_items"][0]["media_items"]
+    assert [(m["badge"], m["media_url"]) for m in media] == [
+        ("before", "https://cdn.example.com/portfolio/bathroom-before.jpg"),
+        ("after", "https://cdn.example.com/portfolio/bathroom-after.jpg"),
+    ]
 
 
 @pytest.mark.django_db
 def test_category_serializer_localizes_service_portfolio_items_for_english():
+    uslugi_type, _ = CategoryType.objects.get_or_create(slug="uslugi", defaults={"name": "Услуги"})
     category = Category.objects.create(
         name="Услуги",
         slug="services-root",
+        category_type=uslugi_type,
     )
     service = Service.objects.create(
         name="Миграционная консультация",

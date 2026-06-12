@@ -104,6 +104,8 @@ class TelegramIntegrationTests(APITestCase):
     def test_telegram_auth_new_user(self, mock_validate):
         """Test creating a new user through telegram auth"""
         mock_validate.return_value = True
+        # Аноним: авторизованному пользователю вью привязывает Telegram, а не создаёт аккаунт
+        self.client.force_authenticate(user=None)
         url = reverse('telegram-login')
         payload = {
             'id': '111222333',
@@ -164,7 +166,7 @@ class SocialAuthTests(APITestCase):
             'avatar_url': 'https://vk.com/photo.jpg',
         }
 
-    @patch('apps.users.views.PROVIDERS')
+    @patch('apps.users.social_auth.PROVIDERS')
     def test_google_auth_new_user(self, mock_providers):
         """Новый пользователь создаётся через Google OAuth."""
         mock_provider = MagicMock()
@@ -188,7 +190,7 @@ class SocialAuthTests(APITestCase):
         self.assertEqual(user.first_name, 'Google')
         self.assertTrue(user.is_verified)
 
-    @patch('apps.users.views.PROVIDERS')
+    @patch('apps.users.social_auth.PROVIDERS')
     def test_google_auth_existing_user_by_google_id(self, mock_providers):
         """Существующий пользователь с google_id просто логинится."""
         existing_user = User.objects.create_user(
@@ -212,7 +214,7 @@ class SocialAuthTests(APITestCase):
         # Не должен создать нового пользователя
         self.assertEqual(User.objects.filter(google_id='117890123456789').count(), 1)
 
-    @patch('apps.users.views.PROVIDERS')
+    @patch('apps.users.social_auth.PROVIDERS')
     def test_google_auth_existing_user_by_email(self, mock_providers):
         """Существующий пользователь с совпадающим email получает google_id."""
         existing = User.objects.create_user(
@@ -237,7 +239,7 @@ class SocialAuthTests(APITestCase):
         existing.refresh_from_db()
         self.assertEqual(existing.google_id, '117890123456789')
 
-    @patch('apps.users.views.PROVIDERS')
+    @patch('apps.users.social_auth.PROVIDERS')
     def test_vk_auth_new_user(self, mock_providers):
         """Новый пользователь создаётся через VK OAuth."""
         mock_provider = MagicMock()
@@ -266,7 +268,7 @@ class SocialAuthTests(APITestCase):
         }, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    @patch('apps.users.views.PROVIDERS')
+    @patch('apps.users.social_auth.PROVIDERS')
     def test_social_auth_provider_failure(self, mock_providers):
         """Если провайдер не смог получить данные (невалидный токен) — возвращает 400."""
         mock_provider = MagicMock()

@@ -19,6 +19,7 @@ from apps.catalog.models import (
     Brand,
     Category,
     GlobalAttributeKey,
+    GlobalAttributeKeyTranslation,
     HeadwearProduct,
     HeadwearVariant,
     IslamicClothingProduct,
@@ -207,10 +208,8 @@ def test_accessory_serializer_exposes_dynamic_attributes():
         currency="TRY",
         is_active=True,
     )
-    key = GlobalAttributeKey.objects.create(
-        slug=f"material-{uuid.uuid4().hex[:8]}",
-        name="Материал",
-    )
+    key = GlobalAttributeKey.objects.create(slug=f"material-{uuid.uuid4().hex[:8]}")
+    GlobalAttributeKeyTranslation.objects.create(key_obj=key, locale="ru", name="Материал")
     ProductAttributeValue.objects.create(
         content_type=ContentType.objects.get_for_model(AccessoryProduct),
         object_id=product.pk,
@@ -263,10 +262,8 @@ def test_remaining_product_serializers_expose_dynamic_attributes(
         is_active=True,
         **extra_fields,
     )
-    key = GlobalAttributeKey.objects.create(
-        slug=f"attribute-{suffix}",
-        name="Атрибут",
-    )
+    key = GlobalAttributeKey.objects.create(slug=f"attribute-{suffix}")
+    GlobalAttributeKeyTranslation.objects.create(key_obj=key, locale="ru", name="Атрибут")
     ProductAttributeValue.objects.create(
         content_type=ContentType.objects.get_for_model(product_model),
         object_id=product.pk,
@@ -326,7 +323,8 @@ def test_resolve_api_underwear_variant_slug_returns_all_variants():
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["product_type"] == "underwear"
-    assert response.data["canonical_path"] == f"/product/underwear/{product.slug}"
+    # canonical_path срезает префикс типа из слага (зеркало buildProductUrl на фронте)
+    assert response.data["canonical_path"] == f"/product/underwear/{product.slug.removeprefix('underwear-')}"
     payload = response.data["payload"]
     assert payload["slug"] == product.slug
     assert payload["active_variant_slug"] == first_variant.slug
@@ -336,12 +334,13 @@ def test_resolve_api_underwear_variant_slug_returns_all_variants():
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ("product_model", "variant_model", "slug_prefix", "product_type"),
+    ("product_model", "variant_model", "slug_prefix", "product_type", "product_extra"),
     [
-        (HeadwearProduct, HeadwearVariant, "headwear", "headwear"),
-        (IslamicClothingProduct, IslamicClothingVariant, "islamic", "islamic-clothing"),
-        (BookProduct, BookVariant, "book", "books"),
-        (PerfumeryProduct, PerfumeryVariant, "perfume", "perfumery"),
+        (HeadwearProduct, HeadwearVariant, "headwear", "headwear", {}),
+        (IslamicClothingProduct, IslamicClothingVariant, "islamic", "islamic-clothing", {}),
+        (BookProduct, BookVariant, "book", "books", {}),
+        # gender у парфюмерии стал NOT NULL
+        (PerfumeryProduct, PerfumeryVariant, "perfume", "perfumery", {"gender": "unisex"}),
     ],
 )
 def test_resolve_api_variant_slug_redirect_contract_for_variant_domains(
@@ -349,6 +348,7 @@ def test_resolve_api_variant_slug_redirect_contract_for_variant_domains(
     variant_model,
     slug_prefix,
     product_type,
+    product_extra,
 ):
     from rest_framework.test import APIClient
 
@@ -362,6 +362,7 @@ def test_resolve_api_variant_slug_redirect_contract_for_variant_domains(
         price=199,
         currency="TRY",
         is_active=True,
+        **product_extra,
     )
 
     variant_kwargs = {
