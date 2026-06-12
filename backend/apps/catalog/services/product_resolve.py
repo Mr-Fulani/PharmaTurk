@@ -26,10 +26,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.core.cache import cache
 from django.http import Http404, HttpRequest
 from rest_framework.request import Request as DrfRequest
 from rest_framework.response import Response
 from rest_framework import status
+
+# Кэш slug → source_key (какой ViewSet отдал товар). Только положительные
+# результаты; при смене типа кэш протухает по TTL, а до того отрабатывает
+# fallback на полный перебор (см. resolve_product_payload).
+RESOLVE_CACHE_TTL = 3600
+RESOLVE_CACHE_PREFIX = "resolve_src:v1:"
 
 
 def _wsgi_request(request: HttpRequest | DrfRequest) -> HttpRequest:
@@ -170,18 +177,81 @@ def _domain_viewsets_order():
     ]
 
 
+def _viewset_by_source_key() -> dict[str, type]:
+    """source_key → ViewSet, для диспатча по закэшированному источнику."""
+    from apps.catalog.views import ProductViewSet, ServiceViewSet
+
+    mapping: dict[str, type] = {key: cls for cls, key in _domain_viewsets_order()}
+    mapping["domain_service"] = ServiceViewSet
+    mapping["generic_product"] = ProductViewSet
+    return mapping
+
+
+def _domain_entry_by_pt() -> dict[str, tuple[type, str]]:
+    """Нормализованный product_type → (ViewSet, source_key).
+
+    source_key доменов однозначно отображается в тип: domain_auto_parts → auto-parts.
+    """
+    return {
+        key.removeprefix("domain_").replace("_", "-"): (cls, key)
+        for cls, key in _domain_viewsets_order()
+    }
+
+
 def resolve_product_payload(request: HttpRequest | DrfRequest, slug: str) -> tuple[dict, str, str] | None:
     """
     Возвращает (payload, source, product_type_normalized) или None.
 
     product_type_normalized — дефисы, для canonical_path и фронта.
+
+    Быстрый путь: источник берётся из кэша или определяется одним индексированным
+    запросом по Product.slug — вместо последовательного перебора ~20 ViewSet
+    (горячий путь SSR каждой карточки). Полный перебор остаётся фолбэком для
+    слагов без Product-строки (вариантные слаги доменных моделей).
     """
     if not slug or not str(slug).strip():
         return None
 
     slug = str(slug).strip()
 
+    cache_key = RESOLVE_CACHE_PREFIX + slug
+    cached_source = cache.get(cache_key)
+    if cached_source:
+        view_cls = _viewset_by_source_key().get(cached_source)
+        if view_cls is not None:
+            data = _dispatch_retrieve(view_cls, request, slug)
+            if data is not None:
+                pt = "uslugi" if cached_source == "domain_service" else _normalize_pt(data.get("product_type"))
+                return data, cached_source, pt
+        # Кэш протух (товар удалён/сменил тип) — идём обычным путём
+
+    resolved = _resolve_uncached(request, slug)
+    if resolved is not None:
+        cache.set(cache_key, resolved[1], RESOLVE_CACHE_TTL)
+    return resolved
+
+
+def _resolve_uncached(request: HttpRequest | DrfRequest, slug: str) -> tuple[dict, str, str] | None:
+    from apps.catalog.models import Product
     from apps.catalog.views import ProductViewSet, ServiceViewSet
+
+    # 0) Быстрый путь: тип по slug одним запросом → диспатч сразу в нужный ViewSet.
+    #    Доменные товары имеют теневую Product-строку с тем же slug, поэтому
+    #    запрос покрывает и generic, и доменные карточки.
+    pt_raw = (
+        Product.objects.filter(slug=slug, is_active=True)
+        .values_list("product_type", flat=True)
+        .first()
+    )
+    if pt_raw is not None:
+        entry = _domain_entry_by_pt().get(_normalize_pt(pt_raw))
+        if entry is not None:
+            data = _dispatch_retrieve(entry[0], request, slug)
+            if data is not None:
+                return data, entry[1], _normalize_pt(data.get("product_type"))
+        data = _dispatch_retrieve(ProductViewSet, request, slug)
+        if data is not None:
+            return data, "generic_product", _normalize_pt(data.get("product_type"))
 
     # 1) Услуги — отдельная модель, не пересекается со slug'ами товаров.
     data = _dispatch_retrieve(ServiceViewSet, request, slug)

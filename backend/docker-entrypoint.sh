@@ -20,10 +20,9 @@ poetry run python -c "import weasyprint" 2>/dev/null || {
     poetry run pip install weasyprint -q && echo "✅ weasyprint установлен" || echo "⚠️  weasyprint не удалось установить (PDF-чеки будут недоступны)"
 }
 
-# Очистка кэша Django
-echo "🧹 Очищаем кэш Django..."
-poetry run python manage.py clear_cache 2>/dev/null || true
-echo "✅ Кэш Django очищен"
+# Кэш Django при старте НЕ чистим: в Redis живут 30-дневные ресайзы картинок
+# (proxy_media) — их вайп давал всплеск латентности после каждого деплоя.
+# При несовместимых изменениях формата кэша версионировать ключи (v1 → v2).
 
 # Применяем миграции (makemigrations должен выполняться ВРУЧНУЮ разработчиком, а не при старте!)
 echo "Применяем миграции..."
@@ -62,9 +61,13 @@ if [ "$USE_RUNSERVER" = "1" ]; then
 else
     echo "Запускаем gunicorn..."
     WORKERS="${GUNICORN_WORKERS:-4}"
+    THREADS="${GUNICORN_THREADS:-8}"
+    # gthread: длинные ответы (proxy_media: стриминг видео, ресайз) не занимают
+    # целый sync-воркер — иначе 4 зрителя видео блокировали весь API
+    GUNICORN_ARGS="--bind 0.0.0.0:8000 --workers $WORKERS --worker-class gthread --threads $THREADS --timeout 60"
     if [ "$DJANGO_DEBUG" = "1" ] || [ "$DJANGO_DEBUG" = "True" ]; then
-        exec poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers "$WORKERS" --reload
+        exec poetry run gunicorn config.wsgi:application $GUNICORN_ARGS --reload
     else
-        exec poetry run gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers "$WORKERS"
+        exec poetry run gunicorn config.wsgi:application $GUNICORN_ARGS
     fi
 fi

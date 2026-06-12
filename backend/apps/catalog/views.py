@@ -3164,6 +3164,29 @@ def proxy_media(request):
     if not r2_public:
         return JsonResponse({'error': 'R2 proxy not configured'}, status=503)
 
+    import hashlib
+    from django.core.cache import cache
+
+    # Ресайз-кэш проверяем ДО resolve_existing_media_storage_key (она ходит в R2
+    # за existence-проверками) — ключ от запрошенного пути, а не от resolved.
+    max_w_raw = request.GET.get('max_width') or request.GET.get('w')
+    max_w_int = None
+    if max_w_raw:
+        try:
+            max_w_int = max(64, min(int(max_w_raw), 800))
+        except (TypeError, ValueError):
+            max_w_int = None
+
+    cache_key_mw = f"r2mw_q_{hashlib.md5(path.encode()).hexdigest()}_{max_w_int}" if max_w_int else None
+    if cache_key_mw:
+        webp_cached = cache.get(cache_key_mw)
+        if webp_cached is not None:
+            resp = HttpResponse(webp_cached, content_type='image/webp')
+            resp['Content-Length'] = str(len(webp_cached))
+            resp['Cache-Control'] = 'public, max-age=2592000, immutable'
+            resp['Vary'] = 'Accept'
+            return resp
+
     from apps.catalog.utils.media_path import iter_storage_path_candidates, resolve_existing_media_storage_key
 
     resolved_path = resolve_existing_media_storage_key(path)
@@ -3184,47 +3207,36 @@ def proxy_media(request):
     try:
         from PIL import Image, ImageOps
         import io
-        import hashlib
-        from django.core.cache import cache
-        
+
         ext = resolved_path.rsplit('.', 1)[-1].lower() if '.' in resolved_path else ''
         content_type = _PROXY_MEDIA_TYPES.get(f'.{ext}', 'application/octet-stream')
         # Ключи в /videos/ без расширения (.mp4) — иначе octet-stream, Safari часто не запускает воспроизведение.
         if content_type == 'application/octet-stream' and '/videos/' in resolved_path.lower():
             content_type = 'video/mp4'
 
-        # Уменьшение изображений для карточек в каталоге (?max_width= / ?w=, только jpeg/png/webp)
-        max_w_raw = request.GET.get('max_width') or request.GET.get('w')
-        max_w_int = None
-        if max_w_raw:
-            try:
-                max_w_int = max(64, min(int(max_w_raw), 800))
-            except (TypeError, ValueError):
-                max_w_int = None
-
+        # Уменьшение изображений для карточек в каталоге (?max_width= / ?w=, только jpeg/png/webp).
+        # Кэш проверен выше, до обращения к R2; здесь только генерация при промахе.
         if max_w_int and content_type in ('image/jpeg', 'image/png', 'image/webp'):
-            cache_key_mw = f"r2mw_{hashlib.md5(resolved_path.encode()).hexdigest()}_{max_w_int}"
-            webp_resized = cache.get(cache_key_mw)
-            if webp_resized is None:
-                try:
-                    with default_storage.open(resolved_path, 'rb') as rf:
-                        img = Image.open(rf)
-                        img = ImageOps.exif_transpose(img)
-                        if img.mode in ('RGBA', 'P', 'LA'):
-                            if img.mode == 'P':
-                                img = img.convert('RGBA')
-                        else:
-                            if img.mode != 'RGB':
-                                img = img.convert('RGB')
-                        img.thumbnail((max_w_int, max_w_int * 4), Image.Resampling.LANCZOS)
-                        out = io.BytesIO()
-                        img.save(out, format='WEBP', quality=80, method=2)
-                        webp_resized = out.getvalue()
-                    if len(webp_resized) < 5 * 1024 * 1024:
-                        cache.set(cache_key_mw, webp_resized, 30 * 86400)
-                except Exception as resize_err:
-                    logger.warning('proxy_media max_width для %s: %s', resolved_path, resize_err)
-                    webp_resized = None
+            webp_resized = None
+            try:
+                with default_storage.open(resolved_path, 'rb') as rf:
+                    img = Image.open(rf)
+                    img = ImageOps.exif_transpose(img)
+                    if img.mode in ('RGBA', 'P', 'LA'):
+                        if img.mode == 'P':
+                            img = img.convert('RGBA')
+                    else:
+                        if img.mode != 'RGB':
+                            img = img.convert('RGB')
+                    img.thumbnail((max_w_int, max_w_int * 4), Image.Resampling.LANCZOS)
+                    out = io.BytesIO()
+                    img.save(out, format='WEBP', quality=80, method=2)
+                    webp_resized = out.getvalue()
+                if len(webp_resized) < 5 * 1024 * 1024:
+                    cache.set(cache_key_mw, webp_resized, 30 * 86400)
+            except Exception as resize_err:
+                logger.warning('proxy_media max_width для %s: %s', resolved_path, resize_err)
+                webp_resized = None
             if webp_resized is not None:
                 resp = HttpResponse(webp_resized, content_type='image/webp')
                 resp['Content-Length'] = str(len(webp_resized))
