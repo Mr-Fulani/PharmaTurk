@@ -325,7 +325,7 @@ def delete_service_image_files(sender, instance, **kwargs):
 @receiver(pre_save, sender=ProductImage)
 def auto_download_product_image_from_url(sender, instance, **kwargs):
     """Автоматически скачивать изображения из URL в файлы ProductImage."""
-    if instance.image_url and not instance.image_file:
+    if instance.image_url and (not instance.image_file or _file_missing_from_storage(instance.image_file)):
         if not is_internal_storage_url(instance.image_url):
             file_obj = _download_url_to_file(instance.image_url)
             if file_obj:
@@ -337,7 +337,7 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
     """Реализация автоскачивания для любой модели."""
     url = getattr(instance, url_field, None)
     file_val = getattr(instance, field_name, None)
-    if url and not file_val:
+    if url and (not file_val or _file_missing_from_storage(file_val)):
         if not is_internal_storage_url(url):
             file_obj = _download_url_to_file(url)
             if file_obj:
@@ -600,10 +600,10 @@ def auto_download_service_media(sender, instance, **kwargs):
             pass
 
     # Автоскачивание
-    if instance.main_image and not instance.main_image_file:
+    if instance.main_image and (not instance.main_image_file or _file_missing_from_storage(instance.main_image_file)):
         _auto_download_impl(instance, "main_image_file", "main_image")
-        
-    if instance.video_url and not instance.main_video_file:
+
+    if instance.video_url and (not instance.main_video_file or _file_missing_from_storage(instance.main_video_file)):
         _auto_download_impl(instance, "main_video_file", "video_url")
 
 
@@ -1021,7 +1021,7 @@ def auto_download_banner_media_from_url(sender, instance, **kwargs):
             delete_file_from_storage(old.image)
             logger.info("Deleted old BannerMedia.image from R2 (pk=%s)", instance.pk)
 
-    if instance.image_url and not (instance.image and instance.image.name):
+    if instance.image_url and (not (instance.image and instance.image.name) or _file_missing_from_storage(instance.image)):
         if not is_internal_storage_url(instance.image_url):
             file_obj = _download_url_to_file(instance.image_url)
             if file_obj:
@@ -1251,14 +1251,14 @@ def auto_download_product_media_from_url(sender, instance, **kwargs):
         except Product.DoesNotExist:
             pass
 
-    if instance.main_image and not instance.main_image_file:
+    if instance.main_image and (not instance.main_image_file or _file_missing_from_storage(instance.main_image_file)):
         if not is_internal_storage_url(instance.main_image):
             file_obj = _download_url_to_file(instance.main_image)
             if file_obj:
                 _save_downloaded_file_to_storage(instance, "main_image_file", file_obj)
                 logger.info("Auto-downloaded main_image URL to main_image_file for Product %s", instance.id or "new")
 
-    if instance.video_url and not instance.main_video_file and not is_internal_storage_url(instance.video_url):
+    if instance.video_url and (not instance.main_video_file or _file_missing_from_storage(instance.main_video_file)) and not is_internal_storage_url(instance.video_url):
         file_obj = _download_url_to_file(instance.video_url)
         if file_obj:
             _save_downloaded_file_to_storage(instance, "main_video_file", file_obj)
@@ -1285,14 +1285,14 @@ def auto_download_jewelry_product_media_from_url(sender, instance, **kwargs):
         except JewelryProduct.DoesNotExist:
             pass
 
-    if instance.main_image and not instance.main_image_file:
+    if instance.main_image and (not instance.main_image_file or _file_missing_from_storage(instance.main_image_file)):
         if not is_internal_storage_url(instance.main_image):
             file_obj = _download_url_to_file(instance.main_image)
             if file_obj:
                 _save_downloaded_file_to_storage(instance, "main_image_file", file_obj)
                 logger.info("Auto-downloaded main_image URL to main_image_file for JewelryProduct %s", instance.id or "new")
 
-    if instance.video_url and not instance.main_video_file:
+    if instance.video_url and (not instance.main_video_file or _file_missing_from_storage(instance.main_video_file)):
         if not is_internal_storage_url(instance.video_url):
             file_obj = _download_url_to_file(instance.video_url)
             if file_obj:
@@ -1317,14 +1317,14 @@ def auto_download_clothing_product_media_from_url(sender, instance, **kwargs):
         except ClothingProduct.DoesNotExist:
             pass
 
-    if instance.main_image and not instance.main_image_file:
+    if instance.main_image and (not instance.main_image_file or _file_missing_from_storage(instance.main_image_file)):
         if not is_internal_storage_url(instance.main_image):
             file_obj = _download_url_to_file(instance.main_image)
             if file_obj:
                 _save_downloaded_file_to_storage(instance, "main_image_file", file_obj)
                 logger.info("Auto-downloaded main_image URL to main_image_file for ClothingProduct %s", instance.id or "new")
 
-    if instance.video_url and not instance.main_video_file:
+    if instance.video_url and (not instance.main_video_file or _file_missing_from_storage(instance.main_video_file)):
         if not is_internal_storage_url(instance.video_url):
             file_obj = _download_url_to_file(instance.video_url)
             if file_obj:
@@ -1336,7 +1336,7 @@ def _auto_download_image_url_to_file(instance, url_attr="image_url", file_attr="
     """Общая логика: скачать по URL и записать в file-поле (через default_storage), если URL внешний и file пустой."""
     url = getattr(instance, url_attr, None)
     file_field = getattr(instance, file_attr, None)
-    if not url or (file_field and file_field.name):
+    if not url or (file_field and file_field.name and not _file_missing_from_storage(file_field)):
         return
 
     if not is_internal_storage_url(url):

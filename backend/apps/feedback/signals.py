@@ -18,6 +18,19 @@ def _delete_file_from_storage(file_field):
             logger.warning("Failed to delete file %s: %s", getattr(file_field, "name", ""), e)
 
 
+def _file_missing_from_storage(file_field):
+    try:
+        if not getattr(file_field, '_committed', True):
+            return False
+        name = getattr(file_field, 'name', None)
+        if not name:
+            return False
+        from django.core.files.storage import default_storage
+        return not default_storage.exists(name)
+    except Exception:
+        return False
+
+
 def _is_internal_url(url: str) -> bool:
     """Проверить что URL уже из нашего CDN/R2 (не нужно скачивать)."""
     if not url:
@@ -79,8 +92,8 @@ def auto_download_testimonial_media(sender, instance, **kwargs):
     - Тип 'video_file': скачивается напрямую если video_url — прямая ссылка
     """
     if instance.media_type == "image":
-        # Файл уже есть — ничего не делаем
-        if instance.image and instance.image.name:
+        # Файл уже есть и существует в хранилище — ничего не делаем
+        if instance.image and instance.image.name and not _file_missing_from_storage(instance.image):
             return
         # Ищем URL — это может быть video_url (в API иногда передаётся так)
         candidate_url = getattr(instance, "video_url", None) or ""
@@ -90,7 +103,7 @@ def auto_download_testimonial_media(sender, instance, **kwargs):
                 _download_and_save(instance, candidate_url, "image", "TestimonialMedia.image")
 
     elif instance.media_type in ("video", "video_file"):
-        if instance.video_file and instance.video_file.name:
+        if instance.video_file and instance.video_file.name and not _file_missing_from_storage(instance.video_file):
             return
         url = getattr(instance, "video_url", None) or ""
         if url and not _is_internal_url(url):
