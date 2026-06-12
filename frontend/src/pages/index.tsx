@@ -593,24 +593,14 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       // Оставляем выключенным по умолчанию
     }
 
-    // Загружаем все бренды из API с пагинацией
+    // Все бренды одним запросом (max_page_size=1000) вместо серийного обхода страниц
     let allBrands: Brand[] = []
-    let nextUrl: string | null = getInternalApiUrl('catalog/brands')
-
-    // Собираем все бренды (обходим пагинацию)
-    while (nextUrl) {
-      try {
-        const brandsRes = await axios.get(nextUrl)
-        const data = brandsRes.data
-        const pageBrands = Array.isArray(data) ? data : (data.results || [])
-        allBrands = [...allBrands, ...pageBrands]
-
-        // Проверяем наличие следующей страницы
-        nextUrl = data.next || null
-      } catch (err) {
-        console.error('Error loading brands page:', err)
-        break
-      }
+    try {
+      const brandsRes = await axios.get(getInternalApiUrl('catalog/brands?page_size=1000'), { timeout: 5000 })
+      const data = brandsRes.data
+      allBrands = Array.isArray(data) ? data : (data.results || [])
+    } catch (err) {
+      console.error('Error loading brands:', err)
     }
 
     // Сортировка: сначала бренды с товарами (по убыванию products_count), затем по медиа, по имени
@@ -629,21 +619,14 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
     console.log('Loaded popular brands for homepage:', brands.map((b: Brand) => `${b.name} (${b.products_count ?? 0} товаров, медиа: ${!!b.card_media_url})`))
 
-    // Загружаем категории (top-level) с пагинацией
+    // Категории (top-level) одним запросом
     let allCategories: CategoryCard[] = []
-    let nextCategoryUrl: string | null = getInternalApiUrl('catalog/categories?top_level=true&page_size=200')
-
-    while (nextCategoryUrl) {
-      try {
-        const categoriesRes = await axios.get(nextCategoryUrl)
-        const data = categoriesRes.data
-        const pageCategories = Array.isArray(data) ? data : (data.results || [])
-        allCategories = [...allCategories, ...pageCategories]
-        nextCategoryUrl = data.next || null
-      } catch (err) {
-        console.error('Error loading categories page:', err)
-        break
-      }
+    try {
+      const categoriesRes = await axios.get(getInternalApiUrl('catalog/categories?top_level=true&page_size=1000'), { timeout: 5000 })
+      const data = categoriesRes.data
+      allCategories = Array.isArray(data) ? data : (data.results || [])
+    } catch (err) {
+      console.error('Error loading categories:', err)
     }
 
     const categories = allCategories.filter((category) => {
