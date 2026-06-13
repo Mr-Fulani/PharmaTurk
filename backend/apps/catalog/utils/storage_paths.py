@@ -69,6 +69,79 @@ def get_product_image_upload_path(instance, filename):
     return f"products/{base}/gallery/{media_folder}/{readable_name}"
 
 
+def _domain_type_slug(product) -> str:
+    """Slug типа доменного товара: категория → product_type/_domain_product_type → other."""
+    if product is None:
+        return "other"
+    cat = _normalize_slug(getattr(getattr(product, "category", None), "slug", None), "")
+    pt = getattr(product, "product_type", None) or getattr(product, "_domain_product_type", None) or ""
+    pt = str(pt).replace("_", "-")
+    return (cat or pt or "other").lower()
+
+
+def get_domain_main_upload_path(instance, filename):
+    """*Product.main_image_file / main_video_file → products/{type}/main/{images|videos}/{читаемое}."""
+    type_slug = _domain_type_slug(instance)
+    media_folder = _media_folder_from_filename(filename)
+    readable = _build_readable_filename(
+        [type_slug, getattr(instance, "slug", None), getattr(instance, "name", None)],
+        filename, "product-main",
+    )
+    return f"products/{type_slug}/main/{media_folder}/{readable}"
+
+
+def get_domain_variant_main_upload_path(instance, filename):
+    """*Variant.main_image_file / main_video_file → products/{type}/variants/main/{images|videos}/{читаемое}."""
+    product = getattr(instance, "product", None)
+    type_slug = _domain_type_slug(product)
+    media_folder = _media_folder_from_filename(filename)
+    readable = _build_readable_filename(
+        [
+            type_slug,
+            getattr(product, "slug", None) if product else None,
+            getattr(instance, "color", None) or getattr(instance, "name", None),
+            "variant",
+        ],
+        filename, "variant-main",
+    )
+    return f"products/{type_slug}/variants/main/{media_folder}/{readable}"
+
+
+def get_domain_gallery_upload_path(instance, filename):
+    """*ProductImage.image_file → products/{type}/gallery/{images|videos}/{читаемое}."""
+    product = getattr(instance, "product", None)
+    type_slug = _domain_type_slug(product)
+    media_folder = _media_folder_from_filename(filename)
+    readable = _build_readable_filename(
+        [
+            type_slug,
+            getattr(product, "slug", None) if product else None,
+            getattr(product, "name", None) if product else None,
+            "gallery",
+        ],
+        filename, "product-gallery",
+    )
+    return f"products/{type_slug}/gallery/{media_folder}/{readable}"
+
+
+def get_domain_variant_gallery_upload_path(instance, filename):
+    """*VariantImage.image_file → products/{type}/variants/gallery/{images|videos}/{читаемое}."""
+    variant = getattr(instance, "variant", None)
+    product = getattr(variant, "product", None) if variant else None
+    type_slug = _domain_type_slug(product)
+    media_folder = _media_folder_from_filename(filename)
+    readable = _build_readable_filename(
+        [
+            type_slug,
+            getattr(product, "slug", None) if product else None,
+            getattr(variant, "color", None) if variant else None,
+            "variant-gallery",
+        ],
+        filename, "variant-gallery",
+    )
+    return f"products/{type_slug}/variants/gallery/{media_folder}/{readable}"
+
+
 def get_book_product_gallery_upload_path(instance, filename):
     """upload_to для файлов галереи книги (изображение или видео), единая иерархия images/videos/gifs."""
     product = getattr(instance, "product", None)

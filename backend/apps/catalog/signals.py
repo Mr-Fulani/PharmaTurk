@@ -1350,3 +1350,37 @@ def _auto_download_image_url_to_file(instance, url_attr="image_url", file_attr="
         if file_obj:
             _save_downloaded_file_to_storage(instance, file_attr, file_obj)
             logger.info(f"{log_label} {instance.id or 'new'}")
+
+
+# ── Автоскачивание main_image → main_image_file для ВСЕХ доменных моделей ──────
+# Раньше сигнал был только у Service и галерей (*Image). Главные изображения
+# доменных товаров и вариантов (Shoe, Clothing, Headwear, ...) в R2 не качались —
+# из-за этого парсерные main_image оставались внешними ссылками.
+
+def _auto_download_main_image(sender, instance, **kwargs):
+    """pre_save: скачать main_image (URL) → main_image_file (R2), если файла нет."""
+    _auto_download_impl(instance, "main_image_file", "main_image")
+
+
+def _connect_main_image_auto_download():
+    """Подключить _auto_download_main_image ко всем catalog-моделям с парой
+    main_image (URL) + main_image_file (File). Идемпотентно (dispatch_uid).
+
+    Исключаем модели со своим bespoke-обработчиком main_image, чтобы не качать
+    дважды: Product, JewelryProduct, ClothingProduct, Service."""
+    from django.apps import apps as django_apps
+
+    skip = {"catalog.product", "catalog.jewelryproduct", "catalog.clothingproduct", "catalog.service"}
+    for model in django_apps.get_app_config("catalog").get_models():
+        if model._meta.label_lower in skip:
+            continue
+        field_names = {f.name for f in model._meta.get_fields()}
+        if "main_image" in field_names and "main_image_file" in field_names:
+            pre_save.connect(
+                _auto_download_main_image,
+                sender=model,
+                dispatch_uid=f"auto_dl_main_image_{model._meta.label_lower}",
+            )
+
+
+_connect_main_image_auto_download()
