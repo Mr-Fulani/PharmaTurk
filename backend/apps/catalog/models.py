@@ -3721,6 +3721,7 @@ class ServicePortfolioMedia(models.Model):
     media_file = models.FileField(
         _("Файл"),
         upload_to=get_service_portfolio_media_upload_path,
+        max_length=500,
         null=True,
         blank=True,
         help_text=_("Изображение, GIF или видео.")
