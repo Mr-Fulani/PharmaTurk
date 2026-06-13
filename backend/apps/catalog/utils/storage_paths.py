@@ -15,7 +15,9 @@ def _normalize_slug(value: str | None, fallback: str) -> str:
 
 def _build_readable_filename(parts: list[str], filename: str, fallback: str = "media") -> str:
     ext = os.path.splitext(str(filename).split("?")[0])[1].lower() or ".jpg"
-    base = "-".join(part for part in (slugify(p).strip("-") for p in parts) if part)
+    # slugify(None) у Django даёт "none" — поэтому пустые части отсекаем ДО slugify,
+    # иначе в имя попадает мусорное "none" (badge/slug/цвет, которых нет).
+    base = "-".join(part for part in (slugify(p or "").strip("-") for p in parts) if part)
     base = (base or fallback).strip("-")[:160]
     suffix = uuid.uuid4().hex[:10]
     return f"{base}-{suffix}{ext}"
