@@ -54,6 +54,91 @@ def test_repeat_scrape_preserves_semantic_fields_but_updates_price_and_stock():
 
 
 @pytest.mark.django_db
+def test_repeat_scrape_preserves_ai_seo_meta_and_external_data():
+    """Повторный парс не перезатирает AI-обработку: SEO/мета, RU-перевод, external_data.
+    Даже если парсер приносит meta_* в attrs, заполняются только пустые поля."""
+    service = ScraperIntegrationService()
+    product = Product.objects.create(
+        name="AI Card",
+        slug="ai-card-seo",
+        description="AI description",
+        product_type="",
+        price=100,
+        currency="TRY",
+        external_id="ai-seo-1",
+        seo_title="AI SEO title",
+        seo_description="AI SEO description",
+        keywords=["ai", "kw"],
+        og_image_url="https://cdn.mudaroba.com/ai-og.jpg",
+        external_data={"ai_enriched": True, "seo_translations": {"en": {"meta_title": "AI EN"}}},
+    )
+    product.translations.create(locale="ru", meta_title="AI RU title", meta_description="AI RU descr")
+
+    changed = service._update_product_attributes(
+        product,
+        {
+            "meta_title": "Parser title",
+            "meta_description": "Parser descr",
+            "meta_keywords": "parser, kw",
+            "og_image_url": "https://parser.example/og.jpg",
+            "og_title": "Parser OG",
+        },
+    )
+    product.save()
+    product.refresh_from_db()
+    ru = product.translations.get(locale="ru")
+
+    # AI/ручные витринные поля парсер не трогает
+    assert product.seo_title == "AI SEO title"
+    assert product.seo_description == "AI SEO description"
+    assert product.keywords == ["ai", "kw"]
+    assert product.og_image_url == "https://cdn.mudaroba.com/ai-og.jpg"
+    assert ru.meta_title == "AI RU title"
+    assert ru.meta_description == "AI RU descr"
+    # external_data AI-ключи сохранены; source-OG складывается отдельно для справки AI
+    assert product.external_data.get("ai_enriched") is True
+    assert product.external_data.get("seo_translations") == {"en": {"meta_title": "AI EN"}}
+    assert product.external_data.get("seo_data", {}).get("source_og_title") == "Parser OG"
+    assert changed is True
+
+
+@pytest.mark.django_db
+def test_repeat_scrape_preserves_existing_main_image():
+    """Повторный парс не подменяет уже заданное главное фото."""
+    service = ScraperIntegrationService()
+    product = Product.objects.create(
+        name="With Main Image",
+        slug="with-main-image",
+        description="desc",
+        product_type="",
+        price=100,
+        currency="TRY",
+        external_id="main-img-1",
+        main_image="https://cdn.mudaroba.com/products/manual/main.jpg",
+        external_data={},
+    )
+
+    scraped = ScrapedProduct(
+        name="Parser",
+        description="",
+        price=120,
+        currency="TRY",
+        url="https://example.com/p",
+        external_id=product.external_id,
+        is_available=True,
+        source="lcw",
+        images=["https://img-lcwaikiki.mncdn.com/parser-main.jpg"],
+        attributes={},
+    )
+
+    service._update_existing_product(None, scraped, product)
+    product.refresh_from_db()
+
+    assert product.main_image == "https://cdn.mudaroba.com/products/manual/main.jpg"
+    assert float(product.price) == 120  # цена обновилась
+
+
+@pytest.mark.django_db
 def test_repeat_scrape_does_not_overwrite_existing_domain_gender_and_size():
     service = ScraperIntegrationService()
     category, product_type = resolve_category_and_product_type("Kep Şapka")

@@ -62,7 +62,6 @@ from apps.catalog.models import (
     ProductAttributeValue,
 )
 from apps.catalog.attribute_specs import extract_dynamic_attribute_candidates
-from apps.catalog.seo_defaults import resolve_book_seo_value
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
 from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
 import datetime
@@ -1650,20 +1649,6 @@ class ScraperIntegrationService:
             score += 0.1
 
         return score
-
-    def _contains_cyrillic(self, value: str) -> bool:
-        return bool(re.search("[а-яА-Я]", value or ""))
-
-    def _is_ai_content_ready(self, product: Product) -> bool:
-        has_description = bool((product.description or "").strip())
-        meta_title = (resolve_book_seo_value(product, "meta_title", lang="en") or "").strip()
-        meta_description = (resolve_book_seo_value(product, "meta_description", lang="en") or "").strip()
-        meta_keywords = (resolve_book_seo_value(product, "meta_keywords", lang="en") or "").strip()
-        if not meta_title or not meta_description or not meta_keywords:
-            return False
-        if self._contains_cyrillic(meta_title) or self._contains_cyrillic(meta_description):
-            return False
-        return has_description
 
     def _is_ai_enabled_for_session(
         self,
