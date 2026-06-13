@@ -3667,8 +3667,11 @@ class ServicePortfolioItem(models.Model):
     category = models.ForeignKey(
         Category,
         on_delete=models.CASCADE,
+        null=True,
+        blank=True,
         related_name="service_portfolio_items",
         verbose_name=_("Категория услуг"),
+        help_text=_("Если не указана, подтягивается из связанной услуги при сохранении."),
     )
     service = models.ForeignKey(
         Service,
@@ -3713,8 +3716,17 @@ class ServicePortfolioItem(models.Model):
             models.Index(fields=["service", "is_active"]),
         ]
 
+    def save(self, *args, **kwargs):
+        # Кейс часто заводят под услугой (инлайн в админке услуги), где задаётся
+        # только service. Категория нужна works-странице — подтягиваем её из услуги.
+        if not self.category_id and self.service_id:
+            service_category_id = getattr(self.service, "category_id", None)
+            if service_category_id:
+                self.category_id = service_category_id
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return self.title or f"Portfolio for {self.category.name}"
+        return self.title or f"Portfolio for {self.category.name if self.category_id else self.service}"
 
 
 class ServicePortfolioMedia(models.Model):
