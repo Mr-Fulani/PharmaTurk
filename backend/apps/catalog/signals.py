@@ -1094,12 +1094,18 @@ def _download_url_to_file(url):
     import os
 
     try:
-        response = requests.get(url, stream=True, timeout=10)
+        # User-Agent обязателен: некоторые CDN (img-lcwaikiki.mncdn.com) отдают
+        # 422 на запросы без него — из-за этого автоскачивание молча не работало.
+        response = requests.get(
+            url, stream=True, timeout=10,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; Mudaroba/1.0)"},
+        )
         if response.status_code == 200:
             filename = os.path.basename(urlparse(url).path)
             if not filename:
                 filename = "image.jpg"
             return ContentFile(response.content, name=filename)
+        logger.warning("HTTP %s downloading image from %s", response.status_code, url)
     except Exception as e:
         logger.warning(f"Failed to download image from {url}: {e}")
     return None
