@@ -954,6 +954,7 @@ class AbstractDomainProduct(models.Model):
     main_image_file = models.ImageField(
         _("Главное изображение (файл)"),
         upload_to=get_product_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -966,6 +967,7 @@ class AbstractDomainProduct(models.Model):
     main_video_file = models.FileField(
         _("Главное видео (файл)"),
         upload_to=get_product_upload_path,
+        max_length=500,
         blank=True,
         null=True,
         validators=[
@@ -1437,6 +1439,7 @@ class Product(models.Model):
     main_image_file = models.ImageField(
         _("Главное изображение (файл)"),
         upload_to=get_product_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -1449,6 +1452,7 @@ class Product(models.Model):
     main_video_file = models.FileField(
         _("Главное видео (файл)"),
         upload_to=get_product_upload_path,
+        max_length=500,
         blank=True,
         null=True,
         validators=[
@@ -2018,6 +2022,7 @@ class ProductImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_product_image_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -2030,6 +2035,7 @@ class ProductImage(models.Model):
     video_file = models.FileField(
         _("Видео (файл)"),
         upload_to=get_product_image_upload_path,
+        max_length=500,
         blank=True,
         null=True,
         validators=[
@@ -2085,6 +2091,7 @@ class ClothingVariant(models.Model):
     main_image_file = models.ImageField(
         _("Главное изображение варианта (файл)"),
         upload_to=get_domain_variant_main_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -2180,6 +2187,7 @@ class ClothingVariantImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_variant_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -2320,6 +2328,7 @@ class ClothingProduct(AbstractDomainProduct):
     main_video_file = models.FileField(
         _("Главное видео (файл)"),
         upload_to=get_domain_main_upload_path,
+        max_length=500,
         blank=True,
         null=True,
         validators=[
@@ -2440,6 +2449,7 @@ class ClothingProductImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -2616,6 +2626,7 @@ class ShoeProductImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -2669,6 +2680,7 @@ class ShoeVariant(models.Model):
     main_image_file = models.ImageField(
         _("Главное изображение варианта (файл)"),
         upload_to=get_domain_variant_main_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -2764,6 +2776,7 @@ class ShoeVariantImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_variant_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -2830,6 +2843,7 @@ class JewelryProduct(AbstractDomainProduct):
     main_image_file = models.ImageField(
         _("Главное изображение (файл)"),
         upload_to=get_jewelry_main_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -2842,6 +2856,7 @@ class JewelryProduct(AbstractDomainProduct):
     main_video_file = models.FileField(
         _("Главное видео (файл)"),
         upload_to=get_jewelry_main_upload_path,
+        max_length=500,
         blank=True,
         null=True,
         validators=[
@@ -2931,6 +2946,7 @@ class JewelryProductImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_jewelry_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -2993,6 +3009,7 @@ class JewelryVariant(models.Model):
     main_image_file = models.ImageField(
         _("Главное изображение варианта (файл)"),
         upload_to=get_jewelry_variant_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -3139,6 +3156,7 @@ class JewelryVariantImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_jewelry_variant_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -3288,6 +3306,7 @@ class Service(models.Model):
     main_image_file = models.ImageField(
         _("Главное изображение (файл)"),
         upload_to=get_service_upload_path,
+        max_length=500,
         null=True,
         blank=True,
         help_text=_("Загрузите основное изображение для услуги. Можно использовать и GIF. Если главным медиа выбрано видео, это изображение будет использоваться как превью.")
@@ -3300,6 +3319,7 @@ class Service(models.Model):
     main_video_file = models.FileField(
         _("Главное видео (файл)"),
         upload_to=get_service_upload_path,
+        max_length=500,
         null=True,
         blank=True,
         validators=[
@@ -3599,6 +3619,7 @@ class ServiceImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_service_image_upload_path,
+        max_length=500,
         null=True,
         blank=True,
         help_text=_("Изображение или GIF для галереи услуги.")
@@ -3617,6 +3638,7 @@ class ServiceImage(models.Model):
     video_file = models.FileField(
         _("Видео (файл)"),
         upload_to=get_service_image_upload_path,
+        max_length=500,
         null=True,
         blank=True,
         validators=[
@@ -3809,6 +3831,7 @@ class ElectronicsProductImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -3941,6 +3964,7 @@ class FurnitureProductImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -3987,6 +4011,7 @@ class FurnitureVariant(models.Model):
     main_image_file = models.ImageField(
         _("Главное изображение варианта (файл)"),
         upload_to=get_domain_variant_main_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -4044,6 +4069,7 @@ class FurnitureVariantImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_variant_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -4319,6 +4345,7 @@ class PerfumeryProductImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -4379,6 +4406,7 @@ class PerfumeryVariant(models.Model):
     main_image_file = models.ImageField(
         _("Главное изображение варианта (файл)"),
         upload_to=get_domain_variant_main_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -4439,6 +4467,7 @@ class PerfumeryVariantImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_variant_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
@@ -4664,7 +4693,7 @@ class MedicineProductImage(models.Model):
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
     image_file = models.ImageField(
         _("Изображение (файл)"), upload_to=get_domain_gallery_upload_path,
-        blank=True, null=True,
+        blank=True, null=True, max_length=500,
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -4827,7 +4856,7 @@ class SupplementProductImage(models.Model):
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
     image_file = models.ImageField(
         _("Изображение (файл)"), upload_to=get_domain_gallery_upload_path,
-        blank=True, null=True,
+        blank=True, null=True, max_length=500,
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -4910,7 +4939,7 @@ class MedicalEquipmentProductImage(models.Model):
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
     image_file = models.ImageField(
         _("Изображение (файл)"), upload_to=get_domain_gallery_upload_path,
-        blank=True, null=True,
+        blank=True, null=True, max_length=500,
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -4992,7 +5021,7 @@ class TablewareProductImage(models.Model):
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
     image_file = models.ImageField(
         _("Изображение (файл)"), upload_to=get_domain_gallery_upload_path,
-        blank=True, null=True,
+        blank=True, null=True, max_length=500,
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -5074,7 +5103,7 @@ class AccessoryProductImage(models.Model):
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
     image_file = models.ImageField(
         _("Изображение (файл)"), upload_to=get_domain_gallery_upload_path,
-        blank=True, null=True,
+        blank=True, null=True, max_length=500,
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -5160,7 +5189,7 @@ class IncenseProductImage(models.Model):
     image_url = models.URLField(_("URL изображения"), max_length=2000, blank=True)
     image_file = models.ImageField(
         _("Изображение (файл)"), upload_to=get_domain_gallery_upload_path,
-        blank=True, null=True,
+        blank=True, null=True, max_length=500,
     )
     alt_text = models.CharField(_("Alt текст"), max_length=200, blank=True)
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
@@ -5374,6 +5403,7 @@ class BannerMedia(models.Model):
     video_file = models.FileField(
         _("Видеофайл"),
         upload_to=get_banner_video_upload_path,
+        max_length=500,
         blank=True,
         null=True,
         help_text=_("Локальный видеофайл (MP4, WebM)")
@@ -5649,6 +5679,7 @@ class BookVariantImage(models.Model):
     image_file = models.ImageField(
         _("Изображение (файл)"),
         upload_to=get_domain_variant_gallery_upload_path,
+        max_length=500,
         blank=True,
         null=True,
     )
