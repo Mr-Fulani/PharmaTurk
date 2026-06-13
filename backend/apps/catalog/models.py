@@ -36,6 +36,7 @@ from .utils.storage_paths import (
     get_jewelry_variant_gallery_upload_path,
     get_service_upload_path,
     get_service_image_upload_path,
+    get_service_portfolio_media_upload_path,
     get_book_product_gallery_upload_path,
 )
 
@@ -3719,7 +3720,7 @@ class ServicePortfolioMedia(models.Model):
     
     media_file = models.FileField(
         _("Файл"),
-        upload_to=get_service_image_upload_path,
+        upload_to=get_service_portfolio_media_upload_path,
         null=True,
         blank=True,
         help_text=_("Изображение, GIF или видео.")

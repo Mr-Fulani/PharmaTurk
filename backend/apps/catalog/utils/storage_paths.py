@@ -216,6 +216,37 @@ def get_service_image_upload_path(instance, filename):
     return f"services/{category_slug}/gallery/{media_folder}/{readable_name}"
 
 
+def get_service_portfolio_media_upload_path(instance, filename):
+    """ServicePortfolioMedia.media_file → читаемое имя по услуге/кейсу.
+
+    Раньше использовалась get_service_image_upload_path, которая ждёт instance.service,
+    а у медиа кейса связь через instance.portfolio_item.service → имя выходило безликим.
+    Путь: services/{category}/portfolio/{service|case}/{images|videos}/{услуга-плашка-hash}.
+    """
+    item = getattr(instance, "portfolio_item", None)
+    service = getattr(item, "service", None) if item else None
+    category = (getattr(service, "category", None) if service else None) or (
+        getattr(item, "category", None) if item else None
+    )
+    category_slug = _normalize_slug(getattr(category, "slug", None), "uslugi")
+    service_slug = _normalize_slug(getattr(service, "slug", None) if service else None, "")
+    case_slug = service_slug or _normalize_slug(getattr(item, "title", None) if item else None, "") or "case"
+    media_folder = _media_folder_from_filename(filename)
+    badge = getattr(instance, "badge", None)
+    badge = badge if badge and badge != "none" else None
+    readable_name = _build_readable_filename(
+        [
+            service_slug or category_slug,
+            getattr(service, "name", None) if service else (getattr(item, "title", None) if item else None),
+            badge,
+            "portfolio",
+        ],
+        filename,
+        "portfolio",
+    )
+    return f"services/{category_slug}/portfolio/{case_slug}/{media_folder}/{readable_name}"
+
+
 def get_banner_image_upload_path(instance, filename):
     banner = getattr(instance, "banner", None)
     position = _normalize_slug(getattr(banner, "position", None), "banner")
