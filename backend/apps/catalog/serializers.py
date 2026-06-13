@@ -649,6 +649,13 @@ class BrandSerializer(serializers.ModelSerializer):
         if self.context.get('hide_counts'):
             return None
 
+        # Быстрый путь: счётчик уже аннотирован на queryset (BrandViewSet) —
+        # одним запросом через теневой Product, без per-brand count() и без
+        # недосчёта (раньше считалась лишь одна доменная таблица по primary slug).
+        annotated = getattr(obj, '_products_count', None)
+        if annotated is not None:
+            return annotated
+
         model_map = {
             'jewelry': JewelryProduct,
             'clothing': ClothingProduct,

@@ -157,45 +157,8 @@ export const getServerSideProps = async (ctx: any) => {
       nextUrl = data.next || null
     }
 
-    // Определяем количество товаров для брендов без products_count (или с 0),
-    // пробуя подходящий эндпоинт по типу категории.
-    const fetchProductCount = async (brand: Brand) => {
-      const slug = (brand.primary_category_slug || brand.slug || '').toLowerCase().replace(/_/g, '-')
-      const endpoints: string[] = []
-      if (slug.startsWith('clothing')) endpoints.push('/api/catalog/clothing/products')
-      else if (slug.startsWith('shoes')) endpoints.push('/api/catalog/shoes/products')
-      else if (slug.startsWith('electronics')) endpoints.push('/api/catalog/electronics/products')
-      else if (slug.startsWith('furniture')) endpoints.push('/api/catalog/furniture/products')
-      else if (slug.startsWith('jewelry')) endpoints.push('/api/catalog/jewelry/products')
-      // Общий каталог — всегда в конце как fallback
-      endpoints.push('/api/catalog/products')
-
-      for (const ep of endpoints) {
-        try {
-          const res = await axios.get(getInternalApiUrl(ep.replace(/^\/api\//, '')), {
-            params: { brand_id: brand.id, page_size: 1 },
-          })
-          const data = res.data
-          const count = typeof data?.count === 'number' ? data.count : (Array.isArray(data) ? data.length : 0)
-          if (count > 0) {
-            return count
-          }
-        } catch {
-          // игнорируем и пробуем следующий эндпоинт
-        }
-      }
-      return 0
-    }
-
-    const brandsNeedingCount = allBrands.filter((b) => (b.products_count ?? 0) <= 0)
-    if (brandsNeedingCount.length) {
-      await Promise.all(
-        brandsNeedingCount.map(async (b) => {
-          const cnt = await fetchProductCount(b)
-          b.products_count = cnt
-        })
-      )
-    }
+    // products_count приходит точным из API (аннотация через теневой Product),
+    // поэтому per-brand дозапросы больше не нужны — раньше они вешали страницу на ~29с.
 
     // Показываем все бренды, сортируем: сначала с товарами (по количеству), затем без товаров (по имени)
     allBrands = [...allBrands].sort((a, b) => {

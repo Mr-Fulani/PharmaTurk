@@ -918,7 +918,21 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Фильтрует бренды по типу товара/категории."""
-        queryset = Brand.objects.filter(is_active=True).order_by('name')
+        # Аннотируем точный счётчик товаров в наличии одним запросом через
+        # теневой Product (related_name='products') + prefetch переводов —
+        # чтобы сериализатор не делал per-brand count() и не недосчитывал.
+        queryset = (
+            Brand.objects.filter(is_active=True)
+            .prefetch_related('translations')
+            .annotate(
+                _products_count=models.Count(
+                    'products',
+                    filter=models.Q(products__is_active=True, products__is_available=True),
+                    distinct=True,
+                )
+            )
+            .order_by('name')
+        )
 
         # Прямой фильтр по primary_category_slug
         primary_slugs = self._parse_slug_list('primary_category_slug')
