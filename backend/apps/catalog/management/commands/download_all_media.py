@@ -240,6 +240,7 @@ class Command(BaseCommand):
             IncenseProductImage, SportsProductImage,
             AutoPartProductImage, HeadwearProductImage,
             UnderwearProductImage,
+            MedicineProductImage, SupplementProductImage,
         )
 
         gallery_models = [
@@ -262,6 +263,8 @@ class Command(BaseCommand):
             (AutoPartProductImage,    "image_url", "image_file", "AutoPartImg#{pk}"),
             (HeadwearProductImage,    "image_url", "image_file", "HeadwearImg#{pk}"),
             (UnderwearProductImage,   "image_url", "image_file", "UnderwearImg#{pk}"),
+            (MedicineProductImage,    "image_url", "image_file", "MedicineImg#{pk}"),
+            (SupplementProductImage,  "image_url", "image_file", "SupplementImg#{pk}"),
         ]
 
         for Model, url_attr, file_attr, label_tpl in gallery_models:
@@ -287,12 +290,17 @@ class Command(BaseCommand):
 
     def _process_main_images(self, r2_public, dry_run, force, sync_internal, limit, stats):
         """Главные изображения товаров (main_image → main_image_file)."""
-        from apps.catalog.models import Product, ClothingProduct, JewelryProduct
+        from apps.catalog.models import (
+            Product, ClothingProduct, JewelryProduct,
+            MedicineProduct, SupplementProduct,
+        )
 
         main_img_models = [
             (Product,          "main_image", "main_image_file", "Product#{pk}"),
             (ClothingProduct,  "main_image", "main_image_file", "ClothingProduct#{pk}"),
             (JewelryProduct,   "main_image", "main_image_file", "JewelryProduct#{pk}"),
+            (MedicineProduct,  "main_image", "main_image_file", "MedicineProduct#{pk}"),
+            (SupplementProduct,"main_image", "main_image_file", "SupplementProduct#{pk}"),
         ]
 
         for Model, url_attr, file_attr, label_tpl in main_img_models:
