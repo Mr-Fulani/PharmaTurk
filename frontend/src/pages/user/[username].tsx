@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
@@ -42,6 +43,13 @@ export default function UserProfilePage() {
   const router = useRouter()
   const { username, testimonial_id } = router.query
   const { t } = useTranslation('common')
+  // Публичные профили — тонкий контент с PII (email/телефон): не индексируем,
+  // но follow, чтобы краулер прошёл по ссылке на отзыв.
+  const noindexHead = (
+    <Head>
+      <meta name="robots" content="noindex, follow" />
+    </Head>
+  )
   const [profile, setProfile] = useState<PublicUserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -82,6 +90,7 @@ export default function UserProfilePage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
+        {noindexHead}
         <div className="text-center">
           <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-red-600 border-r-transparent"></div>
           <p className="mt-4 text-gray-600">{t('loading', 'Загрузка...')}</p>
@@ -93,6 +102,7 @@ export default function UserProfilePage() {
   if (error || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
+        {noindexHead}
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">
             {error
@@ -116,6 +126,7 @@ export default function UserProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
+      {noindexHead}
       <div className="mx-auto max-w-4xl px-4">
         <div className="bg-white rounded-xl shadow-md overflow-hidden">
           {/* Header с аватаром */}

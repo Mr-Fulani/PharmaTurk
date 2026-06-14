@@ -212,7 +212,12 @@ export const getServerSideProps: GetServerSideProps<WorksPageProps> = async (con
         ...(await serverSideTranslations(context.locale ?? 'ru', ['common'])),
       },
     }
-  } catch {
-    return { notFound: true }
+  } catch (err) {
+    // 404 от API — категории нет; остальное (таймаут, 5xx) пробрасываем,
+    // чтобы бот получил 500 и не выкинул страницу из индекса
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      return { notFound: true }
+    }
+    throw err
   }
 }
