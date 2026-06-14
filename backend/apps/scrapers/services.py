@@ -878,6 +878,9 @@ class ScraperIntegrationService:
         start_page: int = 1,
         site_task_id: Optional[int] = None,
         total_scraped: int = 0,
+        total_created: int = 0,
+        total_updated: int = 0,
+        total_skipped: int = 0,
         celery_task_id: Optional[str] = None,
     ) -> ScrapingSession:
         """Запускает парсер и создает сессию.
@@ -938,6 +941,9 @@ class ScraperIntegrationService:
                     start_page=start_page,
                     site_task_id=site_task_id,
                     total_scraped=total_scraped,
+                    total_created=total_created,
+                    total_updated=total_updated,
+                    total_skipped=total_skipped,
                 )
 
                 # Если _run_parser_scraping обработал товары инкрементально, берём его счётчики;
@@ -996,6 +1002,7 @@ class ScraperIntegrationService:
     def _run_parser_scraping(
         self, parser, session: ScrapingSession, start_url: str,
         start_page: int = 1, site_task_id: Optional[int] = None, total_scraped: int = 0,
+        total_created: int = 0, total_updated: int = 0, total_skipped: int = 0,
     ):
         """Выполняет парсинг с помощью парсера.
 
@@ -1056,9 +1063,13 @@ class ScraperIntegrationService:
                         session.errors_count = incremental_results["errors"]
                         session.save()
                         if site_task_id:
-                            # Абсолютное значение с учётом предыдущих чанков — виден прогресс в админке
+                            # Абсолютные значения с учётом предыдущих чанков — прогресс
+                            # created/updated/skipped виден live в админке (один UPDATE).
                             SiteScraperTask.objects.filter(id=site_task_id).update(
-                                products_found=total_scraped + incremental_results["found"]
+                                products_found=total_scraped + incremental_results["found"],
+                                products_created=total_created + incremental_results["created"],
+                                products_updated=total_updated + incremental_results["updated"],
+                                products_skipped=total_skipped + incremental_results["skipped"],
                             )
                 session.pages_processed += incremental_results["found"] // 20 + 1
 

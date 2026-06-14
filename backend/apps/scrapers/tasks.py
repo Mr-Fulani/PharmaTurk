@@ -113,7 +113,10 @@ def run_scraper_task(self,
                     max_images_per_product: Optional[int] = None,
                     site_task_id: Optional[int] = None,
                     start_page: int = 1,
-                    total_scraped: int = 0) -> Dict:
+                    total_scraped: int = 0,
+                    total_created: int = 0,
+                    total_updated: int = 0,
+                    total_skipped: int = 0) -> Dict:
     """Задача: запуск парсера.
 
     start_page / total_scraped используются для авточепочки при парсинге больших каталогов.
@@ -207,6 +210,9 @@ def run_scraper_task(self,
             start_page=start_page,
             site_task_id=site_task_id,
             total_scraped=total_scraped,
+            total_created=total_created,
+            total_updated=total_updated,
+            total_skipped=total_skipped,
             celery_task_id=self.request.id,
         )
 
@@ -239,15 +245,21 @@ def run_scraper_task(self,
             site_task.refresh_from_db()
             products_this_chunk = session.products_found
             new_total = total_scraped + products_this_chunk
+            new_created = total_created + session.products_created
+            new_updated = total_updated + session.products_updated
+            new_skipped = total_skipped + session.products_skipped
             chunk_pages = max_pages or scraper_config.max_pages_per_run
             effective_max = site_task.max_products
 
+            # Абсолютные значения (не F()): live-апдейт в процессе ставит ту же
+            # абсолютную сумму total_X + текущий чанк, поэтому финал чанка совпадает
+            # с последним live-значением — без двойного счёта.
             common_updates = dict(
                 session=session,
-                products_found=new_total,  # абсолютное значение, не F() — midway уже ставит абсолютные
-                products_created=F('products_created') + session.products_created,
-                products_updated=F('products_updated') + session.products_updated,
-                products_skipped=F('products_skipped') + session.products_skipped,
+                products_found=new_total,
+                products_created=new_created,
+                products_updated=new_updated,
+                products_skipped=new_skipped,
                 pages_processed=F('pages_processed') + session.pages_processed,
                 errors_count=F('errors_count') + session.errors_count,
                 log_output="\n".join(log_lines),
@@ -283,6 +295,9 @@ def run_scraper_task(self,
                     site_task_id=site_task_id,
                     start_page=start_page + chunk_pages,
                     total_scraped=new_total,
+                    total_created=new_created,
+                    total_updated=new_updated,
+                    total_skipped=new_skipped,
                 ))
                 SiteScraperTask.objects.filter(id=site_task.id).update(
                     **common_updates,
