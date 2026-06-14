@@ -237,23 +237,10 @@ def run_scraper_task(self,
 
         if site_task:
             site_task.refresh_from_db()
-            if site_task.status == "cancelled":
-                return {
-                    **result,
-                    "status": "cancelled",
-                    "message": "Задача остановлена пользователем.",
-                }
             products_this_chunk = session.products_found
             new_total = total_scraped + products_this_chunk
             chunk_pages = max_pages or scraper_config.max_pages_per_run
             effective_max = site_task.max_products
-
-            # Продолжаем цепочку если: нашли хоть что-то И не достигли лимита
-            should_chain = (
-                site_task.status != "cancelled"
-                and products_this_chunk > 0
-                and new_total < effective_max
-            )
 
             common_updates = dict(
                 session=session,
@@ -264,6 +251,26 @@ def run_scraper_task(self,
                 pages_processed=F('pages_processed') + session.pages_processed,
                 errors_count=F('errors_count') + session.errors_count,
                 log_output="\n".join(log_lines),
+            )
+
+            if site_task.status == "cancelled":
+                # Финализируем счётчики тем, что успели спарсить до отмены,
+                # иначе created/updated залипают в 0 у отменённых задач.
+                SiteScraperTask.objects.filter(id=site_task.id).update(
+                    **common_updates,
+                    finished_at=timezone.now(),
+                )
+                return {
+                    **result,
+                    "status": "cancelled",
+                    "message": "Задача остановлена пользователем.",
+                }
+
+            # Продолжаем цепочку если: нашли хоть что-то И не достигли лимита
+            should_chain = (
+                site_task.status != "cancelled"
+                and products_this_chunk > 0
+                and new_total < effective_max
             )
 
             if should_chain:
