@@ -102,6 +102,19 @@ class Command(BaseCommand):
                     client.delete_object(Bucket=bucket, Key=old_path)
                     moved += 1
                 except Exception as e:
+                    # shadow Product и доменная модель делят один путь: первый перенёс
+                    # и удалил old. Если new уже на месте — просто чиним ссылку в БД.
+                    try:
+                        client.head_object(Bucket=bucket, Key=new_path)
+                        M.objects.filter(pk=obj.pk).update(**{fname: new_path})
+                        try:
+                            client.delete_object(Bucket=bucket, Key=old_path)
+                        except Exception:
+                            pass
+                        moved += 1
+                        continue
+                    except Exception:
+                        pass
                     errors += 1
                     self.stderr.write(f"  ERR {M.__name__}.{fname}#{obj.pk} {old_path}: {e}")
 
