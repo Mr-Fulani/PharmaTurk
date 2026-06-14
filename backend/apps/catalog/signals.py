@@ -52,6 +52,7 @@ from .models import (
     ProductImage,
     Service,
     ServiceImage,
+    ServicePortfolioMedia,
     ShoeProduct,
     ShoeProductImage,
     ShoeVariant,
@@ -376,6 +377,13 @@ def auto_download_service_image_gallery(sender, instance, **kwargs):
     """Автоматически скачивать изображения и видео для галереи услуг."""
     _auto_download_impl(instance, "image_file", "image_url")
     _auto_download_impl(instance, "video_file", "video_url")
+
+
+@receiver(pre_save, sender=ServicePortfolioMedia)
+def auto_download_service_portfolio_media(sender, instance, **kwargs):
+    """Автоскачивание media_url → media_file (R2) для медиа кейсов «Пример работ».
+    Раньше сигнала не было — внешние ссылки (pinterest и т.п.) в R2 не попадали."""
+    _auto_download_impl(instance, "media_file", "media_url")
 
 
 # --- Category, Brand ---
