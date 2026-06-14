@@ -289,19 +289,22 @@ class Command(BaseCommand):
             )
 
     def _process_main_images(self, r2_public, dry_run, force, sync_internal, limit, stats):
-        """Главные изображения товаров (main_image → main_image_file)."""
-        from apps.catalog.models import (
-            Product, ClothingProduct, JewelryProduct,
-            MedicineProduct, SupplementProduct,
-        )
+        """Главные изображения (main_image → main_image_file) ВСЕХ доменных моделей каталога.
 
-        main_img_models = [
-            (Product,          "main_image", "main_image_file", "Product#{pk}"),
-            (ClothingProduct,  "main_image", "main_image_file", "ClothingProduct#{pk}"),
-            (JewelryProduct,   "main_image", "main_image_file", "JewelryProduct#{pk}"),
-            (MedicineProduct,  "main_image", "main_image_file", "MedicineProduct#{pk}"),
-            (SupplementProduct,"main_image", "main_image_file", "SupplementProduct#{pk}"),
-        ]
+        Динамически охватывает Product + все доменные *Product (Shoe/Furniture/Accessory/
+        Perfumery/Electronics/Medicine/Supplement/Clothing/Jewelry и т.д.), у которых есть
+        пара полей main_image + main_image_file — раньше список был захардкожен и часть
+        доменов (напр. ShoeProduct) выпадала из бэкафилла.
+        """
+        from django.apps import apps
+
+        main_img_models = []
+        for Model in apps.get_app_config("catalog").get_models():
+            names = {f.name for f in Model._meta.get_fields()}
+            if "main_image" in names and "main_image_file" in names:
+                main_img_models.append(
+                    (Model, "main_image", "main_image_file", Model.__name__ + "#{pk}")
+                )
 
         for Model, url_attr, file_attr, label_tpl in main_img_models:
             qs = Model.objects.exclude(**{url_attr: ""}).exclude(**{url_attr: None})
