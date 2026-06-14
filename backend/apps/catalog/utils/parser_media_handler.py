@@ -2,6 +2,7 @@
 import hashlib
 import logging
 import os
+import time
 from io import BytesIO
 
 import httpx
@@ -15,6 +16,53 @@ from apps.catalog.utils.storage_paths import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _ranged_download(client, url, headers, chunk=512 * 1024, max_bytes=200 * 1024 * 1024):
+    """Чанкованная загрузка через bounded Range — для CDN, которые отдают видео
+    только на ограниченный Range и 403-ят обычный GET (напр. IKEA pvid)."""
+    buf = bytearray()
+    pos = 0
+    total = None
+    h = dict(headers or {})
+    while True:
+        h["Range"] = f"bytes={pos}-{pos + chunk - 1}"
+        chunk_ok = False
+        for attempt in range(5):
+            try:
+                r = client.get(url, headers=h)
+            except Exception:
+                r = None
+            if r is not None and r.status_code in (200, 206) and r.content:
+                chunk_ok = True
+                break
+            time.sleep(1.0 * (attempt + 1))
+        if not chunk_ok:
+            return None
+        buf.extend(r.content)
+        cr = r.headers.get("content-range")
+        if cr and "/" in cr:
+            try:
+                total = int(cr.split("/")[-1])
+            except (ValueError, IndexError):
+                pass
+        pos += len(r.content)
+        if r.status_code == 200 or (total and pos >= total) or len(buf) >= max_bytes:
+            break
+    return bytes(buf)
+
+
+def _get_media_bytes(client, url, headers):
+    """GET медиа; при 403/HTML-заглушке (CDN блокирует прямой GET) — fallback на Range.
+    Возвращает (content|None, content_type)."""
+    try:
+        r = client.get(url, headers=headers or {})
+        ct = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if r.status_code < 400 and r.content and not ct.startswith("text/html"):
+            return r.content, ct
+    except Exception:
+        pass
+    return _ranged_download(client, url, headers), ""
 
 
 def download_and_optimize_parsed_media(
@@ -54,10 +102,10 @@ def download_and_optimize_parsed_media(
             if head_response.status_code < 400:
                 content_type = (head_response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
             if not content_type:
-                response = client.get(url, headers=headers or {})
-                response.raise_for_status()
-                content = response.content
-                content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                content, content_type = _get_media_bytes(client, url, headers)
+                if content is None:
+                    logger.warning("Failed to download parsed media (blocked?): %s", url)
+                    return ""
 
             media_type = detect_media_type(url)
             if content_type:
@@ -97,9 +145,10 @@ def download_and_optimize_parsed_media(
 
         if content is None:
             with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-                response = client.get(url, headers=headers or {})
-                response.raise_for_status()
-                content = response.content
+                content, _ = _get_media_bytes(client, url, headers)
+                if content is None:
+                    logger.warning("Failed to download parsed media (blocked?): %s", url)
+                    return ""
 
         if media_type == "image":
             optimizer = ImageOptimizer()
