@@ -13,10 +13,26 @@ def _normalize_slug(value: str | None, fallback: str) -> str:
     return slug or fallback
 
 
+def _category_chain(category) -> str:
+    """Иерархия слагов категории root/.../leaf (через parent). '' если категории нет."""
+    out = []
+    cur = category
+    seen = set()
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        s = _normalize_slug(getattr(cur, "slug", None), "")
+        if s:
+            out.append(s)
+        cur = getattr(cur, "parent", None)
+    return "/".join(reversed(out))
+
+
 def _build_readable_filename(parts: list[str], filename: str, fallback: str = "media") -> str:
     ext = os.path.splitext(str(filename).split("?")[0])[1].lower() or ".jpg"
     # slugify(None) у Django даёт "none" — поэтому пустые части отсекаем ДО slugify,
     # иначе в имя попадает мусорное "none" (badge/slug/цвет, которых нет).
+    # Часть может быть иерархией "root/.../leaf" — в имя берём последний сегмент (leaf).
+    parts = [str(p).rsplit("/", 1)[-1] if p else p for p in parts]
     base = "-".join(part for part in (slugify(p or "").strip("-") for p in parts) if part)
     base = (base or fallback).strip("-")[:160]
     suffix = uuid.uuid4().hex[:10]
@@ -41,9 +57,9 @@ def get_product_upload_path(instance, filename):
         product_type = getattr(instance, "_domain_product_type", None)
     
     product_type = (product_type or "").replace("_", "-")
-    category_slug = _normalize_slug(getattr(getattr(instance, "category", None), "slug", None), "")
-    
-    # Приоритет: category_slug -> product_type -> "other"
+    category_slug = _category_chain(getattr(instance, "category", None))
+
+    # Приоритет: иерархия категории (root/.../leaf) -> product_type -> "other"
     # Для доменных моделей product_type будет например "medicines", если категория не задана
     base = (category_slug or product_type or "other").lower()
     
@@ -60,7 +76,7 @@ def get_product_image_upload_path(instance, filename):
     """Динамический upload_to для ProductImage.image_file."""
     product = getattr(instance, "product", None)
     product_type = (getattr(product, "product_type", None) or "").replace("_", "-")
-    category_slug = _normalize_slug(getattr(getattr(product, "category", None), "slug", None), "")
+    category_slug = _category_chain(getattr(product, "category", None))
     base = (category_slug or product_type or "other").lower()
     media_folder = _media_folder_from_filename(filename)
     readable_name = _build_readable_filename(
@@ -72,13 +88,14 @@ def get_product_image_upload_path(instance, filename):
 
 
 def _domain_type_slug(product) -> str:
-    """Slug типа доменного товара: категория → product_type/_domain_product_type → other."""
+    """Путь типа доменного товара: иерархия категории root/.../leaf → product_type → other."""
     if product is None:
         return "other"
-    cat = _normalize_slug(getattr(getattr(product, "category", None), "slug", None), "")
+    chain = _category_chain(getattr(product, "category", None))
+    if chain:
+        return chain.lower()
     pt = getattr(product, "product_type", None) or getattr(product, "_domain_product_type", None) or ""
-    pt = str(pt).replace("_", "-")
-    return (cat or pt or "other").lower()
+    return (str(pt).replace("_", "-") or "other").lower()
 
 
 def get_domain_main_upload_path(instance, filename):
