@@ -267,6 +267,23 @@ def cleanup_orphaned_media():
         elif to_delete:
             logger.info("cleanup_orphaned_media: will delete first 10 paths: %s", to_delete[:10])
 
+        # Предохранитель (инцидент 2026-06-14): стек с ПУСТОЙ БД + общий R2-бакет
+        # стёр весь каталог, т.к. "осиротевшим" оказалось всё. Не удаляем, если БД
+        # подозрительно пуста или удаление затронуло бы слишком большую долю хранилища.
+        MIN_DB_PATHS = 100
+        if len(db_paths) < MIN_DB_PATHS:
+            logger.error(
+                "cleanup_orphaned_media ABORTED: db_paths=%s < %s — похоже на пустую/битую БД, удаление пропущено",
+                len(db_paths), MIN_DB_PATHS,
+            )
+            return {"status": "aborted", "reason": "db_paths_too_low", "db_paths": len(db_paths), "deleted": 0}
+        if storage_paths and len(to_delete) > len(storage_paths) // 2:
+            logger.error(
+                "cleanup_orphaned_media ABORTED: to_delete=%s > 50%% storage=%s — защита от массового удаления",
+                len(to_delete), len(storage_paths),
+            )
+            return {"status": "aborted", "reason": "mass_deletion_guard", "to_delete": len(to_delete), "storage": len(storage_paths), "deleted": 0}
+
         deleted = 0
         for path in to_delete:
             try:
