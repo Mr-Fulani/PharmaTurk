@@ -15,7 +15,7 @@ fi
 if grep -q "^COMPOSE_PROJECT_NAME=" .env; then
   export COMPOSE_PROJECT_NAME=$(grep "^COMPOSE_PROJECT_NAME=" .env | cut -d '=' -f2)
 else
-  export COMPOSE_PROJECT_NAME=pharmaturk
+  export COMPOSE_PROJECT_NAME=mudaroba
 fi
 # Если COMPOSE_FILE не задан в .env или окружении, используем базу + локальный override (стандартное поведение Docker Compose)
 if [ -z "$COMPOSE_FILE" ]; then
@@ -226,14 +226,14 @@ if [ "$CLEAN_VOLUMES" = true ]; then
     read -p "Вы уверены? (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        docker compose -p pharmaturk $COMPOSE_FLAGS down -v --remove-orphans || true
+        docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS down -v --remove-orphans || true
         success "Контейнеры остановлены и volumes удалены"
     else
         info "Отменено пользователем"
         exit 0
     fi
 else
-    docker compose -p pharmaturk $COMPOSE_FLAGS down -t 1 --remove-orphans || true
+    docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS down -t 1 --remove-orphans || true
         success "Контейнеры остановлены"
 fi
 
@@ -282,11 +282,11 @@ if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
     info "FAST режим: пропускаем пересборку образов"
 elif [ "$FAST_REBUILD" = true ]; then
     info "FAST-REBUILD: пересобираем backend и frontend"
-    docker compose -p pharmaturk $COMPOSE_FLAGS build backend frontend || warning "Ошибка при быстрой пересборке backend/frontend"
+    docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS build backend frontend || warning "Ошибка при быстрой пересборке backend/frontend"
 elif [ "$NO_CACHE" = true ]; then
-    docker compose -p pharmaturk $COMPOSE_FLAGS build --no-cache || warning "Ошибка при сборке образов без кэша"
+    docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS build --no-cache || warning "Ошибка при сборке образов без кэша"
 else
-    docker compose -p pharmaturk $COMPOSE_FLAGS build || warning "Ошибка при сборке образов"
+    docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS build || warning "Ошибка при сборке образов"
 fi
 
 if [ "$FAST" = false ]; then
@@ -306,7 +306,7 @@ if [ "$RUN_SEED_CATALOG" = "1" ]; then
 else
     info "Seed каталога при старте backend: пропущен"
 fi
-docker compose -p pharmaturk $COMPOSE_FLAGS up $UP_OPTS
+docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS up $UP_OPTS
 UP_EXIT_CODE=$?
 if [ $UP_EXIT_CODE -eq 0 ]; then
     success "Контейнеры запущены"
@@ -326,7 +326,7 @@ fi
 # Краткая пауза: backend уже ждёт postgres (healthcheck), миграции выполняет entrypoint
 info "Проверяем статус контейнеров..."
 sleep 2
-docker compose -p pharmaturk $COMPOSE_FLAGS ps
+docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS ps
 
 # AI RAG: подготовка Qdrant (опционально, при первом запуске или после добавления категорий/шаблонов)
 # Раскомментируйте следующую строку, чтобы один раз заполнить RAG после старта:
@@ -335,7 +335,7 @@ docker compose -p pharmaturk $COMPOSE_FLAGS ps
 # Показ логов (если указано)
 if [ "$SHOW_LOGS" = true ]; then
     info "Показываем логи (Ctrl+C для выхода)..."
-    docker compose -p pharmaturk $COMPOSE_FLAGS logs -f
+    docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS logs -f
     LOGS_EXIT_CODE=$?
     if [ $LOGS_EXIT_CODE -ne 0 ]; then
         LOGS_FAILED=true
