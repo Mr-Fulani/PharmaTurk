@@ -2,10 +2,10 @@
 {% block extrahead %}{{ block.super }}
 <script>
 (function () {
-  // Авто-обновление списка задач парсинга каждые 5с — чтобы счётчики (found/created/
-  // updated/skipped) тикали вживую без ручного F5.
+  // Авто-обновление списка задач парсинга каждые 20с — счётчики и так растут патчами
+  // по 10 шт, чаще обновлять смысла нет.
   // Пауза, если пользователь взаимодействует, чтобы не сбивать фильтры/поиск/копирование.
-  var INTERVAL_MS = 5000;
+  var INTERVAL_MS = 20000;
   setInterval(function () {
     var ae = document.activeElement;
     if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return;  // активный ввод/фильтр

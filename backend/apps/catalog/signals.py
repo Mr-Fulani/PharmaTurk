@@ -345,15 +345,26 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
                 _save_downloaded_file_to_storage(instance, field_name, file_obj)
                 logger.info(f"Auto-downloaded {instance.__class__.__name__} URL to {field_name}")
         else:
-            # Если URL внутренний (например, cdn.mudaroba.com), пробуем извлечь путь
+            # Если URL внутренний (cdn.mudaroba.com), извлекаем ключ хранилища.
             try:
                 from urllib.parse import urlparse
+                from django.core.files.storage import default_storage
                 path = _normalize_storage_key_for_file_field(urlparse(url).path)
-                # Простая проверка: если путь не пустой, сохраняем как файл
-                if path:
+                if not path:
+                    return
+                # Если файл в generic parsed-папке (products/parsed/...) — пересохраняем
+                # под доменный upload_to модели: читаемое имя как у Clothing/Shoe.
+                # Срабатывает разово (только когда field пуст), старый parsed-файл
+                # подчистит cleanup_orphaned_media.
+                if "/products/parsed/" in ("/" + path) and default_storage.exists(path):
+                    import os
+                    from django.core.files.base import ContentFile
+                    with default_storage.open(path) as fh:
+                        data = fh.read()
+                    getattr(instance, field_name).save(os.path.basename(path), ContentFile(data), save=False)
+                    logger.info(f"Re-saved parsed {field_name} to readable path for {instance.__class__.__name__}")
+                else:
                     setattr(instance, field_name, path)
-                    # Обычно сохранять модель здесь не нужно, так как это pre_save сигнал,
-                    # но изменения поля будут сохранены при сохранении инстанса.
                     logger.info(f"Set {field_name} from internal URL: {path}")
             except Exception as e:
                 logger.warning(f"Failed to set internal path for {instance.__class__.__name__}: {e}")
@@ -367,6 +378,8 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
 @receiver(pre_save, sender=JewelryVariantImage)
 @receiver(pre_save, sender=ShoeProductImage)
 @receiver(pre_save, sender=ShoeVariantImage)
+@receiver(pre_save, sender=BookProductImage)
+@receiver(pre_save, sender=BookVariantImage)
 def auto_download_domain_image_from_url(sender, instance, **kwargs):
     """Автоматически скачивать изображения для доменных моделей."""
     _auto_download_impl(instance)
