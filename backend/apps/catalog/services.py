@@ -854,16 +854,19 @@ class CatalogNormalizer:
             seen_urls.add(url)
         image_urls = deduped_urls
         
-        # 1. Удаляем ВСЕ парсерные картинки (в которых есть /products/parsed/), чтобы при этом парсинге скачать и заново сохранить только свежие хэши от инстаграма.
-        # Ручные загрузки (image_file и image_url без /products/parsed/) не трогаем!
+        # 1. Парсерная картинка = с непустым source-URL (image_url/video_url). Ручные
+        # загрузки имеют только image_file (URL пустой) — их НЕ трогаем. Удаляем
+        # парсерные, которых нет в свежем наборе, чтобы ре-скрейп заменял, а не плодил
+        # дубли. Раньше матчили только по '/products/parsed/' — после перехода доменов
+        # на читаемые/внешние URL это ломалось → на ре-скрейпе появлялись дубли.
         try:
-            parser_images_query = Q(image_url__contains='/products/parsed/')
+            parser_images_query = ~Q(image_url='') & Q(image_url__isnull=False)
             exclude_query = Q(image_url__in=image_urls)
-            
+
             if hasattr(image_manager.model, 'video_url'):
-                parser_images_query |= Q(video_url__contains='/products/parsed/')
+                parser_images_query |= (~Q(video_url='') & Q(video_url__isnull=False))
                 exclude_query |= Q(video_url__in=image_urls)
-                
+
             # Мы удаляем все парсерные картинки, КРОМЕ тех, что есть в новом списке image_urls.
             # Иначе `post_delete` сигнал удалит физический файл из R2.
             image_manager.filter(parser_images_query).exclude(exclude_query).delete()
