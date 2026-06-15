@@ -316,6 +316,47 @@ extract_currency("1 290 руб.")            # → "RUB"
 extract_currency("$19.99")               # → "USD"
 ```
 
+### 4.4. Авточепочка задач и флаг `SUPPORTS_PAGE_CHUNKING`
+
+Для больших каталогов `run_scraper_task` обходит сайт по чанкам: каждый запуск
+парсит `max_pages` страниц и сам ставит следующую задачу (`apply_async`) со
+сдвигом `start_page += max_pages`, пока не достигнут `max_products` или каталог
+не исчерпан.
+
+**Чепочка работает только для парсеров с настоящей постраничной пагинацией.**
+Признак — класс-атрибут на парсере:
+
+```python
+class MyParser(BaseScraper):
+    SUPPORTS_PAGE_CHUNKING = True   # по умолчанию False (см. BaseScraper)
+
+    def parse_product_list(self, category_url, max_pages=10, start_page=1):
+        # обязан стартовать пагинацию именно с start_page
+        ...
+```
+
+Правила:
+- `SUPPORTS_PAGE_CHUNKING = True` ставить **только** если `parse_product_list`
+  принимает `start_page` и реально начинает обход с этой страницы (пример —
+  `IlacFiyatiParser`, пагинация через `?pg=`).
+- Если парсер за один вызов забирает весь листинг (через API или одну страницу —
+  `lcw`, `ummaland`, `ikea`, `zara`), флаг **оставить `False`**. Иначе чепочка
+  будет повторно открывать те же товары: счётчики раздуются (напр. «510
+  обновлено» при 104 реальных карточках), а `start_page` уронит парсер без
+  такого аргумента (`TypeError`).
+- `start_page` передаётся в `parse_product_list` только когда флаг `True`.
+
+### 4.5. Лимиты времени и мягкая остановка
+
+Скрейпинг-задачи в Celery имеют `soft_time_limit = 1ч` и `time_limit = 2ч`
+(см. `config/settings.py`). По мягкому лимиту Celery поднимает
+`SoftTimeLimitExceeded` — его **нельзя глушить** в `except Exception` парсера
+(иначе задача доедет до жёсткого лимита и будет убита `SIGKILL`, оборвав
+чепочку). `BaseScraper._make_request` уже пробрасывает это исключение; в своих
+широких `except` добавляйте `except SoftTimeLimitExceeded: raise` перед
+`except Exception`. Категорийный цикл сервиса ловит его и завершает чанк штатно —
+следующий чанк встаёт автоматически.
+
 ---
 
 ## 5. Создание нового парсера — пошаговый чеклист
@@ -873,6 +914,7 @@ class SiteScraperTask(models.Model):
     config = ForeignKey(ScraperConfig)
     url = URLField()                              # URL категории для парсинга
     target_category = ForeignKey(Category, null=True)  # ← ГЛАВНОЕ ПОЛЕ для категории
+    gender = CharField(blank=True)   # men / women / unisex; пусто = автоопределение
     max_pages = IntegerField(default=10)
     max_products = IntegerField(null=True)
     is_active = BooleanField(default=True)
@@ -884,6 +926,12 @@ class SiteScraperTask(models.Model):
 > все товары из этой задачи попадут именно в эту категорию.
 > Приоритет категорий: `task.target_category` > `session.target_category` >
 > `config.category_mapping` > `config.default_category`.
+
+> **gender** — необязательный override пола для всех товаров задачи
+> (`men` / `women` / `unisex`). Если задан, проставляется в
+> `attributes['gender']` каждого товара перед сохранением (применимо к одежде,
+> обуви, парфюмерии, аксессуарам, украшениям). Пусто — пол определяется
+> автоматически из текста/категории, как раньше.
 
 ### 7.4. ScrapedProductLog — лог спарсенного товара
 
@@ -918,6 +966,7 @@ class ScrapedProductLog(models.Model):
    - Привязать к конфигу
    - Указать URL категории
    - **Обязательно выбрать `Target category`**
+   - При необходимости выбрать `Пол` (men/women/unisex) — проставится всем товарам задачи; пусто = автоопределение
    - Задать лимиты
 
 4. **Запуск** — из списка задач выбрать нужные → Action → "Запустить выбранные задачи"
