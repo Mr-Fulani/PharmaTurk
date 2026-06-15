@@ -5,6 +5,7 @@ import re
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
+from celery.exceptions import SoftTimeLimitExceeded
 
 from ..base.scraper import BaseScraper, ScrapedProduct
 from ..base.utils import clean_text, normalize_price, extract_currency
@@ -12,6 +13,9 @@ from ..base.utils import clean_text, normalize_price, extract_currency
 
 class IlacFiyatiParser(BaseScraper):
     """Парсер для сайта ilacfiyati.com."""
+
+    # Настоящая пагинация через ?pg= и поддержка start_page — авточепочка безопасна.
+    SUPPORTS_PAGE_CHUNKING = True
 
     DETAIL_TABS = {
         "ilac_bilgileri": {
@@ -193,6 +197,8 @@ class IlacFiyatiParser(BaseScraper):
                         "url": tab_url,
                         "text": text,
                     }
+            except SoftTimeLimitExceeded:
+                raise
             except Exception as e:
                 self.logger.warning(f"Не удалось получить вкладку {tab['path']} для {product_url}: {e}")
         return tabs
@@ -331,6 +337,8 @@ class IlacFiyatiParser(BaseScraper):
                 pages_parsed += 1
                 page += 1
 
+        except SoftTimeLimitExceeded:
+            raise
         except Exception as e:
             self.logger.error(f"Ошибка при парсимге списка товаров: {e}")
 
@@ -555,6 +563,8 @@ class IlacFiyatiParser(BaseScraper):
                             )
                             if analog:
                                 analogs.append(analog)
+                except SoftTimeLimitExceeded:
+                    raise
                 except Exception as e:
                     self.logger.error(f"Error fetching analogs from {sub_url}: {e}")
             
@@ -583,7 +593,9 @@ class IlacFiyatiParser(BaseScraper):
                 attributes=attributes,
                 analogs=unique_analogs
             )
-            
+
+        except SoftTimeLimitExceeded:
+            raise
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге детальной страницы {product_url}: {e}")
             return None

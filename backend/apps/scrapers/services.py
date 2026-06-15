@@ -6,6 +6,7 @@ import hashlib
 import threading
 from contextlib import contextmanager
 from urllib.parse import urlparse
+from celery.exceptions import SoftTimeLimitExceeded
 from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Any, Tuple
 from django.utils import timezone
@@ -875,6 +876,7 @@ class ScraperIntegrationService:
         max_products: int = None,
         max_images_per_product: int = None,
         target_category=None,
+        gender: str = "",
         start_page: int = 1,
         site_task_id: Optional[int] = None,
         total_scraped: int = 0,
@@ -907,6 +909,9 @@ class ScraperIntegrationService:
             task_id=celery_task_id or "",
             started_at=timezone.now(),
         )
+        # Пол из настроек задачи (men/women/unisex или пусто). Транзиентно: применяется
+        # в _process_scraped_products как явный override, в БД сессии не хранится.
+        session._override_gender = gender or ""
 
         try:
             # Получаем класс парсера
@@ -1049,28 +1054,44 @@ class ScraperIntegrationService:
                 # сохраняется в БД сразу после парсинга, не накапливается в памяти.
                 incremental_results = {"found": 0, "created": 0, "updated": 0, "skipped": 0, "errors": 0}
                 checkpoint = 0
-                for product in parser.parse_product_list(start_url, max_pages=session.max_pages, start_page=start_page):
-                    self._ensure_site_task_not_cancelled(site_task_id)
-                    r = self._process_scraped_products(session, [product])
-                    for k in incremental_results:
-                        incremental_results[k] += r.get(k, 0)
-                    checkpoint += 1
-                    if checkpoint % 10 == 0:
-                        session.products_found = incremental_results["found"]
-                        session.products_created = incremental_results["created"]
-                        session.products_updated = incremental_results["updated"]
-                        session.products_skipped = incremental_results["skipped"]
-                        session.errors_count = incremental_results["errors"]
-                        session.save()
-                        if site_task_id:
-                            # Абсолютные значения с учётом предыдущих чанков — прогресс
-                            # created/updated/skipped виден live в админке (один UPDATE).
-                            SiteScraperTask.objects.filter(id=site_task_id).update(
-                                products_found=total_scraped + incremental_results["found"],
-                                products_created=total_created + incremental_results["created"],
-                                products_updated=total_updated + incremental_results["updated"],
-                                products_skipped=total_skipped + incremental_results["skipped"],
-                            )
+                # start_page передаём только парсерам с настоящей пагинацией,
+                # иначе остальные упадут на неизвестном аргументе (TypeError).
+                list_kwargs = {"max_pages": session.max_pages}
+                if getattr(parser, "SUPPORTS_PAGE_CHUNKING", False):
+                    list_kwargs["start_page"] = start_page
+                try:
+                    for product in parser.parse_product_list(start_url, **list_kwargs):
+                        self._ensure_site_task_not_cancelled(site_task_id)
+                        r = self._process_scraped_products(session, [product])
+                        for k in incremental_results:
+                            incremental_results[k] += r.get(k, 0)
+                        checkpoint += 1
+                        if checkpoint % 10 == 0:
+                            session.products_found = incremental_results["found"]
+                            session.products_created = incremental_results["created"]
+                            session.products_updated = incremental_results["updated"]
+                            session.products_skipped = incremental_results["skipped"]
+                            session.errors_count = incremental_results["errors"]
+                            session.save()
+                            if site_task_id:
+                                # Абсолютные значения с учётом предыдущих чанков — прогресс
+                                # created/updated/skipped виден live в админке (один UPDATE).
+                                SiteScraperTask.objects.filter(id=site_task_id).update(
+                                    products_found=total_scraped + incremental_results["found"],
+                                    products_created=total_created + incremental_results["created"],
+                                    products_updated=total_updated + incremental_results["updated"],
+                                    products_skipped=total_skipped + incremental_results["skipped"],
+                                )
+                except SoftTimeLimitExceeded:
+                    # Мягкий лимит времени Celery: завершаем чанк штатно — уже спарсенные
+                    # товары сохранены инкрементально, а tasks.run_scraper_task поставит
+                    # следующий чанк (для парсеров с пагинацией). Без этого hard-лимит
+                    # убивал воркер SIGKILL и обрывал всю цепочку.
+                    self.logger.warning(
+                        "Достигнут мягкий лимит времени — чанк завершён досрочно "
+                        "(спарсено %s товаров, цепочка продолжится).",
+                        incremental_results["found"],
+                    )
                 session.pages_processed += incremental_results["found"] // 20 + 1
 
             elif is_search:
@@ -1167,6 +1188,7 @@ class ScraperIntegrationService:
             try:
                 self._apply_category_mapping(session, scraped_product)
                 self._apply_brand_mapping(session, scraped_product)
+                self._apply_gender_override(session, scraped_product)
                 self._normalize_scraped_media(session, scraped_product)
                 # Блокируем авто-запуск AI во время сохранения — используем потоковый контекст
                 with scraping_in_progress_context():
@@ -1208,6 +1230,22 @@ class ScraperIntegrationService:
                 )
 
         return results
+
+    def _apply_gender_override(
+        self, session: ScrapingSession, scraped_product: ScrapedProduct
+    ) -> None:
+        """Проставляет пол из настроек задачи (men/women/unisex), если он указан.
+
+        Override авторитетен: записывается в attributes['gender'], откуда его
+        подхватывает существующая логика сохранения для всех типов товаров.
+        Если пол в задаче не выбран — ничего не делаем (работает авто-определение).
+        """
+        gender = getattr(session, "_override_gender", "") or ""
+        if not gender:
+            return
+        if not isinstance(scraped_product.attributes, dict):
+            scraped_product.attributes = {}
+        scraped_product.attributes["gender"] = gender
 
     def _apply_category_mapping(
         self, session: ScrapingSession, scraped_product: ScrapedProduct

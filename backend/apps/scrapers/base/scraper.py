@@ -10,6 +10,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 import requests
+from celery.exceptions import SoftTimeLimitExceeded
 from fake_useragent import UserAgent
 
 from .selectors import DataSelector, SelectorConfig
@@ -102,8 +103,14 @@ ScrapedProductDetailResult = Union[Optional[ScrapedProduct], List[ScrapedProduct
 
 class BaseScraper(ABC):
     """Базовый абстрактный класс для всех парсеров."""
-    
-    def __init__(self, 
+
+    # Поддерживает ли парсер постраничную авточепочку (start_page).
+    # True только у парсеров с настоящей пагинацией по номеру страницы.
+    # Для остальных авточепочка переоткрывала бы те же товары (раздувая счётчики),
+    # поэтому она отключена — см. tasks.run_scraper_task.
+    SUPPORTS_PAGE_CHUNKING = False
+
+    def __init__(self,
                  base_url: str,
                  delay_range: tuple = (1, 3),
                  timeout: int = 30,
@@ -215,7 +222,11 @@ class BaseScraper(ABC):
                         time.sleep(2 ** attempt)  # Exponential backoff
                         continue
                 break
-                
+
+            except SoftTimeLimitExceeded:
+                # Мягкий лимит времени Celery — не глушим и не ретраим,
+                # пробрасываем выше, чтобы чанк завершился штатно и встала следующая задача.
+                raise
             except Exception as e:
                 self.logger.error(f"Ошибка запроса к {url}: {e}")
                 if attempt < self.max_retries:

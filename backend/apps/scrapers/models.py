@@ -593,6 +593,19 @@ class SiteScraperTask(models.Model):
         verbose_name=_("Подкатегория"),
         help_text=_("Опционально. Узкая подкатегория (например, жанр книги или тип одежды). Если выбрано, товары будут сохранены сюда."),
     )
+    GENDER_CHOICES = [
+        ("men", _("Мужской")),
+        ("women", _("Женский")),
+        ("unisex", _("Унисекс")),
+    ]
+    gender = models.CharField(
+        _("Пол"),
+        max_length=10,
+        choices=GENDER_CHOICES,
+        blank=True,
+        default="",
+        help_text=_("Опционально. Проставит пол всем товарам задачи (для одежды/обуви/парфюмерии). Пусто — пол определяется автоматически."),
+    )
     task_type = models.CharField(
         _("Тип задачи"),
         max_length=20,

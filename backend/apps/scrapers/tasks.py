@@ -11,6 +11,7 @@ from django.db.models import F
 from django.utils import timezone
 
 from .models import ScraperConfig, ScrapingSession, SiteScraperTask
+from .parsers.registry import get_parser
 from .services import ScraperIntegrationService, DeduplicationService, ScraperTaskCancelled
 
 logger = logging.getLogger(__name__)
@@ -207,6 +208,7 @@ def run_scraper_task(self,
             max_products=max_products,
             max_images_per_product=max_images_per_product,
             target_category=target_category,
+            gender=(site_task.gender if site_task else ""),
             start_page=start_page,
             site_task_id=site_task_id,
             total_scraped=total_scraped,
@@ -278,9 +280,16 @@ def run_scraper_task(self,
                     "message": "Задача остановлена пользователем.",
                 }
 
-            # Продолжаем цепочку если: нашли хоть что-то И не достигли лимита
+            # Авточепочка только для парсеров с настоящей постраничной пагинацией
+            # (start_page). Иначе следующий чанк переоткрыл бы те же товары, раздувая
+            # счётчики (например, 510 «обновлений» на 104 реальные карточки).
+            parser_class = get_parser(scraper_config.parser_class)
+            supports_chunking = bool(getattr(parser_class, "SUPPORTS_PAGE_CHUNKING", False))
+
+            # Продолжаем цепочку если: парсер это поддерживает, нашли хоть что-то И не достигли лимита
             should_chain = (
-                site_task.status != "cancelled"
+                supports_chunking
+                and site_task.status != "cancelled"
                 and products_this_chunk > 0
                 and new_total < effective_max
             )

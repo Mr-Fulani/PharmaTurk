@@ -341,6 +341,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     "task_type",
                     "target_category",
                     "target_subcategory",
+                    "gender",
                     "start_url",
                     "max_pages",
                     "max_products",
