@@ -311,6 +311,8 @@ class ScraperConfigAdmin(admin.ModelAdmin):
 
 @admin.register(SiteScraperTask)
 class SiteScraperTaskAdmin(admin.ModelAdmin):
+    # Список задач сам перезагружается каждые 5с — счётчики видны вживую.
+    change_list_template = "admin/scrapers/sitescrapertask/change_list.html"
     list_display = [
         "scraper_config",
         "target_category",

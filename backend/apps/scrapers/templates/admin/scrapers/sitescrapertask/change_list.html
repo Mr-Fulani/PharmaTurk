@@ -1,0 +1,18 @@
+{% extends "admin/change_list.html" %}
+{% block extrahead %}{{ block.super }}
+<script>
+(function () {
+  // Авто-обновление списка задач парсинга каждые 5с — чтобы счётчики (found/created/
+  // updated/skipped) тикали вживую без ручного F5.
+  // Пауза, если пользователь взаимодействует, чтобы не сбивать фильтры/поиск/копирование.
+  var INTERVAL_MS = 5000;
+  setInterval(function () {
+    var ae = document.activeElement;
+    if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return;  // активный ввод/фильтр
+    if (window.getSelection && String(window.getSelection()).length) return;  // выделение текста
+    if (document.hidden) return;  // фоновая вкладка
+    window.location.reload();
+  }, INTERVAL_MS);
+})();
+</script>
+{% endblock %}
