@@ -1143,6 +1143,20 @@ R2 bucket → products/parsed/{parser_name}/images/{external_id}-{index}-{hash}.
 
 Пример: `products/parsed/ummaland/images/ummaland-2592-0-bbd79f519d59.png`
 
+`{hash}` = `md5(исходный_URL)[:12]` — **детерминированный**: повторный парсинг той же
+картинки даёт тот же путь, поэтому ре-скрейп не плодит дубли (дедуп по `image_url`).
+
+**parsed → читаемый путь (обязательно для всех доменных галерей).** `products/parsed/`
+— это промежуточный «накопитель». При сохранении строки доменной галереи pre_save
+сигнал переносит файл в читаемый доменный `upload_to` (`image_file`) и переписывает
+`image_url`. Реализация — `_auto_download_impl`. ВАЖНО: подключая новую `*Image`-модель,
+убедись, что её pre_save сигнал идёт через `_auto_download_impl` (или
+`_auto_download_image_url_to_file`, который теперь делегирует туда же). Если домен
+обрабатывает только внешние URL и не переносит parsed — его картинки застрянут в
+`products/parsed/` без читаемого `image_file` и станут 404 при чистке parsed
+(так было с Accessory/Headwear/Underwear/Tableware/Incense/Sports/AutoPart).
+Разовый перенос застрявших строк: `manage.py heal_parsed_gallery_media`.
+
 ### 11.3. Лимит изображений
 
 По умолчанию AI обрабатывает до **5 изображений** за раз.
