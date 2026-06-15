@@ -903,8 +903,21 @@ class CatalogNormalizer:
         # Узнаем, установлено ли уже главное изображение вручную или с прошлого парсинга
         existing_any_main = image_manager.filter(is_main=True).exists()
         has_manual_main = False
-        if bool(getattr(product, 'main_image_file', None)):
-            has_manual_main = True
+        main_broken = False
+        _mf = getattr(product, 'main_image_file', None)
+        _mf_name = getattr(_mf, 'name', None) if _mf else None
+        if _mf_name:
+            from django.core.files.storage import default_storage
+            try:
+                _exists = default_storage.exists(_mf_name)
+            except Exception:
+                _exists = True
+            if _exists:
+                has_manual_main = True
+            else:
+                # Битая главная (файл удалён из R2) — НЕ считаем ручной, чтобы парсер
+                # переустановил её свежей картинкой из галереи.
+                main_broken = True
         elif bool(getattr(product, 'main_image', None)):
             # Если это загруженная парсером картинка, мы не считаем её "ручной"
             if '/products/parsed/' not in product.main_image:
@@ -1004,9 +1017,15 @@ class CatalogNormalizer:
         if main_image_url and not existing_any_main and not has_manual_main:
             for obj in [product, target] if is_domain else [product]:
                 if hasattr(obj, 'main_image'):
-                    if not obj.main_image or '/products/parsed/' in obj.main_image:
+                    if not obj.main_image or '/products/parsed/' in obj.main_image or main_broken:
                         obj.main_image = main_image_url
-                        obj.save(update_fields=['main_image'])
+                        update_fields = ['main_image']
+                        # Битую главную сбрасываем в файле тоже — чтобы сигнал
+                        # _auto_download_main_image перекачал свежую в main_image_file.
+                        if main_broken and getattr(obj, 'main_image_file', None) and getattr(obj.main_image_file, 'name', None):
+                            obj.main_image_file = ""
+                            update_fields.append('main_image_file')
+                        obj.save(update_fields=update_fields)
     
     @transaction.atomic
     def sync_categories_and_brands(self, categories_data: List[Dict], brands_data: List[Dict]):
