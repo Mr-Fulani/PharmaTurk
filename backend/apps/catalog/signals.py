@@ -1371,17 +1371,15 @@ def auto_download_clothing_product_media_from_url(sender, instance, **kwargs):
 
 
 def _auto_download_image_url_to_file(instance, url_attr="image_url", file_attr="image_file", log_label=""):
-    """Общая логика: скачать по URL и записать в file-поле (через default_storage), если URL внешний и file пустой."""
-    url = getattr(instance, url_attr, None)
-    file_field = getattr(instance, file_attr, None)
-    if not url or (file_field and file_field.name and not _file_missing_from_storage(file_field)):
-        return
+    """Скачать по URL в file-поле, ИЛИ пересохранить внутренний /products/parsed/ в читаемый путь.
 
-    if not is_internal_storage_url(url):
-        file_obj = _download_url_to_file(url)
-        if file_obj:
-            _save_downloaded_file_to_storage(instance, file_attr, file_obj)
-            logger.info(f"{log_label} {instance.id or 'new'}")
+    Делегирует в _auto_download_impl, у которого есть обе ветки: загрузка внешних URL
+    И перенос parsed-промежутка в доменный upload_to (с переписыванием url на читаемый).
+    Раньше этот «облегчённый» хелпер обрабатывал только внешние URL — из-за чего
+    parsed-парсеры (LCW и т.п.) для Accessory/Headwear/Underwear/Tableware/Incense/
+    Sports/AutoPart застревали в products/parsed/ без читаемого image_file.
+    """
+    _auto_download_impl(instance, field_name=file_attr, url_field=url_attr)
 
 
 # ── Автоскачивание main_image → main_image_file для ВСЕХ доменных моделей ──────
