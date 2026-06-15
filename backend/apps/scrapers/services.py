@@ -1430,7 +1430,15 @@ class ScraperIntegrationService:
         # Общая карта исходный_URL→R2: корень карточки и все варианты делят одни файлы при совпадении URL.
         shared_source_to_r2: Dict[str, str] = {}
 
-        if media_urls:
+        # Парсеры, чьё медиа кладётся СРАЗУ в читаемый доменный путь через сигналы
+        # авто-скачивания (image_url/video_url остаются внешними → сигнал качает в
+        # image_file/video_file по доменному upload_to). Для них parsed-промежуток не
+        # нужен — не плодим products/parsed/. Требование: доменные *Image модели парсера
+        # подключены к сигналу галереи (BookProductImage и т.п.).
+        DIRECT_READABLE_PARSERS = ("ummaland",)
+        skip_parsed = any(p in (parser_name or "").lower() for p in DIRECT_READABLE_PARSERS)
+
+        if media_urls and not skip_parsed:
             new_images, url_map = self._download_parsed_media_urls(
                 session,
                 source_urls=media_urls,
