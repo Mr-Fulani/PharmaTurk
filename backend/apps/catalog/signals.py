@@ -362,6 +362,15 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
                     with default_storage.open(path) as fh:
                         data = fh.read()
                     getattr(instance, field_name).save(os.path.basename(path), ContentFile(data), save=False)
+                    # url больше не должен указывать на parsed-копию (иначе она числится
+                    # «живой» в db_paths и не подчистится) — переводим url на читаемый файл,
+                    # parsed становится орфаном и удаляется cleanup_orphaned_media.
+                    try:
+                        new_url = getattr(instance, field_name).url
+                        if new_url and hasattr(instance, url_field):
+                            setattr(instance, url_field, new_url)
+                    except Exception:
+                        pass
                     logger.info(f"Re-saved parsed {field_name} to readable path for {instance.__class__.__name__}")
                 else:
                     setattr(instance, field_name, path)
