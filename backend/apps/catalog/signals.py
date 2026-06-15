@@ -390,8 +390,10 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
 @receiver(pre_save, sender=BookProductImage)
 @receiver(pre_save, sender=BookVariantImage)
 def auto_download_domain_image_from_url(sender, instance, **kwargs):
-    """Автоматически скачивать изображения для доменных моделей."""
+    """Автоматически скачивать изображения (и видео, если есть) для доменных моделей."""
     _auto_download_impl(instance)
+    if hasattr(instance, "video_file") and hasattr(instance, "video_url"):
+        _auto_download_impl(instance, "video_file", "video_url")
 
 
 @receiver(pre_save, sender=ServiceImage)
