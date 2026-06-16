@@ -55,6 +55,42 @@ def test_parsed_gallery_image_resaved_to_readable():
 
 
 @pytest.mark.django_db
+def test_perfumery_parsed_gallery_image_resaved_to_readable():
+    """Парфюм: галерея раньше не имела pre_save-сигнала и застревала в parsed."""
+    from apps.catalog.models import Category, PerfumeryProductImage
+
+    category = Category.objects.create(name="Парфюм тест", slug="perfume-resave-test")
+    product = Product.objects.create(
+        name="Parfüm тест",
+        slug="parfum-resave-test",
+        category=category,
+        product_type="perfumery",
+        price=10,
+        currency="TRY",
+        external_id="lcw-resave-perfume-1",
+        external_data={},
+    )
+    perfumery = product.domain_item
+    assert perfumery is not product, "доменный PerfumeryProduct должен создаться"
+
+    key = "products/parsed/lcw/perfumery/images/resave-test-parfum.jpg"
+    default_storage.save(key, ContentFile(b"\xff\xd8\xff\xe0fakejpegdata"))
+    try:
+        img = PerfumeryProductImage(
+            product=perfumery,
+            image_url=f"https://cdn.mudaroba.com/{key}",
+            image_file="",
+        )
+        img.save()
+        img.refresh_from_db()
+        assert img.image_file and img.image_file.name
+        assert "/products/parsed/" not in img.image_file.name
+        assert "/products/parsed/" not in img.image_url
+    finally:
+        default_storage.delete(key)
+
+
+@pytest.mark.django_db
 def test_external_gallery_image_still_downloaded():
     """Внешний URL по-прежнему скачивается в файл (поведение не сломали)."""
     accessory = _make_accessory()

@@ -944,11 +944,13 @@ export default function ProductPage({
         : (variantImages.length > 0 ? variantImages : productImages)
 
       /**
-       * Мебель: корневое main_* дублирует первый кадр галереи. На проде галерея иногда только в product.images
-       * (merged API), а variant.images пустой — расширяем условие до «есть любые кадры из merged».
+       * Главная картинка парсерных товаров хранится отдельным файлом от галерейной копии
+       * того же кадра (main/ vs gallery/ или parsed/), URL-пути разные → дедуп по URL не
+       * срабатывает и main дублируется первым кадром галереи. Поэтому, если галерея непустая,
+       * НЕ добавляем синтетический main отдельным элементом (hero всё равно берётся из галереи/
+       * main_image_url ниже). Раньше так делали только для мебели — обобщаем на все типы.
        */
-      const furnitureSkipSyntheticMain =
-        productType === 'furniture' && mergedImages.length > 0
+      const skipSyntheticMain = mergedImages.length > 0
   
       const mainImageRaw = normalizeMediaValue(selectedVariant?.main_image || product.main_image_url || product.main_image)
   
@@ -1007,7 +1009,7 @@ export default function ProductPage({
         mainImageRaw &&
         mainDedupeKey &&
         !seenImageUrls.has(mainDedupeKey) &&
-        !furnitureSkipSyntheticMain
+        !skipSyntheticMain
       ) {
         seenImageUrls.add(mainDedupeKey)
         list.push({ id: 'main-i', image_url: mainImageRaw, alt_text: product.name, is_main: !list.some(i => i.is_main), sort_order: -30 })

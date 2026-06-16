@@ -1167,8 +1167,17 @@ R2 bucket → products/parsed/{parser_name}/images/{external_id}-{index}-{hash}.
 `_auto_download_image_url_to_file`, который теперь делегирует туда же). Если домен
 обрабатывает только внешние URL и не переносит parsed — его картинки застрянут в
 `products/parsed/` без читаемого `image_file` и станут 404 при чистке parsed
-(так было с Accessory/Headwear/Underwear/Tableware/Incense/Sports/AutoPart).
-Разовый перенос застрявших строк: `manage.py heal_parsed_gallery_media`.
+(так было с Accessory/Headwear/Underwear/Tableware/Incense/Sports/AutoPart, а также
+Perfumery/Medicine/Supplement/MedicalEquipment/IslamicClothing/Furniture — все они
+подключены к `auto_download_domain_image_from_url`). Разовый перенос застрявших
+строк: `manage.py heal_parsed_gallery_media`.
+
+> **Дубль главной картинки.** `main_image` хранится отдельным файлом (через
+> `_auto_download_main_image` → `…/main/…`), а галерейная копия того же кадра — в
+> `…/gallery/…` или `parsed/`. URL-пути разные, поэтому дедуп галереи по URL не
+> склеивает их. Фронтенд (`product/[[...slug]].tsx`, флаг `skipSyntheticMain`) при
+> непустой галерее НЕ добавляет main отдельным кадром — hero берётся из галереи. Это
+> убирает визуальный дубль для всех парсерных типов (раньше — только для мебели).
 
 ### 11.3. Лимит изображений
 

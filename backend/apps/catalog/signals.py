@@ -24,6 +24,7 @@ from .models import (
     ElectronicsProduct,
     ElectronicsProductImage,
     FurnitureProduct,
+    FurnitureProductImage,
     FurnitureVariant,
     FurnitureVariantImage,
     HeadwearProduct,
@@ -389,6 +390,20 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
 @receiver(pre_save, sender=ShoeVariantImage)
 @receiver(pre_save, sender=BookProductImage)
 @receiver(pre_save, sender=BookVariantImage)
+# Раньше у этих галерей не было pre_save-сигнала → медиа застревало в products/parsed/
+# без читаемого image_file (особенно заметно у парфюма: дубль главной, т.к. main
+# переносился в читаемый main/, а галерея оставалась в parsed). Подключаем к общему
+# обработчику (внешние URL → файл, parsed → читаемый путь).
+@receiver(pre_save, sender=FurnitureProductImage)
+@receiver(pre_save, sender=HeadwearVariantImage)
+@receiver(pre_save, sender=IslamicClothingProductImage)
+@receiver(pre_save, sender=IslamicClothingVariantImage)
+@receiver(pre_save, sender=MedicalEquipmentProductImage)
+@receiver(pre_save, sender=MedicineProductImage)
+@receiver(pre_save, sender=PerfumeryProductImage)
+@receiver(pre_save, sender=PerfumeryVariantImage)
+@receiver(pre_save, sender=SupplementProductImage)
+@receiver(pre_save, sender=UnderwearVariantImage)
 def auto_download_domain_image_from_url(sender, instance, **kwargs):
     """Автоматически скачивать изображения (и видео, если есть) для доменных моделей."""
     _auto_download_impl(instance)
