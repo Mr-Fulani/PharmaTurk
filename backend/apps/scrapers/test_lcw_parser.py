@@ -450,6 +450,8 @@ def test_parse_product_list_uses_group_ids_to_deduplicate(monkeypatch):
     parser = LcwParser()
 
     def fake_make_request(url, **kwargs):
+        if "sayfa=" in url:
+            return ""  # следующая страница пустая → пагинация останавливается
         if url.endswith("-t-345"):
             return LCW_CATEGORY_HTML
         if url.endswith("4869998"):
@@ -465,7 +467,7 @@ def test_parse_product_list_uses_group_ids_to_deduplicate(monkeypatch):
 
     monkeypatch.setattr(parser, "_make_request", fake_make_request)
 
-    products = parser.parse_product_list("https://www.lcw.com/erkek-tisort-t-345")
+    products = list(parser.parse_product_list("https://www.lcw.com/erkek-tisort-t-345"))
 
     assert len(products) == 2
     assert products[0].external_id == "lcw-4827603"
@@ -494,6 +496,8 @@ def test_parse_product_list_skips_variant_urls_already_seen_in_same_family(monke
     parser = LcwParser()
 
     def fake_make_request(url, **kwargs):
+        if "sayfa=" in url:
+            return ""  # следующая страница пустая → пагинация останавливается
         if url.endswith("-t-345"):
             return LCW_CATEGORY_WITH_SAME_FAMILY_VARIANTS_HTML
         if url.endswith("4869998"):
@@ -509,7 +513,7 @@ def test_parse_product_list_skips_variant_urls_already_seen_in_same_family(monke
 
     monkeypatch.setattr(parser, "_make_request", fake_make_request)
 
-    products = parser.parse_product_list("https://www.lcw.com/erkek-tisort-t-345")
+    products = list(parser.parse_product_list("https://www.lcw.com/erkek-tisort-t-345"))
 
     assert len(products) == 2
     assert [product.external_id for product in products] == [
@@ -534,6 +538,8 @@ def test_parse_product_list_skips_second_root_url_for_same_family_by_group_sku(m
     request_counts = {"haki": 0}
 
     def fake_make_request(url, **kwargs):
+        if "sayfa=" in url:
+            return ""  # следующая страница пустая → пагинация останавливается
         if url.endswith("-t-345"):
             return category_html
         if url.endswith("5214738"):
@@ -550,7 +556,7 @@ def test_parse_product_list_skips_second_root_url_for_same_family_by_group_sku(m
 
     monkeypatch.setattr(parser, "_make_request", fake_make_request)
 
-    products = parser.parse_product_list("https://www.lcw.com/erkek-tisort-t-345")
+    products = list(parser.parse_product_list("https://www.lcw.com/erkek-tisort-t-345"))
 
     assert len(products) == 2
     assert [product.external_id for product in products] == [
@@ -586,3 +592,10 @@ def test_parse_product_detail_collects_variants_from_embedded_json_when_dom_link
         "Lacivert",
         "Beyaz",
     ]
+
+
+def test_lcw_page_url_builds_sayfa_param():
+    # Пагинация LCW: page 1 — без параметра, далее ?sayfa=N.
+    assert LcwParser._lcw_page_url("https://www.lcw.com/erkek-parfum-t-3731", 1) == "https://www.lcw.com/erkek-parfum-t-3731"
+    assert LcwParser._lcw_page_url("https://www.lcw.com/erkek-parfum-t-3731", 2) == "https://www.lcw.com/erkek-parfum-t-3731?sayfa=2"
+    assert LcwParser._lcw_page_url("https://www.lcw.com/x?foo=1", 3) == "https://www.lcw.com/x?foo=1&sayfa=3"

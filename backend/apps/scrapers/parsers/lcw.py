@@ -14,6 +14,9 @@ from ..base.utils import clean_text, extract_currency, normalize_price
 class LcwParser(BaseScraper):
     """Парсер для lcw.com."""
 
+    # Настоящая постраничная пагинация категории через ?sayfa=N — авточепочка безопасна.
+    SUPPORTS_PAGE_CHUNKING = True
+
     DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
     MAX_VARIANTS_PER_PRODUCT = 24
     PRODUCT_PATH_RE = re.compile(r"-o-(\d+)(?:$|[/?#])")
@@ -120,69 +123,92 @@ class LcwParser(BaseScraper):
 
         return categories
 
-    def parse_product_list(self, category_url: str, max_pages: int = 10) -> List[ScrapedProduct]:
-        html = self._make_request(category_url)
-        if not html:
-            return []
+    @staticmethod
+    def _lcw_page_url(category_url: str, page: int) -> str:
+        """URL страницы категории LCW. Пагинация через ?sayfa=N (page 1 — без параметра)."""
+        if page <= 1:
+            return category_url
+        sep = "&" if "?" in category_url else "?"
+        return f"{category_url}{sep}sayfa={page}"
 
-        soup = BeautifulSoup(html, "html.parser")
-        products: List[ScrapedProduct] = []
+    def parse_product_list(self, category_url: str, max_pages: int = 10, start_page: int = 1):
+        """Постранично обходит категорию LCW (?sayfa=N). Генератор: отдаёт товар сразу.
+
+        start_page — с какой страницы начинать (авточепочка), max_pages — сколько страниц
+        обработать за этот вызов (размер чанка). Останавливается, когда страница пустая
+        или не приносит новых товаров (LCW за последней страницей повторяет последнюю).
+        """
         seen_urls = set()
         seen_family_urls = set()
         seen_group_ids = set()
         seen_family_keys = set()
+        yielded = 0
 
-        for anchor in soup.select("a[href]"):
-            href = anchor.get("href", "").strip()
-            if not self._is_product_url(href):
-                continue
-
-            product_url = urljoin(self.base_url, href)
-            if product_url in seen_urls or product_url in seen_family_urls:
-                continue
-
-            seen_urls.add(product_url)
-            detail_html = self._make_request(product_url)
-            parsed_variant = self._parse_single_variant(product_url, detail_html) if detail_html else None
-            family_key = self._build_family_key(parsed_variant)
-            if family_key and family_key in seen_family_keys:
-                continue
-
-            product = None
-            if parsed_variant:
-                product = self._parse_product_group(
-                    product_url,
-                    visited_urls=set(),
-                    initial_variant=parsed_variant,
-                )
-            else:
-                product = self.parse_product_detail(product_url)
-            if not product:
-                product = self._build_list_product(anchor, product_url, category_url)
-
-            group_id = ""
-            if product and isinstance(product.attributes, dict):
-                group_id = str(product.attributes.get("variant_group_id") or "").strip()
-            if group_id and group_id in seen_group_ids:
-                continue
-            if group_id:
-                seen_group_ids.add(group_id)
-            if family_key:
-                seen_family_keys.add(family_key)
-
-            if product and isinstance(product.attributes, dict):
-                for variant in product.attributes.get("fashion_variants", []) or []:
-                    variant_url = str(variant.get("external_url") or "").strip()
-                    if variant_url:
-                        seen_family_urls.add(variant_url)
-
-            if product and self.validate_product(product):
-                products.append(product)
-
-            if self.max_products and len(products) >= self.max_products:
+        pages_done = 0
+        page = max(1, start_page)
+        while pages_done < max(1, max_pages):
+            html = self._make_request(self._lcw_page_url(category_url, page))
+            if not html:
                 break
+            soup = BeautifulSoup(html, "html.parser")
 
-        return products
+            new_on_page = 0
+            for anchor in soup.select("a[href]"):
+                href = anchor.get("href", "").strip()
+                if not self._is_product_url(href):
+                    continue
+
+                product_url = urljoin(self.base_url, href)
+                if product_url in seen_urls or product_url in seen_family_urls:
+                    continue
+
+                new_on_page += 1
+                seen_urls.add(product_url)
+                detail_html = self._make_request(product_url)
+                parsed_variant = self._parse_single_variant(product_url, detail_html) if detail_html else None
+                family_key = self._build_family_key(parsed_variant)
+                if family_key and family_key in seen_family_keys:
+                    continue
+
+                product = None
+                if parsed_variant:
+                    product = self._parse_product_group(
+                        product_url,
+                        visited_urls=set(),
+                        initial_variant=parsed_variant,
+                    )
+                else:
+                    product = self.parse_product_detail(product_url)
+                if not product:
+                    product = self._build_list_product(anchor, product_url, category_url)
+
+                group_id = ""
+                if product and isinstance(product.attributes, dict):
+                    group_id = str(product.attributes.get("variant_group_id") or "").strip()
+                if group_id and group_id in seen_group_ids:
+                    continue
+                if group_id:
+                    seen_group_ids.add(group_id)
+                if family_key:
+                    seen_family_keys.add(family_key)
+
+                if product and isinstance(product.attributes, dict):
+                    for variant in product.attributes.get("fashion_variants", []) or []:
+                        variant_url = str(variant.get("external_url") or "").strip()
+                        if variant_url:
+                            seen_family_urls.add(variant_url)
+
+                if product and self.validate_product(product):
+                    yield product
+                    yielded += 1
+                    if self.max_products and yielded >= self.max_products:
+                        return
+
+            pages_done += 1
+            page += 1
+            # Новых товаров на странице не было → вышли за последнюю страницу LCW.
+            if new_on_page == 0:
+                break
 
     def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
         return self._parse_product_group(product_url, visited_urls=set())
