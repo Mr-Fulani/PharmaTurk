@@ -60,6 +60,8 @@
 
 **Что делает:** Полная переиндексация векторов товаров в Qdrant. Использует локальные модели: SentenceTransformer (текст) и CLIP (изображения). Без OpenAI.
 
+**Очередь:** `recsys` — обслуживается воркером **celery_ai** (`-Q ai,recsys`), НЕ celeryworker. Так тяжёлая переиндексация (десятки минут, оба слота) не блокирует задачи парсинга на celeryworker (`-Q celery`). См. CELERY_TASK_ROUTES в settings.py.
+
 **Текущее состояние:** Работает. Нужна для рекомендаций «похожие товары», «дополнить образ» и т.п.
 
 **Ручной запуск (все товары):**
@@ -67,12 +69,12 @@
 # Docker (Poetry)
 docker compose exec backend poetry run python manage.py sync_product_vectors --full
 
-# или частями (backend 1.5g — OOM при загрузке CLIP; использовать celeryworker 2g):
-docker compose exec celeryworker poetry run python manage.py sync_product_vectors --batch 50
+# или частями (backend 1.5g — OOM при загрузке CLIP; использовать celery_ai 3g):
+docker compose exec celery_ai poetry run python manage.py sync_product_vectors --batch 50
 # до конца: --until-done (повторяет батчи пока remaining > 0)
-docker compose exec celeryworker poetry run python manage.py sync_product_vectors --until-done
+docker compose exec celery_ai poetry run python manage.py sync_product_vectors --until-done
 # при рассинхроне (No vector found): --force --until-done (сброс last_synced, полная переиндексация)
-docker compose exec celeryworker poetry run python manage.py sync_product_vectors --force --until-done
+docker compose exec celery_ai poetry run python manage.py sync_product_vectors --force --until-done
 # конкретный товар: --product-id 946 --product-id 947
 
 # После переиндексации — если похожие не показываются, очистить кэш:
@@ -81,7 +83,7 @@ docker compose exec backend poetry run python manage.py clear_similar_cache
 # Локально (из backend/)
 poetry run python manage.py sync_product_vectors --full
 ```
-Полная синхронизация идёт в Celery в фоне. Прогресс — в логах celeryworker.
+Полная синхронизация идёт в Celery в фоне. Прогресс — в логах celery_ai.
 
 **Процедура при «No vector found» или пустых похожих:**
 1. `sync_product_vectors --force --until-done` (сбрасывает last_synced, переиндексирует всё; кэш очищается автоматически)

@@ -120,8 +120,8 @@ services:
     environment:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
-    command: bash -c "poetry run celery -A config worker -Q celery,recsys --loglevel=info --concurrency=2"
-    mem_limit: 4g
+    command: bash -c "poetry run celery -A config worker -Q celery --loglevel=info --concurrency=2"
+    mem_limit: 3g
 
   celery_ai:
     image: mudaroba-backend
@@ -137,8 +137,8 @@ services:
     environment:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
-    command: bash -c "poetry run celery -A config worker -Q ai -n ai_worker@%h --loglevel=info --concurrency=2"
-    mem_limit: 2g
+    command: bash -c "poetry run celery -A config worker -Q ai,recsys -n ai_worker@%h --loglevel=info --concurrency=2"
+    mem_limit: 3g
 
   celerybeat:
     image: mudaroba-backend

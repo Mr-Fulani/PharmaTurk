@@ -154,7 +154,9 @@ CELERY_TASK_ANNOTATIONS = {
 }
 from celery.schedules import crontab
 
-# Очередь ai для задач AI (воркер celery_ai слушает только её); recsys для рекомендаций
+# Очереди: celery (скрейп/платежи/валюта/каталог) — воркер celeryworker;
+# ai + recsys — воркер celery_ai. Рекомендации (recsys) намеренно НЕ на celeryworker,
+# чтобы тяжёлая переиндексация векторов не блокировала задачи парсинга.
 CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},
     "apps.recommendations.tasks.*": {"queue": "recsys"},
