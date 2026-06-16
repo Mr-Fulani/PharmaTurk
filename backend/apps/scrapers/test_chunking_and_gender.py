@@ -20,10 +20,10 @@ from apps.scrapers.tasks import run_scraper_task
 
 
 def test_only_paginating_parser_supports_chunking():
-    # Настоящая пагинация по ?pg= → чепочка безопасна.
+    # Настоящая пагинация (ilacfiyati ?pg=, lcw ?sayfa=) → чепочка безопасна.
     assert IlacFiyatiParser.SUPPORTS_PAGE_CHUNKING is True
-    # Один проход (страница/API целиком) → чепочка переоткрыла бы те же товары.
-    assert LcwParser.SUPPORTS_PAGE_CHUNKING is False
+    assert LcwParser.SUPPORTS_PAGE_CHUNKING is True
+    # UmmaLand берёт весь листинг из API за один проход → чепочка переоткрыла бы те же товары.
     assert UmmalandParser.SUPPORTS_PAGE_CHUNKING is False
 
 
