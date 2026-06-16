@@ -1060,9 +1060,15 @@ class ContentGenerator:
             template_type=template_type, is_active=True
         )
         if category is not None:
-            template = qs.filter(category=category).first() or qs.filter(
-                category__isnull=True
-            ).first()
+            # Идём вверх по дереву: точная категория → родители → общий (null).
+            # Так шаблон на корневой «Парфюмерия» покрывает все подкатегории (Духи и т.п.).
+            template = None
+            for cid in self._get_category_lineage_ids(category):
+                template = qs.filter(category_id=cid).first()
+                if template:
+                    break
+            if not template:
+                template = qs.filter(category__isnull=True).first()
         else:
             template = qs.first()
         return (template.content if template else default) or default
