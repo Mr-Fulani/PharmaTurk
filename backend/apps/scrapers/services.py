@@ -2560,8 +2560,15 @@ class ScraperIntegrationService:
         scraped_product: ScrapedProduct,
         existing_product: Product,
     ) -> Tuple[str, Product]:
-        """Обновляет существующий товар."""
+        """Обновляет существующий товар.
+
+        Возвращает action="updated", если реально изменилось хоть одно содержательное
+        поле (цена/наличие/описание/медиа-ссылки/категория/атрибуты), иначе "skipped" —
+        товар встретился повторно без изменений. Служебные поля (scraped_sources,
+        last_synced_at) сами по себе «обновлением» не считаются.
+        """
         updated = False
+        content_changed = False
         prepared_attrs = self._prepare_scraped_attributes(scraped_product, existing_product.product_type)
         should_repair_ilacfiyati_external_id = self._should_repair_ilacfiyati_external_id(
             existing_product,
@@ -2710,9 +2717,10 @@ class ScraperIntegrationService:
                     existing_product.external_data["variant_content"] = variant_content
                     updated = True
             else:
-                existing_product.external_data["attributes"] = _json_safe_scraped_value(
-                    prepared_attrs
-                )
+                new_attrs = _json_safe_scraped_value(prepared_attrs)
+                if existing_product.external_data.get("attributes") != new_attrs:
+                    content_changed = True
+                existing_product.external_data["attributes"] = new_attrs
                 if (
                     existing_product.product_type == "medicines"
                     and scraped_product.source == "ilacfiyati"
@@ -2721,6 +2729,12 @@ class ScraperIntegrationService:
                 ):
                     existing_product.external_data["is_stub"] = False
                     updated = True
+
+        # Всё значимое выше уже выставило updated=True (цена/наличие/описание/медиа-ссылки/
+        # категория/варианты/is_stub). Фиксируем это как реальное изменение ДО служебных
+        # полей ниже, которые пишутся всегда и сами «обновлением» не считаются.
+        if updated:
+            content_changed = True
 
         source_info = {
             "source": scraped_product.source,
@@ -2750,6 +2764,7 @@ class ScraperIntegrationService:
                 existing_product, prepared_attrs, session=session
             ):
                 updated = True
+                content_changed = True
 
         if updated:
             existing_product.save()
@@ -2794,7 +2809,7 @@ class ScraperIntegrationService:
                         f"Ошибка при обновлении авторов для товара {existing_product.id}: {e}"
                 )
 
-        return "updated", existing_product
+        return ("updated" if content_changed else "skipped"), existing_product
 
     def _clear_product_domain_cache(self, product: Product) -> None:
         fields_cache = getattr(getattr(product, "_state", None), "fields_cache", None)
