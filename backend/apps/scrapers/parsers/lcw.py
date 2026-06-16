@@ -534,14 +534,25 @@ class LcwParser(BaseScraper):
             attrs_block_raw = attrs_block_match.group(1)
             next_labels_pattern = (
                 r"(?:Ana Kumaş|Menşei|Satıcı|Marka|Ürün Tipi|Cinsiyet|Kumaş|Desen|Malzeme|"
+                r"Paket İçeriği|Hacim|Koku Tipi|Form|Konsantrasyon|Net Miktar|"
                 r"İmalatçı / İthalatçı / Yetkili Temsilci / İfa Hizmet Sağlayıcı)\s*:"
             )
+            # Перфюм/общие метки добавлены к одёжным: блок «Ürün İçeriği ve Özellikleri»
+            # у парфюма содержит Hacim/Koku Tipi/Paket İçeriği — иначе они выпадали из
+            # описания (а из него энричмент берёт volume и fragrance_family).
             direct_labels = [
                 "Ana Kumaş",
                 "Ürün Tipi",
                 "Kumaş",
                 "Desen",
                 "Malzeme",
+                "Cinsiyet",
+                "Paket İçeriği",
+                "Hacim",
+                "Koku Tipi",
+                "Form",
+                "Konsantrasyon",
+                "Net Miktar",
             ]
             for label in direct_labels:
                 match = re.search(

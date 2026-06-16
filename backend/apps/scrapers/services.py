@@ -505,7 +505,10 @@ class ScraperIntegrationService:
 
         family_source = str(enriched.get("fragrance_family") or "")
         if not family_source:
-            family_match = re.search(r"\bgrup\s*:\s*([^,;\n]+)", full_text, flags=re.IGNORECASE)
+            # Явная метка LCW «Koku Tipi: Odunsu/Fresh/Vanilya» надёжнее, чем скан всего текста.
+            family_match = re.search(
+                r"\b(?:Koku\s*Tipi|grup)\s*:\s*([^,;\n]+)", full_text, flags=re.IGNORECASE
+            )
             if family_match:
                 family_source = family_match.group(1)
         normalized_family = self._normalize_perfume_family(family_source or full_text)
