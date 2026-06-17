@@ -284,7 +284,13 @@ def run_scraper_task(self,
             # (start_page). Иначе следующий чанк переоткрыл бы те же товары, раздувая
             # счётчики (например, 510 «обновлений» на 104 реальные карточки).
             parser_class = get_parser(scraper_config.parser_class)
-            supports_chunking = bool(getattr(parser_class, "SUPPORTS_PAGE_CHUNKING", False))
+            supports_url_chunking = getattr(parser_class, "supports_page_chunking_for_url", None)
+            if callable(supports_url_chunking):
+                supports_chunking = bool(
+                    supports_url_chunking(start_url or scraper_config.base_url)
+                )
+            else:
+                supports_chunking = bool(getattr(parser_class, "SUPPORTS_PAGE_CHUNKING", False))
 
             # Продолжаем цепочку если: парсер это поддерживает, нашли хоть что-то И не достигли лимита
             should_chain = (

@@ -560,7 +560,7 @@ parser_class = get_parser(task.url)    # → по домену из URL
 |-----|-------|--------|
 | `ummaland` | `UmmalandParser` | ummaland.com, umma-land.com |
 | `instagram` | `InstagramParser` | instagram.com, www.instagram.com |
-| `zara` | `ZaraParser` | zara.com, tr.zara.com, ru.zara.com |
+| `zara` | `ZaraParser` | zara.com, www.zara.com, tr.zara.com |
 | `ilacabak` | `IlacabakParser` | ilacabak.com, www.ilacabak.com |
 | `ilacfiyati` | `IlacFiyatiParser` | ilacfiyati.com, www.ilacfiyati.com |
 | `ikea` | `IkeaParser` | ikea.com.tr, www.ikea.com.tr |
@@ -587,7 +587,49 @@ parser_class = get_parser(task.url)    # → по домену из URL
 
 ---
 
-### 6.5. LC Waikiki (`lcw.com`)
+### 6.5. Zara: категории, карточки и варианты
+
+`ZaraParser` запрашивает серверный JSON через `?ajax=true`, а HTML
+`window.zara.viewPayload` использует как fallback. AJAX-режим не требует исполнения
+браузерной JavaScript-проверки Akamai. CSS-классы и видимые блоки могут меняться,
+но в payload уже находятся идентификаторы, цены, галереи и остатки.
+
+Поддерживаемые URL:
+
+- товарная категория: `https://www.zara.com/tr/tr/kadin-elbiseler-l1066.html`;
+- карточка товара: `https://www.zara.com/tr/tr/...-p03897114.html`;
+- маркетинговый раздел: `https://www.zara.com/tr/tr/kadin-mkt1000.html`.
+
+Для `-l<ID>.html` включена безопасная авточепочка через `?page=N`. Парсер учитывает
+`paginationInfo.isLastPage` и фильтрует накопленные товары по `serverPage`, потому что
+Zara может вернуть на второй странице также элементы первой страницы.
+
+Для `-mkt<ID>.html` авточепочка отключена: такой лендинг не имеет общей нумерации
+страниц и AJAX payload может содержать только текущий featured-раздел. Этот режим
+вспомогательный; для полного обхода нужно передавать товарную категорию `-l<ID>.html`.
+
+Карточка Zara возвращается как одно семейство товаров. Цвета сохраняются в
+`attributes["fashion_variants"]`, а размеры — внутри соответствующего варианта.
+Статусы `in_stock` и `low_on_stock` считаются доступными; `coming_soon` и
+`out_of_stock` сохраняются, но получают нулевой остаток. Основные идентификаторы:
+
+- `ScrapedProduct.external_id = zara-<seoProductId>`;
+- `attributes["variant_group_id"]` совпадает с external ID товара;
+- `variant.external_id = zara-variant-<color productId/reference>`.
+
+Цена в Zara хранится в минимальных единицах (`249000` означает `2490.00 TRY`).
+Галерея берётся из `pdpMedia` и `xmedia`, дедупликация выполняется по `assetId`.
+Если detail-страница временно недоступна, листинг создаёт минимальный fallback-товар
+с `attributes["is_list_fallback"] = True`, чтобы категория не теряла найденную позицию.
+
+Частота запросов ограничивается настройками `delay_min` / `delay_max`, но Zara в любом
+случае выдерживает не менее 2.5 секунд после предыдущего ответа. Каждые 20 HTTP-попыток
+добавляется пауза 15–30 секунд. Для ответов 429/5xx учитывается `Retry-After`, а при его
+отсутствии используется экспоненциальный backoff с jitter.
+
+Тесты контракта: `backend/apps/scrapers/test_zara_parser.py`.
+
+### 6.6. LC Waikiki (`lcw.com`)
 
 Парсер `LcwParser` уже встроен в проект и зарегистрирован в реестре. Для команды это **эталонный parser blueprint**: если мы делаем новый парсер для fashion / accessories / shoes / headwear / underwear / похожего e-commerce сайта, сначала ориентируемся именно на LCW и повторяем его паттерны, а не пишем упрощённую версию “на коленке”.
 

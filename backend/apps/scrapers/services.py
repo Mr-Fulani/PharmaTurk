@@ -42,6 +42,7 @@ from .models import (
 )
 from .parsers.registry import get_parser
 from .parsers.lcw import LcwParser
+from .parsers.zara import ZaraParser
 from .base.scraper import ScrapedProduct, _json_safe_scraped_value
 from apps.catalog.services import CatalogNormalizer, build_image_alt_text
 from apps.catalog.utils.tr_vocab import (
@@ -1030,11 +1031,13 @@ class ScraperIntegrationService:
             host = (parsed_url.netloc or "").lower()
             is_ikea_host = host == "ikea.com.tr" or host.endswith(".ikea.com.tr")
             is_lcw_host = host == "lcw.com" or host.endswith(".lcw.com")
+            is_zara_host = host == "zara.com" or host.endswith(".zara.com")
 
             is_category = (
                 "/category/" in start_url or "/kategori/" in start_url or
                 (len(path_parts) == 1 and path_parts[0] in ('ilaclar', 'takviye-edici-gida')) or
-                (is_lcw_host and LcwParser.is_lcw_category_url(start_url))
+                (is_lcw_host and LcwParser.is_lcw_category_url(start_url)) or
+                (is_zara_host and ZaraParser.is_zara_category_url(start_url))
             )
             is_search = "/search" in start_url or "/arama" in start_url
             # IKEA TR/COM: карточка товара — /urun/, /product/ или /p/
@@ -1043,12 +1046,14 @@ class ScraperIntegrationService:
                 and any(p in path_parts for p in ("urun", "product", "p"))
             )
             is_lcw_product = is_lcw_host and LcwParser.is_lcw_product_url(start_url)
+            is_zara_product = is_zara_host and ZaraParser.is_zara_product_url(start_url)
             is_product = (
                 "/product/" in start_url or
                 ("/p/" in start_url and "instagram.com" not in start_url) or
                 (len(path_parts) >= 2 and path_parts[0] in ('ilaclar', 'takviye-edici-gida')) or
                 is_ikea_product or
-                is_lcw_product
+                is_lcw_product or
+                is_zara_product
             )
 
             # Определяем тип парсинга по URL
@@ -1060,7 +1065,12 @@ class ScraperIntegrationService:
                 # start_page передаём только парсерам с настоящей пагинацией,
                 # иначе остальные упадут на неизвестном аргументе (TypeError).
                 list_kwargs = {"max_pages": session.max_pages}
-                if getattr(parser, "SUPPORTS_PAGE_CHUNKING", False):
+                supports_url_chunking = getattr(parser, "supports_page_chunking_for_url", None)
+                if callable(supports_url_chunking):
+                    supports_chunking = bool(supports_url_chunking(start_url))
+                else:
+                    supports_chunking = bool(getattr(parser, "SUPPORTS_PAGE_CHUNKING", False))
+                if supports_chunking:
                     list_kwargs["start_page"] = start_page
                 try:
                     for product in parser.parse_product_list(start_url, **list_kwargs):
