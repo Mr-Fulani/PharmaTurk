@@ -145,6 +145,15 @@ CELERY_TASK_ALWAYS_EAGER = False
 CELERY_TASK_TIME_LIMIT = 60 * 30
 CELERY_TASK_SOFT_TIME_LIMIT = 60 * 25
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# Redis возвращает неподтверждённую задачу в очередь после visibility timeout.
+# Значение должно быть больше hard limit скрейпера, иначе долгий чанк может
+# запуститься повторно ещё до завершения первого worker.
+CELERY_BROKER_TRANSPORT_OPTIONS = {"visibility_timeout": 60 * 60 * 3}
+CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {"visibility_timeout": 60 * 60 * 3}
+CELERY_VISIBILITY_TIMEOUT = 60 * 60 * 3
+# При потере Redis worker прекращает late-ack задачи: их выполнит новый worker,
+# вместо параллельной обработки старой и повторно доставленной копии.
+CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 # Расширенные лимиты конкретно для scraper-задач (могут парсить сотни товаров с изображениями)
 CELERY_TASK_ANNOTATIONS = {
     "apps.scrapers.tasks.run_scraper_task": {

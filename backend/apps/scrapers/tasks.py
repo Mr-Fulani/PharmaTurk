@@ -105,7 +105,15 @@ def revoke_site_scraper_task(task: SiteScraperTask, *, terminate: bool = True) -
     return True
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    # Подтверждаем чанк только после завершения. При пересоздании worker Redis
+    # вернёт его в очередь, и цепочка продолжится без ручного перезапуска.
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def run_scraper_task(self,
                     scraper_config_id: int,
                     start_url: Optional[str] = None,

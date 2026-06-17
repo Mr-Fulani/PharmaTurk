@@ -9,6 +9,8 @@
 import pytest
 from types import SimpleNamespace
 
+from django.conf import settings
+
 from apps.catalog.models import Category
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.models import ScraperConfig, ScrapingSession, SiteScraperTask
@@ -17,6 +19,24 @@ from apps.scrapers.parsers.lcw import LcwParser
 from apps.scrapers.parsers.ummaland import UmmalandParser
 from apps.scrapers.services import ScraperIntegrationService
 from apps.scrapers.tasks import run_scraper_task
+
+
+def test_scraper_task_is_requeued_when_worker_is_lost():
+    """Активный чанк должен вернуться в очередь после пересоздания worker."""
+    assert run_scraper_task.acks_late is True
+    assert run_scraper_task.reject_on_worker_lost is True
+
+
+def test_visibility_timeout_is_longer_than_scraper_hard_limit():
+    """Redis не должен повторно выдать чанк, пока первый worker ещё работает."""
+    scraper_hard_limit = settings.CELERY_TASK_ANNOTATIONS[
+        "apps.scrapers.tasks.run_scraper_task"
+    ]["time_limit"]
+
+    assert settings.CELERY_BROKER_TRANSPORT_OPTIONS["visibility_timeout"] > scraper_hard_limit
+    assert settings.CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS["visibility_timeout"] > scraper_hard_limit
+    assert settings.CELERY_VISIBILITY_TIMEOUT > scraper_hard_limit
+    assert settings.CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS is True
 
 
 def test_only_paginating_parser_supports_chunking():
