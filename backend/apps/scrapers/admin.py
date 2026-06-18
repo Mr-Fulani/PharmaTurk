@@ -401,17 +401,20 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
     ]
 
     def changelist_view(self, request, extra_context=None):
-        response = super().changelist_view(request, extra_context=extra_context)
-        if SiteScraperTask.objects.filter(status="running").exists():
-            response["Refresh"] = "5"
-        return response
+        # Авто-обновление списка делает вежливый JS в шаблоне change_list.html
+        # (каждые 20с, с паузой при вводе/выделении/фоновой вкладке). HTTP-заголовок
+        # Refresh здесь не нужен — он перезагружал страницу каждые 5с даже во время
+        # работы пользователя.
+        return super().changelist_view(request, extra_context=extra_context)
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         response = super().change_view(request, object_id, form_url, extra_context)
         try:
             obj = SiteScraperTask.objects.get(pk=object_id)
             if obj.status == "running":
-                response["Refresh"] = "5"
+                # Счётчики обновляются патчами по ~10 карточек (~20с); чаще
+                # перезагружать смысла нет.
+                response["Refresh"] = "20"
         except SiteScraperTask.DoesNotExist:
             pass
         return response
