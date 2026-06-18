@@ -57,7 +57,10 @@ def test_run_returns_paused_before_start_and_records_resume_page(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_run_records_resume_page_at_chunk_start(monkeypatch):
+def test_run_keeps_resume_page_at_chunk_start_while_chaining(monkeypatch):
+    # Чанк нашёл товары и не достиг лимита → ставит следующий чанк в цепочку.
+    # resume_page остаётся на странице текущего чанка (сброс в 1 — только при
+    # полном завершении). Так при сбое воркера «Продолжить» возьмёт верную страницу.
     task = _build_task(status="running")
     session = ScrapingSession.objects.create(
         scraper_config=task.scraper_config,
@@ -67,11 +70,14 @@ def test_run_records_resume_page_at_chunk_start(monkeypatch):
         max_images_per_product=3,
         status="completed",
     )
-    session.products_found = 0
+    session.products_found = 5
     session.save()
 
+    class _Next:
+        id = "celery-next"
+
     monkeypatch.setattr(ScraperIntegrationService, "run_scraper", lambda *a, **k: session)
-    monkeypatch.setattr(run_scraper_task, "apply_async", lambda *a, **k: None)
+    monkeypatch.setattr(run_scraper_task, "apply_async", lambda *a, **k: _Next())
 
     run_scraper_task.run(
         scraper_config_id=task.scraper_config_id,
