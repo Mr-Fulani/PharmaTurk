@@ -236,6 +236,11 @@ class ZaraParser(BaseScraper):
         payload = self._extract_view_payload(response_text)
         if payload is None:
             self.logger.warning("Zara: payload отсутствует на странице %s", url)
+            # Akamai может вернуть challenge-страницу с HTTP 200 после того,
+            # как AJAX endpoint уже ответил 403. Такой HTML не является
+            # рабочим fallback: сохраняем исходную причину блокировки.
+            if access_error is not None:
+                raise access_error
         return payload
 
     def parse_categories(self) -> List[Dict[str, Any]]:

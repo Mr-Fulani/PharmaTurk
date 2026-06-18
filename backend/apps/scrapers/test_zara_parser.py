@@ -266,6 +266,23 @@ def test_zara_403_is_raised_when_html_fallback_is_unavailable(monkeypatch):
         parser._request_payload("https://www.zara.com/test")
 
 
+def test_zara_403_is_raised_when_html_fallback_is_challenge_page(monkeypatch):
+    parser = ZaraParser()
+    monkeypatch.setattr(
+        parser,
+        "_make_ajax_request",
+        lambda url: (_ for _ in ()).throw(ScraperAccessBlockedError("HTTP 403")),
+    )
+    monkeypatch.setattr(
+        parser,
+        "_make_request",
+        lambda url: "<html><body>JavaScript is required</body></html>",
+    )
+
+    with pytest.raises(ScraperAccessBlockedError, match="HTTP 403"):
+        parser._request_payload("https://www.zara.com/test")
+
+
 def test_zara_parse_product_detail_builds_color_variants_and_sizes(monkeypatch):
     url = "https://www.zara.com/tr/tr/kisa-balon-kollu-elbise-p03897114.html"
     parser = ZaraParser()
