@@ -133,6 +133,15 @@ class BaseScraper(ABC):
         self.username = username
         self.password = password
         self.max_products = None  # Лимит товаров
+
+        # Прокси для обхода репутационных блокировок (Akamai и т.п.).
+        # Активен только при use_proxy=True и заданном SCRAPER_PROXY_URL.
+        # Пусто = прямое соединение (поведение по умолчанию не меняется).
+        self.proxy_url = self._resolve_proxy_url()
+        # requests-стиль для парсеров на requests.Session (Zara, Ummaland).
+        self.proxies = (
+            {"http": self.proxy_url, "https": self.proxy_url} if self.proxy_url else None
+        )
         
         # Настройка логгера
         self.logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
@@ -157,7 +166,17 @@ class BaseScraper(ABC):
         }
         
         self._setup_client()
-    
+
+    def _resolve_proxy_url(self) -> str:
+        """Возвращает URL прокси, если он включён для этого парсера."""
+        if not self.use_proxy:
+            return ""
+        try:
+            from django.conf import settings
+            return str(getattr(settings, "SCRAPER_PROXY_URL", "") or "").strip()
+        except Exception:
+            return ""
+
     def _setup_client(self):
         # Настройка HTTP клиента
         self.ua = UserAgent()
@@ -176,12 +195,15 @@ class BaseScraper(ABC):
             'Cache-Control': 'max-age=0',
         }
         
-        self.client = httpx.Client(
+        client_kwargs = dict(
             headers=headers,
             timeout=self.timeout,
             follow_redirects=True,
             http2=True, # Включаем HTTP/2 для большей реалистичности
         )
+        if self.proxy_url:
+            client_kwargs["proxy"] = self.proxy_url
+        self.client = httpx.Client(**client_kwargs)
     
     def __enter__(self):
         """Контекстный менеджер - вход."""

@@ -33,6 +33,9 @@ class ZaraParser(BaseScraper):
     BATCH_REQUEST_SIZE = 20
     BATCH_PAUSE_RANGE = (15.0, 30.0)
     RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+    WARMUP_URL = "https://www.zara.com/tr/tr/"
+    # Маркеры защитной страницы Akamai BotManager (HTTP 200 без данных).
+    CHALLENGE_MARKERS = ("bm-verify", "/_sec/", "pardon our interruption", "bobcmn")
 
     def __init__(self, base_url: str = "https://www.zara.com", **kwargs):
         super().__init__(base_url=base_url, delay_range=(2, 4), **kwargs)
@@ -43,16 +46,21 @@ class ZaraParser(BaseScraper):
             }
         )
         self.ajax_session = requests.Session()
+        # Единый реалистичный User-Agent на прогреве и AJAX: Akamai привязывает
+        # выданные cookies к одному fingerprint. Голый "Mozilla/5.0" — сигнатура бота.
         self.ajax_session.headers.update(
             {
-                "User-Agent": "Mozilla/5.0",
+                "User-Agent": self.user_agent,
                 "Accept": "application/json",
                 "X-Requested-With": "XMLHttpRequest",
                 "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
             }
         )
+        if self.proxies:
+            self.ajax_session.proxies.update(self.proxies)
         self._last_ajax_response_at: Optional[float] = None
         self._ajax_request_count = 0
+        self._session_warmed = False
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.ajax_session.close()
@@ -130,9 +138,40 @@ class ZaraParser(BaseScraper):
             return payload if isinstance(payload, dict) else None
         return None
 
+    def _warm_session(self) -> None:
+        """Один прогрев: получает cookies Akamai (ak_bmsc/_abck/bm_sz) с homepage.
+
+        Без этих cookies AJAX-сессия стартует «холодной», и BotManager отдаёт
+        защитную страницу вместо данных. Делаем максимум одну попытку, чтобы
+        неудачный прогрев не зацикливал каждый запрос.
+        """
+        if self._session_warmed:
+            return
+        self._session_warmed = True
+        try:
+            self.ajax_session.get(
+                self.WARMUP_URL,
+                headers={
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Referer": "https://www.google.com/",
+                },
+                timeout=self.timeout,
+                allow_redirects=True,
+            )
+        except requests.RequestException as exc:
+            self.logger.info("Zara: прогрев сессии не удался: %s", exc)
+
+    def _looks_like_challenge(self, text: Optional[str]) -> bool:
+        """Похоже ли тело ответа на защитную страницу Akamai вместо данных."""
+        if not text:
+            return False
+        head = text[:4000].lower()
+        return any(marker in head for marker in self.CHALLENGE_MARKERS)
+
     def _make_ajax_request(self, url: str) -> Optional[str]:
         """Запрашивает чистый JSON Zara через отдельный HTTP/1.1 transport."""
         ajax_url = self._ajax_url(url)
+        self._warm_session()
         for attempt in range(self.max_retries + 1):
             try:
                 self._wait_before_ajax_request()
@@ -149,6 +188,17 @@ class ZaraParser(BaseScraper):
                 self._ajax_request_count += 1
                 self._last_ajax_response_at = time.monotonic()
                 response.raise_for_status()
+                # Akamai может ответить 200 защитной страницей (bm-verify),
+                # а не данными — это та же блокировка, что и 403.
+                if self._looks_like_challenge(response.text):
+                    self.logger.warning(
+                        "Zara: получена защитная страница Akamai на %s", ajax_url
+                    )
+                    raise ScraperAccessBlockedError(
+                        source="Zara",
+                        status_code=403,
+                        url=str(response.url or ajax_url),
+                    )
                 return response.text
             except SoftTimeLimitExceeded:
                 raise

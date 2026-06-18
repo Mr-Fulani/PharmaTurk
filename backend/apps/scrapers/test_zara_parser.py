@@ -205,6 +205,7 @@ def test_zara_retry_uses_retry_after_header(monkeypatch):
     success.url = limited.url
     responses = iter([limited, success])
     sleep_calls = []
+    parser._session_warmed = True
     monkeypatch.setattr(parser, "_wait_before_ajax_request", lambda: None)
     monkeypatch.setattr(parser.ajax_session, "get", lambda *args, **kwargs: next(responses))
     monkeypatch.setattr(
@@ -231,6 +232,7 @@ def test_zara_403_raises_access_blocked_without_retries(monkeypatch):
         request_count += 1
         return forbidden
 
+    parser._session_warmed = True
     monkeypatch.setattr(parser, "_wait_before_ajax_request", lambda: None)
     monkeypatch.setattr(parser.ajax_session, "get", forbidden_response)
 
@@ -238,6 +240,47 @@ def test_zara_403_raises_access_blocked_without_retries(monkeypatch):
         parser._make_ajax_request("https://www.zara.com/test")
 
     assert request_count == 1
+
+
+def test_zara_warms_session_once_before_ajax(monkeypatch):
+    parser = ZaraParser(max_retries=0)
+    calls = []
+
+    def fake_get(url, *args, **kwargs):
+        calls.append(url)
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b'{"ok": true}'
+        response.url = url
+        return response
+
+    monkeypatch.setattr(parser, "_wait_before_ajax_request", lambda: None)
+    monkeypatch.setattr(parser.ajax_session, "get", fake_get)
+
+    parser._make_ajax_request("https://www.zara.com/a")
+    parser._make_ajax_request("https://www.zara.com/b")
+
+    # Прогрев homepage происходит ровно один раз, далее только целевые запросы.
+    assert calls[0] == parser.WARMUP_URL
+    assert calls.count(parser.WARMUP_URL) == 1
+
+
+def test_zara_akamai_challenge_page_raises_access_blocked(monkeypatch):
+    parser = ZaraParser(max_retries=0)
+    parser._session_warmed = True
+    challenge = requests.Response()
+    challenge.status_code = 200
+    challenge._content = (
+        b"<html><head><meta http-equiv='refresh' "
+        b"content=\"5; URL='/tr/tr/?bm-verify=AAQ'\"></head></html>"
+    )
+    challenge.url = "https://www.zara.com/test?ajax=true"
+
+    monkeypatch.setattr(parser, "_wait_before_ajax_request", lambda: None)
+    monkeypatch.setattr(parser.ajax_session, "get", lambda *a, **k: challenge)
+
+    with pytest.raises(ScraperAccessBlockedError, match="HTTP 403"):
+        parser._make_ajax_request("https://www.zara.com/test")
 
 
 def test_zara_403_uses_html_fallback_when_available(monkeypatch):

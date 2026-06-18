@@ -412,6 +412,11 @@ COMPANY_SITE_URL = env("COMPANY_SITE_URL", default="https://mudaroba.com")
 BOOKS_SEO_SITE_NAME = env("BOOKS_SEO_SITE_NAME", default=COMPANY_NAME)
 
 
+# Прокси для парсеров (например турецкий residential/mobile для обхода
+# репутационных блокировок Akamai на Zara). Пусто = прямое соединение.
+SCRAPER_PROXY_URL = env("SCRAPER_PROXY_URL", default="")
+
+
 # Sentry (неактивен, если DSN пуст)
 SENTRY_DSN = env("SENTRY_DSN", default="")
 if SENTRY_DSN:
