@@ -1,8 +1,9 @@
 import json
 
+import pytest
 import requests
 
-from apps.scrapers.base.scraper import ScrapedProduct
+from apps.scrapers.base.scraper import ScrapedProduct, ScraperAccessBlockedError
 from apps.scrapers.parsers.zara import ZaraParser
 from apps.scrapers.services import ScraperIntegrationService
 
@@ -215,6 +216,54 @@ def test_zara_retry_uses_retry_after_header(monkeypatch):
 
     assert json.loads(result) == {"ok": True}
     assert sleep_calls == [7.0]
+
+
+def test_zara_403_raises_access_blocked_without_retries(monkeypatch):
+    parser = ZaraParser(max_retries=3)
+    forbidden = requests.Response()
+    forbidden.status_code = 403
+    forbidden._content = b"Service Unavailable"
+    forbidden.url = "https://www.zara.com/test?ajax=true"
+    request_count = 0
+
+    def forbidden_response(*args, **kwargs):
+        nonlocal request_count
+        request_count += 1
+        return forbidden
+
+    monkeypatch.setattr(parser, "_wait_before_ajax_request", lambda: None)
+    monkeypatch.setattr(parser.ajax_session, "get", forbidden_response)
+
+    with pytest.raises(ScraperAccessBlockedError, match="HTTP 403"):
+        parser._make_ajax_request("https://www.zara.com/test")
+
+    assert request_count == 1
+
+
+def test_zara_403_uses_html_fallback_when_available(monkeypatch):
+    parser = ZaraParser()
+    expected = _detail_payload()
+    monkeypatch.setattr(
+        parser,
+        "_make_ajax_request",
+        lambda url: (_ for _ in ()).throw(ScraperAccessBlockedError("HTTP 403")),
+    )
+    monkeypatch.setattr(parser, "_make_request", lambda url: _payload_html(expected))
+
+    assert parser._request_payload("https://www.zara.com/test") == expected
+
+
+def test_zara_403_is_raised_when_html_fallback_is_unavailable(monkeypatch):
+    parser = ZaraParser()
+    monkeypatch.setattr(
+        parser,
+        "_make_ajax_request",
+        lambda url: (_ for _ in ()).throw(ScraperAccessBlockedError("HTTP 403")),
+    )
+    monkeypatch.setattr(parser, "_make_request", lambda url: None)
+
+    with pytest.raises(ScraperAccessBlockedError, match="HTTP 403"):
+        parser._request_payload("https://www.zara.com/test")
 
 
 def test_zara_parse_product_detail_builds_color_variants_and_sizes(monkeypatch):

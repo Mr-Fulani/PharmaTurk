@@ -101,6 +101,10 @@ class ScrapedProduct:
 ScrapedProductDetailResult = Union[Optional[ScrapedProduct], List[ScrapedProduct]]
 
 
+class ScraperAccessBlockedError(RuntimeError):
+    """Сайт отклонил запрос и требует другой сетевой маршрут."""
+
+
 class BaseScraper(ABC):
     """Базовый абстрактный класс для всех парсеров."""
 

@@ -10,6 +10,7 @@ from django.conf import settings
 from django.db.models import F
 from django.utils import timezone
 
+from .base.scraper import ScraperAccessBlockedError
 from .models import ScraperConfig, ScrapingSession, SiteScraperTask
 from .parsers.registry import get_parser
 from .services import ScraperIntegrationService, DeduplicationService, ScraperTaskCancelled
@@ -384,6 +385,25 @@ def run_scraper_task(self,
             'status': 'error',
             'error': error_msg,
             'timestamp': timezone.now().isoformat()
+        }
+
+    except ScraperAccessBlockedError as e:
+        # Постоянный 403 не исправится повтором через минуту: показываем причину
+        # администратору и не создаём лишнюю нагрузку на защищаемый сайт.
+        error_msg = f"Доступ к сайту заблокирован: {e}"
+        logger.error(error_msg)
+        if site_task:
+            SiteScraperTask.objects.filter(id=site_task.id).update(
+                status='failed',
+                error_message=error_msg,
+                log_output=error_msg,
+                finished_at=timezone.now(),
+            )
+        return {
+            'status': 'error',
+            'error': error_msg,
+            'scraper_config_id': scraper_config_id,
+            'timestamp': timezone.now().isoformat(),
         }
 
     except Exception as e:

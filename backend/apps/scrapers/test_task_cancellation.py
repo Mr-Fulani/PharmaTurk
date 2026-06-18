@@ -1,6 +1,7 @@
 import pytest
 
 from apps.catalog.models import Category
+from apps.scrapers.base.scraper import ScraperAccessBlockedError
 from apps.scrapers.models import ScraperConfig, ScrapingSession, SiteScraperTask
 from apps.scrapers.services import ScraperIntegrationService, ScraperTaskCancelled
 from apps.scrapers.tasks import revoke_site_scraper_task, run_scraper_task
@@ -113,3 +114,27 @@ def test_revoke_site_scraper_task_uses_celery_control(monkeypatch):
 
     assert revoked is True
     assert calls == [("celery-123", True, "SIGTERM")]
+
+
+@pytest.mark.django_db
+def test_access_blocked_marks_task_failed_without_retry(monkeypatch):
+    task = _build_scraper_task(status="running")
+
+    def blocked(*args, **kwargs):
+        raise ScraperAccessBlockedError("Zara вернула HTTP 403")
+
+    monkeypatch.setattr(ScraperIntegrationService, "run_scraper", blocked)
+
+    result = run_scraper_task.run(
+        scraper_config_id=task.scraper_config_id,
+        start_url=task.start_url,
+        max_pages=task.max_pages,
+        max_products=task.max_products,
+        max_images_per_product=task.max_images_per_product,
+        site_task_id=task.id,
+    )
+
+    task.refresh_from_db()
+    assert result["status"] == "error"
+    assert task.status == "failed"
+    assert "HTTP 403" in task.error_message

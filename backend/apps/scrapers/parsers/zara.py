@@ -11,7 +11,7 @@ import requests
 from bs4 import BeautifulSoup
 from celery.exceptions import SoftTimeLimitExceeded
 
-from ..base.scraper import BaseScraper, ScrapedProduct
+from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.utils import clean_text
 
 
@@ -158,6 +158,11 @@ class ZaraParser(BaseScraper):
                     status_code or "network",
                     exc,
                 )
+                if status_code == 403:
+                    raise ScraperAccessBlockedError(
+                        "Zara отклонила запрос с HTTP 403. "
+                        "IP сервера заблокирован защитой сайта; для запуска потребуется прокси."
+                    ) from exc
                 if attempt >= self.max_retries:
                     break
                 if status_code and status_code not in self.RETRYABLE_STATUS_CODES:
@@ -201,7 +206,15 @@ class ZaraParser(BaseScraper):
     def _request_payload(self, url: str) -> Optional[Dict[str, Any]]:
         # AJAX-режим Zara возвращает чистый JSON и не требует выполнения
         # JavaScript-проверки Akamai, которая встречается в обычном HTML.
-        response_text = self._make_ajax_request(url)
+        access_error = None
+        try:
+            response_text = self._make_ajax_request(url)
+        except ScraperAccessBlockedError as exc:
+            # Иногда блокируется только AJAX endpoint, а обычный HTML остаётся
+            # доступным. Поэтому сначала пробуем резервный путь и только потом
+            # считаем блокировку окончательной.
+            access_error = exc
+            response_text = None
         if response_text:
             try:
                 payload = json.loads(response_text)
@@ -214,6 +227,8 @@ class ZaraParser(BaseScraper):
         # если Zara отключит JSON-режим для конкретного типа страницы.
         response_text = self._make_request(url)
         if not response_text:
+            if access_error is not None:
+                raise access_error
             return None
         payload = self._extract_view_payload(response_text)
         if payload is None:
