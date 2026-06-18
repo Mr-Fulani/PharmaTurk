@@ -310,6 +310,17 @@ docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS up $UP_OPTS
 UP_EXIT_CODE=$?
 if [ $UP_EXIT_CODE -eq 0 ]; then
     success "Контейнеры запущены"
+
+    # nginx резолвит upstream-хосты (backend/frontend) один раз при старте и
+    # кэширует их IP. Если эти контейнеры пересоздали с новым IP (например, после
+    # rebuild backend), nginx продолжит стучаться на старый адрес → 502 Bad Gateway
+    # на /api и /admin. Безусловно перезапускаем nginx, чтобы он перерезолвил IP.
+    info "Перезапускаем nginx (перерезолв upstream backend/frontend)..."
+    if docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS restart nginx > /dev/null 2>&1; then
+        success "nginx перезапущен"
+    else
+        warning "Не удалось перезапустить nginx — при 502 перезапусти вручную: docker compose -p $COMPOSE_PROJECT_NAME restart nginx"
+    fi
 else
     UP_FAILED=true
     error "Ошибка при запуске контейнеров (docker compose up завершился с кодом $UP_EXIT_CODE)"
