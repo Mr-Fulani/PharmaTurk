@@ -464,29 +464,24 @@ class MySiteParser(BaseScraper):
             return None
 ```
 
-### Шаг 2: Зарегистрировать парсер
+### Шаг 2: Регистрация — ничего делать не нужно
 
-В файле `backend/apps/scrapers/parsers/registry.py` добавить в функцию `register_default_parsers()`:
+Регистрация **автоматическая**. `register_default_parsers()` сканирует пакет
+`backend/apps/scrapers/parsers/`, импортирует все модули и регистрирует каждый
+конкретный подкласс `BaseScraper`, определённый в модуле. Достаточно положить
+файл с парсером в пакет — он появится в реестре сам, центральный список вести
+не нужно.
 
-```python
-def register_default_parsers():
-    """Регистрирует парсеры по умолчанию."""
-    try:
-        from .ilacabak import IlacabakParser
-        from .zara import ZaraParser
-        from .instagram import InstagramParser
-        from .ummaland import UmmalandParser
-        from .mysite import MySiteParser          # ← добавить
-
-        _registry.register(IlacabakParser)
-        _registry.register(ZaraParser)
-        _registry.register(InstagramParser)
-        _registry.register(UmmalandParser)
-        _registry.register(MySiteParser)          # ← добавить
-        _registry.register(IlacFiyatiParser)      # ← добавить
-    except ImportError as e:
-        logging.getLogger(__name__).warning(f"Не удалось импортировать парсеры: {e}")
-```
+Требования, чтобы авто-обнаружение подхватило парсер:
+- класс наследует `BaseScraper` и реализует все абстрактные методы
+  (`get_name`, `get_supported_domains`, `parse_product_list`,
+  `parse_product_detail`) — иначе `inspect.isabstract` его отсеет;
+- конструктор принимает `base_url` первым позиционным аргументом
+  (реестр создаёт временный экземпляр `Parser("http://example.com")`);
+- **общий (родительский) парсер для нескольких сайтов делайте абстрактным** —
+  не реализуйте в нём `get_name`/`get_supported_domains`, тогда регистрируются
+  только конкретные наследники. Так будет, например, у будущего
+  `InditexParser` (общая база для Zara и Massimo Dutti).
 
 ### Шаг 3: Создать ScraperConfig в Admin
 
@@ -529,6 +524,31 @@ from apps.scrapers.tasks import run_scraper_task
 run_scraper_task.delay(task_id=1)
 ```
 
+### Соглашения при добавлении источников (чтобы не было конфликтов)
+
+Источников планируется много (разные сайты под разные категории каталога).
+Чтобы это не превратилось в кашу, при добавлении парсера соблюдаем правила:
+
+1. **`external_id` всегда с префиксом источника:** `external_id = "<source>-<id>"`
+   (как `zara-03897114`). Сырые числовые id разных сайтов пересекаются —
+   префикс снимает коллизии и помогает дедупликации.
+2. **Контракт не протекает наружу:** парсер реализует только `parse_*` и
+   возвращает `ScrapedProduct`. Никакой источник-специфичной логики в каталоге,
+   AI или медиа — downstream не должен знать, откуда товар.
+3. **Категория и бренд обязательны:** у `ScraperConfig` задаём `default_category`
+   и `default_brand`, иначе непомеченные товары утекают в «никуда». Узкие
+   соответствия — через `CategoryMapping`/`BrandMapping`, а не хардкодом в парсере.
+4. **Общая логика похожих сайтов — в абстрактный базовый класс**, а не
+   копипастой. Пример: `ZaraParser` и будущий `MassimoDuttiParser` — обе на
+   движке Inditex (`?ajax=true` JSON + Akamai), поэтому общее выносится в
+   абстрактный `InditexParser`, а наследники задают только домен и нюансы.
+5. **Прокси:** сейчас один глобальный `SCRAPER_PROXY_URL` + флаг `use_proxy` в
+   конфиге (см. 6.5). Когда разным источникам понадобятся разные прокси/страны —
+   выносим `proxy_url` в `ScraperConfig` (поле на уровне источника).
+6. **Тяжёлые/блокируемые источники изолируем по очередям Celery** по мере роста,
+   чтобы один источник, ждущий анти-бот (Akamai), не «съедал» воркеры у быстрых
+   API-источников. Расширяем существующий сплит `celery` / `celery_ai`.
+
 ---
 
 ## 6. Регистрация парсера
@@ -538,6 +558,10 @@ run_scraper_task.delay(task_id=1)
 `backend/apps/scrapers/parsers/registry.py`
 
 Реестр хранит маппинг: `{имя_парсера: КлассПарсера}` и `{домен: имя_парсера}`.
+Заполняется **автоматически** при старте Django (`ScrapersConfig.ready()` →
+`register_default_parsers()`): сканируется пакет `parsers/`, и каждый конкретный
+подкласс `BaseScraper` регистрируется без ручного списка. Тест:
+`backend/apps/scrapers/test_parser_registry.py`.
 
 При запуске задачи `ScraperIntegrationService` ищет парсер:
 1. По имени из `ScraperConfig.name`

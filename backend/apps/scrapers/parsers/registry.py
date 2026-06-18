@@ -157,24 +157,44 @@ def is_url_supported(url: str) -> bool:
 
 
 def register_default_parsers():
-    """Регистрирует парсеры по умолчанию."""
-    try:
-        # Импортируем и регистрируем парсеры
-        from .ilacabak import IlacabakParser
-        from .zara import ZaraParser
-        from .instagram import InstagramParser
-        from .ummaland import UmmalandParser
-        from .ilacfiyati import IlacFiyatiParser
-        from .ikea import IkeaParser
-        from .lcw import LcwParser
-        
-        _registry.register(IlacabakParser)
-        _registry.register(ZaraParser)
-        _registry.register(InstagramParser)
-        _registry.register(UmmalandParser)
-        _registry.register(IlacFiyatiParser)
-        _registry.register(IkeaParser)
-        _registry.register(LcwParser)
-        
-    except ImportError as e:
-        logging.getLogger(__name__).warning(f"Не удалось импортировать некоторые парсеры: {e}")
+    """Авто-обнаружение парсеров.
+
+    Импортирует все модули пакета ``parsers`` и регистрирует каждый конкретный
+    подкласс :class:`BaseScraper`, определённый в самом модуле. Новый парсер
+    попадает в реестр автоматически — достаточно положить файл с подклассом
+    ``BaseScraper`` в пакет, отдельный список вести не нужно.
+
+    Общие (абстрактные) базовые классы не регистрируются: у них остаются
+    нереализованные абстрактные методы, поэтому ``inspect.isabstract`` их
+    отсеивает.
+    """
+    import importlib
+    import inspect
+    import pkgutil
+
+    log = logging.getLogger(__name__)
+    package = importlib.import_module(__package__)
+
+    for module_info in pkgutil.iter_modules(package.__path__):
+        module_name = module_info.name
+        # registry — это мы сами; base — пакет с абстракцией, не парсеры.
+        if module_name in ("registry", "base"):
+            continue
+        full_name = f"{__package__}.{module_name}"
+        try:
+            module = importlib.import_module(full_name)
+        except Exception as exc:  # noqa: BLE001 — кривой модуль не должен ронять старт
+            log.warning("Не удалось импортировать модуль парсера %s: %s", full_name, exc)
+            continue
+        for _, obj in inspect.getmembers(module, inspect.isclass):
+            if (
+                issubclass(obj, BaseScraper)
+                and obj is not BaseScraper
+                and not inspect.isabstract(obj)
+                # только классы, определённые в этом модуле (не импортированные)
+                and obj.__module__ == module.__name__
+            ):
+                try:
+                    _registry.register(obj)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("Не удалось зарегистрировать парсер %s: %s", obj.__name__, exc)
