@@ -7,7 +7,7 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 from celery.exceptions import SoftTimeLimitExceeded
 
-from ..base.scraper import BaseScraper, ScrapedProduct
+from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.utils import clean_text, normalize_price, extract_currency
 
 
@@ -199,6 +199,8 @@ class IlacFiyatiParser(BaseScraper):
                     }
             except SoftTimeLimitExceeded:
                 raise
+            except ScraperAccessBlockedError:
+                raise
             except Exception as e:
                 self.logger.warning(f"Не удалось получить вкладку {tab['path']} для {product_url}: {e}")
         return tabs
@@ -338,6 +340,8 @@ class IlacFiyatiParser(BaseScraper):
                 page += 1
 
         except SoftTimeLimitExceeded:
+            raise
+        except ScraperAccessBlockedError:
             raise
         except Exception as e:
             self.logger.error(f"Ошибка при парсимге списка товаров: {e}")
@@ -565,6 +569,8 @@ class IlacFiyatiParser(BaseScraper):
                                 analogs.append(analog)
                 except SoftTimeLimitExceeded:
                     raise
+                except ScraperAccessBlockedError:
+                    raise
                 except Exception as e:
                     self.logger.error(f"Error fetching analogs from {sub_url}: {e}")
             
@@ -595,6 +601,8 @@ class IlacFiyatiParser(BaseScraper):
             )
 
         except SoftTimeLimitExceeded:
+            raise
+        except ScraperAccessBlockedError:
             raise
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге детальной страницы {product_url}: {e}")

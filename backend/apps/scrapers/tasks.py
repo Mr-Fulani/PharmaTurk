@@ -388,9 +388,9 @@ def run_scraper_task(self,
         }
 
     except ScraperAccessBlockedError as e:
-        # Постоянный 403 не исправится повтором через минуту: показываем причину
+        # Постоянный 401/403 не исправится повтором через минуту: показываем причину
         # администратору и не создаём лишнюю нагрузку на защищаемый сайт.
-        error_msg = f"Доступ к сайту заблокирован: {e}"
+        error_msg = f"Доступ к источнику отклонён: {e}"
         logger.error(error_msg)
         if site_task:
             SiteScraperTask.objects.filter(id=site_task.id).update(

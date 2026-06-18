@@ -8,6 +8,7 @@ from django.conf import settings
 from django.utils.text import slugify
 from django.utils import timezone
 
+from apps.http_errors import ExternalAccessBlockedError, raise_for_blocked_status
 from apps.catalog.models import (
     FurnitureProduct,
     FurnitureVariant,
@@ -142,11 +143,18 @@ class IkeaService:
         url = f"{self.BASE_URL}/product/{clean_code}/detail?language=tr"
         try:
             response = self.client.get(url)
+            raise_for_blocked_status(
+                status_code=response.status_code,
+                url=str(response.url or url),
+                source="IKEA",
+            )
             if response.status_code == 200:
                 return response.json()
             else:
                 logger.warning(f"IKEA API returned {response.status_code} for item {clean_code}")
                 return None
+        except ExternalAccessBlockedError:
+            raise
         except Exception as e:
             logger.error(f"Error fetching IKEA item {clean_code}: {str(e)}")
             return None
@@ -270,6 +278,11 @@ class IkeaService:
 
         try:
             response = self.client.get(url, params=params, headers=headers)
+            raise_for_blocked_status(
+                status_code=response.status_code,
+                url=str(response.url or url),
+                source="IKEA",
+            )
             if response.status_code == 200:
                 data = response.json()
                 return data.get("products", [])
@@ -279,6 +292,8 @@ class IkeaService:
                     f"cat='{category}', lang='{language}'"
                 )
                 return []
+        except ExternalAccessBlockedError:
+            raise
         except Exception as e:
             logger.error(
                 f"Error searching IKEA for q='{query}', cat='{category}', lang='{language}': {str(e)}"
@@ -337,10 +352,17 @@ class IkeaService:
                 headers = {**self.HEADERS, "x-bone-language": lang}
                 try:
                     response = self.client.get(url, params=params, headers=headers)
+                    raise_for_blocked_status(
+                        status_code=response.status_code,
+                        url=str(response.url or url),
+                        source="IKEA",
+                    )
                     if response.status_code == 200:
                         products = response.json().get("products", [])
                         if products:
                             break
+                except ExternalAccessBlockedError:
+                    raise
                 except Exception as e:
                     logger.error(f"Error in fallback category search (lang={lang}): {e}")
 

@@ -8,7 +8,9 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from ..base.scraper import BaseScraper, ScrapedProduct
+from apps.http_errors import raise_for_blocked_status
+
+from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.utils import clean_text, normalize_price, extract_currency
 
 
@@ -114,10 +116,14 @@ class UmmalandParser(BaseScraper):
                         if self.validate_product(api_product):
                             products.append(api_product)
                             
+                except ScraperAccessBlockedError:
+                    raise
                 except Exception as e:
                     self.logger.error(f"Ошибка при обработке товара {item.get('name')}: {e}")
                     continue
                     
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге списка товаров: {e}")
         
@@ -164,8 +170,15 @@ class UmmalandParser(BaseScraper):
                 json=payload,
                 headers={"Content-Type": "application/json"}
             )
+            raise_for_blocked_status(
+                status_code=response.status_code,
+                url=str(response.url or self.API_URL),
+                source="Ummaland",
+            )
             response.raise_for_status()
             return response.json()
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error(f"Ошибка API запроса: {e}")
             return []
@@ -278,6 +291,8 @@ class UmmalandParser(BaseScraper):
                     data = json.loads(api_json)
                     if isinstance(data, list) and data:
                         api_item = data[0]
+            except ScraperAccessBlockedError:
+                raise
             except Exception:
                 api_item = None
 
@@ -619,6 +634,8 @@ class UmmalandParser(BaseScraper):
                 source="ummaland"
             )
             
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге детальной страницы {product_url}: {e}")
             return None

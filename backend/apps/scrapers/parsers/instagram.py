@@ -7,7 +7,7 @@ from datetime import datetime
 
 import instaloader
 
-from ..base.scraper import BaseScraper, ScrapedProduct
+from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.utils import clean_text
 
 
@@ -27,6 +27,14 @@ class InstagramParser(BaseScraper):
     # -----------------------------------------------------------------------
     # Инициализация
     # -----------------------------------------------------------------------
+
+    def _raise_forbidden(self, exc: Exception) -> None:
+        """Преобразует структурированный 403 Instaloader в общую ошибку задачи."""
+        raise ScraperAccessBlockedError(
+            source="Instagram",
+            status_code=403,
+            url=self.base_url,
+        ) from exc
 
     def __init__(
         self,
@@ -114,6 +122,8 @@ class InstagramParser(BaseScraper):
                 username = self._extract_username(category_url)
                 products = self._parse_profile(username, max_pages)
 
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error("Ошибка при парсинге списка товаров: %s", e)
 
@@ -140,6 +150,10 @@ class InstagramParser(BaseScraper):
             post = instaloader.Post.from_shortcode(self.loader.context, shortcode)
             return self._parse_post(post)
 
+        except instaloader.exceptions.QueryReturnedForbiddenException as e:
+            self._raise_forbidden(e)
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error("Ошибка при парсинге поста %s: %s", product_url, e)
             return None
@@ -181,6 +195,10 @@ class InstagramParser(BaseScraper):
             self.loader.login(self.username, self.password)
             self._authenticated = True
             self.logger.info("Успешная авторизация для @%s", self.username)
+        except instaloader.exceptions.QueryReturnedForbiddenException as e:
+            self._raise_forbidden(e)
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.warning(
                 "Ошибка авторизации для @%s: %s. Продолжаем без авторизации.",
@@ -228,12 +246,20 @@ class InstagramParser(BaseScraper):
                             post.shortcode,
                             product.name[:60],
                         )
+                except instaloader.exceptions.QueryReturnedForbiddenException as e:
+                    self._raise_forbidden(e)
+                except ScraperAccessBlockedError:
+                    raise
                 except Exception as e:
                     self.logger.warning(
                         "  Ошибка при парсинге поста %s: %s", post.shortcode, e
                     )
                     continue
 
+        except instaloader.exceptions.QueryReturnedForbiddenException as e:
+            self._raise_forbidden(e)
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error("Ошибка при парсинге профиля @%s: %s", username, e)
 
@@ -273,12 +299,20 @@ class InstagramParser(BaseScraper):
                             post.shortcode,
                             product.name[:60],
                         )
+                except instaloader.exceptions.QueryReturnedForbiddenException as e:
+                    self._raise_forbidden(e)
+                except ScraperAccessBlockedError:
+                    raise
                 except Exception as e:
                     self.logger.warning(
                         "  Ошибка при парсинге поста %s: %s", post.shortcode, e
                     )
                     continue
 
+        except instaloader.exceptions.QueryReturnedForbiddenException as e:
+            self._raise_forbidden(e)
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error("Ошибка при парсинге хештега #%s: %s", hashtag, e)
 
@@ -388,6 +422,10 @@ class InstagramParser(BaseScraper):
 
             return product
 
+        except instaloader.exceptions.QueryReturnedForbiddenException as e:
+            self._raise_forbidden(e)
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error("Ошибка при парсинге поста: %s", e)
             return None
@@ -737,6 +775,10 @@ class InstagramParser(BaseScraper):
                 if post.url:
                     images.append(post.url)
 
+        except instaloader.exceptions.QueryReturnedForbiddenException as e:
+            self._raise_forbidden(e)
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.warning("Ошибка при извлечении медиа из поста: %s", e)
             # Fallback: берём хотя бы основной URL поста

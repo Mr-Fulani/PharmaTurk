@@ -4,7 +4,7 @@ import re
 from typing import Dict, List, Optional, Any
 from urllib.parse import urljoin, urlparse
 
-from ..base.scraper import BaseScraper, ScrapedProduct
+from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.selectors import DataSelector, SelectorConfig
 from ..base.utils import clean_text, normalize_price, extract_currency
 
@@ -167,6 +167,8 @@ class IlacabakParser(BaseScraper):
             self.logger.info(f"Найдено {len(categories)} категорий на ilacabak.com")
             return categories
             
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге категорий ilacabak.com: {e}")
             return []
@@ -235,6 +237,8 @@ class IlacabakParser(BaseScraper):
                 if not self._has_next_page(selector):
                     break
             
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге списка товаров: {e}")
         
@@ -262,6 +266,8 @@ class IlacabakParser(BaseScraper):
             
             return product if self.validate_product(product) else None
             
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error(f"Ошибка при парсинге товара {product_url}: {e}")
             return None
@@ -271,6 +277,8 @@ class IlacabakParser(BaseScraper):
         try:
             search_url = f"/arama?q={query}"
             return self.parse_product_list(search_url, max_pages=max_results // 20 + 1)
+        except ScraperAccessBlockedError:
+            raise
         except Exception as e:
             self.logger.error(f"Ошибка поиска товаров по запросу '{query}': {e}")
             return []

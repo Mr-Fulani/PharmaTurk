@@ -11,6 +11,8 @@ import requests
 from bs4 import BeautifulSoup
 from celery.exceptions import SoftTimeLimitExceeded
 
+from apps.http_errors import raise_for_blocked_status
+
 from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.utils import clean_text
 
@@ -158,11 +160,12 @@ class ZaraParser(BaseScraper):
                     status_code or "network",
                     exc,
                 )
-                if status_code == 403:
-                    raise ScraperAccessBlockedError(
-                        "Zara отклонила запрос с HTTP 403. "
-                        "IP сервера заблокирован защитой сайта; для запуска потребуется прокси."
-                    ) from exc
+                if status_code in (401, 403):
+                    raise_for_blocked_status(
+                        status_code=status_code,
+                        url=str(getattr(exc.response, "url", None) or ajax_url),
+                        source="Zara",
+                    )
                 if attempt >= self.max_retries:
                     break
                 if status_code and status_code not in self.RETRYABLE_STATUS_CODES:

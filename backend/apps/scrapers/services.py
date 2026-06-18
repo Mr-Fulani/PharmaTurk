@@ -43,7 +43,11 @@ from .models import (
 from .parsers.registry import get_parser
 from .parsers.lcw import LcwParser
 from .parsers.zara import ZaraParser
-from .base.scraper import ScrapedProduct, _json_safe_scraped_value
+from .base.scraper import (
+    ScrapedProduct,
+    ScraperAccessBlockedError,
+    _json_safe_scraped_value,
+)
 from apps.catalog.services import CatalogNormalizer, build_image_alt_text
 from apps.catalog.utils.tr_vocab import (
     match_turkish_product_term,
@@ -1165,6 +1169,8 @@ class ScraperIntegrationService:
                         if len(scraped_products) >= session.max_products:
                             break
 
+                    except ScraperAccessBlockedError:
+                        raise
                     except Exception as e:
                         self.logger.warning(f"Ошибка парсинга категории {category['url']}: {e}")
                         session.errors_count += 1

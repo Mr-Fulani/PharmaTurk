@@ -13,6 +13,8 @@ import requests
 from celery.exceptions import SoftTimeLimitExceeded
 from fake_useragent import UserAgent
 
+from apps.http_errors import ExternalAccessBlockedError, raise_for_blocked_status
+
 from .selectors import DataSelector, SelectorConfig
 from .utils import clean_text, normalize_price, extract_currency
 
@@ -101,8 +103,8 @@ class ScrapedProduct:
 ScrapedProductDetailResult = Union[Optional[ScrapedProduct], List[ScrapedProduct]]
 
 
-class ScraperAccessBlockedError(RuntimeError):
-    """Сайт отклонил запрос и требует другой сетевой маршрут."""
+# Обратная совместимость для существующих импортов scraper-модулей и тестов.
+ScraperAccessBlockedError = ExternalAccessBlockedError
 
 
 class BaseScraper(ABC):
@@ -221,6 +223,11 @@ class BaseScraper(ABC):
                 
             except httpx.HTTPStatusError as e:
                 self.logger.warning(f"HTTP ошибка {e.response.status_code} для {url}")
+                raise_for_blocked_status(
+                    status_code=e.response.status_code,
+                    url=str(e.response.url or url),
+                    source=self.get_name(),
+                )
                 if e.response.status_code in [429, 503, 504]:  # Rate limiting, server errors
                     if attempt < self.max_retries:
                         time.sleep(2 ** attempt)  # Exponential backoff
