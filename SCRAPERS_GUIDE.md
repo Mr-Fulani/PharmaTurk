@@ -589,6 +589,7 @@ parser_class = get_parser(task.url)    # → по домену из URL
 | `ilacfiyati` | `IlacFiyatiParser` | ilacfiyati.com, www.ilacfiyati.com |
 | `ikea` | `IkeaParser` | ikea.com.tr, www.ikea.com.tr |
 | `lcw` | `LcwParser` | lcw.com, www.lcw.com |
+| `flo` | `FloParser` | flo.com.tr, www.flo.com.tr |
 
 ### 6.4. IKEA Turkey (`ikea.com.tr`)
 
@@ -666,6 +667,36 @@ residential/mobile прокси. Включается без правок код
 парсеров — то есть доступен всем парсерам, не только Zara.
 
 Тесты контракта: `backend/apps/scrapers/test_zara_parser.py`.
+
+### 6.5.1. FLO (`flo.com.tr`) — обувь
+
+`FloParser` — турецкий обувной ретейл. Сайт **без анти-бота** (ни Akamai, ни
+Cloudflare), прокси не нужен, серверный HTML. Все данные карточки лежат в одном
+JS-объекте `window.productDetail = {...}`, который парсер читает как Zara читает
+`viewPayload` (без исполнения JavaScript).
+
+Поддерживаемые URL:
+- товар: `https://www.flo.com.tr/urun/<slug>-<id>` (например `...-101792825`);
+- категория/листинг: `https://www.flo.com.tr/ayakkabi?cinsiyet=erkek`
+  (фильтры — query-параметры: `cinsiyet`, `kategori`, `beden` и т.д.).
+
+Пагинация листинга — `?page=N`; авточепочка включена (`SUPPORTS_PAGE_CHUNKING`),
+обход останавливается, когда в HTML нет `rel="next"` или страница без новых товаров.
+
+Что берётся из `window.productDetail`:
+- `manufacturer` → бренд, `sku` → артикул, `external_id = flo-<sku>`;
+- `price` → цена (TRY), `is_in_stock` + `options[].is_in_stock` → наличие;
+- `options[]` → размеры: каждый с `option_value` (размер), `barcode` (EAN),
+  `sku`, `is_in_stock` — кладутся в `fashion_variants[0]["sizes"]`;
+- `media_gallery[]` → изображения (CDN `floimages.mncdn.com`, дедуп по URL);
+- `breadcrumb[]` → категория (последний уровень), `cinsiyet` → пол;
+- обувные turkish-поля смаплены на ключи `attribute_specs`: `materyal`→`material`,
+  `taban`→`sole_material`, `ic_astar_1`→`lining`.
+
+Карточка = один цвет; ссылки на другие цвета — в `color_options` (для v1 не
+обходятся, каждый цвет — отдельный товар; группировка через `variant_group_id`).
+
+Тесты контракта: `backend/apps/scrapers/test_flo_parser.py`.
 
 ### 6.6. LC Waikiki (`lcw.com`)
 

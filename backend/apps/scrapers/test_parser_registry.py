@@ -12,6 +12,7 @@ EXPECTED_PARSERS = {
     "ilacfiyati",
     "ikea",
     "lcw",
+    "flo",
 }
 
 

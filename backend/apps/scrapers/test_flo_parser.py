@@ -1,0 +1,162 @@
+import json
+
+from apps.scrapers.parsers.flo import FloParser
+
+
+def _detail(sku="101792825", name="COURT BOROUGH LOW RECRAFT Beyaz Unisex Sneaker"):
+    return {
+        "id": "36310805520",
+        "sku": sku,
+        "model_code": sku,
+        "name": name,
+        "manufacturer": "Nike",
+        "price": "3499",
+        "description": "Nike Court Borough Low Recraft<br /><br />Yeni favori Borough modelin.",
+        "url": f"/urun/nike-court-borough-low-recraft-beyaz-unisex-sneaker-{sku}",
+        "is_in_stock": "True",
+        "cinsiyet": "Unisex",
+        "renk": "Beyaz",
+        "materyal": "Suni Deri",
+        "taban": "KAUCUK",
+        "ic_astar_1": "TEKSTIL",
+        "media_gallery": [
+            {
+                "position": 1,
+                "url_vertical": "https://floimages.mncdn.com/media/catalog/product/d2.jpg",
+                "image_vertical_type": "D2",
+            },
+            {
+                "url": "https://floimages.mncdn.com/media/catalog/product/ai-square.jpg",
+                "url_vertical": "https://floimages.mncdn.com/media/catalog/product/ai-vertical.jpg",
+            },
+            # дубликат d2 — должен схлопнуться
+            {"url_vertical": "https://floimages.mncdn.com/media/catalog/product/d2.jpg"},
+        ],
+        "breadcrumb": [
+            {"category_id": "18", "name": "Ayakkabı", "url": "ayakkabi"},
+            {"category_id": "26", "name": "Sneaker", "url": "sneaker"},
+            {"category_id": "253", "name": "Klasik Sneaker", "url": "klasik-sneaker"},
+        ],
+        "options": [
+            {
+                "option_value": "35.5",
+                "sku": f"{sku}008",
+                "barcode": "196968173624",
+                "is_in_stock": False,
+                "option_name": "beden",
+            },
+            {
+                "option_value": "36.5",
+                "sku": f"{sku}001",
+                "barcode": "196968173648",
+                "is_in_stock": True,
+                "option_name": "beden",
+            },
+        ],
+    }
+
+
+def _product_html(detail):
+    return (
+        "<html><body><script> window.productDetail = "
+        f"{json.dumps(detail, ensure_ascii=False)};\n"
+        "</script></body></html>"
+    )
+
+
+def _listing_html(skus, *, has_next=True):
+    links = "".join(f'<a href="/urun/nike-sneaker-{s}">x</a>' for s in skus)
+    nxt = '<link rel="next" href="https://www.flo.com.tr/ayakkabi?page=9" />' if has_next else ""
+    return f"<html><body>{links}{nxt}</body></html>"
+
+
+def test_flo_url_detection():
+    assert FloParser.is_flo_product_url(
+        "https://www.flo.com.tr/urun/nike-sneaker-101792825"
+    )
+    assert FloParser.is_flo_category_url("https://www.flo.com.tr/ayakkabi?cinsiyet=erkek")
+    assert not FloParser.is_flo_category_url(
+        "https://www.flo.com.tr/urun/nike-sneaker-101792825"
+    )
+    # чужой домен и нестандартный путь не считаем товаром FLO
+    assert not FloParser.is_flo_product_url("https://www.lcw.com/urun-o-4827603")
+
+
+def test_flo_extract_product_detail_marker():
+    parser = FloParser()
+    detail = parser._extract_product_detail(_product_html(_detail()))
+    assert detail["sku"] == "101792825"
+    assert parser._extract_product_detail("<html>no payload</html>") is None
+
+
+def test_flo_parse_product_detail_builds_sizes_and_attributes(monkeypatch):
+    parser = FloParser()
+    url = "https://www.flo.com.tr/urun/nike-court-borough-low-recraft-beyaz-unisex-sneaker-101792825"
+    monkeypatch.setattr(parser, "_make_request", lambda requested_url: _product_html(_detail()))
+
+    product = parser.parse_product_detail(url)
+
+    assert product is not None
+    assert product.external_id == "flo-101792825"
+    assert product.brand == "Nike"
+    assert product.price == 3499.0
+    assert product.currency == "TRY"
+    assert product.category == "Klasik Sneaker"
+    assert product.description.startswith("Nike Court Borough")
+    assert "<br" not in product.description
+    assert product.is_available is True
+
+    assert product.attributes["gender"] == "unisex"
+    assert product.attributes["color"] == "Beyaz"
+    # turkish-поля смаплены на распознаваемые attribute_specs ключи
+    assert product.attributes["material"] == "Suni Deri"
+    assert product.attributes["sole_material"] == "KAUCUK"
+    assert product.attributes["sizes"] == ["35.5", "36.5"]
+
+    # дубликат изображения схлопнут
+    assert product.images == [
+        "https://floimages.mncdn.com/media/catalog/product/d2.jpg",
+        "https://floimages.mncdn.com/media/catalog/product/ai-vertical.jpg",
+    ]
+
+    variants = product.attributes["fashion_variants"]
+    assert len(variants) == 1
+    sizes = variants[0]["sizes"]
+    assert sizes[0]["size"] == "35.5"
+    assert sizes[0]["is_available"] is False
+    assert sizes[0]["stock_quantity"] == 0
+    assert sizes[1]["size"] == "36.5"
+    assert sizes[1]["is_available"] is True
+    assert sizes[1]["barcode"] == "196968173648"
+
+
+def test_flo_parse_product_detail_returns_none_without_payload(monkeypatch):
+    parser = FloParser()
+    monkeypatch.setattr(parser, "_make_request", lambda url: "<html>blocked</html>")
+    assert parser.parse_product_detail("https://www.flo.com.tr/urun/x-1234") is None
+
+
+def test_flo_parse_list_paginates_and_dedupes(monkeypatch):
+    parser = FloParser()
+    category_url = "https://www.flo.com.tr/ayakkabi?cinsiyet=erkek"
+    pages = {
+        category_url: _listing_html(["111111", "222222"], has_next=True),
+        f"{category_url}&page=2": _listing_html(["222222", "333333"], has_next=False),
+    }
+    requested = []
+
+    def fake_request(url):
+        requested.append(url)
+        if "/urun/" in url:
+            sku = url.rsplit("-", 1)[-1]
+            return _product_html(_detail(sku=sku, name=f"Shoe {sku}"))
+        return pages.get(url)
+
+    monkeypatch.setattr(parser, "_make_request", fake_request)
+
+    products = list(parser.parse_product_list(category_url, max_pages=3))
+
+    assert [p.external_id for p in products] == ["flo-111111", "flo-222222", "flo-333333"]
+    assert f"{category_url}&page=2" in requested
+    # третьей страницы нет — остановились по отсутствию rel="next"
+    assert f"{category_url}&page=3" not in requested
