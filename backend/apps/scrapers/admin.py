@@ -394,6 +394,8 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         "run_site_scraping",
         "rerun_site_scraping",
         "force_rerun_site_scraping",
+        "pause_site_scraping",
+        "resume_site_scraping",
         "cancel_site_scraping",
         "run_ai_for_tasks",
     ]
@@ -437,7 +439,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             transaction.on_commit(enqueue_after_commit)
 
     def status_badge(self, obj):
-        colors = {"pending": "blue", "running": "orange", "completed": "green", "failed": "red", "cancelled": "gray"}
+        colors = {"pending": "blue", "running": "orange", "paused": "purple", "completed": "green", "failed": "red", "cancelled": "gray"}
         color = colors.get(obj.status, "gray")
         return format_html(
             '<span style="color: {}; font-weight: bold;">●</span> {}',
@@ -534,23 +536,36 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
     ai_status_display.short_description = "AI обработка"
 
     def actions_column(self, obj):
-        if obj.status != "running":
+        if obj.status == "running":
+            force_run_url = reverse("admin:scrapers_sitescrapertask_force_rerun", args=[obj.pk])
+            cancel_url = reverse("admin:scrapers_sitescrapertask_cancel", args=[obj.pk])
+            pause_url = reverse("admin:scrapers_sitescrapertask_pause", args=[obj.pk])
+            run_button = format_html(
+                '<span style="color: orange; margin-right:4px;">Выполняется...</span>'
+                '<a href="{}" class="button" style="margin-right:4px; background:#7c3aed; color:#fff;">Пауза</a>'
+                '<a href="{}" class="button" style="margin-right:4px; background:#4b5563; color:#fff;">Остановить</a>'
+                '<a href="{}" class="button" style="margin-right:4px; background:#b91c1c; color:#fff;">Принудительно перезапустить</a>',
+                pause_url,
+                cancel_url,
+                force_run_url,
+            )
+        elif obj.status == "paused":
+            resume_url = reverse("admin:scrapers_sitescrapertask_resume", args=[obj.pk])
+            rerun_url = reverse("admin:scrapers_sitescrapertask_rerun", args=[obj.pk])
+            run_button = format_html(
+                '<a href="{}" class="button" style="margin-right:4px; background:#16a34a; color:#fff;">Продолжить (стр. {})</a>'
+                '<a href="{}" class="button" style="margin-right:4px;">Перезапустить</a>',
+                resume_url,
+                obj.resume_page,
+                rerun_url,
+            )
+        else:
             run_label = "Запустить" if obj.status == "pending" else "Перезапустить"
             run_url = reverse("admin:scrapers_sitescrapertask_rerun", args=[obj.pk])
             run_button = format_html(
                 '<a href="{}" class="button" style="margin-right:4px;">{}</a>',
                 run_url,
                 run_label,
-            )
-        else:
-            force_run_url = reverse("admin:scrapers_sitescrapertask_force_rerun", args=[obj.pk])
-            cancel_url = reverse("admin:scrapers_sitescrapertask_cancel", args=[obj.pk])
-            run_button = format_html(
-                '<span style="color: orange; margin-right:4px;">Выполняется...</span>'
-                '<a href="{}" class="button" style="margin-right:4px; background:#4b5563; color:#fff;">Остановить</a>'
-                '<a href="{}" class="button" style="margin-right:4px; background:#b91c1c; color:#fff;">Принудительно перезапустить</a>',
-                cancel_url,
-                force_run_url,
             )
 
         if obj.status == "completed" and obj.session_id:
@@ -587,6 +602,16 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                 name="scrapers_sitescrapertask_cancel",
             ),
             path(
+                "<int:task_id>/pause/",
+                self.admin_site.admin_view(self.pause_task_view),
+                name="scrapers_sitescrapertask_pause",
+            ),
+            path(
+                "<int:task_id>/resume/",
+                self.admin_site.admin_view(self.resume_task_view),
+                name="scrapers_sitescrapertask_resume",
+            ),
+            path(
                 "<int:task_id>/run-ai/",
                 self.admin_site.admin_view(self.run_ai_view),
                 name="scrapers_sitescrapertask_run_ai",
@@ -594,7 +619,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         ]
         return custom_urls + urls
 
-    def _enqueue_site_task(self, task, *, reset_stats: bool):
+    def _enqueue_site_task(self, task, *, reset_stats: bool, resume: bool = False):
         from django.utils import timezone
 
         if reset_stats:
@@ -604,6 +629,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             task.products_skipped = 0
             task.pages_processed = 0
             task.errors_count = 0
+            task.resume_page = 1
 
         task.status = "running"
         task.started_at = timezone.now()
@@ -621,14 +647,22 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                 offset=0,
             )
         else:
-            celery_task = run_scraper_task.delay(
-                task.scraper_config_id,
+            run_kwargs = dict(
                 start_url=task.start_url,
                 max_pages=task.max_pages,
                 max_products=task.max_products,
                 max_images_per_product=task.max_images_per_product,
                 site_task_id=task.id,
             )
+            if resume:
+                # Продолжаем с сохранённой страницы, накопленные счётчики
+                # передаём как базу для следующего чанка (без сброса).
+                run_kwargs["start_page"] = task.resume_page or 1
+                run_kwargs["total_scraped"] = task.products_found
+                run_kwargs["total_created"] = task.products_created
+                run_kwargs["total_updated"] = task.products_updated
+                run_kwargs["total_skipped"] = task.products_skipped
+            celery_task = run_scraper_task.delay(task.scraper_config_id, **run_kwargs)
         task.task_id = celery_task.id
         task.save(update_fields=["task_id"])
         logger.info(
@@ -734,6 +768,69 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             messages.success(request, f"Задача #{task.id} остановлена, Celery task {task.task_id} отозвана.")
         else:
             messages.success(request, f"Задача #{task.id} помечена как остановленная.")
+
+        return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+    def pause_task_view(self, request, task_id):
+        try:
+            task = SiteScraperTask.objects.get(id=task_id)
+        except SiteScraperTask.DoesNotExist:
+            messages.error(request, "Задача парсинга не найдена")
+            return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+        # Мягкая остановка: статус 'paused' ловится опросом внутри чанка, чанк
+        # завершается штатно (товары сохранены, resume_page стоит на текущей
+        # странице). Не terminate'им — даём воркеру финализироваться чисто;
+        # revoke без terminate отменяет лишь ещё не стартовавший следующий чанк.
+        try:
+            revoke_site_scraper_task(task, terminate=False)
+        except Exception as e:
+            logger.warning("Не удалось отозвать следующий чанк для задачи #%s: %s", task.id, e)
+
+        task.status = "paused"
+        task.error_message = "Задача поставлена на паузу из админки."
+        task.finished_at = timezone.now()
+        task.save(update_fields=["status", "error_message", "finished_at"])
+
+        messages.success(
+            request,
+            f"Задача #{task.id} ставится на паузу (остановится после текущей страницы). "
+            f"Нажми «Продолжить», чтобы возобновить со стр. {task.resume_page}.",
+        )
+        return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+    def resume_task_view(self, request, task_id):
+        try:
+            task = SiteScraperTask.objects.get(id=task_id)
+        except SiteScraperTask.DoesNotExist:
+            messages.error(request, "Задача парсинга не найдена")
+            return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+        if task.status == "running":
+            messages.warning(request, f"Задача #{task.id} уже выполняется.")
+            return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+        if getattr(task, "task_type", "catalog") == "stub_refresh":
+            messages.warning(
+                request,
+                "Возобновление с места поддержано для каталога; для «обновления "
+                "заглушек» используй «Перезапустить».",
+            )
+            return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
+
+        try:
+            celery_task = self._enqueue_site_task(task, reset_stats=False, resume=True)
+            messages.success(
+                request,
+                f"Задача #{task.id} продолжена со стр. {task.resume_page}. "
+                f"Celery task id: {celery_task.id}",
+            )
+        except Exception as e:
+            task.status = "failed"
+            task.error_message = str(e)
+            task.finished_at = timezone.now()
+            task.save(update_fields=["status", "error_message", "finished_at"])
+            messages.error(request, f"Ошибка возобновления задачи: {e}")
 
         return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
 
@@ -894,6 +991,55 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             messages.success(request, f"Остановлено задач: {stopped}")
 
     cancel_site_scraping.short_description = "Остановить выбранные задачи"
+
+    def pause_site_scraping(self, request, queryset):
+        eligible_tasks = list(queryset.filter(status="running"))
+        if not eligible_tasks:
+            messages.warning(request, "Среди выбранных нет выполняющихся задач.")
+            return
+
+        paused = 0
+        for task in eligible_tasks:
+            try:
+                revoke_site_scraper_task(task, terminate=False)
+            except Exception:
+                logger.exception("Ошибка при отзыве следующего чанка SiteScraperTask #%s", task.id)
+            task.status = "paused"
+            task.error_message = "Задача поставлена на паузу из списка задач."
+            task.finished_at = timezone.now()
+            task.save(update_fields=["status", "error_message", "finished_at"])
+            paused += 1
+
+        if paused:
+            messages.success(request, f"Поставлено на паузу задач: {paused}")
+
+    pause_site_scraping.short_description = "Поставить на паузу выбранные задачи"
+
+    def resume_site_scraping(self, request, queryset):
+        eligible_tasks = [
+            t for t in queryset.filter(status="paused")
+            if getattr(t, "task_type", "catalog") != "stub_refresh"
+        ]
+        if not eligible_tasks:
+            messages.warning(request, "Среди выбранных нет задач каталога на паузе.")
+            return
+
+        resumed = 0
+        for task in eligible_tasks:
+            try:
+                self._enqueue_site_task(task, reset_stats=False, resume=True)
+                resumed += 1
+            except Exception as e:
+                task.status = "failed"
+                task.error_message = str(e)
+                task.finished_at = timezone.now()
+                task.save(update_fields=["status", "error_message", "finished_at"])
+                messages.error(request, f"Ошибка возобновления задачи #{task.id}: {e}")
+
+        if resumed:
+            messages.success(request, f"Возобновлено задач: {resumed}")
+
+    resume_site_scraping.short_description = "Продолжить выбранные задачи (с места остановки)"
 
     def run_ai_for_tasks(self, request, queryset):
         """Запустить AI обработку для всех товаров выбранных задач."""

@@ -13,7 +13,12 @@ from django.utils import timezone
 from .base.scraper import ScraperAccessBlockedError
 from .models import ScraperConfig, ScrapingSession, SiteScraperTask
 from .parsers.registry import get_parser
-from .services import ScraperIntegrationService, DeduplicationService, ScraperTaskCancelled
+from .services import (
+    ScraperIntegrationService,
+    DeduplicationService,
+    ScraperTaskCancelled,
+    ScraperTaskPaused,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +97,25 @@ def _cancel_site_task(site_task_id: int, message: str) -> None:
     """Фиксирует отмену задачи в БД."""
     SiteScraperTask.objects.filter(id=site_task_id).update(
         status="cancelled",
+        error_message=message,
+        log_output=message,
+        finished_at=timezone.now(),
+    )
+
+
+def _site_task_status(site_task_id: Optional[int]) -> Optional[str]:
+    """Текущий статус задачи (или None)."""
+    if not site_task_id:
+        return None
+    return (
+        SiteScraperTask.objects.filter(id=site_task_id).values_list("status", flat=True).first()
+    )
+
+
+def _pause_site_task(site_task_id: int, message: str) -> None:
+    """Фиксирует паузу: статус сохраняется, resume_page уже стоит на текущем чанке."""
+    SiteScraperTask.objects.filter(id=site_task_id).update(
+        status="paused",
         error_message=message,
         log_output=message,
         finished_at=timezone.now(),
@@ -184,12 +208,25 @@ def run_scraper_task(self,
 
         target_category = None
         if site_task:
-            if _is_site_task_cancelled(site_task.id):
+            status_before = _site_task_status(site_task.id)
+            if status_before == "cancelled":
                 return {
                     "status": "cancelled",
                     "message": "Задача остановлена пользователем до старта чанка.",
                     "scraper_name": scraper_config.name,
                 }
+            if status_before == "paused":
+                # Пауза успела сработать до старта чанка: resume_page = текущая
+                # страница, чтобы «Продолжить» возобновил именно с неё.
+                SiteScraperTask.objects.filter(id=site_task.id).update(resume_page=start_page)
+                return {
+                    "status": "paused",
+                    "message": "Задача поставлена на паузу до старта чанка.",
+                    "scraper_name": scraper_config.name,
+                }
+            # Курсор возобновления = страница текущего чанка. Так даже при сбое
+            # воркера «Продолжить» возобновит с начала недообработанного чанка.
+            SiteScraperTask.objects.filter(id=site_task.id).update(resume_page=start_page)
             # Первый чанк: переводим в 'running'. Последующие: already running, условие не сработает.
             SiteScraperTask.objects.filter(id=site_task.id, status='pending').update(
                 status='running'
@@ -276,17 +313,24 @@ def run_scraper_task(self,
                 log_output="\n".join(log_lines),
             )
 
-            if site_task.status == "cancelled":
-                # Финализируем счётчики тем, что успели спарсить до отмены,
-                # иначе created/updated залипают в 0 у отменённых задач.
+            if site_task.status in ("cancelled", "paused"):
+                # Финализируем счётчики тем, что успели спарсить до остановки,
+                # иначе created/updated залипают в 0. Статус (cancelled/paused)
+                # сохраняем — для paused resume_page уже стоит на текущем чанке,
+                # «Продолжить» возобновит с него.
                 SiteScraperTask.objects.filter(id=site_task.id).update(
                     **common_updates,
                     finished_at=timezone.now(),
                 )
+                message = (
+                    "Задача остановлена пользователем."
+                    if site_task.status == "cancelled"
+                    else "Задача поставлена на паузу — можно продолжить."
+                )
                 return {
                     **result,
-                    "status": "cancelled",
-                    "message": "Задача остановлена пользователем.",
+                    "status": site_task.status,
+                    "message": message,
                 }
 
             # Авточепочка только для парсеров с настоящей постраничной пагинацией
@@ -336,6 +380,7 @@ def run_scraper_task(self,
                 SiteScraperTask.objects.filter(id=site_task.id).update(
                     **common_updates,
                     status='completed',
+                    resume_page=1,
                     finished_at=timezone.now(),
                 )
                 logger.info(
@@ -355,6 +400,20 @@ def run_scraper_task(self,
         return {
             "status": "cancelled",
             "message": error_msg,
+            "scraper_config_id": scraper_config_id,
+            "timestamp": timezone.now().isoformat(),
+        }
+
+    except ScraperTaskPaused as e:
+        # Пауза посреди чанка: resume_page уже стоит на странице текущего чанка,
+        # счётчики обновлены инкрементально — «Продолжить» возобновит с неё.
+        msg = str(e)
+        logger.info("Задача парсинга %s на паузе: %s", scraper_config_id, msg)
+        if site_task:
+            _pause_site_task(site_task.id, msg)
+        return {
+            "status": "paused",
+            "message": msg,
             "scraper_config_id": scraper_config_id,
             "timestamp": timezone.now().isoformat(),
         }

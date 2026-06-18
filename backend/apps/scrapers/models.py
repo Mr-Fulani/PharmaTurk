@@ -561,6 +561,8 @@ class SiteScraperTask(models.Model):
     STATUS_CHOICES = [
         ("pending", _("Ожидает")),
         ("running", _("Выполняется")),
+        ("paused", _("На паузе")),
+        ("cancelled", _("Остановлено")),
         ("completed", _("Завершено")),
         ("failed", _("Ошибка")),
     ]
@@ -655,6 +657,15 @@ class SiteScraperTask(models.Model):
     products_skipped = models.PositiveIntegerField(_("Пропущено товаров"), default=0)
     pages_processed = models.PositiveIntegerField(_("Обработано страниц"), default=0)
     errors_count = models.PositiveIntegerField(_("Количество ошибок"), default=0)
+
+    resume_page = models.PositiveIntegerField(
+        _("Страница для продолжения"),
+        default=1,
+        help_text=_(
+            "С какой страницы продолжить после паузы (только для парсеров с "
+            "постраничной пагинацией). Обновляется автоматически по ходу обхода."
+        ),
+    )
 
     log_output = models.TextField(_("Лог выполнения"), blank=True)
     error_message = models.TextField(_("Сообщение об ошибке"), blank=True)

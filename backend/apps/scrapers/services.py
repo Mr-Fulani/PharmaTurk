@@ -82,6 +82,10 @@ class ScraperTaskCancelled(Exception):
     """Задача парсинга была отменена пользователем."""
 
 
+class ScraperTaskPaused(Exception):
+    """Задача парсинга поставлена на паузу пользователем (можно продолжить)."""
+
+
 # Реестр: product_type → метод получения/создания доменного объекта
 _DOMAIN_GETTER_NAMES = {
     "books": "_get_book_product",
@@ -986,6 +990,17 @@ class ScraperIntegrationService:
             session.save(update_fields=["status", "finished_at", "error_message"])
             raise
 
+        except ScraperTaskPaused as e:
+            # Пауза: уже спарсенные в чанке товары сохранены инкрементально,
+            # позиция (resume_page) хранится на SiteScraperTask. Сессия — артефакт
+            # одного чанка, помечаем её завершённой досрочно.
+            self.logger.info("Парсер %s поставлен на паузу: %s", scraper_config.name, e)
+            session.status = "cancelled"
+            session.finished_at = timezone.now()
+            session.error_message = str(e)
+            session.save(update_fields=["status", "finished_at", "error_message"])
+            raise
+
         except Exception as e:
             self.logger.error(f"Ошибка при запуске парсера {scraper_config.name}: {e}")
 
@@ -1188,7 +1203,7 @@ class ScraperIntegrationService:
 
     @staticmethod
     def _ensure_site_task_not_cancelled(site_task_id: Optional[int]) -> None:
-        """Периодически проверяет, не отменили ли задачу из админки."""
+        """Периодически проверяет, не остановили/не поставили ли задачу на паузу."""
         if not site_task_id:
             return
         status = (
@@ -1196,6 +1211,8 @@ class ScraperIntegrationService:
         )
         if status == "cancelled":
             raise ScraperTaskCancelled("Задача остановлена пользователем.")
+        if status == "paused":
+            raise ScraperTaskPaused("Задача поставлена на паузу пользователем.")
 
     def _process_scraped_products(
         self, session: ScrapingSession, products: List[ScrapedProduct]
