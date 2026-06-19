@@ -48,3 +48,8 @@ def test_shoe_attributes_are_saved_as_dynamic_attributes():
     assert attrs["material"].value_ru == "Искусственная кожа"
     assert attrs["closure-type"].value_ru == "Шнуровка"
     assert attrs["sole-material"].value_ru == "Каучук"
+
+    # EN-значения тоже заполняются (раньше были пустыми)
+    assert attrs["material"].value_en == "Faux Leather"
+    assert attrs["closure-type"].value_en == "Lace-up"
+    assert attrs["sole-material"].value_en == "Rubber"

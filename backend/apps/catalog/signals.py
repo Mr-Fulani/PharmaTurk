@@ -372,6 +372,16 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
                             setattr(instance, url_field, new_url)
                     except Exception:
                         pass
+                    # Сразу удаляем parsed-оригинал: копия уже в читаемом пути, url
+                    # переписан. Без этого products/parsed/ копился орфанами до
+                    # cleanup_orphaned_media. Имя parsed-файла уникально на изображение
+                    # ({parser}-{product_id}-{index}-{hash}), удаление точечное —
+                    # это не массовый cleanup, риска вайпа нет.
+                    try:
+                        if getattr(instance, field_name).name != path:
+                            default_storage.delete(path)
+                    except Exception:
+                        pass
                     logger.info(f"Re-saved parsed {field_name} to readable path for {instance.__class__.__name__}")
                 else:
                     setattr(instance, field_name, path)

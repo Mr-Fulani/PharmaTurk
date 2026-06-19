@@ -304,6 +304,46 @@ def _extract_raw_attribute_value(attrs: dict[str, Any], spec: DynamicAttributeSp
     return ""
 
 
+# Английские значения для канонических русских (value_aliases дают только RU).
+# Без этого value_en оставался пустым и EN-локаль показывала русский фолбэк.
+_VALUE_RU_TO_EN: dict[str, str] = {
+    # material / sole-material
+    "Натуральная кожа": "Genuine Leather",
+    "Искусственная кожа": "Faux Leather",
+    "Хлопок": "Cotton",
+    "Ткань": "Fabric",
+    "Текстиль": "Textile",
+    "Металл": "Metal",
+    "Флис": "Fleece",
+    "Соломка": "Straw",
+    "Резина": "Rubber",
+    "Каучук": "Rubber",
+    "Полиуретан": "Polyurethane",
+    "EVA": "EVA",
+    # closure-type
+    "Шнуровка": "Lace-up",
+    "Липучка": "Velcro",
+    "Молния": "Zipper",
+    "Пряжка": "Buckle",
+    "Без застёжки": "Slip-on",
+    "Резинка": "Elastic",
+    # toe-shape
+    "Круглый": "Round",
+    "Заострённый": "Pointed",
+    "Квадратный": "Square",
+    "Овальный": "Oval",
+    # accessory-type
+    "Пояс / ремень": "Belt",
+    "Кепка": "Cap",
+    "Шапка": "Beanie",
+    "Кошелек": "Wallet",
+    "Сумка": "Bag",
+    "Очки": "Glasses",
+    "Шаль": "Shawl",
+    "Платок": "Scarf",
+}
+
+
 def extract_dynamic_attribute_candidates(product_type: str | None, attrs: dict[str, Any]) -> list[ResolvedDynamicAttribute]:
     if not isinstance(attrs, dict):
         return []
@@ -321,7 +361,7 @@ def extract_dynamic_attribute_candidates(product_type: str | None, attrs: dict[s
                 slug=spec.slug,
                 value=canonical,
                 value_ru=canonical,
-                value_en=None,
+                value_en=_VALUE_RU_TO_EN.get(canonical),
                 name_ru=spec.name_ru,
                 name_en=spec.name_en,
                 sort_order=spec.sort_order,
