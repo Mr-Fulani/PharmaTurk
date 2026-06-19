@@ -27,6 +27,15 @@ def _category_chain(category) -> str:
     return "/".join(reversed(out))
 
 
+def _brand_slug(product) -> str:
+    """Слаг бренда товара для имени файла ('' если бренда нет)."""
+    if product is None:
+        return ""
+    brand = getattr(product, "brand", None)
+    name = getattr(brand, "name", None) if brand else None
+    return _normalize_slug(name, "")
+
+
 def _build_readable_filename(parts: list[str], filename: str, fallback: str = "media") -> str:
     ext = os.path.splitext(str(filename).split("?")[0])[1].lower() or ".jpg"
     # slugify(None) у Django даёт "none" — поэтому пустые части отсекаем ДО slugify,
@@ -65,7 +74,9 @@ def get_product_upload_path(instance, filename):
     
     media_folder = _media_folder_from_filename(filename)
     readable_name = _build_readable_filename(
-        [category_slug or product_type, getattr(instance, "slug", None), getattr(instance, "name", None)],
+        # бренд + категория/тип + slug(name+ext.id) + 'main'. name не дублируем —
+        # он уже внутри slug, иначе имя задваивалось.
+        [_brand_slug(instance), category_slug or product_type, getattr(instance, "slug", None), "main"],
         filename,
         "product-main",
     )
@@ -80,7 +91,7 @@ def get_product_image_upload_path(instance, filename):
     base = (category_slug or product_type or "other").lower()
     media_folder = _media_folder_from_filename(filename)
     readable_name = _build_readable_filename(
-        [category_slug or product_type, getattr(product, "slug", None), getattr(product, "name", None), "gallery"],
+        [_brand_slug(product), category_slug or product_type, getattr(product, "slug", None), "gallery"],
         filename,
         "product-gallery",
     )
@@ -103,7 +114,7 @@ def get_domain_main_upload_path(instance, filename):
     type_slug = _domain_type_slug(instance)
     media_folder = _media_folder_from_filename(filename)
     readable = _build_readable_filename(
-        [type_slug, getattr(instance, "slug", None), getattr(instance, "name", None)],
+        [_brand_slug(instance), type_slug, getattr(instance, "slug", None), "main"],
         filename, "product-main",
     )
     return f"products/{type_slug}/main/{media_folder}/{readable}"
@@ -116,6 +127,7 @@ def get_domain_variant_main_upload_path(instance, filename):
     media_folder = _media_folder_from_filename(filename)
     readable = _build_readable_filename(
         [
+            _brand_slug(product),
             type_slug,
             getattr(product, "slug", None) if product else None,
             getattr(instance, "color", None) or getattr(instance, "name", None),
@@ -133,9 +145,9 @@ def get_domain_gallery_upload_path(instance, filename):
     media_folder = _media_folder_from_filename(filename)
     readable = _build_readable_filename(
         [
+            _brand_slug(product),
             type_slug,
             getattr(product, "slug", None) if product else None,
-            getattr(product, "name", None) if product else None,
             "gallery",
         ],
         filename, "product-gallery",
@@ -151,6 +163,7 @@ def get_domain_variant_gallery_upload_path(instance, filename):
     media_folder = _media_folder_from_filename(filename)
     readable = _build_readable_filename(
         [
+            _brand_slug(product),
             type_slug,
             getattr(product, "slug", None) if product else None,
             getattr(variant, "color", None) if variant else None,
