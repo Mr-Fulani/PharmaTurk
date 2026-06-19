@@ -103,6 +103,64 @@ def _cancel_site_task(site_task_id: int, message: str) -> None:
     )
 
 
+def _sweep_parsed_orphans(parser_name: str) -> int:
+    """Удаляет из products/parsed/<parser>/ файлы без единой ссылки в БД.
+
+    Сигнал переноса чистит parsed-оригиналы у сохранённых товаров, но у
+    пропущенных (дубли) скачанное медиа оставалось орфаном. Этот sweep после
+    скрейпа гарантирует, что products/parsed/ не копится. Удаляем ТОЛЬКО файлы
+    с нулём ссылок — это не массовый cleanup, риска вайпа нет.
+    """
+    try:
+        from django.apps import apps
+        from django.core.files.storage import default_storage
+        from apps.catalog.utils.r2_utils import get_r2_client
+        from django.conf import settings
+
+        prefix = f"products/parsed/{(parser_name or '').lower()}/"
+        client = get_r2_client()
+        bucket = settings.R2_BUCKET_NAME
+        paginator = client.get_paginator("list_objects_v2")
+        keys = [
+            obj["Key"]
+            for page in paginator.paginate(Bucket=bucket, Prefix=prefix)
+            for obj in page.get("Contents", [])
+        ]
+        if not keys:
+            return 0
+
+        image_fields = []
+        for model in apps.get_app_config("catalog").get_models():
+            for field in model._meta.get_fields():
+                fname = getattr(field, "name", "")
+                if hasattr(field, "attname") and any(
+                    k in fname for k in ("image_url", "image_file", "main_image", "video")
+                ):
+                    image_fields.append((model, fname))
+
+        def referenced(key: str) -> bool:
+            for model, fname in image_fields:
+                try:
+                    if model.objects.filter(**{f"{fname}__contains": key}).exists():
+                        return True
+                except Exception:
+                    continue
+            return False
+
+        orphans = [k for k in keys if not referenced(k)]
+        for key in orphans:
+            try:
+                default_storage.delete(key)
+            except Exception:
+                pass
+        if orphans:
+            logger.info("parsed-sweep %s: удалено орфанов %s/%s", parser_name, len(orphans), len(keys))
+        return len(orphans)
+    except Exception as exc:  # noqa: BLE001 — sweep не должен ронять задачу
+        logger.warning("parsed-sweep %s не удался: %s", parser_name, exc)
+        return 0
+
+
 def _site_task_status(site_task_id: Optional[int]) -> Optional[str]:
     """Текущий статус задачи (или None)."""
     if not site_task_id:
@@ -387,6 +445,8 @@ def run_scraper_task(self,
                     f"Парсер {scraper_config.name} завершён: "
                     f"всего {new_total} товаров за {start_page + chunk_pages - 1} страниц"
                 )
+                # Цепочка завершена — подчищаем parsed-орфаны парсера (от пропущенных дублей).
+                _sweep_parsed_orphans(scraper_config.parser_class)
         else:
             logger.info(f"Парсер {scraper_config.name} завершен успешно: {session.products_found} товаров найдено")
 
