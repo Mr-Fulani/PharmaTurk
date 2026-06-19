@@ -573,14 +573,18 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
 
         if obj.status == "completed" and obj.session_id:
             run_ai_url = reverse("admin:scrapers_sitescrapertask_run_ai", args=[obj.pk])
-            task_id_html = f'<span style="font-size:11px;color:gray;">{obj.task_id or "-"}</span>'
             return format_html(
-                '{}{} <a href="{}" class="button" style="margin-left:4px;">Запустить AI</a>',
+                '{} <span style="font-size:11px;color:gray;">{}</span> '
+                '<a href="{}" class="button" style="margin-left:4px;">Запустить AI</a>',
                 run_button,
-                task_id_html,
+                obj.task_id or "-",
                 run_ai_url,
             )
-        return format_html("{}<span>{}</span>", run_button, obj.task_id or "-")
+        return format_html(
+            '{} <span style="font-size:11px;color:gray;">{}</span>',
+            run_button,
+            obj.task_id or "-",
+        )
 
     actions_column.short_description = "ID задачи / Действия"
 
