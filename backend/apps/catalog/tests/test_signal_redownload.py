@@ -8,6 +8,25 @@ any model with an external URL will re-download if R2 doesn't have the file.
 import pytest
 from unittest.mock import MagicMock, patch
 
+from apps.catalog.signals import is_internal_storage_url
+
+
+class TestIsInternalStorageUrl:
+    def test_external_cdn_with_media_path_is_not_internal(self):
+        # FLO CDN: путь /media/, но хост внешний → НЕ внутренний (иначе не качается)
+        assert is_internal_storage_url(
+            "https://floimages.mncdn.com/media/catalog/product/x.jpg"
+        ) is False
+
+    def test_relative_media_path_is_internal(self):
+        assert is_internal_storage_url("/media/products/x.jpg") is True
+
+    def test_relative_products_path_is_internal(self):
+        assert is_internal_storage_url("/products/shoes/x.jpg") is True
+
+    def test_external_without_media_path_is_not_internal(self):
+        assert is_internal_storage_url("https://static.zara.net/photos/x.jpg") is False
+
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 

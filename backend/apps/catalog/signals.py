@@ -261,7 +261,13 @@ def is_internal_storage_url(url):
             
         from urllib.parse import urlparse
         parsed = urlparse(url)
-        if parsed.path.startswith("/media/") or parsed.path.startswith("/products/"):
+        # Path-проверку (/media/, /products/) применяем ТОЛЬКО к относительным URL
+        # (без хоста). Иначе внешние CDN с таким путём — напр. FLO
+        # floimages.mncdn.com/media/catalog/... — ошибочно считались внутренними,
+        # и сигнал не скачивал картинку в R2, а извлекал из URL кривой ключ.
+        if not parsed.netloc and (
+            parsed.path.startswith("/media/") or parsed.path.startswith("/products/")
+        ):
             return True
         return False
     except Exception:
