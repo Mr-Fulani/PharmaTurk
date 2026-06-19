@@ -2537,8 +2537,88 @@ class ScraperIntegrationService:
         if isinstance(variants, list) and variants:
             if self._sync_fashion_variants(product, variants=variants):
                 updated = True
+            # Дедуп: main варианта/товара ссылается на файл галереи, без отдельной копии.
+            self._dedupe_main_into_gallery(product)
 
         return updated
+
+    def _media_key_referenced(self, key: str) -> bool:
+        """Есть ли в БД хоть одна ссылка на R2-ключ (чтобы не удалить нужный файл)."""
+        from django.apps import apps
+        if not key:
+            return True
+        for model in apps.get_app_config("catalog").get_models():
+            for f in model._meta.get_fields():
+                n = getattr(f, "name", "")
+                if hasattr(f, "attname") and any(
+                    x in n for x in ("image_url", "image_file", "main_image", "video")
+                ):
+                    try:
+                        if model.objects.filter(**{f"{n}__contains": key}).exists():
+                            return True
+                    except Exception:
+                        continue
+        return False
+
+    def _point_main_to_image(self, obj, gallery_img) -> None:
+        """main_image_file объекта → файл галереи (тот же ключ). Старую копию,
+        если на неё больше нет ссылок, удаляем — чтобы не дублировать фото."""
+        if obj is None or not hasattr(obj, "main_image_file"):
+            return
+        key = getattr(gallery_img.image_file, "name", "") or ""
+        cur = getattr(obj.main_image_file, "name", "") or ""
+        if not key or cur == key:
+            return
+        old = cur
+        obj.main_image_file = key
+        fields = ["main_image_file"]
+        if hasattr(obj, "main_image"):
+            try:
+                obj.main_image = gallery_img.image_url or gallery_img.image_file.url
+            except Exception:
+                obj.main_image = gallery_img.image_url or ""
+            fields.append("main_image")
+        obj.save(update_fields=fields)
+        if old and old != key and not self._media_key_referenced(old):
+            try:
+                from django.core.files.storage import default_storage
+                default_storage.delete(old)
+            except Exception:
+                pass
+
+    def _dedupe_main_into_gallery(self, product: Product) -> None:
+        """Убирает дублирование: main_image товара и вариантов ссылается на файл
+        галереи (gallery[0]) того же цвета, а не качается отдельной копией."""
+        try:
+            config = self._fashion_model_config(product.product_type)
+            if not config:
+                return
+            domain = config["getter"](product)
+            if domain is None:
+                return
+            VModel = config["variant_model"]
+            VImg = config["variant_image_model"]
+            first_img = None
+            for v in VModel.objects.filter(product=domain).order_by("sort_order", "id"):
+                img = (
+                    VImg.objects.filter(variant=v)
+                    .exclude(image_file="")
+                    .order_by("sort_order", "id")
+                    .first()
+                )
+                if img is None or not getattr(img.image_file, "name", ""):
+                    continue
+                if first_img is None:
+                    first_img = img
+                self._point_main_to_image(v, img)
+            if first_img is not None:
+                self._point_main_to_image(domain, first_img)
+                self._point_main_to_image(product, first_img)
+        except Exception as exc:  # noqa: BLE001 — дедуп не должен ронять сохранение
+            self.logger.warning(
+                "dedupe main media для product %s не удался: %s",
+                getattr(product, "id", "?"), exc,
+            )
 
     def _update_clothing_attributes(
         self,
