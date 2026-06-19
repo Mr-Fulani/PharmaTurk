@@ -67,7 +67,7 @@ interface ProductCardProps {
    * has_manual_main_image с API: загружен файл главного фото — на витрине не подменяем превью на видео/GIF.
    */
   hasManualMainImage?: boolean
-  imageFit?: 'cover' | 'contain'
+  imageFit?: 'cover' | 'contain' | 'lower-cover'
 }
 
 export default function ProductCard({
@@ -136,7 +136,11 @@ export default function ProductCard({
       ? getVideoEmbedUrl(resolvedVideoUrl, 'ambient')
       : null
   const hoverMediaClass = 'transition-transform duration-500 group-hover:scale-105'
-  const imageFitClass = imageFit === 'contain' ? 'object-contain' : 'object-cover'
+  const imageFitClass = imageFit === 'contain'
+    ? 'object-contain'
+    : imageFit === 'lower-cover'
+      ? 'object-cover object-[center_60%]'
+      : 'object-cover'
   const listingImgSrc = resolvedImage ? withListingImageMaxWidth(resolvedImage) : null
   const rawGif = preferStaticHero || showVideo ? null : mainGifUrl
   const resolvedGifSrc =

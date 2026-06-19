@@ -103,7 +103,7 @@ export default function FavoritesPage() {
               const productType = rawType.replace(/_/g, '-')
               const isBaseProduct = isBaseProductType(productType)
               const productHref = buildFavoriteProductHref(
-                buildProductUrl(productType, product.slug),
+                buildProductUrl(productType, product.favorite_parent_slug || product.slug),
                 product.favorite_variant_slug
               )
               const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
@@ -146,7 +146,7 @@ export default function FavoritesPage() {
                   isFeatured={(product as { is_featured?: boolean }).is_featured}
                   translations={product.translations}
                   locale={i18n.language}
-                  imageFit="contain"
+                  imageFit="lower-cover"
                 />
               )
             })}

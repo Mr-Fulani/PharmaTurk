@@ -1828,6 +1828,42 @@ class FavoriteSerializer(serializers.ModelSerializer):
         model = Favorite
         fields = ['id', 'product', 'chosen_size', 'created_at']
         read_only_fields = ['id', 'chosen_size', 'created_at']
+
+    @staticmethod
+    def _get_variant_parent_slug(product, external_data):
+        variant_slug = external_data.get('source_variant_slug')
+        source_type = str(
+            external_data.get('effective_type')
+            or external_data.get('source_type')
+            or getattr(product, 'product_type', '')
+        ).strip().lower().replace('-', '_')
+        if not variant_slug:
+            return None
+
+        from .models import HeadwearVariant, IslamicClothingVariant, UnderwearVariant
+
+        variant_models = {
+            'clothing': ClothingVariant,
+            'shoes': ShoeVariant,
+            'furniture': FurnitureVariant,
+            'jewelry': JewelryVariant,
+            'books': BookVariant,
+            'perfumery': PerfumeryVariant,
+            'headwear': HeadwearVariant,
+            'underwear': UnderwearVariant,
+            'islamic_clothing': IslamicClothingVariant,
+        }
+        variant_model = variant_models.get(source_type)
+        if variant_model is None:
+            return None
+
+        variant = (
+            variant_model.objects.filter(slug=variant_slug, is_active=True)
+            .select_related('product')
+            .first()
+        )
+        parent = getattr(variant, 'product', None)
+        return getattr(parent, 'slug', None) or None
     
     def get_product(self, obj):
         """Сериализация товара в зависимости от его типа."""
@@ -1944,6 +1980,9 @@ class FavoriteSerializer(serializers.ModelSerializer):
             sv = ed.get('source_variant_slug')
             if sv:
                 product_data['favorite_variant_slug'] = sv
+                parent_slug = self._get_variant_parent_slug(product, ed)
+                if parent_slug:
+                    product_data['favorite_parent_slug'] = parent_slug
         return product_data
 
 

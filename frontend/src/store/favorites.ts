@@ -23,6 +23,7 @@ interface Favorite {
     translations?: ProductTranslation[]
     /** Slug цветового/мебельного варианта (shadow Product), для сопоставления с витриной */
     favorite_variant_slug?: string
+    favorite_parent_slug?: string
     favorite_chosen_size?: string
   }
   created_at: string

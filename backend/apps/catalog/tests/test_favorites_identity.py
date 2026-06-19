@@ -13,7 +13,11 @@ from apps.catalog.models import (
     Product,
     Service,
 )
-from apps.catalog.serializers import AddToFavoriteSerializer, resolve_product_for_favorites_api
+from apps.catalog.serializers import (
+    AddToFavoriteSerializer,
+    FavoriteSerializer,
+    resolve_product_for_favorites_api,
+)
 
 
 @pytest.mark.django_db
@@ -73,6 +77,15 @@ def test_perfumery_variant_slug_creates_stable_favorite_identity():
     shadow = serializer.validated_data["_product"]
     assert shadow.product_type == "perfumery"
     assert shadow.external_data["source_variant_slug"] == variant.slug
+
+    favorite = Favorite.objects.create(
+        session_key=f"variant-parent-{suffix}",
+        content_type=ContentType.objects.get_for_model(Product),
+        object_id=shadow.pk,
+    )
+    favorite_product = FavoriteSerializer(favorite).data["product"]
+    assert favorite_product["favorite_variant_slug"] == variant.slug
+    assert favorite_product["favorite_parent_slug"] == perfume.slug
 
 
 @pytest.mark.django_db

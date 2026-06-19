@@ -1629,7 +1629,7 @@ export default function ProductPage({
                                 muted
                                 playsInline
                                 preload="metadata"
-                                className="w-full h-full object-contain pointer-events-none"
+                                className="w-full h-full object-cover object-[center_60%] pointer-events-none"
                                 aria-label={img.alt_text || displayProductName || product.name}
                               />
                             )
@@ -1639,7 +1639,7 @@ export default function ProductPage({
                           <img
                             src={resolvedThumbnail || placeholderSmall}
                             alt={img.alt_text || displayProductName || product.name}
-                            className="w-full h-full object-contain pointer-events-none"
+                            className="w-full h-full object-cover object-[center_60%] pointer-events-none"
                             onError={(e) => {
                               setThumbPlaceholderByKey((prev) => ({ ...prev, [thumbKey]: placeholderLarge }))
                               e.currentTarget.src = placeholderSmall
