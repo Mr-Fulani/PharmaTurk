@@ -8,6 +8,7 @@ import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice } from '../../lib/price'
+import { buildCatalogPageQuery, parseBrandIds, parseCatalogFiltersQuery } from '../../lib/catalogQuery'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios from 'axios'
@@ -818,7 +819,6 @@ export default function CategoryPage({
     attributes: {}
   }), [])
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
-  const extraFiltersInitialized = useRef<string>('')
   const categoryGroups = useMemo(() => {
     const sections = getCategorySections(categoryType, categories)
     return sections.map((s) => ({
@@ -829,16 +829,13 @@ export default function CategoryPage({
   }, [categoryType, categories, t])
   // Используем реальный тип из API если есть, иначе fallback на маппинг
   const resolvedBrandType = useMemo(() => categoryTypeSlug || resolveBrandProductType(categoryType), [categoryTypeSlug, categoryType])
-  const filtersInitialized = useRef<string>('')
 
-  const updatePageQuery = useCallback((page: number, options: { replace?: boolean } = {}) => {
+  const updatePageQuery = useCallback((
+    page: number,
+    options: { replace?: boolean; filters?: FilterState } = {}
+  ) => {
     if (!router.isReady) return
-    const nextQuery: Record<string, string | string[] | undefined> = { ...router.query }
-    if (page <= 1) {
-      delete nextQuery.page
-    } else {
-      nextQuery.page = String(page)
-    }
+    const nextQuery = buildCatalogPageQuery(router.query, page, options)
     const navigate = options.replace ? router.replace : router.push
     navigate(
       {
@@ -855,24 +852,8 @@ export default function CategoryPage({
   const resetFilters = useCallback(() => {
     setFilters(defaultFilters)
     setCurrentPage(1)
-    if (!router.isReady) return
-    const nextQuery: Record<string, string | string[] | undefined> = { ...router.query }
-    delete nextQuery.page
-    delete nextQuery.brand_id
-    delete nextQuery.gender
-    delete nextQuery.fragrance_type
-    delete nextQuery.subcategory_slug
-    router.replace(
-      {
-        pathname: router.pathname,
-        query: nextQuery
-      },
-      undefined,
-      { shallow: true, scroll: false }
-    ).catch((error) => {
-      console.error('Не удалось сбросить фильтры в URL:', error)
-    })
-  }, [defaultFilters, router])
+    updatePageQuery(1, { replace: true, filters: defaultFilters })
+  }, [defaultFilters, updatePageQuery])
 
   useEffect(() => {
     if (!router.isReady) return
@@ -880,96 +861,15 @@ export default function CategoryPage({
     setCurrentPage((prev) => (prev === nextPage ? prev : nextPage))
   }, [router.isReady, router.query.page])
 
-  // Инициализация фильтров из query параметров
+  // URL является источником состояния фильтров для пагинации и истории браузера.
   useEffect(() => {
     if (!router.isReady) return
-
-    const { brand_id } = router.query
-    const brandIdStr = brand_id ? (Array.isArray(brand_id) ? brand_id[0] : String(brand_id)) : ''
-    const initKey = `${router.asPath}-${brandIdStr}`
-
-    // Если уже инициализировали для этого URL, пропускаем
-    if (filtersInitialized.current === initKey) return
-
-    if (brand_id) {
-      const brandId = Array.isArray(brand_id) ? parseInt(brand_id[0]) : parseInt(brand_id as string)
-      if (!isNaN(brandId)) {
-        setFilters((prev) => {
-          // Если уже установлен правильный бренд, просто обновляем ключ
-          if (prev.brands.length === 1 && prev.brands[0] === brandId) {
-            filtersInitialized.current = initKey
-            return prev
-          }
-          filtersInitialized.current = initKey
-          return {
-            ...prev,
-            brands: [brandId],
-            brandSlugs: []
-          }
-        })
-        return
-      }
-    } else {
-      // Если brand_id нет в URL, очищаем фильтр брендов только если он был установлен
-      setFilters((prev) => {
-        if (prev.brands.length === 0) {
-          filtersInitialized.current = initKey
-          return prev
-        }
-        filtersInitialized.current = initKey
-        return {
-          ...prev,
-          brands: [],
-          brandSlugs: []
-        }
-      })
-    }
-  }, [router.isReady, router.asPath, router.query.brand_id])
-
-  useEffect(() => {
-    if (!router.isReady) return
-    const initKey = `extra-${router.asPath}`
-    if (extraFiltersInitialized.current === initKey) return
-    const genderParam = router.query.gender
-    const fragranceTypeParam = router.query.fragrance_type
-    const subcategoryParam = router.query.subcategory_slug
-    const genderRaw = Array.isArray(genderParam) ? genderParam[0] : genderParam
-    const fragranceTypeRaw = Array.isArray(fragranceTypeParam) ? fragranceTypeParam[0] : fragranceTypeParam
-    const subcategorySlug = Array.isArray(subcategoryParam) ? subcategoryParam[0] : subcategoryParam
-    const genderSlugs = genderRaw
-      ? String(genderRaw).split(',').map((s) => normalizeSlug(s)).filter(Boolean)
-      : []
-    const fragranceTypeSlugs = fragranceTypeRaw
-      ? String(fragranceTypeRaw).split(',').map((s) => normalizeSlug(s)).filter(Boolean)
-      : []
-    const genderSet = new Set(['women', 'men', 'kids', 'unisex'])
-    const validGenders = genderSlugs.filter((g) => genderSet.has(g))
-    const subcategorySlugs = subcategorySlug ? [String(subcategorySlug)] : []
-    if (validGenders.length === 0 && fragranceTypeSlugs.length === 0 && subcategorySlugs.length === 0) {
-      extraFiltersInitialized.current = initKey
-      return
-    }
+    const nextFilters = parseCatalogFiltersQuery(router.query, defaultFilters) as FilterState
     setFilters((prev) => {
-      const nextGenders = validGenders.length > 0 ? validGenders : prev.genders
-      const nextFragranceTypes = fragranceTypeSlugs.length > 0 ? fragranceTypeSlugs : prev.fragranceTypes
-      const nextSubcategorySlugs = subcategorySlugs.length > 0 ? subcategorySlugs : prev.subcategorySlugs
-      if (
-        (prev.genders || []).join(',') === (nextGenders || []).join(',') &&
-        (prev.fragranceTypes || []).join(',') === (nextFragranceTypes || []).join(',') &&
-        prev.subcategorySlugs.join(',') === nextSubcategorySlugs.join(',')
-      ) {
-        extraFiltersInitialized.current = initKey
-        return prev
-      }
-      extraFiltersInitialized.current = initKey
-      return {
-        ...prev,
-        genders: nextGenders,
-        fragranceTypes: nextFragranceTypes,
-        subcategorySlugs: nextSubcategorySlugs
-      }
+      if (areFiltersEqual(prev, nextFilters)) return prev
+      return nextFilters
     })
-  }, [router.isReady, router.asPath, router.query.gender, router.query.fragrance_type, router.query.subcategory_slug])
+  }, [router.isReady, router.asPath, router.query, defaultFilters])
 
   useEffect(() => {
     const loadBrands = async () => {
@@ -1003,17 +903,12 @@ export default function CategoryPage({
         const normalizedList = ensureOtherBrand(list)
         setBrandOptions(normalizedList)
         // НЕ обновляем filters.brands если brand_id есть в URL - он должен быть установлен через инициализацию
-        const { brand_id } = router.query
-        if (brand_id) {
+        const brandIdsFromUrl = parseBrandIds(router.query.brand_id)
+        if (brandIdsFromUrl.length > 0) {
           // Если brand_id есть в URL, не трогаем фильтры - они должны быть установлены через инициализацию
-          const brandIdFromUrl = Array.isArray(brand_id) ? parseInt(brand_id[0]) : parseInt(brand_id as string)
-          if (!isNaN(brandIdFromUrl)) {
-            // Просто проверяем, что бренд доступен, но не меняем фильтры
-            const allowedIds = new Set(normalizedList.map((brand: any) => brand.id))
-            if (allowedIds.has(brandIdFromUrl)) {
-              // Бренд доступен - фильтры должны быть установлены через инициализацию
-              return
-            }
+          const allowedIds = new Set(normalizedList.map((brand: any) => brand.id))
+          if (brandIdsFromUrl.some((brandId) => allowedIds.has(brandId))) {
+            return
           }
         }
 
@@ -1054,21 +949,11 @@ export default function CategoryPage({
       if (!router.isReady) return
 
       // Если brand_id есть в URL, используем его напрямую, даже если фильтры еще не инициализированы
-      const { brand_id } = router.query
-      let brandIdToUse: number | null = null
-
-      if (brand_id) {
-        const brandIdFromUrl = Array.isArray(brand_id) ? parseInt(brand_id[0]) : parseInt(brand_id as string)
-        if (!isNaN(brandIdFromUrl)) {
-          brandIdToUse = brandIdFromUrl
-        }
-      }
+      const brandIdsFromUrl = parseBrandIds(router.query.brand_id)
 
       // Если brand_id в URL, но его нет в фильтрах, используем brand_id из URL
       // Это нужно для случая, когда фильтры еще не инициализированы
-      const effectiveBrandIds = brandIdToUse && !filters.brands.includes(brandIdToUse)
-        ? [brandIdToUse]
-        : filters.brands
+      const effectiveBrandIds = brandIdsFromUrl.length > 0 ? brandIdsFromUrl : filters.brands
 
       setLoading(true)
       try {
@@ -1283,7 +1168,7 @@ export default function CategoryPage({
       return
     }
     setCurrentPage((prev) => (prev === 1 ? prev : 1))
-    updatePageQuery(1, { replace: true })
+    updatePageQuery(1, { replace: true, filters: newFilters })
   }, [filters, updatePageQuery])
 
   const routeSlugFromQuery = useMemo(() => {
