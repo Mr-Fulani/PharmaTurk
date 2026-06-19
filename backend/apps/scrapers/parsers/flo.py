@@ -11,7 +11,7 @@ import re
 from typing import Any, Dict, Iterator, List, Optional, Set
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
-from ..base.scraper import BaseScraper, ScrapedProduct
+from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedError
 from ..base.utils import clean_text
 
 
@@ -24,6 +24,9 @@ class FloParser(BaseScraper):
     PRODUCT_DETAIL_MARKER = "window.productDetail = "
     PRODUCT_LINK_RE = re.compile(r'href="(/urun/[^"#?]*-\d{4,})"', re.IGNORECASE)
     DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
+    # FLO без анти-бота отдаёт обычный HTML, но «грязным» IP (дата-центр) вместо
+    # данных подсовывает reCAPTCHA — это та же блокировка, что и 403.
+    CHALLENGE_MARKERS = ("recaptcha", "challengepage", "captcha-delivery", "datadome")
 
     def __init__(self, base_url: str = "https://www.flo.com.tr", **kwargs):
         super().__init__(base_url=base_url, delay_range=(1, 3), **kwargs)
@@ -66,6 +69,21 @@ class FloParser(BaseScraper):
             query["page"] = str(page)
         return urlunparse(parsed._replace(query=urlencode(query), fragment=""))
 
+    def _looks_like_challenge(self, html: Optional[str]) -> bool:
+        """Похоже ли тело ответа на страницу CAPTCHA вместо данных."""
+        if not html:
+            return False
+        head = html[:4000].lower()
+        return any(marker in head for marker in self.CHALLENGE_MARKERS)
+
+    def _fetch(self, url: str) -> Optional[str]:
+        """GET с детектом CAPTCHA: challenge → единая ошибка блокировки доступа."""
+        html = self._make_request(url)
+        if self._looks_like_challenge(html):
+            self.logger.warning("FLO: получена страница защиты (CAPTCHA) на %s", url)
+            raise ScraperAccessBlockedError(source="FLO", status_code=403, url=url)
+        return html
+
     def _extract_product_detail(self, html: str) -> Optional[Dict[str, Any]]:
         """Достаёт JSON из ``window.productDetail = {...}`` без regex по телу."""
         if not html or self.PRODUCT_DETAIL_MARKER not in html:
@@ -92,7 +110,7 @@ class FloParser(BaseScraper):
 
         while pages_done < max(1, max_pages):
             page_url = self._page_url(category_url, page)
-            html = self._make_request(page_url)
+            html = self._fetch(page_url)
             if not html:
                 break
 
@@ -129,7 +147,7 @@ class FloParser(BaseScraper):
         return links
 
     def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
-        html = self._make_request(product_url)
+        html = self._fetch(product_url)
         if not html:
             return None
         detail = self._extract_product_detail(html)

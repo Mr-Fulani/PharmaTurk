@@ -1,6 +1,8 @@
 import json
 
-from apps.scrapers.base.scraper import ScrapedProduct
+import pytest
+
+from apps.scrapers.base.scraper import ScrapedProduct, ScraperAccessBlockedError
 from apps.scrapers.parsers.flo import FloParser
 from apps.scrapers.services import ScraperIntegrationService
 
@@ -134,8 +136,22 @@ def test_flo_parse_product_detail_builds_sizes_and_attributes(monkeypatch):
 
 def test_flo_parse_product_detail_returns_none_without_payload(monkeypatch):
     parser = FloParser()
-    monkeypatch.setattr(parser, "_make_request", lambda url: "<html>blocked</html>")
+    monkeypatch.setattr(parser, "_make_request", lambda url: "<html>no payload here</html>")
     assert parser.parse_product_detail("https://www.flo.com.tr/urun/x-1234") is None
+
+
+def test_flo_recaptcha_challenge_raises_access_blocked(monkeypatch):
+    parser = FloParser()
+    challenge = (
+        '<!doctype html><html><head>'
+        '<base href="https://www.google.com/recaptcha/challengepage/"></head></html>'
+    )
+    monkeypatch.setattr(parser, "_make_request", lambda url: challenge)
+
+    with pytest.raises(ScraperAccessBlockedError, match="HTTP 403"):
+        parser.parse_product_detail(
+            "https://www.flo.com.tr/urun/nike-revolution-8-102688450"
+        )
 
 
 def test_flo_parse_list_paginates_and_dedupes(monkeypatch):

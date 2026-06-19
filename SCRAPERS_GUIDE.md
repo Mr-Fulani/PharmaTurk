@@ -670,10 +670,17 @@ residential/mobile прокси. Включается без правок код
 
 ### 6.5.1. FLO (`flo.com.tr`) — обувь
 
-`FloParser` — турецкий обувной ретейл. Сайт **без анти-бота** (ни Akamai, ни
-Cloudflare), прокси не нужен, серверный HTML. Все данные карточки лежат в одном
-JS-объекте `window.productDetail = {...}`, который парсер читает как Zara читает
-`viewPayload` (без исполнения JavaScript).
+`FloParser` — турецкий обувной ретейл. Серверный HTML; все данные карточки лежат
+в одном JS-объекте `window.productDetail = {...}`, который парсер читает как Zara
+читает `viewPayload` (без исполнения JavaScript).
+
+**Анти-бот по репутации IP.** С «чистого» (резидентного) IP FLO отдаёт реальный
+HTML. Но «грязному» IP (дата-центр, как прод) FLO вместо данных подсовывает
+**Google reCAPTCHA** (`recaptcha/challengepage`). Парсер это распознаёт
+(`CHALLENGE_MARKERS`) и поднимает `ExternalAccessBlockedError` — админ видит
+«FLO запретил доступ», а не пустую категорию. Лечение — тот же турецкий
+residential-прокси, что и для Zara: `SCRAPER_PROXY_URL` + флаг `use_proxy`
+(FLO ходит через базовый httpx-клиент, поэтому прокси работает из коробки).
 
 Поддерживаемые URL:
 - товар: `https://www.flo.com.tr/urun/<slug>-<id>` (например `...-101792825`);
