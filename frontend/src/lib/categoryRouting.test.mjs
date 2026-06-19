@@ -44,3 +44,29 @@ test('exact category is selected even when descendants are returned first', () =
 
   assert.deepEqual(selectExactCategory(categories, 'eyewear'), categories[2])
 })
+
+test('gendered categories from other product trees are never classified as shoes', () => {
+  const categories = [
+    ['mens-sunglasses', 'accessories', ['accessories', 'eyewear', 'sunglasses']],
+    ['kids-beds', 'furniture', ['furniture', 'kids-furniture']],
+    ['mens-fragrances', 'perfumery', ['perfumery', 'fragrances']],
+    ['uw-mens-underwear', 'underwear', ['underwear']],
+    ['hw-children-headwear', 'headwear', ['headwear']],
+    ['kids-supplements', 'supplements', ['supplements']],
+    ['children-wheelchairs', 'medical-equipment', ['medical-equipment', 'rehabilitation-equipment']],
+    ['mens-jewelry', 'jewelry', ['jewelry']],
+    ['islamic-outerwear-women', 'islamic-clothing', ['islamic-clothing']],
+    ['svc-children-furniture', 'uslugi', ['uslugi', 'svc-furniture-appliance']],
+    ['body-parts', 'auto-parts', ['auto-parts']],
+  ]
+
+  for (const [routeSlug, categoryType, ancestorSlugs] of categories) {
+    const context = {
+      categoryType,
+      inferredType: categoryType,
+      routeSlug,
+      ancestors: ancestorSlugs.map((slug) => ({ slug })),
+    }
+    assert.equal(isCategoryInProductTree(context, 'shoes'), false, routeSlug)
+  }
+})
