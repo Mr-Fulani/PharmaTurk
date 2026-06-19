@@ -24,6 +24,8 @@ class FloParser(BaseScraper):
     PRODUCT_DETAIL_MARKER = "window.productDetail = "
     PRODUCT_LINK_RE = re.compile(r'href="(/urun/[^"#?]*-\d{4,})"', re.IGNORECASE)
     DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
+    # Предохранитель: максимум цветов на одну карточку (защита от аномалий).
+    MAX_COLOR_VARIANTS = 12
     # FLO без анти-бота отдаёт обычный HTML, но «грязным» IP (дата-центр) вместо
     # данных подсовывает reCAPTCHA — это та же блокировка, что и 403.
     CHALLENGE_MARKERS = ("recaptcha", "challengepage", "captcha-delivery", "datadome")
@@ -112,7 +114,9 @@ class FloParser(BaseScraper):
         max_pages: int = 10,
         start_page: int = 1,
     ) -> Iterator[ScrapedProduct]:
-        seen_products: Set[str] = set()
+        # Дедуп по sku цвета: карточка группирует все цвета модели, поэтому
+        # ссылки на другие цвета той же модели в листинге пропускаем.
+        seen_skus: Set[str] = set()
         yielded = 0
         page = max(1, start_page)
         pages_done = 0
@@ -126,18 +130,24 @@ class FloParser(BaseScraper):
             product_urls = self._extract_product_links(html)
             new_on_page = 0
             for product_url in product_urls:
-                identity = self._canonical_url(product_url)
-                if identity in seen_products:
+                sku = self._sku_from_url(product_url)
+                if sku and sku in seen_skus:
                     continue
-                seen_products.add(identity)
                 new_on_page += 1
 
                 product = self.parse_product_detail(product_url)
-                if product and self.validate_product(product):
-                    yield product
-                    yielded += 1
-                    if self.max_products and yielded >= self.max_products:
-                        return
+                if product:
+                    # отмечаем все цвета модели как обработанные
+                    for variant in product.attributes.get("fashion_variants") or []:
+                        if variant.get("sku"):
+                            seen_skus.add(str(variant["sku"]))
+                    if self.validate_product(product):
+                        yield product
+                        yielded += 1
+                        if self.max_products and yielded >= self.max_products:
+                            return
+                elif sku:
+                    seen_skus.add(sku)
 
             pages_done += 1
             if new_on_page == 0 or 'rel="next"' not in html:
@@ -155,16 +165,36 @@ class FloParser(BaseScraper):
             links.append(url)
         return links
 
-    def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
-        html = self._fetch(product_url)
-        if not html:
-            return None
-        detail = self._extract_product_detail(html)
-        if not detail or not detail.get("name"):
-            return None
+    @classmethod
+    def _sku_from_url(cls, url: str) -> str:
+        match = cls.PRODUCT_PATH_RE.search(urlparse(url).path or url)
+        return match.group(1) if match else ""
 
+    def _color_skus_and_urls(self, detail: Dict[str, Any], product_url: str) -> List[tuple]:
+        """Все цвета модели как [(sku, url)] (включая текущий), по возрастанию sku.
+
+        ``color_options`` одинаков с любой стартовой ссылки, поэтому min(sku)
+        даёт стабильный идентификатор группы независимо от того, с какого цвета
+        начали обход.
+        """
+        rows: Dict[str, str] = {}
+        self_sku = str(detail.get("sku") or "")
+        if self_sku:
+            rows[self_sku] = self._canonical_url(product_url)
+        for option in detail.get("color_options") or []:
+            if not isinstance(option, dict):
+                continue
+            sku = str(option.get("sku") or "")
+            href = str(option.get("url") or "")
+            if not sku or not href:
+                continue
+            rows.setdefault(sku, self._canonical_url(urljoin(self.base_url, href)))
+        return sorted(rows.items(), key=lambda kv: kv[0])[: self.MAX_COLOR_VARIANTS]
+
+    def _build_color_variant(
+        self, detail: Dict[str, Any], product_url: str, sort_order: int
+    ) -> Dict[str, Any]:
         sku = str(detail.get("sku") or "")
-        external_id = f"flo-{sku}" if sku else ""
         sizes = self._build_sizes(detail.get("options"))
         images = self._extract_images(detail)
         price = self._normalize_price_value(detail.get("price"))
@@ -172,10 +202,9 @@ class FloParser(BaseScraper):
         is_available = str(detail.get("is_in_stock")).lower() == "true" or any(
             row["is_available"] for row in sizes
         )
-
-        variant = {
+        return {
             "external_id": f"flo-variant-{sku}",
-            "sort_order": 0,
+            "sort_order": sort_order,
             "color": color,
             "display_name": clean_text(
                 f"{detail.get('name') or ''} - {color}".strip(" -")
@@ -184,34 +213,71 @@ class FloParser(BaseScraper):
             "currency": "TRY",
             "external_url": self._canonical_url(product_url),
             "images": images,
-            "stock_quantity": (
-                self.DEFAULT_ASSUMED_STOCK_QUANTITY if is_available else 0
-            ),
+            "stock_quantity": self.DEFAULT_ASSUMED_STOCK_QUANTITY if is_available else 0,
             "is_available": is_available,
             "sizes": sizes,
             "sku": sku,
         }
 
+    def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
+        html = self._fetch(product_url)
+        if not html:
+            return None
+        detail = self._extract_product_detail(html)
+        if not detail or not detail.get("name"):
+            return None
+
+        self_sku = str(detail.get("sku") or "")
+        color_rows = self._color_skus_and_urls(detail, product_url)
+
+        variants: List[Dict[str, Any]] = []
+        for sort_order, (sku, url) in enumerate(color_rows):
+            if sku == self_sku:
+                color_detail = detail
+            else:
+                color_html = self._fetch(url)
+                color_detail = self._extract_product_detail(color_html) if color_html else None
+            if not color_detail or not color_detail.get("name"):
+                continue
+            variants.append(self._build_color_variant(color_detail, url, sort_order))
+
+        if not variants:
+            return None
+
+        # Стабильный id группы — минимальный sku среди цветов.
+        group_sku = color_rows[0][0] if color_rows else self_sku
+        external_id = f"flo-{group_sku}"
+        primary = next((v for v in variants if v["sku"] == self_sku), variants[0])
+
+        all_sizes: List[str] = []
+        seen_sizes: Set[str] = set()
+        for variant in variants:
+            for size_row in variant["sizes"]:
+                if size_row["size"] not in seen_sizes:
+                    seen_sizes.add(size_row["size"])
+                    all_sizes.append(size_row["size"])
+
+        is_available = any(v["is_available"] for v in variants)
         attributes: Dict[str, Any] = {
-            "fashion_variants": [variant],
-            "variant_group_id": f"flo-{detail.get('model_code') or sku}",
-            "color": color,
+            "fashion_variants": variants,
+            "variant_group_id": external_id,
+            "color": primary["color"],
             "gender": self._map_gender(detail.get("cinsiyet") or detail.get("gender")),
-            "sizes": [row["size"] for row in sizes],
+            "sizes": all_sizes,
         }
         attributes.update(self._shoe_attributes(detail))
 
         return ScrapedProduct(
             name=clean_text(str(detail.get("name") or "")),
             description=self._clean_description(detail.get("description")),
-            price=price,
+            price=primary["price"],
             currency="TRY",
-            url=self._canonical_url(product_url),
-            images=images,
+            url=primary["external_url"],
+            images=primary["images"],
             category=self._extract_category(detail),
             brand=clean_text(str(detail.get("manufacturer") or "")),
             external_id=external_id,
-            sku=sku,
+            sku=group_sku,
             is_available=is_available,
             stock_quantity=(self.DEFAULT_ASSUMED_STOCK_QUANTITY if is_available else 0),
             attributes=attributes,

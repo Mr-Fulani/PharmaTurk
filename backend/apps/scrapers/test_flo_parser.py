@@ -144,6 +144,37 @@ def test_flo_parse_product_detail_builds_sizes_and_attributes(monkeypatch):
     assert sizes[1]["barcode"] == "196968173648"
 
 
+def test_flo_groups_color_variants_into_one_card(monkeypatch):
+    parser = FloParser()
+    blue = _detail(sku="222", name="REVOLUTION 8 Mavi")
+    blue["renk"] = "Mavi"
+    blue["color_options"] = [
+        {"sku": "222", "url": "/urun/x-mavi-222", "is_in_stock": True},
+        {"sku": "111", "url": "/urun/x-siyah-111", "is_in_stock": True},
+    ]
+    black = _detail(sku="111", name="REVOLUTION 8 Siyah")
+    black["renk"] = "Siyah"
+    black["color_options"] = blue["color_options"]
+
+    def fake_request(url):
+        if "111" in url:
+            return _product_html(black)
+        return _product_html(blue)
+
+    monkeypatch.setattr(parser, "_make_request", fake_request)
+
+    product = parser.parse_product_detail("https://www.flo.com.tr/urun/x-mavi-222")
+
+    # id группы — минимальный sku среди цветов
+    assert product.external_id == "flo-111"
+    variants = product.attributes["fashion_variants"]
+    assert len(variants) == 2
+    assert sorted(v["color"] for v in variants) == ["Mavi", "Siyah"]
+    # верхний уровень — со стартового цвета
+    assert product.attributes["color"] == "Mavi"
+    assert {v["sku"] for v in variants} == {"111", "222"}
+
+
 def test_flo_parse_product_detail_returns_none_without_payload(monkeypatch):
     parser = FloParser()
     monkeypatch.setattr(parser, "_make_request", lambda url: "<html>no payload here</html>")
