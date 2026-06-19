@@ -33,13 +33,10 @@ def test_public_product_id_wins_over_colliding_domain_pk():
         price=20,
         is_active=True,
     )
-    expected_medicine = MedicineProduct.objects.create(
-        name="Expected public item",
-        slug=public_product.slug,
-        base_product=public_product,
-        price=20,
-        is_active=True,
-    )
+    # Создание Product(product_type="medicines") авто-создаёт доменную тень
+    # MedicineProduct (base_product=public_product). Берём её, а не создаём дубль —
+    # иначе коллизия по unique slug.
+    expected_medicine = MedicineProduct.objects.get(base_product=public_product)
 
     resolved, product_type = resolve_product_for_favorites_api(collision_id, "medicines")
 
@@ -94,7 +91,7 @@ def test_remove_by_favorite_id_deletes_exact_row_despite_product_id_collisions()
     client = APIClient()
 
     response = client.delete(
-        "/api/catalog/favorites/remove/",
+        "/api/catalog/favorites/remove",  # router trailing_slash=False
         {"favorite_id": favorite.pk},
         format="json",
         HTTP_X_CART_SESSION="favorite-identity-session",
