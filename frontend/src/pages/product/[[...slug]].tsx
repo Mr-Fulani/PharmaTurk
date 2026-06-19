@@ -2122,7 +2122,7 @@ export default function ProductPage({
                               <img
                                 src={thumbSrc}
                                 alt=""
-                                className="h-full w-full object-cover"
+                                className="h-full w-full object-contain"
                                 data-fallback={placeholder}
                                 onError={(event) => {
                                   const target = event.currentTarget
@@ -2213,7 +2213,7 @@ export default function ProductPage({
                             <img
                               src={thumbSrc}
                               alt={label}
-                              className="h-full w-full object-cover"
+                              className="h-full w-full object-contain"
                               data-fallback={placeholder}
                               onError={(event) => {
                                 const target = event.currentTarget

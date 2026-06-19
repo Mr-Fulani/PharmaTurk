@@ -9,6 +9,7 @@ import { useFavoritesStore } from '../store/favorites'
 import ProductCard from '../components/ProductCard'
 import { isBaseProductType } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
+import { buildFavoriteProductHref } from '../lib/favoriteLinks'
 import { SITE_NAME } from '../lib/siteMeta'
 
 const parseNumber = (value: string | number | null | undefined) => {
@@ -101,7 +102,10 @@ export default function FavoritesPage() {
               const rawType = product._product_type || 'medicines'
               const productType = rawType.replace(/_/g, '-')
               const isBaseProduct = isBaseProductType(productType)
-              const productHref = buildProductUrl(productType, product.slug)
+              const productHref = buildFavoriteProductHref(
+                buildProductUrl(productType, product.slug),
+                product.favorite_variant_slug
+              )
               const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
               
               // Используем ту же логику, что и в корзине для старой цены

@@ -11,6 +11,7 @@ from apps.catalog.models import (
     PerfumeryProduct,
     PerfumeryVariant,
     Product,
+    Service,
 )
 from apps.catalog.serializers import AddToFavoriteSerializer, resolve_product_for_favorites_api
 
@@ -72,6 +73,26 @@ def test_perfumery_variant_slug_creates_stable_favorite_identity():
     shadow = serializer.validated_data["_product"]
     assert shadow.product_type == "perfumery"
     assert shadow.external_data["source_variant_slug"] == variant.slug
+
+
+@pytest.mark.django_db
+def test_service_slug_resolves_for_favorites_without_cart_product_shadow():
+    service = Service.objects.create(
+        name="Favorite service",
+        slug=f"favorite-service-{uuid.uuid4().hex}",
+        price=100,
+        is_active=True,
+    )
+
+    serializer = AddToFavoriteSerializer(data={
+        "product_type": "uslugi",
+        "product_slug": service.slug,
+    })
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["_product"] == service
+    assert serializer.validated_data["_product_type"] == "uslugi"
+    assert serializer.validated_data["_chosen_size"] == ""
 
 
 @pytest.mark.django_db

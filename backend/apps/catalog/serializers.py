@@ -2140,6 +2140,16 @@ class AddToFavoriteSerializer(serializers.Serializer):
         # Сначала slug (вариант мебели/обуви и т.д.): не смешиваем с product_id.
         # Иначе клиенты с product_id: 0 / мусором + product_slug получали 400.
         if slug:
+            normalized_type = str(ptype or '').strip().lower().replace('-', '_')
+            if normalized_type in {'uslugi', 'services', 'service'}:
+                service = Service.objects.filter(slug=slug, is_active=True).first()
+                if service is None:
+                    raise serializers.ValidationError({"product_slug": _("Услуга не найдена")})
+                attrs['_product'] = service
+                attrs['_chosen_size'] = ''
+                attrs['_product_type'] = 'uslugi'
+                return attrs
+
             product, chosen = resolve_product_like_add_to_cart(
                 product_id=None,
                 product_type=ptype,
