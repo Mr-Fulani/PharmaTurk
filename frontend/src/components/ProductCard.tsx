@@ -26,6 +26,7 @@ import { getLocalizedProductDescription, getLocalizedProductName, ProductTransla
 interface ProductCardProps {
   id: number
   baseProductId?: number
+  favoriteId?: number
   name: string
   slug: string
   price: string | null
@@ -71,6 +72,7 @@ interface ProductCardProps {
 export default function ProductCard({
   id,
   baseProductId,
+  favoriteId,
   name,
   slug,
   price,
@@ -236,6 +238,7 @@ export default function ProductCard({
               productId={favoriteProductId}
               productType={productType}
               productSlug={slug}
+              favoriteId={favoriteId}
               cornerIcon={true}
             />
             <ShareButton
@@ -415,6 +418,7 @@ export default function ProductCard({
             productId={favoriteProductId}
             productType={productType}
             productSlug={slug}
+            favoriteId={favoriteId}
             cornerIcon={true}
           />
           <ShareButton

@@ -13,6 +13,8 @@ interface FavoriteButtonProps {
   favoriteProductSlug?: string
   /** Размер для обуви/одежды (как в корзине) */
   favoriteSize?: string
+  /** ID строки Favorite для точного удаления со страницы избранного. */
+  favoriteId?: number
   className?: string
   iconOnly?: boolean
   /** Режим угловой иконки: полупрозрачный фон, увеличенное сердечко */
@@ -25,6 +27,7 @@ export default function FavoriteButton({
   productSlug,
   favoriteProductSlug,
   favoriteSize,
+  favoriteId,
   className = '',
   iconOnly = false,
   cornerIcon = false,
@@ -45,6 +48,10 @@ export default function FavoriteButton({
   const variantOpts: FavoriteVariantOpts | undefined = favoriteProductSlug
     ? { productSlug: favoriteProductSlug, size: favoriteSize || '' }
     : undefined
+  const requestProductSlug = favoriteProductSlug || productSlug
+  const requestOpts: FavoriteVariantOpts | undefined = requestProductSlug
+    ? { productSlug: requestProductSlug, size: favoriteProductSlug ? (favoriteSize || '') : '' }
+    : undefined
 
   const favorite = isFavoriteFn(productId, productType, variantOpts, productSlug)
 
@@ -56,9 +63,9 @@ export default function FavoriteButton({
     setLoading(true)
     try {
       if (favorite) {
-        await remove(productId, productType, variantOpts)
+        await remove(productId, productType, requestOpts, favoriteId)
       } else {
-        await add(productId, productType, variantOpts)
+        await add(productId, productType, requestOpts)
       }
     } catch (error: any) {
       const msg = String(error?.message || '')

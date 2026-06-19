@@ -39,7 +39,12 @@ interface FavoritesStore {
   refreshing: boolean
   refresh: (currency?: string) => Promise<void>
   add: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => Promise<void>
-  remove: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => Promise<void>
+  remove: (
+    productId: number | undefined,
+    productType?: string,
+    variant?: FavoriteVariantOpts,
+    favoriteId?: number
+  ) => Promise<void>
   check: (productId: number | undefined, productType?: string, variant?: FavoriteVariantOpts) => Promise<boolean>
   isFavorite: (
     productId: number | undefined,
@@ -107,9 +112,21 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
     }
   },
 
-  remove: async (productId: number | undefined, productType: string = 'medicines', variant?: FavoriteVariantOpts) => {
+  remove: async (
+    productId: number | undefined,
+    productType: string = 'medicines',
+    variant?: FavoriteVariantOpts,
+    favoriteId?: number
+  ) => {
     try {
       initCartSession()
+      if (favoriteId !== undefined) {
+        await api.delete('/catalog/favorites/remove', {
+          data: { favorite_id: favoriteId },
+        })
+        await get().refresh()
+        return
+      }
       const pt =
         productType != null && String(productType).trim() !== ''
           ? String(productType).trim()
@@ -175,7 +192,9 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       const type = normType(fav.product._product_type || 'medicines')
       if (type !== want) return false
       if (variant?.productSlug) {
-        const slugOk = fav.product.favorite_variant_slug === variant.productSlug
+        const storedSlug = (fav.product.favorite_variant_slug || '').trim().toLowerCase()
+        const requestedSlug = variant.productSlug.trim().toLowerCase()
+        const slugOk = storedSlug === requestedSlug
         const sizeOk = (fav.product.favorite_chosen_size || '') === (variant.size || '')
         return slugOk && sizeOk
       }

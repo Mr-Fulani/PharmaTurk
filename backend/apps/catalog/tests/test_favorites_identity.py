@@ -1,0 +1,104 @@
+import uuid
+
+import pytest
+from django.contrib.contenttypes.models import ContentType
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from apps.catalog.models import (
+    Favorite,
+    MedicineProduct,
+    PerfumeryProduct,
+    PerfumeryVariant,
+    Product,
+)
+from apps.catalog.serializers import AddToFavoriteSerializer, resolve_product_for_favorites_api
+
+
+@pytest.mark.django_db
+def test_public_product_id_wins_over_colliding_domain_pk():
+    collision_id = 800_000 + int(uuid.uuid4().hex[:5], 16)
+    wrong_medicine = MedicineProduct.objects.create(
+        id=collision_id,
+        name="Wrong medicine",
+        slug=f"wrong-medicine-{uuid.uuid4().hex}",
+        price=10,
+        is_active=True,
+    )
+    public_product = Product.objects.create(
+        id=collision_id,
+        name="Public glasses",
+        slug=f"public-glasses-{uuid.uuid4().hex}",
+        product_type="medicines",
+        price=20,
+        is_active=True,
+    )
+    expected_medicine = MedicineProduct.objects.create(
+        name="Expected public item",
+        slug=public_product.slug,
+        base_product=public_product,
+        price=20,
+        is_active=True,
+    )
+
+    resolved, product_type = resolve_product_for_favorites_api(collision_id, "medicines")
+
+    assert product_type == "medicines"
+    assert resolved.pk == expected_medicine.pk
+    assert resolved.pk != wrong_medicine.pk
+
+
+@pytest.mark.django_db
+def test_perfumery_variant_slug_creates_stable_favorite_identity():
+    suffix = uuid.uuid4().hex
+    perfume = PerfumeryProduct.objects.create(
+        name="Variant perfume",
+        slug=f"variant-perfume-{suffix}",
+        price=100,
+        gender="unisex",
+        is_active=True,
+    )
+    variant = PerfumeryVariant.objects.create(
+        product=perfume,
+        name="50 ml",
+        slug=f"variant-perfume-50-{suffix}",
+        price=110,
+        is_active=True,
+    )
+
+    serializer = AddToFavoriteSerializer(data={
+        "product_type": "perfumery",
+        "product_slug": variant.slug,
+    })
+
+    assert serializer.is_valid(), serializer.errors
+    shadow = serializer.validated_data["_product"]
+    assert shadow.product_type == "perfumery"
+    assert shadow.external_data["source_variant_slug"] == variant.slug
+
+
+@pytest.mark.django_db
+def test_remove_by_favorite_id_deletes_exact_row_despite_product_id_collisions():
+    product = Product.objects.create(
+        name="Exact favorite",
+        slug=f"exact-favorite-{uuid.uuid4().hex}",
+        product_type="accessories",
+        price=30,
+        is_active=True,
+    )
+    favorite = Favorite.objects.create(
+        session_key="favorite-identity-session",
+        content_type=ContentType.objects.get_for_model(Product),
+        object_id=product.pk,
+    )
+    client = APIClient()
+
+    response = client.delete(
+        "/api/catalog/favorites/remove/",
+        {"favorite_id": favorite.pk},
+        format="json",
+        HTTP_X_CART_SESSION="favorite-identity-session",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert not Favorite.objects.filter(pk=favorite.pk).exists()
