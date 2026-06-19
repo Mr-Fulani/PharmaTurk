@@ -1880,7 +1880,9 @@ class FavoriteSerializer(serializers.ModelSerializer):
             if product.base_product_id:
                 _pin_base_product_fields(product_data, product.base_product_id)
         elif isinstance(product, Product):
-            raw_pt = getattr(product, 'product_type', None) or 'medicines'
+            product_external = getattr(product, 'external_data', None) or {}
+            external_pt = product_external.get('effective_type') if isinstance(product_external, dict) else None
+            raw_pt = external_pt or getattr(product, 'product_type', None) or 'medicines'
             product_type = str(raw_pt).strip().lower().replace('-', '_')
             hw_item = uw_item = ic_item = None
             if product_type == 'headwear':
@@ -1986,7 +1988,37 @@ def resolve_product_for_favorites_api(product_id, product_type_raw):
             raise serializers.ValidationError({"product_id": "Товар неактивен"})
         return obj
 
+    shadow_product = Product.objects.filter(id=pid, is_active=True).first()
+    shadow_product_type = ''
+    if shadow_product is not None:
+        shadow_external = getattr(shadow_product, 'external_data', None) or {}
+        shadow_product_type = str(
+            shadow_external.get('effective_type')
+            or getattr(shadow_product, 'product_type', None)
+            or ''
+        ).strip().lower().replace('-', '_')
+
+    def _resolve_matching_shadow(model_cls=None):
+        """Public Product ids win only when their declared type matches the request.
+
+        PK values overlap between Product and every domain table. Mixed catalog endpoints
+        expose Product ids, while domain endpoints expose domain ids, so resolving a number
+        against the domain table first can silently select an unrelated item.
+        """
+        if shadow_product is None or shadow_product_type != product_type:
+            return None
+        if model_cls is not None and model_cls is not Product:
+            base_field = any(field.name == 'base_product' for field in model_cls._meta.fields)
+            if base_field:
+                domain = model_cls.objects.filter(base_product_id=pid).first()
+                if domain is not None:
+                    return _ensure_active(domain)
+        return _ensure_active(shadow_product)
+
     def _resolve_domain_triplet(model_cls, reverse_attr):
+        matched_shadow = _resolve_matching_shadow(model_cls)
+        if matched_shadow is not None:
+            return matched_shadow
         try:
             return _ensure_active(model_cls.objects.get(id=pid))
         except model_cls.DoesNotExist:
@@ -2017,6 +2049,9 @@ def resolve_product_for_favorites_api(product_id, product_type_raw):
     if product_type == 'books':
         from .models import BookProduct
 
+        matched_shadow = _resolve_matching_shadow(BookProduct)
+        if matched_shadow is not None:
+            return matched_shadow, product_type
         shadow_book = BookProduct.objects.filter(base_product_id=pid).first()
         dom_book = BookProduct.objects.filter(pk=pid).first()
         prod_is_book_shadow = Product.objects.filter(pk=pid, product_type='books', is_active=True).exists()
@@ -2064,6 +2099,10 @@ def resolve_product_for_favorites_api(product_id, product_type_raw):
     }
 
     model_class = PRODUCT_MODEL_MAP.get(product_type) or Product
+
+    matched_shadow = _resolve_matching_shadow(model_class)
+    if matched_shadow is not None:
+        return matched_shadow, product_type
 
     try:
         product = model_class.objects.get(id=pid)

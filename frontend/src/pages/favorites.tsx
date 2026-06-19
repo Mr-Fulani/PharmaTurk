@@ -124,6 +124,7 @@ export default function FavoritesPage() {
                   key={favorite.id}
                   id={product.id}
                   baseProductId={(product as { base_product_id?: number }).base_product_id}
+                  favoriteId={favorite.id}
                   name={product.name}
                   slug={product.slug}
                   price={displayPrice ? String(displayPrice) : null}

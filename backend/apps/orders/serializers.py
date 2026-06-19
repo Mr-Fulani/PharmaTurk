@@ -19,6 +19,10 @@ from apps.catalog.models import (
     JewelryVariant,
     JewelryVariantSize,
     BookVariant,
+    PerfumeryVariant,
+    HeadwearVariant,
+    UnderwearVariant,
+    IslamicClothingVariant,
 )
 from apps.catalog.utils.currency_converter import currency_converter
 from apps.catalog.currency_models import ProductVariantPrice
@@ -32,6 +36,10 @@ VARIANT_MODEL_MAP = {
     'furniture': FurnitureVariant,
     'jewelry': JewelryVariant,
     'books': BookVariant,
+    'perfumery': PerfumeryVariant,
+    'headwear': HeadwearVariant,
+    'underwear': UnderwearVariant,
+    'islamic_clothing': IslamicClothingVariant,
 }
 
 
@@ -442,6 +450,26 @@ def resolve_variant_product(product_type: str, product_slug: str) -> Product:
         fv_med = FurnitureVariant.objects.filter(slug=product_slug, is_active=True).first()
         if fv_med:
             return ensure_product_from_variant(fv_med, "furniture", "furniture")
+
+    # Сначала вариант: у базовых типов (парфюмерия, книги, головные уборы и т.д.)
+    # прежний порядок сразу искал Product и никогда не доходил до variant-модели.
+    variant_model = VARIANT_MODEL_MAP.get(effective_type)
+    supported_variant_models = (
+        ClothingVariant,
+        ShoeVariant,
+        FurnitureVariant,
+        JewelryVariant,
+        BookVariant,
+        PerfumeryVariant,
+        HeadwearVariant,
+        UnderwearVariant,
+        IslamicClothingVariant,
+    )
+    if variant_model in supported_variant_models:
+        variant = variant_model.objects.filter(slug=product_slug, is_active=True).first()
+        if variant is not None:
+            return ensure_product_from_variant(variant, effective_type, effective_type)
+
     if effective_type in BASE_PRODUCT_TYPES:
         return Product.objects.get(slug=product_slug, is_active=True)
 
@@ -477,7 +505,7 @@ def resolve_variant_product(product_type: str, product_slug: str) -> Product:
             variant.save(update_fields=["external_data"])
             return product
 
-    model = VARIANT_MODEL_MAP.get(effective_type)
+    model = variant_model
     if not model:
         return Product.objects.get(slug=product_slug, is_active=True)
 

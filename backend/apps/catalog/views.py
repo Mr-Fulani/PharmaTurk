@@ -2815,13 +2815,6 @@ class FavoriteViewSet(viewsets.ViewSet):
         """Удалить товар из избранного."""
         from django.contrib.contenttypes.models import ContentType
         payload = request.data if request.data else request.query_params
-        serializer = AddToFavoriteSerializer(data=payload)
-        serializer.is_valid(raise_exception=True)
-        
-        product = serializer.validated_data['_product']
-        content_type = ContentType.objects.get_for_model(product)
-        chosen_size = serializer.validated_data.get('_chosen_size', '') or ''
-        
         user = request.user if request.user.is_authenticated else None
         session_key = None if user else self._get_session_key(request)
         
@@ -2830,6 +2823,33 @@ class FavoriteViewSet(viewsets.ViewSet):
                 {"detail": "Требуется авторизация или сессия"},
                 status=status.HTTP_401_UNAUTHORIZED
             )
+
+        # На странице избранного удаляем точную Favorite-запись. Повторная резолвация
+        # товара по product_id небезопасна: PK разных товарных таблиц пересекаются.
+        favorite_id = payload.get('favorite_id')
+        if favorite_id not in (None, ''):
+            try:
+                favorite_id = int(favorite_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "Некорректный favorite_id"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            owner_filter = {'user': user} if user else {'session_key': session_key}
+            deleted = Favorite.objects.filter(pk=favorite_id, **owner_filter).delete()[0]
+            if not deleted:
+                return Response(
+                    {"detail": "Товар не найден в избранном"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            return Response({"detail": "Товар удален из избранного"}, status=status.HTTP_200_OK)
+
+        serializer = AddToFavoriteSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+
+        product = serializer.validated_data['_product']
+        content_type = ContentType.objects.get_for_model(product)
+        chosen_size = serializer.validated_data.get('_chosen_size', '') or ''
         
         # Удаляем товар из избранного (и устаревшую запись по shadow Product, если была)
         base_pk = getattr(product, 'base_product_id', None)
