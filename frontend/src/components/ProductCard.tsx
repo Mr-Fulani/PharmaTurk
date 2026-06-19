@@ -67,6 +67,7 @@ interface ProductCardProps {
    * has_manual_main_image с API: загружен файл главного фото — на витрине не подменяем превью на видео/GIF.
    */
   hasManualMainImage?: boolean
+  imageFit?: 'cover' | 'contain'
 }
 
 export default function ProductCard({
@@ -100,7 +101,8 @@ export default function ProductCard({
   isBestseller,
   isNew,
   isFeatured,
-  hasManualMainImage = false
+  hasManualMainImage = false,
+  imageFit = 'cover'
 }: ProductCardProps) {
   const { t, i18n } = useTranslation('common')
 
@@ -134,6 +136,7 @@ export default function ProductCard({
       ? getVideoEmbedUrl(resolvedVideoUrl, 'ambient')
       : null
   const hoverMediaClass = 'transition-transform duration-500 group-hover:scale-105'
+  const imageFitClass = imageFit === 'contain' ? 'object-contain' : 'object-cover'
   const listingImgSrc = resolvedImage ? withListingImageMaxWidth(resolvedImage) : null
   const rawGif = preferStaticHero || showVideo ? null : mainGifUrl
   const resolvedGifSrc =
@@ -190,7 +193,7 @@ export default function ProductCard({
               decoding="async"
               width={400}
               height={400}
-              className="w-full h-full rounded-md object-cover"
+              className={`w-full h-full rounded-md ${imageFitClass}`}
               onError={(e) => {
                 e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
               }}
@@ -204,7 +207,7 @@ export default function ProductCard({
               decoding="async"
               width={400}
               height={400}
-              className="w-full h-full rounded-md object-cover"
+              className={`w-full h-full rounded-md ${imageFitClass}`}
               onError={(e) => {
                 e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
               }}
@@ -218,7 +221,7 @@ export default function ProductCard({
               decoding="async"
               width={400}
               height={400}
-              className="w-full h-full rounded-md object-cover"
+              className={`w-full h-full rounded-md ${imageFitClass}`}
               onError={(e) => {
                 e.currentTarget.src = '/product-placeholder.svg'
               }}
@@ -341,7 +344,7 @@ export default function ProductCard({
             decoding="async"
             width={400}
             height={500}
-            className={`w-full h-full object-cover ${hoverMediaClass}`}
+            className={`w-full h-full ${imageFitClass} ${hoverMediaClass}`}
             onError={(e) => {
               e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
             }}
@@ -355,7 +358,7 @@ export default function ProductCard({
             decoding="async"
             width={400}
             height={500}
-            className={`w-full h-full object-cover ${hoverMediaClass}`}
+            className={`w-full h-full ${imageFitClass} ${hoverMediaClass}`}
             onError={(e) => {
               e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
             }}
@@ -369,7 +372,7 @@ export default function ProductCard({
             decoding="async"
             width={400}
             height={500}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            className={`w-full h-full ${imageFitClass} transition-transform duration-500 group-hover:scale-105`}
             onError={(e) => {
               e.currentTarget.src = '/product-placeholder.svg'
             }}

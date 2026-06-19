@@ -19,6 +19,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { getLocalizedBrandName, getLocalizedCategoryName, getLocalizedColor, getLocalizedCoverType, getLocalizedProductDescription, getLocalizedProductName, ProductTranslation, BrandTranslation } from '../../lib/i18n'
 import { resolveMediaUrl, isVideoUrl, getPlaceholderImageUrl, getVideoEmbedUrl, pickPreferredVideoUrl } from '../../lib/media'
 import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
+import { buildFavoriteProductHref } from '../../lib/favoriteLinks'
 import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice } from '../../lib/price'
@@ -1628,7 +1629,7 @@ export default function ProductPage({
                                 muted
                                 playsInline
                                 preload="metadata"
-                                className="w-full h-full object-cover pointer-events-none"
+                                className="w-full h-full object-contain pointer-events-none"
                                 aria-label={img.alt_text || displayProductName || product.name}
                               />
                             )
@@ -1638,7 +1639,7 @@ export default function ProductPage({
                           <img
                             src={resolvedThumbnail || placeholderSmall}
                             alt={img.alt_text || displayProductName || product.name}
-                            className="w-full h-full object-cover pointer-events-none"
+                            className="w-full h-full object-contain pointer-events-none"
                             onError={(e) => {
                               setThumbPlaceholderByKey((prev) => ({ ...prev, [thumbKey]: placeholderLarge }))
                               e.currentTarget.src = placeholderSmall
@@ -2711,7 +2712,10 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     if (canonicalPath && currentProductPath !== canonicalPath) {
       return {
         redirect: {
-          destination: `${localePrefix}${canonicalPath}`,
+          destination: buildFavoriteProductHref(
+            `${localePrefix}${canonicalPath}`,
+            activeVariantFromQuery
+          ),
           permanent: true,
         },
       }
@@ -2725,7 +2729,10 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         if (fromApi !== normalizedCategoryType) {
           return {
             redirect: {
-              destination: `${localePrefix}${buildProductUrl(fromApi, String(payload.slug || productSlug))}`,
+              destination: buildFavoriteProductHref(
+                `${localePrefix}${buildProductUrl(fromApi, String(payload.slug || productSlug))}`,
+                activeVariantFromQuery
+              ),
               permanent: true,
             },
           }
@@ -2744,7 +2751,10 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
     ) {
       return {
         redirect: {
-          destination: `${localePrefix}${buildProductUrl(actualType, baseSlug)}`,
+          destination: buildFavoriteProductHref(
+            `${localePrefix}${buildProductUrl(actualType, baseSlug)}`,
+            activeVariantFromQuery || activeVariantSlug
+          ),
           permanent: true,
         },
       }

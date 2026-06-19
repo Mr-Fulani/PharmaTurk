@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import api, { initCartSession } from '../lib/api'
 import { ProductTranslation } from '../lib/i18n'
+import { matchesFavoriteSlug } from '../lib/favoriteLinks'
 
 interface Favorite {
   id: number
@@ -192,9 +193,11 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
       const type = normType(fav.product._product_type || 'medicines')
       if (type !== want) return false
       if (variant?.productSlug) {
-        const storedSlug = (fav.product.favorite_variant_slug || '').trim().toLowerCase()
-        const requestedSlug = variant.productSlug.trim().toLowerCase()
-        const slugOk = storedSlug === requestedSlug
+        const slugOk = matchesFavoriteSlug(
+          fav.product.favorite_variant_slug,
+          fav.product.slug,
+          variant.productSlug
+        )
         const sizeOk = (fav.product.favorite_chosen_size || '') === (variant.size || '')
         return slugOk && sizeOk
       }

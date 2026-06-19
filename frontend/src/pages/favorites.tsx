@@ -146,6 +146,7 @@ export default function FavoritesPage() {
                   isFeatured={(product as { is_featured?: boolean }).is_featured}
                   translations={product.translations}
                   locale={i18n.language}
+                  imageFit="contain"
                 />
               )
             })}
