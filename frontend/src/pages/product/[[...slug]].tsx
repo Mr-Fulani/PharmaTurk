@@ -682,17 +682,25 @@ export default function ProductPage({
     variants.length > 1 &&
     variants.every((v) => !String(v.color || '').trim())
 
-  const colorPickerValues: string[] = furnitureVariantPickerBySlug
+  /** Если у вариантов повторяются названия цветов (напр. две «Gri» у обуви FLO),
+   *  дедуп по имени цвета (`new Set`) прятал бы часть вариантов — тогда выбираем
+   *  по slug (уникален), чтобы все варианты были доступны. */
+  const variantColorNames = variants.map((v) => String(v.color || '').trim()).filter(Boolean)
+  const hasAmbiguousColors =
+    variantColorNames.length > 1 && new Set(variantColorNames).size < variantColorNames.length
+  const pickerBySlug = furnitureVariantPickerBySlug || hasAmbiguousColors
+
+  const colorPickerValues: string[] = pickerBySlug
     ? (variants.map((v) => v.slug).filter(Boolean) as string[])
     : Array.from(new Set((variants.map((v) => v.color).filter(Boolean) as string[])))
 
   const resolveVariantByPickerValue = (key: string) =>
-    furnitureVariantPickerBySlug
+    pickerBySlug
       ? variants.find((v) => v.slug === key)
       : variants.find((v) => v.color === key)
 
   const pickerLabel = (key: string) => {
-    if (furnitureVariantPickerBySlug) {
+    if (pickerBySlug) {
       const v = variants.find((x) => x.slug === key)
       const cd = String(v?.color_display || v?.color || '').trim()
       if (cd) return cd
@@ -702,8 +710,8 @@ export default function ProductPage({
     return getLocalizedColor(key, t)
   }
 
-  // Ключ выбора в сетке «цветов»: реальный color или slug (мебель без color)
-  const defaultPickerKey = furnitureVariantPickerBySlug
+  // Ключ выбора в сетке «цветов»: реальный color или slug (мебель без color / неуникальные цвета)
+  const defaultPickerKey = pickerBySlug
     ? (initialVariant?.slug || undefined)
     : (initialVariant?.color || undefined)
 
@@ -715,9 +723,9 @@ export default function ProductPage({
   const [quantity, setQuantity] = useState(1)
 
   useEffect(() => {
-    const next = furnitureVariantPickerBySlug ? initialVariant?.slug : initialVariant?.color
+    const next = pickerBySlug ? initialVariant?.slug : initialVariant?.color
     if (next) setSelectedColor(next)
-  }, [product?.slug, furnitureVariantPickerBySlug, initialVariant?.slug, initialVariant?.color])
+  }, [product?.slug, pickerBySlug, initialVariant?.slug, initialVariant?.color])
 
   // Список размеров для выбранного цвета (берем из выбранного варианта-цвета)
   const sizesForColor = (selectedVariant?.sizes && selectedVariant.sizes.length > 0)
@@ -907,12 +915,12 @@ export default function ProductPage({
   const pickVariant = (key?: string) => {
     if (!key) return
     const found =
-      (furnitureVariantPickerBySlug
+      (pickerBySlug
         ? variants.find((v) => v.slug === key)
         : variants.find((v) => v.color === key)) || variants[0]
     if (found) {
       setSelectedVariantSlug(found.slug)
-      setSelectedColor(furnitureVariantPickerBySlug ? found.slug : (found.color || key))
+      setSelectedColor(pickerBySlug ? found.slug : (found.color || key))
       // Сброс выбора размера — пользователь должен выбрать вручную
       setSelectedSize(undefined)
       const gallerySourceLocal = found.images?.length ? found.images : product.images || []
