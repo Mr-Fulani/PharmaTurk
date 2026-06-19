@@ -1,6 +1,8 @@
 import json
 
+from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.parsers.flo import FloParser
+from apps.scrapers.services import ScraperIntegrationService
 
 
 def _detail(sku="101792825", name="COURT BOROUGH LOW RECRAFT Beyaz Unisex Sneaker"):
@@ -160,3 +162,69 @@ def test_flo_parse_list_paginates_and_dedupes(monkeypatch):
     assert f"{category_url}&page=2" in requested
     # третьей страницы нет — остановились по отсутствию rel="next"
     assert f"{category_url}&page=3" not in requested
+
+
+class _Session:
+    max_pages = 1
+    max_products = 10
+    pages_processed = 0
+    errors_count = 0
+
+    def save(self):
+        return None
+
+
+def test_scraper_service_routes_flo_product_to_detail(monkeypatch):
+    parser = FloParser()
+    expected = ScrapedProduct(name="Flo ürün", source="flo")
+    calls = []
+    monkeypatch.setattr(
+        parser,
+        "parse_product_detail",
+        lambda url: calls.append(("detail", url)) or expected,
+    )
+    monkeypatch.setattr(
+        parser,
+        "parse_product_list",
+        lambda *args, **kwargs: calls.append(("list", args[0])) or iter(()),
+    )
+
+    url = "https://www.flo.com.tr/urun/nike-nike-revolution-8-mavi-erkek-kosu-ayakkabisi-102688450"
+    products, incremental = ScraperIntegrationService()._run_parser_scraping(
+        parser, _Session(), url
+    )
+
+    assert products == [expected]
+    assert incremental is None
+    assert calls == [("detail", url)]
+
+
+def test_scraper_service_routes_flo_category_to_list(monkeypatch):
+    parser = FloParser()
+    expected = ScrapedProduct(name="Flo ürün", source="flo")
+    calls = []
+    monkeypatch.setattr(
+        parser,
+        "parse_product_list",
+        lambda url, **kwargs: calls.append((url, kwargs)) or iter([expected]),
+    )
+    service = ScraperIntegrationService()
+    monkeypatch.setattr(
+        service,
+        "_process_scraped_products",
+        lambda session, products: {
+            "found": len(products),
+            "created": len(products),
+            "updated": 0,
+            "skipped": 0,
+            "errors": 0,
+        },
+    )
+
+    products, incremental = service._run_parser_scraping(
+        parser, _Session(), "https://www.flo.com.tr/ayakkabi?cinsiyet=erkek"
+    )
+
+    assert products == []
+    assert incremental["found"] == 1
+    assert calls[0][0] == "https://www.flo.com.tr/ayakkabi?cinsiyet=erkek"

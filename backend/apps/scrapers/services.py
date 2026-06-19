@@ -43,6 +43,7 @@ from .models import (
 from .parsers.registry import get_parser
 from .parsers.lcw import LcwParser
 from .parsers.zara import ZaraParser
+from .parsers.flo import FloParser
 from .base.scraper import (
     ScrapedProduct,
     ScraperAccessBlockedError,
@@ -1051,12 +1052,14 @@ class ScraperIntegrationService:
             is_ikea_host = host == "ikea.com.tr" or host.endswith(".ikea.com.tr")
             is_lcw_host = host == "lcw.com" or host.endswith(".lcw.com")
             is_zara_host = host == "zara.com" or host.endswith(".zara.com")
+            is_flo_host = host == "flo.com.tr" or host.endswith(".flo.com.tr")
 
             is_category = (
                 "/category/" in start_url or "/kategori/" in start_url or
                 (len(path_parts) == 1 and path_parts[0] in ('ilaclar', 'takviye-edici-gida')) or
                 (is_lcw_host and LcwParser.is_lcw_category_url(start_url)) or
-                (is_zara_host and ZaraParser.is_zara_category_url(start_url))
+                (is_zara_host and ZaraParser.is_zara_category_url(start_url)) or
+                (is_flo_host and FloParser.is_flo_category_url(start_url))
             )
             is_search = "/search" in start_url or "/arama" in start_url
             # IKEA TR/COM: карточка товара — /urun/, /product/ или /p/
@@ -1066,13 +1069,15 @@ class ScraperIntegrationService:
             )
             is_lcw_product = is_lcw_host and LcwParser.is_lcw_product_url(start_url)
             is_zara_product = is_zara_host and ZaraParser.is_zara_product_url(start_url)
+            is_flo_product = is_flo_host and FloParser.is_flo_product_url(start_url)
             is_product = (
                 "/product/" in start_url or
                 ("/p/" in start_url and "instagram.com" not in start_url) or
                 (len(path_parts) >= 2 and path_parts[0] in ('ilaclar', 'takviye-edici-gida')) or
                 is_ikea_product or
                 is_lcw_product or
-                is_zara_product
+                is_zara_product or
+                is_flo_product
             )
 
             # Определяем тип парсинга по URL
