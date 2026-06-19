@@ -203,6 +203,15 @@ class BaseScraper(ABC):
         )
         if self.proxy_url:
             client_kwargs["proxy"] = self.proxy_url
+            # Bright Data residential инспектирует SSL — стандартный CA цепочку
+            # не валидирует. Прокси — доверенная инфраструктура (авторизация по
+            # user:pass), поэтому отключаем проверку сертификата только при прокси.
+            client_kwargs["verify"] = False
+            try:
+                import urllib3
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            except Exception:
+                pass
         self.client = httpx.Client(**client_kwargs)
     
     def __enter__(self):

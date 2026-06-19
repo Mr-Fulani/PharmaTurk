@@ -58,6 +58,8 @@ class ZaraParser(BaseScraper):
         )
         if self.proxies:
             self.ajax_session.proxies.update(self.proxies)
+            # Прокси инспектирует SSL — для requests-сессии тоже отключаем проверку.
+            self.ajax_session.verify = False
         self._last_ajax_response_at: Optional[float] = None
         self._ajax_request_count = 0
         self._session_warmed = False
