@@ -9,6 +9,7 @@ import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice } from '../../lib/price'
 import { buildCatalogPageQuery, parseBrandIds, parseCatalogFiltersQuery } from '../../lib/catalogQuery'
+import { isCategoryInProductTree, selectExactCategory } from '../../lib/categoryRouting'
 import { GetServerSideProps } from 'next'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import axios from 'axios'
@@ -1825,9 +1826,10 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     if (routeSlug) {
       try {
         const catApiRes = await axios.get(getInternalApiUrl('catalog/categories'), {
-          params: { slug: routeSlug, page_size: 1 }
+          params: { slug: routeSlug, include_children: false, page_size: 1 }
         })
-        catData = catApiRes.data.results?.[0]
+        const exactCategories = extractResults(catApiRes.data)
+        catData = selectExactCategory(exactCategories, routeSlug)
         if (catData?.category_type_slug) {
           categoryTypeFromApi = catData.category_type_slug.replace(/_/g, '-')
         }
@@ -1842,10 +1844,13 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     const normalizedRoute = normalizeSlug(routeSlug || '')
     // Дефолтная локаль (ru) живёт без префикса: /ru/... отдаёт 404
     const localePrefix = context.locale && context.locale !== context.defaultLocale ? `/${context.locale}` : ''
-    const isShoeCategory =
-      normalizeSlug(categoryTypeFromApi || '') === 'shoes' ||
-      categoryType === 'shoes' ||
-      Boolean(catData?.gender)
+    const categoryTreeContext = {
+      categoryType: categoryTypeFromApi,
+      inferredType: categoryType,
+      routeSlug,
+      ancestors: catData?.ancestors,
+    }
+    const isShoeCategory = isCategoryInProductTree(categoryTreeContext, 'shoes')
     if (routeSlug && normalizedRoute !== 'shoes' && isShoeCategory) {
       const query = new URLSearchParams()
       if (catData?.gender) {
@@ -1864,9 +1869,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       }
     }
 
-    const isFurnitureCategory =
-      normalizeSlug(categoryTypeFromApi || '') === 'furniture' ||
-      categoryType === 'furniture'
+    const isFurnitureCategory = isCategoryInProductTree(categoryTreeContext, 'furniture')
     if (routeSlug && normalizedRoute !== 'furniture' && isFurnitureCategory) {
       const query = new URLSearchParams()
       query.set('subcategory_slug', normalizedRoute)
