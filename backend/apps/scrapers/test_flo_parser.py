@@ -86,6 +86,16 @@ def test_flo_url_detection():
     assert not FloParser.is_flo_product_url("https://www.lcw.com/urun-o-4827603")
 
 
+def test_flo_chunking_only_for_category_not_product():
+    # авточепочка по страницам — только для листинга, не для одиночного товара
+    assert FloParser.supports_page_chunking_for_url(
+        "https://www.flo.com.tr/ayakkabi?cinsiyet=erkek"
+    )
+    assert not FloParser.supports_page_chunking_for_url(
+        "https://www.flo.com.tr/urun/nike-revolution-8-102688450"
+    )
+
+
 def test_flo_extract_product_detail_marker():
     parser = FloParser()
     detail = parser._extract_product_detail(_product_html(_detail()))

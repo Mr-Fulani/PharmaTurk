@@ -54,6 +54,15 @@ class FloParser(BaseScraper):
         is_flo = host.endswith("flo.com.tr") or not host
         return is_flo and not cls.is_flo_product_url(url)
 
+    @classmethod
+    def supports_page_chunking_for_url(cls, url: str) -> bool:
+        """Авточепочка по страницам — только для листинга категории.
+
+        Без этого одиночный товар (start_url = /urun/...) переоткрывался бы по
+        кругу: каждый «следующий чанк» заново парсил тот же товар, раздувая
+        счётчики (20 «найдено» = один товар 20 раз)."""
+        return cls.is_flo_category_url(url)
+
     @staticmethod
     def _canonical_url(url: str) -> str:
         parsed = urlparse(url)
