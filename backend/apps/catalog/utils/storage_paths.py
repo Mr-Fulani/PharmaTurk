@@ -58,44 +58,14 @@ def _media_folder_from_filename(filename: str) -> str:
 
 
 def get_product_upload_path(instance, filename):
-    """Динамический upload_to для Product.main_image_file на основе product_type."""
-    # 1. Пробуем поле product_type (есть у shadow Product)
-    product_type = getattr(instance, "product_type", None)
-    # 2. Если нет, пробуем атрибут класса _domain_product_type (есть у доменных моделей)
-    if not product_type:
-        product_type = getattr(instance, "_domain_product_type", None)
-    
-    product_type = (product_type or "").replace("_", "-")
-    category_slug = _category_chain(getattr(instance, "category", None))
-
-    # Приоритет: иерархия категории (root/.../leaf) -> product_type -> "other"
-    # Для доменных моделей product_type будет например "medicines", если категория не задана
-    base = (category_slug or product_type or "other").lower()
-    
-    media_folder = _media_folder_from_filename(filename)
-    readable_name = _build_readable_filename(
-        # бренд + категория/тип + slug(name+ext.id) + 'main'. name не дублируем —
-        # он уже внутри slug, иначе имя задваивалось.
-        [_brand_slug(instance), category_slug or product_type, getattr(instance, "slug", None), "main"],
-        filename,
-        "product-main",
-    )
-    return f"products/{base}/main/{media_folder}/{readable_name}"
+    """Product.main_image_file → одна папка товара."""
+    return f"{_product_dir(instance)}/{_product_media_name(instance, filename, role='main')}"
 
 
 def get_product_image_upload_path(instance, filename):
-    """Динамический upload_to для ProductImage.image_file."""
+    """ProductImage.image_file → одна папка товара."""
     product = getattr(instance, "product", None)
-    product_type = (getattr(product, "product_type", None) or "").replace("_", "-")
-    category_slug = _category_chain(getattr(product, "category", None))
-    base = (category_slug or product_type or "other").lower()
-    media_folder = _media_folder_from_filename(filename)
-    readable_name = _build_readable_filename(
-        [_brand_slug(product), category_slug or product_type, getattr(product, "slug", None), "gallery"],
-        filename,
-        "product-gallery",
-    )
-    return f"products/{base}/gallery/{media_folder}/{readable_name}"
+    return f"{_product_dir(product)}/{_product_media_name(product, filename, role='gallery')}"
 
 
 def _domain_type_slug(product) -> str:
@@ -109,87 +79,69 @@ def _domain_type_slug(product) -> str:
     return (str(pt).replace("_", "-") or "other").lower()
 
 
-def get_domain_main_upload_path(instance, filename):
-    """*Product.main_image_file / main_video_file → products/{type}/main/{images|videos}/{читаемое}."""
-    type_slug = _domain_type_slug(instance)
-    media_folder = _media_folder_from_filename(filename)
-    readable = _build_readable_filename(
-        [_brand_slug(instance), type_slug, getattr(instance, "slug", None), "main"],
-        filename, "product-main",
+def _parser_slug(product) -> str:
+    """Слаг парсера-сайта из external_id ('flo-100320223' → 'flo'). '' если нет."""
+    if product is None:
+        return ""
+    ext = str(getattr(product, "external_id", "") or "")
+    if not ext:
+        bp = getattr(product, "base_product", None)
+        ext = str(getattr(bp, "external_id", "") or "") if bp else ""
+    if "-" in ext:
+        prefix = ext.split("-", 1)[0].strip().lower()
+        if prefix and not prefix.isdigit():
+            return _normalize_slug(prefix, "")
+    return ""
+
+
+def _product_dir(product) -> str:
+    """Единая папка товара: products/{категория-или-тип}/{slug-товара}/."""
+    cat = _domain_type_slug(product)
+    slug = _normalize_slug(getattr(product, "slug", None), "product")
+    return f"products/{cat}/{slug}"
+
+
+def _product_media_name(product, filename, *, color=None, role="gallery") -> str:
+    """Имя файла: {парсер}-{бренд}-{цвет}-{роль}-{hash}.{ext}."""
+    return _build_readable_filename(
+        [_parser_slug(product), _brand_slug(product), color, role],
+        filename,
+        role,
     )
-    return f"products/{type_slug}/main/{media_folder}/{readable}"
+
+
+def get_domain_main_upload_path(instance, filename):
+    """*Product.main_image_file → одна папка товара."""
+    return f"{_product_dir(instance)}/{_product_media_name(instance, filename, role='main')}"
 
 
 def get_domain_variant_main_upload_path(instance, filename):
-    """*Variant.main_image_file / main_video_file → products/{type}/variants/main/{images|videos}/{читаемое}."""
+    """*Variant.main_image_file → одна папка товара (имя с цветом)."""
     product = getattr(instance, "product", None)
-    type_slug = _domain_type_slug(product)
-    media_folder = _media_folder_from_filename(filename)
-    readable = _build_readable_filename(
-        [
-            _brand_slug(product),
-            type_slug,
-            getattr(product, "slug", None) if product else None,
-            getattr(instance, "color", None) or getattr(instance, "name", None),
-            "variant",
-        ],
-        filename, "variant-main",
-    )
-    return f"products/{type_slug}/variants/main/{media_folder}/{readable}"
+    color = getattr(instance, "color", None) or getattr(instance, "name", None)
+    return f"{_product_dir(product)}/{_product_media_name(product, filename, color=color, role='main')}"
 
 
 def get_domain_gallery_upload_path(instance, filename):
-    """*ProductImage.image_file → products/{type}/gallery/{images|videos}/{читаемое}."""
+    """*ProductImage.image_file → одна папка товара."""
     product = getattr(instance, "product", None)
-    type_slug = _domain_type_slug(product)
-    media_folder = _media_folder_from_filename(filename)
-    readable = _build_readable_filename(
-        [
-            _brand_slug(product),
-            type_slug,
-            getattr(product, "slug", None) if product else None,
-            "gallery",
-        ],
-        filename, "product-gallery",
-    )
-    return f"products/{type_slug}/gallery/{media_folder}/{readable}"
+    return f"{_product_dir(product)}/{_product_media_name(product, filename, role='gallery')}"
 
 
 def get_domain_variant_gallery_upload_path(instance, filename):
-    """*VariantImage.image_file → products/{type}/variants/gallery/{images|videos}/{читаемое}."""
+    """*VariantImage.image_file → одна папка товара (имя с цветом)."""
     variant = getattr(instance, "variant", None)
     product = getattr(variant, "product", None) if variant else None
-    type_slug = _domain_type_slug(product)
-    media_folder = _media_folder_from_filename(filename)
-    readable = _build_readable_filename(
-        [
-            _brand_slug(product),
-            type_slug,
-            getattr(product, "slug", None) if product else None,
-            getattr(variant, "color", None) if variant else None,
-            "variant-gallery",
-        ],
-        filename, "variant-gallery",
-    )
-    return f"products/{type_slug}/variants/gallery/{media_folder}/{readable}"
+    color = getattr(variant, "color", None) if variant else None
+    return f"{_product_dir(product)}/{_product_media_name(product, filename, color=color, role='gallery')}"
 
 
 def get_book_product_gallery_upload_path(instance, filename):
-    """upload_to для файлов галереи книги (изображение или видео), единая иерархия images/videos/gifs."""
+    """Галерея книги → одна папка товара."""
     product = getattr(instance, "product", None)
-    base_product = getattr(product, "base_product", None) if product else None
-    media_folder = _media_folder_from_filename(filename)
-    readable_name = _build_readable_filename(
-        [
-            "books",
-            getattr(base_product, "slug", None) if base_product else None,
-            getattr(product, "name", None),
-            "gallery",
-        ],
-        filename,
-        "book-gallery",
-    )
-    return f"products/books/gallery/{media_folder}/{readable_name}"
+    ref = getattr(product, "base_product", None) if product else None
+    ref = ref or product
+    return f"{_product_dir(ref)}/{_product_media_name(ref, filename, role='gallery')}"
 
 
 def get_category_card_upload_path(instance, filename):
@@ -318,55 +270,29 @@ def _jewelry_type_slug(instance) -> str:
 
 
 def get_jewelry_main_upload_path(instance, filename):
-    """products/jewelry/{rings|bracelets|...}/main/{images|videos|gifs}/filename"""
-    type_slug = _jewelry_type_slug(instance)
-    media_folder = _media_folder_from_filename(filename)
-    readable_name = _build_readable_filename(
-        [type_slug, getattr(instance, "slug", None), getattr(instance, "name", None)],
-        filename,
-        "jewelry-main",
-    )
-    return f"products/jewelry/{type_slug}/main/{media_folder}/{readable_name}"
+    """Украшение main → одна папка товара."""
+    return f"{_product_dir(instance)}/{_product_media_name(instance, filename, role='main')}"
 
 
 def get_jewelry_gallery_upload_path(instance, filename):
-    """products/jewelry/{rings|...}/gallery/{images|videos|gifs}/filename"""
+    """Украшение gallery → одна папка товара."""
     product = getattr(instance, "product", None)
-    type_slug = _jewelry_type_slug(product) if product else "other"
-    media_folder = _media_folder_from_filename(filename)
-    readable_name = _build_readable_filename(
-        [type_slug, getattr(product, "slug", None) if product else "", "gallery"],
-        filename,
-        "jewelry-gallery",
-    )
-    return f"products/jewelry/{type_slug}/gallery/{media_folder}/{readable_name}"
+    return f"{_product_dir(product)}/{_product_media_name(product, filename, role='gallery')}"
 
 
 def get_jewelry_variant_upload_path(instance, filename):
-    """products/jewelry/{rings|...}/variants/{images|videos|gifs}/filename"""
+    """Украшение variant main → одна папка товара."""
     product = getattr(instance, "product", None)
-    type_slug = _jewelry_type_slug(product) if product else "other"
-    media_folder = _media_folder_from_filename(filename)
-    readable_name = _build_readable_filename(
-        [type_slug, getattr(product, "slug", None) if product else "", "variant"],
-        filename,
-        "jewelry-variant",
-    )
-    return f"products/jewelry/{type_slug}/variants/{media_folder}/{readable_name}"
+    color = getattr(instance, "color", None) or getattr(instance, "name", None)
+    return f"{_product_dir(product)}/{_product_media_name(product, filename, color=color, role='main')}"
 
 
 def get_jewelry_variant_gallery_upload_path(instance, filename):
-    """products/jewelry/{rings|...}/variants/gallery/{images|videos|gifs}/filename"""
+    """Украшение variant gallery → одна папка товара."""
     variant = getattr(instance, "variant", None)
     product = getattr(variant, "product", None) if variant else None
-    type_slug = _jewelry_type_slug(product) if product else "other"
-    media_folder = _media_folder_from_filename(filename)
-    readable_name = _build_readable_filename(
-        [type_slug, "variant-gallery"],
-        filename,
-        "jewelry-variant-gallery",
-    )
-    return f"products/jewelry/{type_slug}/variants/gallery/{media_folder}/{readable_name}"
+    color = getattr(variant, "color", None) if variant else None
+    return f"{_product_dir(product)}/{_product_media_name(product, filename, color=color, role='gallery')}"
 
 
 def get_parsed_media_upload_path(parser_name, media_type, filename, sub_folder=None):

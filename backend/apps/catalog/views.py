@@ -1868,6 +1868,7 @@ class ClothingProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vie
                 active_variant_slug = variant.slug
         if obj is None:
             obj = self.get_object()
+        active_variant_slug = _resolve_active_variant_from_request(request, active_variant_slug)
         serializer = self.get_serializer(
             obj,
             context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}
@@ -2068,6 +2069,7 @@ class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewset
                 active_variant_slug = variant.slug
         if obj is None:
             obj = self.get_object()
+        active_variant_slug = _resolve_active_variant_from_request(request, active_variant_slug)
         serializer = self.get_serializer(
             obj,
             context={**self.get_serializer_context(), "active_variant_slug": active_variant_slug}

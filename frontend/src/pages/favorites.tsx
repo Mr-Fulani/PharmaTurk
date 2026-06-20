@@ -104,7 +104,8 @@ export default function FavoritesPage() {
               const isBaseProduct = isBaseProductType(productType)
               const productHref = buildFavoriteProductHref(
                 buildProductUrl(productType, product.favorite_parent_slug || product.slug),
-                product.favorite_variant_slug
+                product.favorite_variant_slug,
+                product.favorite_chosen_size || favorite.chosen_size
               )
               const { price: parsedVariantPrice, currency: parsedVariantCurrency } = parsePriceWithCurrency(product.active_variant_price)
               

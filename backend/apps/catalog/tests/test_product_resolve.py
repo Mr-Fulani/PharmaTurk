@@ -18,6 +18,8 @@ from apps.catalog.models import (
     BookVariant,
     Brand,
     Category,
+    ClothingProduct,
+    ClothingVariant,
     GlobalAttributeKey,
     GlobalAttributeKeyTranslation,
     HeadwearProduct,
@@ -32,6 +34,8 @@ from apps.catalog.models import (
     PerfumeryVariant,
     SportsProduct,
     SportsVariant,
+    ShoeProduct,
+    ShoeVariant,
     SupplementProduct,
     TablewareProduct,
     UnderwearProduct,
@@ -330,6 +334,66 @@ def test_resolve_api_underwear_variant_slug_returns_all_variants():
     assert payload["active_variant_slug"] == first_variant.slug
     assert payload["default_variant_slug"] == first_variant.slug
     assert [variant["slug"] for variant in payload["variants"]] == [first_variant.slug, second_variant.slug]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("product_model", "variant_model", "product_type"),
+    [
+        (ClothingProduct, ClothingVariant, "clothing"),
+        (ShoeProduct, ShoeVariant, "shoes"),
+    ],
+)
+def test_resolve_parent_slug_respects_active_variant_query(
+    product_model,
+    variant_model,
+    product_type,
+):
+    from rest_framework.test import APIClient
+
+    suffix = uuid.uuid4().hex[:8]
+    category = Category.objects.create(name="Variant category", slug=f"variant-category-{suffix}")
+    brand = Brand.objects.create(name=f"Variant brand {suffix}", slug=f"variant-brand-{suffix}")
+    product = product_model.objects.create(
+        name="Variant product",
+        slug=f"variant-product-{suffix}",
+        category=category,
+        brand=brand,
+        price=100,
+        currency="TRY",
+        is_active=True,
+    )
+    first_variant = variant_model.objects.create(
+        product=product,
+        name="White",
+        slug=f"variant-white-{suffix}",
+        color="white",
+        price=100,
+        currency="TRY",
+        is_active=True,
+        sort_order=0,
+    )
+    selected_variant = variant_model.objects.create(
+        product=product,
+        name="Red",
+        slug=f"variant-red-{suffix}",
+        color="red",
+        price=110,
+        currency="TRY",
+        is_active=True,
+        sort_order=1,
+    )
+
+    response = APIClient().get(
+        f"/api/catalog/products/resolve/{product.slug}",
+        {"active_variant_slug": selected_variant.slug},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["product_type"] == product_type
+    payload = response.data["payload"]
+    assert payload["default_variant_slug"] == first_variant.slug
+    assert payload["active_variant_slug"] == selected_variant.slug
 
 
 @pytest.mark.django_db

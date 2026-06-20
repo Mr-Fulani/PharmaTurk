@@ -24,6 +24,7 @@ import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice } from '../../lib/price'
 import { useTheme } from '../../context/ThemeContext'
+import ProductReviews, { ReviewSummary } from '../../components/ProductReviews'
 
 type CategoryType = string
 
@@ -611,17 +612,20 @@ export default function ProductPage({
   product: initialProduct,
   productType,
   isBaseProduct,
-  preferredCurrency
+  preferredCurrency,
+  favoriteSize,
 }: {
   product: Product | null
   productType: CategoryType
   isBaseProduct: boolean
   preferredCurrency: string
+  favoriteSize: string | null
 }) {
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const { theme } = useTheme()
   const [product, setProduct] = useState<Product | null>(initialProduct)
+  const [reviewSummary, setReviewSummary] = useState<ReviewSummary>({ averageRating: 0, count: 0 })
 
   useEffect(() => {
     setProduct(initialProduct)
@@ -718,10 +722,13 @@ export default function ProductPage({
 
   // Цвет и размер исходя из выбранного варианта
   const [selectedColor, setSelectedColor] = useState<string | undefined>(defaultPickerKey)
-  // По умолчанию размер не выбран — пользователь должен выбрать вручную
-  const [selectedSize, setSelectedSize] = useState<string | undefined>(undefined)
+  const [selectedSize, setSelectedSize] = useState<string | undefined>(favoriteSize || undefined)
   // Количество товара
   const [quantity, setQuantity] = useState(1)
+
+  useEffect(() => {
+    setSelectedSize(favoriteSize || undefined)
+  }, [favoriteSize, product?.slug])
 
   useEffect(() => {
     const next = pickerBySlug ? initialVariant?.slug : initialVariant?.color
@@ -1793,6 +1800,29 @@ export default function ProductPage({
             >
               {displayProductName || product.name}
             </h1>
+            <a
+              href="#product-reviews"
+              onClick={(event) => {
+                event.preventDefault()
+                document.getElementById('product-reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+              className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-amber-600 hover:text-amber-700"
+            >
+              {reviewSummary.count > 0 ? (
+                <>
+                  <span className="inline-flex gap-0.5" aria-hidden="true">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <svg key={star} className={`h-4 w-4 fill-current ${star <= Math.round(reviewSummary.averageRating) ? 'text-amber-400' : 'text-gray-300'}`} viewBox="0 0 20 20">
+                        <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
+                      </svg>
+                    ))}
+                  </span>
+                  <span>{reviewSummary.averageRating.toFixed(1)} ({reviewSummary.count} {t('reviews', 'отзывов')})</span>
+                </>
+              ) : (
+                <span>{t('add_product_review', 'Оставить отзыв')}</span>
+              )}
+            </a>
             {productType === 'furniture' && furnitureDescriptorLine && (
               <p
                 className="mt-2 text-base leading-snug"
@@ -2635,6 +2665,13 @@ export default function ProductPage({
           />
         )}
 
+        <ProductReviews
+          productType={productType}
+          productSlug={product.slug}
+          productName={displayProductName || product.name}
+          onSummaryChange={setReviewSummary}
+        />
+
         {/* Похожие товары (RecSys когда доступен) */}
         {!isService && (
           <SimilarProducts
@@ -2687,6 +2724,12 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
       : Array.isArray(ctx.query.active_variant_slug)
         ? ctx.query.active_variant_slug[0]
         : undefined
+  const favoriteSizeFromQuery =
+    typeof ctx.query.favorite_size === 'string'
+      ? ctx.query.favorite_size.trim()
+      : Array.isArray(ctx.query.favorite_size)
+        ? String(ctx.query.favorite_size[0] || '').trim()
+        : ''
 
   const resolvePath = `catalog/products/resolve/${encodeURIComponent(productSlug)}`
 
@@ -2714,7 +2757,8 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         redirect: {
           destination: buildFavoriteProductHref(
             `${localePrefix}${canonicalPath}`,
-            activeVariantFromQuery
+            activeVariantFromQuery,
+            favoriteSizeFromQuery
           ),
           permanent: true,
         },
@@ -2731,7 +2775,8 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
             redirect: {
               destination: buildFavoriteProductHref(
                 `${localePrefix}${buildProductUrl(fromApi, String(payload.slug || productSlug))}`,
-                activeVariantFromQuery
+                activeVariantFromQuery,
+                favoriteSizeFromQuery
               ),
               permanent: true,
             },
@@ -2753,7 +2798,8 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         redirect: {
           destination: buildFavoriteProductHref(
             `${localePrefix}${buildProductUrl(actualType, baseSlug)}`,
-            activeVariantFromQuery || activeVariantSlug
+            activeVariantFromQuery || activeVariantSlug,
+            favoriteSizeFromQuery
           ),
           permanent: true,
         },
@@ -2767,6 +2813,7 @@ export const getServerSideProps: GetServerSideProps = async (ctx) => {
         productType: actualType,
         isBaseProduct: isBaseProductType(actualType),
         preferredCurrency: currency,
+        favoriteSize: favoriteSizeFromQuery || null,
       },
     }
   } catch (err) {

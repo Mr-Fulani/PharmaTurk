@@ -5,8 +5,8 @@ import { buildFavoriteProductHref, matchesFavoriteSlug } from './favoriteLinks.j
 
 test('favorite variant link restores the exact selected variant', () => {
   assert.equal(
-    buildFavoriteProductHref('/product/perfumery/base-product', 'variant 50/ml'),
-    '/product/perfumery/base-product?active_variant_slug=variant%2050%2Fml'
+    buildFavoriteProductHref('/product/shoes/base-product', 'red variant', '42'),
+    '/product/shoes/base-product?active_variant_slug=red+variant&favorite_size=42'
   )
 })
 

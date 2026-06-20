@@ -1,6 +1,9 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.conf import settings
+from django.utils.text import slugify
+import os
+import uuid
 
 
 class Testimonial(models.Model):
@@ -151,3 +154,92 @@ class TestimonialMedia(models.Model):
         if self.video_file and hasattr(self.video_file, 'url'):
             return self.video_file.url
         return None
+
+
+def get_product_review_media_upload_path(instance, filename):
+    """Readable R2 key: reviews/<type>/<product>/users/<id>/<media>/..."""
+    review = instance.review
+    product_type = slugify(review.product_type) or "product"
+    product_slug = slugify(review.product_slug) or f"product-{review.pk or 'new'}"
+    user_id = review.user_id or "unknown"
+    media_dir = "images" if instance.media_type == ProductReviewMedia.MediaType.IMAGE else "videos"
+    extension = os.path.splitext(str(filename))[1].lower()
+    return (
+        f"reviews/{product_type}/{product_slug}/users/{user_id}/{media_dir}/"
+        f"{uuid.uuid4().hex}{extension}"
+    )
+
+
+class ProductReview(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает модерации"
+        APPROVED = "approved", "Опубликован"
+        REJECTED = "rejected", "Отклонён"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="product_reviews",
+        verbose_name="Пользователь",
+    )
+    product_type = models.CharField("Тип товара/услуги", max_length=64, db_index=True)
+    product_slug = models.SlugField("Slug родительской карточки", max_length=600, db_index=True)
+    product_name = models.CharField("Название товара/услуги", max_length=500)
+    author_name = models.CharField("Имя автора", max_length=150)
+    rating = models.PositiveSmallIntegerField(
+        "Оценка",
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    text = models.TextField("Текст отзыва")
+    status = models.CharField(
+        "Статус",
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+    updated_at = models.DateTimeField("Изменён", auto_now=True)
+    published_at = models.DateTimeField("Опубликован", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "⭐ Отзыв о товаре/услуге"
+        verbose_name_plural = "⭐ Отзывы — Товары и услуги"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("user", "product_type", "product_slug"),
+                name="unique_product_review_per_user",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("product_type", "product_slug", "status"), name="feedback_pr_target_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.author_name}: {self.product_name} ({self.rating}/5)"
+
+
+class ProductReviewMedia(models.Model):
+    class MediaType(models.TextChoices):
+        IMAGE = "image", "Изображение"
+        VIDEO = "video", "Видео"
+
+    review = models.ForeignKey(
+        ProductReview,
+        on_delete=models.CASCADE,
+        related_name="media",
+        verbose_name="Отзыв",
+    )
+    media_type = models.CharField("Тип", max_length=10, choices=MediaType.choices)
+    file = models.FileField("Файл", upload_to=get_product_review_media_upload_path, max_length=1000)
+    order = models.PositiveSmallIntegerField("Порядок", default=0)
+    created_at = models.DateTimeField("Создан", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "⭐ Медиа отзыва о товаре/услуге"
+        verbose_name_plural = "⭐ Отзывы — Медиа товаров и услуг"
+        ordering = ("order", "id")
+
+    def __str__(self):
+        return f"{self.review_id}: {self.media_type} #{self.order + 1}"

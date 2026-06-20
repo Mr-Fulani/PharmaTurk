@@ -530,6 +530,9 @@ TELEGRAM_BOT_TOKEN = env("TELEGRAM_BOT_TOKEN", default="")
 TELEGRAM_BOT_USERNAME = env("TELEGRAM_BOT_USERNAME", default="") or env("NEXT_PUBLIC_TELEGRAM_BOT_USERNAME", default="")
 TELEGRAM_CHAT_ID = env("TELEGRAM_CHAT_ID", default="")
 
+# authenticated: любой авторизованный; purchased: только покупатель доставленного заказа.
+PRODUCT_REVIEW_ACCESS_POLICY = env("PRODUCT_REVIEW_ACCESS_POLICY", default="authenticated")
+
 # Google OAuth2 (Sign In With Google / Google One Tap)
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
 GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", default="")

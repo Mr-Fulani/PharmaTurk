@@ -1,9 +1,13 @@
-export function buildFavoriteProductHref(baseHref, variantSlug) {
+export function buildFavoriteProductHref(baseHref, variantSlug, chosenSize) {
   const normalizedVariantSlug = String(variantSlug || '').trim()
-  if (!normalizedVariantSlug) return baseHref
+  const normalizedChosenSize = String(chosenSize || '').trim()
+  if (!normalizedVariantSlug && !normalizedChosenSize) return baseHref
 
   const separator = baseHref.includes('?') ? '&' : '?'
-  return `${baseHref}${separator}active_variant_slug=${encodeURIComponent(normalizedVariantSlug)}`
+  const params = new URLSearchParams()
+  if (normalizedVariantSlug) params.set('active_variant_slug', normalizedVariantSlug)
+  if (normalizedChosenSize) params.set('favorite_size', normalizedChosenSize)
+  return `${baseHref}${separator}${params.toString()}`
 }
 
 export function matchesFavoriteSlug(storedVariantSlug, storedProductSlug, requestedSlug) {

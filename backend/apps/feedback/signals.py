@@ -4,7 +4,7 @@ import logging
 from django.db.models.signals import post_delete, pre_save
 from django.dispatch import receiver
 
-from .models import Testimonial, TestimonialMedia
+from .models import ProductReviewMedia, Testimonial, TestimonialMedia
 
 logger = logging.getLogger(__name__)
 
@@ -117,3 +117,8 @@ def delete_testimonial_media_files(sender, instance, **kwargs):
     """Удаляем файлы отзыва из R2 при удалении записи."""
     _delete_file_from_storage(instance.image)
     _delete_file_from_storage(instance.video_file)
+
+
+@receiver(post_delete, sender=ProductReviewMedia)
+def delete_product_review_media_file(sender, instance, **kwargs):
+    _delete_file_from_storage(instance.file)

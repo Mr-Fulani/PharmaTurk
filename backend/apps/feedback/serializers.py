@@ -1,7 +1,13 @@
 from urllib.parse import quote, urlparse
 from django.conf import settings
 from rest_framework import serializers
-from .models import Testimonial, TestimonialMedia, TestimonialSectionSettings
+from .models import (
+    ProductReview,
+    ProductReviewMedia,
+    Testimonial,
+    TestimonialMedia,
+    TestimonialSectionSettings,
+)
 
 
 def _build_proxy_media_url(file_field, request):
@@ -234,3 +240,73 @@ class TestimonialSectionSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = TestimonialSectionSettings
         fields = ('show_on_homepage',)
+
+
+class ProductReviewMediaSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductReviewMedia
+        fields = ("id", "media_type", "url", "order")
+
+    def get_url(self, obj):
+        return _resolve_file_url(obj.file, self.context.get("request"))
+
+
+class ProductReviewSerializer(serializers.ModelSerializer):
+    media = ProductReviewMediaSerializer(many=True, read_only=True)
+    user_id = serializers.IntegerField(read_only=True)
+    user_username = serializers.CharField(source="user.username", read_only=True)
+    author_avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductReview
+        fields = (
+            "id", "product_type", "product_slug", "product_name", "author_name",
+            "rating", "text", "status", "media", "user_id", "user_username",
+            "author_avatar_url", "created_at", "updated_at",
+        )
+
+    def get_author_avatar_url(self, obj):
+        return _resolve_file_url(getattr(obj.user, "avatar", None), self.context.get("request"))
+
+
+class ProductReviewWriteSerializer(serializers.ModelSerializer):
+    product_type = serializers.CharField(max_length=64)
+    product_slug = serializers.SlugField(max_length=600)
+    product_name = serializers.CharField(max_length=500, required=False, allow_blank=True)
+
+    class Meta:
+        model = ProductReview
+        fields = ("product_type", "product_slug", "product_name", "rating", "text")
+
+    def validate_text(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Текст отзыва обязателен")
+        if len(value) > 5000:
+            raise serializers.ValidationError("Текст отзыва не должен превышать 5000 символов")
+        return value
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        instance = self.instance
+        product_type = str(attrs.get("product_type", getattr(instance, "product_type", ""))).strip().lower().replace("_", "-")
+        product_slug = str(attrs.get("product_slug", getattr(instance, "product_slug", ""))).strip()
+
+        if instance and (product_type != instance.product_type or product_slug != instance.product_slug):
+            raise serializers.ValidationError("Нельзя перенести отзыв на другой товар")
+
+        from apps.catalog.services.product_resolve import resolve_product_payload
+        resolved = resolve_product_payload(request, product_slug)
+        if not resolved:
+            raise serializers.ValidationError({"product_slug": "Товар или услуга не найдены"})
+        payload, _source, resolved_type = resolved
+        resolved_type = resolved_type.replace("_", "-")
+        if resolved_type != product_type:
+            raise serializers.ValidationError({"product_type": "Тип не соответствует товару"})
+
+        attrs["product_type"] = product_type
+        attrs["product_slug"] = str(payload.get("slug") or product_slug)
+        attrs["product_name"] = str(payload.get("name") or attrs.get("product_name") or product_slug)[:500]
+        return attrs
