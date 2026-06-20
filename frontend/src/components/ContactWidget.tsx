@@ -23,6 +23,10 @@ type WidgetPosition = {
   y: number
 }
 
+type SavedWidgetPosition = WidgetPosition & {
+  userPlaced: true
+}
+
 type DragState = {
   active: boolean
   moved: boolean
@@ -117,8 +121,9 @@ function loadSavedPosition() {
     const rawValue = window.localStorage.getItem(POSITION_STORAGE_KEY)
     if (!rawValue) return null
 
-    const parsed = JSON.parse(rawValue) as Partial<WidgetPosition>
-    if (typeof parsed.x !== 'number' || typeof parsed.y !== 'number') {
+    const parsed = JSON.parse(rawValue) as Partial<SavedWidgetPosition>
+    if (parsed.userPlaced !== true || typeof parsed.x !== 'number' || typeof parsed.y !== 'number') {
+      window.localStorage.removeItem(POSITION_STORAGE_KEY)
       return null
     }
 
@@ -146,6 +151,7 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
   const suppressClickRef = useRef(false)
   const [settings, setSettings] = useState<FooterSettingsData>(getInitialSettings(_initialSettings as Partial<FooterSettingsData> | undefined))
   const [position, setPosition] = useState<WidgetPosition>(SSR_DEFAULT_POSITION)
+  const [hasCustomPosition, setHasCustomPosition] = useState(false)
 
   useEffect(() => {
     setSettings((prev) => ({
@@ -189,14 +195,16 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
 
     const savedPosition = loadSavedPosition()
     setPosition(savedPosition || getDefaultPosition())
+    setHasCustomPosition(Boolean(savedPosition))
     setIsMounted(true)
   }, [])
 
   useEffect(() => {
-    if (!isMounted || typeof window === 'undefined') return
+    if (!isMounted || !hasCustomPosition || typeof window === 'undefined') return
 
-    window.localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(position))
-  }, [isMounted, position])
+    const savedPosition: SavedWidgetPosition = { ...position, userPlaced: true }
+    window.localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(savedPosition))
+  }, [hasCustomPosition, isMounted, position])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -251,6 +259,9 @@ export default function ContactWidget({ initialSettings: _initialSettings }: { i
 
       dragState.active = false
       dragState.pointerId = null
+      if (dragState.moved) {
+        setHasCustomPosition(true)
+      }
       setIsDragging(false)
     }
 
