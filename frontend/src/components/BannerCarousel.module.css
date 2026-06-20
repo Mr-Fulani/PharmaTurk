@@ -10,7 +10,7 @@
   border-radius: 18px;
   box-shadow: 0 30px 50px #dbdbdb;
   overflow: visible;
-  contain: layout paint;
+  contain: layout;
 }
 
 .slide {
