@@ -4,6 +4,7 @@ import api from '../lib/api'
 import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
+import { ProductCardGalleryImage } from './ProductCardImageGallery'
 
 interface Product {
   id: number
@@ -18,6 +19,7 @@ interface Product {
   active_variant_currency?: string | null
   active_variant_old_price_formatted?: string | null
   main_image_url?: string | null
+  images?: ProductCardGalleryImage[] | null
   main_image?: string | null
   video_url?: string | null
   main_video_url?: string | null
@@ -113,6 +115,7 @@ export default function SimilarProducts({
                 currency: analog.display_currency || analog.original_currency || 'RUB',
                 old_price: analog.old_price,
                 main_image_url: analog.main_image_url,
+                images: analog.images,
                 product_type: 'medicines',
                 is_new: false,
                 is_featured: false,
@@ -300,6 +303,7 @@ export default function SimilarProducts({
                 currency={displayCurrency}
                 oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                 imageUrl={product.main_image_url || product.main_image}
+                galleryImages={product.images}
                 videoUrl={product.video_url}
                 mainVideoUrl={product.main_video_url}
                 mainGifUrl={product.main_gif_url}

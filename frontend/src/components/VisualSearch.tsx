@@ -6,6 +6,7 @@ import api from '../lib/api'
 import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
+import { ProductCardGalleryImage } from './ProductCardImageGallery'
 
 const UPLOAD_TEMP_ENABLED = true // set true when /api/upload/temp/ exists
 
@@ -18,6 +19,7 @@ interface Product {
   old_price?: string | null
   main_image_url?: string | null
   main_image?: string | null
+  images?: ProductCardGalleryImage[] | null
   video_url?: string | null
   main_video_url?: string | null
   main_gif_url?: string | null
@@ -170,6 +172,7 @@ export default function VisualSearch() {
               currency={r.product.currency || 'RUB'}
               oldPrice={r.product.old_price != null ? String(r.product.old_price) : null}
               imageUrl={r.product.main_image_url || r.product.main_image}
+              galleryImages={r.product.images}
               videoUrl={r.product.video_url}
               mainVideoUrl={r.product.main_video_url}
               mainGifUrl={r.product.main_gif_url}

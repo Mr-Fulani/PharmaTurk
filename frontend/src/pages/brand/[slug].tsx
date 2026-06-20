@@ -20,6 +20,7 @@ interface Product {
   old_price_formatted?: string
   currency: string
   main_image_url?: string
+  images?: import('../../components/ProductCardImageGallery').ProductCardGalleryImage[] | null
   video_url?: string
   main_video_url?: string
   main_gif_url?: string | null
@@ -282,6 +283,7 @@ export default function BrandPage({
                     price={p.price}
                     currency={p.currency}
                     imageUrl={p.main_image_url}
+                    galleryImages={p.images}
                     videoUrl={p.video_url}
                     mainVideoUrl={p.main_video_url}
                     mainGifUrl={(p as { main_gif_url?: string | null }).main_gif_url}

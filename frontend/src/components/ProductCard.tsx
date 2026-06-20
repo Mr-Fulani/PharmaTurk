@@ -22,6 +22,7 @@ import {
 import { buildProductUrl } from '../lib/urls'
 import { favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
+import ProductCardImageGallery, { normalizeProductCardImages, ProductCardGalleryImage } from './ProductCardImageGallery'
 
 interface ProductCardProps {
   id: number
@@ -35,6 +36,7 @@ interface ProductCardProps {
   badge?: string | null
   rating?: number | null
   imageUrl?: string | null
+  galleryImages?: ProductCardGalleryImage[] | null
   videoUrl?: string | null
   /** Дублирует API main_video_url; вместе с video_url выбирается предпочтительный (proxy и т.д.). */
   mainVideoUrl?: string | null
@@ -82,6 +84,7 @@ export default function ProductCard({
   badge,
   rating,
   imageUrl,
+  galleryImages,
   videoUrl,
   mainVideoUrl,
   mainGifUrl,
@@ -142,6 +145,7 @@ export default function ProductCard({
       ? 'object-cover object-[center_60%]'
       : 'object-cover'
   const listingImgSrc = resolvedImage ? withListingImageMaxWidth(resolvedImage) : null
+  const hasInteractiveGallery = normalizeProductCardImages(listingImgSrc, galleryImages).length > 1
   const rawGif = preferStaticHero || showVideo ? null : mainGifUrl
   const resolvedGifSrc =
     rawGif && isGifUrl(rawGif) ? withListingImageMaxWidth(resolveMediaUrl(rawGif)) : null
@@ -168,7 +172,16 @@ export default function ProductCard({
     return (
       <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
         <div className="relative w-full sm:w-48 h-48 flex-shrink-0 overflow-hidden rounded-md">
-          {youtubeIdForCard ? (
+          {hasInteractiveGallery ? (
+            <ProductCardImageGallery
+              productId={id}
+              name={localizedName}
+              mainImageUrl={listingImgSrc}
+              images={galleryImages}
+              imageFitClass={imageFitClass}
+              className="rounded-md overflow-hidden"
+            />
+          ) : youtubeIdForCard ? (
             <LazyYouTubeCard
               youtubeId={youtubeIdForCard}
               youtubeThumb={getYouTubeCardThumbnailUrl(resolvedVideoUrl)}
@@ -202,19 +215,14 @@ export default function ProductCard({
                 e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
               }}
             />
-          ) : listingImgSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={listingImgSrc}
-              alt={localizedName}
-              loading="lazy"
-              decoding="async"
-              width={400}
-              height={400}
-              className={`w-full h-full rounded-md ${imageFitClass}`}
-              onError={(e) => {
-                e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
-              }}
+          ) : listingImgSrc || galleryImages?.length ? (
+            <ProductCardImageGallery
+              productId={id}
+              name={localizedName}
+              mainImageUrl={listingImgSrc}
+              images={galleryImages}
+              imageFitClass={imageFitClass}
+              className="rounded-md overflow-hidden"
             />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
@@ -318,7 +326,15 @@ export default function ProductCard({
         href={href || buildProductUrl(productType, slug)}
         className="relative block w-full aspect-[4/5] rounded-xl overflow-hidden bg-gray-100/50"
       >
-        {youtubeIdForCard ? (
+        {hasInteractiveGallery ? (
+          <ProductCardImageGallery
+            productId={id}
+            name={localizedName}
+            mainImageUrl={listingImgSrc}
+            images={galleryImages}
+            imageFitClass={imageFitClass}
+          />
+        ) : youtubeIdForCard ? (
           <LazyYouTubeCard
             youtubeId={youtubeIdForCard}
             youtubeThumb={getYouTubeCardThumbnailUrl(resolvedVideoUrl)}
@@ -353,19 +369,13 @@ export default function ProductCard({
               e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
             }}
           />
-        ) : listingImgSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={listingImgSrc}
-            alt={localizedName}
-            loading="lazy"
-            decoding="async"
-            width={400}
-            height={500}
-            className={`w-full h-full ${imageFitClass} ${hoverMediaClass}`}
-            onError={(e) => {
-              e.currentTarget.src = getPlaceholderImageUrl({ type: 'product', id })
-            }}
+        ) : listingImgSrc || galleryImages?.length ? (
+          <ProductCardImageGallery
+            productId={id}
+            name={localizedName}
+            mainImageUrl={listingImgSrc}
+            images={galleryImages}
+            imageFitClass={imageFitClass}
           />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
@@ -383,14 +393,6 @@ export default function ProductCard({
           />
         )}
         
-        {/* Индикация фото (точки), как на скрине KITON */}
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10 opacity-70">
-          <div className="w-1.5 h-1.5 rounded-full bg-white scale-125 shadow-sm"></div>
-          <div className="w-1.5 h-1.5 rounded-full bg-white/60 shadow-sm"></div>
-          <div className="w-1.5 h-1.5 rounded-full bg-white/60 shadow-sm"></div>
-          <div className="w-1.5 h-1.5 rounded-full bg-white/60 shadow-sm"></div>
-        </div>
-
         {(badge || isFeatured || isNew || (productType === 'books' && isBestseller)) && (
           <div className="absolute left-2 top-2 flex flex-col gap-1 z-10">
             {badge && (

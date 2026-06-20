@@ -19,6 +19,7 @@ interface Product {
   old_price_formatted?: string | null;
   main_image?: string;
   main_image_url?: string;
+  images?: import('../components/ProductCardImageGallery').ProductCardGalleryImage[] | null;
   video_url?: string;
   main_video_url?: string;
   main_gif_url?: string | null;
@@ -247,6 +248,7 @@ const BookHavenPage: React.FC = () => {
                   currency={book.currency || 'RUB'}
                   oldPrice={displayOldPrice}
                   imageUrl={book.main_image_url || book.main_image}
+                  galleryImages={book.images}
                   videoUrl={book.video_url}
                   mainVideoUrl={book.main_video_url}
                   mainGifUrl={book.main_gif_url}

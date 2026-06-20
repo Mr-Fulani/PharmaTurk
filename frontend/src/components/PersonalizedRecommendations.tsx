@@ -6,6 +6,7 @@ import api from '../lib/api'
 import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
+import { ProductCardGalleryImage } from './ProductCardImageGallery'
 
 interface Product {
   id: number
@@ -20,6 +21,7 @@ interface Product {
   active_variant_old_price_formatted?: string | null
   main_image_url?: string | null
   main_image?: string | null
+  images?: ProductCardGalleryImage[] | null
   video_url?: string | null
   main_video_url?: string | null
   main_gif_url?: string | null
@@ -137,6 +139,7 @@ export default function PersonalizedRecommendations() {
                 currency={displayCurrency}
                 oldPrice={displayOldPrice != null ? String(displayOldPrice) : null}
                 imageUrl={product.main_image_url || product.main_image}
+                galleryImages={product.images}
                 videoUrl={product.video_url}
                 mainVideoUrl={(product as { main_video_url?: string | null }).main_video_url}
                 mainGifUrl={(product as { main_gif_url?: string | null }).main_gif_url}

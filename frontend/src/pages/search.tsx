@@ -66,6 +66,7 @@ export default function SearchPage() {
                   price={p.price}
                   currency={p.currency}
                   imageUrl={p.main_image_url || p.main_image}
+                  galleryImages={p.images}
                   videoUrl={p.video_url}
                   mainVideoUrl={p.main_video_url}
                   mainGifUrl={p.main_gif_url}

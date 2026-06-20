@@ -988,6 +988,7 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     main_image_url = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
     video_url = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()  # Изменено на метод
     price_formatted = serializers.SerializerMethodField()
@@ -1048,7 +1049,7 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
             'book_authors', 'book_genres', 'book_attributes', 'dynamic_attributes', 'product_type',
             'meta_title', 'meta_description', 'meta_keywords',
             'og_title', 'og_description', 'og_image_url',
-            'main_image_url', 'video_url', 'main_video_url', 'main_gif_url', 'has_manual_main_image',
+            'main_image_url', 'images', 'video_url', 'main_video_url', 'main_gif_url', 'has_manual_main_image',
             'is_new', 'is_featured', 'created_at', 'updated_at', 'translations'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -1074,6 +1075,37 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
         except Exception:
             pass
         return obj.slug
+
+    def get_images(self, obj):
+        """Return card gallery without requiring the detail serializer."""
+        request = self.context.get('request')
+        gallery = list(getattr(obj, 'images', []).all()) if hasattr(getattr(obj, 'images', None), 'all') else []
+
+        if not gallery:
+            domain = getattr(obj, 'domain_item', None)
+            if domain and domain != obj:
+                domain_gallery = getattr(domain, 'gallery_images', None) or getattr(domain, 'images', None)
+                if domain_gallery is not None:
+                    gallery = list(domain_gallery.all())
+
+        result = []
+        for image in sorted(gallery, key=lambda item: (not bool(getattr(item, 'is_main', False)), getattr(item, 'sort_order', 0) or 0, getattr(item, 'id', 0))):
+            image_url = _resolve_file_url(getattr(image, 'image_file', None), request)
+            if not image_url:
+                image_url = _resolve_media_url(getattr(image, 'image_url', '') or '', request)
+            video_url = _resolve_file_url(getattr(image, 'video_file', None), request)
+            if not video_url:
+                video_url = _resolve_media_url(getattr(image, 'video_url', '') or '', request)
+            if image_url or video_url:
+                result.append({
+                    'id': getattr(image, 'id', 0),
+                    'image_url': image_url,
+                    'video_url': video_url,
+                    'alt_text': getattr(image, 'alt_text', '') or '',
+                    'sort_order': getattr(image, 'sort_order', 0) or 0,
+                    'is_main': bool(getattr(image, 'is_main', False)),
+                })
+        return result
 
     def get_name(self, obj):
         """Локализованное название."""
@@ -2587,11 +2619,24 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
         return None
 
     def get_images(self, obj):
-        """Галерея изображений."""
-        gallery = getattr(obj, "images", None)
-        if not gallery:
-            return []
-        return ClothingProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+        """Галерея товара и активного варианта для карточек каталога."""
+        product_rows = ClothingProductImageSerializer(
+            obj.images.all().order_by("sort_order"), many=True, context=self.context
+        ).data
+        variant = self._get_active_variant(obj)
+        variant_rows = ClothingVariantImageSerializer(
+            variant.images.all().order_by("sort_order"), many=True, context=self.context
+        ).data if variant else []
+
+        merged = []
+        seen = set()
+        for row in variant_rows + product_rows:
+            url = (row.get("image_url") or "").strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            merged.append(row)
+        return merged
 
     # ------------------------------------------------------------------
     # Варианты
@@ -3005,11 +3050,24 @@ class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
         return None
 
     def get_images(self, obj):
-        """Галерея изображений."""
-        gallery = getattr(obj, "images", None)
-        if not gallery:
-            return []
-        return ShoeProductImageSerializer(gallery.all().order_by("sort_order"), many=True).data
+        """Галерея товара и активного варианта для карточек каталога."""
+        product_rows = ShoeProductImageSerializer(
+            obj.images.all().order_by("sort_order"), many=True, context=self.context
+        ).data
+        variant = self._get_active_variant(obj)
+        variant_rows = ShoeVariantImageSerializer(
+            variant.images.all().order_by("sort_order"), many=True, context=self.context
+        ).data if variant else []
+
+        merged = []
+        seen = set()
+        for row in variant_rows + product_rows:
+            url = (row.get("image_url") or "").strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            merged.append(row)
+        return merged
 
     # ------------------------------------------------------------------
     # Варианты

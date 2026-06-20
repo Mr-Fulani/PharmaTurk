@@ -19,6 +19,7 @@ import CategorySidebar, { FilterState, SidebarTreeItem, SidebarTreeSection, Avai
 import Pagination from '../../components/Pagination'
 import CategoryHero from '../../components/CategoryHero'
 import ServicePortfolioGallery, { ServicePortfolioItem } from '../../components/ServicePortfolioGallery'
+import { ProductCardGalleryImage } from '../../components/ProductCardImageGallery'
 
 interface Product {
   id: number
@@ -38,6 +39,7 @@ interface Product {
   final_price_usd?: number
   main_image?: string
   main_image_url?: string
+  images?: ProductCardGalleryImage[] | null
   video_url?: string
   main_video_url?: string
   main_gif_url?: string | null
@@ -1648,6 +1650,7 @@ export default function CategoryPage({
                         currency={displayCurrency}
                         oldPrice={displayOldPriceFormatted ? String(displayOldPriceFormatted) : null}
                         imageUrl={product.main_image_url || product.main_image}
+                        galleryImages={product.images}
                         videoUrl={product.video_url}
                         mainVideoUrl={(product as { main_video_url?: string | null }).main_video_url}
                         mainGifUrl={(product as { main_gif_url?: string | null }).main_gif_url}

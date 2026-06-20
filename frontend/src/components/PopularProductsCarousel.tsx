@@ -18,6 +18,7 @@ import { buildProductUrl } from '../lib/urls'
 import { buildProductIdentityKey, favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import { formatPrice } from '../lib/price'
+import ProductCardImageGallery, { normalizeProductCardImages, ProductCardGalleryImage } from './ProductCardImageGallery'
 
 const LazyYouTubeCard = dynamic(() => import('./LazyYouTubeCard'), { ssr: false })
 
@@ -37,6 +38,7 @@ interface Product {
   badge?: string | null
   rating?: number | null
   main_image_url?: string | null
+  images?: ProductCardGalleryImage[] | null
   video_url?: string | null
   has_manual_main_image?: boolean
   brand?: {
@@ -339,6 +341,10 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                   : null
               const carouselNonYoutubeEmbed =
                 carouselVideoSrc && !carouselYtId ? getVideoEmbedUrl(carouselVideoSrc, 'player') : null
+              const carouselHasGallery = normalizeProductCardImages(
+                product.main_image_url,
+                product.images
+              ).length > 1
               return (
                 <div
                   key={buildProductIdentityKey(product, product.product_type)}
@@ -348,7 +354,15 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                     href={buildProductUrl(product.product_type || 'medicines', product.slug)}
                     className="relative block w-full aspect-[4/5] overflow-hidden bg-gray-100/50 rounded-xl"
                   >
-                    {carouselYtId ? (
+                    {carouselHasGallery ? (
+                      <ProductCardImageGallery
+                        productId={product.id}
+                        name={localizedName}
+                        mainImageUrl={product.main_image_url}
+                        images={product.images}
+                        imageFitClass="object-cover"
+                      />
+                    ) : carouselYtId ? (
                       <LazyYouTubeCard
                         youtubeId={carouselYtId}
                         youtubeThumb={getYouTubeCardThumbnailUrl(carouselRawVideo || carouselVideoSrc)}
@@ -378,28 +392,14 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />
                     ) : (
-                      <img
-                        src={
-                          (product.main_image_url ? resolveMediaUrl(product.main_image_url) : null) ||
-                          getPlaceholderImageUrl({ type: 'product', id: product.id })
-                        }
-                        alt={localizedName}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        onError={(e) => {
-                          e.currentTarget.src = getPlaceholderImageUrl({
-                            type: 'product',
-                            id: `${product.id}-fallback`,
-                          })
-                        }}
+                      <ProductCardImageGallery
+                        productId={product.id}
+                        name={localizedName}
+                        mainImageUrl={product.main_image_url}
+                        images={product.images}
+                        imageFitClass="object-cover"
                       />
                     )}
-
-                    {/* Индикация фото (точки) */}
-                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10 opacity-70">
-                      <div className="w-1.5 h-1.5 rounded-full bg-white scale-125 shadow-sm"></div>
-                      <div className="w-1.5 h-1.5 rounded-full bg-white/60 shadow-sm"></div>
-                      <div className="w-1.5 h-1.5 rounded-full bg-white/60 shadow-sm"></div>
-                    </div>
 
                     {product.is_new && (
                       <div className="absolute left-2 top-2 flex flex-col gap-1 z-10">
