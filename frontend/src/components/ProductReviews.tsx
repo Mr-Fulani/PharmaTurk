@@ -81,11 +81,13 @@ export default function ProductReviews({
   productType,
   productSlug,
   productName,
+  expanded = false,
   onSummaryChange,
 }: {
   productType: string
   productSlug: string
   productName: string
+  expanded?: boolean
   onSummaryChange?: (summary: ReviewSummary) => void
 }) {
   const { t, i18n } = useTranslation('common')
@@ -187,6 +189,11 @@ export default function ProductReviews({
 
   const ownStatus = data?.own_review?.status
   const loginHref = `/auth?next=${encodeURIComponent(`${router.asPath}#product-reviews`)}`
+  const shouldShow = expanded || Boolean(data?.reviews_count) || Boolean(data?.own_review)
+
+  if (!shouldShow) {
+    return <div id="product-reviews" className="scroll-mt-24" aria-hidden="true" />
+  }
 
   return (
     <section id="product-reviews" className="mt-10 scroll-mt-24 border-t border-gray-200 pt-8 dark:border-gray-700">
@@ -235,8 +242,8 @@ export default function ProductReviews({
             </div>
           )}
           <div className="mt-3 flex gap-3">
-            <button type="button" onClick={beginEdit} className="text-sm font-medium text-red-600 hover:underline">{t('edit', 'Редактировать')}</button>
-            <button type="button" onClick={() => removeOwnReview().catch(() => setError(t('product_reviews_delete_error', 'Не удалось удалить отзыв')))} className="text-sm font-medium text-gray-600 hover:underline dark:text-gray-300">{t('delete', 'Удалить')}</button>
+            <button type="button" onClick={beginEdit} className="text-sm font-medium text-red-600 hover:underline">{t('product_reviews_edit', 'Редактировать')}</button>
+            <button type="button" onClick={() => removeOwnReview().catch(() => setError(t('product_reviews_delete_error', 'Не удалось удалить отзыв')))} className="text-sm font-medium text-gray-600 hover:underline dark:text-gray-300">{t('product_reviews_delete', 'Удалить')}</button>
           </div>
         </div>
       )}
@@ -274,7 +281,7 @@ export default function ProductReviews({
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex gap-3">
-            <button disabled={saving} className="rounded-lg bg-red-600 px-5 py-2.5 font-medium text-white hover:bg-red-700 disabled:opacity-60">{saving ? t('saving', 'Сохранение...') : t('product_reviews_submit', 'Отправить')}</button>
+            <button disabled={saving} className="rounded-lg bg-red-600 px-5 py-2.5 font-medium text-white hover:bg-red-700 disabled:opacity-60">{saving ? t('product_reviews_saving', 'Сохранение...') : t('product_reviews_submit', 'Отправить')}</button>
             {editing && <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-gray-300 px-5 py-2.5 dark:border-gray-600">{t('cancel', 'Отмена')}</button>}
           </div>
         </form>

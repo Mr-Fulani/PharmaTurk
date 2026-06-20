@@ -626,10 +626,19 @@ export default function ProductPage({
   const { theme } = useTheme()
   const [product, setProduct] = useState<Product | null>(initialProduct)
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary>({ averageRating: 0, count: 0 })
+  const [reviewsExpanded, setReviewsExpanded] = useState(false)
 
   useEffect(() => {
     setProduct(initialProduct)
   }, [initialProduct])
+
+  useEffect(() => {
+    if (!router.isReady || typeof window === 'undefined' || window.location.hash !== '#product-reviews') return
+    setReviewsExpanded(true)
+    window.requestAnimationFrame(() => {
+      document.getElementById('product-reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [router.isReady])
   const variants = product?.variants || []
   const localizedProductName = product
     ? getLocalizedProductName(product.name, t, product.translations, router.locale)
@@ -1804,7 +1813,10 @@ export default function ProductPage({
               href="#product-reviews"
               onClick={(event) => {
                 event.preventDefault()
-                document.getElementById('product-reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                setReviewsExpanded(true)
+                window.requestAnimationFrame(() => {
+                  document.getElementById('product-reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                })
               }}
               className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-amber-600 hover:text-amber-700"
             >
@@ -2669,6 +2681,7 @@ export default function ProductPage({
           productType={productType}
           productSlug={product.slug}
           productName={displayProductName || product.name}
+          expanded={reviewsExpanded}
           onSummaryChange={setReviewSummary}
         />
 
