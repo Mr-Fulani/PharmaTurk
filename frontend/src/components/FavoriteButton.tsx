@@ -48,9 +48,11 @@ export default function FavoriteButton({
   const variantOpts: FavoriteVariantOpts | undefined = favoriteProductSlug
     ? { productSlug: favoriteProductSlug, size: favoriteSize || '' }
     : undefined
-  const requestProductSlug = favoriteProductSlug || productSlug
-  const requestOpts: FavoriteVariantOpts | undefined = requestProductSlug
-    ? { productSlug: requestProductSlug, size: favoriteProductSlug ? (favoriteSize || '') : '' }
+  // Листинговые карточки сохраняются по product_id без размера. Slug нужен там
+  // только для сопоставления; cart-like slug resolver используем лишь для явно
+  // выбранного цветового/товарного варианта на detail.
+  const requestOpts: FavoriteVariantOpts | undefined = favoriteProductSlug
+    ? { productSlug: favoriteProductSlug, size: favoriteSize || '' }
     : undefined
 
   const favorite = isFavoriteFn(productId, productType, variantOpts, productSlug)

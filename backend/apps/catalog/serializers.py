@@ -1088,6 +1088,48 @@ class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
                 if domain_gallery is not None:
                     gallery = list(domain_gallery.all())
 
+                if not gallery:
+                    variants = getattr(domain, 'variants', None) or getattr(domain, 'book_variants', None)
+                    if variants is not None:
+                        active_variant = variants.filter(is_active=True).order_by('sort_order', 'id').first()
+                        variant_gallery = getattr(active_variant, 'images', None) if active_variant else None
+                        if variant_gallery is not None:
+                            gallery = list(variant_gallery.all())
+
+        # Избранное конкретного варианта хранится как shadow Product. У него нет
+        # one-to-one domain_item, поэтому восстанавливаем галерею по source_variant_*.
+        if not gallery and isinstance(getattr(obj, 'external_data', None), dict):
+            from .models import HeadwearVariant, IslamicClothingVariant, UnderwearVariant
+
+            external = obj.external_data or {}
+            variant_slug = external.get('source_variant_slug')
+            variant_id = external.get('source_variant_id')
+            source_type = str(
+                external.get('effective_type') or external.get('source_type') or obj.product_type or ''
+            ).strip().lower().replace('-', '_')
+            variant_models = {
+                'clothing': ClothingVariant,
+                'shoes': ShoeVariant,
+                'furniture': FurnitureVariant,
+                'jewelry': JewelryVariant,
+                'books': BookVariant,
+                'perfumery': PerfumeryVariant,
+                'headwear': HeadwearVariant,
+                'underwear': UnderwearVariant,
+                'islamic_clothing': IslamicClothingVariant,
+            }
+            variant_model = variant_models.get(source_type)
+            if variant_model and (variant_slug or variant_id):
+                variant_qs = variant_model.objects.filter(is_active=True)
+                if variant_slug:
+                    variant_qs = variant_qs.filter(slug=variant_slug)
+                elif variant_id:
+                    variant_qs = variant_qs.filter(pk=variant_id)
+                variant = variant_qs.first()
+                variant_gallery = getattr(variant, 'images', None) if variant else None
+                if variant_gallery is not None:
+                    gallery = list(variant_gallery.all())
+
         result = []
         for image in sorted(gallery, key=lambda item: (not bool(getattr(item, 'is_main', False)), getattr(item, 'sort_order', 0) or 0, getattr(item, 'id', 0))):
             image_url = _resolve_file_url(getattr(image, 'image_file', None), request)
@@ -2221,12 +2263,22 @@ class AddToFavoriteSerializer(serializers.Serializer):
                 attrs['_product_type'] = 'uslugi'
                 return attrs
 
-            product, chosen = resolve_product_like_add_to_cart(
-                product_id=None,
-                product_type=ptype,
-                product_slug=slug,
-                size=size_str,
-            )
+            if size_str:
+                product, chosen = resolve_product_like_add_to_cart(
+                    product_id=None,
+                    product_type=ptype,
+                    product_slug=slug,
+                    size=size_str,
+                )
+            else:
+                # Избранное не обязано выбирать размер. При этом variant slug
+                # сохраняем тем же shadow Product, что использует корзина.
+                from apps.orders.serializers import resolve_variant_product
+                try:
+                    product = resolve_variant_product(normalized_type, slug)
+                except Product.DoesNotExist:
+                    raise serializers.ValidationError({"product_slug": _("Товар не найден")})
+                chosen = ''
             attrs['_product'] = product
             attrs['_chosen_size'] = chosen or ''
             pt = getattr(product, 'product_type', None) or ptype or 'medicines'

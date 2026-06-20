@@ -93,3 +93,10 @@ def test_clothing_list_serializer_uses_active_variant_gallery():
     data = ClothingProductSerializer(product).data
 
     assert [item["id"] for item in data["images"]] == [first.id, second.id]
+
+    product.refresh_from_db()
+    base_data = ProductSerializer(product.base_product).data
+    assert [item["image_url"] for item in base_data["images"]] == [
+        "https://cdn.example.com/variant-main.jpg",
+        "https://cdn.example.com/variant-second.jpg",
+    ]

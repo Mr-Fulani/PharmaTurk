@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import api, { initCartSession } from '../lib/api'
 import { ProductTranslation } from '../lib/i18n'
 import { matchesFavoriteSlug } from '../lib/favoriteLinks'
+import { ProductCardGalleryImage } from '../components/ProductCardImageGallery'
 
 interface Favorite {
   id: number
@@ -18,6 +19,7 @@ interface Favorite {
     old_price_formatted?: string | null
     active_variant_old_price_formatted?: string | null
     main_image_url?: string
+    images?: ProductCardGalleryImage[] | null
     video_url?: string | null
     _product_type?: string
     translations?: ProductTranslation[]
@@ -199,7 +201,7 @@ export const useFavoritesStore = create<FavoritesStore>((set, get) => ({
           fav.product.slug,
           variant.productSlug
         )
-        const sizeOk = (fav.product.favorite_chosen_size || '') === (variant.size || '')
+        const sizeOk = !variant.size || (fav.product.favorite_chosen_size || '') === variant.size
         return slugOk && sizeOk
       }
       if (productId === undefined) return false

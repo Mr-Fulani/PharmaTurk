@@ -4,7 +4,6 @@ from django.utils import timezone
 from datetime import timedelta
 
 from apps.catalog.models import Product
-from apps.catalog.serializers import ProductSerializer
 
 
 class BusinessReranker:
@@ -32,12 +31,18 @@ class BusinessReranker:
                 "accessory_item__gallery_images",
                 "incense_item__gallery_images",
                 "book_item__images",
+                "book_item__book_variants__images",
                 "clothing_item__images",
+                "clothing_item__variants__images",
                 "shoe_item__images",
+                "shoe_item__variants__images",
                 "jewelry_item__images",
+                "jewelry_item__variants__images",
                 "electronics_item__images",
                 "furniture_item__images",
+                "furniture_item__variants__images",
                 "perfumery_item__images",
+                "perfumery_item__variants__images",
                 "sports_item__images",
                 "auto_part_item__images",
             )
@@ -137,10 +142,8 @@ class BusinessReranker:
         result = []
         context = {"request": request} if request else {}
         for item in ranked:
-            product_data = ProductSerializer(
-                item["product"],
-                context=context,
-            ).data
+            from apps.catalog.serializers import serialize_product_for_card
+            product_data = serialize_product_for_card(item["product"], request)
             result.append({
                 "product": product_data,
                 "similarity_score": item.get("score"),

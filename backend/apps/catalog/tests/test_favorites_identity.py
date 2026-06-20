@@ -10,6 +10,7 @@ from apps.catalog.models import (
     MedicineProduct,
     PerfumeryProduct,
     PerfumeryVariant,
+    PerfumeryVariantImage,
     Product,
     Service,
 )
@@ -67,6 +68,16 @@ def test_perfumery_variant_slug_creates_stable_favorite_identity():
         price=110,
         is_active=True,
     )
+    PerfumeryVariantImage.objects.create(
+        variant=variant,
+        image_url="https://cdn.example.com/favorite-variant-1.jpg",
+        is_main=True,
+    )
+    PerfumeryVariantImage.objects.create(
+        variant=variant,
+        image_url="https://cdn.example.com/favorite-variant-2.jpg",
+        sort_order=1,
+    )
 
     serializer = AddToFavoriteSerializer(data={
         "product_type": "perfumery",
@@ -77,6 +88,7 @@ def test_perfumery_variant_slug_creates_stable_favorite_identity():
     shadow = serializer.validated_data["_product"]
     assert shadow.product_type == "perfumery"
     assert shadow.external_data["source_variant_slug"] == variant.slug
+    assert serializer.validated_data["_chosen_size"] == ""
 
     favorite = Favorite.objects.create(
         session_key=f"variant-parent-{suffix}",
@@ -86,6 +98,44 @@ def test_perfumery_variant_slug_creates_stable_favorite_identity():
     favorite_product = FavoriteSerializer(favorite).data["product"]
     assert favorite_product["favorite_variant_slug"] == variant.slug
     assert favorite_product["favorite_parent_slug"] == perfume.slug
+    assert len(favorite_product["images"]) == 2
+
+
+@pytest.mark.django_db
+def test_size_free_check_and_remove_match_legacy_sized_favorite():
+    suffix = uuid.uuid4().hex
+    product = Product.objects.create(
+        name="Legacy sized favorite",
+        slug=f"legacy-sized-favorite-{suffix}",
+        product_type="accessories",
+        price=20,
+        is_active=True,
+    )
+    favorite = Favorite.objects.create(
+        session_key=f"legacy-sized-{suffix}",
+        content_type=ContentType.objects.get_for_model(Product),
+        object_id=product.pk,
+        chosen_size="XL",
+    )
+    client = APIClient()
+    headers = {"HTTP_X_CART_SESSION": f"legacy-sized-{suffix}"}
+
+    check_response = client.get(
+        "/api/catalog/favorites/check",
+        {"product_id": product.pk, "product_type": "accessories"},
+        **headers,
+    )
+    assert check_response.status_code == status.HTTP_200_OK
+    assert check_response.data["is_favorite"] is True
+
+    remove_response = client.delete(
+        "/api/catalog/favorites/remove",
+        {"product_id": product.pk, "product_type": "accessories"},
+        format="json",
+        **headers,
+    )
+    assert remove_response.status_code == status.HTTP_200_OK
+    assert not Favorite.objects.filter(pk=favorite.pk).exists()
 
 
 @pytest.mark.django_db

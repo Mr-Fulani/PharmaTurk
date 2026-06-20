@@ -2598,7 +2598,7 @@ def _dedupe_favorites_serialized_rows(serialized_list):
 
     В БД могут сосуществовать несколько Favorite на один и тот же товар разными путями
     (например shadow Product и ShoeProduct с одним slug), в т.ч. после старых багов с id.
-    Ключ совпадает с публичной идентичностью карточки для фронта: type + public id/base id (+ size),
+    Ключ совпадает с публичной идентичностью карточки для фронта: type + public id/base id,
     а если id по какой-то причине нет — fallback на slug.
     Оставляем самую свежую запись по created_at.
     """
@@ -2617,8 +2617,7 @@ def _dedupe_favorites_serialized_rows(serialized_list):
         slug = (p.get('slug') or '').strip().lower()
         ptype = _norm_type(p.get('_product_type'))
         pid = p.get('id') or p.get('base_product_id')
-        csize = (row.get('chosen_size') or p.get('favorite_chosen_size') or '').strip().lower()
-        key = (str(pid or ''), ptype, csize) if pid else (slug, ptype, csize)
+        key = (str(pid or ''), ptype) if pid else (slug, ptype)
         if key in seen:
             continue
         seen.add(key)
@@ -2778,6 +2777,16 @@ class FavoriteViewSet(viewsets.ViewSet):
         
         chosen_size = serializer.validated_data.get('_chosen_size', '') or ''
 
+        # Новая семантика избранного: один вариант = одна запись, размер необязателен.
+        # При сохранении без размера удаляем прежние размерные записи того же варианта.
+        owner_filter = {'user': user} if user else {'session_key': session_key}
+        if not chosen_size:
+            Favorite.objects.filter(
+                content_type=content_type,
+                object_id=product.id,
+                **owner_filter,
+            ).exclude(chosen_size='').delete()
+
         # Проверяем, не добавлен ли уже товар
         if user:
             favorite, created = Favorite.objects.get_or_create(
@@ -2860,24 +2869,28 @@ class FavoriteViewSet(viewsets.ViewSet):
             'HeadwearProduct', 'UnderwearProduct', 'IslamicClothingProduct', 'BookProduct',
         )
         if user:
-            deleted = Favorite.objects.filter(
+            favorite_qs = Favorite.objects.filter(
                 user=user,
                 content_type=content_type,
                 object_id=product.id,
-                chosen_size=chosen_size,
-            ).delete()[0]
+            )
+            if chosen_size:
+                favorite_qs = favorite_qs.filter(chosen_size=chosen_size)
+            deleted = favorite_qs.delete()[0]
             if legacy_domain and base_pk:
                 pct = ContentType.objects.get_for_model(Product)
                 deleted += Favorite.objects.filter(
                     user=user, content_type=pct, object_id=base_pk, chosen_size=''
                 ).delete()[0]
         else:
-            deleted = Favorite.objects.filter(
+            favorite_qs = Favorite.objects.filter(
                 session_key=session_key,
                 content_type=content_type,
                 object_id=product.id,
-                chosen_size=chosen_size,
-            ).delete()[0]
+            )
+            if chosen_size:
+                favorite_qs = favorite_qs.filter(chosen_size=chosen_size)
+            deleted = favorite_qs.delete()[0]
             if legacy_domain and base_pk:
                 pct = ContentType.objects.get_for_model(Product)
                 deleted += Favorite.objects.filter(
@@ -2952,23 +2965,27 @@ class FavoriteViewSet(viewsets.ViewSet):
             return Response({"is_favorite": False})
         
         if user:
-            is_favorite = Favorite.objects.filter(
+            favorite_qs = Favorite.objects.filter(
                 user=user,
                 content_type=content_type,
                 object_id=product.id,
-                chosen_size=chosen_size,
-            ).exists()
+            )
+            if chosen_size:
+                favorite_qs = favorite_qs.filter(chosen_size=chosen_size)
+            is_favorite = favorite_qs.exists()
             if not is_favorite and pct_product:
                 is_favorite = Favorite.objects.filter(
                     user=user, content_type=pct_product, object_id=base_pk, chosen_size=''
                 ).exists()
         else:
-            is_favorite = Favorite.objects.filter(
+            favorite_qs = Favorite.objects.filter(
                 session_key=session_key,
                 content_type=content_type,
                 object_id=product.id,
-                chosen_size=chosen_size,
-            ).exists()
+            )
+            if chosen_size:
+                favorite_qs = favorite_qs.filter(chosen_size=chosen_size)
+            is_favorite = favorite_qs.exists()
             if not is_favorite and pct_product:
                 is_favorite = Favorite.objects.filter(
                     session_key=session_key, content_type=pct_product, object_id=base_pk, chosen_size=''

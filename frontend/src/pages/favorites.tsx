@@ -136,7 +136,7 @@ export default function FavoritesPage() {
                   currency={displayCurrency || undefined}
                   oldPrice={displayOldPrice ? String(displayOldPrice) : null}
                   imageUrl={product.main_image_url}
-                  galleryImages={(product as any).images}
+                  galleryImages={product.images}
                   videoUrl={product.video_url}
                   mainVideoUrl={(product as { main_video_url?: string | null }).main_video_url}
                   mainGifUrl={(product as { main_gif_url?: string | null }).main_gif_url}

@@ -1249,7 +1249,9 @@ export default function ProductPage({
       ? (selectedVariant?.slug || product.slug)
       : (selectedVariantSlug || product.slug)
     : undefined
-  const favoriteSizeForApi = !isBaseProduct ? (selectedSize || '') : ''
+  // Избранное хранит товар/цветовой вариант, но не обязательный размер.
+  // Размер остаётся частью только корзины и заказа.
+  const favoriteSizeForApi = ''
   const cartUsesProductIdOnly = isBaseProduct && !hasProductVariants
   const cartProductSlug =
     isBaseProduct && hasProductVariants
