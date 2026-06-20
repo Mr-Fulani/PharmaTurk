@@ -298,7 +298,13 @@ class ProductReviewWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Нельзя перенести отзыв на другой товар")
 
         from apps.catalog.services.product_resolve import resolve_product_payload
-        resolved = resolve_product_payload(request, product_slug)
+        from django.test import RequestFactory
+        resolve_request = RequestFactory().get(
+            "/",
+            HTTP_ACCEPT_LANGUAGE=request.headers.get("Accept-Language", ""),
+            HTTP_X_CURRENCY=request.headers.get("X-Currency", ""),
+        )
+        resolved = resolve_product_payload(resolve_request, product_slug)
         if not resolved:
             raise serializers.ValidationError({"product_slug": "Товар или услуга не найдены"})
         payload, _source, resolved_type = resolved

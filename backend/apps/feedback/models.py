@@ -157,15 +157,19 @@ class TestimonialMedia(models.Model):
 
 
 def get_product_review_media_upload_path(instance, filename):
-    """Readable R2 key: reviews/<type>/<product>/users/<id>/<media>/..."""
+    """Readable R2 key: reviews/<type>/<product>/users/<username-id>/<media>/..."""
     review = instance.review
     product_type = slugify(review.product_type) or "product"
     product_slug = slugify(review.product_slug) or f"product-{review.pk or 'new'}"
-    user_id = review.user_id or "unknown"
+    user = review.user
+    user_label = slugify(getattr(user, "username", ""))
+    if not user_label:
+        user_label = slugify(str(getattr(user, "email", "")).split("@", 1)[0])
+    user_segment = f"{user_label or 'user'}-{review.user_id or 'unknown'}"
     media_dir = "images" if instance.media_type == ProductReviewMedia.MediaType.IMAGE else "videos"
     extension = os.path.splitext(str(filename))[1].lower()
     return (
-        f"reviews/{product_type}/{product_slug}/users/{user_id}/{media_dir}/"
+        f"reviews/{product_type}/{product_slug}/users/{user_segment}/{media_dir}/"
         f"{uuid.uuid4().hex}{extension}"
     )
 

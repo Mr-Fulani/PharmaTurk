@@ -37,6 +37,27 @@ interface ReviewResponse {
   can_review: boolean
 }
 
+const extractApiError = (payload: unknown, fallback: string): string => {
+  if (!payload) return fallback
+  if (typeof payload === 'string') return payload
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const message = extractApiError(item, '')
+      if (message) return message
+    }
+    return fallback
+  }
+  if (typeof payload === 'object') {
+    const record = payload as Record<string, unknown>
+    if (typeof record.detail === 'string') return record.detail
+    for (const value of Object.values(record)) {
+      const message = extractApiError(value, '')
+      if (message) return message
+    }
+  }
+  return fallback
+}
+
 const Stars = ({ value, interactive = false, onChange }: { value: number; interactive?: boolean; onChange?: (value: number) => void }) => (
   <span className="inline-flex gap-1" aria-label={`${value}/5`}>
     {[1, 2, 3, 4, 5].map((star) => (
@@ -151,7 +172,7 @@ export default function ProductReviews({
       await load()
     } catch (requestError: any) {
       const payload = requestError?.response?.data
-      setError(payload?.detail || payload?.media?.[0] || t('product_reviews_save_error', 'Не удалось сохранить отзыв'))
+      setError(extractApiError(payload, t('product_reviews_save_error', 'Не удалось сохранить отзыв')))
     } finally {
       setSaving(false)
     }
@@ -168,7 +189,7 @@ export default function ProductReviews({
   const loginHref = `/auth?next=${encodeURIComponent(`${router.asPath}#product-reviews`)}`
 
   return (
-    <section id="product-reviews" className="mt-10 scroll-mt-24 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-6">
+    <section id="product-reviews" className="mt-10 scroll-mt-24 border-t border-gray-200 pt-8 dark:border-gray-700">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">{t('product_reviews_title', 'Отзывы')}</h2>
@@ -182,7 +203,7 @@ export default function ProductReviews({
       </div>
 
       {data?.own_review && !editing && (
-        <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-600 dark:bg-gray-900/40">
+        <div className="mt-5 rounded-lg bg-gray-50 px-4 py-3 dark:bg-gray-800">
           <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
             {ownStatus === 'approved'
               ? t('product_reviews_status_approved', 'Ваш отзыв опубликован')
@@ -190,6 +211,29 @@ export default function ProductReviews({
                 ? t('product_reviews_status_rejected', 'Ваш отзыв отклонён')
                 : t('product_reviews_status_pending', 'Ваш отзыв ожидает модерации')}
           </p>
+          {ownStatus !== 'approved' && (
+            <div className="mt-3">
+              <Stars value={data.own_review.rating} />
+              <p className="mt-2 whitespace-pre-wrap text-gray-700 dark:text-gray-200">{data.own_review.text}</p>
+              {data.own_review.media.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {data.own_review.media.map((media) => media.media_type === 'image' ? (
+                    <a key={media.id} href={resolveMediaUrl(media.url) || media.url} target="_blank" rel="noreferrer" className="h-16 w-16 overflow-hidden rounded-md border border-gray-200 bg-gray-100 dark:border-gray-600 dark:bg-gray-900">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={resolveMediaUrl(media.url) || media.url} alt="" className="h-full w-full object-cover" />
+                    </a>
+                  ) : (
+                    <a key={media.id} href={resolveMediaUrl(media.url) || media.url} target="_blank" rel="noreferrer" className="relative h-16 w-16 overflow-hidden rounded-md border border-gray-200 bg-black dark:border-gray-600">
+                      <video src={resolveMediaUrl(media.url) || media.url} muted preload="metadata" className="h-full w-full object-cover" />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-white" aria-hidden="true">
+                        <svg className="h-6 w-6 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <div className="mt-3 flex gap-3">
             <button type="button" onClick={beginEdit} className="text-sm font-medium text-red-600 hover:underline">{t('edit', 'Редактировать')}</button>
             <button type="button" onClick={() => removeOwnReview().catch(() => setError(t('product_reviews_delete_error', 'Не удалось удалить отзыв')))} className="text-sm font-medium text-gray-600 hover:underline dark:text-gray-300">{t('delete', 'Удалить')}</button>
@@ -205,7 +249,7 @@ export default function ProductReviews({
       )}
 
       {user && data?.can_review && (!data.own_review || editing) && (
-        <form onSubmit={submit} className="mt-5 space-y-4 rounded-xl border border-gray-200 p-4 dark:border-gray-600">
+        <form onSubmit={submit} className="mt-5 space-y-4 rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-800 dark:text-gray-100">{t('product_reviews_rating', 'Ваша оценка')}</label>
             <Stars value={rating} interactive onChange={setRating} />
@@ -215,13 +259,22 @@ export default function ProductReviews({
             <textarea id="product-review-text" value={text} onChange={(event) => setText(event.target.value)} maxLength={5000} rows={5} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-red-500 focus:outline-none dark:border-gray-600 dark:bg-gray-900 dark:text-white" />
           </div>
           <div>
-            <label htmlFor="product-review-media" className="mb-2 block text-sm font-medium text-gray-800 dark:text-gray-100">{t('product_reviews_media', 'Фото или видео (до 3 файлов)')}</label>
-            <input id="product-review-media" type="file" accept="image/*,video/*" multiple onChange={(event) => setFiles(Array.from(event.target.files || []))} className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-2 dark:text-gray-300 dark:file:bg-gray-700" />
-            <p className="mt-1 text-xs text-gray-500">{t('product_reviews_media_limits', 'Фото до 10 МБ, видео до 50 МБ')}</p>
+            <label htmlFor="product-review-media" className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700 focus-within:ring-2 focus-within:ring-red-500 focus-within:ring-offset-2">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16V4m0 0L8 8m4-4l4 4M4 15v4a1 1 0 001 1h14a1 1 0 001-1v-4" />
+              </svg>
+              <span>{files.length ? t('product_reviews_files_selected', 'Выбрано файлов: {{count}}', { count: files.length }) : t('product_reviews_choose_files', 'Выбрать файлы')}</span>
+              <input id="product-review-media" type="file" accept="image/*,video/*" multiple onChange={(event) => setFiles(Array.from(event.target.files || []))} className="sr-only" />
+            </label>
+            {files.length > 0 && (
+              <p className="mt-2 max-w-xl truncate text-xs text-gray-600 dark:text-gray-300" title={files.map((file) => file.name).join(', ')}>
+                {files.map((file) => file.name).join(', ')}
+              </p>
+            )}
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex gap-3">
-            <button disabled={saving} className="rounded-lg bg-red-600 px-5 py-2.5 font-medium text-white hover:bg-red-700 disabled:opacity-60">{saving ? t('saving', 'Сохранение...') : t('product_reviews_submit', 'Отправить на модерацию')}</button>
+            <button disabled={saving} className="rounded-lg bg-red-600 px-5 py-2.5 font-medium text-white hover:bg-red-700 disabled:opacity-60">{saving ? t('saving', 'Сохранение...') : t('product_reviews_submit', 'Отправить')}</button>
             {editing && <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-gray-300 px-5 py-2.5 dark:border-gray-600">{t('cancel', 'Отмена')}</button>}
           </div>
         </form>
@@ -247,14 +300,19 @@ export default function ProductReviews({
                 <div className="mt-1"><Stars value={review.rating} /></div>
                 <p className="mt-3 whitespace-pre-wrap text-gray-700 dark:text-gray-200">{review.text}</p>
                 {review.media.length > 0 && (
-                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div className="mt-4 flex flex-wrap gap-2">
                     {review.media.map((media) => media.media_type === 'image' ? (
-                      <a key={media.id} href={resolveMediaUrl(media.url) || media.url} target="_blank" rel="noreferrer">
+                      <a key={media.id} href={resolveMediaUrl(media.url) || media.url} target="_blank" rel="noreferrer" className="h-16 w-16 overflow-hidden rounded-md border border-gray-200 bg-gray-100 dark:border-gray-600 dark:bg-gray-900">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={resolveMediaUrl(media.url) || media.url} alt="" className="aspect-square w-full rounded-lg object-cover" />
+                        <img src={resolveMediaUrl(media.url) || media.url} alt="" className="h-full w-full object-cover" />
                       </a>
                     ) : (
-                      <video key={media.id} src={resolveMediaUrl(media.url) || media.url} controls preload="metadata" className="aspect-square w-full rounded-lg bg-black object-contain" />
+                      <a key={media.id} href={resolveMediaUrl(media.url) || media.url} target="_blank" rel="noreferrer" className="relative h-16 w-16 overflow-hidden rounded-md border border-gray-200 bg-black dark:border-gray-600">
+                        <video src={resolveMediaUrl(media.url) || media.url} muted preload="metadata" className="h-full w-full object-cover" />
+                        <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-white" aria-hidden="true">
+                          <svg className="h-6 w-6 fill-current" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                        </span>
+                      </a>
                     ))}
                   </div>
                 )}

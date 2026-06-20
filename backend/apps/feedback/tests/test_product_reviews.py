@@ -6,9 +6,10 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from apps.feedback.models import ProductReview
+from apps.feedback.models import ProductReview, ProductReviewMedia, get_product_review_media_upload_path
 from apps.users.models import User
 from apps.feedback.tasks import notify_admin_product_review
+from apps.catalog.models import Service
 
 
 @pytest.fixture
@@ -71,6 +72,13 @@ def test_review_is_pending_hidden_and_unique(review_user, resolved_product):
     assert public.status_code == status.HTTP_200_OK
     assert public.data["reviews_count"] == 0
     assert public.data["reviews"] == []
+
+    own = client.get(
+        "/api/feedback/product-reviews/",
+        {"product_type": "medicines", "product_slug": "test-product"},
+    )
+    assert own.data["own_review"]["id"] == created.data["id"]
+    assert own.data["own_review"]["text"] == review_payload()["text"]
 
 
 @pytest.mark.django_db
@@ -140,3 +148,47 @@ def test_product_review_sends_admin_telegram_notification(review_user):
     assert payload["chat_id"] == "123"
     assert "Новый отзыв" in payload["text"]
     assert f"/admin/feedback/productreview/{review.pk}/change/" in payload["text"]
+
+
+@pytest.mark.django_db
+def test_create_review_uses_get_request_for_real_product_resolver(review_user):
+    service = Service.objects.create(
+        name="Reviewed service",
+        slug="reviewed-service",
+        price=100,
+        is_active=True,
+    )
+    client = APIClient()
+    client.force_authenticate(review_user)
+    with patch("apps.feedback.views.notify_admin_product_review.delay"):
+        response = client.post(
+            "/api/feedback/product-reviews/",
+            {
+                "product_type": "uslugi",
+                "product_slug": service.slug,
+                "rating": 5,
+                "text": "This request must resolve the service through a GET detail call.",
+            },
+            format="json",
+        )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.data
+    assert response.data["product_slug"] == service.slug
+
+
+@pytest.mark.django_db
+def test_review_media_path_contains_readable_user_identity(review_user):
+    review = ProductReview.objects.create(
+        user=review_user,
+        product_type="clothing",
+        product_slug="test-product",
+        product_name="Test Product",
+        author_name="Review Author",
+        rating=5,
+        text="Review with media",
+    )
+    media = ProductReviewMedia(review=review, media_type=ProductReviewMedia.MediaType.IMAGE)
+
+    path = get_product_review_media_upload_path(media, "photo.jpg")
+
+    assert f"/users/reviewer-{review_user.pk}/images/" in path
