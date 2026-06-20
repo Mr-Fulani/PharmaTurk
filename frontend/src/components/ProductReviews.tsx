@@ -39,7 +39,11 @@ interface ReviewResponse {
 
 const extractApiError = (payload: unknown, fallback: string): string => {
   if (!payload) return fallback
-  if (typeof payload === 'string') return payload
+  if (typeof payload === 'string') {
+    const message = payload.trim()
+    if (/^(?:<!doctype html|<html)/i.test(message)) return fallback
+    return message || fallback
+  }
   if (Array.isArray(payload)) {
     for (const item of payload) {
       const message = extractApiError(item, '')
@@ -287,7 +291,9 @@ export default function ProductReviews({
         </form>
       )}
 
-      {error && !editing && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && !(user && data?.can_review && (!data.own_review || editing)) && (
+        <p className="mt-4 text-sm text-red-600">{error}</p>
+      )}
 
       <div className="mt-6 space-y-5">
         {loading ? (

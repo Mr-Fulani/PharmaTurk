@@ -177,6 +177,31 @@ def test_create_review_uses_get_request_for_real_product_resolver(review_user):
 
 
 @pytest.mark.django_db
+@override_settings(ALLOWED_HOSTS=["api.example.com"])
+def test_create_review_resolver_inherits_allowed_request_host(review_user):
+    client = APIClient()
+    client.force_authenticate(review_user)
+
+    def resolve_with_host_check(request, slug):
+        assert request.method == "GET"
+        assert request.get_host() == "api.example.com"
+        return ({"slug": slug, "name": "Test Product"}, "generic_product", "medicines")
+
+    with (
+        patch("apps.catalog.services.product_resolve.resolve_product_payload", side_effect=resolve_with_host_check),
+        patch("apps.feedback.views.notify_admin_product_review.delay"),
+    ):
+        response = client.post(
+            "/api/feedback/product-reviews/",
+            review_payload(),
+            format="multipart",
+            HTTP_HOST="api.example.com",
+        )
+
+    assert response.status_code == status.HTTP_201_CREATED, response.data
+
+
+@pytest.mark.django_db
 def test_review_media_path_contains_readable_user_identity(review_user):
     review = ProductReview.objects.create(
         user=review_user,

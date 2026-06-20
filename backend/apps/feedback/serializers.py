@@ -301,6 +301,8 @@ class ProductReviewWriteSerializer(serializers.ModelSerializer):
         from django.test import RequestFactory
         resolve_request = RequestFactory().get(
             "/",
+            secure=request.is_secure(),
+            HTTP_HOST=request.get_host(),
             HTTP_ACCEPT_LANGUAGE=request.headers.get("Accept-Language", ""),
             HTTP_X_CURRENCY=request.headers.get("X-Currency", ""),
         )
