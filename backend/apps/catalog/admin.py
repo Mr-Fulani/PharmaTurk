@@ -321,10 +321,41 @@ class GlobalAttributeKeyAdmin(admin.ModelAdmin):
     filter_horizontal = ('categories',)
 
 
+class _DatalistInput(forms.TextInput):
+    """TextInput со связанным <datalist>: комбобокс — выбрать из справочника или ввести своё."""
+
+    def __init__(self, options=(), list_id="pav-value-ru", attrs=None):
+        self._options = list(options)
+        self._list_id = list_id
+        super().__init__({**(attrs or {}), "list": list_id})
+
+    def render(self, name, value, attrs=None, renderer=None):
+        base = super().render(name, value, attrs, renderer)
+        options = format_html_join("", '<option value="{}"></option>', ((opt,) for opt in self._options))
+        return format_html('{}<datalist id="{}">{}</datalist>', base, self._list_id, options)
+
+
+class ProductAttributeValueAdminForm(forms.ModelForm):
+    class Meta:
+        model = ProductAttributeValue
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .attribute_specs import canonical_ru_values_for_slug
+        slug = None
+        if getattr(self.instance, "attribute_key_id", None):
+            slug = self.instance.attribute_key.slug
+        self.fields["value_ru"].widget = _DatalistInput(options=canonical_ru_values_for_slug(slug))
+        self.fields["value_ru"].help_text = _("Выберите из списка или впишите своё")
+        self.fields["value_en"].help_text = _("Подтянется автоматически для значений из справочника")
+
+
 @admin.register(ProductAttributeValue)
 class ProductAttributeValueAdmin(admin.ModelAdmin):
     """Сводный список значений динамических атрибутов: ревизия и массовая чистка
     легаси-данных (парсеры эти строки больше не создают)."""
+    form = ProductAttributeValueAdminForm
     list_display = ('attribute_key', 'value', 'value_ru', 'value_en', 'product_label', 'sort_order')
     list_editable = ('value_ru',)
     list_filter = ('attribute_key',)

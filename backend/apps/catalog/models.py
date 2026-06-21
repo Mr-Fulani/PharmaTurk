@@ -3562,6 +3562,21 @@ class ProductAttributeValue(models.Model):
             models.Index(fields=["content_type", "object_id"]),
         ]
 
+    def save(self, *args, **kwargs):
+        # Если RU-значение совпадает со справочным (без учёта регистра) — приводим
+        # к канонической форме и подтягиваем EN. Так значения из админки не плодят
+        # регистровые дубли в фасетах, а EN не нужно вводить руками.
+        from apps.catalog.attribute_specs import normalize_canonical_ru, english_for_canonical_ru
+        canonical = normalize_canonical_ru(self.value_ru)
+        if canonical:
+            self.value_ru = canonical
+            en = english_for_canonical_ru(canonical)
+            if en:
+                self.value_en = en
+            if not self.value:
+                self.value = canonical
+        super().save(*args, **kwargs)
+
     def __str__(self):
         name = getattr(self.attribute_key, 'name', str(self.attribute_key))
         return f"{name}: {self.value}"

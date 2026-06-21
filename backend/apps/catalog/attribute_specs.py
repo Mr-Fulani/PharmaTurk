@@ -370,3 +370,35 @@ def extract_dynamic_attribute_candidates(product_type: str | None, attrs: dict[s
             )
         )
     return candidates
+
+
+# Канонические RU-значения по регистронезависимому ключу — для нормализации
+# вручную введённых в админке значений к справочной форме.
+_CANONICAL_RU_BY_FOLD: dict[str, str] = {ru.casefold(): ru for ru in _VALUE_RU_TO_EN}
+
+
+def normalize_canonical_ru(value: str | None) -> str | None:
+    """Если value совпадает (без учёта регистра/лишних пробелов) с каноническим
+    RU-значением из справочника — вернуть его в канонической форме, иначе None."""
+    key = re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+    return _CANONICAL_RU_BY_FOLD.get(key)
+
+
+def english_for_canonical_ru(value_ru: str | None) -> str | None:
+    """EN-значение для канонического RU (с учётом регистронезависимого совпадения)."""
+    canonical = normalize_canonical_ru(value_ru)
+    return _VALUE_RU_TO_EN.get(canonical) if canonical else None
+
+
+def canonical_ru_values_for_slug(slug: str | None) -> list[str]:
+    """Список канонических RU-значений атрибута (по slug) для подсказок в админке.
+    Для неизвестного slug — все канонические значения справочника."""
+    normalized_slug = str(slug or "").strip().lower()
+    spec = next((s for s in ATTRIBUTE_SPECS if s.slug == normalized_slug), None)
+    if not spec:
+        return sorted(_VALUE_RU_TO_EN.keys())
+    values: list[str] = []
+    for _needle, canonical in spec.value_aliases:
+        if canonical not in values:
+            values.append(canonical)
+    return values or sorted(_VALUE_RU_TO_EN.keys())
