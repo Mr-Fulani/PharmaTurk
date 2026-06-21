@@ -20,6 +20,7 @@ import Pagination from '../../components/Pagination'
 import CategoryHero from '../../components/CategoryHero'
 import ServicePortfolioGallery, { ServicePortfolioItem } from '../../components/ServicePortfolioGallery'
 import { ProductCardGalleryImage } from '../../components/ProductCardImageGallery'
+import { useViewMode } from '../../hooks/useViewMode'
 
 interface Product {
   id: number
@@ -794,7 +795,7 @@ export default function CategoryPage({
     setIsMounted(true)
   }, [])
 
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [viewMode, setViewMode] = useViewMode()
   const [brandOptions, setBrandOptions] = useState<Brand[]>(brands || [])
   useEffect(() => {
     if (brands.length > 0 && categoryType !== 'books') {

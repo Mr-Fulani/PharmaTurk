@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useTranslation } from 'next-i18next'
-import AddToCartButton from './AddToCartButton'
 import FavoriteButton from './FavoriteButton'
 import ShareButton from './ShareButton'
 
@@ -20,6 +19,7 @@ import {
   isGifUrl,
 } from '../lib/media'
 import { buildProductUrl } from '../lib/urls'
+import { buildFavoriteProductHref } from '../lib/favoriteLinks'
 import { favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import ProductCardImageGallery, { normalizeProductCardImages, ProductCardGalleryImage } from './ProductCardImageGallery'
@@ -146,6 +146,53 @@ export default function ProductCard({
       : 'object-cover'
   const listingImgSrc = resolvedImage ? withListingImageMaxWidth(resolvedImage) : null
   const hasInteractiveGallery = normalizeProductCardImages(listingImgSrc, galleryImages).length > 1
+
+  // Свотчи расцветок: бэкенд кладёт variant_slug в строки галереи вариативного товара.
+  // Мини-фото каждой расцветки + клик ведёт на конкретный вариант (как в «Избранном»).
+  // Путь без query: href из «Избранного» уже несёт ?active_variant_slug — не дублируем его в свотчах.
+  const baseProductHref = (href || buildProductUrl(productType, slug)).split('?')[0]
+  const variantSwatches = (galleryImages || [])
+    .filter((img) => Boolean((img as { variant_slug?: string }).variant_slug))
+    .map((img) => {
+      const v = img as ProductCardGalleryImage & { variant_slug?: string; color?: string }
+      const resolved = img.image_url ? resolveMediaUrl(img.image_url) : null
+      return {
+        slug: String(v.variant_slug || ''),
+        color: String(v.color || ''),
+        image: resolved ? withListingImageMaxWidth(resolved) : null,
+      }
+    })
+    .filter((s) => s.slug && s.image)
+  const MAX_SWATCHES = 5
+  const visibleSwatches = variantSwatches.slice(0, MAX_SWATCHES)
+  const extraSwatchCount = variantSwatches.length - visibleSwatches.length
+  const swatchStrip = visibleSwatches.length > 1 ? (
+    <div className="flex items-center gap-1.5 px-1">
+      {visibleSwatches.map((sw) => (
+        <Link
+          key={sw.slug}
+          href={buildFavoriteProductHref(baseProductHref, sw.slug)}
+          title={sw.color || undefined}
+          aria-label={sw.color || sw.slug}
+          className="block h-6 w-6 overflow-hidden rounded-full border border-gray-200 transition-transform hover:scale-110 hover:border-[var(--accent)]"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={sw.image!}
+            alt={sw.color || localizedName}
+            loading="lazy"
+            decoding="async"
+            width={24}
+            height={24}
+            className="h-full w-full object-cover"
+          />
+        </Link>
+      ))}
+      {extraSwatchCount > 0 && (
+        <span className="text-xs font-medium text-gray-500">+{extraSwatchCount}</span>
+      )}
+    </div>
+  ) : null
   const rawGif = preferStaticHero || showVideo ? null : mainGifUrl
   const resolvedGifSrc =
     rawGif && isGifUrl(rawGif) ? withListingImageMaxWidth(resolveMediaUrl(rawGif)) : null
@@ -297,23 +344,14 @@ export default function ProductCard({
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {/* Свотчи расцветок: мини-фото вариантов + переход на конкретную расцветку */}
+            {swatchStrip}
             <Link
               href={href || buildProductUrl(productType, slug)}
-              className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-violet-50 hover:border-violet-300 hover:text-violet-700 transition-colors"
+              className="ml-auto inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-violet-50 hover:border-violet-300 hover:text-violet-700 transition-colors"
             >
               {t('product_details', 'Подробнее')}
             </Link>
-            <div className="flex items-center gap-2 ml-auto">
-              {productType !== 'services' && productType !== 'uslugi' && (
-                <AddToCartButton
-                  productId={isBaseProduct ? (baseProductId ?? id) : undefined}
-                  productType={productType}
-                  productSlug={slug}
-                  className="!p-2 !rounded-full w-10 h-10 bg-white shadow-md hover:shadow-lg flex items-center justify-center hover:scale-110 transition-transform border border-gray-200"
-                  label=""
-                />
-              )}
-            </div>
           </div>
         </div>
       </div>
@@ -441,8 +479,11 @@ export default function ProductCard({
         </div>
       </Link>
 
+      {/* Свотчи расцветок: мини-фото вариантов + переход на конкретную расцветку */}
+      {swatchStrip}
+
       {/* Описание и цена (без рамок) */}
-      <Link 
+      <Link
         href={href || buildProductUrl(productType, slug)}
         className="flex flex-col px-1"
       >

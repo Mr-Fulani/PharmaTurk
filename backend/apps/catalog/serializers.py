@@ -980,6 +980,83 @@ class BookVariantSerializer(serializers.ModelSerializer):
         return _get_variant_localized_description(obj, "en")
 
 
+# ---------------------------------------------------------------------------
+# Карточная галерея вариативных товаров
+# ---------------------------------------------------------------------------
+def _is_detail_serializer_context(context) -> bool:
+    """True, когда сериализатор обслуживает detail (retrieve).
+
+    На detail верхнеуровневый ``images`` используется фронтом как fallback и для
+    merge (jewelry), поэтому карточную галерею там не подменяем.
+    """
+    view = context.get("view") if context else None
+    return getattr(view, "action", None) == "retrieve"
+
+
+def _active_variants_for_card(obj):
+    """Активные варианты (расцветки) товара, отсортированные как в каталоге.
+
+    Работает по prefetch-кэшу (``variants`` / ``book_variants`` + ``__images``):
+    фильтрация ``is_active`` идёт в Python, без дополнительных SQL-запросов.
+    """
+    def _is_active(v):
+        # У части моделей вариантов поле называется is_available (Sports, AutoPart).
+        if hasattr(v, "is_active"):
+            return bool(getattr(v, "is_active"))
+        return bool(getattr(v, "is_available", True))
+
+    variants = []
+    for attr in ("variants", "book_variants"):
+        manager = getattr(obj, attr, None)
+        if manager is None:
+            continue
+        variants = [v for v in manager.all() if _is_active(v)]
+        if variants:
+            break
+    variants.sort(key=lambda v: (getattr(v, "sort_order", 0) or 0, getattr(v, "id", 0) or 0))
+    return variants
+
+
+def card_variant_main_gallery(obj, variant_image_serializer_cls, context):
+    """Карточная галерея вариативного товара — по одной главной картинке на вариант.
+
+    Для вариативного товара (≥2 активных варианта) наведение/свайп должны
+    перелистывать расцветки, а не кадры одной расцветки. Возвращает список строк
+    галереи либо ``None`` (товар невариативный, это detail, или ни у одного
+    варианта нет картинок) — в этом случае вызывающий код отдаёт прежнюю галерею.
+    """
+    if _is_detail_serializer_context(context):
+        return None
+    active_variants = _active_variants_for_card(obj)
+    if len(active_variants) < 2:
+        return None
+
+    rows = []
+    seen = set()
+    for variant in active_variants:
+        images = sorted(
+            variant.images.all(),
+            key=lambda img: (
+                not bool(getattr(img, "is_main", False)),
+                getattr(img, "sort_order", 0) or 0,
+                getattr(img, "id", 0) or 0,
+            ),
+        )
+        main = next(iter(images), None)
+        if main is None:
+            continue
+        row = variant_image_serializer_cls(main, context=context).data
+        url = (row.get("image_url") or "").strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        # Метаданные расцветки — фронт рисует из них мини-фото-свотчи и ссылку на вариант.
+        row["variant_slug"] = getattr(variant, "slug", "") or ""
+        row["color"] = getattr(variant, "color", "") or ""
+        rows.append(row)
+    return rows or None
+
+
 class ProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializer):
     """Сериализатор для товаров (краткая информация)."""
     
@@ -2672,6 +2749,9 @@ class ClothingProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeri
 
     def get_images(self, obj):
         """Галерея товара и активного варианта для карточек каталога."""
+        card = card_variant_main_gallery(obj, ClothingVariantImageSerializer, self.context)
+        if card is not None:
+            return card
         product_rows = ClothingProductImageSerializer(
             obj.images.all().order_by("sort_order"), many=True, context=self.context
         ).data
@@ -3103,6 +3183,9 @@ class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
 
     def get_images(self, obj):
         """Галерея товара и активного варианта для карточек каталога."""
+        card = card_variant_main_gallery(obj, ShoeVariantImageSerializer, self.context)
+        if card is not None:
+            return card
         product_rows = ShoeProductImageSerializer(
             obj.images.all().order_by("sort_order"), many=True, context=self.context
         ).data
@@ -3904,6 +3987,9 @@ class FurnitureProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
         и в FurnitureVariantImage (наследие парсинга или ручные правки). Без дедупликации
         в API уходили два одинаковых слайда подряд.
         """
+        card = card_variant_main_gallery(obj, FurnitureVariantImageSerializer, self.context)
+        if card is not None:
+            return card
         request = self.context.get('request')
         ctx = {"request": request}
 
@@ -4435,6 +4521,9 @@ class JewelryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSeria
         return None
 
     def get_images(self, obj):
+        card = card_variant_main_gallery(obj, JewelryVariantImageSerializer, self.context)
+        if card is not None:
+            return card
         variant = self._get_active_variant(obj)
         gallery = getattr(obj, "images", None)
         product_images = []
@@ -5324,6 +5413,9 @@ class BookProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
         return None
 
     def get_images(self, obj):
+        card = card_variant_main_gallery(obj, BookVariantImageSerializer, self.context)
+        if card is not None:
+            return card
         images_qs = obj.images.all()
         base = getattr(obj, "base_product", None)
 
@@ -5675,6 +5767,9 @@ class PerfumeryProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSer
         return None
 
     def get_images(self, obj):
+        card = card_variant_main_gallery(obj, PerfumeryVariantImageSerializer, self.context)
+        if card is not None:
+            return card
         product_images = PerfumeryProductImageSerializer(obj.images.all(), many=True, context=self.context).data
         variant = self._get_active_variant(obj)
         if variant:
@@ -5896,7 +5991,16 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
             formatted = formatted.rstrip('0').rstrip('.')
         return f"{formatted} {from_currency}"
 
+    # Подклассы с цветовыми вариантами выставляют сериализатор изображений варианта,
+    # чтобы карточка вариативного товара показывала по одной главной картинке на расцветку.
+    _variant_image_serializer_class = None
+
     def get_images(self, obj):
+        variant_img_cls = getattr(self, "_variant_image_serializer_class", None)
+        if variant_img_cls is not None:
+            card = card_variant_main_gallery(obj, variant_img_cls, self.context)
+            if card is not None:
+                return card
         from_context = self.context
         # Не у всех доменных моделей есть gallery_images (Sports, AutoPart, Headwear...)
         gallery = getattr(obj, "gallery_images", None)
@@ -6489,6 +6593,7 @@ class SportsVariantSerializer(serializers.ModelSerializer):
 
 class SportsProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     """Списковый сериализатор для спорттоваров."""
+    _variant_image_serializer_class = SportsVariantImageSerializer
     variants = SportsVariantSerializer(many=True, read_only=True)
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     main_image_url = serializers.SerializerMethodField()
@@ -6737,6 +6842,7 @@ class AutoPartVariantSerializer(serializers.ModelSerializer):
 
 class AutoPartProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer):
     """Списковый сериализатор для автозапчастей."""
+    _variant_image_serializer_class = AutoPartVariantImageSerializer
     variants = AutoPartVariantSerializer(many=True, read_only=True)
     dynamic_attributes = ProductDynamicAttributeSerializer(many=True, read_only=True)
     main_image_url = serializers.SerializerMethodField()
@@ -7087,6 +7193,9 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
         return _SimpleDomainMixin.get_main_image_url(self, obj)
 
     def get_images(self, obj):
+        card = card_variant_main_gallery(obj, HeadwearVariantImageSerializer, self.context)
+        if card is not None:
+            return card
         from_context = self.context
         imgs = list(obj.images.all())
         image_serializer = self._image_serializer_class
@@ -7304,6 +7413,9 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
         return _SimpleDomainMixin.get_main_image_url(self, obj)
 
     def get_images(self, obj):
+        card = card_variant_main_gallery(obj, UnderwearVariantImageSerializer, self.context)
+        if card is not None:
+            return card
         from_context = self.context
         imgs = list(obj.images.all())
         image_serializer = self._image_serializer_class
@@ -7521,6 +7633,9 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
         return _SimpleDomainMixin.get_main_image_url(self, obj)
 
     def get_images(self, obj):
+        card = card_variant_main_gallery(obj, IslamicClothingVariantImageSerializer, self.context)
+        if card is not None:
+            return card
         from_context = self.context
         imgs = list(obj.images.all())
         image_serializer = self._image_serializer_class

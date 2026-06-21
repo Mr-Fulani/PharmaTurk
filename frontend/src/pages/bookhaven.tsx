@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Search, Filter, Grid, List } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import ProductCard from '../components/ProductCard';
+import { useViewMode } from '../hooks/useViewMode';
 import api from '../lib/api';
 import { buildProductIdentityKey } from '../lib/product';
 import { ProductTranslation } from '../lib/i18n';
@@ -70,7 +71,7 @@ const BookHavenPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('-created_at');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useViewMode();
 
   useEffect(() => {
     loadCategories();

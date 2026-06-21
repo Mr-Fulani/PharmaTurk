@@ -522,6 +522,8 @@ class CartItemSerializer(serializers.ModelSerializer):
     """
     product_name = serializers.SerializerMethodField()
     product_slug = serializers.SerializerMethodField()
+    product_variant_slug = serializers.SerializerMethodField()
+    product_parent_slug = serializers.SerializerMethodField()
     product_type = serializers.CharField(source='product.product_type', read_only=True)
     product_image_url = serializers.SerializerMethodField()
     product_video_url = serializers.SerializerMethodField()
@@ -543,7 +545,7 @@ class CartItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = CartItem
         fields = [
-            'id', 'product', 'product_name', 'product_slug', 'product_type', 'product_image_url', 'product_video_url', 'product_translations',
+            'id', 'product', 'product_name', 'product_slug', 'product_variant_slug', 'product_parent_slug', 'product_type', 'product_image_url', 'product_video_url', 'product_translations',
             'quantity', 'price', 'currency', 'old_price', 'old_price_formatted', 'chosen_size', 'created_at', 'updated_at',
             # Новые поля из системы ценообразования
             'converted_price_rub', 'converted_price_usd', 'final_price_rub', 'final_price_usd',
@@ -816,6 +818,44 @@ class CartItemSerializer(serializers.ModelSerializer):
                 if fv and getattr(fv, "product", None):
                     return fv.product.slug
         return ext.get("source_variant_slug") or product.slug
+
+    def get_product_variant_slug(self, obj):
+        """Slug конкретного варианта (расцветки) из теневого Product — для ?active_variant_slug."""
+        product = obj.product
+        if not product:
+            return None
+        ext = getattr(product, "external_data", {}) or {}
+        return ext.get("source_variant_slug") or None
+
+    def get_product_parent_slug(self, obj):
+        """Slug родительского товара для пути URL (как в «Избранном»).
+
+        Ссылка на карточку из корзины ведёт на родителя + ?active_variant_slug=<вариант>,
+        чтобы открылась именно та расцветка, что в корзине, а не дефолтная.
+        """
+        product = obj.product
+        if not product:
+            return None
+        ext = getattr(product, "external_data", {}) or {}
+        variant_slug = ext.get("source_variant_slug")
+        if not variant_slug:
+            return None
+        source_type = str(
+            ext.get("effective_type") or ext.get("source_type") or getattr(product, "product_type", "") or ""
+        ).strip().lower().replace("-", "_")
+        variant_model = VARIANT_MODEL_MAP.get(source_type)
+        if variant_model is None:
+            return None
+        try:
+            variant = (
+                variant_model.objects.filter(slug=variant_slug, is_active=True)
+                .select_related("product")
+                .first()
+            )
+        except Exception:
+            return None
+        parent = getattr(variant, "product", None)
+        return getattr(parent, "slug", None) or None
 
     def get_product_name(self, obj):
         product = obj.product

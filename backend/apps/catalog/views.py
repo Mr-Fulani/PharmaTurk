@@ -2239,7 +2239,9 @@ class JewelryProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, view
         return ordering_map.get(ordering, ordering)
 
     def get_queryset(self):
-        queryset = JewelryProduct.objects.filter(is_active=True)
+        queryset = JewelryProduct.objects.filter(is_active=True).prefetch_related(
+            'images', 'variants', 'variants__images',
+        )
         def parse_multi_param(param_name: str) -> list[str]:
             raw_list = self.request.query_params.getlist(param_name) or []
             if not raw_list:
@@ -2395,7 +2397,9 @@ class FurnitureProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, vi
     
     def get_queryset(self):
         """Фильтрация товаров мебели по параметрам."""
-        queryset = FurnitureProduct.objects.filter(is_active=True)
+        queryset = FurnitureProduct.objects.filter(is_active=True).prefetch_related(
+            'images', 'variants', 'variants__images',
+        )
 
         def parse_multi_param(param_name: str) -> list[str]:
             raw_list = (
@@ -3412,6 +3416,8 @@ class BookProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = BookProduct.objects.filter(is_active=True).select_related(
             "base_product", "category", "brand"
+        ).prefetch_related(
+            "images", "book_variants", "book_variants__images",
         )
 
         # Фильтр по категории
@@ -3547,7 +3553,9 @@ class PerfumeryProductViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSe
         return ordering_map.get(ordering, ordering)
 
     def get_queryset(self):
-        queryset = PerfumeryProduct.objects.filter(is_active=True)
+        queryset = PerfumeryProduct.objects.filter(is_active=True).prefetch_related(
+            'images', 'variants', 'variants__images',
+        )
 
         def parse_multi_param(param_name: str) -> list[str]:
             raw_list = (
@@ -4163,7 +4171,9 @@ class IncenseProductViewSet(_SimpleDomainViewSet):
 
 class SportsProductViewSet(_SimpleDomainViewSet):
     """API для работы со спорттоварами."""
-    queryset = SportsProduct.objects.filter(is_active=True).order_by('-created_at')
+    queryset = SportsProduct.objects.filter(is_active=True).prefetch_related(
+        'variants', 'variants__images',
+    ).order_by('-created_at')
     serializer_class = SportsProductSerializer
 
     def get_serializer_class(self):
@@ -4206,7 +4216,9 @@ class SportsProductViewSet(_SimpleDomainViewSet):
 
 class AutoPartProductViewSet(_SimpleDomainViewSet):
     """API для работы с автозапчастями."""
-    queryset = AutoPartProduct.objects.filter(is_active=True).order_by('-created_at')
+    queryset = AutoPartProduct.objects.filter(is_active=True).prefetch_related(
+        'variants', 'variants__images',
+    ).order_by('-created_at')
     serializer_class = AutoPartProductSerializer
 
     def get_serializer_class(self):
@@ -4250,7 +4262,9 @@ from .serializers import HeadwearProductSerializer, UnderwearProductSerializer, 
 
 class HeadwearProductViewSet(_SimpleDomainViewSet):
     """API для работы с головными уборами."""
-    queryset = HeadwearProduct.objects.filter(is_active=True).order_by('-created_at')
+    queryset = HeadwearProduct.objects.filter(is_active=True).prefetch_related(
+        'variants', 'variants__images',
+    ).order_by('-created_at')
     serializer_class = HeadwearProductSerializer
 
     @extend_schema(summary="Получить список головных уборов")
@@ -4278,7 +4292,9 @@ class HeadwearProductViewSet(_SimpleDomainViewSet):
 
 class UnderwearProductViewSet(_SimpleDomainViewSet):
     """API для работы с нижним бельем."""
-    queryset = UnderwearProduct.objects.filter(is_active=True).order_by('-created_at')
+    queryset = UnderwearProduct.objects.filter(is_active=True).prefetch_related(
+        'variants', 'variants__images',
+    ).order_by('-created_at')
     serializer_class = UnderwearProductSerializer
 
     @extend_schema(summary="Получить список нижнего белья")
@@ -4306,7 +4322,9 @@ class UnderwearProductViewSet(_SimpleDomainViewSet):
 
 class IslamicClothingProductViewSet(_SimpleDomainViewSet):
     """API для работы с исламской одеждой."""
-    queryset = IslamicClothingProduct.objects.filter(is_active=True).order_by('-created_at')
+    queryset = IslamicClothingProduct.objects.filter(is_active=True).prefetch_related(
+        'variants', 'variants__images',
+    ).order_by('-created_at')
     serializer_class = IslamicClothingProductSerializer
 
     @extend_schema(summary="Получить список исламской одежды")

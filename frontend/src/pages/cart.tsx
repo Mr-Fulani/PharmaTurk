@@ -8,6 +8,7 @@ import { useCartStore } from '../store/cart'
 import { resolveMediaUrl, getPlaceholderImageUrl, isVideoUrl } from '../lib/media'
 import { needsTypeInPath } from '../lib/product'
 import { buildProductUrl } from '../lib/urls'
+import { buildFavoriteProductHref } from '../lib/favoriteLinks'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import { SITE_NAME } from '../lib/siteMeta'
 import { formatPrice } from '../lib/price'
@@ -18,6 +19,8 @@ interface CartItem {
   product_name?: string
   product_translations?: ProductTranslation[]
   product_slug?: string
+  product_variant_slug?: string
+  product_parent_slug?: string
   product_type?: string
   product_image_url?: string
   product_video_url?: string | null
@@ -263,11 +266,12 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
     }
   }
 
-  const getProductLink = (slug?: string, productId?: number, productType?: string) => {
-    if (slug) {
-      return buildProductUrl(productType || 'medicines', slug)
-    }
-    return `#`
+  const getProductLink = (item: CartItem) => {
+    // Ведём на конкретную расцветку (как в «Избранном»): родитель + ?active_variant_slug, иначе сам slug.
+    const baseSlug = item.product_parent_slug || item.product_slug
+    if (!baseSlug) return `#`
+    const baseHref = buildProductUrl(item.product_type || 'medicines', baseSlug)
+    return buildFavoriteProductHref(baseHref, item.product_variant_slug, item.chosen_size)
   }
 
   const discountAmountNum = parseFloat(String(cart.discount_amount ?? '0'))
@@ -351,7 +355,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     >
                     {/* Главное медиа товара (видео или изображение) */}
                     <Link
-                      href={getProductLink(item.product_slug, item.product, item.product_type)}
+                      href={getProductLink(item)}
                       className="relative w-full sm:w-32 h-32 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100"
                     >
                       {showVideo ? (
@@ -396,7 +400,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     <div className="flex-1 flex flex-col justify-between">
                       <div>
                         <Link
-                          href={getProductLink(item.product_slug, item.product, item.product_type)}
+                          href={getProductLink(item)}
                           className="block"
                         >
                           <h3 className="text-lg font-semibold text-gray-900 hover-text-warm transition-colors line-clamp-2">
