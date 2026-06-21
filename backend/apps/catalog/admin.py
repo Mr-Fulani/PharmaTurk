@@ -320,6 +320,22 @@ class GlobalAttributeKeyAdmin(admin.ModelAdmin):
     inlines = [GlobalAttributeKeyTranslationInline]
     filter_horizontal = ('categories',)
 
+
+@admin.register(ProductAttributeValue)
+class ProductAttributeValueAdmin(admin.ModelAdmin):
+    """Сводный список значений динамических атрибутов: ревизия и массовая чистка
+    легаси-данных (парсеры эти строки больше не создают)."""
+    list_display = ('attribute_key', 'value', 'value_ru', 'value_en', 'product_label', 'sort_order')
+    list_editable = ('value_ru',)
+    list_filter = ('attribute_key',)
+    search_fields = ('value', 'value_ru', 'value_en')
+    list_select_related = ('attribute_key', 'content_type')
+    ordering = ('attribute_key__sort_order', 'value_ru')
+
+    @admin.display(description=_("Товар"))
+    def product_label(self, obj):
+        return str(obj.content_object) if obj.content_object else "—"
+
 class ServiceImageInline(AdminMediaHelpTextMixin, nested_admin.NestedTabularInline):
     """Inline для галереи изображений услуги."""
     model = ServiceImage

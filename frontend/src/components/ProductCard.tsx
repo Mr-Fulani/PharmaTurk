@@ -22,7 +22,7 @@ import { buildProductUrl } from '../lib/urls'
 import { buildFavoriteProductHref } from '../lib/favoriteLinks'
 import { favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
-import ProductCardImageGallery, { normalizeProductCardImages, ProductCardGalleryImage } from './ProductCardImageGallery'
+import ProductCardImageGallery, { ProductCardGalleryImage } from './ProductCardImageGallery'
 
 interface ProductCardProps {
   id: number
@@ -145,7 +145,6 @@ export default function ProductCard({
       ? 'object-cover object-[center_60%]'
       : 'object-cover'
   const listingImgSrc = resolvedImage ? withListingImageMaxWidth(resolvedImage) : null
-  const hasInteractiveGallery = normalizeProductCardImages(listingImgSrc, galleryImages).length > 1
 
   // Свотчи расцветок: бэкенд кладёт variant_slug в строки галереи вариативного товара.
   // Мини-фото каждой расцветки + клик ведёт на конкретный вариант (как в «Избранном»).
@@ -219,16 +218,8 @@ export default function ProductCard({
     return (
       <div className="group flex flex-col sm:flex-row gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-lg transition-all duration-200 hover:-translate-y-1">
         <div className="relative w-full sm:w-48 h-48 flex-shrink-0 overflow-hidden rounded-md">
-          {hasInteractiveGallery ? (
-            <ProductCardImageGallery
-              productId={id}
-              name={localizedName}
-              mainImageUrl={listingImgSrc}
-              images={galleryImages}
-              imageFitClass={imageFitClass}
-              className="rounded-md overflow-hidden"
-            />
-          ) : youtubeIdForCard ? (
+          {/* Приоритет медиа: видео/youtube/ambient/gif выше галереи; галерея (с автосвайпом) — ниже */}
+          {youtubeIdForCard ? (
             <LazyYouTubeCard
               youtubeId={youtubeIdForCard}
               youtubeThumb={getYouTubeCardThumbnailUrl(resolvedVideoUrl)}
@@ -364,15 +355,8 @@ export default function ProductCard({
         href={href || buildProductUrl(productType, slug)}
         className="relative block w-full aspect-[4/5] rounded-xl overflow-hidden bg-gray-100/50"
       >
-        {hasInteractiveGallery ? (
-          <ProductCardImageGallery
-            productId={id}
-            name={localizedName}
-            mainImageUrl={listingImgSrc}
-            images={galleryImages}
-            imageFitClass={imageFitClass}
-          />
-        ) : youtubeIdForCard ? (
+        {/* Приоритет медиа: видео/youtube/ambient/gif выше галереи; галерея (с автосвайпом) — ниже */}
+        {youtubeIdForCard ? (
           <LazyYouTubeCard
             youtubeId={youtubeIdForCard}
             youtubeThumb={getYouTubeCardThumbnailUrl(resolvedVideoUrl)}
