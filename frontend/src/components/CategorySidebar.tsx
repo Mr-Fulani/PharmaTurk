@@ -714,7 +714,7 @@ export default function CategorySidebar({
           )}
 
           {/* Динамические атрибуты (фасетный поиск) */}
-          {availableAttributes.length > 0 && (
+          {categoryType !== 'shoes' && availableAttributes.length > 0 && (
             <div className="border-b pb-4 space-y-4">
               {availableAttributes.map((attr) => (
                 <div key={attr.key}>
