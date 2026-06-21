@@ -351,6 +351,41 @@ class ProductAttributeValueAdminForm(forms.ModelForm):
         self.fields["value_en"].help_text = _("Подтянется автоматически для значений из справочника")
 
 
+class PAVRootCategoryFilter(SimpleListFilter):
+    """Фильтр значений атрибутов по корневой категории товара (через GenericForeignKey)."""
+    title = _("Корневая категория")
+    parameter_name = "root_category"
+
+    def lookups(self, request, model_admin):
+        roots = Category.objects.filter(parent__isnull=True).order_by("name")
+        return [(c.id, c.name) for c in roots]
+
+    def queryset(self, request, queryset):
+        from django.contrib.contenttypes.models import ContentType
+        value = self.value()
+        if not value:
+            return queryset
+        # Собираем id всей поддерева выбранной корневой категории.
+        cat_ids, stack = [], [int(value)]
+        while stack:
+            cid = stack.pop()
+            cat_ids.append(cid)
+            stack.extend(Category.objects.filter(parent_id=cid).values_list("id", flat=True))
+        # Для каждого присутствующего content_type берём id товаров в этих категориях.
+        ct_ids = list(queryset.values_list("content_type", flat=True).distinct())
+        q = Q()
+        matched = False
+        for ct in ContentType.objects.filter(pk__in=ct_ids):
+            model = ct.model_class()
+            if model is None or not any(f.name == "category" for f in model._meta.get_fields()):
+                continue
+            prod_ids = list(model.objects.filter(category_id__in=cat_ids).values_list("pk", flat=True))
+            if prod_ids:
+                q |= Q(content_type=ct, object_id__in=prod_ids)
+                matched = True
+        return queryset.filter(q) if matched else queryset.none()
+
+
 @admin.register(ProductAttributeValue)
 class ProductAttributeValueAdmin(admin.ModelAdmin):
     """Сводный список значений динамических атрибутов: ревизия и массовая чистка
@@ -358,7 +393,7 @@ class ProductAttributeValueAdmin(admin.ModelAdmin):
     form = ProductAttributeValueAdminForm
     list_display = ('attribute_key', 'value', 'value_ru', 'value_en', 'product_label', 'sort_order')
     list_editable = ('value_ru',)
-    list_filter = ('attribute_key',)
+    list_filter = (PAVRootCategoryFilter, 'content_type', 'attribute_key')
     search_fields = ('value', 'value_ru', 'value_en')
     list_select_related = ('attribute_key', 'content_type')
     ordering = ('attribute_key__sort_order', 'value_ru')
