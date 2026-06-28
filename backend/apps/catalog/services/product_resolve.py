@@ -111,9 +111,9 @@ def build_canonical_path(product_type: str | None, slug: str | None) -> str:
     """
     normalized_type = (product_type or "medicines").strip().replace("_", "-").lower()
     raw_slug = (slug or "").strip()
-    deduplicated = deduplicate_slug(raw_slug)
     if normalized_type == "uslugi":
-        return f"/product/uslugi/{deduplicated}"
+        return f"/product/uslugi/{raw_slug}"
+    deduplicated = deduplicate_slug(raw_slug)
     if not needs_type_in_path(normalized_type):
         return f"/product/{deduplicated}"
     prefix = f"{normalized_type}-"

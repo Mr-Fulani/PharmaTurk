@@ -1321,7 +1321,11 @@ export default function ProductPage({
     (product.translations && product.translations.length > 0 ? '' : product.meta_keywords) ||
     ''
   ).trim()
-  const ogImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
+  const rawOgImage = (product.og_image_url || '').trim() || activeImage || product.active_variant_main_image_url || product.main_image_url || product.main_image || '/product-placeholder.svg'
+  const resolvedOgImage = resolveMediaUrl(rawOgImage)
+  const ogImage = resolvedOgImage.startsWith('http://') || resolvedOgImage.startsWith('https://')
+    ? resolvedOgImage
+    : `${siteUrl}${resolvedOgImage.startsWith('/') ? resolvedOgImage : `/${resolvedOgImage}`}`
   const availability =
     selectedVariant?.is_available === false || selectedVariant?.stock_quantity === 0
       ? 'https://schema.org/OutOfStock'
@@ -1464,6 +1468,7 @@ export default function ProductPage({
         <meta property="twitter:card" content="summary_large_image" />
         <meta property="twitter:title" content={metaTitle} />
         <meta property="twitter:description" content={metaDescription} />
+        <meta property="twitter:image" content={ogImage} />
         <script
           type="application/ld+json"
           // eslint-disable-next-line react/no-danger

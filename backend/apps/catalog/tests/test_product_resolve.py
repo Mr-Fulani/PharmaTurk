@@ -83,6 +83,9 @@ class TestCanonicalPath:
     def test_uslugi_segment(self):
         assert build_canonical_path("uslugi", "svc") == "/product/uslugi/svc"
 
+    def test_uslugi_preserves_underscore_slug(self):
+        assert build_canonical_path("uslugi", "help_with_moving_house") == "/product/uslugi/help_with_moving_house"
+
     def test_jewelry_long(self):
         assert build_canonical_path("jewelry", "ring") == "/product/jewelry/ring"
 

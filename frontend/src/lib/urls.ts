@@ -77,7 +77,7 @@ export function buildProductUrl(productType: string, slug: string): string {
   
   // Для сервисов
   if (normalizedType === 'uslugi') {
-    return `/product/uslugi/${deduplicatedSlug}`
+    return `/product/uslugi/${rawSlug}`
   }
 
   // Если это БАЗОВЫЙ тип (не одежда, обувь, электроника), возвращаем короткую ссылку /product/slug

@@ -272,7 +272,7 @@ export default function ShareButton({
     e.stopPropagation()
     if (!cornerIcon && isMobile && typeof navigator !== 'undefined' && navigator.share) {
       try {
-        await navigator.share({ title, url: getUrl() })
+        await navigator.share({ title, text: description || title, url: getUrl() })
       } catch { /* cancelled */ }
       return
     }

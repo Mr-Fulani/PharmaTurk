@@ -25,6 +25,7 @@ interface Category {
   gender?: string | null
   clothing_type?: string | null
   device_type?: string | null
+  category_type_slug?: string | null
   card_media_url?: string | null
   translations?: CategoryTranslation[]
   displaySlug?: string
@@ -73,6 +74,12 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
               const heights = [224, 256, 288]
               const cardHeight = heights[idx % heights.length]
               const hrefSlug = c.displaySlug || c.slug
+              const isServiceCategory =
+                (c.slug || '').toLowerCase().replace(/_/g, '-') === 'uslugi' ||
+                (c.category_type_slug || '').toLowerCase().replace(/_/g, '-') === 'uslugi'
+              const countLabel = isServiceCategory
+                ? t('services_count', 'услуг')
+                : t('products_count', 'товаров')
               return (
                 <Link
                   key={c.id}
@@ -96,7 +103,7 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
                         <p className="text-sm opacity-90 line-clamp-2">{getLocalizedCategoryDescription(c.slug, c.description, t, c.translations, locale)}</p>
                       ) : null}
                       {c.products_count ? (
-                        <p className="text-xs opacity-80 mt-2">{c.products_count} {t('products_count', 'товаров')}</p>
+                        <p className="text-xs opacity-80 mt-2">{c.products_count} {countLabel}</p>
                       ) : null}
                     </div>
                   </div>

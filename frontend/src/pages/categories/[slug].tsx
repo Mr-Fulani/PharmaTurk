@@ -5,6 +5,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription, ProductTranslation, BrandTranslation, stripHtml } from '../../lib/i18n'
 import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
+import { resolveMediaUrl } from '../../lib/media'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
 import { formatPrice } from '../../lib/price'
@@ -205,8 +206,9 @@ const ensureOtherBrand = (items: Brand[]) => {
 
 const toAbsoluteUrl = (siteUrl: string, value?: string | null) => {
   if (!value) return ''
-  if (value.startsWith('http://') || value.startsWith('https://')) return value
-  return `${siteUrl}${value.startsWith('/') ? value : `/${value}`}`
+  const resolved = resolveMediaUrl(value)
+  if (resolved.startsWith('http://') || resolved.startsWith('https://')) return resolved
+  return `${siteUrl}${resolved.startsWith('/') ? resolved : `/${resolved}`}`
 }
 
 const filterBrandsByProducts = (
@@ -777,6 +779,31 @@ export default function CategoryPage({
     return categoryName
   }, [categoryType, categoryName, t, router.locale, slug, currentCategory])
 
+  const localizedCategoryDescription = useMemo(() => {
+    const routeSlug = Array.isArray(slug) ? slug[0] : slug
+    const normalizedSlug = routeSlug ? routeSlug.toLowerCase().replace(/_/g, '-') : null
+
+    if (currentCategory) {
+      return getLocalizedCategoryDescription(
+        currentCategory.slug,
+        currentCategory.description,
+        t,
+        currentCategory.translations,
+        router.locale
+      )
+    }
+
+    if (normalizedSlug) {
+      const descKey = `category_${normalizedSlug}_description`
+      const translatedBySlug = t(descKey, { defaultValue: null })
+      if (translatedBySlug && translatedBySlug !== descKey) {
+        return translatedBySlug
+      }
+    }
+
+    return categoryDescription || ''
+  }, [categoryDescription, t, router.locale, slug, currentCategory])
+
   const [products, setProducts] = useState(initialProducts)
   const [totalCount, setTotalCount] = useState(initialTotalCount)
   const [currentPage, setCurrentPage] = useState(initialCurrentPage)
@@ -1333,6 +1360,7 @@ export default function CategoryPage({
   const canonicalUrl = useMemo(() => `${siteUrl}${localePrefix}${categoryPath}`, [siteUrl, localePrefix, categoryPath])
   const ruUrl = useMemo(() => `${siteUrl}${categoryPath}`, [siteUrl, categoryPath])
   const enUrl = useMemo(() => `${siteUrl}/en${categoryPath}`, [siteUrl, categoryPath])
+  const isDefaultLocale = router.locale === router.defaultLocale
   // title принимает только текст
   const titleText = useMemo(() => {
     const v = localizedCategoryName as unknown
@@ -1341,22 +1369,26 @@ export default function CategoryPage({
     return v != null ? String(v) : ''
   }, [localizedCategoryName])
   const ogTitle = useMemo(() => {
+    if (!isDefaultLocale) return `${titleText} — ${SITE_NAME}`.trim()
     return (currentCategory?.og_title || currentCategory?.meta_title || `${titleText} — ${SITE_NAME}`).trim()
-  }, [currentCategory, titleText])
+  }, [currentCategory, titleText, isDefaultLocale])
 
   const metaTitle = useMemo(() => {
+    if (!isDefaultLocale) return `${titleText} — ${SITE_NAME}`.trim()
     return (currentCategory?.meta_title || currentCategory?.og_title || `${titleText} — ${SITE_NAME}`).trim()
-  }, [currentCategory, titleText])
+  }, [currentCategory, titleText, isDefaultLocale])
 
   const ogDescription = useMemo(() => {
-    const raw = currentCategory?.og_description || currentCategory?.meta_description || categoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })
+    if (!isDefaultLocale) return stripHtml(localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() }))
+    const raw = currentCategory?.og_description || currentCategory?.meta_description || localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })
     return stripHtml(raw)
-  }, [currentCategory, categoryDescription, titleText, t])
+  }, [currentCategory, localizedCategoryDescription, titleText, t, isDefaultLocale])
 
   const metaDescription = useMemo(() => {
-    const raw = currentCategory?.meta_description || currentCategory?.og_description || categoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })
+    if (!isDefaultLocale) return stripHtml(localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() }))
+    const raw = currentCategory?.meta_description || currentCategory?.og_description || localizedCategoryDescription || t('catalog_of_category', 'Каталог {{category}} в Mudaroba', { category: (titleText || '').toLowerCase() })
     return stripHtml(raw)
-  }, [currentCategory, categoryDescription, titleText, t])
+  }, [currentCategory, localizedCategoryDescription, titleText, t, isDefaultLocale])
 
   const ogImageUrl = useMemo(() => {
     const raw = currentCategory?.og_image_url || currentCategory?.card_media_url || '/og-default.png'
@@ -1469,9 +1501,7 @@ export default function CategoryPage({
       {/* Hero Section */}
       <CategoryHero 
         title={titleText}
-        description={currentCategory
-          ? getLocalizedCategoryDescription(currentCategory.slug, currentCategory.description, t, currentCategory.translations, router.locale)
-          : categoryDescription}
+        description={localizedCategoryDescription}
         totalCount={totalCount}
         categorySlug={routeSlug}
         worksHref={currentCategory?.portfolio_items && currentCategory.portfolio_items.length > 0

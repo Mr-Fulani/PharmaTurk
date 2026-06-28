@@ -669,6 +669,7 @@
   "category_medical_equipment": "Medical Equipment",
   "catalog_of_category": "Catalog of {{category}} in Mudaroba",
   "products_count": "products",
+  "services_count": "services",
   "categories_not_found_title": "Can't find the category you need?",
   "categories_not_found_description": "Write to us in chat — we'll help you find and select products for your request.",
   "view_brands": "View Brands",

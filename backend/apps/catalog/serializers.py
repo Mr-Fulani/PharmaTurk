@@ -480,13 +480,15 @@ class CategorySerializer(serializers.ModelSerializer):
         return obj.children.filter(is_active=True).count()
 
     def get_products_count(self, obj):
-        """Количество товаров в категории и всех её подкатегориях."""
+        """Количество товаров/услуг в категории и всех её подкатегориях."""
         if self.context.get('hide_counts'):
             return 0
         cat_ids = _get_category_ids_with_descendants([obj.slug])
         if not cat_ids:
             return 0
-        return Product.objects.filter(category_id__in=cat_ids, is_active=True).count()
+        products_count = Product.objects.filter(category_id__in=cat_ids, is_active=True).count()
+        services_count = Service.objects.filter(category_id__in=cat_ids, is_active=True).count()
+        return products_count + services_count
 
     def get_card_media_url(self, obj):
         """URL медиа-файла карточки категории. Прокси для R2 — устраняет CORS/SSL на мобильном."""

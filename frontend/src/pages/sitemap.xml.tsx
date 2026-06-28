@@ -59,9 +59,14 @@ function buildProductPath(slug: string, productType?: string | null): string {
   const normalizedType = (productType || '').trim().replace(/_/g, '-')
 
   // Deduplicate repeated slug halves (e.g. "cap-cap" → "cap")
-  const rawSlug = (slug || '').trim().replace(/_/g, '-')
-  const parts = rawSlug.split('-')
-  let deduplicatedSlug = rawSlug
+  const rawSlug = (slug || '').trim()
+  if (normalizedType === 'uslugi') {
+    return `/product/uslugi/${rawSlug}`
+  }
+
+  const normalizedSlug = rawSlug.replace(/_/g, '-')
+  const parts = normalizedSlug.split('-')
+  let deduplicatedSlug = normalizedSlug
   if (parts.length >= 4 && parts.length % 2 === 0) {
     const half = parts.length / 2
     if (parts.slice(0, half).join('-') === parts.slice(half).join('-')) {
@@ -225,7 +230,7 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
   }
 
   // 4. Категории — fetchAllPages чтобы не пропустить категории при росте каталога
-  const HIGH_PRIORITY_CATEGORIES = new Set(['medicines', 'supplements'])
+  const HIGH_PRIORITY_CATEGORIES = new Set(['medicines', 'supplements', 'uslugi'])
   try {
     const categories = await fetchAllPages('catalog/categories', { lang: 'en', page_size: 1000 })
     for (const cat of categories) {
