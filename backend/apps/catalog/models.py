@@ -799,6 +799,18 @@ class Brand(models.Model):
         verbose_name=_("Категории бренда"),
         help_text=_("Список slug категорий, в которых представлен бренд (clothing, shoes, sports и т.д.). Puma — clothing, shoes, sports."),
     )
+    show_on_homepage = models.BooleanField(
+        _("Показывать на главной"),
+        default=False,
+        db_index=True,
+        help_text=_("Если включено, бренд получает ручной приоритет в блоке популярных брендов на главной."),
+    )
+    homepage_priority = models.PositiveIntegerField(
+        _("Приоритет на главной"),
+        default=100,
+        db_index=True,
+        help_text=_("Меньшее число показывается выше. Работает только если включено «Показывать на главной»."),
+    )
     card_media = models.FileField(
         _("Медиа для карточки"),
         upload_to=get_brand_card_upload_path,

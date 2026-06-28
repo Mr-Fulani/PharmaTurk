@@ -44,6 +44,8 @@ interface Brand {
   products_count?: number
   primary_category_slug?: string | null
   card_media_url?: string | null
+  show_on_homepage?: boolean
+  homepage_priority?: number | null
   translations?: BrandTranslation[]
 }
 
@@ -603,8 +605,16 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       console.error('Error loading brands:', err)
     }
 
-    // Сортировка: сначала бренды с товарами (по убыванию products_count), затем по медиа, по имени
+    // Сортировка: сначала вручную закрепленные бренды, затем прежний авто-рейтинг.
     const sortedBrands = [...allBrands].sort((a: Brand, b: Brand) => {
+      const manualA = Boolean(a.show_on_homepage)
+      const manualB = Boolean(b.show_on_homepage)
+      if (manualA !== manualB) return manualA ? -1 : 1
+      if (manualA && manualB) {
+        const priorityA = a.homepage_priority ?? 100
+        const priorityB = b.homepage_priority ?? 100
+        if (priorityA !== priorityB) return priorityA - priorityB
+      }
       const countA = a.products_count || 0
       const countB = b.products_count || 0
       if (countB !== countA) return countB - countA

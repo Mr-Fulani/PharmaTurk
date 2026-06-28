@@ -862,10 +862,10 @@ class CategoryIncenseAdmin(BaseCategoryAdmin):
 class BrandAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
     """Админка для брендов."""
     form = BrandAdminForm
-    list_display = ('name', 'slug', 'primary_category_slug', 'is_active', 'created_at')
-    list_filter = ('is_active', 'primary_category_slug', 'created_at')
+    list_display = ('name', 'slug', 'primary_category_slug', 'show_on_homepage', 'homepage_priority', 'is_active', 'created_at')
+    list_filter = ('is_active', 'show_on_homepage', 'primary_category_slug', 'created_at')
     search_fields = ('name', 'slug', 'description')
-    ordering = ('name',)
+    ordering = ('-show_on_homepage', 'homepage_priority', 'name')
     prepopulated_fields = {'slug': ('name',)}
     inlines = [BrandTranslationInline]
     
@@ -877,6 +877,10 @@ class BrandAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
             'description': _('Файл или внешняя ссылка (CDN/S3) для карточки бренда; ссылка приоритетнее файла.'),
         }),
         (_('Settings'), {'fields': ('is_active',)}),
+        (_('Главная страница'), {
+            'fields': ('show_on_homepage', 'homepage_priority'),
+            'description': _('Включённые бренды показываются первыми в блоке популярных брендов. Меньший приоритет — выше позиция. Остальные места добираются автоматически.'),
+        }),
         (_('Категория'), {
             'fields': ('primary_category_slug', 'category_slugs'),
             'description': _('Основная категория — для отображения. Категории бренда — отметьте чекбоксами все категории, в которых представлен бренд (Puma: одежда, обувь, спорт).'),
@@ -2770,10 +2774,10 @@ class MarketingBrandAdmin(admin.ModelAdmin):
     медиа карточки. Используйте list_filter «С медиа» для фокуса на брендах с карточками.
     """
     form = BrandAdminForm
-    list_display = ('name', 'primary_category_slug', 'card_media_preview', 'has_card_media', 'is_active', 'created_at')
-    list_filter = ('is_active', 'primary_category_slug', 'created_at')
+    list_display = ('name', 'primary_category_slug', 'show_on_homepage', 'homepage_priority', 'card_media_preview', 'has_card_media', 'is_active', 'created_at')
+    list_filter = ('is_active', 'show_on_homepage', 'primary_category_slug', 'created_at')
     search_fields = ('name', 'slug', 'description')
-    ordering = ('name',)
+    ordering = ('-show_on_homepage', 'homepage_priority', 'name')
     prepopulated_fields = {'slug': ('name',)}
     readonly_fields = ('card_media_preview',)
 
@@ -2789,6 +2793,10 @@ class MarketingBrandAdmin(admin.ModelAdmin):
             'description': _('Изображение, GIF или видео для карточки бренда или внешняя ссылка (CDN/S3). Внешняя ссылка приоритетнее.'),
         }),
         (_('Категория'), {'fields': ('primary_category_slug', 'category_slugs')}),
+        (_('Главная страница'), {
+            'fields': ('show_on_homepage', 'homepage_priority'),
+            'description': _('Включённые бренды показываются первыми в блоке популярных брендов. Меньший приоритет — выше позиция. Остальные места добираются автоматически.'),
+        }),
         (_('Ссылки'), {'fields': ('website',)}),
         (_('Settings'), {'fields': ('is_active',)}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
