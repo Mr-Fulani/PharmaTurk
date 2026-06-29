@@ -47,6 +47,14 @@ def test_only_paginating_parser_supports_chunking():
     assert UmmalandParser.SUPPORTS_PAGE_CHUNKING is False
 
 
+def test_ilacfiyati_chunking_only_for_listing_not_product():
+    assert IlacFiyatiParser.supports_page_chunking_for_url("https://ilacfiyati.com/ilaclar")
+    assert IlacFiyatiParser.supports_page_chunking_for_url("https://ilacfiyati.com/takviye-edici-gida")
+    assert not IlacFiyatiParser.supports_page_chunking_for_url(
+        "https://ilacfiyati.com/ilaclar/lasirin-20-mg-tablet-20-tablet"
+    )
+
+
 def _build_task(parser_class: str) -> SiteScraperTask:
     category = Category.objects.create(name=f"Cat {parser_class}", slug=f"cat-{parser_class}")
     config = ScraperConfig.objects.create(
@@ -113,6 +121,8 @@ def test_non_paginating_parser_does_not_chain(monkeypatch):
 def test_paginating_parser_chains_next_chunk(monkeypatch):
     """ilacfiyati: нашли товары, лимит не достигнут — следующий чанк ставится."""
     task = _build_task("ilacfiyati")
+    task.start_url = "https://ilacfiyati.com/ilaclar"
+    task.save(update_fields=["start_url"])
     session = _session_with_products(task)
 
     monkeypatch.setattr(ScraperIntegrationService, "run_scraper", lambda *a, **k: session)
@@ -139,6 +149,36 @@ def test_paginating_parser_chains_next_chunk(monkeypatch):
     assert queued.get("start_page") == 1 + task.max_pages
     task.refresh_from_db()
     assert task.status == "running"
+
+
+@pytest.mark.django_db
+def test_ilacfiyati_product_url_does_not_chain(monkeypatch):
+    task = _build_task("ilacfiyati")
+    task.start_url = "https://ilacfiyati.com/ilaclar/lasirin-20-mg-tablet-20-tablet"
+    task.save(update_fields=["start_url"])
+    session = _session_with_products(task)
+
+    monkeypatch.setattr(ScraperIntegrationService, "run_scraper", lambda *a, **k: session)
+
+    def fail_apply_async(*args, **kwargs):
+        raise AssertionError("одиночная карточка ilacfiyati не должна ставить следующий чанк")
+
+    monkeypatch.setattr(run_scraper_task, "apply_async", fail_apply_async)
+
+    result = run_scraper_task.run(
+        scraper_config_id=task.scraper_config_id,
+        start_url=task.start_url,
+        max_pages=task.max_pages,
+        max_products=task.max_products,
+        max_images_per_product=task.max_images_per_product,
+        site_task_id=task.id,
+        start_page=9,
+    )
+
+    assert result["status"] == "success"
+    task.refresh_from_db()
+    assert task.status == "completed"
+    assert task.resume_page == 1
 
 
 def test_gender_override_sets_attribute_when_specified():

@@ -2769,9 +2769,11 @@ class ScraperIntegrationService:
         # поменялись ли текстовые атрибуты, так как могли измениться лимиты или тип продукта
         if scraped_product.images:
             try:
-                self.catalog_normalizer._normalize_product_images(
+                media_changed = self.catalog_normalizer._normalize_product_images(
                     existing_product, scraped_product.images
                 )
+                if media_changed:
+                    content_changed = True
             except Exception as e:
                 self.logger.warning(
                     f"Ошибка при нормализации изображений для товара {existing_product.id}: {e}"

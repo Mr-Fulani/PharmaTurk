@@ -87,6 +87,17 @@ class IlacFiyatiParser(BaseScraper):
         """Возвращает список поддерживаемых доменов."""
         return ["ilacfiyati.com", "www.ilacfiyati.com"]
 
+    @classmethod
+    def is_ilacfiyati_listing_url(cls, url: str) -> bool:
+        parsed = urlparse(url or "")
+        path_parts = [p for p in (parsed.path or url or "").strip("/").split("/") if p]
+        return len(path_parts) == 1 and path_parts[0] in ("ilaclar", "takviye-edici-gida")
+
+    @classmethod
+    def supports_page_chunking_for_url(cls, url: str) -> bool:
+        """Авточепочка по ?pg= безопасна только для листинга, не для карточки."""
+        return cls.is_ilacfiyati_listing_url(url)
+
     @staticmethod
     def _normalize_tr_key(value: str) -> str:
         normalized = (value or "").strip().upper()

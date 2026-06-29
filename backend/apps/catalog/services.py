@@ -838,16 +838,16 @@ class CatalogNormalizer:
 
         return product
     
-    def _normalize_product_images(self, product: Product, image_urls: List[str]):
+    def _normalize_product_images(self, product: Product, image_urls: List[str]) -> bool:
         """Нормализует изображения товара."""
         if not image_urls:
-            return
+            return False
 
         metadata = product.external_data if isinstance(product.external_data, dict) else {}
         attrs = metadata.get("attributes") if isinstance(metadata.get("attributes"), dict) else {}
         if _skip_shared_product_gallery(product, attrs):
             # Не дублируем корневую галерею на parent/domain-товаре — картинки только у вариантов.
-            return
+            return False
 
         # Используем максимально специфичный объект (BookProduct и т.д.) для сохранения изображений
         target = product.domain_item
@@ -861,6 +861,7 @@ class CatalogNormalizer:
                 
         is_domain = target != product
         image_manager = getattr(target, image_manager_name)
+        changed = False
 
         source = metadata.get("source") or attrs.get("source")
         default_alt_color = str(attrs.get("color") or "").strip()
@@ -903,7 +904,9 @@ class CatalogNormalizer:
 
             # Мы удаляем все парсерные картинки, КРОМЕ тех, что есть в новом списке image_urls.
             # Иначе `post_delete` сигнал удалит физический файл из R2.
-            image_manager.filter(parser_images_query).exclude(exclude_query).delete()
+            deleted_count, _ = image_manager.filter(parser_images_query).exclude(exclude_query).delete()
+            if deleted_count:
+                changed = True
         except Exception as e:
             self.logger.warning(f"Error while cleaning up old parser images for {product.pk}: {e}")
 
@@ -933,6 +936,7 @@ class CatalogNormalizer:
 
         if broken_ids:
             image_manager.filter(pk__in=broken_ids).delete()
+            changed = True
 
         # Узнаем, установлено ли уже главное изображение вручную или с прошлого парсинга
         existing_any_main = image_manager.filter(is_main=True).exists()
@@ -1012,6 +1016,7 @@ class CatalogNormalizer:
                 
                 if updates:
                     existing_item.__class__.objects.filter(pk=existing_item.pk).update(**updates)
+                    changed = True
                 continue
             
             # Создаем новое изображение в правильной модели
@@ -1038,6 +1043,7 @@ class CatalogNormalizer:
             
             create_kwargs["product"] = target
             image_manager.model.objects.create(**create_kwargs)
+            changed = True
         
         # Обновляем главное медиа в самих объектах ТОЛЬКО если оно пустое
         if preferred_main_video_url:
@@ -1048,7 +1054,8 @@ class CatalogNormalizer:
                     update_fields.append("video_url")
                 if update_fields:
                     obj.save(update_fields=update_fields)
-            return
+                    changed = True
+            return changed
 
         if main_image_url and not existing_any_main and not has_manual_main:
             for obj in [product, target] if is_domain else [product]:
@@ -1062,6 +1069,8 @@ class CatalogNormalizer:
                             obj.main_image_file = ""
                             update_fields.append('main_image_file')
                         obj.save(update_fields=update_fields)
+                        changed = True
+        return changed
     
     @transaction.atomic
     def sync_categories_and_brands(self, categories_data: List[Dict], brands_data: List[Dict]):

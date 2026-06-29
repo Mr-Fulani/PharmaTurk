@@ -1,4 +1,5 @@
 import pytest
+from django.conf import settings
 
 from apps.catalog.models import Brand, Product
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
@@ -137,6 +138,48 @@ def test_repeat_scrape_preserves_existing_main_image(monkeypatch):
 
     assert product.main_image == "https://cdn.mudaroba.com/products/manual/main.jpg"
     assert float(product.price) == 120  # цена обновилась
+
+
+@pytest.mark.django_db
+def test_repeat_scrape_counts_broken_main_image_repair_as_update(monkeypatch):
+    r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
+    r2_config["public_url"] = "https://cdn.mudaroba.com"
+    monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
+    monkeypatch.setattr("django.core.files.storage.default_storage.exists", lambda key: False)
+
+    service = ScraperIntegrationService()
+    product = Product.objects.create(
+        name="Broken Main Medicine",
+        slug="broken-main-medicine",
+        product_type="medicines",
+        price=100,
+        currency="TRY",
+        external_id="broken-main-1",
+        external_url="https://ilacfiyati.com/ilaclar/broken-main-1",
+        main_image="https://cdn.mudaroba.com/products/medicines/main/images/broken-main.jpg",
+        external_data={"source": "ilacfiyati"},
+    )
+    gallery_url = "https://cdn.mudaroba.com/products/medicines/broken-main-1/gallery.jpg"
+
+    scraped = ScrapedProduct(
+        name=product.name,
+        description="",
+        price=product.price,
+        currency=product.currency,
+        url=product.external_url,
+        external_id=product.external_id,
+        is_available=product.is_available,
+        stock_quantity=product.stock_quantity,
+        source="ilacfiyati",
+        images=[gallery_url],
+        attributes={},
+    )
+
+    status, updated_product = service._update_existing_product(None, scraped, product)
+    updated_product.refresh_from_db()
+
+    assert status == "updated"
+    assert updated_product.main_image == gallery_url
 
 
 @pytest.mark.django_db
