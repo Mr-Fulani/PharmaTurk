@@ -1874,8 +1874,9 @@ class ScraperIntegrationService:
             imgs = [u for u in (spec.get("images") or []) if isinstance(u, str) and u]
             if imgs:
                 variant.images.all().delete()
-                bulk = [
-                    FurnitureVariantImage(
+                saved_images = []
+                for i, u in enumerate(imgs):
+                    img = FurnitureVariantImage(
                         variant=variant,
                         image_url=u,
                         alt_text=build_image_alt_text(
@@ -1886,12 +1887,17 @@ class ScraperIntegrationService:
                         sort_order=i,
                         is_main=(i == 0),
                     )
-                    for i, u in enumerate(imgs)
-                ]
-                FurnitureVariantImage.objects.bulk_create(bulk)
-                if variant.main_image != imgs[0]:
-                    variant.main_image = imgs[0]
-                    variant.save(update_fields=["main_image"])
+                    img.save()
+                    saved_images.append(img)
+                main_image_url = (
+                    getattr(saved_images[0], "image_url", "") or
+                    getattr(getattr(saved_images[0], "image_file", None), "url", "") or
+                    imgs[0]
+                )
+                if variant.main_image != main_image_url:
+                    variant.main_image = main_image_url
+                    # Полный save(): pre_save может заполнить main_image_file.
+                    variant.save()
                 changed = True
 
             vinfo = spec.get("variant_info")

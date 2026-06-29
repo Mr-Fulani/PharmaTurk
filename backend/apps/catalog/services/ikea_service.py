@@ -655,17 +655,24 @@ class IkeaService:
         # 3. FurnitureVariantImage
         if normalized.get("images"):
             variant.images.all().delete()
-            image_objs = []
+            saved_images = []
             for i, img_url in enumerate(normalized["images"]):
-                image_objs.append(
-                    FurnitureVariantImage(
-                        variant=variant,
-                        image_url=img_url,
-                        sort_order=i,
-                        is_main=(i == 0)
-                    )
+                img = FurnitureVariantImage(
+                    variant=variant,
+                    image_url=img_url,
+                    sort_order=i,
+                    is_main=(i == 0),
                 )
-            if image_objs:
-                FurnitureVariantImage.objects.bulk_create(image_objs)
+                img.save()
+                saved_images.append(img)
+            if saved_images:
+                main_image_url = (
+                    saved_images[0].image_url or
+                    getattr(getattr(saved_images[0], "image_file", None), "url", "") or
+                    normalized["images"][0]
+                )
+                if variant.main_image != main_image_url:
+                    variant.main_image = main_image_url
+                    variant.save()
 
         return product

@@ -7,11 +7,13 @@ parsed-картинку в читаемый image_file.
 """
 
 import pytest
+from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 
-from apps.catalog.models import AccessoryProductImage, Product
+from apps.catalog.models import AccessoryProductImage, Category, Product
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
+from apps.scrapers.services import ScraperIntegrationService
 
 
 def _make_accessory():
@@ -86,6 +88,65 @@ def test_perfumery_parsed_gallery_image_resaved_to_readable():
         assert img.image_file and img.image_file.name
         assert "/products/parsed/" not in img.image_file.name
         assert "/products/parsed/" not in img.image_url
+    finally:
+        default_storage.delete(key)
+
+
+@pytest.mark.django_db
+def test_ikea_furniture_variant_images_resave_parsed_to_readable(monkeypatch):
+    r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
+    r2_config["public_url"] = "https://cdn.mudaroba.com"
+    monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
+
+    category = Category.objects.create(name="Мебель IKEA тест", slug="ikea-furniture-resave-test")
+    product = Product.objects.create(
+        name="IKEA KALLAX тест",
+        slug="ikea-kallax-resave-test",
+        category=category,
+        product_type="furniture",
+        price=100,
+        currency="TRY",
+        external_id="ikea-resave-1",
+        external_data={},
+    )
+    furniture = product.domain_item
+    assert furniture is not product, "доменный FurnitureProduct должен создаться"
+
+    key = "products/parsed/ikea/mobilya/images/ikea-kallax-0.jpg"
+    default_storage.save(key, ContentFile(b"\xff\xd8\xff\xe0fakejpegdata"))
+    try:
+        changed = ScraperIntegrationService()._sync_furniture_color_variants(
+            furniture,
+            product,
+            [
+                {
+                    "external_id": "ikea-var-1",
+                    "display_name": "IKEA KALLAX белый",
+                    "color": "white",
+                    "price": "100",
+                    "currency": "TRY",
+                    "external_url": "https://www.ikea.com.tr/urun/kallax-123",
+                    "images": [f"https://cdn.mudaroba.com/{key}"],
+                    "stock_quantity": 3,
+                    "is_available": True,
+                }
+            ],
+        )
+
+        assert changed is True
+        variant = furniture.variants.get(external_id="ikea-var-1")
+        img = variant.images.get()
+        product.refresh_from_db()
+        furniture.refresh_from_db()
+        variant.refresh_from_db()
+
+        assert img.image_file and img.image_file.name
+        assert "/products/parsed/" not in img.image_file.name
+        assert "/products/parsed/" not in img.image_url
+        assert "/products/parsed/" not in variant.main_image
+        assert "/products/parsed/" not in furniture.main_image
+        assert "/products/parsed/" not in product.main_image
+        assert default_storage.exists(key) is False
     finally:
         default_storage.delete(key)
 
