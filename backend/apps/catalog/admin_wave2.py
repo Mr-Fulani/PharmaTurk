@@ -259,6 +259,7 @@ class MedicineProductAdmin(_SimpleDomainAdmin, MediaEnrichmentMixin):
             'model': MedicineAnalog,
             'fk_name': 'product',
             'extra': 0,
+            'autocomplete_fields': ('analog_product',),
             'fields': (
                 'name', 'analog_product', 'barcode', 'atc_code',
                 'sgk_equivalent_code', 'source', 'source_tab', 'external_id',

@@ -103,8 +103,9 @@ def test_repeat_scrape_preserves_ai_seo_meta_and_external_data():
 
 
 @pytest.mark.django_db
-def test_repeat_scrape_preserves_existing_main_image():
-    """Повторный парс не подменяет уже заданное главное фото."""
+def test_repeat_scrape_preserves_existing_main_image(monkeypatch):
+    """Повторный парс не подменяет уже заданное главное фото, если файл существует."""
+    monkeypatch.setattr("django.core.files.storage.default_storage.exists", lambda key: True)
     service = ScraperIntegrationService()
     product = Product.objects.create(
         name="With Main Image",

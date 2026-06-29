@@ -5,8 +5,10 @@ import logging
 import re
 import uuid
 import httpx
+from urllib.parse import urlparse
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
+from django.conf import settings
 from django.utils.text import slugify
 from transliterate import slugify as trans_slugify
 from django.utils import timezone
@@ -140,6 +142,38 @@ def _skip_shared_product_gallery(product: Product, attrs: Optional[Dict[str, Any
     if _domain_variants_have_gallery(product):
         return True
     return False
+
+
+def _storage_key_from_internal_media_url(url: str) -> str:
+    if not url:
+        return ""
+
+    r2_public = (getattr(settings, "R2_CONFIG", {}).get("public_url", "") or "").rstrip("/")
+    if r2_public and url.startswith(r2_public):
+        return url[len(r2_public):].lstrip("/")
+
+    parsed = urlparse(url)
+    if parsed.netloc:
+        return ""
+
+    path = (parsed.path or url).strip()
+    if path.startswith("/media/"):
+        return path[len("/media/"):].lstrip("/")
+    if path.startswith("/products/"):
+        return path.lstrip("/")
+    return ""
+
+
+def _internal_media_url_missing_from_storage(url: str) -> bool:
+    key = _storage_key_from_internal_media_url(url)
+    if not key:
+        return False
+    try:
+        from django.core.files.storage import default_storage
+
+        return not default_storage.exists(key)
+    except Exception:
+        return False
 
 
 class CatalogNormalizer:
@@ -919,8 +953,10 @@ class CatalogNormalizer:
                 # переустановил её свежей картинкой из галереи.
                 main_broken = True
         elif bool(getattr(product, 'main_image', None)):
-            # Если это загруженная парсером картинка, мы не считаем её "ручной"
-            if '/products/parsed/' not in product.main_image:
+            if _internal_media_url_missing_from_storage(product.main_image):
+                main_broken = True
+            # Если это загруженная парсером картинка, мы не считаем её "ручной".
+            elif '/products/parsed/' not in product.main_image:
                 has_manual_main = True
                 
         has_video = bool(getattr(product, 'video_url', None) or getattr(product, 'main_video_file', None))

@@ -1,4 +1,5 @@
 import pytest
+from django.conf import settings
 
 from apps.catalog.models import Product, ProductImage
 from apps.catalog.services import CatalogNormalizer
@@ -130,3 +131,67 @@ def test_normalizer_sets_alt_text_for_scraped_product_images_without_overwriting
 
     assert existing.alt_text == "Ручной alt"
     assert created.alt_text == "LC Waikiki Basic T-Shirt - Siyah - фото 2"
+
+
+@pytest.mark.django_db
+def test_normalizer_repairs_missing_internal_main_image_from_gallery(monkeypatch):
+    broken_main = (
+        "https://cdn.mudaroba.com/products/medicines/main/images/"
+        "medicines-bilaxten-20-mg-20-tabletok-bilaxten-20-mg-20-875f5b846a.png"
+    )
+    gallery_url = (
+        "https://cdn.mudaroba.com/products/medicines/"
+        "bilaxten-20-mg-20-tabletok/bilaxten-gallery-a5d741819e.png"
+    )
+    r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
+    r2_config["public_url"] = "https://cdn.mudaroba.com"
+    monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
+    monkeypatch.setattr("django.core.files.storage.default_storage.exists", lambda key: False)
+
+    product = Product.objects.create(
+        name="BILAXTEN 20 MG 20 ТАБЛЕТОК",
+        slug="bilaxten-20-mg-20-tabletok",
+        product_type="medicines",
+        price=100,
+        currency="TRY",
+        main_image=broken_main,
+        external_data={"source": "ilacfiyati"},
+    )
+    domain = product.domain_item
+    domain.gallery_images.create(
+        image_url=gallery_url,
+        image_file="products/medicines/bilaxten-20-mg-20-tabletok/bilaxten-gallery-a5d741819e.png",
+        sort_order=0,
+    )
+
+    CatalogNormalizer()._normalize_product_images(product, [gallery_url])
+
+    product.refresh_from_db()
+    domain.refresh_from_db()
+    assert product.main_image == gallery_url
+    assert domain.main_image == gallery_url
+
+
+@pytest.mark.django_db
+def test_normalizer_keeps_external_manual_main_image(monkeypatch):
+    manual_main = "https://manual-cdn.example.com/products/custom-main.jpg"
+    parser_url = "https://cdn.mudaroba.com/products/medicines/example/gallery.jpg"
+    r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
+    r2_config["public_url"] = "https://cdn.mudaroba.com"
+    monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
+    monkeypatch.setattr("django.core.files.storage.default_storage.exists", lambda key: False)
+
+    product = Product.objects.create(
+        name="Manual main",
+        slug="manual-main",
+        product_type="medicines",
+        price=100,
+        currency="TRY",
+        main_image=manual_main,
+        external_data={"source": "ilacfiyati"},
+    )
+
+    CatalogNormalizer()._normalize_product_images(product, [parser_url])
+
+    product.refresh_from_db()
+    assert product.main_image == manual_main

@@ -87,6 +87,17 @@ def test_media_enrichment_domains_keep_consistent_action_menu(model_admin_class,
     assert "delete_selected" in action_names
 
 
+def test_medicine_analog_inline_uses_autocomplete_for_related_product(admin_request):
+    model_admin = MedicineProductAdmin(MedicineProduct, AdminSite())
+
+    analog_inline = next(
+        inline for inline in model_admin.get_inline_instances(admin_request)
+        if inline.model.__name__ == "MedicineAnalog"
+    )
+
+    assert analog_inline.autocomplete_fields == ("analog_product",)
+
+
 def test_perfumery_admin_inherits_global_and_ai_bulk_actions(admin_request):
     action_names = _action_names(PerfumeryProductAdmin, PerfumeryProduct, admin_request)
 
