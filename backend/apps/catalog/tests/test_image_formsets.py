@@ -1,5 +1,7 @@
 from django.forms.models import BaseInlineFormSet
+from django.forms import modelform_factory
 
+from apps.catalog.models import JewelryProductImage, JewelryVariantImage
 from apps.catalog.forms import ProductImageInlineFormSet, VariantImageInlineFormSet
 
 
@@ -57,3 +59,11 @@ def test_variant_image_formset_allows_more_than_five_images(monkeypatch):
     formset.files = {}
 
     formset.clean()
+
+
+def test_jewelry_image_url_is_optional_when_uploading_file():
+    product_form = modelform_factory(JewelryProductImage, fields=("image_file", "image_url"))
+    variant_form = modelform_factory(JewelryVariantImage, fields=("image_file", "image_url"))
+
+    assert product_form.base_fields["image_url"].required is False
+    assert variant_form.base_fields["image_url"].required is False

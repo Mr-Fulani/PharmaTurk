@@ -2953,6 +2953,7 @@ class JewelryProductImage(models.Model):
     image_url = models.URLField(
         _("URL изображения"),
         max_length=2000,
+        blank=True,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     image_file = models.ImageField(
@@ -3163,6 +3164,7 @@ class JewelryVariantImage(models.Model):
     image_url = models.URLField(
         _("URL изображения"),
         max_length=2000,
+        blank=True,
         help_text=_("Ссылка на изображение (CDN или медиа-хостинг); файл не сохраняется в проекте.")
     )
     image_file = models.ImageField(
