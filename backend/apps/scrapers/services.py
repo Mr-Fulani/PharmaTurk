@@ -2175,25 +2175,30 @@ class ScraperIntegrationService:
             images = [u for u in (spec.get("images") or []) if isinstance(u, str) and u]
             if images:
                 variant.images.all().delete()
-                VariantImageModel.objects.bulk_create(
-                    [
-                        VariantImageModel(
-                            variant=variant,
-                            image_url=url,
-                            alt_text=build_image_alt_text(
-                                defaults["name"] or getattr(domain_product, "name", "") or getattr(product, "name", ""),
-                                index=image_idx,
-                                color=color_value,
-                            ),
-                            sort_order=image_idx,
-                            is_main=(image_idx == 0),
-                        )
-                        for image_idx, url in enumerate(images)
-                    ]
+                saved_images = []
+                for image_idx, url in enumerate(images):
+                    img = VariantImageModel(
+                        variant=variant,
+                        image_url=url,
+                        alt_text=build_image_alt_text(
+                            defaults["name"] or getattr(domain_product, "name", "") or getattr(product, "name", ""),
+                            index=image_idx,
+                            color=color_value,
+                        ),
+                        sort_order=image_idx,
+                        is_main=(image_idx == 0),
+                    )
+                    img.save()
+                    saved_images.append(img)
+                main_image_url = (
+                    getattr(saved_images[0], "image_url", "") or
+                    getattr(getattr(saved_images[0], "image_file", None), "url", "") or
+                    images[0]
                 )
-                if variant.main_image != images[0]:
-                    variant.main_image = images[0]
-                    variant.save(update_fields=["main_image"])
+                if variant.main_image != main_image_url:
+                    variant.main_image = main_image_url
+                    # Полный save(): pre_save может заполнить main_image_file.
+                    variant.save()
                 changed = True
 
             size_payload = self._normalize_variant_sizes_payload(spec.get("sizes") or [])

@@ -152,6 +152,65 @@ def test_ikea_furniture_variant_images_resave_parsed_to_readable(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_fashion_variant_images_resave_parsed_to_readable(monkeypatch):
+    r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
+    r2_config["public_url"] = "https://cdn.mudaroba.com"
+    monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
+
+    category = Category.objects.create(name="Одежда LCW тест", slug="lcw-clothing-resave-test")
+    product = Product.objects.create(
+        name="LCW платье тест",
+        slug="lcw-fashion-resave-test",
+        category=category,
+        product_type="clothing",
+        price=100,
+        currency="TRY",
+        external_id="lcw-fashion-resave-1",
+        external_data={},
+    )
+    clothing = product.domain_item
+    assert clothing is not product, "доменный ClothingProduct должен создаться"
+
+    key = "products/parsed/lcw/kadin-giyim/images/lcw-dress-0.jpg"
+    default_storage.save(key, ContentFile(b"\xff\xd8\xff\xe0fakejpegdata"))
+    try:
+        changed = ScraperIntegrationService()._sync_fashion_variants(
+            product,
+            variants=[
+                {
+                    "external_id": "lcw-var-resave-1",
+                    "display_name": "LCW платье черное",
+                    "color": "black",
+                    "price": "100",
+                    "currency": "TRY",
+                    "external_url": "https://www.lcw.com/test",
+                    "images": [f"https://cdn.mudaroba.com/{key}"],
+                    "stock_quantity": 3,
+                    "is_available": True,
+                    "sizes": [{"size": "M", "is_available": True, "stock_quantity": 3, "sort_order": 0}],
+                }
+            ],
+        )
+
+        assert changed is True
+        clothing.refresh_from_db()
+        product.refresh_from_db()
+        variant = clothing.variants.get(external_id="lcw-var-resave-1")
+        img = variant.images.get()
+        variant.refresh_from_db()
+
+        assert img.image_file and img.image_file.name
+        assert "/products/parsed/" not in img.image_file.name
+        assert "/products/parsed/" not in img.image_url
+        assert "/products/parsed/" not in variant.main_image
+        assert "/products/parsed/" not in clothing.main_image
+        assert "/products/parsed/" not in product.main_image
+        assert default_storage.exists(key) is False
+    finally:
+        default_storage.delete(key)
+
+
+@pytest.mark.django_db
 def test_external_gallery_image_still_downloaded():
     """Внешний URL по-прежнему скачивается в файл (поведение не сломали)."""
     accessory = _make_accessory()
