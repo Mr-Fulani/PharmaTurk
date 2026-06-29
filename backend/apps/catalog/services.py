@@ -1042,7 +1042,13 @@ class CatalogNormalizer:
                     create_kwargs["alt_text"] = generated_alt
             
             create_kwargs["product"] = target
-            image_manager.model.objects.create(**create_kwargs)
+            created_item = image_manager.model.objects.create(**create_kwargs)
+            if media_type == "image" and main_image_url == image_url:
+                main_image_url = (
+                    getattr(created_item, "image_url", "") or
+                    getattr(getattr(created_item, "image_file", None), "url", "") or
+                    image_url
+                )
             changed = True
         
         # Обновляем главное медиа в самих объектах ТОЛЬКО если оно пустое
@@ -1068,7 +1074,10 @@ class CatalogNormalizer:
                         if main_broken and getattr(obj, 'main_image_file', None) and getattr(obj.main_image_file, 'name', None):
                             obj.main_image_file = ""
                             update_fields.append('main_image_file')
-                        obj.save(update_fields=update_fields)
+                        # Не ограничиваем update_fields: pre_save может перенести
+                        # parsed/internal URL в main_image_file, и FileField тоже
+                        # должен попасть в БД.
+                        obj.save()
                         changed = True
         return changed
     

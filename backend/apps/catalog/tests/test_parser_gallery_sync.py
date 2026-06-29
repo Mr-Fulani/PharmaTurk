@@ -173,6 +173,57 @@ def test_normalizer_repairs_missing_internal_main_image_from_gallery(monkeypatch
 
 
 @pytest.mark.django_db
+def test_normalizer_uses_readable_gallery_url_for_repaired_main_image(monkeypatch):
+    parsed_url = (
+        "https://cdn.mudaroba.com/products/parsed/ilacfiyati/medicines/images/"
+        "ilacfiyati-lasirin-20-mg-tablet-20-tablet-0-53959973d994.jpg"
+    )
+    readable_url = (
+        "https://cdn.mudaroba.com/products/medicines/"
+        "lasirin-20-mg-tablet-20-tablet/lasirin-gallery-5129a9d701.jpg"
+    )
+    broken_main = (
+        "https://cdn.mudaroba.com/products/medicines/main/images/"
+        "medicines-lasirin-20-mg-tablet-20-tablet-broken.jpg"
+    )
+    r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
+    r2_config["public_url"] = "https://cdn.mudaroba.com"
+    monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
+    monkeypatch.setattr("django.core.files.storage.default_storage.exists", lambda key: False)
+
+    def fake_auto_download(instance, field_name="image_file", url_field="image_url"):
+        url = getattr(instance, url_field, "") or ""
+        if not url.startswith("https://cdn.mudaroba.com/products/"):
+            return
+        if "/products/parsed/" in url:
+            setattr(instance, url_field, readable_url)
+        setattr(instance, field_name, "products/medicines/lasirin-20-mg-tablet-20-tablet/lasirin-gallery-5129a9d701.jpg")
+
+    monkeypatch.setattr("apps.catalog.signals._auto_download_impl", fake_auto_download)
+
+    product = Product.objects.create(
+        name="LASIRIN 20 MG TABLET 20 TABLET",
+        slug="lasirin-20-mg-tablet-20-tablet",
+        product_type="medicines",
+        price=100,
+        currency="TRY",
+        main_image=broken_main,
+        external_data={"source": "ilacfiyati"},
+    )
+
+    CatalogNormalizer()._normalize_product_images(product, [parsed_url])
+
+    product.refresh_from_db()
+    domain = product.domain_item
+    domain.refresh_from_db()
+    gallery = domain.gallery_images.get()
+    assert gallery.image_url == readable_url
+    assert product.main_image == readable_url
+    assert domain.main_image == readable_url
+    assert domain.main_image_file.name == "products/medicines/lasirin-20-mg-tablet-20-tablet/lasirin-gallery-5129a9d701.jpg"
+
+
+@pytest.mark.django_db
 def test_normalizer_keeps_external_manual_main_image(monkeypatch):
     manual_main = "https://manual-cdn.example.com/products/custom-main.jpg"
     parser_url = "https://cdn.mudaroba.com/products/medicines/example/gallery.jpg"
