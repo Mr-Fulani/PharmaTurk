@@ -378,18 +378,25 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
                             setattr(instance, url_field, new_url)
                     except Exception:
                         pass
-                    # Сразу удаляем parsed-оригинал: копия уже в читаемом пути, url
-                    # переписан. Без этого products/parsed/ копился орфанами до
-                    # cleanup_orphaned_media. Имя parsed-файла уникально на изображение
-                    # ({parser}-{product_id}-{index}-{hash}), удаление точечное —
-                    # это не массовый cleanup, риска вайпа нет.
-                    try:
-                        if getattr(instance, field_name).name != path:
-                            default_storage.delete(path)
-                    except Exception:
-                        pass
+                    # Сразу удаляем parsed-оригинал только для галерейных файлов.
+                    # main_image_file может сработать раньше галереи: если он удалит
+                    # общий parsed-исходник, доменная галерея получит битый image_file.
+                    # Галерея позже перенесёт тот же файл в readable-путь и удалит parsed.
+                    if field_name != "main_image_file":
+                        try:
+                            if getattr(instance, field_name).name != path:
+                                default_storage.delete(path)
+                        except Exception:
+                            pass
                     logger.info(f"Re-saved parsed {field_name} to readable path for {instance.__class__.__name__}")
                 else:
+                    if "/products/parsed/" in ("/" + path) and not default_storage.exists(path):
+                        logger.warning(
+                            "Skip setting missing parsed media for %s: %s",
+                            instance.__class__.__name__,
+                            path,
+                        )
+                        return
                     setattr(instance, field_name, path)
                     logger.info(f"Set {field_name} from internal URL: {path}")
             except Exception as e:
