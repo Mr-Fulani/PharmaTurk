@@ -345,7 +345,9 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
     """Реализация автоскачивания для любой модели."""
     url = getattr(instance, url_field, None)
     file_val = getattr(instance, field_name, None)
-    if url and (not file_val or _file_missing_from_storage(file_val)):
+    file_name = getattr(file_val, "name", "") or ""
+    needs_readable_resave = "/products/parsed/" in ("/" + file_name.lstrip("/"))
+    if url and (not file_val or _file_missing_from_storage(file_val) or needs_readable_resave):
         if not is_internal_storage_url(url):
             file_obj = _download_url_to_file(url)
             if file_obj:

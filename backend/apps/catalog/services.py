@@ -950,12 +950,17 @@ class CatalogNormalizer:
                 _exists = default_storage.exists(_mf_name)
             except Exception:
                 _exists = True
-            if _exists:
+            main_image_value = str(getattr(product, 'main_image', '') or '')
+            is_parser_main = (
+                '/products/parsed/' in _mf_name
+                or '/products/parsed/' in main_image_value
+            )
+            if _exists and not is_parser_main:
                 has_manual_main = True
             else:
-                # Битая главная (файл удалён из R2) — НЕ считаем ручной, чтобы парсер
-                # переустановил её свежей картинкой из галереи.
-                main_broken = True
+                # Битая или parser-owned главная — НЕ считаем ручной, чтобы парсер
+                # переустановил её свежей читаемой картинкой из галереи.
+                main_broken = not _exists
         elif bool(getattr(product, 'main_image', None)):
             if _internal_media_url_missing_from_storage(product.main_image):
                 main_broken = True
@@ -1016,7 +1021,24 @@ class CatalogNormalizer:
                 
                 if updates:
                     existing_item.__class__.objects.filter(pk=existing_item.pk).update(**updates)
+                    existing_item.refresh_from_db()
                     changed = True
+                if media_type == "image" and (
+                    "/products/parsed/" in (existing_item.image_url or "")
+                    or "/products/parsed/" in (getattr(existing_item.image_file, "name", "") or "")
+                ):
+                    before_url = existing_item.image_url or ""
+                    before_file = getattr(existing_item.image_file, "name", "") or ""
+                    existing_item.save()
+                    existing_item.refresh_from_db()
+                    after_url = existing_item.image_url or ""
+                    after_file = getattr(existing_item.image_file, "name", "") or ""
+                    if after_url != before_url or after_file != before_file:
+                        changed = True
+                    if main_image_url == image_url:
+                        main_image_url = after_url or (
+                            existing_item.image_file.url if existing_item.image_file else ""
+                        ) or image_url
                 continue
             
             # Создаем новое изображение в правильной модели

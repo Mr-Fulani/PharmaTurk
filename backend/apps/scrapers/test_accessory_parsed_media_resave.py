@@ -13,6 +13,7 @@ from django.core.files.storage import default_storage
 
 from apps.catalog.models import AccessoryProductImage, Category, Product, SupplementProductImage
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
+from apps.catalog.services import CatalogNormalizer
 from apps.scrapers.services import ScraperIntegrationService
 
 
@@ -95,6 +96,58 @@ def test_supplement_parsed_gallery_image_survives_main_image_resave(monkeypatch)
         assert "/products/parsed/" not in img.image_file.name
         assert "/products/parsed/" not in img.image_url
         assert default_storage.exists(key) is False
+    finally:
+        default_storage.delete(key)
+
+
+@pytest.mark.django_db
+def test_supplement_existing_parsed_media_is_repaired_and_counted_updated(monkeypatch):
+    """Повторный парс БАДа с existing parsed URL должен дать media_changed=True."""
+    r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
+    r2_config["public_url"] = "https://cdn.mudaroba.com"
+    monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
+
+    category = Category.objects.create(name="БАДы repair тест", slug="supplements-repair-test")
+    key = "products/parsed/ilacfiyati/supplements/images/ilacfiyati-bad-repair-0.jpg"
+    parsed_url = f"https://cdn.mudaroba.com/{key}"
+    default_storage.save(key, ContentFile(b"\xff\xd8\xff\xe0fakejpegdata"))
+    try:
+        product = Product.objects.create(
+            name="BAD repair тест",
+            slug="bad-repair-test",
+            category=category,
+            product_type="supplements",
+            price=10,
+            currency="TRY",
+            external_id="ilacfiyati-bad-repair-1",
+            external_data={"source": "ilacfiyati"},
+        )
+        supplement = product.domain_item
+        img = SupplementProductImage.objects.create(
+            product=supplement,
+            image_url="https://example.com/initial.jpg",
+            image_file="",
+        )
+        SupplementProductImage.objects.filter(pk=img.pk).update(
+            image_url=parsed_url,
+            image_file=key,
+        )
+        Product.objects.filter(pk=product.pk).update(main_image=parsed_url, main_image_file=key)
+        type(supplement).objects.filter(pk=supplement.pk).update(main_image=parsed_url, main_image_file=key)
+
+        product.refresh_from_db()
+        changed = CatalogNormalizer()._normalize_product_images(product, [parsed_url])
+
+        product.refresh_from_db()
+        supplement.refresh_from_db()
+        img.refresh_from_db()
+
+        assert changed is True
+        assert img.image_file and img.image_file.name
+        assert "/products/parsed/" not in img.image_file.name
+        assert "/products/parsed/" not in img.image_url
+        assert product.main_image == img.image_url
+        assert supplement.main_image == img.image_url
     finally:
         default_storage.delete(key)
 
