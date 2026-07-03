@@ -17,6 +17,9 @@ services:
     # Remove direct port 80 mapping, let Nginx handle it
     environment:
       - NODE_ENV=production
+      # У контейнера нет IPv6-маршрута, а у cdn.mudaroba.com есть AAAA-записи:
+      # без ipv4first оптимизатор next/image зависает на IPv6 (UND_ERR_CONNECT_TIMEOUT)
+      - NODE_OPTIONS=--dns-result-order=ipv4first
     dns:
       - 8.8.8.8
       - 1.1.1.1
