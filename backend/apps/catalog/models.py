@@ -1574,19 +1574,23 @@ class Product(models.Model):
         Автоматически находит связанный доменный объект (BookProduct, ClothingProduct и т.д.).
         Если доменный объект не найден, возвращает сам Product (self).
         """
-        for rel in self._meta.related_objects:
-            if rel.one_to_one:
-                try:
-                    accessor_name = rel.get_accessor_name()
-                    # Игнорируем технические связи (например, переводы) и селф-референсы
-                    if accessor_name.startswith('_'):
-                        continue
-                    obj = getattr(self, accessor_name, None)
-                    # Доменный объект должен иметь атрибут _domain_product_type
-                    if obj and hasattr(obj, '_domain_product_type'):
-                        return obj
-                except Exception:
+        # Сначала пробуем связь, чей _domain_product_type совпадает с product_type:
+        # слепой перебор делал запрос на каждую доменную таблицу для каждого товара.
+        pt = str(self.product_type or '').replace('-', '_')
+        rels = [rel for rel in self._meta.related_objects if rel.one_to_one]
+        rels.sort(key=lambda rel: 0 if str(getattr(rel.related_model, '_domain_product_type', '') or '').replace('-', '_') == pt else 1)
+        for rel in rels:
+            try:
+                accessor_name = rel.get_accessor_name()
+                # Игнорируем технические связи (например, переводы) и селф-референсы
+                if accessor_name.startswith('_'):
                     continue
+                obj = getattr(self, accessor_name, None)
+                # Доменный объект должен иметь атрибут _domain_product_type
+                if obj and hasattr(obj, '_domain_product_type'):
+                    return obj
+            except Exception:
+                continue
         return self
 
     def __str__(self):

@@ -8,8 +8,13 @@ from apps.catalog.utils.variant_titles import (
 
 
 class _Translations:
+    """Стаб related-менеджера переводов: как у Django, есть и .all(), и .filter()."""
+
     def __init__(self, rows):
         self._rows = rows
+
+    def all(self):
+        return list(self._rows)
 
     def filter(self, locale):
         matches = [row for row in self._rows if row.locale == locale]

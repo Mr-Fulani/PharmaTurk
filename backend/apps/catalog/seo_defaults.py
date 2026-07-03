@@ -61,7 +61,15 @@ def _get_translation_value(container, field_name: str, lang: str) -> str | None:
         if hasattr(translations, "all"):
             # .all() использует prefetch-кэш; .filter(locale=...) шёл бы в БД
             # отдельным запросом на каждое SEO-поле каждого товара.
-            trans_list = list(translations.all())
+            # Список дополнительно мемоизируется на объекте: без prefetch метод
+            # вызывается ~6 раз на источник (по числу SEO-полей).
+            trans_list = getattr(container, "_seo_translations_memo", None)
+            if trans_list is None:
+                trans_list = list(translations.all())
+                try:
+                    container._seo_translations_memo = trans_list
+                except Exception:
+                    pass
             for locale in candidates:
                 for tr in trans_list:
                     if getattr(tr, "locale", None) == locale:

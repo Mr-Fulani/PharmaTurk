@@ -1,172 +1,14 @@
 import { GetServerSideProps } from 'next'
-import axios from 'axios'
-import { getInternalApiUrl } from '../lib/urls'
+import { SITEMAP_DOMAINS, generateSitemapIndexXml } from '../lib/sitemap'
 
 /**
- * Динамический sitemap.xml с поддержкой мультиязычных (hreflang) URL.
- * Включает: главную, категории, товары (generic + все доменные), услуги, статические страницы.
+ * Sitemap-индекс: ссылается на секционные sitemap'ы /sitemaps/<name>.xml.
  *
- * Доступен по адресу: /sitemap.xml
+ * Раньше /sitemap.xml был одним файлом на ~6 МБ и генерировался ~10 секунд —
+ * краулер тянул всё целиком при любом изменении. Секции генерируются быстро
+ * и кэшируются независимо; сам индекс — статический список.
  */
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
-
-interface SitemapUrl {
-  loc: string
-  lastmod?: string
-  changefreq?: 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never'
-  priority?: number
-  alternates?: { lang: string; href: string }[]
-}
-
-interface SitemapTestimonial {
-  id: number
-}
-
-// Типы, для которых URL = /product/{slug} (без типа в пути).
-// Синхронизировать с backend TYPES_NEEDING_PATH и frontend needsTypeInPath.
-const BASE_PRODUCT_TYPES = new Set([
-  '',
-  'product',
-  'products',
-  'medicine',
-  'medicines',
-  'supplement',
-  'supplements',
-  'medical_equipment',
-  'medical-equipment',
-  'furniture',
-  'tableware',
-  'accessory',
-  'accessories',
-  'books',
-  'perfumery',
-  'incense',
-  'sports',
-  'auto_parts',
-  'auto-parts',
-])
-
-// Все доменные типы товаров для sitemap-products эндпоинта.
-// Используется лёгкий /api/catalog/sitemap-products?domain=X — только slug + updated_at.
-const SITEMAP_DOMAINS = [
-  'clothing', 'shoes', 'electronics', 'jewelry', 'headwear', 'underwear', 'islamic-clothing',
-  'medicines', 'supplements', 'medical-equipment', 'furniture', 'books',
-  'perfumery', 'tableware', 'accessories', 'incense', 'sports', 'auto-parts',
-]
-
-function buildProductPath(slug: string, productType?: string | null): string {
-  const normalizedType = (productType || '').trim().replace(/_/g, '-')
-
-  // Deduplicate repeated slug halves (e.g. "cap-cap" → "cap")
-  const rawSlug = (slug || '').trim()
-  if (normalizedType === 'uslugi') {
-    return `/product/uslugi/${rawSlug}`
-  }
-
-  const normalizedSlug = rawSlug.replace(/_/g, '-')
-  const parts = normalizedSlug.split('-')
-  let deduplicatedSlug = normalizedSlug
-  if (parts.length >= 4 && parts.length % 2 === 0) {
-    const half = parts.length / 2
-    if (parts.slice(0, half).join('-') === parts.slice(half).join('-')) {
-      deduplicatedSlug = parts.slice(0, half).join('-')
-    }
-  }
-
-  if (!normalizedType || BASE_PRODUCT_TYPES.has(normalizedType)) {
-    return `/product/${deduplicatedSlug}`
-  }
-
-  // Strip type prefix from slug so sitemap URL matches canonical
-  // e.g. headwear-carhartt-cap → /product/headwear/carhartt-cap  (not /product/headwear/headwear-carhartt-cap)
-  const prefix = `${normalizedType}-`
-  let cleanedSlug = deduplicatedSlug
-  while (cleanedSlug.startsWith(prefix)) {
-    cleanedSlug = cleanedSlug.slice(prefix.length)
-  }
-
-  return `/product/${normalizedType}/${cleanedSlug || deduplicatedSlug}`
-}
-
-function buildUrl(
-  ruPath: string,
-  enPath: string,
-  changefreq: SitemapUrl['changefreq'] = 'weekly',
-  priority = 0.8
-): SitemapUrl {
-  const ruHref = `${SITE_URL}${ruPath}`
-  const enHref = `${SITE_URL}/en${enPath}`
-  return {
-    loc: ruHref,
-    changefreq,
-    priority,
-    alternates: [
-      { lang: 'ru', href: ruHref },
-      { lang: 'en', href: enHref },
-      { lang: 'x-default', href: ruHref },
-    ],
-  }
-}
-
-function generateSitemapXml(urls: SitemapUrl[]): string {
-  const urlsXml = urls
-    .map((url) => {
-      const alternatesXml = (url.alternates || [])
-        .map(
-          (alt) =>
-            `    <xhtml:link rel="alternate" hreflang="${alt.lang}" href="${alt.href}"/>`
-        )
-        .join('\n')
-
-      return `  <url>
-    <loc>${url.loc}</loc>
-    ${url.lastmod ? `<lastmod>${url.lastmod}</lastmod>` : ''}
-    <changefreq>${url.changefreq || 'weekly'}</changefreq>
-    <priority>${url.priority ?? 0.8}</priority>
-${alternatesXml}
-  </url>`
-    })
-    .join('\n')
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<urlset
-  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-  xmlns:xhtml="http://www.w3.org/1999/xhtml"
->
-${urlsXml}
-</urlset>`
-}
-
-async function fetchAllPages(
-  apiPath: string,
-  params: Record<string, unknown>,
-  maxPages = 50
-): Promise<any[]> {
-  const results: any[] = []
-  let page = 1
-  let totalPages = 1
-
-  while (page <= totalPages && page <= maxPages) {
-    const res = await axios.get(getInternalApiUrl(apiPath), {
-      params: { ...params, page },
-      timeout: 30000,
-    })
-    const data = res.data
-    const items = data?.results || data || []
-    // Use actual items returned on page 1 to calculate real page count.
-    // Backend max_page_size may be lower than the requested page_size.
-    if (data?.count && page === 1 && items.length > 0) {
-      totalPages = Math.ceil(data.count / items.length)
-    }
-    results.push(...items)
-    page++
-  }
-
-  return results
-}
-
-// Этот компонент не рендерится — данные отдаются через getServerSideProps
 export default function Sitemap() {
   return null
 }
@@ -174,142 +16,17 @@ export default function Sitemap() {
 export const getServerSideProps: GetServerSideProps = async ({ res }) => {
   const today = new Date().toISOString().split('T')[0]
 
-  const urls: SitemapUrl[] = []
-
-  // 1. Статические страницы
-  const basePages: Array<[string, string, SitemapUrl['changefreq'], number]> = [
-    ['/', '/', 'daily', 1.0],
-    ['/categories', '/categories', 'daily', 0.9],
-    ['/brands', '/brands', 'weekly', 0.7],
-    ['/how-to-order-medicines', '/how-to-order-medicines', 'monthly', 0.5],
-    ['/testimonials', '/testimonials', 'weekly', 0.6],
-    ['/delivery', '/delivery', 'monthly', 0.6],
-    ['/returns', '/returns', 'monthly', 0.5],
-    ['/privacy', '/privacy', 'monthly', 0.4],
+  const sections = [
+    'static',
+    'categories',
+    'brands',
+    'services',
+    ...SITEMAP_DOMAINS.map((domain) => `products-${domain}`),
   ]
-
-  for (const [enPath, ruPath, changefreq, priority] of basePages) {
-    urls.push(buildUrl(enPath, ruPath, changefreq, priority))
-  }
-
-  // 2. Динамические CMS-страницы (О нас, Доставка, Возврат и т.д.)
-  try {
-    const pagesRes = await axios.get(getInternalApiUrl('pages/'), {
-      params: { is_active: true },
-      timeout: 5000,
-    })
-    const pages = pagesRes.data?.results || pagesRes.data || []
-    for (const page of pages) {
-      if (page.slug) {
-        const path = `/${page.slug}`
-        if (urls.some(u => u.loc.endsWith(path))) continue
-        const lastmod = page.updated_at
-          ? new Date(page.updated_at).toISOString().split('T')[0]
-          : today
-        const url = buildUrl(path, path, 'monthly', 0.6)
-        url.lastmod = lastmod
-        urls.push(url)
-      }
-    }
-  } catch (err) {
-    console.error('Sitemap: Failed to fetch dynamic pages', err)
-  }
-
-  // 3. Отзывы — отдельные страницы для индексации каждого отзыва
-  try {
-    const testimonialsRes = await axios.get(getInternalApiUrl('feedback/testimonials'), {
-      timeout: 5000,
-    })
-    const testimonials: SitemapTestimonial[] = testimonialsRes.data?.results || testimonialsRes.data || []
-    for (const testimonial of testimonials) {
-      if (!testimonial?.id) continue
-      urls.push(buildUrl(`/testimonials/${testimonial.id}`, `/testimonials/${testimonial.id}`, 'weekly', 0.5))
-    }
-  } catch (err) {
-    console.error('Sitemap: Failed to fetch testimonials', err)
-  }
-
-  // 4. Категории — fetchAllPages чтобы не пропустить категории при росте каталога
-  const HIGH_PRIORITY_CATEGORIES = new Set(['medicines', 'supplements', 'uslugi'])
-  try {
-    const categories = await fetchAllPages('catalog/categories', { lang: 'en', page_size: 1000 })
-    for (const cat of categories) {
-      if (cat.slug) {
-        const priority = HIGH_PRIORITY_CATEGORIES.has(cat.slug) ? 0.95 : 0.8
-        urls.push(buildUrl(`/categories/${cat.slug}`, `/categories/${cat.slug}`, 'daily', priority))
-      }
-    }
-  } catch {
-    // продолжаем без категорий
-  }
-
-  // 5. Бренды — отдельные страницы /brand/[slug]
-  try {
-    const brands = await fetchAllPages('catalog/brands', { page_size: 1000, is_active: true })
-    for (const brand of brands) {
-      if (!brand.slug) continue
-      const lastmod = brand.updated_at
-        ? new Date(brand.updated_at).toISOString().split('T')[0]
-        : today
-      const url = buildUrl(`/brand/${brand.slug}`, `/brand/${brand.slug}`, 'weekly', 0.65)
-      url.lastmod = lastmod
-      urls.push(url)
-    }
-  } catch (err) {
-    console.error('Sitemap: Failed to fetch brands', err)
-  }
-
-  // 6. Услуги — в приоритете, до тяжёлых товарных эндпоинтов
-  try {
-    const services = await fetchAllPages('catalog/services', {
-      lang: 'en', page_size: 1000, is_active: true,
-    })
-    for (const service of services) {
-      if (!service.slug) continue
-      const lastmod = service.updated_at
-        ? new Date(service.updated_at).toISOString().split('T')[0]
-        : today
-      const servicePath = buildProductPath(service.slug, 'uslugi')
-      const url = buildUrl(servicePath, servicePath, 'weekly', 0.75)
-      url.lastmod = lastmod
-      urls.push(url)
-    }
-  } catch (err) {
-    console.error('Sitemap: Failed to fetch services', err)
-  }
-
-  // 7. Товары: лёгкий эндпоинт /api/catalog/sitemap-products?domain=X
-  // Возвращает только slug + updated_at (без тяжёлой DRF-сериализации).
-  // Все домены запрашиваются параллельно — каждый запрос < 100ms.
-  const domainResults = await Promise.allSettled(
-    SITEMAP_DOMAINS.map((domain) =>
-      fetchAllPages('catalog/sitemap-products', { domain, page_size: 500 }).then(
-        (items) => ({ items, domain })
-      )
-    )
-  )
-  const seenSlugs = new Set<string>()
-  for (const result of domainResults) {
-    if (result.status !== 'fulfilled') continue
-    const { items } = result.value
-    for (const item of items) {
-      if (!item.slug || seenSlugs.has(item.slug)) continue
-      seenSlugs.add(item.slug)
-      const lastmod = item.updated_at
-        ? new Date(item.updated_at).toISOString().split('T')[0]
-        : today
-      const path = buildProductPath(item.slug, item.product_type)
-      const url = buildUrl(path, path, 'weekly', 0.7)
-      url.lastmod = lastmod
-      urls.push(url)
-    }
-  }
-
-  const sitemap = generateSitemapXml(urls)
 
   res.setHeader('Content-Type', 'application/xml; charset=utf-8')
   res.setHeader('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800')
-  res.write(sitemap)
+  res.write(generateSitemapIndexXml(sections, today))
   res.end()
 
   return { props: {} }

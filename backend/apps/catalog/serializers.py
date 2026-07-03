@@ -247,10 +247,11 @@ def _get_variant_localized_description(variant, locale: str) -> str:
         return ""
     if locale == "en":
         translations = getattr(product, "translations", None)
-        if hasattr(translations, "filter"):
-            trans = translations.filter(locale="en").first()
-            if trans and trans.description:
-                return trans.description
+        if hasattr(translations, "all"):
+            # .all() использует prefetch-кэш; .filter() бил бы в БД на каждый вариант
+            for trans in translations.all():
+                if trans.locale == "en" and trans.description:
+                    return trans.description
     return getattr(product, "description", "") or ""
 
 
@@ -3164,34 +3165,26 @@ class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
                 return file_url
             if variant.main_image:
                 return _resolve_media_url(variant.main_image, request)
-            v_main = variant.images.filter(is_main=True).first()
+            # .all() использует prefetch-кэш variants__images; .filter() бил бы в БД
+            v_images = list(variant.images.all())
+            v_main = next((img for img in v_images if img.is_main), None) or (v_images[0] if v_images else None)
             if v_main:
                 file_url = _resolve_file_url(getattr(v_main, "image_file", None), request)
                 if file_url:
                     return file_url
                 return _resolve_media_url(v_main.image_url, request)
-            v_first = variant.images.first()
-            if v_first:
-                file_url = _resolve_file_url(getattr(v_first, "image_file", None), request)
-                if file_url:
-                    return file_url
-                return _resolve_media_url(v_first.image_url, request)
-        main_img = getattr(obj, "images", None)
-        if main_img:
-            main_img = obj.images.filter(is_main=True).first()
+        gallery = getattr(obj, "images", None)
+        if gallery is not None:
+            # .all() использует prefetch-кэш images; .filter() бил бы в БД
+            imgs = list(gallery.all())
+            main_img = next((img for img in imgs if img.is_main), None) or (imgs[0] if imgs else None)
             if main_img:
                 file_url = _resolve_file_url(getattr(main_img, "image_file", None), request)
                 if file_url:
                     return file_url
                 return _resolve_media_url(main_img.image_url, request)
-            first_img = obj.images.first()
-            if first_img:
-                file_url = _resolve_file_url(getattr(first_img, "image_file", None), request)
-                if file_url:
-                    return file_url
-                return _resolve_media_url(first_img.image_url, request)
         return None
-    
+
     def get_price_formatted(self, obj):
         variant = self._get_active_variant(obj)
         if variant and variant.price is not None:
@@ -3292,14 +3285,35 @@ class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
     # ------------------------------------------------------------------
     # Варианты
     # ------------------------------------------------------------------
+    def _active_variants_sorted(self, obj):
+        """Активные варианты из prefetch-кэша (или None, если кэша нет).
+
+        .filter() на менеджере игнорирует prefetch и бьёт в БД — в списке
+        это давало десяток запросов на каждый товар (метод-филды active_variant_*).
+        """
+        if 'variants' not in getattr(obj, '_prefetched_objects_cache', {}):
+            return None
+        variants = [v for v in obj.variants.all() if v.is_active]
+        variants.sort(key=lambda v: (v.sort_order or 0, v.id or 0))
+        return variants
+
     def _get_default_variant(self, obj):
         variants = getattr(obj, "variants", None)
         if not variants:
             return None
-        priced = variants.filter(is_active=True, price__isnull=False).order_by("sort_order", "id").first()
-        if priced:
-            return priced
-        return variants.filter(is_active=True).order_by("sort_order", "id").first()
+        memo = obj.__dict__.get('_default_variant_memo')
+        if memo is not None:
+            return memo[0]
+        cached = self._active_variants_sorted(obj)
+        if cached is not None:
+            result = next((v for v in cached if v.price is not None), None) or (cached[0] if cached else None)
+        else:
+            result = (
+                variants.filter(is_active=True, price__isnull=False).order_by("sort_order", "id").first()
+                or variants.filter(is_active=True).order_by("sort_order", "id").first()
+            )
+        obj.__dict__['_default_variant_memo'] = (result,)
+        return result
 
     def _get_active_variant(self, obj):
         variants = getattr(obj, "variants", None)
@@ -3307,6 +3321,9 @@ class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
             return None
         active_slug = self.context.get("active_variant_slug")
         if active_slug:
+            cached = self._active_variants_sorted(obj)
+            if cached is not None:
+                return next((v for v in cached if v.slug == active_slug), None)
             return variants.filter(slug=active_slug, is_active=True).first()
         return self._get_default_variant(obj)
 
@@ -3314,8 +3331,10 @@ class ShoeProductSerializer(_LocalizedSeoMethodsMixin, serializers.ModelSerializ
         variants = getattr(obj, "variants", None)
         if not variants:
             return []
-        qs = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images")
-        return ShoeVariantSerializer(qs, many=True, context={'request': self.context.get('request')}).data
+        cached = self._active_variants_sorted(obj)
+        if cached is None:
+            cached = variants.filter(is_active=True).order_by("sort_order", "id").prefetch_related("images")
+        return ShoeVariantSerializer(cached, many=True, context={'request': self.context.get('request')}).data
 
     def get_default_variant_slug(self, obj):
         variant = self._get_default_variant(obj)

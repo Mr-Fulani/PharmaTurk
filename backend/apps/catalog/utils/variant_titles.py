@@ -22,25 +22,32 @@ def translate_common_color(raw_color: str, locale: str) -> str:
     return translate_turkish_color(color, locale) or color
 
 
+def _parent_translated_name(parent, locale: str) -> str:
+    """Имя из переводов родителя через prefetch-кэш (.all() вместо .filter():
+    .filter() бьёт в БД на каждый вариант в списках)."""
+    translations = getattr(parent, "translations", None)
+    if hasattr(translations, "all"):
+        for trans in translations.all():
+            if getattr(trans, "locale", None) == locale and getattr(trans, "name", None):
+                return str(trans.name).strip()
+    return ""
+
+
 def get_parent_localized_name(variant, locale: str) -> str:
     parent = getattr(variant, "product", None)
     if not parent:
         return ""
     if locale == "en":
-        translations = getattr(parent, "translations", None)
-        if hasattr(translations, "filter"):
-            trans = translations.filter(locale="en").first()
-            if trans and getattr(trans, "name", None):
-                return str(trans.name).strip()
+        name = _parent_translated_name(parent, "en")
+        if name:
+            return name
         direct_name = getattr(parent, "name_en", None)
         if direct_name:
             return str(direct_name).strip()
     elif locale == "ru":
-        translations = getattr(parent, "translations", None)
-        if hasattr(translations, "filter"):
-            trans = translations.filter(locale="ru").first()
-            if trans and getattr(trans, "name", None):
-                return str(trans.name).strip()
+        name = _parent_translated_name(parent, "ru")
+        if name:
+            return name
     return str(getattr(parent, "name", "") or "").strip()
 
 

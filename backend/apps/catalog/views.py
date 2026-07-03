@@ -1961,10 +1961,17 @@ class ShoeProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewset
         queryset = ShoeProduct.objects.filter(is_active=True).exclude(
             models.Q(external_data__has_key='source_variant_id') |
             models.Q(external_data__has_key='source_variant_slug')
-        ).prefetch_related(
+        ).select_related('category', 'brand', 'base_product').prefetch_related(
             'images',
             'variants',
             'variants__images',
+            'variants__sizes',
+            'sizes',
+            'translations',
+            'dynamic_attributes__attribute_key',
+            'category__translations',
+            'brand__translations',
+            'base_product__translations',
         )
 
         # Фильтр по категории (поддержка массивов)
@@ -3769,11 +3776,17 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
     serializer_class = MedicineProductSerializer
 
     def _base_queryset(self):
+        # defer('external_data'): дампы парсеров в jsonb весят мегабайты на строку,
+        # сериализатор поле не использует — без defer выборка 12 строк шла ~0.8с.
         return (
             super()
             ._base_queryset()
-            .select_related('category', 'brand')
-            .prefetch_related('translations', 'gallery_images', 'dynamic_attributes')
+            .select_related('category', 'brand', 'base_product')
+            .prefetch_related(
+                'translations', 'gallery_images', 'dynamic_attributes__attribute_key',
+                'category__translations', 'brand__translations', 'base_product__translations',
+            )
+            .defer('external_data')
             .exclude(
                 models.Q(external_data__has_key='is_stub') &
                 models.Q(external_data__is_stub=True)
