@@ -68,10 +68,13 @@ def _localized_related_name(obj, lang: str) -> str:
         return fallback
     translations = getattr(obj, "translations", None)
     try:
-        if hasattr(translations, "filter"):
-            tr = translations.filter(locale=lang).first() or translations.filter(locale="ru").first()
-            if tr and getattr(tr, "name", None):
-                return str(tr.name).strip()
+        if hasattr(translations, "all"):
+            # .all() использует prefetch-кэш; .filter() бил бы в БД на каждый товар
+            trans_list = list(translations.all())
+            for locale in (lang, "ru"):
+                for tr in trans_list:
+                    if getattr(tr, "locale", None) == locale and getattr(tr, "name", None):
+                        return str(tr.name).strip()
         elif translations:
             trans_list = list(translations)
             for locale in (lang, "ru"):
@@ -397,25 +400,6 @@ class ElectronicsProductTranslationSerializer(serializers.ModelSerializer):
         fields = ['locale', 'name', 'description', *TRANSLATION_SEO_FIELDS]
 
 
-def _get_category_ids_with_descendants(slugs: list) -> set:
-    """Возвращает set ID категорий по slug, включая все дочерние (подкатегории)."""
-    if not slugs:
-        return set()
-    slugs = [s.strip() for s in slugs if s.strip()]
-    if not slugs:
-        return set()
-    cats = Category.objects.filter(slug__in=slugs, is_active=True).values_list('id', flat=True)
-    current_ids = list(cats)
-    all_ids = set(current_ids)
-    while current_ids:
-        children = list(Category.objects.filter(
-            parent_id__in=current_ids, is_active=True
-        ).values_list('id', flat=True))
-        current_ids = [c for c in children if c not in all_ids]
-        all_ids.update(current_ids)
-    return all_ids
-
-
 class CategorySerializer(serializers.ModelSerializer):
     """Сериализатор для категорий."""
     
@@ -449,11 +433,65 @@ class CategorySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def _batch_cache(self) -> dict:
+        """Кэш батч-вычислений на время одного запроса.
+
+        context общий для корневого и всех вложенных сериализаторов, поэтому
+        дерево категорий и счётчики строятся один раз на запрос, а не на объект.
+        """
+        if not isinstance(self.context, dict):
+            return {}
+        return self.context.setdefault('_category_batch_cache', {})
+
+    def _category_tree(self) -> dict:
+        """Все категории одним запросом: id -> (parent_id, slug, name, is_active, type_slug)."""
+        cache = self._batch_cache()
+        tree = cache.get('tree')
+        if tree is None:
+            by_id: dict = {}
+            children_active: dict = {}
+            rows = Category.objects.values_list(
+                'id', 'parent_id', 'slug', 'name', 'is_active', 'category_type__slug'
+            )
+            for cid, pid, slug, name, is_active, type_slug in rows:
+                by_id[cid] = (pid, slug, name, is_active, type_slug)
+                if is_active:
+                    children_active.setdefault(pid, []).append(cid)
+            tree = {'by_id': by_id, 'children': children_active}
+            cache['tree'] = tree
+        return tree
+
+    def _subtree_ids(self, obj) -> set:
+        """ID категории и всех её активных потомков (аналог _get_category_ids_with_descendants)."""
+        tree = self._category_tree()
+        entry = tree['by_id'].get(obj.id)
+        if entry is None or not entry[3]:  # нет в БД или неактивна
+            return set()
+        ids = set()
+        stack = [obj.id]
+        while stack:
+            node = stack.pop()
+            if node in ids:
+                continue
+            ids.add(node)
+            stack.extend(tree['children'].get(node, []))
+        return ids
+
     def to_representation(self, instance):
-        """Скрытие описания для главной страницы."""
+        """Скрытие описания для главной страницы + мемоизация по id на время запроса.
+
+        В списках товаров одна и та же категория сериализуется для каждого товара —
+        без мемоизации это повторяет тяжёлые счётчики на каждый товар.
+        """
+        reprs = self._batch_cache().setdefault('reprs', {})
+        cached = reprs.get(instance.pk)
+        if cached is not None:
+            return dict(cached)
         ret = super().to_representation(instance)
         if self.context.get('hide_description'):
             ret['description'] = None
+        if instance.pk is not None:
+            reprs[instance.pk] = ret
         return ret
 
     def get_name(self, obj):
@@ -477,18 +515,30 @@ class CategorySerializer(serializers.ModelSerializer):
         """Количество подкатегорий."""
         if self.context.get('hide_counts'):
             return 0
-        return obj.children.filter(is_active=True).count()
+        return len(self._category_tree()['children'].get(obj.id, []))
 
     def get_products_count(self, obj):
         """Количество товаров/услуг в категории и всех её подкатегориях."""
         if self.context.get('hide_counts'):
             return 0
-        cat_ids = _get_category_ids_with_descendants([obj.slug])
+        cat_ids = self._subtree_ids(obj)
         if not cat_ids:
             return 0
-        products_count = Product.objects.filter(category_id__in=cat_ids, is_active=True).count()
-        services_count = Service.objects.filter(category_id__in=cat_ids, is_active=True).count()
-        return products_count + services_count
+        cache = self._batch_cache()
+        per_category = cache.get('per_category_counts')
+        if per_category is None:
+            per_category = {}
+            for model in (Product, Service):
+                rows = (
+                    model.objects.filter(is_active=True)
+                    .values('category_id')
+                    .annotate(cnt=Count('id'))
+                )
+                for row in rows:
+                    cid = row['category_id']
+                    per_category[cid] = per_category.get(cid, 0) + row['cnt']
+            cache['per_category_counts'] = per_category
+        return sum(per_category.get(cid, 0) for cid in cat_ids)
 
     def get_card_media_url(self, obj):
         """URL медиа-файла карточки категории. Прокси для R2 — устраняет CORS/SSL на мобильном."""
@@ -540,30 +590,44 @@ class CategorySerializer(serializers.ModelSerializer):
         return url
 
     def get_portfolio_items(self, obj):
-        # Проверяем, относится ли категория к "Услугам" (по типу или по иерархии)
+        # Проверяем, относится ли категория к "Услугам" (по типу или по иерархии).
+        # Обход родителей — по дереву в памяти, чтобы не бить в БД на каждый уровень.
+        by_id = self._category_tree()['by_id']
         is_service_category = False
-        curr = obj
-        while curr:
-            t_slug = getattr(getattr(curr, 'category_type', None), 'slug', None)
-            if t_slug == 'uslugi' or curr.slug == 'uslugi':
+        curr_id = obj.id
+        seen_ids = set()
+        while curr_id is not None and curr_id in by_id and curr_id not in seen_ids:
+            seen_ids.add(curr_id)
+            parent_id, slug, _name, _is_active, type_slug = by_id[curr_id]
+            if type_slug == 'uslugi' or slug == 'uslugi':
                 is_service_category = True
                 break
-            curr = curr.parent
-            
+            curr_id = parent_id
+
         if not is_service_category:
             return []
-            
+
         if not service_portfolio_translation_fields_ready():
             return []
-            
-        category_ids = _get_category_ids_with_descendants([obj.slug])
+
+        category_ids = self._subtree_ids(obj)
         if not category_ids:
             return []
-        queryset = ServicePortfolioItem.objects.filter(
-            category_id__in=category_ids,
-            is_active=True,
-        ).select_related('service', 'category').order_by('sort_order', '-created_at', '-id')
-        return ServicePortfolioItemSerializer(queryset, many=True, context=self.context).data
+        # Все активные элементы портфолио одним запросом на весь запрос:
+        # в списке категорий услуг иначе выходит запрос на каждую категорию.
+        cache = self._batch_cache()
+        items_by_cat = cache.get('portfolio_items_by_cat')
+        if items_by_cat is None:
+            items_by_cat = {}
+            portfolio_qs = ServicePortfolioItem.objects.filter(
+                is_active=True,
+            ).select_related('service', 'category').order_by('sort_order', '-created_at', '-id')
+            for item in portfolio_qs:
+                items_by_cat.setdefault(item.category_id, []).append(item)
+            cache['portfolio_items_by_cat'] = items_by_cat
+        items = [item for cid in category_ids for item in items_by_cat.get(cid, [])]
+        items.sort(key=lambda i: (i.sort_order, -(i.created_at.timestamp() if i.created_at else 0), -i.id))
+        return ServicePortfolioItemSerializer(items, many=True, context=self.context).data
 
     def get_category_type(self, obj):
         """Название типа категории."""
@@ -590,28 +654,33 @@ class CategorySerializer(serializers.ModelSerializer):
         lang = getattr(request, 'LANGUAGE_CODE', None) if request else None
         if not lang:
             lang = translation.get_language() or 'ru'
-            
+
+        # Локализованные имена всех категорий одним запросом на язык
+        cache = self._batch_cache()
+        names_key = f'localized_names:{lang}'
+        localized_names = cache.get(names_key)
+        if localized_names is None:
+            localized_names = {
+                cat_id: name
+                for cat_id, name in CategoryTranslation.objects.filter(locale=lang).values_list('category_id', 'name')
+                if name
+            }
+            cache[names_key] = localized_names
+
+        by_id = self._category_tree()['by_id']
         ancestors_list = []
-        curr = obj.parent
-        while curr:
-            name = curr.name
-            # Попытка локализации родителя
-            if hasattr(curr, 'translations'):
-                try:
-                    # Поиск в префетченной коллекции если возможно, иначе запрос
-                    t = curr.translations.filter(locale=lang).first()
-                    if t and t.name:
-                        name = t.name
-                except Exception:
-                    pass
-            
+        curr_id = obj.parent_id
+        seen_ids = set()
+        while curr_id is not None and curr_id in by_id and curr_id not in seen_ids:
+            seen_ids.add(curr_id)
+            parent_id, slug, name, _is_active, _type_slug = by_id[curr_id]
             ancestors_list.append({
-                'id': curr.id,
-                'name': name,
-                'slug': curr.slug
+                'id': curr_id,
+                'name': localized_names.get(curr_id) or name,
+                'slug': slug
             })
-            curr = curr.parent
-        
+            curr_id = parent_id
+
         # Инвертируем, чтобы было от корня к текущей
         ancestors_list.reverse()
         return ancestors_list
@@ -639,10 +708,23 @@ class BrandSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def to_representation(self, instance):
-        """Скрытие счетчика товаров для главной страницы."""
+        """Скрытие счетчика товаров + мемоизация по id на время запроса.
+
+        В списках товаров один бренд сериализуется для каждого товара, а
+        products_count/primary_category_slug — это несколько count()-запросов.
+        """
+        if isinstance(self.context, dict):
+            reprs = self.context.setdefault('_brand_repr_cache', {})
+            cached = reprs.get(instance.pk)
+            if cached is not None:
+                return dict(cached)
+        else:
+            reprs = None
         ret = super().to_representation(instance)
         if self.context.get('hide_counts'):
             ret['products_count'] = 0
+        if reprs is not None and instance.pk is not None:
+            reprs[instance.pk] = ret
         return ret
     
     def get_products_count(self, obj):

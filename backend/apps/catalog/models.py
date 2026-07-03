@@ -79,13 +79,22 @@ TOP_CATEGORY_SLUG_CHOICES = [
 ]
 
 
+_service_portfolio_fields_ready_memo = False
+
+
 def service_portfolio_translation_fields_ready() -> bool:
     """
     Проверяет, применены ли миграции EN-полей для ServicePortfolioItem.
 
     Нужен как безопасный guard на время деплоя, когда код уже обновлён,
     а миграции на проде ещё не применились.
+
+    Положительный результат кэшируется на процесс: колонки не исчезают,
+    а интроспекция на каждый вызов давала сотни запросов в списке категорий.
     """
+    global _service_portfolio_fields_ready_memo
+    if _service_portfolio_fields_ready_memo:
+        return True
     try:
         with connection.cursor() as cursor:
             columns = {
@@ -104,7 +113,10 @@ def service_portfolio_translation_fields_ready() -> bool:
         "result_summary_en",
         "alt_text_en",
     }
-    return required_columns.issubset(columns)
+    if required_columns.issubset(columns):
+        _service_portfolio_fields_ready_memo = True
+        return True
+    return False
 
 
 def _catalog_site_name() -> str:

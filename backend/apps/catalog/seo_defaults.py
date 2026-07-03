@@ -58,16 +58,18 @@ def _get_translation_value(container, field_name: str, lang: str) -> str | None:
         candidates.append("ru")
 
     try:
-        if hasattr(translations, "filter"):
+        if hasattr(translations, "all"):
+            # .all() использует prefetch-кэш; .filter(locale=...) шёл бы в БД
+            # отдельным запросом на каждое SEO-поле каждого товара.
+            trans_list = list(translations.all())
             for locale in candidates:
-                tr = translations.filter(locale=locale).first()
-                if tr:
-                    val = getattr(tr, field_name, None)
-                    if val:
-                        return val
-            fallback = translations.first()
-            if fallback:
-                val = getattr(fallback, field_name, None)
+                for tr in trans_list:
+                    if getattr(tr, "locale", None) == locale:
+                        val = getattr(tr, field_name, None)
+                        if val:
+                            return val
+            for tr in trans_list:
+                val = getattr(tr, field_name, None)
                 if val:
                     return val
         else:

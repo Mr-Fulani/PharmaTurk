@@ -533,15 +533,17 @@ class FacetedModelViewSetMixin:
             return []
         valid = {'men', 'women', 'unisex', 'kids'}
         seen = set()
+        # .order_by() обязателен: дефолтный ordering по created_at попадает в
+        # SELECT DISTINCT и превращает выборку значений в скан всей таблицы.
         if hasattr(model, 'gender'):
-            for v in queryset.exclude(gender__in=[None, '']).values_list('gender', flat=True).distinct():
+            for v in queryset.exclude(gender__in=[None, '']).order_by().values_list('gender', flat=True).distinct():
                 if v and str(v).strip().lower() in valid:
                     seen.add(str(v).strip().lower())
         if hasattr(model, 'category'):
-            for v in queryset.exclude(category__gender__in=[None, '']).values_list('category__gender', flat=True).distinct():
+            for v in queryset.exclude(category__gender__in=[None, '']).order_by().values_list('category__gender', flat=True).distinct():
                 if v and str(v).strip().lower() in valid:
                     seen.add(str(v).strip().lower())
-            for slug, name in queryset.exclude(category__isnull=True).values_list('category__slug', 'category__name').distinct():
+            for slug, name in queryset.exclude(category__isnull=True).order_by().values_list('category__slug', 'category__name').distinct():
                 seen.update(_infer_gender_values_from_text(slug, name).intersection(valid))
         return sorted(seen)
 
@@ -606,6 +608,7 @@ class FacetedModelViewSetMixin:
             return []
         values = (
             queryset.exclude(fragrance_type__in=[None, ''])
+            .order_by()
             .values_list('fragrance_type', flat=True)
             .distinct()
         )
@@ -718,7 +721,16 @@ class CategoryPagination(PageNumberPagination):
 class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     """API для работы с категориями."""
 
-    queryset = Category.objects.filter(is_active=True).select_related('category_type').prefetch_related(
+    # parent-цепочка в select_related: SEO-методы модели (meta_title/og_image)
+    # ходят по родителям — без этого N+1 на каждую категорию списка.
+    _CATEGORY_SELECT_RELATED = (
+        'category_type',
+        'parent', 'parent__category_type',
+        'parent__parent', 'parent__parent__category_type',
+        'parent__parent__parent', 'parent__parent__parent__category_type',
+    )
+
+    queryset = Category.objects.filter(is_active=True).select_related(*_CATEGORY_SELECT_RELATED).prefetch_related(
         *_category_prefetches()
     )
     serializer_class = CategorySerializer
@@ -760,7 +772,7 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         - parent_slug            — вернуть только детей указанного родителя (slug).
         - parent_id              — вернуть только детей указанного родителя (id).
         """
-        base_qs = Category.objects.filter(is_active=True).select_related('category_type').prefetch_related(
+        base_qs = Category.objects.filter(is_active=True).select_related(*self._CATEGORY_SELECT_RELATED).prefetch_related(
             *_category_prefetches()
         ).order_by('sort_order', 'name')
 
@@ -841,7 +853,7 @@ class CategoryViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     def children(self, request, pk=None):
         """Получить подкатегории."""
         category = self.get_object()
-        children = Category.objects.filter(parent=category, is_active=True).select_related('category_type').prefetch_related(
+        children = Category.objects.filter(parent=category, is_active=True).select_related(*self._CATEGORY_SELECT_RELATED).prefetch_related(
             *_category_prefetches()
         )
         serializer = self.get_serializer(children, many=True)
