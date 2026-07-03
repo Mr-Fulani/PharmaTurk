@@ -237,6 +237,9 @@ export const resolveMediaUrl = (url?: string | null) => {
 export function withListingImageMaxWidth(url: string, maxWidth = 480): string {
   if (!url || typeof url !== 'string') return url
   if (!url.includes('proxy-media')) return url
+  // Для видео proxy-media игнорирует max_width (пасс-тру), а разные query
+  // ломают кэш браузера: один ролик в мобильной и десктопной сетке качался дважды.
+  if (isVideoUrl(url)) return url
   if (/[?&](max_width|w)=/i.test(url)) return url
   const sep = url.includes('?') ? '&' : '?'
   return `${url}${sep}max_width=${maxWidth}`
