@@ -126,7 +126,11 @@ export default function CategoryHero({
           position: fixed;
           inset: 0;
           width: 100vw;
-          height: var(--hero-height);
+          /* Запас по высоте: hero начинается ниже шапки, а fixed-картинка
+             прибита к верху вьюпорта — без запаса низ hero остаётся полосой
+             фонового цвета, пока страница не проскроллена на высоту шапки.
+             Лишнее срезает clip-path контейнера. */
+          height: calc(var(--hero-height) + 7rem);
           object-position: center 44%;
           transform: translateZ(0) scale(1.02);
           animation: heroImageDrift 18s ease-in-out infinite alternate;
