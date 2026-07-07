@@ -7,6 +7,7 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import Masonry from 'react-masonry-css'
 import BannerCarousel from '../../components/BannerCarouselMedia'
 import CardMasonryMedia from '../../components/CardMasonryMedia'
+import CategoryHero from '../../components/CategoryHero'
 import { getSiteOrigin } from '../../lib/urls'
 import { getLocalizedBrandName, getLocalizedBrandDescription, BrandTranslation } from '../../lib/i18n'
 
@@ -16,15 +17,9 @@ interface Brand {
   slug: string
   description?: string
   products_count?: number
-  primary_category_slug?: string | null
   card_media_url?: string | null
   logo?: string | null
   translations?: BrandTranslation[]
-}
-
-const mapCategoryToRouteSlug = (slug?: string | null) => {
-  const normalized = (slug || '').trim().toLowerCase().replace(/_/g, '-')
-  return normalized || 'medicines'
 }
 
 export default function BrandsPage({ brands }: { brands: Brand[] }) {
@@ -61,17 +56,15 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
       </Head>
 
       <main className="min-h-screen bg-page text-main transition-colors duration-200">
-        <section className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-4">
-            <div>
-              <p className="text-sm uppercase tracking-widest opacity-80">{t('brands', 'Бренды')}</p>
-              <h1 className="text-3xl md:text-4xl font-bold mt-1">{t('popular_brands', 'Популярные бренды')}</h1>
-              <p className="mt-2 text-lg opacity-90">
-                {t('brands_description', 'Выберите бренд, чтобы увидеть товары. Видео и внешние медиа поддерживаются.')}
-              </p>
-            </div>
-          </div>
-        </section>
+        <CategoryHero
+          eyebrow={t('brands', 'Бренды')}
+          title={t('popular_brands', 'Популярные бренды')}
+          description={t('brands_description', 'Выберите бренд, чтобы увидеть товары. Видео и внешние медиа поддерживаются.')}
+          totalCount={brands.length}
+          categorySlug="brands"
+          countLabel={t('brands', 'Бренды')}
+          showWhatsapp={false}
+        />
 
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8">
           <BannerCarousel position="main" />
@@ -86,8 +79,7 @@ export default function BrandsPage({ brands }: { brands: Brand[] }) {
             {brands.map((brand, idx) => {
               const heights = [224, 256, 288]
               const cardHeight = heights[idx % heights.length]
-              const slug = mapCategoryToRouteSlug(brand.primary_category_slug || brand.slug || '')
-              const href = `/categories/${slug}?brand_id=${brand.id}`
+              const href = `/brand/${brand.slug}`
               return (
                 <Link
                   key={brand.id}

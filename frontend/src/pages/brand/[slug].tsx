@@ -1,186 +1,293 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import axios from 'axios'
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
-import ProductCard from '../../components/ProductCard'
-import Sidebar from '../../components/Sidebar'
-import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
-import { ProductTranslation } from '../../lib/i18n'
+import ProductCard from '../../components/ProductCard'
+import CategoryHero from '../../components/CategoryHero'
+import CategorySidebar, { FilterState } from '../../components/CategorySidebar'
+import Pagination from '../../components/Pagination'
+import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
+import { buildProductUrl, getSiteOrigin } from '../../lib/urls'
+import { buildCatalogPageQuery, parseCatalogFiltersQuery } from '../../lib/catalogQuery'
+import { ProductTranslation, BrandTranslation, getLocalizedBrandDescription, getLocalizedBrandName } from '../../lib/i18n'
+import api from '../../lib/api'
+import { useViewMode } from '../../hooks/useViewMode'
 
 interface Product {
   id: number
   name: string
   slug: string
-  price: string | null
+  description?: string
+  product_type?: string
+  price: string | number | null
   price_formatted?: string
   old_price?: string | number | null
-  old_price_formatted?: string
+  old_price_formatted?: string | null
   currency: string
+  main_image?: string
   main_image_url?: string
   images?: import('../../components/ProductCardImageGallery').ProductCardGalleryImage[] | null
   video_url?: string
   main_video_url?: string
   main_gif_url?: string | null
-  meta_title?: string | null
-  meta_description?: string | null
-  meta_keywords?: string | null
-  og_title?: string | null
-  og_description?: string | null
-  og_image_url?: string | null
+  is_featured?: boolean
+  is_new?: boolean
   translations?: ProductTranslation[]
-  gender?: string | null
+  base_product_id?: number
+  has_manual_main_image?: boolean
 }
 
 interface Category {
   id: number
   name: string
   slug: string
-  count?: number
+  description?: string
+  children_count?: number
+  product_count?: number
+  parent?: number | null
+  translations?: Array<{ locale: string; name: string; description?: string }>
 }
 
 interface Brand {
   id: number
   name: string
-  count?: number
+  slug: string
+  description?: string
+  products_count?: number
+  primary_category_slug?: string | null
+  category_slugs?: string[]
+  translations?: BrandTranslation[]
 }
 
 interface BrandData {
+  id: number
   name: string
+  slug: string
   description: string
+  translations?: BrandTranslation[]
   products: Product[]
   totalCount: number
 }
+
+interface BrandPageBrand extends Brand {
+  product_count?: number
+}
+
+const defaultFilters: FilterState = {
+  categories: [],
+  categorySlugs: [],
+  brands: [],
+  brandSlugs: [],
+  subcategories: [],
+  subcategorySlugs: [],
+  genders: [],
+  fragranceTypes: [],
+  authorIds: [],
+  genreIds: [],
+  publishers: [],
+  languages: [],
+  priceMin: undefined,
+  priceMax: undefined,
+  inStock: false,
+  isNew: false,
+  sortBy: 'name_asc',
+  attributes: {},
+}
+
+const normalizePageParam = (value: unknown) => {
+  const raw = Array.isArray(value) ? value[0] : value
+  const page = Number(raw || 1)
+  return Number.isFinite(page) && page > 0 ? Math.floor(page) : 1
+}
+
+const extractResults = (data: any) => {
+  if (Array.isArray(data)) return data
+  return data?.results || data?.data?.results || []
+}
+
+const areFilterArraysEqual = (left: Array<string | number>, right: Array<string | number>) =>
+  left.length === right.length && left.every((value, index) => value === right[index])
+
+const areFiltersEqual = (left: FilterState, right: FilterState) =>
+  areFilterArraysEqual(left.categories, right.categories) &&
+  areFilterArraysEqual(left.categorySlugs, right.categorySlugs) &&
+  areFilterArraysEqual(left.brands, right.brands) &&
+  areFilterArraysEqual(left.brandSlugs, right.brandSlugs) &&
+  areFilterArraysEqual(left.subcategories, right.subcategories) &&
+  areFilterArraysEqual(left.subcategorySlugs, right.subcategorySlugs) &&
+  areFilterArraysEqual(left.genders || [], right.genders || []) &&
+  left.priceMin === right.priceMin &&
+  left.priceMax === right.priceMax &&
+  left.inStock === right.inStock &&
+  left.isNew === right.isNew &&
+  left.sortBy === right.sortBy
 
 export default function BrandPage({
   brandData,
   page,
   categories = [],
-  brands = []
+  brands = [],
 }: {
   brandData: BrandData
   page: number
   categories: Category[]
-  brands: Brand[]
+  brands: BrandPageBrand[]
 }) {
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
-  const { slug } = router.query
-  const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
-  const [selectedBrand, setSelectedBrand] = useState<number | null>(null)
-  const [sortBy, setSortBy] = useState('name_asc')
-  const [inStockOnly, setInStockOnly] = useState(false)
+  const [viewMode, setViewMode] = useViewMode()
+  const [products, setProducts] = useState<Product[]>(brandData.products || [])
+  const [totalCount, setTotalCount] = useState(brandData.totalCount || 0)
+  const [currentPage, setCurrentPage] = useState(Number(page) || 1)
+  const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const defaultBrandFilters = useMemo<FilterState>(() => ({
+    ...defaultFilters,
+    brands: [brandData.id],
+    brandSlugs: [brandData.slug],
+  }), [brandData.id, brandData.slug])
+  const [filters, setFilters] = useState<FilterState>(defaultBrandFilters)
   const productsPerPage = 24
-  const currentPage = Number(page) || 1
-  const totalPages = Math.max(1, Math.ceil((Number(brandData?.totalCount) || 0) / productsPerPage))
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://mudaroba.com').replace(/\/$/, '')
-  const brandPath = `/brand/${slug || ''}`
-  const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
-  const canonicalUrl = `${siteUrl}${localePrefix}${brandPath}`
-  const ruUrl = `${siteUrl}${brandPath}`
-  const enUrl = `${siteUrl}/en${brandPath}`
-  const metaTitle = brandData ? `${brandData.name} — Mudaroba` : 'Бренд — Mudaroba'
-  const metaDescription =
-    brandData?.description?.slice(0, 200) ||
-    `Товары бренда ${brandData?.name || ''} на Mudaroba`
-  const breadcrumbSchema = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Главная', item: `${siteUrl}/` },
-      { '@type': 'ListItem', position: 2, name: brandData?.name || 'Бренд', item: canonicalUrl },
-    ],
-  }
-
-  const goToPage = (nextPage: number) => {
-    const p = Math.min(Math.max(1, nextPage), totalPages)
-    router.push(
-      { pathname: `/brand/${slug}`, query: { ...router.query, page: p } },
-      undefined,
-      { scroll: false }
-    )
-  }
-
-  // Сохранение и восстановление позиции скролла при возврате на страницу
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const scrollKey = `scroll_${router.asPath}`
-    let shouldRestoreScroll = false
-
-    // Сохраняем позицию скролла при уходе со страницы
-    const handleRouteChangeStart = (url: string) => {
-      if (url !== router.asPath) {
-        sessionStorage.setItem(scrollKey, String(window.scrollY))
-      }
-    }
-
-    const handleRouteChangeComplete = (url: string) => {
-      if (url === router.asPath) {
-        shouldRestoreScroll = true
-        const savedScroll = sessionStorage.getItem(scrollKey)
-        if (savedScroll) {
-          const scrollY = parseInt(savedScroll, 10)
-          // Используем requestAnimationFrame для восстановления после рендера
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              window.scrollTo({ top: scrollY, behavior: 'auto' })
-            })
-          })
-        }
-      }
-    }
-
-    const handleBeforeUnload = () => {
-      sessionStorage.setItem(scrollKey, String(window.scrollY))
-    }
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        sessionStorage.setItem(scrollKey, String(window.scrollY))
-      } else if (shouldRestoreScroll) {
-        const savedScroll = sessionStorage.getItem(scrollKey)
-        if (savedScroll) {
-          const scrollY = parseInt(savedScroll, 10)
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              window.scrollTo({ top: scrollY, behavior: 'auto' })
-            })
-          })
-        }
-      }
-    }
-
-    // Восстанавливаем позицию скролла при монтировании (если это возврат на страницу)
-    const savedScroll = sessionStorage.getItem(scrollKey)
-    if (savedScroll && router.isReady) {
-      const scrollY = parseInt(savedScroll, 10)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          window.scrollTo({ top: scrollY, behavior: 'auto' })
-        })
+  const totalPages = Math.max(1, Math.ceil(totalCount / productsPerPage))
+  const localizedBrandName = getLocalizedBrandName(brandData.slug, brandData.name, t, brandData.translations, router.locale)
+  const localizedBrandDescription = getLocalizedBrandDescription(
+    brandData.slug,
+    brandData.description || '',
+    t,
+    brandData.translations,
+    router.locale
+  )
+  const gendersKey = (filters.genders || []).join(',')
+  const brandOptions = useMemo(() => {
+    const seen = new Set<number>()
+    return brands
+      .filter((brand) => {
+        if (seen.has(brand.id)) return false
+        seen.add(brand.id)
+        return true
       })
+      .sort((a, b) => {
+        if (a.id === brandData.id) return -1
+        if (b.id === brandData.id) return 1
+        const ca = a.product_count ?? a.products_count ?? 0
+        const cb = b.product_count ?? b.products_count ?? 0
+        if (cb !== ca) return cb - ca
+        return (a.name || '').localeCompare(b.name || '', 'ru')
+      })
+  }, [brands, brandData.id])
+
+  useEffect(() => {
+    if (!router.isReady) return
+    const nextPage = normalizePageParam(router.query.page)
+    setCurrentPage((prev) => (prev === nextPage ? prev : nextPage))
+    const nextFilters = parseCatalogFiltersQuery(router.query, defaultBrandFilters) as FilterState
+    setFilters((prev) => (areFiltersEqual(prev, nextFilters) ? prev : nextFilters))
+  }, [router.isReady, router.asPath, router.query, defaultBrandFilters])
+
+  const updatePageQuery = useCallback((
+    nextPage: number,
+    options: { replace?: boolean; filters?: FilterState } = {}
+  ) => {
+    if (!router.isReady) return
+    const nextQuery = buildCatalogPageQuery(router.query, nextPage, options)
+    const navigate = options.replace ? router.replace : router.push
+    navigate({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true, scroll: false }).catch((error) => {
+      console.error('Не удалось обновить параметры страницы бренда:', error)
+    })
+  }, [router])
+
+  const resetFilters = useCallback(() => {
+    setFilters(defaultBrandFilters)
+    setCurrentPage(1)
+    updatePageQuery(1, { replace: true, filters: defaultBrandFilters })
+  }, [defaultBrandFilters, updatePageQuery])
+
+  const handleFilterChange = useCallback((nextFilters: FilterState) => {
+    setFilters(nextFilters)
+    if (areFiltersEqual(filters, nextFilters)) return
+    setCurrentPage(1)
+    updatePageQuery(1, { replace: true, filters: nextFilters })
+  }, [filters, updatePageQuery])
+
+  const handlePageChange = (nextPage: number) => {
+    const safePage = Math.min(Math.max(nextPage, 1), Math.max(totalPages, 1))
+    setCurrentPage(safePage)
+    updatePageQuery(safePage)
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }
+
+  useEffect(() => {
+    if (!router.isReady || !brandData.slug) return
+    let cancelled = false
+
+    const loadProducts = async () => {
+      setLoading(true)
+      try {
+        const params: Record<string, any> = {
+          page: currentPage,
+          page_size: productsPerPage,
+        }
+        if (filters.categorySlugs.length > 0) params.category_slug = filters.categorySlugs.join(',')
+        else if (filters.categories.length > 0) params.category_id = filters.categories
+        if (filters.brands.length > 0) params.brand_id = filters.brands
+        if (gendersKey) params.gender = gendersKey
+        if (filters.priceMin !== undefined) params.price_min = filters.priceMin
+        if (filters.priceMax !== undefined) params.price_max = filters.priceMax
+        if (filters.inStock) params.in_stock = true
+        if (filters.isNew) params.is_new = true
+        if (filters.sortBy) params.ordering = filters.sortBy
+
+        const response = await api.get(`/catalog/brands/${brandData.slug}/products`, { params })
+        if (cancelled) return
+        const data = response.data
+        setProducts(extractResults(data))
+        setTotalCount(typeof data?.count === 'number' ? data.count : extractResults(data).length)
+      } catch (error) {
+        if (!cancelled) console.error('Error loading brand products:', error)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
 
-    router.events.on('routeChangeStart', handleRouteChangeStart)
-    router.events.on('routeChangeComplete', handleRouteChangeComplete)
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
+    loadProducts()
     return () => {
-      router.events.off('routeChangeStart', handleRouteChangeStart)
-      router.events.off('routeChangeComplete', handleRouteChangeComplete)
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      cancelled = true
     }
-  }, [router.asPath, router.isReady, router.events])
+  }, [
+    router.isReady,
+    brandData.slug,
+    currentPage,
+    filters.categories,
+    filters.categorySlugs,
+    filters.brands,
+    gendersKey,
+    filters.priceMin,
+    filters.priceMax,
+    filters.inStock,
+    filters.isNew,
+    filters.sortBy,
+  ])
 
   if (!brandData) {
-    return <div>Бренд не найден</div>
+    return <div>{t('brand_not_found', 'Бренд не найден')}</div>
   }
+
+  const siteUrl = getSiteOrigin()
+  const brandPath = `/brand/${brandData.slug}`
+  const localePrefix = router.locale === router.defaultLocale ? '' : `/${router.locale}`
+  const canonicalUrl = `${siteUrl}${localePrefix}${brandPath}`
+  const metaTitle = `${localizedBrandName} — Mudaroba`
+  const metaDescription = localizedBrandDescription?.slice(0, 200) || `Товары бренда ${localizedBrandName} на Mudaroba`
+  const breadcrumbs = [
+    { href: '/', label: t('breadcrumb_home', 'Главная') },
+    { href: '/brands', label: t('brands', 'Бренды') },
+    { href: brandPath, label: localizedBrandName },
+  ]
 
   return (
     <>
@@ -188,9 +295,9 @@ export default function BrandPage({
         <title>{metaTitle}</title>
         <meta name="description" content={metaDescription} />
         <link rel="canonical" href={canonicalUrl} />
-        <link rel="alternate" hrefLang="ru" href={ruUrl} />
-        <link rel="alternate" hrefLang="en" href={enUrl} />
-        <link rel="alternate" hrefLang="x-default" href={ruUrl} />
+        <link rel="alternate" hrefLang="ru" href={`${siteUrl}${brandPath}`} />
+        <link rel="alternate" hrefLang="en" href={`${siteUrl}/en${brandPath}`} />
+        <link rel="alternate" hrefLang="x-default" href={`${siteUrl}${brandPath}`} />
         <meta property="og:title" content={metaTitle} />
         <meta property="og:description" content={metaDescription} />
         <meta property="og:url" content={canonicalUrl} />
@@ -198,242 +305,273 @@ export default function BrandPage({
         <meta property="twitter:card" content="summary_large_image" />
         <meta property="twitter:title" content={metaTitle} />
         <meta property="twitter:description" content={metaDescription} />
-        <script
-          type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
-        />
       </Head>
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-3 sm:px-6 md:flex-row">
-        {/* Sidebar */}
-        <div className="hidden md:block mt-6">
-          <Sidebar
-            categories={categories}
-            brands={brands}
-            onCategoryChange={setSelectedCategory}
-            onBrandChange={setSelectedBrand}
-            onSortChange={setSortBy}
-            onAvailabilityChange={setInStockOnly}
-            selectedCategory={selectedCategory}
-            selectedBrand={selectedBrand}
-            sortBy={sortBy}
-            inStockOnly={inStockOnly}
-            isOpen={true}
-            onToggle={() => { }}
-          />
-        </div>
 
-        {/* Mobile Sidebar */}
-        <div className="md:hidden">
-          <Sidebar
-            categories={categories}
-            brands={brands}
-            onCategoryChange={setSelectedCategory}
-            onBrandChange={setSelectedBrand}
-            onSortChange={setSortBy}
-            onAvailabilityChange={setInStockOnly}
-            selectedCategory={selectedCategory}
-            selectedBrand={selectedBrand}
-            sortBy={sortBy}
-            inStockOnly={inStockOnly}
-            isOpen={sidebarOpen}
-            onToggle={() => setSidebarOpen(!sidebarOpen)}
-          />
-        </div>
+      <CategoryHero
+        title={localizedBrandName}
+        description={localizedBrandDescription}
+        totalCount={totalCount}
+        categorySlug="brand"
+      />
 
-        {/* Main Content */}
-        <main className="flex-1 px-3 pt-0 pb-4 sm:p-6">
-          {/* Mobile sidebar toggle */}
-          <div className="md:hidden mb-4">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="flex items-center space-x-2 px-4 py-2 bg-violet-600 text-white rounded-md hover:bg-violet-700 transition-colors duration-200"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-              <span>Фильтры</span>
-            </button>
+      <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 pt-3 pb-0 sm:py-3 flex items-center justify-between">
+        <nav className="text-sm text-main flex flex-wrap items-center gap-2">
+          {breadcrumbs.map((item, idx) => {
+            const isLast = idx === breadcrumbs.length - 1
+            return (
+              <span key={`${item.href}-${idx}`} className="flex items-center gap-2">
+                {!isLast ? (
+                  <Link href={item.href} className="hover:text-[var(--accent)] transition-colors">
+                    {item.label}
+                  </Link>
+                ) : (
+                  <span className="text-main font-medium">{item.label}</span>
+                )}
+                {!isLast && <span className="text-main/60">/</span>}
+              </span>
+            )
+          })}
+        </nav>
+
+        <div className="hidden lg:flex items-center gap-2">
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`p-2 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-[var(--accent-soft)] text-[var(--accent)]' : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'}`}
+            aria-label={t('category_view_grid', 'Сетка')}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`p-2 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-[var(--accent-soft)] text-[var(--accent)]' : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'}`}
+            aria-label={t('category_view_list', 'Список')}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 pt-0 pb-8 sm:py-8">
+        <div className="flex flex-col lg:flex-row gap-8">
+          <div className="lg:w-80 flex-shrink-0">
+            <CategorySidebar
+              key={brandData.slug}
+              categories={categories}
+              brands={brandOptions}
+              subcategories={[]}
+              onFilterChange={handleFilterChange}
+              isOpen={sidebarOpen}
+              onToggle={() => setSidebarOpen(!sidebarOpen)}
+              initialFilters={filters}
+              showCategories={categories.length > 0}
+              showSubcategories={false}
+              showGenderFilter={false}
+              categoryType="brand"
+            />
           </div>
 
-          {/* Brand Header */}
-          <div className="mb-8">
-            <nav className="mb-4">
-              <Link href="/" className="text-violet-600 hover:text-violet-800 text-sm">
-                Главная
-              </Link>
-              <span className="mx-2 text-gray-400">/</span>
-              <span className="text-gray-600 text-sm">{brandData.name}</span>
-            </nav>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">{brandData.name}</h1>
-            <p className="text-gray-600">{brandData.description}</p>
-          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex lg:hidden items-center justify-between gap-4 mb-6">
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="lg:hidden flex items-center gap-2 px-4 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg hover:bg-[var(--accent-soft)] transition-colors text-main"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                {t('sidebar_filters', 'Фильтры')}
+              </button>
 
-          <div className="mt-2 w-full">
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-3 sm:gap-7">
-              {brandData.products.map((p) => {
-                const pt = (p as { product_type?: string }).product_type || 'medicines'
-                return (
-                  <ProductCard
-                    key={buildProductIdentityKey(p, pt)}
-                    id={p.id}
-                    baseProductId={(p as { base_product_id?: number }).base_product_id}
-                    name={p.name}
-                    slug={p.slug}
-                    price={p.price}
-                    currency={p.currency}
-                    imageUrl={p.main_image_url}
-                    galleryImages={p.images}
-                    videoUrl={p.video_url}
-                    mainVideoUrl={p.main_video_url}
-                    mainGifUrl={(p as { main_gif_url?: string | null }).main_gif_url}
-                    hasManualMainImage={(p as any).has_manual_main_image}
-                    productType={pt}
-                    isBaseProduct={isBaseProductType(pt)}
-                    isNew={(p as { is_new?: boolean }).is_new}
-                    isFeatured={(p as { is_featured?: boolean }).is_featured}
-                    translations={p.translations}
-                    locale={i18n.language}
-                  />
-                )
-              })}
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-2 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-[var(--accent-soft)] text-[var(--accent)]' : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'}`}
+                  aria-label={t('category_view_grid', 'Сетка')}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-2 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-[var(--accent-soft)] text-[var(--accent)]' : 'bg-[var(--surface)] text-main hover:bg-[var(--accent-soft)]'}`}
+                  aria-label={t('category_view_list', 'Список')}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
-            {brandData.products.length === 0 && (
-              <div className="text-center py-16">
-                <h3 className="text-xl font-medium text-gray-900 mb-2">Товары не найдены</h3>
-                <p className="text-gray-600">В данный момент товары этого бренда недоступны</p>
+            {loading && products.length === 0 ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-600"></div>
               </div>
-            )}
-
-            {totalPages > 1 && (
-              <div className="flex justify-center mt-10">
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => goToPage(currentPage - 1)}
-                    disabled={currentPage <= 1}
-                    className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                  >
-                    {t('pagination_back', 'Назад')}
-                  </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => goToPage(p)}
-                      className={`px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${currentPage === p ? 'bg-violet-600 text-white' : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'}`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => goToPage(currentPage + 1)}
-                    disabled={currentPage >= totalPages}
-                    className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                  >
-                    {t('pagination_forward', 'Вперед')}
-                  </button>
+            ) : products.length > 0 ? (
+              <>
+                <div
+                  className={
+                    (viewMode === 'grid'
+                      ? 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 mb-8'
+                      : 'space-y-4 mb-8') +
+                    (loading ? ' opacity-40 pointer-events-none transition-opacity duration-150' : ' transition-opacity duration-150')
+                  }
+                >
+                  {products.map((product) => {
+                    const effectiveProductType = (product.product_type || 'medicines').replace(/_/g, '-')
+                    const isBaseProduct = isBaseProductType(effectiveProductType)
+                    return (
+                      <ProductCard
+                        key={buildProductIdentityKey(product, effectiveProductType)}
+                        id={product.id}
+                        baseProductId={product.base_product_id}
+                        name={product.name}
+                        slug={product.slug}
+                        price={product.price_formatted || (product.price != null ? String(product.price) : null)}
+                        currency={product.currency}
+                        oldPrice={product.old_price_formatted || (product.old_price != null ? String(product.old_price) : null)}
+                        imageUrl={product.main_image_url || product.main_image}
+                        galleryImages={product.images}
+                        videoUrl={product.video_url}
+                        mainVideoUrl={product.main_video_url}
+                        mainGifUrl={product.main_gif_url}
+                        hasManualMainImage={product.has_manual_main_image}
+                        badge={product.is_featured ? t('product_featured', 'Хит') : null}
+                        viewMode={viewMode}
+                        description={product.description}
+                        href={buildProductUrl(effectiveProductType, product.slug)}
+                        productType={effectiveProductType}
+                        isBaseProduct={isBaseProduct}
+                        translations={product.translations}
+                        locale={i18n.language}
+                        isNew={product.is_new}
+                        isFeatured={product.is_featured}
+                      />
+                    )
+                  })}
                 </div>
+
+                {totalPages > 1 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={handlePageChange}
+                  />
+                )}
+              </>
+            ) : (
+              <div className="text-center py-20">
+                <h3 className="text-2xl font-semibold text-main mb-2">
+                  {t('products_not_found', 'Товары не найдены')}
+                </h3>
+                <p className="text-main/80 mb-6">
+                  {t('products_not_found_description', 'Попробуйте изменить параметры фильтров')}
+                </p>
+                <button
+                  onClick={resetFilters}
+                  className="px-6 py-3 bg-accent text-white rounded-lg hover:bg-[var(--accent-strong)] transition-colors"
+                >
+                  {t('reset_filters', 'Сбросить фильтры')}
+                </button>
               </div>
             )}
           </div>
-        </main>
+        </div>
       </div>
     </>
   )
 }
 
 export async function getServerSideProps(ctx: any) {
-  // Кэшируем HTML в CDN: контент одинаков для всех посетителей локали
   ctx.res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400')
   try {
     const { slug } = ctx.params
-    const page = Number(ctx.query?.page || 1)
+    const page = normalizePageParam(ctx.query?.page)
     const pageSize = 24
     const { getInternalApiUrl } = await import('../../lib/urls')
     const slugValue = Array.isArray(slug) ? slug[0] : String(slug || '')
 
-    let allBrands: any[] = []
+    let allBrands: Brand[] = []
     let nextUrl: string | null = getInternalApiUrl('catalog/brands?page_size=200')
     while (nextUrl) {
       const res = await axios.get(nextUrl)
       const data = res.data
-      const pageBrands = Array.isArray(data) ? data : data.results || []
-      allBrands = [...allBrands, ...pageBrands]
+      allBrands = [...allBrands, ...extractResults(data)]
       nextUrl = data.next || null
     }
 
     const brand = allBrands.find((item) => item.slug === slugValue)
-    if (!brand) {
-      // Бренда нет — честный 404 вместо пустой страницы с кодом 200 (soft-404)
-      return { notFound: true }
-    }
-
-    const primarySlug = (brand.primary_category_slug || '')
-      .toString()
-      .toLowerCase()
-      .replace(/_/g, '-')
-    const typedSlugs = ['clothing', 'shoes', 'electronics', 'furniture', 'jewelry']
-    let productsEndpoint = 'catalog/products'
-    if (primarySlug.startsWith('clothing')) productsEndpoint = 'catalog/clothing/products'
-    else if (primarySlug.startsWith('shoes')) productsEndpoint = 'catalog/shoes/products'
-    else if (primarySlug.startsWith('electronics')) productsEndpoint = 'catalog/electronics/products'
-    else if (primarySlug.startsWith('furniture')) productsEndpoint = 'catalog/furniture/products'
-    else if (primarySlug.startsWith('jewelry')) productsEndpoint = 'catalog/jewelry/products'
+    if (!brand) return { notFound: true }
 
     const productParams: Record<string, any> = {
       page,
       page_size: pageSize,
-      brand_id: brand.id,
     }
-
-    if (primarySlug && !typedSlugs.some((value) => primarySlug.startsWith(value))) {
-      productParams.product_type = primarySlug.replace(/-/g, '_')
+    const serverDefaultFilters = {
+      ...defaultFilters,
+      brands: [brand.id],
+      brandSlugs: [brand.slug],
     }
+    const filters = parseCatalogFiltersQuery(ctx.query || {}, serverDefaultFilters) as FilterState
+    if (filters.categorySlugs.length > 0) productParams.category_slug = filters.categorySlugs.join(',')
+    else if (filters.categories.length > 0) productParams.category_id = filters.categories
+    if (filters.brands.length > 0) productParams.brand_id = filters.brands
+    if (filters.priceMin !== undefined) productParams.price_min = filters.priceMin
+    if (filters.priceMax !== undefined) productParams.price_max = filters.priceMax
+    if (filters.inStock) productParams.in_stock = true
+    if (filters.isNew) productParams.is_new = true
+    if (filters.sortBy) productParams.ordering = filters.sortBy
 
-    const productsRes = await axios.get(getInternalApiUrl(productsEndpoint), { params: productParams })
+    const productsRes = await axios.get(getInternalApiUrl(`catalog/brands/${brand.slug}/products`), { params: productParams })
     const productsData = productsRes.data
-    const products = Array.isArray(productsData) ? productsData : productsData.results || []
+    const products = extractResults(productsData)
     const totalCount = typeof productsData?.count === 'number' ? productsData.count : products.length
 
     let categories: Category[] = []
+    const categorySlugs = [
+      brand.primary_category_slug,
+      ...(Array.isArray(brand.category_slugs) ? brand.category_slugs : []),
+    ]
+      .map((value) => (value || '').trim().toLowerCase().replace(/_/g, '-'))
+      .filter(Boolean)
+      .filter((value, index, list) => list.indexOf(value) === index)
     try {
-      const categoriesRes = await axios.get(getInternalApiUrl('catalog/categories?top_level=true&page_size=200'))
-      const categoriesData = categoriesRes.data
-      categories = Array.isArray(categoriesData) ? categoriesData : categoriesData.results || []
+      if (categorySlugs.length > 0) {
+        const categoryRes = await axios.get(getInternalApiUrl('catalog/categories'), {
+          params: { slug: categorySlugs.join(','), include_children: false, page_size: 200 }
+        })
+        categories = extractResults(categoryRes.data)
+      }
     } catch {
       categories = []
-    }
-
-    let brands: Brand[] = []
-    try {
-      const brandParams: Record<string, any> = { page_size: 200 }
-      if (primarySlug) {
-        brandParams.primary_category_slug = primarySlug
-        brandParams.product_type = primarySlug.replace(/-/g, '_')
-      }
-      const brandsRes = await axios.get(getInternalApiUrl('catalog/brands'), { params: brandParams })
-      const brandsData = brandsRes.data
-      brands = Array.isArray(brandsData) ? brandsData : brandsData.results || []
-    } catch {
-      brands = []
     }
 
     return {
       props: {
         ...(await serverSideTranslations(ctx.locale ?? 'en', ['common'])),
         brandData: {
+          id: brand.id,
           name: brand.name,
-          description: brand.description,
+          slug: brand.slug,
+          description: brand.description || '',
+          translations: brand.translations || [],
           products,
           totalCount,
         },
         page,
         categories,
-        brands,
+        brands: allBrands.map((item) => ({
+          ...item,
+          product_count: item.products_count,
+        })),
       },
     }
   } catch (e) {
-    // 404 от API — нет такой страницы; остальное пробрасываем (бот получит 500, не 404)
     if (axios.isAxiosError(e) && e.response?.status === 404) {
       return { notFound: true }
     }

@@ -90,7 +90,8 @@ from .serializers import (
     AutoPartProductSerializer,
     AutoPartProductDetailSerializer,
     ServiceSerializer,
-    BannerSerializer
+    BannerSerializer,
+    serialize_product_for_card,
 )
 
 
@@ -866,6 +867,7 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     queryset = Brand.objects.filter(is_active=True).prefetch_related('translations')
     serializer_class = BrandSerializer
     pagination_class = StandardPagination
+    lookup_field = 'slug'
 
     PRODUCT_TYPE_ALIASES = {
         'supplements': 'supplements',
@@ -903,6 +905,161 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
     PRODUCT_TYPE_CATEGORY_SLUGS = {
         # Для базовых типов (медицина/БАДы/медтехника/аксессуары) список slug задаётся при необходимости.
     }
+
+    BRAND_PRODUCT_ORDERING = {
+        'name_asc': ('name', False),
+        'name_desc': ('name', True),
+        'price_asc': ('price', False),
+        'price_desc': ('price', True),
+        'newest': ('created_at', True),
+        'popular': ('is_featured', True),
+    }
+
+    def _brand_product_sources(self):
+        """Доменные модели, которые формируют настоящую витрину бренда."""
+        from .models import HeadwearProduct, UnderwearProduct, IslamicClothingProduct
+
+        return [
+            ClothingProduct,
+            ShoeProduct,
+            ElectronicsProduct,
+            FurnitureProduct,
+            JewelryProduct,
+            BookProduct,
+            PerfumeryProduct,
+            MedicineProduct,
+            SupplementProduct,
+            MedicalEquipmentProduct,
+            TablewareProduct,
+            AccessoryProduct,
+            IncenseProduct,
+            SportsProduct,
+            AutoPartProduct,
+            HeadwearProduct,
+            UnderwearProduct,
+            IslamicClothingProduct,
+        ]
+
+    def _brand_filter_ids(self, fallback_brand_id: int) -> list[int]:
+        requested_ids = self._parse_id_list('brand_id')
+        return requested_ids or [fallback_brand_id]
+
+    def _prepare_brand_product_queryset(self, model, brand_ids: list[int], per_model_limit: int):
+        queryset = model.objects.filter(is_active=True, brand_id__in=brand_ids)
+        field_names = {field.name for field in model._meta.get_fields()}
+
+        if 'external_data' in field_names:
+            queryset = queryset.exclude(
+                models.Q(external_data__has_key='source_variant_id') |
+                models.Q(external_data__has_key='source_variant_slug')
+            )
+        if 'is_available' in field_names:
+            queryset = queryset.filter(is_available=True)
+
+        category_ids = self._parse_id_list('category_id')
+        if category_ids and 'category' in field_names:
+            queryset = queryset.filter(category_id__in=category_ids)
+
+        category_slugs = self._parse_slug_list('category_slug') or self._parse_slug_list('filter_category_slug')
+        if category_slugs and 'category' in field_names:
+            cat_ids = _get_category_ids_with_descendants(category_slugs)
+            if cat_ids:
+                queryset = queryset.filter(category_id__in=cat_ids)
+
+        select_related = [name for name in ('category', 'brand', 'base_product') if name in field_names]
+        if select_related:
+            queryset = queryset.select_related(*select_related)
+
+        relation_names = {field.name for field in model._meta.get_fields() if field.is_relation}
+        prefetch_related = [
+            name for name in (
+                'images',
+                'gallery_images',
+                'translations',
+                'variants',
+                'variants__images',
+                'variants__sizes',
+                'sizes',
+                'dynamic_attributes__attribute_key',
+                'category__translations',
+                'brand__translations',
+                'base_product__translations',
+                'book_authors__author',
+                'book_genres__genre',
+            )
+            if name.split('__', 1)[0] in relation_names
+        ]
+        is_new = str(self.request.query_params.get('is_new', '')).lower() in ('true', '1', 'yes', 'on')
+        if is_new:
+            queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
+        queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_gender_filter(queryset, self.request)
+
+        total_count = queryset.count()
+
+        if prefetch_related:
+            queryset = queryset.prefetch_related(*prefetch_related)
+
+        ordering = self.request.query_params.get('ordering') or 'newest'
+        field_name, descending = self.BRAND_PRODUCT_ORDERING.get(ordering, self.BRAND_PRODUCT_ORDERING['newest'])
+        if field_name not in field_names:
+            field_name, descending = self.BRAND_PRODUCT_ORDERING['newest']
+        order_by = f"-{field_name}" if descending else field_name
+        return total_count, list(queryset.order_by(order_by, '-id' if descending else 'id')[:per_model_limit])
+
+    def _prepare_legacy_brand_products(self, brand_ids: list[int], excluded_product_types: set[str], per_model_limit: int):
+        queryset = Product.objects.filter(is_active=True, brand_id__in=brand_ids).exclude(product_type__in=excluded_product_types)
+        queryset = queryset.exclude(
+            models.Q(external_data__has_key='source_variant_id') |
+            models.Q(external_data__has_key='source_variant_slug')
+        )
+        queryset = queryset.exclude(
+            models.Q(product_type='medicines') &
+            models.Q(external_data__has_key='is_stub') &
+            models.Q(external_data__is_stub=True)
+        )
+        queryset = queryset.filter(is_available=True)
+
+        category_ids = self._parse_id_list('category_id')
+        if category_ids:
+            queryset = queryset.filter(category_id__in=category_ids)
+
+        category_slugs = self._parse_slug_list('category_slug') or self._parse_slug_list('filter_category_slug')
+        if category_slugs:
+            cat_ids = _get_category_ids_with_descendants(category_slugs)
+            if cat_ids:
+                queryset = queryset.filter(category_id__in=cat_ids)
+
+        is_new = str(self.request.query_params.get('is_new', '')).lower() in ('true', '1', 'yes', 'on')
+        if is_new:
+            queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
+        queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_gender_filter(queryset, self.request)
+
+        total_count = queryset.count()
+
+        ordering = self.request.query_params.get('ordering') or 'newest'
+        field_name, descending = self.BRAND_PRODUCT_ORDERING.get(ordering, self.BRAND_PRODUCT_ORDERING['newest'])
+        order_by = f"-{field_name}" if descending else field_name
+        return total_count, list(
+            queryset.select_related('category', 'brand')
+            .prefetch_related('images', 'translations', 'dynamic_attributes__attribute_key')
+            .order_by(order_by, '-id' if descending else 'id')[:per_model_limit]
+        )
+
+    def _sort_brand_products(self, products: list):
+        ordering = self.request.query_params.get('ordering') or 'newest'
+        field_name, descending = self.BRAND_PRODUCT_ORDERING.get(ordering, self.BRAND_PRODUCT_ORDERING['newest'])
+
+        def sort_value(product):
+            value = getattr(product, field_name, None)
+            if value is None:
+                return ''
+            if field_name == 'name':
+                return str(value).lower()
+            return value
+
+        return sorted(products, key=lambda item: (sort_value(item), getattr(item, 'id', 0)), reverse=descending)
 
     def _normalize_product_type(self, raw_type: str | None) -> str | None:
         """Нормализует тип товара (учитываем алиасы)."""
@@ -1002,6 +1159,70 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         if self.request.query_params.get('main_page') == 'true':
             context['hide_counts'] = True
         return context
+
+    @extend_schema(
+        summary="Получить все товары бренда",
+        description="Возвращает товары бренда из всех товарных доменов без ограничения primary_category_slug.",
+        parameters=[
+            OpenApiParameter(name="page", type=int, required=False, description="Номер страницы"),
+            OpenApiParameter(name="page_size", type=int, required=False, description="Размер страницы"),
+            OpenApiParameter(name="ordering", type=str, required=False, description="Сортировка: newest, popular, name_asc, name_desc, price_asc, price_desc"),
+            OpenApiParameter(name="is_new", type=bool, required=False, description="Только новинки"),
+        ],
+    )
+    @action(detail=True, methods=['get'], url_path='products')
+    def products(self, request, *args, **kwargs):
+        brand = self.get_object()
+        try:
+            page_size = int(request.query_params.get('page_size', 24) or 24)
+        except (TypeError, ValueError):
+            page_size = 24
+        try:
+            page_number = int(request.query_params.get('page', 1) or 1)
+        except (TypeError, ValueError):
+            page_number = 1
+        page_size = min(max(page_size, 1), 100)
+        page_number = max(page_number, 1)
+        offset = (page_number - 1) * page_size
+        per_model_limit = offset + page_size
+
+        products = []
+        total_count = 0
+        brand_ids = self._brand_filter_ids(brand.id)
+        excluded_product_types = set()
+        for model in self._brand_product_sources():
+            product_type = getattr(model, '_domain_product_type', '').replace('-', '_')
+            if product_type:
+                excluded_product_types.add(product_type)
+            source_count, source_products = self._prepare_brand_product_queryset(model, brand_ids, per_model_limit)
+            total_count += source_count
+            products.extend(source_products)
+
+        legacy_count, legacy_products = self._prepare_legacy_brand_products(brand_ids, excluded_product_types, per_model_limit)
+        total_count += legacy_count
+        products.extend(legacy_products)
+        products = self._sort_brand_products(products)
+
+        page_items = products[offset:offset + page_size]
+        query = request.query_params.copy()
+        query['page_size'] = str(page_size)
+        path = request.build_absolute_uri(request.path)
+        if offset + page_size < total_count:
+            query['page'] = str(page_number + 1)
+            next_url = f"{path}?{query.urlencode()}"
+        else:
+            next_url = None
+        if page_number > 1:
+            query['page'] = str(page_number - 1)
+            previous_url = f"{path}?{query.urlencode()}"
+        else:
+            previous_url = None
+        return Response({
+            'count': total_count,
+            'next': next_url,
+            'previous': previous_url,
+            'results': [serialize_product_for_card(product, request) for product in page_items],
+        })
 
     @extend_schema(
         summary="Получить список брендов",
