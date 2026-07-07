@@ -138,16 +138,10 @@ export const getServerSideProps = async (ctx: any) => {
   ctx.res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400')
   try {
     const { getInternalApiUrl } = await import('../../lib/urls')
-    let allBrands: Brand[] = []
-    let nextUrl: string | null = getInternalApiUrl('catalog/brands?page_size=200')
-
-    while (nextUrl) {
-      const res = await axios.get(nextUrl)
-      const data = res.data
-      const pageBrands = Array.isArray(data) ? data : data.results || []
-      allBrands = [...allBrands, ...pageBrands]
-      nextUrl = data.next || null
-    }
+    // Все бренды одним запросом (max_page_size=1000) вместо серийного обхода страниц
+    const res = await axios.get(getInternalApiUrl('catalog/brands?page_size=1000'), { timeout: 5000 })
+    const data = res.data
+    let allBrands: Brand[] = Array.isArray(data) ? data : data.results || []
 
     // products_count приходит точным из API (аннотация через теневой Product),
     // поэтому per-brand дозапросы больше не нужны — раньше они вешали страницу на ~29с.

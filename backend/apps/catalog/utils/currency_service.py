@@ -1,5 +1,6 @@
 import requests
 import logging
+import time
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 from typing import Dict, Optional, Tuple
@@ -8,6 +9,20 @@ from django.core.cache import cache
 from ..currency_models import CurrencyRate, CurrencyUpdateLog, GlobalCurrencySettings
 
 logger = logging.getLogger(__name__)
+
+# Внутрипроцессный мемо-кэш курсов: списочные сериализаторы конвертируют цену
+# каждой карточки в несколько валют, и без мемо каждая конверсия — это
+# roundtrip в Redis, а для ОТСУТСТВУЮЩЕЙ пары — каскад пивот-запросов к БД
+# на каждую карточку (негативный результат Redis-кэшем не покрывается).
+# TTL короткий: актуальность курсов и так ограничена Redis-кэшем (300с).
+_RATE_MEMO: Dict[Tuple[str, str], Tuple[Optional[Decimal], float]] = {}
+_RATE_MEMO_TTL_SECONDS = 120
+_RATE_MEMO_MAX_ENTRIES = 512
+
+
+def clear_rate_memo() -> None:
+    """Сбрасывает мемо-кэш курсов (после обновления курсов или в тестах)."""
+    _RATE_MEMO.clear()
 
 # Символы → коды валют (для lookup курсов)
 _CURRENCY_SYMBOL_MAP = {
@@ -226,6 +241,7 @@ class CurrencyRateService:
                     execution_time_seconds=execution_time
                 )
                 logger.info(f"Successfully updated {total_updated} rates from {src}")
+                clear_rate_memo()
                 return True, f"Updated {total_updated} rates from {src}"
             except Exception as e:
                 last_error = str(e)
@@ -317,6 +333,20 @@ class CurrencyRateService:
             return None
         if from_currency == to_currency:
             return Decimal('1')
+
+        memo_key = (from_currency, to_currency)
+        memo_entry = _RATE_MEMO.get(memo_key)
+        now = time.monotonic()
+        if memo_entry is not None and memo_entry[1] > now:
+            return memo_entry[0]
+
+        rate = self._resolve_rate(from_currency, to_currency)
+        if len(_RATE_MEMO) >= _RATE_MEMO_MAX_ENTRIES:
+            _RATE_MEMO.clear()
+        _RATE_MEMO[memo_key] = (rate, now + _RATE_MEMO_TTL_SECONDS)
+        return rate
+
+    def _resolve_rate(self, from_currency: str, to_currency: str) -> Optional[Decimal]:
         cache_key = f'rate_{from_currency}_{to_currency}'
         try:
             cached_rate = cache.get(cache_key)
