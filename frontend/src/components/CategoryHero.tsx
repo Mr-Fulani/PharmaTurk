@@ -118,7 +118,11 @@ export default function CategoryHero({
           min-height: var(--hero-height);
           display: flex;
           align-items: center;
-          clip-path: inset(0);
+          /* Клип расширен вверх: между низом шапки и hero есть зазор
+             (padding обёртки 72px против сжимающейся при скролле шапки),
+             и fixed-картинка должна закрывать его, а не обрезаться по
+             границе блока — иначе под шапкой светит полоса фона страницы. */
+          clip-path: inset(-6rem 0 0 0);
           background: #10201f;
         }
 
@@ -140,6 +144,9 @@ export default function CategoryHero({
         }
 
         .hero-vignette {
+          /* Тянемся вверх вместе с расширенным клипом hero — зазор под
+             шапкой закрывает картинка с виньеткой, а не голое фото. */
+          top: -6rem;
           /* Верхний стоп затемнён: при скролле под шапкой остаётся полоска
              верха фото (небо) — без затемнения она читается как светлый
              «оголённый» зазор. */
@@ -191,6 +198,9 @@ export default function CategoryHero({
             --hero-height: 22rem;
             min-height: var(--hero-height);
             align-items: flex-end;
+            /* Картинка на мобиле absolute внутри hero — расширенный клип
+               не нужен, а виньетка не должна вылезать выше блока. */
+            clip-path: inset(0);
           }
 
           .hero-image {
@@ -198,6 +208,10 @@ export default function CategoryHero({
             width: 100%;
             height: 100%;
             object-position: 60% center;
+          }
+
+          .hero-vignette {
+            top: 0;
           }
 
           .hero-vignette {
