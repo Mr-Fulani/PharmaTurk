@@ -6,6 +6,7 @@ import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import BannerCarousel from '../../components/BannerCarouselMedia'
 import CardMasonryMedia from '../../components/CardMasonryMedia'
+import CategoryHero from '../../components/CategoryHero'
 import { getLocalizedCategoryName, getLocalizedCategoryDescription } from '../../lib/i18n'
 import SEO from '../../components/SEO'
 
@@ -45,18 +46,15 @@ export default function CategoriesPage({ categories, locale: propLocale }: { cat
         canonical="/categories"
       />
       <main className="min-h-screen bg-page text-main transition-colors duration-200">
-        {/* Hero banner */}
-        <section className="text-white py-12 dark:bg-[#0a1222]" style={{ backgroundColor: 'var(--accent)' }}>
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-4">
-            <div>
-              <p className="text-sm uppercase tracking-widest opacity-80">{t('categories_catalog', 'Каталог')}</p>
-              <h1 className="text-3xl md:text-4xl font-bold mt-1">{t('categories_title', 'Категории товаров')}</h1>
-              <p className="mt-2 text-lg opacity-90">
-                {t('categories_description', 'Выберите основную категорию — карточки и баннеры как на главной.')}
-              </p>
-            </div>
-          </div>
-        </section>
+        <CategoryHero
+          eyebrow={t('categories_catalog', 'Каталог')}
+          title={t('categories_title', 'Категории товаров')}
+          description={t('categories_description', 'Выберите основную категорию — карточки и баннеры как на главной.')}
+          totalCount={categories.length}
+          categorySlug="categories"
+          countLabel={t('menu_categories', 'Категории')}
+          showWhatsapp={false}
+        />
 
         {/* Main banner from CMS */}
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-8">

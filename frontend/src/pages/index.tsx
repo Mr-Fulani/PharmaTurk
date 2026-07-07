@@ -193,8 +193,7 @@ export default function Home({ brands, categories, firstBannerImageUrl, firstBan
     .slice(0, 14)
 
   const handleBrandClick = (brand: Brand) => {
-    const slug = mapCategoryToRouteSlug(brand.primary_category_slug || brand.slug || '')
-    router.push(`/categories/${slug}?brand_id=${brand.id}`)
+    router.push(`/brand/${brand.slug}`)
   }
 
   const handleCategoryClick = (category: CategoryCard & { displaySlug?: string }) => {

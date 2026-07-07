@@ -328,6 +328,34 @@ def serialize_product_for_card(product, request):
         return FurnitureProductSerializer(product, context=ctx).data
     if isinstance(product, JewelryProduct):
         return JewelryProductSerializer(product, context=ctx).data
+    if isinstance(product, PerfumeryProduct):
+        return PerfumeryProductSerializer(product, context=ctx).data
+    if isinstance(product, MedicineProduct):
+        return MedicineProductSerializer(product, context=ctx).data
+    if isinstance(product, SupplementProduct):
+        return SupplementProductSerializer(product, context=ctx).data
+    if isinstance(product, MedicalEquipmentProduct):
+        return MedicalEquipmentProductSerializer(product, context=ctx).data
+    if isinstance(product, TablewareProduct):
+        return TablewareProductSerializer(product, context=ctx).data
+    if isinstance(product, AccessoryProduct):
+        return AccessoryProductSerializer(product, context=ctx).data
+    if isinstance(product, IncenseProduct):
+        return IncenseProductSerializer(product, context=ctx).data
+    if isinstance(product, SportsProduct):
+        return SportsProductSerializer(product, context=ctx).data
+    if isinstance(product, AutoPartProduct):
+        return AutoPartProductSerializer(product, context=ctx).data
+    try:
+        from .models import HeadwearProduct, UnderwearProduct, IslamicClothingProduct
+        if isinstance(product, HeadwearProduct):
+            return HeadwearProductSerializer(product, context=ctx).data
+        if isinstance(product, UnderwearProduct):
+            return UnderwearProductSerializer(product, context=ctx).data
+        if isinstance(product, IslamicClothingProduct):
+            return IslamicClothingProductSerializer(product, context=ctx).data
+    except Exception:
+        pass
     # Shadow Product с книгами: тот же payload, что в списке /catalog/books/ (video_url, варианты, …)
     pt = (getattr(product, 'product_type', None) or '').strip().lower().replace('-', '_')
     if pt == 'books':
