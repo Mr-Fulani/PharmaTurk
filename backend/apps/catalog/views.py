@@ -2,7 +2,7 @@
 
 from typing import List
 from decimal import Decimal
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 import re
 
 from django.shortcuts import get_object_or_404
@@ -940,12 +940,36 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             IslamicClothingProduct,
         ]
 
-    def _brand_filter_ids(self, fallback_brand_id: int) -> list[int]:
-        requested_ids = self._parse_id_list('brand_id')
-        return requested_ids or [fallback_brand_id]
+    BRAND_CARD_SELECT_RELATED = ('category', 'brand', 'base_product')
+    BRAND_CARD_PREFETCH = (
+        'images',
+        'gallery_images',
+        'translations',
+        'variants',
+        'variants__images',
+        'variants__sizes',
+        'sizes',
+        'dynamic_attributes__attribute_key',
+        'category__translations',
+        'brand__translations',
+        'base_product__translations',
+        'book_authors__author',
+        'book_genres__genre',
+    )
 
-    def _prepare_brand_product_queryset(self, model, brand_ids: list[int], per_model_limit: int):
-        queryset = model.objects.filter(is_active=True, brand_id__in=brand_ids)
+    def _brand_source_models(self):
+        """Пары (модель, excluded_product_types) для витрины бренда: домены + теневой Product."""
+        sources = self._brand_product_sources()
+        excluded_product_types = {
+            getattr(model, '_domain_product_type', '').replace('-', '_')
+            for model in sources
+            if getattr(model, '_domain_product_type', '')
+        }
+        return [(model, None) for model in sources] + [(Product, excluded_product_types)]
+
+    def _brand_base_queryset(self, model, brand_id: int, excluded_product_types: set[str] | None = None):
+        """Базовый queryset товаров бренда для модели: активные, в наличии, без вариантов."""
+        queryset = model.objects.filter(is_active=True, brand_id=brand_id)
         field_names = {field.name for field in model._meta.get_fields()}
 
         if 'external_data' in field_names:
@@ -953,9 +977,20 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
                 models.Q(external_data__has_key='source_variant_id') |
                 models.Q(external_data__has_key='source_variant_slug')
             )
+        if excluded_product_types is not None:
+            # Теневой Product: типы, обслуживаемые доменными моделями, и заглушки медикаментов.
+            queryset = queryset.exclude(product_type__in=excluded_product_types)
+            queryset = queryset.exclude(
+                models.Q(product_type='medicines') &
+                models.Q(external_data__has_key='is_stub') &
+                models.Q(external_data__is_stub=True)
+            )
         if 'is_available' in field_names:
             queryset = queryset.filter(is_available=True)
+        return queryset, field_names
 
+    def _apply_brand_request_filters(self, queryset, field_names):
+        """Фильтры из query-параметров: категория, цена, пол, новинки."""
         category_ids = self._parse_id_list('category_id')
         if category_ids and 'category' in field_names:
             queryset = queryset.filter(category_id__in=category_ids)
@@ -966,100 +1001,40 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             if cat_ids:
                 queryset = queryset.filter(category_id__in=cat_ids)
 
-        select_related = [name for name in ('category', 'brand', 'base_product') if name in field_names]
+        is_new = str(self.request.query_params.get('is_new', '')).lower() in ('true', '1', 'yes', 'on')
+        if is_new:
+            queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
+        queryset = _apply_price_filter(queryset, self.request)
+        queryset = _apply_gender_filter(queryset, self.request)
+        return queryset
+
+    def _normalize_brand_sort_value(self, field_name, value):
+        """Значение сортировки, сравнимое между моделями (None не должен ронять sort)."""
+        if field_name == 'name':
+            return str(value or '').lower()
+        if field_name == 'price':
+            return value if value is not None else Decimal('0')
+        if field_name == 'is_featured':
+            return bool(value)
+        if field_name == 'created_at':
+            return value if value is not None else datetime.min.replace(tzinfo=dt_timezone.utc)
+        return value if value is not None else ''
+
+    def _hydrate_brand_products(self, model, ids: list[int]):
+        """Догружает связи только для позиций итоговой страницы."""
+        field_names = {field.name for field in model._meta.get_fields()}
+        relation_names = {field.name for field in model._meta.get_fields() if field.is_relation}
+        queryset = model.objects.filter(id__in=ids)
+        select_related = [name for name in self.BRAND_CARD_SELECT_RELATED if name in field_names]
         if select_related:
             queryset = queryset.select_related(*select_related)
-
-        relation_names = {field.name for field in model._meta.get_fields() if field.is_relation}
         prefetch_related = [
-            name for name in (
-                'images',
-                'gallery_images',
-                'translations',
-                'variants',
-                'variants__images',
-                'variants__sizes',
-                'sizes',
-                'dynamic_attributes__attribute_key',
-                'category__translations',
-                'brand__translations',
-                'base_product__translations',
-                'book_authors__author',
-                'book_genres__genre',
-            )
+            name for name in self.BRAND_CARD_PREFETCH
             if name.split('__', 1)[0] in relation_names
         ]
-        is_new = str(self.request.query_params.get('is_new', '')).lower() in ('true', '1', 'yes', 'on')
-        if is_new:
-            queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
-        queryset = _apply_price_filter(queryset, self.request)
-        queryset = _apply_gender_filter(queryset, self.request)
-
-        total_count = queryset.count()
-
         if prefetch_related:
             queryset = queryset.prefetch_related(*prefetch_related)
-
-        ordering = self.request.query_params.get('ordering') or 'newest'
-        field_name, descending = self.BRAND_PRODUCT_ORDERING.get(ordering, self.BRAND_PRODUCT_ORDERING['newest'])
-        if field_name not in field_names:
-            field_name, descending = self.BRAND_PRODUCT_ORDERING['newest']
-        order_by = f"-{field_name}" if descending else field_name
-        return total_count, list(queryset.order_by(order_by, '-id' if descending else 'id')[:per_model_limit])
-
-    def _prepare_legacy_brand_products(self, brand_ids: list[int], excluded_product_types: set[str], per_model_limit: int):
-        queryset = Product.objects.filter(is_active=True, brand_id__in=brand_ids).exclude(product_type__in=excluded_product_types)
-        queryset = queryset.exclude(
-            models.Q(external_data__has_key='source_variant_id') |
-            models.Q(external_data__has_key='source_variant_slug')
-        )
-        queryset = queryset.exclude(
-            models.Q(product_type='medicines') &
-            models.Q(external_data__has_key='is_stub') &
-            models.Q(external_data__is_stub=True)
-        )
-        queryset = queryset.filter(is_available=True)
-
-        category_ids = self._parse_id_list('category_id')
-        if category_ids:
-            queryset = queryset.filter(category_id__in=category_ids)
-
-        category_slugs = self._parse_slug_list('category_slug') or self._parse_slug_list('filter_category_slug')
-        if category_slugs:
-            cat_ids = _get_category_ids_with_descendants(category_slugs)
-            if cat_ids:
-                queryset = queryset.filter(category_id__in=cat_ids)
-
-        is_new = str(self.request.query_params.get('is_new', '')).lower() in ('true', '1', 'yes', 'on')
-        if is_new:
-            queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
-        queryset = _apply_price_filter(queryset, self.request)
-        queryset = _apply_gender_filter(queryset, self.request)
-
-        total_count = queryset.count()
-
-        ordering = self.request.query_params.get('ordering') or 'newest'
-        field_name, descending = self.BRAND_PRODUCT_ORDERING.get(ordering, self.BRAND_PRODUCT_ORDERING['newest'])
-        order_by = f"-{field_name}" if descending else field_name
-        return total_count, list(
-            queryset.select_related('category', 'brand')
-            .prefetch_related('images', 'translations', 'dynamic_attributes__attribute_key')
-            .order_by(order_by, '-id' if descending else 'id')[:per_model_limit]
-        )
-
-    def _sort_brand_products(self, products: list):
-        ordering = self.request.query_params.get('ordering') or 'newest'
-        field_name, descending = self.BRAND_PRODUCT_ORDERING.get(ordering, self.BRAND_PRODUCT_ORDERING['newest'])
-
-        def sort_value(product):
-            value = getattr(product, field_name, None)
-            if value is None:
-                return ''
-            if field_name == 'name':
-                return str(value).lower()
-            return value
-
-        return sorted(products, key=lambda item: (sort_value(item), getattr(item, 'id', 0)), reverse=descending)
+        return {obj.id: obj for obj in queryset}
 
     def _normalize_product_type(self, raw_type: str | None) -> str | None:
         """Нормализует тип товара (учитываем алиасы)."""
@@ -1184,26 +1159,44 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
         page_size = min(max(page_size, 1), 100)
         page_number = max(page_number, 1)
         offset = (page_number - 1) * page_size
-        per_model_limit = offset + page_size
 
-        products = []
-        total_count = 0
-        brand_ids = self._brand_filter_ids(brand.id)
-        excluded_product_types = set()
-        for model in self._brand_product_sources():
-            product_type = getattr(model, '_domain_product_type', '').replace('-', '_')
-            if product_type:
-                excluded_product_types.add(product_type)
-            source_count, source_products = self._prepare_brand_product_queryset(model, brand_ids, per_model_limit)
-            total_count += source_count
-            products.extend(source_products)
+        ordering = request.query_params.get('ordering') or 'newest'
+        sort_field, descending = self.BRAND_PRODUCT_ORDERING.get(ordering, self.BRAND_PRODUCT_ORDERING['newest'])
 
-        legacy_count, legacy_products = self._prepare_legacy_brand_products(brand_ids, excluded_product_types, per_model_limit)
-        total_count += legacy_count
-        products.extend(legacy_products)
-        products = self._sort_brand_products(products)
+        # Фаза 1: только (значение сортировки, id) по каждой модели — без prefetch.
+        entries: list[tuple] = []
+        model_by_label: dict[str, type] = {}
+        for model, excluded_product_types in self._brand_source_models():
+            queryset, field_names = self._brand_base_queryset(model, brand.id, excluded_product_types)
+            queryset = self._apply_brand_request_filters(queryset, field_names)
+            label = model._meta.label
+            model_by_label[label] = model
+            if sort_field in field_names:
+                rows = queryset.values_list('id', sort_field)
+            else:
+                rows = ((pk, None) for pk in queryset.values_list('id', flat=True))
+            entries.extend(
+                (self._normalize_brand_sort_value(sort_field, value), pk, label)
+                for pk, value in rows
+            )
 
-        page_items = products[offset:offset + page_size]
+        total_count = len(entries)
+        entries.sort(key=lambda entry: (entry[0], entry[1]), reverse=descending)
+        page_entries = entries[offset:offset + page_size]
+
+        # Фаза 2: гидрируем связи только для позиций страницы.
+        ids_by_label: dict[str, list[int]] = {}
+        for _, pk, label in page_entries:
+            ids_by_label.setdefault(label, []).append(pk)
+        objects_by_key = {}
+        for label, ids in ids_by_label.items():
+            for pk, obj in self._hydrate_brand_products(model_by_label[label], ids).items():
+                objects_by_key[(label, pk)] = obj
+        page_items = [
+            objects_by_key[(label, pk)]
+            for _, pk, label in page_entries
+            if (label, pk) in objects_by_key
+        ]
         query = request.query_params.copy()
         query['page_size'] = str(page_size)
         path = request.build_absolute_uri(request.path)
@@ -1223,6 +1216,67 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             'previous': previous_url,
             'results': [serialize_product_for_card(product, request) for product in page_items],
         })
+
+    @extend_schema(
+        summary="Категории бренда со счётчиками",
+        description=(
+            "Возвращает привязанные к бренду категории (category_slugs + primary_category_slug из админки) "
+            "с количеством товаров бренда в каждой, включая подкатегории. Категории без товаров опускаются."
+        ),
+    )
+    @action(detail=True, methods=['get'], url_path='categories')
+    def categories(self, request, *args, **kwargs):
+        brand = self.get_object()
+
+        canonical_slugs: list[str] = []
+        for value in [brand.primary_category_slug, *(brand.category_slugs or [])]:
+            slug = str(value or '').strip().lower().replace('_', '-')
+            if slug and slug not in canonical_slugs:
+                canonical_slugs.append(slug)
+        if not canonical_slugs:
+            return Response({'count': 0, 'results': []})
+
+        slug_variants = {variant for slug in canonical_slugs for variant in (slug, slug.replace('-', '_'))}
+        category_by_canonical: dict[str, Category] = {}
+        for category in Category.objects.filter(is_active=True, slug__in=slug_variants).prefetch_related('translations'):
+            category_by_canonical.setdefault(category.slug.replace('_', '-'), category)
+
+        # Одна агрегация по category_id на каждую доменную модель.
+        counts_by_category: dict[int, int] = {}
+        for model, excluded_product_types in self._brand_source_models():
+            queryset, field_names = self._brand_base_queryset(model, brand.id, excluded_product_types)
+            if 'category' not in field_names:
+                continue
+            rows = (
+                queryset.exclude(category_id=None)
+                .order_by()
+                .values('category_id')
+                .annotate(n=models.Count('id'))
+                .values_list('category_id', 'n')
+            )
+            for category_id, count in rows:
+                counts_by_category[category_id] = counts_by_category.get(category_id, 0) + count
+
+        results = []
+        for slug in canonical_slugs:
+            category = category_by_canonical.get(slug)
+            if not category:
+                continue
+            subtree_ids = _get_category_ids_with_descendants([category.slug])
+            product_count = sum(counts_by_category.get(category_id, 0) for category_id in subtree_ids)
+            if product_count <= 0:
+                continue
+            results.append({
+                'id': category.id,
+                'name': category.name,
+                'slug': category.slug,
+                'product_count': product_count,
+                'translations': [
+                    {'locale': translation.locale, 'name': translation.name}
+                    for translation in category.translations.all()
+                ],
+            })
+        return Response({'count': len(results), 'results': results})
 
     @extend_schema(
         summary="Получить список брендов",

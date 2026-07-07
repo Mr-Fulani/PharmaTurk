@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import axios from 'axios'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { useTranslation } from 'next-i18next'
@@ -12,6 +12,7 @@ import Pagination from '../../components/Pagination'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { buildProductUrl, getSiteOrigin } from '../../lib/urls'
 import { buildCatalogPageQuery, parseCatalogFiltersQuery } from '../../lib/catalogQuery'
+import { buildBrandProductsParams, brandProductsRequestKey, shouldShowGenderFilter } from '../../lib/brandCatalog'
 import { ProductTranslation, BrandTranslation, getLocalizedBrandDescription, getLocalizedBrandName } from '../../lib/i18n'
 import api from '../../lib/api'
 import { useViewMode } from '../../hooks/useViewMode'
@@ -72,8 +73,11 @@ interface BrandData {
   totalCount: number
 }
 
-interface BrandPageBrand extends Brand {
-  product_count?: number
+interface BrandPageProps {
+  brandData: BrandData
+  page: number
+  categories: Category[]
+  initialRequestKey: string
 }
 
 const defaultFilters: FilterState = {
@@ -125,17 +129,18 @@ const areFiltersEqual = (left: FilterState, right: FilterState) =>
   left.isNew === right.isNew &&
   left.sortBy === right.sortBy
 
-export default function BrandPage({
+export default function BrandPage(props: BrandPageProps) {
+  // key: при клиентском переходе между брендами состояние (товары, фильтры,
+  // страница) должно инициализироваться заново из props нового бренда.
+  return <BrandPageContent key={props.brandData.slug} {...props} />
+}
+
+function BrandPageContent({
   brandData,
   page,
   categories = [],
-  brands = [],
-}: {
-  brandData: BrandData
-  page: number
-  categories: Category[]
-  brands: BrandPageBrand[]
-}) {
+  initialRequestKey,
+}: BrandPageProps) {
   const { t, i18n } = useTranslation('common')
   const router = useRouter()
   const [viewMode, setViewMode] = useViewMode()
@@ -144,12 +149,12 @@ export default function BrandPage({
   const [currentPage, setCurrentPage] = useState(Number(page) || 1)
   const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const defaultBrandFilters = useMemo<FilterState>(() => ({
-    ...defaultFilters,
-    brands: [brandData.id],
-    brandSlugs: [brandData.slug],
-  }), [brandData.id, brandData.slug])
-  const [filters, setFilters] = useState<FilterState>(defaultBrandFilters)
+  // Инициализация сразу из URL: первый рендер совпадает с SSR-выборкой,
+  // и клиентский эффект загрузки не дублирует запрос gSSP.
+  const [filters, setFilters] = useState<FilterState>(
+    () => parseCatalogFiltersQuery(router.query, defaultFilters) as FilterState
+  )
+  const lastRequestKeyRef = useRef(initialRequestKey)
   const productsPerPage = 24
   const totalPages = Math.max(1, Math.ceil(totalCount / productsPerPage))
   const localizedBrandName = getLocalizedBrandName(brandData.slug, brandData.name, t, brandData.translations, router.locale)
@@ -161,31 +166,18 @@ export default function BrandPage({
     router.locale
   )
   const gendersKey = (filters.genders || []).join(',')
-  const brandOptions = useMemo(() => {
-    const seen = new Set<number>()
-    return brands
-      .filter((brand) => {
-        if (seen.has(brand.id)) return false
-        seen.add(brand.id)
-        return true
-      })
-      .sort((a, b) => {
-        if (a.id === brandData.id) return -1
-        if (b.id === brandData.id) return 1
-        const ca = a.product_count ?? a.products_count ?? 0
-        const cb = b.product_count ?? b.products_count ?? 0
-        if (cb !== ca) return cb - ca
-        return (a.name || '').localeCompare(b.name || '', 'ru')
-      })
-  }, [brands, brandData.id])
+  const showGenderFilter = useMemo(
+    () => shouldShowGenderFilter(categories.map((category) => category.slug)),
+    [categories]
+  )
 
   useEffect(() => {
     if (!router.isReady) return
     const nextPage = normalizePageParam(router.query.page)
     setCurrentPage((prev) => (prev === nextPage ? prev : nextPage))
-    const nextFilters = parseCatalogFiltersQuery(router.query, defaultBrandFilters) as FilterState
+    const nextFilters = parseCatalogFiltersQuery(router.query, defaultFilters) as FilterState
     setFilters((prev) => (areFiltersEqual(prev, nextFilters) ? prev : nextFilters))
-  }, [router.isReady, router.asPath, router.query, defaultBrandFilters])
+  }, [router.isReady, router.asPath, router.query])
 
   const updatePageQuery = useCallback((
     nextPage: number,
@@ -200,10 +192,10 @@ export default function BrandPage({
   }, [router])
 
   const resetFilters = useCallback(() => {
-    setFilters(defaultBrandFilters)
+    setFilters(defaultFilters)
     setCurrentPage(1)
-    updatePageQuery(1, { replace: true, filters: defaultBrandFilters })
-  }, [defaultBrandFilters, updatePageQuery])
+    updatePageQuery(1, { replace: true, filters: defaultFilters })
+  }, [updatePageQuery])
 
   const handleFilterChange = useCallback((nextFilters: FilterState) => {
     setFilters(nextFilters)
@@ -223,32 +215,27 @@ export default function BrandPage({
 
   useEffect(() => {
     if (!router.isReady || !brandData.slug) return
+    const params = buildBrandProductsParams(filters, currentPage, productsPerPage)
+    const requestKey = brandProductsRequestKey(brandData.slug, params)
+    // SSR уже отдал эту выборку в props — не дублируем запрос на маунте.
+    if (requestKey === lastRequestKeyRef.current) return
+    lastRequestKeyRef.current = requestKey
     let cancelled = false
 
     const loadProducts = async () => {
       setLoading(true)
       try {
-        const params: Record<string, any> = {
-          page: currentPage,
-          page_size: productsPerPage,
-        }
-        if (filters.categorySlugs.length > 0) params.category_slug = filters.categorySlugs.join(',')
-        else if (filters.categories.length > 0) params.category_id = filters.categories
-        if (filters.brands.length > 0) params.brand_id = filters.brands
-        if (gendersKey) params.gender = gendersKey
-        if (filters.priceMin !== undefined) params.price_min = filters.priceMin
-        if (filters.priceMax !== undefined) params.price_max = filters.priceMax
-        if (filters.inStock) params.in_stock = true
-        if (filters.isNew) params.is_new = true
-        if (filters.sortBy) params.ordering = filters.sortBy
-
         const response = await api.get(`/catalog/brands/${brandData.slug}/products`, { params })
         if (cancelled) return
         const data = response.data
         setProducts(extractResults(data))
         setTotalCount(typeof data?.count === 'number' ? data.count : extractResults(data).length)
       } catch (error) {
-        if (!cancelled) console.error('Error loading brand products:', error)
+        if (!cancelled) {
+          console.error('Error loading brand products:', error)
+          // Сбрасываем ключ, чтобы повторный выбор тех же фильтров сделал retry.
+          lastRequestKeyRef.current = ''
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -264,7 +251,6 @@ export default function BrandPage({
     currentPage,
     filters.categories,
     filters.categorySlugs,
-    filters.brands,
     gendersKey,
     filters.priceMin,
     filters.priceMax,
@@ -361,7 +347,6 @@ export default function BrandPage({
             <CategorySidebar
               key={brandData.slug}
               categories={categories}
-              brands={brandOptions}
               subcategories={[]}
               onFilterChange={handleFilterChange}
               isOpen={sidebarOpen}
@@ -369,7 +354,7 @@ export default function BrandPage({
               initialFilters={filters}
               showCategories={categories.length > 0}
               showSubcategories={false}
-              showGenderFilter={false}
+              showGenderFilter={showGenderFilter}
               categoryType="brand"
             />
           </div>
@@ -496,60 +481,22 @@ export async function getServerSideProps(ctx: any) {
     const { getInternalApiUrl } = await import('../../lib/urls')
     const slugValue = Array.isArray(slug) ? slug[0] : String(slug || '')
 
-    let allBrands: Brand[] = []
-    let nextUrl: string | null = getInternalApiUrl('catalog/brands?page_size=200')
-    while (nextUrl) {
-      const res = await axios.get(nextUrl)
-      const data = res.data
-      allBrands = [...allBrands, ...extractResults(data)]
-      nextUrl = data.next || null
-    }
+    const brandRes = await axios.get(getInternalApiUrl(`catalog/brands/${encodeURIComponent(slugValue)}`))
+    const brand: Brand = brandRes.data
 
-    const brand = allBrands.find((item) => item.slug === slugValue)
-    if (!brand) return { notFound: true }
+    const filters = parseCatalogFiltersQuery(ctx.query || {}, defaultFilters) as FilterState
+    const productParams = buildBrandProductsParams(filters, page, pageSize)
 
-    const productParams: Record<string, any> = {
-      page,
-      page_size: pageSize,
-    }
-    const serverDefaultFilters = {
-      ...defaultFilters,
-      brands: [brand.id],
-      brandSlugs: [brand.slug],
-    }
-    const filters = parseCatalogFiltersQuery(ctx.query || {}, serverDefaultFilters) as FilterState
-    if (filters.categorySlugs.length > 0) productParams.category_slug = filters.categorySlugs.join(',')
-    else if (filters.categories.length > 0) productParams.category_id = filters.categories
-    if (filters.brands.length > 0) productParams.brand_id = filters.brands
-    if (filters.priceMin !== undefined) productParams.price_min = filters.priceMin
-    if (filters.priceMax !== undefined) productParams.price_max = filters.priceMax
-    if (filters.inStock) productParams.in_stock = true
-    if (filters.isNew) productParams.is_new = true
-    if (filters.sortBy) productParams.ordering = filters.sortBy
-
-    const productsRes = await axios.get(getInternalApiUrl(`catalog/brands/${brand.slug}/products`), { params: productParams })
+    const [productsRes, categoriesRes] = await Promise.all([
+      axios.get(getInternalApiUrl(`catalog/brands/${brand.slug}/products`), { params: productParams }),
+      // Категории бренда — некритичны для первого экрана: при ошибке сайдбар
+      // просто останется без секции категорий.
+      axios.get(getInternalApiUrl(`catalog/brands/${brand.slug}/categories`)).catch(() => null),
+    ])
     const productsData = productsRes.data
     const products = extractResults(productsData)
     const totalCount = typeof productsData?.count === 'number' ? productsData.count : products.length
-
-    let categories: Category[] = []
-    const categorySlugs = [
-      brand.primary_category_slug,
-      ...(Array.isArray(brand.category_slugs) ? brand.category_slugs : []),
-    ]
-      .map((value) => (value || '').trim().toLowerCase().replace(/_/g, '-'))
-      .filter(Boolean)
-      .filter((value, index, list) => list.indexOf(value) === index)
-    try {
-      if (categorySlugs.length > 0) {
-        const categoryRes = await axios.get(getInternalApiUrl('catalog/categories'), {
-          params: { slug: categorySlugs.join(','), include_children: false, page_size: 200 }
-        })
-        categories = extractResults(categoryRes.data)
-      }
-    } catch {
-      categories = []
-    }
+    const categories: Category[] = categoriesRes ? extractResults(categoriesRes.data) : []
 
     return {
       props: {
@@ -565,10 +512,7 @@ export async function getServerSideProps(ctx: any) {
         },
         page,
         categories,
-        brands: allBrands.map((item) => ({
-          ...item,
-          product_count: item.products_count,
-        })),
+        initialRequestKey: brandProductsRequestKey(brand.slug, productParams),
       },
     }
   } catch (e) {
