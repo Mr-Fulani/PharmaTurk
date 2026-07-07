@@ -131,15 +131,21 @@ export default function CategoryHero({
              фонового цвета, пока страница не проскроллена на высоту шапки.
              Лишнее срезает clip-path контейнера. */
           height: calc(var(--hero-height) + 7rem);
-          object-position: center 44%;
+          /* 62%, а не 44%: компенсирует запас по высоте, чтобы кроп не
+             уползал вверх фото — иначе при скролле в полоске под шапкой
+             остаётся самая светлая часть неба. */
+          object-position: center 62%;
           transform: translateZ(0) scale(1.02);
           animation: heroImageDrift 18s ease-in-out infinite alternate;
         }
 
         .hero-vignette {
+          /* Верхний стоп затемнён: при скролле под шапкой остаётся полоска
+             верха фото (небо) — без затемнения она читается как светлый
+             «оголённый» зазор. */
           background:
             linear-gradient(90deg, rgba(3, 13, 16, 0.86) 0%, rgba(4, 22, 24, 0.68) 40%, rgba(6, 19, 21, 0.18) 72%, rgba(6, 19, 21, 0.38) 100%),
-            linear-gradient(180deg, rgba(0, 0, 0, 0.12) 0%, rgba(0, 0, 0, 0.42) 100%);
+            linear-gradient(180deg, rgba(0, 0, 0, 0.38) 0%, rgba(0, 0, 0, 0.14) 18%, rgba(0, 0, 0, 0.42) 100%);
         }
 
         .hero-light {
@@ -167,7 +173,7 @@ export default function CategoryHero({
         :global(.dark) .hero-vignette {
           background:
             linear-gradient(90deg, rgba(1, 8, 12, 0.92) 0%, rgba(3, 18, 22, 0.74) 42%, rgba(6, 20, 22, 0.24) 74%, rgba(2, 9, 13, 0.48) 100%),
-            linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.54) 100%);
+            linear-gradient(180deg, rgba(0, 0, 0, 0.46) 0%, rgba(0, 0, 0, 0.22) 18%, rgba(0, 0, 0, 0.54) 100%);
         }
 
         @keyframes heroImageDrift {
