@@ -7,6 +7,7 @@ import re
 
 from django.shortcuts import get_object_or_404
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.db.models import F, Exists, OuterRef, Subquery, Count, Q
 from django.db.models.functions import Coalesce, Least
@@ -1020,17 +1021,32 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
             return value if value is not None else datetime.min.replace(tzinfo=dt_timezone.utc)
         return value if value is not None else ''
 
+    @staticmethod
+    def _is_valid_relation_path(model, path: str) -> bool:
+        """Проверяет, что каждый сегмент пути (a__b__c) — существующая связь модели."""
+        current = model
+        for segment in path.split('__'):
+            if current is None:
+                return False
+            try:
+                field = current._meta.get_field(segment)
+            except FieldDoesNotExist:
+                return False
+            if not field.is_relation:
+                return False
+            current = field.related_model
+        return True
+
     def _hydrate_brand_products(self, model, ids: list[int]):
         """Догружает связи только для позиций итоговой страницы."""
         field_names = {field.name for field in model._meta.get_fields()}
-        relation_names = {field.name for field in model._meta.get_fields() if field.is_relation}
         queryset = model.objects.filter(id__in=ids)
         select_related = [name for name in self.BRAND_CARD_SELECT_RELATED if name in field_names]
         if select_related:
             queryset = queryset.select_related(*select_related)
         prefetch_related = [
             name for name in self.BRAND_CARD_PREFETCH
-            if name.split('__', 1)[0] in relation_names
+            if self._is_valid_relation_path(model, name)
         ]
         if prefetch_related:
             queryset = queryset.prefetch_related(*prefetch_related)

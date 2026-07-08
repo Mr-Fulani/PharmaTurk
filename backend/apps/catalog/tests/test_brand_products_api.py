@@ -14,6 +14,8 @@ from apps.catalog.models import (
     Brand,
     Category,
     ClothingProduct,
+    FurnitureProduct,
+    FurnitureVariant,
     MedicineProduct,
     Product,
 )
@@ -213,6 +215,36 @@ def test_brand_products_hydrates_only_page_models(brand_catalog):
         if "medicineproductimage" in q["sql"].lower() or "medicine_product_image" in q["sql"].lower()
     ]
     assert medicine_image_queries == []
+
+
+@pytest.mark.django_db
+def test_brand_products_furniture_with_variant_hydrates(db):
+    """Регрессия: prefetch 'variants__sizes' ронял мебель (у FurnitureVariant нет sizes).
+
+    Вложенные пути из BRAND_CARD_PREFETCH должны валидироваться по всем
+    сегментам, а не только по первому.
+    """
+    suffix = _suffix()
+    furniture_root = Category.objects.create(name="Мебель", slug=f"furniture-{suffix}")
+    brand = Brand.objects.create(name=f"Ikea {suffix}", slug=f"ikea-{suffix}")
+    product = FurnitureProduct.objects.create(
+        name="Shelf",
+        slug=f"shelf-{suffix}",
+        category=furniture_root,
+        brand=brand,
+        price=100,
+        currency="TRY",
+        is_active=True,
+    )
+    FurnitureVariant.objects.create(product=product, slug=f"shelf-white-{suffix}", color="white")
+
+    client = APIClient()
+    response = client.get(f"/api/catalog/brands/{brand.slug}/products")
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["count"] == 1
+    assert data["results"][0]["name"] == "Shelf"
 
 
 @pytest.mark.django_db
