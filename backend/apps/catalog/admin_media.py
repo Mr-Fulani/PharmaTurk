@@ -1,7 +1,11 @@
 import re
+from urllib.parse import quote, urlparse
 
+from django.conf import settings
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
+
+from .utils.media_path import normalize_duplicated_media_path
 
 
 MEDIA_HELP_TEXTS = {
@@ -40,12 +44,28 @@ def _append_help_text(current, extra):
 
 def resolve_media_url(obj, file_attr: str, url_attr: str) -> str:
     file_field = getattr(obj, file_attr, None)
-    if file_field:
-        try:
-            return file_field.url
-        except Exception:
-            pass
-    return str(getattr(obj, url_attr, "") or "").strip()
+    file_name = str(getattr(file_field, "name", "") or "").strip()
+    if file_name:
+        path = normalize_duplicated_media_path(file_name.lstrip("/"))
+        return f"/api/catalog/proxy-media/?path={quote(path, safe='')}"
+
+    url = str(getattr(obj, url_attr, "") or "").strip()
+    if not url or url.startswith("/api/catalog/proxy-media"):
+        return url
+
+    r2_public = (
+        (getattr(settings, "R2_CONFIG", {}) or {}).get("public_url")
+        or getattr(settings, "R2_PUBLIC_URL", "")
+        or ""
+    ).rstrip("/")
+    internal_prefixes = tuple(
+        prefix for prefix in (r2_public, "https://cdn.mudaroba.com") if prefix
+    )
+    if internal_prefixes and url.startswith(internal_prefixes):
+        path = normalize_duplicated_media_path(urlparse(url).path.lstrip("/"))
+        if path:
+            return f"/api/catalog/proxy-media/?path={quote(path, safe='')}"
+    return url
 
 
 def render_media_preview(url: str, *, max_width: int = 180, max_height: int = 100):
@@ -80,7 +100,10 @@ def render_media_preview(url: str, *, max_width: int = 180, max_height: int = 10
         )
 
     return format_html(
-        '<img src="{}" style="max-width:{}px; max-height:{}px; border-radius:8px;" />',
+        '<a href="{}" target="_blank" rel="noopener">'
+        '<img src="{}" style="max-width:{}px; max-height:{}px; border-radius:8px;" />'
+        '</a>',
+        url,
         url,
         max_width,
         max_height,

@@ -15,6 +15,7 @@ from apps.catalog.models import Category
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.models import ScraperConfig, ScrapingSession, SiteScraperTask
 from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
+from apps.scrapers.parsers.ikea import IkeaParser
 from apps.scrapers.parsers.lcw import LcwParser
 from apps.scrapers.parsers.ummaland import UmmalandParser
 from apps.scrapers.services import ScraperIntegrationService
@@ -43,6 +44,7 @@ def test_only_paginating_parser_supports_chunking():
     # Настоящая пагинация (ilacfiyati ?pg=, lcw ?sayfa=) → чепочка безопасна.
     assert IlacFiyatiParser.SUPPORTS_PAGE_CHUNKING is True
     assert LcwParser.SUPPORTS_PAGE_CHUNKING is True
+    assert IkeaParser.SUPPORTS_PAGE_CHUNKING is False
     # UmmaLand берёт весь листинг из API за один проход → чепочка переоткрыла бы те же товары.
     assert UmmalandParser.SUPPORTS_PAGE_CHUNKING is False
 
@@ -179,6 +181,42 @@ def test_ilacfiyati_product_url_does_not_chain(monkeypatch):
     task.refresh_from_db()
     assert task.status == "completed"
     assert task.resume_page == 1
+
+
+@pytest.mark.django_db
+def test_lcw_product_url_does_not_chain(monkeypatch):
+    task = _build_task("lcw")
+    task.start_url = (
+        "https://www.lcw.com/"
+        "erkek-100-hakiki-deri-4-cm-spor-lacivert-kemer-lacivert-o-4579317"
+    )
+    task.save(update_fields=["start_url"])
+    session = _session_with_products(task)
+    session.products_found = 1
+    session.products_updated = 1
+    session.save(update_fields=["products_found", "products_updated"])
+
+    monkeypatch.setattr(ScraperIntegrationService, "run_scraper", lambda *a, **k: session)
+
+    def fail_apply_async(*args, **kwargs):
+        raise AssertionError("одиночный LCW-товар не должен ставить новый чанк")
+
+    monkeypatch.setattr(run_scraper_task, "apply_async", fail_apply_async)
+
+    result = run_scraper_task.run(
+        scraper_config_id=task.scraper_config_id,
+        start_url=task.start_url,
+        max_pages=task.max_pages,
+        max_products=task.max_products,
+        max_images_per_product=task.max_images_per_product,
+        site_task_id=task.id,
+    )
+
+    assert result["status"] == "success"
+    task.refresh_from_db()
+    assert task.status == "completed"
+    assert task.products_found == 1
+    assert task.products_updated == 1
 
 
 def test_gender_override_sets_attribute_when_specified():

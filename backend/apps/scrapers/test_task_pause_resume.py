@@ -62,6 +62,8 @@ def test_run_keeps_resume_page_at_chunk_start_while_chaining(monkeypatch):
     # resume_page остаётся на странице текущего чанка (сброс в 1 — только при
     # полном завершении). Так при сбое воркера «Продолжить» возьмёт верную страницу.
     task = _build_task(status="running")
+    task.start_url = "https://ilacfiyati.com/ilaclar"
+    task.save(update_fields=["start_url"])
     session = ScrapingSession.objects.create(
         scraper_config=task.scraper_config,
         start_url=task.start_url,

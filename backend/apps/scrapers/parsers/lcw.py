@@ -339,6 +339,15 @@ class LcwParser(BaseScraper):
         path = urlparse(url).path or url
         return bool(cls.CATEGORY_PATH_RE.search(path))
 
+    @classmethod
+    def supports_page_chunking_for_url(cls, url: str) -> bool:
+        """Автоцепочка допустима только для листинга LCW.
+
+        Одиночный /...-o-123 URL не имеет пагинации: повторный чанк
+        заново обновил бы ту же карточку до достижения max_products.
+        """
+        return cls.is_lcw_category_url(url) and not cls.is_lcw_product_url(url)
+
     def _is_product_url(self, url: str) -> bool:
         return self.is_lcw_product_url(url) and "/magaza/" not in url
 

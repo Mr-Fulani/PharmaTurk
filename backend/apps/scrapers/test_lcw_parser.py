@@ -279,6 +279,15 @@ def test_lcw_category_and_product_url_detection():
     assert not LcwParser.is_lcw_category_url("https://www.lcw.com/magaza/lc-waikiki-s-1")
 
 
+def test_chunking_is_enabled_only_for_lcw_category_urls():
+    assert LcwParser.supports_page_chunking_for_url(
+        "https://www.lcw.com/erkek-tisort-t-345"
+    )
+    assert not LcwParser.supports_page_chunking_for_url(
+        "https://www.lcw.com/erkek-100-hakiki-deri-4-cm-spor-lacivert-kemer-lacivert-o-4579317"
+    )
+
+
 def test_parse_categories_from_homepage(monkeypatch):
     parser = LcwParser()
     monkeypatch.setattr(parser, "_make_request", lambda url, **kwargs: LCW_HOME_HTML)
