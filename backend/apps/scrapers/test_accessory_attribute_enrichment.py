@@ -7,7 +7,7 @@ from apps.scrapers.services import ScraperIntegrationService
 
 
 @pytest.mark.django_db
-def test_accessory_enrichment_maps_type_and_material_from_lcw_data():
+def test_accessory_enrichment_maps_values_without_persisting_dynamic_facets():
     service = ScraperIntegrationService()
     category, product_type = resolve_category_and_product_type("Kemer")
     product = Product.objects.create(
@@ -43,22 +43,19 @@ def test_accessory_enrichment_maps_type_and_material_from_lcw_data():
     assert prepared_attrs["material"] == "Искусственная кожа"
 
     updated = service._update_product_attributes(product, prepared_attrs)
+    # Обновление может быть True из-за типизированных полей (например gender),
+    # но сырые parser attrs не должны создавать динамические фасеты.
     assert updated is True
 
     accessory = product.accessory_item
     accessory.refresh_from_db()
 
-    attrs = {
-        row.attribute_key.slug: row
-        for row in ProductAttributeValue.objects.filter(
-            object_id=accessory.pk,
-            content_type__model=accessory._meta.model_name,
-        ).select_related("attribute_key")
-    }
     assert accessory.accessory_type == ""
     assert accessory.material == ""
-    assert attrs["accessory-type"].value_ru == "Пояс / ремень"
-    assert attrs["material"].value_ru == "Искусственная кожа"
+    assert not ProductAttributeValue.objects.filter(
+        object_id=accessory.pk,
+        content_type__model=accessory._meta.model_name,
+    ).exists()
 
 
 def test_accessory_enrichment_uses_description_material_fallback():

@@ -16,6 +16,7 @@ import { buildBrandProductsParams, brandProductsRequestKey, shouldShowGenderFilt
 import { ProductTranslation, BrandTranslation, getLocalizedBrandDescription, getLocalizedBrandName } from '../../lib/i18n'
 import api from '../../lib/api'
 import { useViewMode } from '../../hooks/useViewMode'
+import { formatPrice, parsePriceWithCurrency } from '../../lib/price'
 
 interface Product {
   id: number
@@ -410,6 +411,14 @@ function BrandPageContent({
                   {products.map((product) => {
                     const effectiveProductType = (product.product_type || 'medicines').replace(/_/g, '-')
                     const isBaseProduct = isBaseProductType(effectiveProductType)
+                    const parsedPrice = parsePriceWithCurrency(product.price_formatted ?? product.price)
+                    const parsedOldPrice = parsePriceWithCurrency(product.old_price_formatted ?? product.old_price)
+                    const displayCurrency = parsedPrice.currency || product.currency
+                    const displayPrice = formatPrice(parsedPrice.price)
+                    const displayOldPrice =
+                      !parsedOldPrice.currency || parsedOldPrice.currency === displayCurrency
+                        ? formatPrice(parsedOldPrice.price)
+                        : null
                     return (
                       <ProductCard
                         key={buildProductIdentityKey(product, effectiveProductType)}
@@ -417,9 +426,9 @@ function BrandPageContent({
                         baseProductId={product.base_product_id}
                         name={product.name}
                         slug={product.slug}
-                        price={product.price_formatted || (product.price != null ? String(product.price) : null)}
-                        currency={product.currency}
-                        oldPrice={product.old_price_formatted || (product.old_price != null ? String(product.old_price) : null)}
+                        price={displayPrice}
+                        currency={displayCurrency}
+                        oldPrice={displayOldPrice}
                         imageUrl={product.main_image_url || product.main_image}
                         galleryImages={product.images}
                         videoUrl={product.video_url}
@@ -474,6 +483,7 @@ function BrandPageContent({
 
 export async function getServerSideProps(ctx: any) {
   ctx.res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400')
+  ctx.res.setHeader('Vary', 'Cookie, Accept-Language')
   try {
     const { slug } = ctx.params
     const page = normalizePageParam(ctx.query?.page)
@@ -486,9 +496,18 @@ export async function getServerSideProps(ctx: any) {
 
     const filters = parseCatalogFiltersQuery(ctx.query || {}, defaultFilters) as FilterState
     const productParams = buildBrandProductsParams(filters, page, pageSize)
+    const cookieHeader: string = ctx.req.headers.cookie || ''
+    const currencyMatch = cookieHeader.match(/(?:^|;\s*)currency=([^;]+)/)
+    const currency = currencyMatch ? decodeURIComponent(currencyMatch[1]).toUpperCase() : 'RUB'
 
     const [productsRes, categoriesRes] = await Promise.all([
-      axios.get(getInternalApiUrl(`catalog/brands/${brand.slug}/products`), { params: productParams }),
+      axios.get(getInternalApiUrl(`catalog/brands/${brand.slug}/products`), {
+        params: productParams,
+        headers: {
+          'X-Currency': currency,
+          'Accept-Language': ctx.locale || 'en',
+        },
+      }),
       // Категории бренда — некритичны для первого экрана: при ошибке сайдбар
       // просто останется без секции категорий.
       axios.get(getInternalApiUrl(`catalog/brands/${brand.slug}/categories`)).catch(() => null),

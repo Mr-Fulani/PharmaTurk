@@ -246,3 +246,35 @@ def test_normalizer_keeps_external_manual_main_image(monkeypatch):
 
     product.refresh_from_db()
     assert product.main_image == manual_main
+
+
+@pytest.mark.django_db
+def test_internal_readable_media_is_not_checked_over_http(monkeypatch):
+    internal_url = "https://cdn.mudaroba.com/products/furniture/chair/ikea-gallery-a1.jpg"
+    r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
+    r2_config["public_url"] = "https://cdn.mudaroba.com"
+    monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
+    monkeypatch.setattr("django.core.files.storage.default_storage.exists", lambda key: True)
+
+    def forbidden_head(*args, **kwargs):
+        raise AssertionError("Внутренний R2 URL не должен проверяться HTTP HEAD")
+
+    monkeypatch.setattr("httpx.Client.head", forbidden_head)
+
+    product = Product.objects.create(
+        name="Internal media",
+        slug="internal-media",
+        product_type="accessories",
+        price=100,
+        currency="TRY",
+        external_data={"source": "ikea"},
+    )
+    domain = product.domain_item
+    domain.gallery_images.create(
+        image_url=internal_url,
+        image_file="products/furniture/chair/ikea-gallery-a1.jpg",
+        sort_order=0,
+    )
+
+    CatalogNormalizer()._normalize_product_images(product, [internal_url])
+    assert domain.gallery_images.filter(image_url=internal_url).exists()

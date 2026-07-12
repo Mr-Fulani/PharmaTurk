@@ -62,6 +62,8 @@ def test_run_keeps_resume_page_at_chunk_start_while_chaining(monkeypatch):
     # resume_page остаётся на странице текущего чанка (сброс в 1 — только при
     # полном завершении). Так при сбое воркера «Продолжить» возьмёт верную страницу.
     task = _build_task(status="running")
+    task.start_url = "https://ilacfiyati.com/ilaclar"
+    task.save(update_fields=["start_url"])
     session = ScrapingSession.objects.create(
         scraper_config=task.scraper_config,
         start_url=task.start_url,
@@ -199,3 +201,43 @@ def test_admin_rerun_resets_resume_page(monkeypatch):
     task.refresh_from_db()
     assert task.resume_page == 1
     assert task.products_found == 0
+
+
+@pytest.mark.django_db
+def test_live_progress_is_saved_after_first_product(monkeypatch):
+    task = _build_task(status="running")
+    session = ScrapingSession.objects.create(
+        scraper_config=task.scraper_config,
+        start_url="https://example.com/category/items",
+        max_pages=1,
+        max_products=10,
+        max_images_per_product=3,
+        status="running",
+    )
+
+    class Parser:
+        SUPPORTS_PAGE_CHUNKING = False
+
+        def parse_product_list(self, *args, **kwargs):
+            yield object()
+
+    service = ScraperIntegrationService()
+    monkeypatch.setattr(
+        service,
+        "_process_scraped_products",
+        lambda *args, **kwargs: {"found": 1, "created": 1, "updated": 0, "skipped": 0, "errors": 0},
+    )
+
+    service._run_parser_scraping(
+        Parser(),
+        session,
+        session.start_url,
+        site_task_id=task.id,
+    )
+
+    session.refresh_from_db()
+    task.refresh_from_db()
+    assert session.products_found == 1
+    assert task.products_found == 1
+    assert task.products_created == 1
+    assert task.session_id == session.id

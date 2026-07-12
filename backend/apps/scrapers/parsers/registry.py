@@ -57,8 +57,16 @@ class ParserRegistry:
             Класс парсера или None
         """
         try:
-            parsed = urlparse(url)
+            raw_url = str(url or "").strip()
+            if not raw_url:
+                return None
+            # urlparse("massimodutti") считает строку path и оставляет
+            # netloc пустым. Неизвестное имя parser_class не должно
+            # превращаться в URL-fallback и случайно выбирать чужой парсер.
+            parsed = urlparse(raw_url if "://" in raw_url else f"//{raw_url}")
             domain = parsed.netloc.lower()
+            if not domain or ("." not in domain and domain != "localhost"):
+                return None
             
             # Убираем www. если есть
             if domain.startswith('www.'):
@@ -70,7 +78,8 @@ class ParserRegistry:
             
             # Пробуем найти по части домена
             for registered_domain, parser_name in self._domain_mapping.items():
-                if domain.endswith(registered_domain) or registered_domain.endswith(domain):
+                registered_domain = registered_domain.removeprefix("www.")
+                if domain == registered_domain or domain.endswith(f".{registered_domain}"):
                     return self._parsers.get(parser_name)
             
         except Exception as e:

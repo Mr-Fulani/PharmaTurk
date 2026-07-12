@@ -5,7 +5,7 @@ from apps.scrapers.services import ScraperIntegrationService
 
 
 @pytest.mark.django_db
-def test_shoe_attributes_are_saved_as_dynamic_attributes():
+def test_parser_shoe_attributes_do_not_create_dynamic_facets():
     service = ScraperIntegrationService()
     category = Category.objects.create(
         name="Обувь",
@@ -33,23 +33,12 @@ def test_shoe_attributes_are_saved_as_dynamic_attributes():
         },
     )
 
-    assert updated is True
+    assert updated is False
 
     shoe = product.shoe_item
     shoe.refresh_from_db()
 
-    attrs = {
-        row.attribute_key.slug: row
-        for row in ProductAttributeValue.objects.filter(
-            object_id=shoe.pk,
-            content_type__model=shoe._meta.model_name,
-        ).select_related("attribute_key")
-    }
-    assert attrs["material"].value_ru == "Искусственная кожа"
-    assert attrs["closure-type"].value_ru == "Шнуровка"
-    assert attrs["sole-material"].value_ru == "Каучук"
-
-    # EN-значения тоже заполняются (раньше были пустыми)
-    assert attrs["material"].value_en == "Faux Leather"
-    assert attrs["closure-type"].value_en == "Lace-up"
-    assert attrs["sole-material"].value_en == "Rubber"
+    assert not ProductAttributeValue.objects.filter(
+        object_id=shoe.pk,
+        content_type__model=shoe._meta.model_name,
+    ).exists()

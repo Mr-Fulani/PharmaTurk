@@ -717,6 +717,9 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         previous_task_id = task.task_id
 
         try:
+            # Иначе старый и новый worker одновременно меняют одни товары,
+            # галереи и абсолютные счётчики одной SiteScraperTask.
+            revoke_site_scraper_task(task, terminate=True)
             task.status = "failed"
             task.error_message = (
                 "Предыдущий запуск был принудительно сброшен из админки перед повторным запуском."
@@ -939,6 +942,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         started = 0
         for task in eligible_tasks:
             try:
+                revoke_site_scraper_task(task, terminate=True)
                 task.status = "failed"
                 task.error_message = (
                     "Предыдущий запуск был принудительно сброшен через bulk-action перед повторным запуском."

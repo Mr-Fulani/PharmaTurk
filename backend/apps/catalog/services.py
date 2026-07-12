@@ -915,10 +915,20 @@ class CatalogNormalizer:
         # и только если их немного (не более 5), чтобы не тормозить парсинг.
         existing_images = list(image_manager.all())
         broken_ids = []
-        manual_images = [
-            img for img in existing_images
-            if not ('/products/parsed/' in (img.image_url or '') or '/products/parsed/' in (getattr(img, 'video_url', '') or ''))
-        ]
+        from apps.catalog.signals import is_internal_storage_url
+        manual_images = []
+        for img in existing_images:
+            image_url = img.image_url or ''
+            video_url = getattr(img, 'video_url', '') or ''
+            candidate_url = video_url or image_url
+            # Readable parser-media уже не содержит /products/parsed/, но остаётся
+            # внутренним R2-файлом. Его нельзя проверять HTTP HEAD и тем более
+            # удалять из-за временного ответа CDN.
+            if is_internal_storage_url(candidate_url):
+                continue
+            if '/products/parsed/' in image_url or '/products/parsed/' in video_url:
+                continue
+            manual_images.append(img)
         if manual_images and len(manual_images) <= 5:
             import httpx
             with httpx.Client(timeout=3, follow_redirects=True) as client:

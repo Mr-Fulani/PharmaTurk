@@ -5,6 +5,8 @@ from django.utils.translation import gettext_lazy as _
 from django.utils.html import format_html
 from django.db import models as django_models
 
+from .admin_media import resolve_media_url, render_media_preview
+
 from .models import (
     Category,
     MedicineProduct, MedicineProductTranslation, MedicineProductImage, MedicineAnalog,
@@ -64,16 +66,9 @@ def _make_image_inline(model_class):
 
         def image_preview(self, obj):
             if obj:
-                media_url = None
-                if obj.image_file:
-                    media_url = obj.image_file.url
-                elif obj.image_url:
-                    media_url = obj.image_url
+                media_url = resolve_media_url(obj, 'image_file', 'image_url')
                 if media_url:
-                    return format_html(
-                        '<img src="{}" style="max-width: 100px; max-height: 100px;" />',
-                        media_url,
-                    )
+                    return render_media_preview(media_url, max_width=100, max_height=100)
             return "-"
         image_preview.short_description = _("Превью")
 
