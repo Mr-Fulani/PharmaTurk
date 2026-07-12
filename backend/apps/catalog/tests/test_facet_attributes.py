@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.http import QueryDict
+from django.utils import translation
 
 from apps.catalog.models import (
     AccessoryProduct,
@@ -107,9 +108,10 @@ def test_available_attributes_excludes_single_value_and_non_facet_dynamic_attrib
     view = _FacetView()
     view.request = _build_request()
 
-    available = view._calculate_available_attributes(
-        AccessoryProduct.objects.filter(pk__in=[product_one.pk, product_two.pk]).order_by("pk")
-    )
+    with translation.override("ru"):
+        available = view._calculate_available_attributes(
+            AccessoryProduct.objects.filter(pk__in=[product_one.pk, product_two.pk]).order_by("pk")
+        )
 
     assert available == [
         {
