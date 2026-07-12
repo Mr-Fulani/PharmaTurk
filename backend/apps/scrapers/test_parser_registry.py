@@ -41,3 +41,26 @@ def test_zara_resolves_by_domain_after_autodiscovery():
     parser_class = registry.get_parser("https://www.zara.com/tr/tr/kadin-elbiseler-l1066.html")
     assert parser_class is not None
     assert parser_class().get_name() == "zara"
+
+
+def test_unknown_parser_name_does_not_resolve_to_an_unrelated_domain():
+    registry.register_default_parsers()
+
+    assert registry.get_parser("massimodutti") is None
+    assert registry.get_parser("bershka") is None
+    assert registry.get_parser("pullandbear") is None
+
+
+def test_bare_registered_domain_still_resolves():
+    registry.register_default_parsers()
+
+    parser_class = registry.get_parser("zara.com")
+
+    assert parser_class is not None
+    assert parser_class().get_name() == "zara"
+
+
+def test_lookalike_domain_does_not_match_registered_domain():
+    registry.register_default_parsers()
+
+    assert registry.get_parser("https://notzara.com/product") is None
