@@ -146,11 +146,29 @@ class LcwParser(BaseScraper):
 
         pages_done = 0
         page = max(1, start_page)
+        previous_page_urls = None
+        if page > 1:
+            # LCW после конца каталога возвращает последнюю страницу и для
+            # больших ?sayfa=N. Между Celery-чанками in-memory dedup
+            # сбрасывается, поэтому сравниваем первую страницу чанка с
+            # предыдущей до загрузки карточек.
+            previous_html = self._make_request(self._lcw_page_url(category_url, page - 1))
+            if previous_html:
+                previous_page_urls = self._extract_listing_product_urls(previous_html)
         while pages_done < max(1, max_pages):
             html = self._make_request(self._lcw_page_url(category_url, page))
             if not html:
                 break
             soup = BeautifulSoup(html, "html.parser")
+
+            page_urls = self._extract_listing_product_urls(html)
+            if previous_page_urls and page_urls == previous_page_urls:
+                self.logger.info(
+                    "LCW: страница %s повторяет %s, каталог исчерпан.",
+                    page,
+                    page - 1,
+                )
+                break
 
             new_on_page = 0
             for anchor in soup.select("a[href]"):
@@ -205,10 +223,20 @@ class LcwParser(BaseScraper):
                         return
 
             pages_done += 1
+            previous_page_urls = page_urls
             page += 1
             # Новых товаров на странице не было → вышли за последнюю страницу LCW.
             if new_on_page == 0:
                 break
+
+    def _extract_listing_product_urls(self, html: str) -> Set[str]:
+        """Канонические URL товаров страницы без загрузки detail."""
+        soup = BeautifulSoup(html or "", "html.parser")
+        return {
+            urljoin(self.base_url, anchor.get("href", "").strip())
+            for anchor in soup.select("a[href]")
+            if self._is_product_url(anchor.get("href", "").strip())
+        }
 
     def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
         return self._parse_product_group(product_url, visited_urls=set())

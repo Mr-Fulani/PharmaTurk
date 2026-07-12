@@ -341,9 +341,13 @@ class CurrencyRateService:
             return memo_entry[0]
 
         rate = self._resolve_rate(from_currency, to_currency)
-        if len(_RATE_MEMO) >= _RATE_MEMO_MAX_ENTRIES:
-            _RATE_MEMO.clear()
-        _RATE_MEMO[memo_key] = (rate, now + _RATE_MEMO_TTL_SECONDS)
+        # Не мемоизируем отсутствие курса. Пары могут добавляться вручную в
+        # админке, и отрицательный внутрипроцессный кэш в таком случае заставлял
+        # часть карточек ещё до двух минут оставаться в исходной валюте.
+        if rate is not None:
+            if len(_RATE_MEMO) >= _RATE_MEMO_MAX_ENTRIES:
+                _RATE_MEMO.clear()
+            _RATE_MEMO[memo_key] = (rate, now + _RATE_MEMO_TTL_SECONDS)
         return rate
 
     def _resolve_rate(self, from_currency: str, to_currency: str) -> Optional[Decimal]:

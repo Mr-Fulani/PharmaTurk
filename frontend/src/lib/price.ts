@@ -19,3 +19,18 @@ export function formatPrice(value: string | number | null | undefined): string |
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 }
+
+export function parsePriceWithCurrency(value?: string | number | null) {
+  if (value === null || typeof value === 'undefined') {
+    return { price: null as string | number | null, currency: null as string | null }
+  }
+  if (typeof value === 'number') {
+    return { price: value, currency: null as string | null }
+  }
+  const trimmed = value.trim()
+  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
+  if (match) {
+    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
+  }
+  return { price: trimmed, currency: null as string | null }
+}

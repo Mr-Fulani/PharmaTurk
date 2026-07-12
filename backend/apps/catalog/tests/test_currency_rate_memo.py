@@ -34,13 +34,13 @@ def _create_rate(rate: str = "2.5"):
 
 
 @pytest.mark.django_db
-def test_missing_pair_negatively_memoized(django_assert_num_queries):
-    """Отсутствующий курс не должен гонять пивот-каскад на каждую конверсию."""
+def test_missing_pair_is_not_memoized(django_assert_num_queries):
+    """Новый курс должен подхватываться сразу, без отрицательного memo TTL."""
     service = CurrencyRateService()
     assert service.get_rate("TRY", "RUB") is None  # первый вызов — каскад пивотов
 
-    with django_assert_num_queries(0):
-        assert service.get_rate("TRY", "RUB") is None
+    _create_rate("2.5")
+    assert service.get_rate("TRY", "RUB") == Decimal("2.5")
 
 
 @pytest.mark.django_db
@@ -70,8 +70,5 @@ def test_clear_rate_memo_picks_up_new_rate():
     assert service.get_rate("TRY", "RUB") is None
 
     _create_rate("2.5")
-    # Негативный результат ещё замемоизирован.
-    assert service.get_rate("TRY", "RUB") is None
-
-    clear_rate_memo()
+    # Отрицательные результаты не кэшируются: ручное добавление курса видно сразу.
     assert service.get_rate("TRY", "RUB") == Decimal("2.5")

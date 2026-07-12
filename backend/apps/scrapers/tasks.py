@@ -18,6 +18,7 @@ from .services import (
     DeduplicationService,
     ScraperTaskCancelled,
     ScraperTaskPaused,
+    ScraperTaskSuperseded,
 )
 
 logger = logging.getLogger(__name__)
@@ -451,6 +452,17 @@ def run_scraper_task(self,
             logger.info(f"Парсер {scraper_config.name} завершен успешно: {session.products_found} товаров найдено")
 
         return result
+
+    except ScraperTaskSuperseded as e:
+        # Новый force-restart уже владеет SiteScraperTask. Старый worker не должен
+        # менять его статус или счётчики после обнаружения нового task_id.
+        logger.info("Старый запуск парсера %s остановлен: %s", scraper_config_id, e)
+        return {
+            "status": "superseded",
+            "message": str(e),
+            "scraper_config_id": scraper_config_id,
+            "timestamp": timezone.now().isoformat(),
+        }
 
     except ScraperTaskCancelled as e:
         error_msg = str(e)

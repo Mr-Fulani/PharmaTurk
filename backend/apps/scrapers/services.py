@@ -83,6 +83,10 @@ class ScraperTaskPaused(Exception):
     """Задача парсинга поставлена на паузу пользователем (можно продолжить)."""
 
 
+class ScraperTaskSuperseded(Exception):
+    """Запуск заменён новым Celery task и больше не имеет права писать данные."""
+
+
 # Реестр: product_type → метод получения/создания доменного объекта
 _DOMAIN_GETTER_NAMES = {
     "books": "_get_book_product",
@@ -802,6 +806,10 @@ class ScraperIntegrationService:
             task_id=celery_task_id or "",
             started_at=timezone.now(),
         )
+        # Привязываем сессию к задаче сразу, а не только после завершения чанка:
+        # админка должна показывать живой запуск и его логи с первого товара.
+        if site_task_id:
+            SiteScraperTask.objects.filter(id=site_task_id).update(session=session)
         # Пол из настроек задачи (men/women/unisex или пусто). Транзиентно: применяется
         # в _process_scraped_products как явный override, в БД сессии не хранится.
         session._override_gender = gender or ""
@@ -829,10 +837,11 @@ class ScraperIntegrationService:
                 if scraper_config.user_agent:
                     parser.user_agent = scraper_config.user_agent
 
-                # Запускаем парсинг
-                # Передаем лимит товаров в парсер
-                if session.max_products:
-                    parser.max_products = session.max_products
+                # max_products — общий лимит всей цепочки, а не каждого
+                # чанка. Поэтому парсеру можно отдать только остаток; иначе
+                # последний чанк может перешагнуть лимит на размер страницы.
+                remaining_products = max(0, session.max_products - total_scraped)
+                parser.max_products = remaining_products
 
                 scraped_products, incremental_results = self._run_parser_scraping(
                     parser, session, start_url or scraper_config.base_url,
@@ -842,6 +851,7 @@ class ScraperIntegrationService:
                     total_created=total_created,
                     total_updated=total_updated,
                     total_skipped=total_skipped,
+                    celery_task_id=celery_task_id,
                 )
 
                 # Если _run_parser_scraping обработал товары инкрементально, берём его счётчики;
@@ -912,6 +922,7 @@ class ScraperIntegrationService:
         self, parser, session: ScrapingSession, start_url: str,
         start_page: int = 1, site_task_id: Optional[int] = None, total_scraped: int = 0,
         total_created: int = 0, total_updated: int = 0, total_skipped: int = 0,
+        celery_task_id: Optional[str] = None,
     ):
         """Выполняет парсинг с помощью парсера.
 
@@ -923,7 +934,7 @@ class ScraperIntegrationService:
         incremental_results = None
 
         try:
-            self._ensure_site_task_not_cancelled(site_task_id)
+            self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
             # Анализируем URL
             parsed_url = urlparse(start_url)
             path_parts = [p for p in parsed_url.path.strip('/').split('/') if p]
@@ -978,27 +989,41 @@ class ScraperIntegrationService:
                     list_kwargs["start_page"] = start_page
                 try:
                     for product in parser.parse_product_list(start_url, **list_kwargs):
-                        self._ensure_site_task_not_cancelled(site_task_id)
+                        parser_limit = getattr(parser, "max_products", None)
+                        if parser_limit is not None and incremental_results["found"] >= parser_limit:
+                            break
+                        self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
                         r = self._process_scraped_products(session, [product])
                         for k in incremental_results:
                             incremental_results[k] += r.get(k, 0)
                         checkpoint += 1
-                        if checkpoint % 10 == 0:
-                            session.products_found = incremental_results["found"]
-                            session.products_created = incremental_results["created"]
-                            session.products_updated = incremental_results["updated"]
-                            session.products_skipped = incremental_results["skipped"]
-                            session.errors_count = incremental_results["errors"]
-                            session.save()
-                            if site_task_id:
-                                # Абсолютные значения с учётом предыдущих чанков — прогресс
-                                # created/updated/skipped виден live в админке (один UPDATE).
-                                SiteScraperTask.objects.filter(id=site_task_id).update(
-                                    products_found=total_scraped + incremental_results["found"],
-                                    products_created=total_created + incremental_results["created"],
-                                    products_updated=total_updated + incremental_results["updated"],
-                                    products_skipped=total_skipped + incremental_results["skipped"],
-                                )
+                        session.products_found = incremental_results["found"]
+                        session.products_created = incremental_results["created"]
+                        session.products_updated = incremental_results["updated"]
+                        session.products_skipped = incremental_results["skipped"]
+                        session.errors_count = incremental_results["errors"]
+                        # IKEA и другие media-heavy источники могут обрабатывать один
+                        # товар несколько минут. Фиксируем checkpoint после каждого
+                        # товара: это два коротких UPDATE без дополнительных SELECT и
+                        # без заметной стоимости на фоне HTTP/R2 обработки.
+                        session_id = getattr(session, "id", None)
+                        if session_id:
+                            ScrapingSession.objects.filter(id=session_id).update(
+                                products_found=incremental_results["found"],
+                                products_created=incremental_results["created"],
+                                products_updated=incremental_results["updated"],
+                                products_skipped=incremental_results["skipped"],
+                                errors_count=incremental_results["errors"],
+                            )
+                        if site_task_id:
+                            SiteScraperTask.objects.filter(id=site_task_id).update(
+                                session_id=session_id,
+                                products_found=total_scraped + incremental_results["found"],
+                                products_created=total_created + incremental_results["created"],
+                                products_updated=total_updated + incremental_results["updated"],
+                                products_skipped=total_skipped + incremental_results["skipped"],
+                                errors_count=incremental_results["errors"],
+                            )
                 except SoftTimeLimitExceeded:
                     # Мягкий лимит времени Celery: завершаем чанк штатно — уже спарсенные
                     # товары сохранены инкрементально, а tasks.run_scraper_task поставит
@@ -1013,7 +1038,7 @@ class ScraperIntegrationService:
 
             elif is_search:
                 # Поиск товаров
-                self._ensure_site_task_not_cancelled(site_task_id)
+                self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
                 query = self._extract_search_query(start_url)
                 if query:
                     products = parser.search_products(query, session.max_products)
@@ -1022,7 +1047,7 @@ class ScraperIntegrationService:
 
             elif is_product:
                 # Парсинг отдельного товара (не Instagram); IKEA может вернуть список цветов
-                self._ensure_site_task_not_cancelled(site_task_id)
+                self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
                 detail_result = parser.parse_product_detail(start_url)
                 self._extend_from_product_detail(scraped_products, detail_result)
                 session.pages_processed += 1
@@ -1036,7 +1061,7 @@ class ScraperIntegrationService:
                 if "/p/" in start_url or "/reel/" in start_url:
                     # Парсим один пост
                     self.logger.info("Instagram: парсинг отдельного поста %s", start_url)
-                    self._ensure_site_task_not_cancelled(site_task_id)
+                    self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
                     detail_result = parser.parse_product_detail(start_url)
                     self._extend_from_product_detail(scraped_products, detail_result)
                 else:
@@ -1046,7 +1071,7 @@ class ScraperIntegrationService:
                         start_url,
                         session.max_pages,
                     )
-                    self._ensure_site_task_not_cancelled(site_task_id)
+                    self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
                     products = parser.parse_product_list(start_url, max_pages=session.max_pages)
                     scraped_products.extend(products)
                 session.pages_processed += 1
@@ -1058,7 +1083,7 @@ class ScraperIntegrationService:
                     : session.max_pages
                 ]:  # Ограничиваем количество категорий
                     try:
-                        self._ensure_site_task_not_cancelled(site_task_id)
+                        self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
                         products = parser.parse_product_list(
                             category["url"], max_pages=max(1, session.max_pages // len(categories))
                         )
@@ -1087,13 +1112,19 @@ class ScraperIntegrationService:
         return scraped_products, incremental_results
 
     @staticmethod
-    def _ensure_site_task_not_cancelled(site_task_id: Optional[int]) -> None:
+    def _ensure_site_task_not_cancelled(
+        site_task_id: Optional[int], expected_task_id: Optional[str] = None
+    ) -> None:
         """Периодически проверяет, не остановили/не поставили ли задачу на паузу."""
         if not site_task_id:
             return
-        status = (
-            SiteScraperTask.objects.filter(id=site_task_id).values_list("status", flat=True).first()
-        )
+        row = SiteScraperTask.objects.filter(id=site_task_id).values("status", "task_id").first()
+        status = row.get("status") if row else None
+        current_task_id = row.get("task_id") if row else ""
+        if expected_task_id and current_task_id and current_task_id != expected_task_id:
+            raise ScraperTaskSuperseded(
+                f"Запуск {expected_task_id} заменён новым запуском {current_task_id}."
+            )
         if status == "cancelled":
             raise ScraperTaskCancelled("Задача остановлена пользователем.")
         if status == "paused":
@@ -2597,11 +2628,22 @@ class ScraperIntegrationService:
             updated = True
 
         if not is_variant_update:
-            # Обновляем цену, если она изменилась (только для базового товара)
-            if scraped_product.price and scraped_product.price != existing_product.price:
+            # Парсер хранит только исходную цену источника. Сумма и валюта — одна
+            # пара: одинаковое число в другой валюте является изменением. Маржа и
+            # конвертация выполняются отдельно CurrencyConverter и здесь не участвуют.
+            source_currency = str(scraped_product.currency or "").strip().upper()
+            current_currency = str(existing_product.currency or "").strip().upper()
+            price_changed = (
+                scraped_product.price is not None
+                and scraped_product.price != existing_product.price
+            )
+            currency_changed = bool(source_currency and source_currency != current_currency)
+            if price_changed or currency_changed:
                 existing_product.old_price = existing_product.price
-                existing_product.price = scraped_product.price
-                existing_product.currency = scraped_product.currency
+                if scraped_product.price is not None:
+                    existing_product.price = scraped_product.price
+                if source_currency:
+                    existing_product.currency = source_currency
                 updated = True
 
             # Обновляем наличие
@@ -2749,7 +2791,18 @@ class ScraperIntegrationService:
             "last_updated": timezone.now().isoformat(),
         }
 
-        existing_product.external_data["scraped_sources"].append(source_info)
+        # Одна актуальная запись на источник+URL вместо бесконечного роста JSON
+        # на каждом неизменившемся повторном проходе.
+        source_rows = existing_product.external_data["scraped_sources"]
+        source_key = (source_info["source"], source_info["url"])
+        for index, row in enumerate(source_rows):
+            if not isinstance(row, dict):
+                continue
+            if (row.get("source"), row.get("url")) == source_key:
+                source_rows[index] = source_info
+                break
+        else:
+            source_rows.append(source_info)
         existing_product.last_synced_at = timezone.now()
         updated = True
 

@@ -599,3 +599,30 @@ def test_lcw_page_url_builds_sayfa_param():
     assert LcwParser._lcw_page_url("https://www.lcw.com/erkek-parfum-t-3731", 1) == "https://www.lcw.com/erkek-parfum-t-3731"
     assert LcwParser._lcw_page_url("https://www.lcw.com/erkek-parfum-t-3731", 2) == "https://www.lcw.com/erkek-parfum-t-3731?sayfa=2"
     assert LcwParser._lcw_page_url("https://www.lcw.com/x?foo=1", 3) == "https://www.lcw.com/x?foo=1&sayfa=3"
+
+
+def test_next_chunk_stops_before_processing_repeated_last_page(monkeypatch):
+    parser = LcwParser()
+    requested = []
+
+    def fake_make_request(url, **kwargs):
+        requested.append(url)
+        if "sayfa=5" in url or "sayfa=6" in url:
+            return LCW_CATEGORY_HTML
+        raise AssertionError(f"неожиданный detail-запрос: {url}")
+
+    monkeypatch.setattr(parser, "_make_request", fake_make_request)
+
+    products = list(
+        parser.parse_product_list(
+            "https://www.lcw.com/erkek-tisort-t-345",
+            max_pages=5,
+            start_page=6,
+        )
+    )
+
+    assert products == []
+    assert requested == [
+        "https://www.lcw.com/erkek-tisort-t-345?sayfa=5",
+        "https://www.lcw.com/erkek-tisort-t-345?sayfa=6",
+    ]

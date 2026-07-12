@@ -28,9 +28,9 @@ def _setup():
     return ScraperIntegrationService(), session, product
 
 
-def _scraped(price=100):
+def _scraped(price=100, currency="TRY"):
     return ScrapedProduct(
-        name="Товар", description="", price=price, currency="TRY",
+        name="Товар", description="", price=price, currency=currency,
         url="https://e.com/p", external_id="lcw-rescrape-1", source="lcw",
         is_available=True, stock_quantity=5, attributes={},
     )
@@ -54,3 +54,33 @@ def test_price_change_is_updated():
     product.refresh_from_db()
     action, _ = svc._update_existing_product(session, _scraped(price=150), product)
     assert action == "updated"
+
+
+@pytest.mark.django_db
+def test_currency_change_is_updated_even_when_numeric_amount_is_equal():
+    svc, session, product = _setup()
+    action, updated = svc._update_existing_product(
+        session, _scraped(price=100, currency="USD"), product
+    )
+    updated.refresh_from_db()
+    assert action == "updated"
+    assert updated.currency == "USD"
+    assert updated.price == 100
+
+
+@pytest.mark.django_db
+def test_zero_source_price_is_not_treated_as_missing():
+    svc, session, product = _setup()
+    action, updated = svc._update_existing_product(session, _scraped(price=0), product)
+    updated.refresh_from_db()
+    assert action == "updated"
+    assert updated.price == 0
+
+
+@pytest.mark.django_db
+def test_scraped_sources_is_upserted_instead_of_growing_forever():
+    svc, session, product = _setup()
+    for _ in range(3):
+        svc._update_existing_product(session, _scraped(), product)
+        product.refresh_from_db()
+    assert len(product.external_data["scraped_sources"]) == 1

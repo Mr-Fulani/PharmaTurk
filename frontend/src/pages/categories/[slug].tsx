@@ -8,7 +8,7 @@ import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
 import { resolveMediaUrl } from '../../lib/media'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
-import { formatPrice } from '../../lib/price'
+import { formatPrice, parsePriceWithCurrency } from '../../lib/price'
 import { buildCatalogPageQuery, parseBrandIds, parseCatalogFiltersQuery } from '../../lib/catalogQuery'
 import { isCategoryInProductTree, selectExactCategory } from '../../lib/categoryRouting'
 import { GetServerSideProps } from 'next'
@@ -281,21 +281,6 @@ const resolveProductsEndpoint = (categoryType: string) => {
     case 'supplements': return '/api/catalog/supplements/products'
     default: return '/api/catalog/products'
   }
-}
-
-const parsePriceWithCurrency = (value?: string | number | null) => {
-  if (value === null || typeof value === 'undefined') {
-    return { price: null as string | number | null, currency: null as string | null }
-  }
-  if (typeof value === 'number') {
-    return { price: value, currency: null as string | null }
-  }
-  const trimmed = value.trim()
-  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
-  if (match) {
-    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
-  }
-  return { price: trimmed, currency: null as string | null }
 }
 
 const parseNumber = (value: string | number | null | undefined) => {
