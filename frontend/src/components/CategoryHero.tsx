@@ -40,7 +40,6 @@ export default function CategoryHero({
         aria-hidden="true"
         className="hero-image absolute inset-0 -z-20 h-full w-full object-cover"
       />
-      <div aria-hidden="true" className="hero-vignette absolute inset-0 -z-10" />
       <div aria-hidden="true" className="hero-light absolute inset-0 -z-10">
         <span className="light-sweep" />
       </div>
@@ -115,6 +114,7 @@ export default function CategoryHero({
       <style jsx>{`
         .category-hero {
           --hero-height: clamp(18rem, 34vw, 28rem);
+          --hero-bleed-top: clamp(7rem, 12vw, 9rem);
           min-height: var(--hero-height);
           display: flex;
           align-items: center;
@@ -122,7 +122,8 @@ export default function CategoryHero({
              (padding обёртки 72px против сжимающейся при скролле шапки),
              и fixed-картинка должна закрывать его, а не обрезаться по
              границе блока — иначе под шапкой светит полоса фона страницы. */
-          clip-path: inset(-6rem 0 0 0);
+          clip-path: inset(calc(0px - var(--hero-bleed-top)) 0 0 0);
+          overflow: visible;
           background: #10201f;
         }
 
@@ -134,25 +135,13 @@ export default function CategoryHero({
              прибита к верху вьюпорта — без запаса низ hero остаётся полосой
              фонового цвета, пока страница не проскроллена на высоту шапки.
              Лишнее срезает clip-path контейнера. */
-          height: calc(var(--hero-height) + 7rem);
+          height: calc(var(--hero-height) + var(--hero-bleed-top) + 1rem);
           /* 62%, а не 44%: компенсирует запас по высоте, чтобы кроп не
              уползал вверх фото — иначе при скролле в полоске под шапкой
              остаётся самая светлая часть неба. */
           object-position: center 62%;
           transform: translateZ(0) scale(1.02);
           animation: heroImageDrift 18s ease-in-out infinite alternate;
-        }
-
-        .hero-vignette {
-          /* Тянемся вверх вместе с расширенным клипом hero — зазор под
-             шапкой закрывает картинка с виньеткой, а не голое фото.
-             Вертикальный градиент — строго плавный, без тёмного верхнего
-             стопа: любая ступенька в этой зоне читается как полоса на
-             стыке с шапкой. */
-          top: -6rem;
-          background:
-            linear-gradient(90deg, rgba(3, 13, 16, 0.86) 0%, rgba(4, 22, 24, 0.68) 40%, rgba(6, 19, 21, 0.18) 72%, rgba(6, 19, 21, 0.38) 100%),
-            linear-gradient(180deg, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0.42) 100%);
         }
 
         .hero-light {
@@ -174,13 +163,7 @@ export default function CategoryHero({
         }
 
         :global(.dark) .hero-image {
-          filter: saturate(1.08) brightness(0.9) contrast(1.1);
-        }
-
-        :global(.dark) .hero-vignette {
-          background:
-            linear-gradient(90deg, rgba(1, 8, 12, 0.92) 0%, rgba(3, 18, 22, 0.74) 42%, rgba(6, 20, 22, 0.24) 74%, rgba(2, 9, 13, 0.48) 100%),
-            linear-gradient(180deg, rgba(0, 0, 0, 0.24) 0%, rgba(0, 0, 0, 0.54) 100%);
+          filter: saturate(1.08) contrast(1.1);
         }
 
         @keyframes heroImageDrift {
@@ -196,29 +179,18 @@ export default function CategoryHero({
         @media (max-width: 768px) {
           .category-hero {
             --hero-height: 22rem;
+            --hero-bleed-top: 6.5rem;
             min-height: var(--hero-height);
             align-items: flex-end;
-            /* Картинка на мобиле absolute внутри hero — расширенный клип
-               не нужен, а виньетка не должна вылезать выше блока. */
-            clip-path: inset(0);
           }
 
           .hero-image {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            object-position: 60% center;
+            position: fixed;
+            width: 100vw;
+            height: calc(var(--hero-height) + var(--hero-bleed-top) + 1rem);
+            object-position: 58% 58%;
           }
 
-          .hero-vignette {
-            top: 0;
-          }
-
-          .hero-vignette {
-            background:
-              linear-gradient(90deg, rgba(3, 13, 16, 0.88) 0%, rgba(4, 22, 24, 0.74) 58%, rgba(6, 19, 21, 0.34) 100%),
-              linear-gradient(180deg, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.52) 100%);
-          }
         }
 
         @media (prefers-reduced-motion: reduce) {
