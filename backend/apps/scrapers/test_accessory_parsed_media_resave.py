@@ -35,7 +35,11 @@ def _make_accessory():
 
 
 @pytest.mark.django_db
-def test_parsed_gallery_image_resaved_to_readable():
+def test_parsed_gallery_image_resaved_to_readable(monkeypatch):
+    r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
+    r2_config["public_url"] = "https://cdn.mudaroba.com"
+    monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
+
     accessory = _make_accessory()
     key = "products/parsed/lcw/belts/images/resave-test-belt.jpg"
     default_storage.save(key, ContentFile(b"\xff\xd8\xff\xe0fakejpegdata"))
@@ -153,9 +157,13 @@ def test_supplement_existing_parsed_media_is_repaired_and_counted_updated(monkey
 
 
 @pytest.mark.django_db
-def test_perfumery_parsed_gallery_image_resaved_to_readable():
+def test_perfumery_parsed_gallery_image_resaved_to_readable(monkeypatch):
     """Парфюм: галерея раньше не имела pre_save-сигнала и застревала в parsed."""
     from apps.catalog.models import Category, PerfumeryProductImage
+
+    r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
+    r2_config["public_url"] = "https://cdn.mudaroba.com"
+    monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
 
     category = Category.objects.create(name="Парфюм тест", slug="perfume-resave-test")
     product = Product.objects.create(
