@@ -60,6 +60,41 @@ def _first_non_empty(*values):
     return ""
 
 
+def _preferred_currency(request, default="RUB"):
+    """Единое определение валюты для всех товарных карточек."""
+    if not request:
+        return default
+    explicit = request.headers.get("X-Currency") or request.query_params.get("currency")
+    if explicit:
+        return explicit.upper()
+    user = getattr(request, "user", None)
+    if user is not None and getattr(user, "is_authenticated", False):
+        user_currency = getattr(user, "currency", None)
+        if user_currency:
+            return user_currency.upper()
+    return {"en": "USD", "ru": "RUB"}.get(
+        getattr(request, "LANGUAGE_CODE", None), default
+    )
+
+
+def _public_price(amount, from_currency, request):
+    """Возвращает публичную цену с активной валютной маржой."""
+    if amount is None:
+        return None, (from_currency or "RUB").upper()
+    source = (from_currency or "RUB").upper()
+    target = _preferred_currency(request)
+    try:
+        from .utils.currency_converter import currency_converter
+
+        _, _, with_margin = currency_converter.convert_price(
+            Decimal(str(amount)), source, target, apply_margin=True
+        )
+        return with_margin, target
+    except Exception:
+        logger.exception("Failed to calculate public price %s %s", amount, source)
+        return amount, source
+
+
 def _localized_related_name(obj, lang: str) -> str:
     if not obj:
         return ""
@@ -6018,6 +6053,84 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
     og_image_url = serializers.SerializerMethodField()
     # _domain_product_type на модели — атрибут класса, не поле БД; CharField(source=...) ломает ModelSerializer.
     product_type = serializers.SerializerMethodField(read_only=True)
+
+    def to_representation(self, instance):
+        """Не даёт сырым ценам домена/вариантов обойти общую маржу.
+
+        Несколько старых сериализаторов переопределяют active_variant_price и
+        вложенные variants исходной ценой. Фронтенд предпочитает эти поля общей
+        price_formatted, поэтому нормализуем весь публичный payload в одном месте.
+        """
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        source_currency = (getattr(instance, "currency", None) or "RUB").upper()
+
+        price, currency = _public_price(getattr(instance, "price", None), source_currency, request)
+        if price is not None:
+            data["price"] = price
+            data["currency"] = currency
+            data["price_formatted"] = f"{price} {currency}"
+
+        old_price, old_currency = _public_price(
+            getattr(instance, "old_price", None), source_currency, request
+        )
+        if old_price is not None:
+            data["old_price_formatted"] = f"{old_price} {old_currency}"
+
+        variants_manager = getattr(instance, "variants", None)
+        variant_objects = list(variants_manager.all()) if variants_manager is not None else []
+        variants_by_id = {str(v.pk): v for v in variant_objects}
+        for row in data.get("variants") or []:
+            variant = variants_by_id.get(str(row.get("id")))
+            if variant is None:
+                continue
+            variant_source = (
+                getattr(variant, "currency", None) or source_currency
+            ).upper()
+            variant_price, variant_currency = _public_price(
+                getattr(variant, "price", None), variant_source, request
+            )
+            if variant_price is not None:
+                row["price"] = variant_price
+                row["currency"] = variant_currency
+                if "price_formatted" in row:
+                    row["price_formatted"] = f"{variant_price} {variant_currency}"
+            variant_old, variant_old_currency = _public_price(
+                getattr(variant, "old_price", None), variant_source, request
+            )
+            if variant_old is not None:
+                row["old_price"] = variant_old
+                if "old_price_formatted" in row:
+                    row["old_price_formatted"] = f"{variant_old} {variant_old_currency}"
+
+        active_variant = None
+        active_getter = getattr(self, "_get_active_variant", None)
+        if callable(active_getter):
+            active_variant = active_getter(instance)
+        active_amount = (
+            getattr(active_variant, "price", None)
+            if active_variant is not None and getattr(active_variant, "price", None) is not None
+            else getattr(instance, "price", None)
+        )
+        active_source = (
+            getattr(active_variant, "currency", None) if active_variant is not None else None
+        ) or source_currency
+        active_price, active_currency = _public_price(active_amount, active_source, request)
+        if active_price is not None and "active_variant_price" in data:
+            data["active_variant_price"] = f"{active_price} {active_currency}"
+            data["active_variant_currency"] = active_currency
+
+        active_old_amount = (
+            getattr(active_variant, "old_price", None)
+            if active_variant is not None and getattr(active_variant, "old_price", None) is not None
+            else getattr(instance, "old_price", None)
+        )
+        active_old, active_old_currency = _public_price(
+            active_old_amount, active_source, request
+        )
+        if active_old is not None and "active_variant_old_price_formatted" in data:
+            data["active_variant_old_price_formatted"] = f"{active_old} {active_old_currency}"
+        return data
 
     def get_product_type(self, obj):
         raw = getattr(type(obj), '_domain_product_type', None)

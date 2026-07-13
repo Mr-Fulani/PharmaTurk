@@ -9,6 +9,19 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 
 
+def _clear_margin_caches():
+    """Сразу публикует новую маржу во всех расчётах текущего процесса."""
+    cache.delete("global_currency_settings")
+    try:
+        cache.incr("currency_margin_version")
+    except (ValueError, TypeError):
+        cache.set("currency_margin_version", 2, timeout=None)
+    # Поздний импорт исключает цикл currency_models -> currency_converter.
+    from .utils.currency_converter import currency_converter
+
+    currency_converter.clear_margin_cache()
+
+
 class CurrencyRate(models.Model):
     """Модель для хранения курсов валют"""
     
@@ -124,7 +137,7 @@ class GlobalCurrencySettings(models.Model):
         """Гарантирует существование только одной записи (Singleton) и очищает кэш при сохранении."""
         self.pk = 1
         super().save(*args, **kwargs)
-        cache.delete("global_currency_settings")
+        _clear_margin_caches()
 
     def delete(self, *args, **kwargs):
         """Предотвращает удаление единственной записи."""
@@ -175,6 +188,16 @@ class MarginSettings(models.Model):
     
     def __str__(self):
         return f"{self.currency_pair}: {self.margin_percentage}%"
+
+    def save(self, *args, **kwargs):
+        self.currency_pair = (self.currency_pair or "").strip().upper()
+        super().save(*args, **kwargs)
+        _clear_margin_caches()
+
+    def delete(self, *args, **kwargs):
+        result = super().delete(*args, **kwargs)
+        _clear_margin_caches()
+        return result
 
 
 class ProductPrice(models.Model):

@@ -13,6 +13,30 @@ class RecommendationViewSet(viewsets.ViewSet):
         from .services.vector_engine import QdrantRecommendationEngine
         return QdrantRecommendationEngine()
 
+    @staticmethod
+    def _serialize_matches(matches, request):
+        """Заменяет устаревающий Qdrant payload актуальной публичной карточкой.
+
+        Цена из векторного индекса нужна для фильтрации/ранжирования, но не должна
+        показываться покупателю: она исходная и может не содержать текущую маржу.
+        """
+        from apps.catalog.models import Product
+        from apps.catalog.serializers import serialize_product_for_card
+
+        ids = [match.get("product_id") for match in matches if match.get("product_id")]
+        products = Product.objects.filter(id__in=ids).select_related("category", "brand")
+        product_map = {product.id: product for product in products}
+        result = []
+        for match in matches:
+            product = product_map.get(match.get("product_id"))
+            if product is None:
+                continue
+            row = dict(match)
+            row.pop("payload", None)
+            row["product"] = serialize_product_for_card(product, request)
+            result.append(row)
+        return result
+
     @action(detail=False, methods=["post"])
     def search_by_image(self, request):
         """POST /api/recommendations/search_by_image/ — visual search by image URL."""
@@ -162,7 +186,7 @@ class RecommendationViewSet(viewsets.ViewSet):
                 results.append({
                     "relation_type": relation_type,
                     "category_id": cat_id,
-                    "items": similar[:2],
+                    "items": self._serialize_matches(similar[:2], request),
                 })
         return Response({
             "base_product_id": int(product_id),

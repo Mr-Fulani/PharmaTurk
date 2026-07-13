@@ -182,7 +182,11 @@ class CurrencyConverter:
     
     def _get_margin_rate(self, from_currency: str, to_currency: str) -> Decimal:
         """Получение процента маржи для пары валют"""
-        cache_key = f"margin_{from_currency}_{to_currency}"
+        # Версия хранится в общем Redis-кэше. После изменения настройки все
+        # gunicorn/celery процессы немедленно перестают использовать локальное
+        # старое значение, даже если сами не обрабатывали admin POST.
+        margin_version = cache.get("currency_margin_version", 1)
+        cache_key = f"margin_{margin_version}_{from_currency}_{to_currency}"
         
         if cache_key in self._margin_cache:
             return self._margin_cache[cache_key]

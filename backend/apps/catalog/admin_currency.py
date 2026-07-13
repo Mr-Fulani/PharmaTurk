@@ -203,12 +203,16 @@ class MarginSettingsAdmin(admin.ModelAdmin):
     def activate_margins(self, request, queryset):
         """Активировать выбранные маржи."""
         updated = queryset.update(is_active=True)
+        from .currency_models import _clear_margin_caches
+        _clear_margin_caches()
         self.message_user(request, f'Активировано {updated} настроек маржи.')
     activate_margins.short_description = 'Активировать выбранные маржи'
     
     def deactivate_margins(self, request, queryset):
         """Деактивировать выбранные маржи."""
         updated = queryset.update(is_active=False)
+        from .currency_models import _clear_margin_caches
+        _clear_margin_caches()
         self.message_user(request, f'Деактивировано {updated} настроек маржи.')
     deactivate_margins.short_description = 'Деактивировать выбранные маржи'
     
@@ -216,6 +220,8 @@ class MarginSettingsAdmin(admin.ModelAdmin):
         """Сбросить маржу к значению по умолчанию (15%)."""
         from decimal import Decimal
         updated = queryset.update(margin_percentage=Decimal('15.00'))
+        from .currency_models import _clear_margin_caches
+        _clear_margin_caches()
         self.message_user(request, f'Сброшено {updated} настроек маржи к 15%.')
     reset_to_default.short_description = 'Сбросить к 15 процентов'
 

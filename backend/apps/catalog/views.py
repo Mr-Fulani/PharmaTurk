@@ -1958,7 +1958,21 @@ class ProductViewSet(SmartSlugLookupMixin, FacetedModelViewSetMixin, viewsets.Re
                 )
                 if shadow_ids:
                     similar_list = [r for r in similar_list if r["product_id"] not in shadow_ids]
-            return Response({"count": len(similar_list), "results": similar_list})
+            from apps.catalog.serializers import serialize_product_for_card
+            products = Product.objects.filter(
+                id__in=[row["product_id"] for row in similar_list]
+            ).select_related("category", "brand")
+            product_map = {item.id: item for item in products}
+            public_results = []
+            for row in similar_list:
+                item = product_map.get(row["product_id"])
+                if item is None:
+                    continue
+                public_row = dict(row)
+                public_row.pop("payload", None)
+                public_row["product"] = serialize_product_for_card(item, request)
+                public_results.append(public_row)
+            return Response({"count": len(public_results), "results": public_results})
         except Exception as e:
             logger.warning(
                 "Visually similar unavailable for product_id=%s: %s",
