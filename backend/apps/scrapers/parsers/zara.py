@@ -39,6 +39,7 @@ class ZaraParser(BaseScraper):
     WARMUP_URL = "https://www.zara.com/tr/tr/"
     # Маркеры защитной страницы Akamai BotManager (HTTP 200 без данных).
     CHALLENGE_MARKERS = ("bm-verify", "/_sec/", "pardon our interruption", "bobcmn")
+    AJAX_REQUEST_EXCEPTIONS = (requests.RequestException,)
 
     def __init__(self, base_url: str = "https://www.zara.com", **kwargs):
         super().__init__(base_url=base_url, delay_range=(2, 4), **kwargs)
@@ -175,7 +176,7 @@ class ZaraParser(BaseScraper):
                 timeout=self.timeout,
                 allow_redirects=True,
             )
-        except requests.RequestException as exc:
+        except self.AJAX_REQUEST_EXCEPTIONS as exc:
             self.logger.info("Zara: прогрев сессии не удался: %s", exc)
 
     def _looks_like_challenge(self, text: Optional[str]) -> bool:
@@ -219,7 +220,7 @@ class ZaraParser(BaseScraper):
                 return response.text
             except SoftTimeLimitExceeded:
                 raise
-            except requests.RequestException as exc:
+            except self.AJAX_REQUEST_EXCEPTIONS as exc:
                 status_code = getattr(getattr(exc, "response", None), "status_code", None)
                 self.logger.warning(
                     "Ошибка Zara AJAX-запроса к %s (HTTP %s): %s",

@@ -834,8 +834,11 @@ class ScraperIntegrationService:
                 parser.delay_range = (scraper_config.delay_min, scraper_config.delay_max)
 
                 # Устанавливаем дополнительные настройки
-                if scraper_config.user_agent:
-                    parser.user_agent = scraper_config.user_agent
+                parser.configure_request_identity(
+                    user_agent=scraper_config.user_agent,
+                    headers=scraper_config.headers,
+                    cookies=scraper_config.cookies,
+                )
 
                 # max_products — общий лимит всей цепочки, а не каждого
                 # чанка. Поэтому парсеру можно отдать только остаток; иначе

@@ -891,7 +891,11 @@ export default function CategoryPage({
     const loadBrands = async () => {
       try {
         const params: Record<string, any> = {
-          product_type: resolvedBrandType
+          product_type: resolvedBrandType,
+          // SSR загружает полный список (до 500), клиентский refresh должен
+          // соблюдать тот же контракт, иначе после hydration остаётся только
+          // первая страница брендов и Zara исчезает из длинных списков.
+          page_size: 500
         }
         const normalizedCategoryType = (categoryTypeSlug || categoryType || '').toString().toLowerCase().replace(/_/g, '-')
         const normalizedRouteSlug = (routeSlug || '').toString().toLowerCase().replace(/_/g, '-')

@@ -45,6 +45,7 @@ requests = "^2.31.0"
 weasyprint = "^68.1"
 ikea-api = ">=2.4.0"
 django-nested-admin = "^4.1.6"
+curl-cffi = "^0.13.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.2"

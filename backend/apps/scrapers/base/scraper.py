@@ -222,6 +222,48 @@ class BaseScraper(ABC):
         """Контекстный менеджер - выход."""
         if self.client:
             self.client.close()
+
+    def configure_request_identity(
+        self,
+        *,
+        user_agent: Optional[str] = None,
+        headers: Optional[Dict[str, str]] = None,
+        cookies: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Применяет настройки ScraperConfig ко всем HTTP-транспортам парсера.
+
+        Раньше ``user_agent`` менялся только как атрибут уже после создания
+        сессий, а поля ``headers``/``cookies`` вообще не доходили до запросов.
+        Для защитных контуров это создавало разные fingerprints у прогрева и
+        AJAX-запроса.
+        """
+        clean_headers = {
+            str(key): str(value)
+            for key, value in (headers or {}).items()
+            if key and value is not None
+        }
+        clean_cookies = {
+            str(key): str(value)
+            for key, value in (cookies or {}).items()
+            if key and value is not None
+        }
+        if user_agent:
+            self.user_agent = str(user_agent)
+            clean_headers["User-Agent"] = self.user_agent
+        if clean_headers:
+            self.default_headers.update(clean_headers)
+            if self.client:
+                self.client.headers.update(clean_headers)
+        if clean_cookies and self.client:
+            self.client.cookies.update(clean_cookies)
+
+        # Zara/Inditex используют отдельную requests.Session для AJAX.
+        ajax_session = getattr(self, "ajax_session", None)
+        if ajax_session is not None:
+            if clean_headers:
+                ajax_session.headers.update(clean_headers)
+            if clean_cookies:
+                ajax_session.cookies.update(clean_cookies)
     
     def _make_request(self, url: str, **kwargs) -> Optional[str]:
         """Выполняет HTTP запрос с повторными попытками.

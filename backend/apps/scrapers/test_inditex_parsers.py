@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from curl_cffi import requests as curl_requests
 
 from apps.scrapers.parsers.bershka import BershkaParser
 from apps.scrapers.parsers.massimodutti import MassimoDuttiParser
@@ -89,3 +90,30 @@ def test_inditex_category_url_supports_chunking(parser_class):
     url = f"https://www.{parser_class().get_name()}.com/tr/erkek-tshirt-n6323"
     assert parser_class.is_category_url(url)
     assert parser_class.supports_page_chunking_for_url(url)
+
+
+@pytest.mark.parametrize("parser_class", [BershkaParser, PullAndBearParser, MassimoDuttiParser])
+def test_inditex_siblings_use_browser_fingerprint_transport(parser_class):
+    parser = parser_class()
+    try:
+        assert isinstance(parser.ajax_session, curl_requests.Session)
+        assert parser.ajax_session.impersonate == "chrome"
+    finally:
+        parser.__exit__(None, None, None)
+
+
+def test_scraper_config_identity_reaches_inditex_transport():
+    parser = BershkaParser()
+    try:
+        parser.configure_request_identity(
+            user_agent="Configured Chrome UA",
+            headers={"X-Test-Header": "configured"},
+            cookies={"session": "configured-cookie"},
+        )
+
+        assert parser.ajax_session.headers["User-Agent"] == "Configured Chrome UA"
+        assert parser.ajax_session.headers["X-Test-Header"] == "configured"
+        assert parser.ajax_session.cookies.get("session") == "configured-cookie"
+        assert parser.client.headers["User-Agent"] == "Configured Chrome UA"
+    finally:
+        parser.__exit__(None, None, None)

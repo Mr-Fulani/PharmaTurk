@@ -318,6 +318,15 @@ def serialize_product_for_card(product, request):
     для товаров с вариантами.
     """
     ctx = {'request': request}
+    # Простые домены имеют теневой Product, который используется общей
+    # категорийной выдачей. Сериализуем его и на странице бренда: иначе один
+    # товар получает разные id/main_image_url в зависимости от маршрута, а
+    # устаревший main_image_file доменной записи может перекрыть рабочее медиа
+    # shadow-товара.
+    if isinstance(product, AccessoryProduct):
+        base_product = getattr(product, 'base_product', None)
+        if base_product is not None:
+            return ProductSerializer(base_product, context=ctx).data
     if isinstance(product, ClothingProduct):
         return ClothingProductSerializer(product, context=ctx).data
     if isinstance(product, ShoeProduct):

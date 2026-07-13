@@ -10,6 +10,8 @@ from abc import abstractmethod
 from typing import Any, Dict
 from urllib.parse import urlencode, urljoin, urlparse, urlunparse
 
+from curl_cffi import requests as curl_requests
+
 from .zara import ZaraParser
 
 
@@ -30,6 +32,25 @@ class InditexSiblingParser(ZaraParser):
         "viewPayload = ",
     )
     PRODUCT_URL_STYLE = "c0p"
+    AJAX_REQUEST_EXCEPTIONS = (curl_requests.RequestsError,)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Эти три витрины отклоняют стандартный TLS fingerprint requests даже
+        # через residential proxy. curl-cffi воспроизводит Chrome handshake,
+        # оставаясь лёгкой HTTP-сессией без Chromium/Selenium-процесса.
+        self.ajax_session.close()
+        session_kwargs = {
+            "impersonate": "chrome",
+            "headers": {
+                "Accept": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
+            },
+        }
+        if self.proxies:
+            session_kwargs.update({"proxies": self.proxies, "verify": False})
+        self.ajax_session = curl_requests.Session(**session_kwargs)
 
     @abstractmethod
     def get_name(self) -> str:

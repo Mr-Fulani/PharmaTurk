@@ -959,8 +959,11 @@ def run_stub_refresh_task(self, site_task_id: int, scraper_config_id: int, offse
             password=scraper_config.scraper_password,
         ) as parser:
             parser.delay_range = (scraper_config.delay_min, scraper_config.delay_max)
-            if scraper_config.user_agent:
-                parser.user_agent = scraper_config.user_agent
+            parser.configure_request_identity(
+                user_agent=scraper_config.user_agent,
+                headers=scraper_config.headers,
+                cookies=scraper_config.cookies,
+            )
 
             for i, stub in enumerate(batch):
                 if _is_site_task_cancelled(site_task_id):

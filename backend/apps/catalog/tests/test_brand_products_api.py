@@ -11,6 +11,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.catalog.models import (
+    AccessoryProduct,
     Brand,
     Category,
     ClothingProduct,
@@ -245,6 +246,42 @@ def test_brand_products_furniture_with_variant_hydrates(db):
     data = response.json()
     assert data["count"] == 1
     assert data["results"][0]["name"] == "Shelf"
+
+
+@pytest.mark.django_db
+def test_accessory_brand_card_uses_same_shadow_media_as_category_card(db):
+    suffix = _suffix()
+    category = Category.objects.create(name="Аксессуары", slug=f"accessories-{suffix}")
+    brand = Brand.objects.create(name=f"Zara {suffix}", slug=f"zara-{suffix}")
+    shadow = Product.objects.create(
+        name="Sunglasses",
+        slug=f"sunglasses-{suffix}",
+        category=category,
+        brand=brand,
+        product_type="accessories",
+        price=100,
+        currency="TRY",
+        main_image="products/accessories/zara/sunglasses/main.webp",
+        is_active=True,
+    )
+    AccessoryProduct.objects.create(
+        base_product=shadow,
+        name=shadow.name,
+        slug=shadow.slug,
+        category=category,
+        brand=brand,
+        price=shadow.price,
+        currency=shadow.currency,
+        main_image="parsed/stale-zara-image.jpg",
+        is_active=True,
+    )
+
+    client = APIClient()
+    category_card = client.get("/api/catalog/products", {"brand_id": brand.id}).json()["results"][0]
+    brand_card = client.get(f"/api/catalog/brands/{brand.slug}/products").json()["results"][0]
+
+    assert brand_card["id"] == category_card["id"] == shadow.id
+    assert brand_card["main_image_url"] == category_card["main_image_url"]
 
 
 @pytest.mark.django_db
