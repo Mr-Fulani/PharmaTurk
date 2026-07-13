@@ -940,7 +940,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         except Exception:
             return None
     
-    def get_price(self, obj):
+    def _get_price_without_product_markup(self, obj):
         """Получает цену в предпочитаемой валюте."""
         request = self.context.get('request')
         preferred_currency = self._get_preferred_currency(request)
@@ -1007,6 +1007,11 @@ class CartItemSerializer(serializers.ModelSerializer):
         except Exception:
             pass
         return obj.price
+
+    def get_price(self, obj):
+        from apps.catalog.utils.product_markup import apply_product_markup
+
+        return apply_product_markup(self._get_price_without_product_markup(obj), obj.product)
     
     def get_currency(self, obj):
         """Всегда возвращает предпочитаемую валюту — цены конвертируются в get_price."""

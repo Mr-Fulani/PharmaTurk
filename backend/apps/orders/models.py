@@ -156,6 +156,7 @@ class Cart(models.Model):
         total = 0
         for item in self.items.all():
             try:
+                needs_product_markup = True
                 prices = item.product.get_all_prices()
                 if prices and preferred_currency in prices:
                     price = prices[preferred_currency].get('price_with_margin', 0)
@@ -172,8 +173,11 @@ class Cart(models.Model):
                 else:
                     # Fallback к старому полю
                     price = item.price
+                    needs_product_markup = False
                 
-                total += price * item.quantity
+                from apps.catalog.utils.product_markup import apply_product_markup
+                public_price = apply_product_markup(price, item.product) if needs_product_markup else price
+                total += public_price * item.quantity
             except Exception:
                 # Fallback к старому полю
                 total += item.price * item.quantity
@@ -223,6 +227,7 @@ class CartItem(models.Model):
         preferred_currency = (self.currency or getattr(self.cart, 'currency', None) or 'RUB').upper()
         
         try:
+            needs_product_markup = True
             prices = self.product.get_all_prices()
             if prices and preferred_currency in prices:
                 price = prices[preferred_currency].get('price_with_margin', 0)
@@ -239,8 +244,11 @@ class CartItem(models.Model):
             else:
                 # Fallback к старому полю
                 price = self.price
+                needs_product_markup = False
             
-            return round(price * self.quantity, 2)
+            from apps.catalog.utils.product_markup import apply_product_markup
+            public_price = apply_product_markup(price, self.product) if needs_product_markup else price
+            return round(public_price * self.quantity, 2)
         except Exception:
             # Fallback к старому полю
             return round(self.price * self.quantity, 2)

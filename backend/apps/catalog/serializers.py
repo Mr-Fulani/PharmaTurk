@@ -3,7 +3,7 @@
 from urllib.parse import quote, urlparse
 import re
 import logging
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from django.conf import settings
 from django.db.models import Count
 from rest_framework import serializers
@@ -36,6 +36,7 @@ from .seo_defaults import build_catalog_item_seo_defaults, resolve_book_seo_valu
 from .utils.media_path import normalize_duplicated_media_path
 from .utils.storage_paths import detect_media_type
 from .utils.variant_titles import build_variant_display_title
+from .utils.product_markup import apply_product_markup, get_effective_product_markup
 
 TRANSLATION_SEO_FIELDS = [
     'meta_title',
@@ -95,6 +96,68 @@ def _public_price(amount, from_currency, request):
         return amount, source
 
 
+def _effective_product_markup(obj):
+    return get_effective_product_markup(obj)
+
+
+def _apply_markup_value(value, margin):
+    if value is None or margin <= 0:
+        return value
+    return (Decimal(str(value)) * (Decimal("1") + margin / Decimal("100"))).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
+
+
+def _apply_markup_formatted(value, margin):
+    if not value or margin <= 0:
+        return value
+    match = re.match(r"^\s*([0-9]+(?:[.,][0-9]+)?)\s+([A-Za-z]{3,5})\s*$", str(value))
+    if not match:
+        return value
+    amount = _apply_markup_value(match.group(1).replace(",", "."), margin)
+    return f"{amount} {match.group(2).upper()}"
+
+
+def _apply_product_markup_to_payload(data, obj):
+    """Накладывает товарную наценку поверх уже рассчитанной валютной."""
+    margin, source = _effective_product_markup(obj)
+    if margin <= 0:
+        data["product_markup_percent"] = Decimal("0")
+        data["product_markup_source"] = None
+        return data
+
+    for field in ("price", "old_price", "final_price_rub", "final_price_usd"):
+        if field in data and data[field] is not None:
+            data[field] = _apply_markup_value(data[field], margin)
+    for field in ("price_formatted", "old_price_formatted", "active_variant_price",
+                  "active_variant_old_price_formatted"):
+        if field in data:
+            data[field] = _apply_markup_formatted(data[field], margin)
+
+    for collection_name in ("variants", "book_variants"):
+        for row in data.get(collection_name) or []:
+            for field in ("price", "old_price"):
+                if row.get(field) is not None:
+                    row[field] = _apply_markup_value(row[field], margin)
+            for field in ("price_formatted", "old_price_formatted"):
+                if field in row:
+                    row[field] = _apply_markup_formatted(row[field], margin)
+
+    current = data.get("current_price")
+    if isinstance(current, dict) and current.get("amount") is not None:
+        current["amount"] = _apply_markup_value(current["amount"], margin)
+        current["formatted"] = f"{current['amount']} {current.get('currency', '')}".strip()
+    for price_data in (data.get("prices_in_currencies") or {}).values():
+        if isinstance(price_data, dict) and price_data.get("price_with_margin") is not None:
+            price_data["price_with_margin"] = _apply_markup_value(
+                price_data["price_with_margin"], margin
+            )
+
+    data["product_markup_percent"] = margin
+    data["product_markup_source"] = source
+    return data
+
+
 def _localized_related_name(obj, lang: str) -> str:
     if not obj:
         return ""
@@ -143,6 +206,12 @@ def _fallback_item_seo(
 
 
 class _LocalizedSeoMethodsMixin:
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if getattr(self, "_normalizes_public_prices", False):
+            return data
+        return _apply_product_markup_to_payload(data, instance)
+
     def _resolve_localized_seo(self, obj, field_name: str):
         return resolve_book_seo_value(obj, field_name, lang=_request_lang(self.context.get('request')))
 
@@ -6053,6 +6122,7 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
     og_image_url = serializers.SerializerMethodField()
     # _domain_product_type на модели — атрибут класса, не поле БД; CharField(source=...) ломает ModelSerializer.
     product_type = serializers.SerializerMethodField(read_only=True)
+    _normalizes_public_prices = True
 
     def to_representation(self, instance):
         """Не даёт сырым ценам домена/вариантов обойти общую маржу.
@@ -6130,7 +6200,7 @@ class _SimpleDomainMixin(_LocalizedSeoMethodsMixin, serializers.Serializer):
         )
         if active_old is not None and "active_variant_old_price_formatted" in data:
             data["active_variant_old_price_formatted"] = f"{active_old} {active_old_currency}"
-        return data
+        return _apply_product_markup_to_payload(data, instance)
 
     def get_product_type(self, obj):
         raw = getattr(type(obj), '_domain_product_type', None)

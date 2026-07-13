@@ -691,7 +691,7 @@ class BaseCategoryAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
 class AllCategoriesAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
     """Единый список всех категорий (корневые и подкатегории)."""
     form = CategoryFormCatalogHints
-    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent_display', 'is_active', 'sort_order', 'created_at')
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent_display', 'margin_percent', 'is_active', 'sort_order', 'created_at')
     list_filter = (
         ActiveRootFilter,
         'is_active',
@@ -725,6 +725,12 @@ class AllCategoriesAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin)
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),
             'description': _('Это медиа самой категории. Используется в карточках/hero категории и как fallback для OG image.'),
+        }),
+        (_('Наценка товара'), {
+            'fields': ('margin_percent',),
+            'description': _(
+                'Накладывается поверх маржи валютной пары. Используется, если у бренда товара не задана своя наценка.'
+            ),
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
@@ -862,7 +868,7 @@ class CategoryIncenseAdmin(BaseCategoryAdmin):
 class BrandAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
     """Админка для брендов."""
     form = BrandAdminForm
-    list_display = ('name', 'slug', 'primary_category_slug', 'show_on_homepage', 'homepage_priority', 'is_active', 'created_at')
+    list_display = ('name', 'slug', 'primary_category_slug', 'margin_percent', 'show_on_homepage', 'homepage_priority', 'is_active', 'created_at')
     list_filter = ('is_active', 'show_on_homepage', 'primary_category_slug', 'created_at')
     search_fields = ('name', 'slug', 'description')
     ordering = ('-show_on_homepage', 'homepage_priority', 'name')
@@ -875,6 +881,12 @@ class BrandAdmin(AdminMediaHelpTextMixin, admin.ModelAdmin):
         (_('Media'), {
             'fields': ('logo', 'card_media', 'card_media_external_url', 'card_media_preview', 'website'),
             'description': _('Файл или внешняя ссылка (CDN/S3) для карточки бренда; ссылка приоритетнее файла.'),
+        }),
+        (_('Наценка товара'), {
+            'fields': ('margin_percent',),
+            'description': _(
+                'Имеет приоритет над наценкой категории и накладывается поверх маржи валютной пары.'
+            ),
         }),
         (_('Settings'), {'fields': ('is_active',)}),
         (_('Главная страница'), {

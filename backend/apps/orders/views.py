@@ -165,6 +165,8 @@ def _get_preferred_currency(request, fallback: str = 'RUB') -> str:
 
 
 def _get_product_price_for_currency(product, currency: str):
+    from apps.catalog.utils.product_markup import apply_product_markup
+
     currency = (currency or 'RUB').upper()
     if getattr(product, "product_type", None) == "jewelry":
         base_price = getattr(product, "price", None)
@@ -177,7 +179,7 @@ def _get_product_price_for_currency(product, currency: str):
                     currency,
                     apply_margin=True,
                 )
-                return Decimal(str(price_with_margin))
+                return apply_product_markup(price_with_margin, product)
             except Exception:
                 return Decimal(str(base_price))
     try:
@@ -185,11 +187,11 @@ def _get_product_price_for_currency(product, currency: str):
         if currency in prices:
             value = prices[currency].get('price_with_margin')
             if value is not None:
-                return Decimal(str(value))
+                return apply_product_markup(value, product)
     except Exception:
         pass
     try:
-        return Decimal(str(getattr(product, 'price', 0) or 0))
+        return apply_product_markup(getattr(product, 'price', 0) or 0, product)
     except Exception:
         return Decimal('0')
 

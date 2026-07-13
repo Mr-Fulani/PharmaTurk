@@ -49,7 +49,8 @@ class _MarginCardSerializer(catalog_serializers._SimpleDomainMixin, serializers.
         ]
 
     def _get_active_variant(self, obj):
-        return obj.variants.all()[0]
+        rows = obj.variants.all()
+        return rows[0] if rows else None
 
 
 def test_simple_domain_payload_never_exposes_unmarked_variant_price(monkeypatch):
@@ -94,3 +95,55 @@ def test_saved_global_margin_is_visible_without_process_restart():
     settings.default_margin_percentage = Decimal("30")
     settings.save()
     assert currency_converter.convert_price(100, "TRY", "TRY", True)[2] == Decimal("130")
+
+
+def test_brand_markup_overrides_category_and_stacks_on_currency_margin(monkeypatch):
+    monkeypatch.setattr(
+        catalog_serializers,
+        "_public_price",
+        lambda amount, currency, request: (
+            (Decimal(str(amount)) * Decimal("1.30") if amount is not None else None),
+            "RUB",
+        ),
+    )
+    product = SimpleNamespace(
+        id=2,
+        price=Decimal("100"),
+        old_price=None,
+        currency="TRY",
+        brand=SimpleNamespace(margin_percent=Decimal("20")),
+        category=SimpleNamespace(margin_percent=Decimal("10")),
+        variants=_Variants([]),
+    )
+
+    data = _MarginCardSerializer(product).data
+
+    # 100 + 30% валютной маржи = 130; затем +20% бренда = 156.
+    assert data["price"] == Decimal("156.00")
+    assert data["product_markup_percent"] == Decimal("20")
+    assert data["product_markup_source"] == "brand"
+
+
+def test_category_markup_is_used_when_brand_markup_is_zero(monkeypatch):
+    monkeypatch.setattr(
+        catalog_serializers,
+        "_public_price",
+        lambda amount, currency, request: (
+            Decimal(str(amount)) if amount is not None else None,
+            "RUB",
+        ),
+    )
+    product = SimpleNamespace(
+        id=3,
+        price=Decimal("100"),
+        old_price=None,
+        currency="TRY",
+        brand=SimpleNamespace(margin_percent=Decimal("0")),
+        category=SimpleNamespace(margin_percent=Decimal("15")),
+        variants=_Variants([]),
+    )
+
+    data = _MarginCardSerializer(product).data
+
+    assert data["price"] == Decimal("115.00")
+    assert data["product_markup_source"] == "category"
