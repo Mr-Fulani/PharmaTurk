@@ -68,6 +68,7 @@ FAST_REBUILD=false
 WITH_SEED=false
 SKIP_SEED=false
 RESTART_RECSYS=false
+DEPENDENCY_REBUILD=false
 UP_FAILED=false
 LOGS_FAILED=false
 
@@ -86,6 +87,13 @@ warning() {
 
 error() {
     echo -e "${RED}✗${NC} $1"
+}
+
+build_or_exit() {
+    if ! docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS build "$@"; then
+        error "Сборка Docker-образов завершилась ошибкой; старые контейнеры не будут выданы за новый деплой"
+        exit 1
+    fi
 }
 
 # Функция справки
@@ -198,6 +206,23 @@ fi
 
 info "Начинаем перезапуск проекта ${COMPOSE_PROJECT_NAME}..."
 
+# Код backend смонтирован в /app, а Poetry virtualenv находится внутри образа.
+# При --fast новый pyproject/poetry.lock раньше попадал в старый контейнер без
+# новых пакетов: web и Celery оказывались на разных версиях приложения.
+if command -v sha256sum >/dev/null 2>&1; then
+    DEPENDENCY_LOCK_HASH=$(sha256sum backend/pyproject.toml backend/poetry.lock | sha256sum | cut -d ' ' -f1)
+else
+    DEPENDENCY_LOCK_HASH=$(shasum -a 256 backend/pyproject.toml backend/poetry.lock | shasum -a 256 | cut -d ' ' -f1)
+fi
+export DEPENDENCY_LOCK_HASH
+
+BUILT_DEPENDENCY_LOCK_HASH=$(docker image inspect mudaroba-backend \
+    --format '{{ index .Config.Labels "com.mudaroba.poetry-lock-hash" }}' 2>/dev/null || true)
+if [ "$FAST" = true ] && [ "$BUILT_DEPENDENCY_LOCK_HASH" != "$DEPENDENCY_LOCK_HASH" ]; then
+    DEPENDENCY_REBUILD=true
+    warning "Poetry-зависимости изменились: backend будет пересобран даже в FAST режиме"
+fi
+
 RUN_SEED_CATALOG_VALUE=1
 if [ "$FAST" = true ] && [ "$WITH_SEED" = false ] && [ "$SKIP_SEED" = false ]; then
     RUN_SEED_CATALOG_VALUE=0
@@ -286,15 +311,18 @@ info "Пересобираем Docker образы..."
 # - если указан --fast-rebuild: пересобираем только backend и frontend (быстрее полной сборки)
 # - если указан --no-cache: пересобираем все образы без кэша
 # - иначе: обычная полная сборка
-if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
+if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ] && [ "$DEPENDENCY_REBUILD" = false ]; then
     info "FAST режим: пропускаем пересборку образов"
+elif [ "$DEPENDENCY_REBUILD" = true ] && [ "$FAST_REBUILD" = false ]; then
+    info "FAST: пересобираем backend из-за изменения Poetry-зависимостей"
+    build_or_exit backend
 elif [ "$FAST_REBUILD" = true ]; then
     info "FAST-REBUILD: пересобираем backend и frontend"
-    docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS build backend frontend || warning "Ошибка при быстрой пересборке backend/frontend"
+    build_or_exit backend frontend
 elif [ "$NO_CACHE" = true ]; then
-    docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS build --no-cache || warning "Ошибка при сборке образов без кэша"
+    build_or_exit --no-cache
 else
-    docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS build || warning "Ошибка при сборке образов"
+    build_or_exit
 fi
 
 if [ "$FAST" = false ]; then
@@ -306,7 +334,7 @@ fi
 # Запуск контейнеров
 info "Запускаем контейнеры..."
 UP_OPTS="-d"
-if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ]; then
+if [ "$FAST" = true ] && [ "$FAST_REBUILD" = false ] && [ "$DEPENDENCY_REBUILD" = false ]; then
     UP_OPTS="-d --no-build"
 fi
 if [ "$RUN_SEED_CATALOG" = "1" ]; then

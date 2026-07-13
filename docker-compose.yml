@@ -42,6 +42,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        DEPENDENCY_LOCK_HASH: ${DEPENDENCY_LOCK_HASH:-unknown}
     image: mudaroba-backend
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health/ || exit 1"]
