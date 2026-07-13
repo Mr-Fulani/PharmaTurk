@@ -62,7 +62,9 @@ def test_parsed_gallery_image_resaved_to_readable(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_supplement_parsed_gallery_image_survives_main_image_resave(monkeypatch):
+def test_supplement_parsed_gallery_image_survives_main_image_resave(
+    monkeypatch, django_capture_on_commit_callbacks
+):
     """БАДы: main_image не должен удалить parsed раньше доменной галереи."""
     r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
     r2_config["public_url"] = "https://cdn.mudaroba.com"
@@ -93,13 +95,16 @@ def test_supplement_parsed_gallery_image_survives_main_image_resave(monkeypatch)
             image_url=parsed_url,
             image_file="",
         )
-        img.save()
+        with django_capture_on_commit_callbacks(execute=True):
+            img.save()
         img.refresh_from_db()
 
         assert img.image_file and img.image_file.name
         assert "/products/parsed/" not in img.image_file.name
         assert "/products/parsed/" not in img.image_url
-        assert default_storage.exists(key) is False
+        # parsed — временный staging; его пакетно удаляет sweep после всей задачи,
+        # а не pre_save одной строки (иначе другие потребители получают битую ссылку).
+        assert default_storage.exists(key) is True
     finally:
         default_storage.delete(key)
 
@@ -150,8 +155,10 @@ def test_supplement_existing_parsed_media_is_repaired_and_counted_updated(monkey
         assert img.image_file and img.image_file.name
         assert "/products/parsed/" not in img.image_file.name
         assert "/products/parsed/" not in img.image_url
-        assert product.main_image == img.image_url
-        assert supplement.main_image == img.image_url
+        assert "/products/parsed/" not in product.main_image
+        assert "/products/parsed/" not in supplement.main_image
+        assert default_storage.exists(product.main_image_file.name)
+        assert default_storage.exists(supplement.main_image_file.name)
     finally:
         default_storage.delete(key)
 
@@ -197,7 +204,9 @@ def test_perfumery_parsed_gallery_image_resaved_to_readable(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_ikea_furniture_variant_images_resave_parsed_to_readable(monkeypatch):
+def test_ikea_furniture_variant_images_resave_parsed_to_readable(
+    monkeypatch, django_capture_on_commit_callbacks
+):
     r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
     r2_config["public_url"] = "https://cdn.mudaroba.com"
     monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
@@ -219,11 +228,11 @@ def test_ikea_furniture_variant_images_resave_parsed_to_readable(monkeypatch):
     key = "products/parsed/ikea/mobilya/images/ikea-kallax-0.jpg"
     default_storage.save(key, ContentFile(b"\xff\xd8\xff\xe0fakejpegdata"))
     try:
-        changed = ScraperIntegrationService()._sync_furniture_color_variants(
-            furniture,
-            product,
-            [
-                {
+        with django_capture_on_commit_callbacks(execute=True):
+            changed = ScraperIntegrationService()._sync_furniture_color_variants(
+                furniture,
+                product,
+                [{
                     "external_id": "ikea-var-1",
                     "display_name": "IKEA KALLAX белый",
                     "color": "white",
@@ -233,9 +242,8 @@ def test_ikea_furniture_variant_images_resave_parsed_to_readable(monkeypatch):
                     "images": [f"https://cdn.mudaroba.com/{key}"],
                     "stock_quantity": 3,
                     "is_available": True,
-                }
-            ],
-        )
+                }],
+            )
 
         assert changed is True
         variant = furniture.variants.get(external_id="ikea-var-1")
@@ -250,13 +258,15 @@ def test_ikea_furniture_variant_images_resave_parsed_to_readable(monkeypatch):
         assert "/products/parsed/" not in variant.main_image
         assert "/products/parsed/" not in furniture.main_image
         assert "/products/parsed/" not in product.main_image
-        assert default_storage.exists(key) is False
+        assert default_storage.exists(key) is True
     finally:
         default_storage.delete(key)
 
 
 @pytest.mark.django_db
-def test_fashion_variant_images_resave_parsed_to_readable(monkeypatch):
+def test_fashion_variant_images_resave_parsed_to_readable(
+    monkeypatch, django_capture_on_commit_callbacks
+):
     r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
     r2_config["public_url"] = "https://cdn.mudaroba.com"
     monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
@@ -278,10 +288,10 @@ def test_fashion_variant_images_resave_parsed_to_readable(monkeypatch):
     key = "products/parsed/lcw/kadin-giyim/images/lcw-dress-0.jpg"
     default_storage.save(key, ContentFile(b"\xff\xd8\xff\xe0fakejpegdata"))
     try:
-        changed = ScraperIntegrationService()._sync_fashion_variants(
-            product,
-            variants=[
-                {
+        with django_capture_on_commit_callbacks(execute=True):
+            changed = ScraperIntegrationService()._sync_fashion_variants(
+                product,
+                variants=[{
                     "external_id": "lcw-var-resave-1",
                     "display_name": "LCW платье черное",
                     "color": "black",
@@ -292,9 +302,8 @@ def test_fashion_variant_images_resave_parsed_to_readable(monkeypatch):
                     "stock_quantity": 3,
                     "is_available": True,
                     "sizes": [{"size": "M", "is_available": True, "stock_quantity": 3, "sort_order": 0}],
-                }
-            ],
-        )
+                }],
+            )
 
         assert changed is True
         clothing.refresh_from_db()
@@ -309,7 +318,7 @@ def test_fashion_variant_images_resave_parsed_to_readable(monkeypatch):
         assert "/products/parsed/" not in variant.main_image
         assert "/products/parsed/" not in clothing.main_image
         assert "/products/parsed/" not in product.main_image
-        assert default_storage.exists(key) is False
+        assert default_storage.exists(key) is True
     finally:
         default_storage.delete(key)
 

@@ -26,6 +26,9 @@ class ZaraParser(BaseScraper):
     CATEGORY_PATH_RE = re.compile(r"-l(\d+)\.html(?:$|[?#])", re.IGNORECASE)
     MARKETING_PATH_RE = re.compile(r"-mkt(\d+)\.html(?:$|[?#])", re.IGNORECASE)
     VIEW_PAYLOAD_MARKER = "window.zara.viewPayload = "
+    SOURCE_PREFIX = "zara"
+    BRAND_NAME = "Zara"
+    SOURCE_LABEL = "Zara"
     AVAILABLE_STATUSES = {"in_stock", "low_on_stock"}
     DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
     IMAGE_WIDTH = 2048
@@ -42,7 +45,7 @@ class ZaraParser(BaseScraper):
         self.client.headers.update(
             {
                 "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
-                "Referer": "https://www.zara.com/tr/tr/",
+                "Referer": self.WARMUP_URL,
             }
         )
         self.ajax_session = requests.Session()
@@ -79,9 +82,17 @@ class ZaraParser(BaseScraper):
         return bool(cls.PRODUCT_PATH_RE.search(urlparse(url).path or url))
 
     @classmethod
+    def is_product_url(cls, url: str) -> bool:
+        return cls.is_zara_product_url(url)
+
+    @classmethod
     def is_zara_category_url(cls, url: str) -> bool:
         path = urlparse(url).path or url
         return bool(cls.CATEGORY_PATH_RE.search(path) or cls.MARKETING_PATH_RE.search(path))
+
+    @classmethod
+    def is_category_url(cls, url: str) -> bool:
+        return cls.is_zara_category_url(url)
 
     @classmethod
     def is_zara_marketing_url(cls, url: str) -> bool:
@@ -119,16 +130,20 @@ class ZaraParser(BaseScraper):
 
         Это не даёт символам ``;`` внутри строк преждевременно обрезать payload.
         """
-        if not html or self.VIEW_PAYLOAD_MARKER not in html:
+        markers = self.VIEW_PAYLOAD_MARKER
+        if isinstance(markers, str):
+            markers = (markers,)
+        if not html or not any(marker in html for marker in markers):
             return None
 
         soup = BeautifulSoup(html, "html.parser")
         for script in soup.find_all("script"):
             script_text = script.string or script.get_text() or ""
-            marker_index = script_text.find(self.VIEW_PAYLOAD_MARKER)
-            if marker_index < 0:
+            marker = next((item for item in markers if item in script_text), None)
+            if marker is None:
                 continue
-            json_text = script_text[marker_index + len(self.VIEW_PAYLOAD_MARKER):].lstrip()
+            marker_index = script_text.find(marker)
+            json_text = script_text[marker_index + len(marker):].lstrip()
             try:
                 payload, _ = json.JSONDecoder().raw_decode(json_text)
             except (json.JSONDecodeError, TypeError) as exc:
@@ -197,7 +212,7 @@ class ZaraParser(BaseScraper):
                         "Zara: получена защитная страница Akamai на %s", ajax_url
                     )
                     raise ScraperAccessBlockedError(
-                        source="Zara",
+                        source=self.SOURCE_LABEL,
                         status_code=403,
                         url=str(response.url or ajax_url),
                     )
@@ -216,7 +231,7 @@ class ZaraParser(BaseScraper):
                     raise_for_blocked_status(
                         status_code=status_code,
                         url=str(getattr(exc.response, "url", None) or ajax_url),
-                        source="Zara",
+                        source=self.SOURCE_LABEL,
                     )
                 if attempt >= self.max_retries:
                     break
@@ -316,7 +331,7 @@ class ZaraParser(BaseScraper):
             match = self.CATEGORY_PATH_RE.search(urlparse(url).path)
             categories.append(
                 {
-                    "name": clean_text(anchor.get_text(" ", strip=True)) or "Zara",
+                    "name": clean_text(anchor.get_text(" ", strip=True)) or self.BRAND_NAME,
                     "url": url,
                     "external_id": match.group(1) if match else "",
                     "source": self.get_name(),
@@ -466,7 +481,7 @@ class ZaraParser(BaseScraper):
 
         seo = product.get("seo") if isinstance(product.get("seo"), dict) else {}
         seo_product_id = str(seo.get("seoProductId") or product.get("id") or "").strip()
-        external_id = f"zara-{seo_product_id}" if seo_product_id else ""
+        external_id = f"{self.SOURCE_PREFIX}-{seo_product_id}" if seo_product_id else ""
         category = self._extract_product_category(product, payload)
         description = self._extract_description(product, colors)
         first_variant = variants[0] if variants else {}
@@ -496,7 +511,7 @@ class ZaraParser(BaseScraper):
             url=self._canonical_url(product_url),
             images=list(first_variant.get("images") or []),
             category=category,
-            brand="Zara",
+            brand=self.BRAND_NAME,
             external_id=external_id,
             sku=str(detail.get("reference") or ""),
             is_available=any(bool(v.get("is_available")) for v in variants),
@@ -586,7 +601,7 @@ class ZaraParser(BaseScraper):
         )
         images = self._extract_images(color)
         return {
-            "external_id": f"zara-variant-{color_identity}",
+            "external_id": f"{self.SOURCE_PREFIX}-variant-{color_identity}",
             "sort_order": sort_order,
             "color": clean_text(str(color.get("name") or "")),
             "display_name": clean_text(
@@ -648,8 +663,8 @@ class ZaraParser(BaseScraper):
             category=clean_text(
                 str(category_data.get("name") or component.get("familyName") or "")
             ),
-            brand="Zara",
-            external_id=f"zara-{identity}",
+            brand=self.BRAND_NAME,
+            external_id=f"{self.SOURCE_PREFIX}-{identity}",
             sku=str(component.get("reference") or ""),
             is_available=availability in self.AVAILABLE_STATUSES,
             stock_quantity=(

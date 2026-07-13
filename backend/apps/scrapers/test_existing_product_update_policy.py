@@ -100,7 +100,43 @@ def test_repeat_scrape_preserves_ai_seo_meta_and_external_data():
     assert product.external_data.get("ai_enriched") is True
     assert product.external_data.get("seo_translations") == {"en": {"meta_title": "AI EN"}}
     assert product.external_data.get("seo_data", {}).get("source_og_title") == "Parser OG"
+    assert product.external_data.get("seo_data", {}).get("source_meta_title") == "Parser title"
     assert changed is True
+
+
+@pytest.mark.django_db
+def test_source_seo_is_not_mislabeled_as_russian_or_english_storefront_seo():
+    service = ScraperIntegrationService()
+    product = Product.objects.create(
+        name="Turkish source card",
+        slug="turkish-source-card",
+        product_type="",
+        price=100,
+        currency="TRY",
+        external_id="source-seo-1",
+        external_data={},
+    )
+
+    changed = service._update_product_attributes(
+        product,
+        {
+            "meta_title": "Türkçe kaynak başlığı",
+            "meta_description": "Türkçe kaynak açıklaması",
+            "meta_keywords": "türkçe, kaynak",
+            "og_image_url": "https://source.example/image.jpg",
+        },
+    )
+    product.save()
+    product.refresh_from_db()
+
+    assert changed is True
+    assert not product.seo_title
+    assert not product.seo_description
+    assert not product.keywords
+    assert not product.og_image_url
+    assert not product.translations.filter(locale="ru").exists()
+    assert product.external_data["seo_data"]["source_meta_title"] == "Türkçe kaynak başlığı"
+    assert product.external_data["seo_data"]["source_og_image_url"] == "https://source.example/image.jpg"
 
 
 @pytest.mark.django_db

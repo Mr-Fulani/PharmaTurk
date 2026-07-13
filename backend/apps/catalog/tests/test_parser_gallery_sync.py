@@ -1,5 +1,7 @@
 import pytest
 from django.conf import settings
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 
 from apps.catalog.models import Product, ProductImage
 from apps.catalog.services import CatalogNormalizer
@@ -278,3 +280,39 @@ def test_internal_readable_media_is_not_checked_over_http(monkeypatch):
 
     CatalogNormalizer()._normalize_product_images(product, [internal_url])
     assert domain.gallery_images.filter(image_url=internal_url).exists()
+
+
+@pytest.mark.django_db
+def test_parser_rerun_reuses_promoted_media_without_row_or_file_churn(monkeypatch):
+    r2_config = dict(getattr(settings, "R2_CONFIG", {}) or {})
+    r2_config["public_url"] = "https://cdn.mudaroba.com"
+    monkeypatch.setattr(settings, "R2_CONFIG", r2_config, raising=False)
+    parsed_key = "products/parsed/lcw/accessories/images/lcw-repeat-source.jpg"
+    parsed_url = f"https://cdn.mudaroba.com/{parsed_key}"
+    default_storage.save(parsed_key, ContentFile(b"\xff\xd8\xff\xe0repeat"))
+    try:
+        product = Product.objects.create(
+            name="Repeat media",
+            slug="repeat-media",
+            product_type="accessories",
+            price=100,
+            currency="TRY",
+            external_id="lcw-repeat-media-1",
+            external_data={"source": "lcw"},
+        )
+        normalizer = CatalogNormalizer()
+        assert normalizer._normalize_product_images(product, [parsed_url]) is True
+        gallery = product.domain_item.gallery_images
+        first = gallery.get()
+        first_pk = first.pk
+        first_file = first.image_file.name
+
+        normalizer._normalize_product_images(product, [parsed_url])
+        first.refresh_from_db()
+
+        assert gallery.count() == 1
+        assert first.pk == first_pk
+        assert first.image_file.name == first_file
+        assert default_storage.exists(first_file)
+    finally:
+        default_storage.delete(parsed_key)

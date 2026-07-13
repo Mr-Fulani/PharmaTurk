@@ -2361,22 +2361,11 @@ class ContentGenerator:
         en_name = seo_en.get('generated_title') or log.generated_title or original_name
         ru_description = seo_ru.get('generated_description') or log.generated_description or ""
         ru_name = seo_ru.get('generated_title') or log.generated_title or original_name
-        is_medicine = getattr(product, "product_type", None) == "medicines"
-        fallback_seo_title = (
-            seo_en.get('meta_title') or log.generated_seo_title
-            if is_medicine
-            else log.generated_seo_title
-        )
-        fallback_seo_description = (
-            seo_en.get('meta_description') or log.generated_seo_description
-            if is_medicine
-            else log.generated_seo_description
-        )
-        fallback_keywords = (
-            seo_en.get('meta_keywords') or log.generated_keywords
-            if is_medicine
-            else log.generated_keywords
-        )
+        # Нелокализованные поля доменной модели — EN fallback для всех категорий,
+        # а не только лекарств. RU/EN значения отдельно живут в translations.
+        fallback_seo_title = seo_en.get('meta_title') or log.generated_seo_title
+        fallback_seo_description = seo_en.get('meta_description') or log.generated_seo_description
+        fallback_keywords = seo_en.get('meta_keywords') or log.generated_keywords
 
         ai_data = {
             'generated_title': (log.generated_title or '').strip() or None,
@@ -2387,9 +2376,11 @@ class ContentGenerator:
             # OG-поля: og_title / og_description из seo_en; og_image_url из изображения товара
             'og_title': seo_en.get('og_title') or seo_ru.get('og_title') or log.generated_seo_title,
             'og_description': seo_en.get('og_description') or seo_ru.get('og_description') or log.generated_seo_description,
-            'og_image_url': self._get_preferred_og_image_url(product)
-                            or product.main_image
-                            or getattr(getattr(product, 'domain_item', None), 'main_image', None),
+            'og_image_url': (
+                self._get_preferred_og_image_url(product)
+                or product.main_image
+                or getattr(getattr(product, 'domain_item', None), 'main_image', None)
+            ),
             'extracted_attributes': attrs,
             'suggested_category': log.suggested_category,
             'category_confidence': log.category_confidence,

@@ -944,13 +944,18 @@ class ScraperIntegrationService:
             is_lcw_host = host == "lcw.com" or host.endswith(".lcw.com")
             is_zara_host = host == "zara.com" or host.endswith(".zara.com")
             is_flo_host = host == "flo.com.tr" or host.endswith(".flo.com.tr")
+            parser_is_category = getattr(parser, "is_category_url", None)
+            parser_is_product = getattr(parser, "is_product_url", None)
+            is_parser_category = bool(parser_is_category(start_url)) if callable(parser_is_category) else False
+            is_parser_product = bool(parser_is_product(start_url)) if callable(parser_is_product) else False
 
             is_category = (
                 "/category/" in start_url or "/kategori/" in start_url or
                 (len(path_parts) == 1 and path_parts[0] in ('ilaclar', 'takviye-edici-gida')) or
                 (is_lcw_host and LcwParser.is_lcw_category_url(start_url)) or
                 (is_zara_host and ZaraParser.is_zara_category_url(start_url)) or
-                (is_flo_host and FloParser.is_flo_category_url(start_url))
+                (is_flo_host and FloParser.is_flo_category_url(start_url)) or
+                is_parser_category
             )
             is_search = "/search" in start_url or "/arama" in start_url
             # IKEA TR/COM: карточка товара — /urun/, /product/ или /p/
@@ -968,7 +973,8 @@ class ScraperIntegrationService:
                 is_ikea_product or
                 is_lcw_product or
                 is_zara_product or
-                is_flo_product
+                is_flo_product or
+                is_parser_product
             )
 
             # Определяем тип парсинга по URL
@@ -2791,18 +2797,24 @@ class ScraperIntegrationService:
             "last_updated": timezone.now().isoformat(),
         }
 
-        # Одна актуальная запись на источник+URL вместо бесконечного роста JSON
-        # на каждом неизменившемся повторном проходе.
+        # Одна актуальная запись на источник+URL. Заодно схлопываем исторические
+        # дубли, накопленные старой логикой повторных запусков.
         source_rows = existing_product.external_data["scraped_sources"]
         source_key = (source_info["source"], source_info["url"])
-        for index, row in enumerate(source_rows):
+        deduped_source_rows = []
+        seen_source_keys = set()
+        for row in source_rows:
             if not isinstance(row, dict):
                 continue
-            if (row.get("source"), row.get("url")) == source_key:
-                source_rows[index] = source_info
-                break
-        else:
-            source_rows.append(source_info)
+            row_key = (row.get("source"), row.get("url"))
+            if row_key == source_key:
+                continue
+            if row_key in seen_source_keys:
+                continue
+            seen_source_keys.add(row_key)
+            deduped_source_rows.append(row)
+        deduped_source_rows.append(source_info)
+        existing_product.external_data["scraped_sources"] = deduped_source_rows
         existing_product.last_synced_at = timezone.now()
         updated = True
 
@@ -3586,79 +3598,24 @@ class ScraperIntegrationService:
             product.gender = gender_value
             updated = True
 
-        # SEO Fields
-        # Внимание: Спарсенные SEO данные обычно на языке источника (Русский для Ummaland).
-        # Поля meta_title, meta_description в модели предназначены для АНГЛИЙСКОГО (EN).
-        # Поэтому спарсенные данные сохраняем в русские поля (seo_title, seo_description)
-        # или игнорируем, если они дублируют название/описание.
-
-        ru_translation_defaults = {}
-
-        # Meta Title -> seo_title (RU)
-        if (
-            "meta_title" in attrs
-            and attrs["meta_title"]
-            and not product.seo_title
-        ):
-            product.seo_title = attrs["meta_title"][:70]
-            updated = True
-        if "meta_title" in attrs and attrs["meta_title"]:
-            ru_translation_defaults["meta_title"] = str(attrs["meta_title"])[:255]
-
-        # Meta Description -> seo_description (RU)
-        if (
-            "meta_description" in attrs
-            and attrs["meta_description"]
-            and not product.seo_description
-        ):
-            product.seo_description = attrs["meta_description"][:160]
-            updated = True
-        if "meta_description" in attrs and attrs["meta_description"]:
-            ru_translation_defaults["meta_description"] = str(attrs["meta_description"])[:500]
-
-        # Keywords -> keywords (RU) - JSON field
-        if "meta_keywords" in attrs and attrs["meta_keywords"] and not product.keywords:
-            keywords_list = [k.strip() for k in attrs["meta_keywords"].split(",") if k.strip()]
-            product.keywords = keywords_list
-            updated = True
-        if "meta_keywords" in attrs and attrs["meta_keywords"]:
-            ru_translation_defaults["meta_keywords"] = str(attrs["meta_keywords"])[:500]
-
-        if ru_translation_defaults:
-            ru_translation, _ = product.translations.get_or_create(locale="ru")
-            translation_updated_fields = []
-            for field_name, value in ru_translation_defaults.items():
-                if value and not getattr(ru_translation, field_name, ""):
-                    setattr(ru_translation, field_name, value)
-                    translation_updated_fields.append(field_name)
-            if translation_updated_fields:
-                ru_translation.save(update_fields=translation_updated_fields + ["updated_at"])
-                updated = True
-
-        # OG-данные от источника (на языке источника) — сохраняем в external_data для справки AI,
-        # но `og_image_url` сохраняем и в модель, чтобы AI/SEO могли использовать исходное фото товара.
-        # Текстовые OG-поля по-прежнему оставляем только как source-* для справки AI.
+        # SEO источника может быть турецким, русским или смешанным. Не выдаём его за
+        # RU/EN SEO магазина: сохраняем отдельно как сырьё для AI и аудита.
         og_keys = {
             "og_image_url": "source_og_image_url",
             "og_title": "source_og_title",
             "og_description": "source_og_description",
+            "meta_title": "source_meta_title",
+            "meta_description": "source_meta_description",
+            "meta_keywords": "source_meta_keywords",
         }
         og_has_data = any(k in attrs and attrs[k] for k in og_keys)
         if og_has_data:
             if "seo_data" not in product.external_data:
                 product.external_data["seo_data"] = {}
             for attr_key, data_key in og_keys.items():
-                if attr_key in attrs and attrs[attr_key] and data_key not in product.external_data["seo_data"]:
+                if attr_key in attrs and attrs[attr_key] and product.external_data["seo_data"].get(data_key) != attrs[attr_key]:
                     product.external_data["seo_data"][data_key] = attrs[attr_key]
                     updated = True
-
-        if attrs.get("og_image_url") and not product.og_image_url:
-            product.og_image_url = str(attrs["og_image_url"])[:2000]
-            updated = True
-            domain_item = getattr(product, "domain_item", None)
-            if domain_item is not None and hasattr(domain_item, "og_image_url") and not getattr(domain_item, "og_image_url", ""):
-                domain_item.og_image_url = product.og_image_url
-                domain_item.save(update_fields=["og_image_url"])
 
         return updated
 

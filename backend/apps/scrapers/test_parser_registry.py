@@ -13,6 +13,9 @@ EXPECTED_PARSERS = {
     "ikea",
     "lcw",
     "flo",
+    "massimodutti",
+    "bershka",
+    "pullandbear",
 }
 
 
@@ -43,12 +46,18 @@ def test_zara_resolves_by_domain_after_autodiscovery():
     assert parser_class().get_name() == "zara"
 
 
+def test_inditex_sibling_parsers_resolve_by_config_name():
+    registry.register_default_parsers()
+
+    assert registry.get_parser("massimodutti")().get_name() == "massimodutti"
+    assert registry.get_parser("bershka")().get_name() == "bershka"
+    assert registry.get_parser("pullandbear")().get_name() == "pullandbear"
+
+
 def test_unknown_parser_name_does_not_resolve_to_an_unrelated_domain():
     registry.register_default_parsers()
 
-    assert registry.get_parser("massimodutti") is None
-    assert registry.get_parser("bershka") is None
-    assert registry.get_parser("pullandbear") is None
+    assert registry.get_parser("unknown-inditex-shop") is None
 
 
 def test_bare_registered_domain_still_resolves():

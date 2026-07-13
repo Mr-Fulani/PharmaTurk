@@ -887,35 +887,34 @@ class CatalogNormalizer:
                 continue
             deduped_urls.append(url)
             seen_urls.add(url)
-        image_urls = deduped_urls
-        
-        # 1. Парсерная картинка = с непустым source-URL (image_url/video_url). Ручные
-        # загрузки имеют только image_file (URL пустой) — их НЕ трогаем. Удаляем
-        # парсерные, которых нет в свежем наборе, чтобы ре-скрейп заменял, а не плодил
-        # дубли. Раньше матчили только по '/products/parsed/' — после перехода доменов
-        # на читаемые/внешние URL это ломалось → на ре-скрейпе появлялись дубли.
-        try:
-            parser_images_query = ~Q(image_url='') & Q(image_url__isnull=False)
-            exclude_query = Q(image_url__in=image_urls)
+        source_image_urls = list(deduped_urls)
 
-            if hasattr(image_manager.model, 'video_url'):
-                parser_images_query |= (~Q(video_url='') & Q(video_url__isnull=False))
-                exclude_query |= Q(video_url__in=image_urls)
-
-            # Мы удаляем все парсерные картинки, КРОМЕ тех, что есть в новом списке image_urls.
-            # Иначе `post_delete` сигнал удалит физический файл из R2.
-            deleted_count, _ = image_manager.filter(parser_images_query).exclude(exclude_query).delete()
-            if deleted_count:
-                changed = True
-        except Exception as e:
-            self.logger.warning(f"Error while cleaning up old parser images for {product.pk}: {e}")
+        # После первого переноса parsed → readable запоминаем соответствие. На повторном
+        # запуске используем уже существующий readable-файл и не создаём новую копию.
+        media_manifest = metadata.get("parser_media_manifest")
+        if not isinstance(media_manifest, dict):
+            media_manifest = {}
+        resolved_urls = []
+        from apps.catalog.signals import _get_path_from_storage_url, is_internal_storage_url
+        from django.core.files.storage import default_storage
+        for url in source_image_urls:
+            readable_url = str(media_manifest.get(url) or "")
+            readable_path = _get_path_from_storage_url(readable_url) if readable_url else None
+            if readable_path:
+                try:
+                    if default_storage.exists(readable_path):
+                        resolved_urls.append(readable_url)
+                        continue
+                except Exception:
+                    pass
+            resolved_urls.append(url)
+        image_urls = resolved_urls
 
 
         # 2. Битые ссылки проверяем только для ручных (не парсерных) изображений,
         # и только если их немного (не более 5), чтобы не тормозить парсинг.
         existing_images = list(image_manager.all())
         broken_ids = []
-        from apps.catalog.signals import is_internal_storage_url
         manual_images = []
         for img in existing_images:
             image_url = img.image_url or ''
@@ -980,8 +979,11 @@ class CatalogNormalizer:
                 
         has_video = bool(getattr(product, 'video_url', None) or getattr(product, 'main_video_file', None))
         
-        # Добавляем новые изображения
+        # Добавляем/продвигаем свежие изображения до удаления старых. Это принципиально:
+        # сбой storage или rollback не должен оставить карточку без прежней галереи.
         main_image_url = None
+        kept_image_ids = set()
+        promoted_by_source = {}
         for i, image_url in enumerate(image_urls):
             media_type = self._resolve_media_type(image_url)
             
@@ -1004,6 +1006,7 @@ class CatalogNormalizer:
                     # а чекбокс (если проставлен вручную в админке) имеет наивысший приоритет.
             
             if existing_item:
+                kept_image_ids.add(existing_item.pk)
                 updates: Dict[str, Any] = {}
                 if hasattr(existing_item, 'video_url'):
                     if media_type == "video" and existing_item.video_url != image_url:
@@ -1049,6 +1052,12 @@ class CatalogNormalizer:
                         main_image_url = after_url or (
                             existing_item.image_file.url if existing_item.image_file else ""
                         ) or image_url
+                actual_url = (
+                    getattr(existing_item, "video_url", "")
+                    if media_type == "video"
+                    else getattr(existing_item, "image_url", "")
+                ) or image_url
+                promoted_by_source[source_image_urls[i]] = actual_url
                 continue
             
             # Создаем новое изображение в правильной модели
@@ -1075,6 +1084,13 @@ class CatalogNormalizer:
             
             create_kwargs["product"] = target
             created_item = image_manager.model.objects.create(**create_kwargs)
+            kept_image_ids.add(created_item.pk)
+            actual_url = (
+                getattr(created_item, "video_url", "")
+                if media_type == "video"
+                else getattr(created_item, "image_url", "")
+            ) or image_url
+            promoted_by_source[source_image_urls[i]] = actual_url
             if media_type == "image" and main_image_url == image_url:
                 main_image_url = (
                     getattr(created_item, "image_url", "") or
@@ -1082,6 +1098,58 @@ class CatalogNormalizer:
                     image_url
                 )
             changed = True
+
+        # Только теперь удаляем прежние parser-owned строки. post_delete также
+        # проверяет общие ссылки и выполняет физическое удаление после commit.
+        try:
+            parser_images_query = ~Q(image_url='') & Q(image_url__isnull=False)
+            if hasattr(image_manager.model, 'video_url'):
+                parser_images_query |= (~Q(video_url='') & Q(video_url__isnull=False))
+            stale = image_manager.filter(parser_images_query)
+            if kept_image_ids:
+                stale = stale.exclude(pk__in=kept_image_ids)
+            deleted_count, _ = stale.delete()
+            if deleted_count:
+                changed = True
+        except Exception as e:
+            self.logger.warning(f"Error while cleaning up old parser images for {product.pk}: {e}")
+
+        next_manifest = {
+            source_url: promoted_url
+            for source_url, promoted_url in promoted_by_source.items()
+            if source_url and promoted_url and _get_path_from_storage_url(promoted_url)
+        }
+        next_external_data = dict(metadata)
+        next_external_data["parser_media_manifest"] = next_manifest
+
+        def persist_media_manifest():
+            nonlocal changed
+            if next_manifest == media_manifest:
+                return
+            # Сохраняем после domain-sync/main-image сигналов: иначе доменная модель
+            # со старым external_data может затереть manifest в том же проходе.
+            Product.objects.filter(pk=product.pk).update(external_data=next_external_data)
+            product.external_data = next_external_data
+            changed = True
+
+        # Публичный OG должен указывать на наше устойчивое медиа, а URL источника
+        # остаётся только в external_data.seo_data.source_og_image_url.
+        internal_og_url = next(
+            (url for url in promoted_by_source.values() if is_internal_storage_url(url)),
+            None,
+        )
+        source_seo = (product.external_data or {}).get("seo_data") or {}
+        source_og_url = str(source_seo.get("source_og_image_url") or "")
+        if internal_og_url:
+            for obj in ([product, target] if is_domain else [product]):
+                if not hasattr(obj, "og_image_url"):
+                    continue
+                current_og = str(getattr(obj, "og_image_url", "") or "")
+                if not current_og or current_og == source_og_url or "/products/parsed/" in current_og:
+                    if current_og != internal_og_url:
+                        obj.og_image_url = internal_og_url
+                        obj.save(update_fields=["og_image_url"])
+                        changed = True
         
         # Обновляем главное медиа в самих объектах ТОЛЬКО если оно пустое
         if preferred_main_video_url:
@@ -1093,6 +1161,7 @@ class CatalogNormalizer:
                 if update_fields:
                     obj.save(update_fields=update_fields)
                     changed = True
+            persist_media_manifest()
             return changed
 
         if main_image_url and not existing_any_main and not has_manual_main:
@@ -1111,6 +1180,7 @@ class CatalogNormalizer:
                         # должен попасть в БД.
                         obj.save()
                         changed = True
+        persist_media_manifest()
         return changed
     
     @transaction.atomic

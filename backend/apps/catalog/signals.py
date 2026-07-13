@@ -1,7 +1,10 @@
 """Сигналы для каскадного удаления медиа-файлов из хранилища (R2/локальное) и автоскачивания из URL."""
 import logging
+from functools import lru_cache
 
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import transaction
+from django.db.models import FileField, ImageField, Q, URLField
 from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 
@@ -150,24 +153,79 @@ def delete_domain_before_generic_product(sender, instance, **kwargs):
             related.delete(skip_shadow_delete=True)
 
 
+@lru_cache(maxsize=1)
+def _media_reference_fields():
+    """Поля, способные ссылаться на storage, без полного чтения таблиц."""
+    from django.apps import apps
+
+    fields = []
+    for model in apps.get_models():
+        for field in model._meta.get_fields():
+            if isinstance(field, (FileField, ImageField, URLField)):
+                fields.append((model, field.name, isinstance(field, URLField)))
+    return tuple(fields)
+
+
+def _storage_key_is_referenced(path: str) -> bool:
+    """Проверить точечными EXISTS, осталась ли ссылка на ключ в БД."""
+    from django.core.files.storage import default_storage
+
+    normalized = _normalize_storage_key_for_file_field(path)
+    try:
+        public_url = default_storage.url(normalized)
+    except Exception:
+        public_url = ""
+    for model, field_name, is_url in _media_reference_fields():
+        try:
+            manager = getattr(model, "_base_manager", model.objects)
+            if is_url:
+                query = Q(**{field_name: public_url}) if public_url else Q()
+                query |= Q(**{f"{field_name}__endswith": f"/{normalized}"})
+            else:
+                query = Q(**{field_name: normalized})
+            if manager.filter(query).exists():
+                return True
+        except Exception as exc:
+            logger.debug("Media reference check skipped %s.%s: %s", model._meta.label, field_name, exc)
+    return False
+
+
+def _delete_storage_key_if_unreferenced(path: str, storage=None):
+    """Удалить ключ только после фиксации БД и повторной проверки ссылок."""
+    from django.core.files.storage import default_storage
+
+    normalized = _normalize_storage_key_for_file_field(path)
+    if not normalized or _storage_key_is_referenced(normalized):
+        logger.info("Skip deleting referenced storage object: %s", normalized)
+        return
+    backend = storage if storage is not None else default_storage
+    try:
+        if backend.exists(normalized):
+            backend.delete(normalized)
+            logger.info("Deleted unreferenced storage object: %s", normalized)
+    except Exception as exc:
+        logger.warning("Failed to delete storage object %s: %s", normalized, exc)
+
+
+def _schedule_storage_delete(path: str, storage=None):
+    def callback():
+        _delete_storage_key_if_unreferenced(path, storage=storage)
+
+    connection = transaction.get_connection()
+    if connection.in_atomic_block:
+        transaction.on_commit(callback)
+    else:
+        callback()
+
+
 def delete_file_from_storage(file_field, storage=None):
-    """Удалить файл из хранилища (R2 или локальный диск), если поле заполнено."""
+    """После commit удалить файл, только если БД больше на него не ссылается."""
     if not file_field or not hasattr(file_field, "name") or not file_field.name:
         return
     path = file_field.name
     if not path or not path.strip():
         return
-    try:
-        from django.core.files.storage import default_storage
-
-        backend = storage if storage is not None else default_storage
-        if backend.exists(path):
-            backend.delete(path)
-            logger.info("Deleted old file from storage: %s", path)
-        else:
-            logger.warning("File not found in storage (already deleted?): %s", path)
-    except Exception as e:
-        logger.warning("Failed to delete file %s: %s", path, e)
+    _schedule_storage_delete(path, storage=storage)
 
 
 def delete_url_from_storage(url):
@@ -181,21 +239,7 @@ def delete_url_from_storage(url):
     normalized_path = _normalize_storage_key_for_file_field(path)
     if not normalized_path:
         return
-    try:
-        from django.core.files.storage import default_storage
-        from .tasks import _collect_db_media_paths, _normalize_media_path
-
-        db_paths = _collect_db_media_paths()
-        if _normalize_media_path(normalized_path) in db_paths:
-            logger.info("Skip deleting shared internal URL from storage: %s", normalized_path)
-            return
-        if default_storage.exists(normalized_path):
-            default_storage.delete(normalized_path)
-            logger.info("Deleted internal URL from storage: %s", normalized_path)
-        else:
-            logger.warning("Internal URL path not found in storage (already deleted?): %s", normalized_path)
-    except Exception as e:
-        logger.warning("Failed to delete internal URL %s: %s", normalized_path, e)
+    _schedule_storage_delete(normalized_path)
 
 
 def _get_path_from_storage_url(url: str) -> str | None:
@@ -212,7 +256,7 @@ def _get_path_from_storage_url(url: str) -> str | None:
         # Если URL начинается с публичного R2 URL
         if r2_public and url.startswith(r2_public):
             path = url[len(r2_public):].lstrip("/")
-            return path
+            return _normalize_storage_key_for_file_field(path)
             
         parsed = urlparse(url)
         path = parsed.path or ""
@@ -235,9 +279,14 @@ def _normalize_storage_key_for_file_field(path: str) -> str:
     try:
         from django.conf import settings
 
-        r2_prefix = (getattr(settings, "R2_PREFIX", "") or "").strip("/")
-        if r2_prefix and normalized.startswith(f"{r2_prefix}/"):
-            normalized = normalized[len(r2_prefix) + 1 :]
+        prefixes = {
+            (getattr(settings, "R2_PREFIX", "") or "").strip("/"),
+            (getattr(settings, "R2_CONFIG", {}).get("prefix", "") or "").strip("/"),
+        }
+        for r2_prefix in prefixes:
+            if r2_prefix and normalized.startswith(f"{r2_prefix}/"):
+                normalized = normalized[len(r2_prefix) + 1 :]
+                break
     except Exception:
         # В pre_save лучше не прерывать сохранение товара из-за ошибки нормализации.
         pass
@@ -380,16 +429,10 @@ def _auto_download_impl(instance, field_name="image_file", url_field="image_url"
                             setattr(instance, url_field, new_url)
                     except Exception:
                         pass
-                    # Сразу удаляем parsed-оригинал только для галерейных файлов.
-                    # main_image_file может сработать раньше галереи: если он удалит
-                    # общий parsed-исходник, доменная галерея получит битый image_file.
-                    # Галерея позже перенесёт тот же файл в readable-путь и удалит parsed.
-                    if field_name != "main_image_file":
-                        try:
-                            if getattr(instance, field_name).name != path:
-                                default_storage.delete(path)
-                        except Exception:
-                            pass
+                    # Не удаляем parsed-источник из pre_save: в этот момент новая
+                    # строка ещё не записана, а тот же источник может понадобиться
+                    # главной картинке/варианту. Его пакетно и безопасно подчищает
+                    # _sweep_parsed_orphans после завершения задачи парсинга.
                     logger.info(f"Re-saved parsed {field_name} to readable path for {instance.__class__.__name__}")
                 else:
                     if "/products/parsed/" in ("/" + path) and not default_storage.exists(path):
