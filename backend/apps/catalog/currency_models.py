@@ -63,7 +63,7 @@ class CurrencyRate(models.Model):
 
 class GlobalCurrencySettings(models.Model):
     """
-    Глобальные настройки валют и маржи для интернет-магазина (Singleton).
+    Глобальные настройки валют и товарной маржи интернет-магазина (Singleton).
     """
     
     default_margin_percentage = models.DecimalField(
@@ -71,8 +71,11 @@ class GlobalCurrencySettings(models.Model):
         decimal_places=2, 
         default=Decimal('15.00'),
         validators=[MinValueValidator(0), MaxValueValidator(100)],
-        verbose_name='Маржа по умолчанию (%)',
-        help_text="Используется если для конкретной пары валют не задана своя маржа (по умолчанию 15%)."
+        verbose_name='Глобальная товарная маржа (%)',
+        help_text=(
+            "Используется только если у бренда и категории товара маржа равна 0. "
+            "Маржа валютных пар настраивается отдельно."
+        )
     )
     
     usdt_markup_percentage = models.DecimalField(
@@ -131,7 +134,7 @@ class GlobalCurrencySettings(models.Model):
         verbose_name_plural = '🌐 Настройки: Валюты и Маржа'
 
     def __str__(self):
-        return f"Глобальные настройки валют (Маржа: {self.default_margin_percentage}%, USDT наценка: {self.usdt_markup_percentage}%)"
+        return f"Глобальные настройки (Товарная маржа: {self.default_margin_percentage}%, USDT наценка: {self.usdt_markup_percentage}%)"
         
     def save(self, *args, **kwargs):
         """Гарантирует существование только одной записи (Singleton) и очищает кэш при сохранении."""

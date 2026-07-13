@@ -201,10 +201,10 @@ class CurrencyConverter:
             )
             margin_rate = margin_setting.margin_percentage
         except MarginSettings.DoesNotExist:
-            from apps.catalog.currency_models import GlobalCurrencySettings
-            # Если конкретной настройки нет, используем глобальную маржу по умолчанию
-            margin_rate = GlobalCurrencySettings.load().default_margin_percentage
-            logger.info(f"Using default margin for {currency_pair}: {margin_rate}%")
+            # Валютная маржа — отдельная система: без явной настройки пары
+            # конвертация не получает товарную глобальную маржу.
+            margin_rate = Decimal("0")
+            logger.info("No currency-pair margin for %s; using 0%%", currency_pair)
         
         self._margin_cache[cache_key] = margin_rate
         return margin_rate

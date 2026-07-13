@@ -62,6 +62,11 @@ def test_simple_domain_payload_never_exposes_unmarked_variant_price(monkeypatch)
             "RUB",
         ),
     )
+    monkeypatch.setattr(
+        catalog_serializers,
+        "_effective_product_markup",
+        lambda product: (Decimal("0"), None),
+    )
     variant = SimpleNamespace(pk=7, price=120, old_price=150, currency="TRY")
     product = SimpleNamespace(
         id=1,
@@ -85,16 +90,21 @@ def test_simple_domain_payload_never_exposes_unmarked_variant_price(monkeypatch)
 
 
 @pytest.mark.django_db
-def test_saved_global_margin_is_visible_without_process_restart():
+def test_global_product_margin_is_not_a_currency_pair_margin():
+    from apps.catalog.utils.product_markup import get_effective_product_markup
+
     MarginSettings.objects.filter(currency_pair="TRY-TRY").delete()
     settings = GlobalCurrencySettings.load()
     settings.default_margin_percentage = Decimal("10")
     settings.save()
-    assert currency_converter.convert_price(100, "TRY", "TRY", True)[2] == Decimal("110")
+    product = SimpleNamespace(brand=None, category=None)
+    assert currency_converter.convert_price(100, "TRY", "TRY", True)[2] == Decimal("100")
+    assert get_effective_product_markup(product) == (Decimal("10"), "global")
 
     settings.default_margin_percentage = Decimal("30")
     settings.save()
-    assert currency_converter.convert_price(100, "TRY", "TRY", True)[2] == Decimal("130")
+    assert currency_converter.convert_price(100, "TRY", "TRY", True)[2] == Decimal("100")
+    assert get_effective_product_markup(product) == (Decimal("30"), "global")
 
 
 def test_brand_markup_overrides_category_and_stacks_on_currency_margin(monkeypatch):
@@ -147,3 +157,32 @@ def test_category_markup_is_used_when_brand_markup_is_zero(monkeypatch):
 
     assert data["price"] == Decimal("115.00")
     assert data["product_markup_source"] == "category"
+
+
+@pytest.mark.django_db
+def test_global_markup_is_fallback_after_zero_brand_and_category(monkeypatch):
+    monkeypatch.setattr(
+        catalog_serializers,
+        "_public_price",
+        lambda amount, currency, request: (
+            Decimal(str(amount)) if amount is not None else None,
+            "RUB",
+        ),
+    )
+    settings = GlobalCurrencySettings.load()
+    settings.default_margin_percentage = Decimal("25")
+    settings.save()
+    product = SimpleNamespace(
+        id=4,
+        price=Decimal("100"),
+        old_price=None,
+        currency="TRY",
+        brand=SimpleNamespace(margin_percent=Decimal("0")),
+        category=SimpleNamespace(margin_percent=Decimal("0")),
+        variants=_Variants([]),
+    )
+
+    data = _MarginCardSerializer(product).data
+
+    assert data["price"] == Decimal("125.00")
+    assert data["product_markup_source"] == "global"
