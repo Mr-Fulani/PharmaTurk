@@ -104,6 +104,7 @@ class ContentGenerator:
         user=None,
         auto_apply: bool = False,
         options: Optional[Dict] = None,
+        log_entry_id: Optional[int] = None,
     ) -> AIProcessingLog:
         """
         Запуск процесса генерации контента для товара.
@@ -127,8 +128,17 @@ class ContentGenerator:
             logger.error(f"Product {product_id} not found")
             raise ValueError(f"Product {product_id} not found")
 
-        # Проверяем, не был ли товар уже успешно обработан
-        if not force:
+        queued_log = None
+        if log_entry_id is not None:
+            queued_log = AIProcessingLog.objects.filter(
+                pk=log_entry_id,
+                product=product,
+                status__in=[AIProcessingStatus.PENDING, AIProcessingStatus.PROCESSING],
+            ).first()
+
+        # Проверяем, не был ли товар уже успешно обработан. Для заранее созданного
+        # pending-лога проверка уже выполнена enqueue-сервисом.
+        if not force and queued_log is None:
             existing_log = AIProcessingLog.objects.filter(
                 product=product,
                 processing_type=processing_type,
@@ -165,15 +175,32 @@ class ContentGenerator:
                     logger.info(f"Product {product_id} already processed (log {existing_log.id}), skipping.")
                     return existing_log
 
-        # Создаем лог
-        log_entry = AIProcessingLog.objects.create(
-            product=product,
-            processed_by=user,
-            processing_type=processing_type,
-            status=AIProcessingStatus.PROCESSING,
-            input_data=self._collect_input_data(product),
-            llm_model=self.llm.model,
-        )
+        if queued_log is not None:
+            log_entry = queued_log
+            queue_data = dict(log_entry.input_data or {})
+            queue_data.update(self._collect_input_data(product))
+            queue_data["started_at"] = timezone.now().isoformat()
+            log_entry.input_data = queue_data
+            log_entry.processed_by = user
+            log_entry.processing_type = processing_type
+            log_entry.status = AIProcessingStatus.PROCESSING
+            log_entry.llm_model = self.llm.model
+            log_entry.save(
+                update_fields=[
+                    "input_data", "processed_by", "processing_type", "status",
+                    "llm_model", "updated_at",
+                ]
+            )
+        else:
+            # Обратная совместимость для прямого/синхронного вызова сервиса.
+            log_entry = AIProcessingLog.objects.create(
+                product=product,
+                processed_by=user,
+                processing_type=processing_type,
+                status=AIProcessingStatus.PROCESSING,
+                input_data=self._collect_input_data(product),
+                llm_model=self.llm.model,
+            )
 
         requested_use_images = (options or {}).get("use_images", True)
         use_images = requested_use_images and self._should_use_images_for_product(product)

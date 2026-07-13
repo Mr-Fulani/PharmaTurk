@@ -248,6 +248,7 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         "product_link",
         "status",
         "processing_type",
+        "celery_task_id",
         "created_at",
         "completed_at",
         "tokens_total",
@@ -287,6 +288,10 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
         "mark_status_rejected",
         "clear_moderation_notes",
     )
+
+    @admin.display(description="Celery task", ordering="created_at")
+    def celery_task_id(self, obj):
+        return str((obj.input_data or {}).get("celery_task_id") or "—")
 
     fieldsets = (
         (
@@ -610,14 +615,17 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
     apply_to_product.short_description = "Применить результат к товару"
 
     def rerun_ai_full(self, request, queryset):
-        from .tasks import process_product_ai_task
+        from .tasks import enqueue_product_ai_task
 
         product_ids = list(
             queryset.values_list("product_id", flat=True).distinct()
         )
         for product_id in product_ids:
-            process_product_ai_task.delay(
-                product_id=product_id, processing_type="full", auto_apply=False
+            enqueue_product_ai_task(
+                product_id=product_id,
+                processing_type="full",
+                auto_apply=False,
+                force=True,
             )
         messages.success(
             request,
@@ -630,16 +638,17 @@ class AIProcessingLogAdmin(admin.ModelAdmin):
     )
 
     def rerun_ai_description_only(self, request, queryset):
-        from .tasks import process_product_ai_task
+        from .tasks import enqueue_product_ai_task
 
         product_ids = list(
             queryset.values_list("product_id", flat=True).distinct()
         )
         for product_id in product_ids:
-            process_product_ai_task.delay(
+            enqueue_product_ai_task(
                 product_id=product_id,
                 processing_type="description_only",
                 auto_apply=False,
+                force=True,
             )
         message = (
             "Запущена AI обработка (description_only) для "

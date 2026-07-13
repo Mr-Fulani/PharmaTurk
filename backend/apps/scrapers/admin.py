@@ -864,10 +864,10 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
             messages.warning(request, "В задаче нет товаров для AI обработки")
             return HttpResponseRedirect(reverse("admin:scrapers_sitescrapertask_changelist"))
 
-        from apps.ai.tasks import process_product_ai_task
+        from apps.ai.tasks import enqueue_product_ai_task
 
         for product_id in product_ids:
-            process_product_ai_task.delay(
+            enqueue_product_ai_task(
                 product_id=product_id,
                 processing_type="full",
                 auto_apply=False,
@@ -1048,7 +1048,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
 
     def run_ai_for_tasks(self, request, queryset):
         """Запустить AI обработку для всех товаров выбранных задач."""
-        from apps.ai.tasks import process_product_ai_task
+        from apps.ai.tasks import enqueue_product_ai_task
 
         total = 0
         for task in queryset.filter(session__isnull=False):
@@ -1062,7 +1062,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                 .distinct()
             )
             for pid in product_ids:
-                process_product_ai_task.delay(
+                enqueue_product_ai_task(
                     product_id=pid,
                     processing_type="full",
                     auto_apply=False,
@@ -1209,10 +1209,10 @@ class ScrapingSessionAdmin(admin.ModelAdmin):
             messages.warning(request, "В сессии нет товаров для AI обработки")
             return HttpResponseRedirect(reverse("admin:scrapers_scrapingsession_changelist"))
 
-        from apps.ai.tasks import process_product_ai_task
+        from apps.ai.tasks import enqueue_product_ai_task
 
         for product_id in product_ids:
-            process_product_ai_task.delay(
+            enqueue_product_ai_task(
                 product_id=product_id,
                 processing_type="full",
                 auto_apply=False,

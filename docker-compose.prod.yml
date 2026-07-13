@@ -56,6 +56,12 @@ services:
       - 8.8.8.8
       - 1.1.1.1
 
+  celery_recsys:
+    restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
   celerybeat:
     restart: always
     dns:

@@ -1,6 +1,7 @@
-from celery import shared_task, group
+from celery import shared_task
 from django.apps import apps
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Count, Q
 
 import logging
@@ -13,6 +14,92 @@ from apps.ai.models import AIProcessingLog, AIProcessingStatus
 logger = logging.getLogger(__name__)
 
 
+def _resolve_processing_type(processing_type: str, options: dict | None) -> str:
+    if not options:
+        return processing_type
+    if options.get("generate_description", True):
+        return "full" if options.get("categorize", True) else "description_only"
+    if options.get("categorize", True):
+        return "categorization_only"
+    if options.get("analyze_images", True):
+        return "image_analysis"
+    return processing_type
+
+
+@transaction.atomic
+def enqueue_product_ai_task(
+    *,
+    product_id: int,
+    processing_type: str = "full",
+    auto_apply: bool = False,
+    options: dict | None = None,
+    force: bool = False,
+):
+    """Создать видимый pending-лог и после commit поставить задачу в очередь.
+
+    Возвращает ``(log, task_id, submitted)``. Повторное нажатие не плодит
+    pending-задачи и не запускает уже успешно обработанный товар без ``force``.
+    """
+    import uuid
+
+    resolved_type = _resolve_processing_type(processing_type, options)
+    # Блокировка строки товара делает проверку/создание pending-лога атомарной
+    # при двойном клике или параллельных admin/API запросах.
+    product = Product.objects.select_for_update().get(pk=product_id)
+    if not force:
+        existing = AIProcessingLog.objects.filter(
+            product=product,
+            processing_type=resolved_type,
+            status__in=[
+                AIProcessingStatus.PENDING,
+                AIProcessingStatus.PROCESSING,
+                AIProcessingStatus.COMPLETED,
+                AIProcessingStatus.APPROVED,
+                AIProcessingStatus.MODERATION,
+            ],
+        ).order_by("-created_at").first()
+        if existing:
+            task_id = str((existing.input_data or {}).get("celery_task_id") or "")
+            return existing, task_id, False
+
+    task_id = str(uuid.uuid4())
+    log_entry = AIProcessingLog.objects.create(
+        product=product,
+        processing_type=resolved_type,
+        status=AIProcessingStatus.PENDING,
+        input_data={
+            "celery_task_id": task_id,
+            "queued_at": timezone.now().isoformat(),
+            "auto_apply": bool(auto_apply),
+        },
+    )
+
+    def submit():
+        try:
+            process_product_ai_task.apply_async(
+                kwargs={
+                    "product_id": product_id,
+                    "processing_type": resolved_type,
+                    "auto_apply": auto_apply,
+                    "options": options,
+                    "force": force,
+                    "log_entry_id": log_entry.id,
+                },
+                task_id=task_id,
+                priority=9,
+            )
+        except Exception as exc:
+            AIProcessingLog.objects.filter(pk=log_entry.id).update(
+                status=AIProcessingStatus.FAILED,
+                error_message=f"Не удалось поставить задачу в Celery: {exc}",
+                completed_at=timezone.now(),
+            )
+            raise
+
+    transaction.on_commit(submit)
+    return log_entry, task_id, True
+
+
 @shared_task(bind=True, max_retries=3)
 def process_product_ai_task(
     self,
@@ -21,6 +108,7 @@ def process_product_ai_task(
     auto_apply: bool = False,
     options: dict = None,
     force: bool = False,
+    log_entry_id: int | None = None,
 ):
     """Обработка одного товара AI (описание, категория, анализ изображений)."""
     try:
@@ -41,6 +129,7 @@ def process_product_ai_task(
             processing_type=processing_type,
             auto_apply=auto_apply,
             options=options,
+            log_entry_id=log_entry_id,
         )
         try:
             product = Product.objects.get(id=product_id)
@@ -72,6 +161,15 @@ def process_product_ai_task(
         }
     except Exception as e:
         logger.exception("Error in AI task for product %s: %s", product_id, e)
+        if log_entry_id:
+            AIProcessingLog.objects.filter(
+                pk=log_entry_id,
+                status__in=[AIProcessingStatus.PENDING, AIProcessingStatus.PROCESSING],
+            ).update(
+                status=AIProcessingStatus.FAILED,
+                error_message=str(e),
+                completed_at=timezone.now(),
+            )
         return {
             "status": "error",
             "error": str(e),
@@ -177,18 +275,24 @@ def batch_process_products(
     processing_type: str = "full",
     auto_apply: bool = False,
 ):
-    """Пакетная обработка списка товаров (группа задач)."""
+    """Пакетная постановка с видимым pending-логом для каждого товара."""
     if not product_ids:
         return {"task_id": None, "total": 0, "submitted": False}
-    job = group(
-        process_product_ai_task.s(pid, processing_type, auto_apply)
-        for pid in product_ids
-    )
-    result = job.apply_async()
+    submitted = 0
+    task_ids = []
+    for product_id in product_ids:
+        _, task_id, was_submitted = enqueue_product_ai_task(
+            product_id=product_id,
+            processing_type=processing_type,
+            auto_apply=auto_apply,
+        )
+        if was_submitted:
+            submitted += 1
+            task_ids.append(task_id)
     return {
-        "task_id": result.id,
+        "task_id": task_ids[0] if task_ids else None,
         "total": len(product_ids),
-        "submitted": True,
+        "submitted": submitted,
     }
 
 
@@ -241,10 +345,11 @@ def retry_failed_processing(limit: int = 50):
     )[:limit]
     retried = 0
     for log in failed_logs:
-        process_product_ai_task.delay(
-            log.product_id,
+        enqueue_product_ai_task(
+            product_id=log.product_id,
             processing_type=log.processing_type,
             auto_apply=False,
+            force=True,
         )
         retried += 1
     return {"retried": retried}

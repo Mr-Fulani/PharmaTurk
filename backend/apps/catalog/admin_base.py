@@ -163,7 +163,7 @@ class RunAIActionMixin(GlobalActivationActionsMixin):
 
     def run_ai(self, request, queryset):
         """Поставить выбранные товары в очередь AI (без авто-применения)."""
-        from apps.ai.tasks import process_product_ai_task
+        from apps.ai.tasks import enqueue_product_ai_task
         from apps.ai.models import AIProcessingLog, AIProcessingStatus
 
         # Проверяем, является ли модель доменной
@@ -185,7 +185,7 @@ class RunAIActionMixin(GlobalActivationActionsMixin):
                 skipped += 1
                 continue
             
-            process_product_ai_task.delay(
+            enqueue_product_ai_task(
                 product_id=pid,
                 processing_type="full",
                 auto_apply=False,
@@ -201,7 +201,7 @@ class RunAIActionMixin(GlobalActivationActionsMixin):
 
     def run_ai_auto_apply(self, request, queryset):
         """Один запуск: полная обработка + авто-применение."""
-        from apps.ai.tasks import process_product_ai_task
+        from apps.ai.tasks import enqueue_product_ai_task
 
         queued = 0
         for obj in queryset:
@@ -209,7 +209,7 @@ class RunAIActionMixin(GlobalActivationActionsMixin):
             if not pid:
                 continue
 
-            process_product_ai_task.delay(
+            enqueue_product_ai_task(
                 product_id=pid,
                 processing_type="full",
                 auto_apply=True,

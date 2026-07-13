@@ -14,7 +14,7 @@ from .serializers import (
     AITemplateSerializer,
     GenerateContentRequestSerializer,
 )
-from .tasks import process_product_ai_task
+from .tasks import enqueue_product_ai_task
 
 
 class AIProcessingLogViewSet(viewsets.ReadOnlyModelViewSet):
@@ -72,12 +72,13 @@ class AIProcessingLogViewSet(viewsets.ReadOnlyModelViewSet):
     def reprocess(self, request, pk=None):
         """Повторная обработка товара."""
         log = self.get_object()
-        task = process_product_ai_task.delay(
-            log.product_id,
+        queued_log, task_id, submitted = enqueue_product_ai_task(
+            product_id=log.product_id,
             processing_type=log.processing_type,
             auto_apply=False,
+            force=True,
         )
-        return Response({"task_id": task.id})
+        return Response({"task_id": task_id, "log_id": queued_log.id, "submitted": submitted})
 
 
 class AIModerationQueueViewSet(viewsets.ModelViewSet):
@@ -151,7 +152,7 @@ class GenerateContentView(APIView):
                 "analyze_images": data.get("analyze_images", True),
                 "use_images": data.get("use_images", True),
             }
-        task = process_product_ai_task.delay(
+        log_entry, task_id, submitted = enqueue_product_ai_task(
             product_id=product_id,
             processing_type=processing_type,
             auto_apply=auto_apply,
@@ -160,7 +161,9 @@ class GenerateContentView(APIView):
         return Response(
             {
                 "status": "queued",
-                "task_id": task.id,
+                "task_id": task_id,
+                "log_id": log_entry.id,
+                "submitted": submitted,
                 "product_id": product_id,
                 "message": f"Processing started for product {product_id}",
             },
@@ -181,7 +184,7 @@ class ProcessProductView(APIView):
             "use_images": request.data.get("use_images", True),
         }
         auto_apply = request.data.get("auto_apply", False)
-        task = process_product_ai_task.delay(
+        log_entry, task_id, submitted = enqueue_product_ai_task(
             product_id=product_id,
             processing_type="full",
             auto_apply=auto_apply,
@@ -189,7 +192,9 @@ class ProcessProductView(APIView):
         )
         return Response(
             {
-                "task_id": task.id,
+                "task_id": task_id,
+                "log_id": log_entry.id,
+                "submitted": submitted,
                 "product_id": product_id,
                 "status": "queued",
             },

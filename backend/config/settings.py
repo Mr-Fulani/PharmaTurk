@@ -163,9 +163,7 @@ CELERY_TASK_ANNOTATIONS = {
 }
 from celery.schedules import crontab
 
-# Очереди: celery (скрейп/платежи/валюта/каталог) — воркер celeryworker;
-# ai + recsys — воркер celery_ai. Рекомендации (recsys) намеренно НЕ на celeryworker,
-# чтобы тяжёлая переиндексация векторов не блокировала задачи парсинга.
+# Очереди изолированы: AI и тяжёлая векторизация не должны блокировать друг друга.
 CELERY_TASK_ROUTES = {
     "apps.ai.tasks.*": {"queue": "ai"},
     "apps.recommendations.tasks.*": {"queue": "recsys"},
@@ -227,10 +225,12 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60 * 60 * 24 * 7,
         "kwargs": {"days": 30},
     },
-    # RecSys: полная синхронизация векторов товаров в Qdrant (раз в сутки)
-    "recsys-sync-all": {
-        "task": "apps.recommendations.tasks.sync_all_products_to_qdrant",
-        "schedule": 60 * 60 * 24 * 3,  # раз в 3 дня
+    # RecSys: каждую ночь индексируем только новые/изменённые товары малыми пакетами.
+    # Полная переиндексация остаётся только ручной операцией.
+    "recsys-sync-stale-nightly": {
+        "task": "apps.recommendations.tasks.sync_stale_products_to_qdrant",
+        "schedule": crontab(hour=2, minute=15),
+        "kwargs": {"batch_size": 25, "max_products": 200},
     },
     # Очистка временных файлов поиска по фото (каждый час)
     "cleanup-temp-images": {

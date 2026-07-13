@@ -46,6 +46,7 @@ done
 #   --fast-rebuild   - Быстрая пересборка только frontend и backend (больше чем --fast, но быстрее чем полная сборка)
 #   --with-seed      - Принудительно выполнить seed_catalog_data при старте backend
 #   --skip-seed      - Пропустить seed_catalog_data при старте backend
+#   --restart-recsys - Явно пересоздать отдельный воркер рекомендаций
 #   --help           - Показать справку
 
 # set -e  # Отключено, чтобы скрипт продолжал работу даже если контейнеры не запущены
@@ -66,6 +67,7 @@ FAST=false
 FAST_REBUILD=false
 WITH_SEED=false
 SKIP_SEED=false
+RESTART_RECSYS=false
 UP_FAILED=false
 LOGS_FAILED=false
 
@@ -104,6 +106,7 @@ show_help() {
     --fast-rebuild   Быстрая пересборка только frontend и backend (быстрее, чем полная пересборка всех сервисов)
     --with-seed      Принудительно выполнить seed_catalog_data при старте backend
     --skip-seed      Пропустить seed_catalog_data при старте backend
+    --restart-recsys Явно пересоздать воркер рекомендаций (обычно не требуется)
     --help           Показать эту справку
 
 Примеры:
@@ -116,6 +119,7 @@ show_help() {
     ./restart.sh --fast-rebuild     # Пересобрать только frontend и backend
     ./restart.sh --fast --skip-seed # Самый лёгкий dev-старт без seed каталога
     ./restart.sh --fast --with-seed # Быстрый рестарт, но с восстановлением каталога
+    ./restart.sh --restart-recsys    # Применить изменения к воркеру рекомендаций
 
 EOF
 }
@@ -158,6 +162,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-seed)
             SKIP_SEED=true
+            shift
+            ;;
+        --restart-recsys)
+            RESTART_RECSYS=true
             shift
             ;;
         --help|-h)
@@ -219,9 +227,10 @@ find backend -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 find backend -type f -name "*.pyc" -delete 2>/dev/null || true
 find backend -type f -name "*.pyo" -delete 2>/dev/null || true
 success "Кэш Python очищен"
-# Остановка контейнеров (всегда выполняем down — идемпотентно, если контейнеры не запущены)
-info "Останавливаем контейнеры..."
+# Полный down нужен только при намеренном удалении volumes. Обычный rebuild
+# делает compose up выбранных сервисов и не прерывает долгую индексацию recsys.
 if [ "$CLEAN_VOLUMES" = true ]; then
+    info "Останавливаем контейнеры..."
     warning "Удаляем volumes (база данных будет очищена!)"
     read -p "Вы уверены? (y/N): " -n 1 -r
     echo
@@ -233,8 +242,7 @@ if [ "$CLEAN_VOLUMES" = true ]; then
         exit 0
     fi
 else
-    docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS down -t 1 --remove-orphans || true
-        success "Контейнеры остановлены"
+    info "Обычный запуск без docker compose down: активные фоновые задачи сохраняются"
 fi
 
 # Завершаем зависшие docker compose процессы из других терминалов.
@@ -306,10 +314,23 @@ if [ "$RUN_SEED_CATALOG" = "1" ]; then
 else
     info "Seed каталога при старте backend: пропущен"
 fi
-docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS up $UP_OPTS
+CORE_SERVICES="postgres redis opensearch qdrant backend frontend celeryworker celery_ai celerybeat nginx"
+docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS up $UP_OPTS $CORE_SERVICES
 UP_EXIT_CODE=$?
 if [ $UP_EXIT_CODE -eq 0 ]; then
     success "Контейнеры запущены"
+
+    # RecSys намеренно не пересоздаётся при каждом изменении backend-кода.
+    # Первый запуск создаёт сервис; последующие обновления — только явно.
+    if [ "$RESTART_RECSYS" = true ]; then
+        info "Пересоздаём воркер рекомендаций по явному запросу..."
+        docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS up -d --force-recreate celery_recsys
+    elif [ -z "$(docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS ps --status running -q celery_recsys)" ]; then
+        info "Воркер рекомендаций ещё не запущен — создаём один раз..."
+        docker compose -p "$COMPOSE_PROJECT_NAME" $COMPOSE_FLAGS up -d celery_recsys
+    else
+        info "Воркер рекомендаций продолжает работу без перезапуска"
+    fi
 
     # nginx резолвит upstream-хосты (backend/frontend) один раз при старте и
     # кэширует их IP. Если эти контейнеры пересоздали с новым IP (например, после

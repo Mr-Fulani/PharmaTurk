@@ -137,7 +137,24 @@ services:
     environment:
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
-    command: bash -c "poetry run celery -A config worker -Q ai,recsys -n ai_worker@%h --loglevel=info --concurrency=2"
+    command: bash -c "poetry run celery -A config worker -Q ai -n ai_worker@%h --loglevel=info --concurrency=2"
+    mem_limit: 3g
+
+  celery_recsys:
+    image: mudaroba-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+    command: bash -c "poetry run celery -A config worker -Q recsys -n recsys_worker@%h --loglevel=info --concurrency=1"
     mem_limit: 3g
 
   celerybeat:

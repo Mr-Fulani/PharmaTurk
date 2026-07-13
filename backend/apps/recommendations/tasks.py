@@ -5,7 +5,43 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@shared_task
+def _working_product_image_url(product):
+    """Выбрать существующий storage-файл, не возвращая битый parsed URL."""
+    from django.core.files.storage import default_storage
+    from apps.catalog.signals import _get_path_from_storage_url, is_internal_storage_url
+
+    main_file = getattr(product, "main_image_file", None)
+    main_name = getattr(main_file, "name", "") or ""
+    if main_name:
+        try:
+            if default_storage.exists(main_name):
+                return main_file.url
+        except Exception:
+            pass
+
+    main_url = str(getattr(product, "main_image", "") or "")
+    if main_url:
+        if not is_internal_storage_url(main_url):
+            return main_url
+        path = _get_path_from_storage_url(main_url)
+        try:
+            if path and default_storage.exists(path):
+                return main_url
+        except Exception:
+            pass
+
+    first_img = product.images.exclude(image_file="").first()
+    image_file = getattr(first_img, "image_file", None) if first_img else None
+    image_name = getattr(image_file, "name", "") or ""
+    try:
+        if image_name and default_storage.exists(image_name):
+            return image_file.url
+    except Exception:
+        pass
+    return ""
+
+
+@shared_task(acks_late=False)
 def index_product_vectors(product_ids=None, batch_size=100):
     """
     Index products into Qdrant.
@@ -73,11 +109,7 @@ def index_product_vectors(product_ids=None, batch_size=100):
             )
             text_vector = text_encoder.encode(text).tolist()
             image_vector = None
-            img_url = product.main_image
-            if not img_url and hasattr(product, "images"):
-                first_img = product.images.filter(image_url__isnull=False).exclude(image_url="").first()
-                if first_img:
-                    img_url = first_img.image_url
+            img_url = _working_product_image_url(product)
             if img_url:
                 try:
                     img_emb = image_encoder.encode_image_from_url(img_url)
@@ -102,9 +134,9 @@ def index_product_vectors(product_ids=None, batch_size=100):
     }
 
 
-@shared_task
+@shared_task(acks_late=False)
 def sync_all_products_to_qdrant():
-    """Full re-index: reset last_synced then index in batches."""
+    """Ручная полная переиндексация. В регулярном расписании не используется."""
     from apps.catalog.models import Product
     from .models import ProductVector
 
@@ -118,7 +150,7 @@ def sync_all_products_to_qdrant():
         )
     )
     total = base_qs.count()
-    batch_size = 500
+    batch_size = 25
     batches = (total // batch_size) + 1
     for offset in range(0, total, batch_size):
         ids = list(
@@ -126,6 +158,46 @@ def sync_all_products_to_qdrant():
         )
         index_product_vectors.delay(product_ids=ids)
     return {"batches": batches}
+
+
+@shared_task(acks_late=False)
+def sync_stale_products_to_qdrant(batch_size=25, max_products=200):
+    """Ночная инкрементальная индексация только новых/изменённых товаров."""
+    from django.core.cache import cache
+    from django.db.models import F, Q
+    from apps.catalog.models import Product
+
+    lock_key = "recsys:sync-stale:scheduled"
+    if not cache.add(lock_key, "1", timeout=60 * 60 * 6):
+        return {"submitted": 0, "status": "already_scheduled"}
+
+    ids = list(
+        Product.objects.filter(is_available=True)
+        .exclude(
+            Q(product_type__in=["clothing", "shoes"])
+            & (
+                Q(external_data__has_key="source_variant_id")
+                | Q(external_data__has_key="source_variant_slug")
+            )
+        )
+        .filter(
+            Q(vector_data__isnull=True)
+            | Q(vector_data__last_synced__isnull=True)
+            | Q(vector_data__last_synced__lt=F("updated_at"))
+        )
+        .order_by("updated_at")
+        .values_list("id", flat=True)[:max_products]
+    )
+    for offset in range(0, len(ids), batch_size):
+        index_product_vectors.apply_async(
+            kwargs={"product_ids": ids[offset : offset + batch_size]},
+            priority=3,
+        )
+    return {
+        "submitted": len(ids),
+        "batches": (len(ids) + batch_size - 1) // batch_size,
+        "status": "scheduled",
+    }
 
 
 @shared_task
