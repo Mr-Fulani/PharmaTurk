@@ -27,6 +27,7 @@ from apps.catalog.utils.variant_titles import (
     strip_price_and_codes_from_title,
     translate_common_color,
 )
+from apps.catalog.utils.tr_vocab import TR_COLOR_DICTIONARY
 from apps.ai.models import AIProcessingLog, AIProcessingStatus, AITemplate, AIModerationQueue
 from apps.ai.services.llm_client import LLMClient
 from apps.ai.services.media_processor import R2MediaProcessor
@@ -835,7 +836,10 @@ class ContentGenerator:
 
             translated_color = self._translate_common_color(variant_color, locale)
             if translated_color and cleaned_title:
-                for source_color, translations in self.COLOR_TRANSLATIONS.items():
+                # Цветовой vocabulary хранится централизованно в tr_vocab. Раньше
+                # здесь оставалась ссылка на удалённый ContentGenerator.COLOR_TRANSLATIONS,
+                # из-за чего любой успешный variant LLM-вызов завершался ошибкой.
+                for source_color, translations in TR_COLOR_DICTIONARY.items():
                     localized_color = translations.get(locale)
                     if localized_color and source_color.lower() in cleaned_title.lower():
                         cleaned_title = re.sub(
@@ -859,7 +863,9 @@ class ContentGenerator:
             return existing
 
         input_data = self._collect_variant_input_data(variant)
-        if not input_data.get("variant_description") and not input_data.get("variant_snapshot") and not input_data.get("size_options"):
+        # Цвет, объём и размеры уже являются структурированными полями варианта.
+        # Они не дают содержательного материала для отдельного LLM-текста.
+        if not input_data.get("variant_description") and not input_data.get("variant_snapshot"):
             payload = {
                 "status": "skipped",
                 "updated_at": timezone.now().isoformat(),

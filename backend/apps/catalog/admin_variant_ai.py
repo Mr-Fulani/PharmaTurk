@@ -176,6 +176,8 @@ class VariantAIAdminMixin(OrderedAdminActionsMixin):
         }
         label = labels.get(status, status)
         color = colors.get(status, "#374151")
+        if status == "skipped" and payload.get("reason") == "insufficient_variant_specific_data":
+            label = _("AI не требуется")
         processed_at = payload.get("processed_at") or payload.get("updated_at") or ""
         if processed_at:
             return format_html(
@@ -204,6 +206,7 @@ class VariantAIAdminMixin(OrderedAdminActionsMixin):
         en_text = (en.get("generated_description") or "").strip()
         title = (ru.get("generated_title") or en.get("generated_title") or "").strip()
         error_message = (payload.get("error_message") or "").strip()
+        reason = (payload.get("reason") or "").strip()
 
         fragments = []
         if title:
@@ -217,6 +220,13 @@ class VariantAIAdminMixin(OrderedAdminActionsMixin):
                 format_html(
                     "<div style='color:#b91c1c;'><strong>Error:</strong> {}</div>",
                     error_message[:300],
+                )
+            )
+        if reason == "insufficient_variant_specific_data":
+            fragments.append(
+                format_html(
+                    "<div style='color:#92400e;'>{}</div>",
+                    _("У варианта нет отдельного описания или характеристик; используется содержимое основной карточки."),
                 )
             )
         if not fragments:

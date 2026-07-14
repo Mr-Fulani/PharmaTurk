@@ -233,7 +233,7 @@ def prepare_variant_ai_candidates_task(product_id: int, force: bool = False):
     }
 
 
-@shared_task(bind=True, max_retries=3)
+@shared_task(bind=True)
 def process_variant_ai_task(self, model_label: str, variant_id: int, force: bool = False):
     """Ручная AI-обработка варианта товара. Результат сохраняется только в external_data варианта."""
     try:
