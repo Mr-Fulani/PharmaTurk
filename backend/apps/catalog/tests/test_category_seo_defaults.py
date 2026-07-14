@@ -111,6 +111,47 @@ def test_category_serializer_includes_service_portfolio_items():
 
 
 @pytest.mark.django_db
+def test_category_serializer_excludes_inactive_portfolio_items_and_inactive_services():
+    uslugi_type, _ = CategoryType.objects.get_or_create(slug="uslugi", defaults={"name": "Услуги"})
+    category = Category.objects.create(
+        name="Ремонт",
+        slug="repair-portfolio-visibility",
+        category_type=uslugi_type,
+    )
+    active_service = Service.objects.create(
+        name="Активная услуга",
+        slug="active-portfolio-service",
+        category=category,
+    )
+    inactive_service = Service.objects.create(
+        name="Неактивная услуга",
+        slug="inactive-portfolio-service",
+        category=category,
+        is_active=False,
+    )
+    visible_item = ServicePortfolioItem.objects.create(
+        category=category,
+        service=active_service,
+        title="Активный кейс",
+    )
+    ServicePortfolioItem.objects.create(
+        category=category,
+        service=active_service,
+        title="Неактивный кейс",
+        is_active=False,
+    )
+    ServicePortfolioItem.objects.create(
+        category=category,
+        service=inactive_service,
+        title="Кейс неактивной услуги",
+    )
+
+    data = CategorySerializer(category).data
+
+    assert [item["id"] for item in data["portfolio_items"]] == [visible_item.id]
+
+
+@pytest.mark.django_db
 def test_category_serializer_localizes_service_portfolio_items_for_english():
     uslugi_type, _ = CategoryType.objects.get_or_create(slug="uslugi", defaults={"name": "Услуги"})
     category = Category.objects.create(
