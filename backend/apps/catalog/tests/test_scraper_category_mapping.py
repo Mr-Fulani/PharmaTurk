@@ -6,13 +6,24 @@ from apps.catalog.models import Category, CategoryType
 
 @pytest.mark.django_db
 def test_exact_subcategory_slug_has_priority_over_root_term_alias():
-    shoes_type = CategoryType.objects.create(name="Обувь", slug="shoes")
-    shoes = Category.objects.create(
-        name="Обувь", slug="shoes", category_type=shoes_type
-    )
-    sandals = Category.objects.create(
-        name="Сандалии", slug="sandals", category_type=shoes_type, parent=shoes
-    )
+    shoes_type = CategoryType.objects.filter(slug="shoes").first()
+    if shoes_type is None:
+        shoes_type = CategoryType.objects.create(name="Test shoes", slug="shoes")
+
+    shoes = Category.objects.filter(slug="shoes").first()
+    if shoes is None:
+        shoes = Category.objects.create(
+            name="Test shoes root", slug="shoes", category_type=shoes_type
+        )
+
+    sandals = Category.objects.filter(slug="sandals").first()
+    if sandals is None:
+        sandals = Category.objects.create(
+            name="Test sandals",
+            slug="sandals",
+            category_type=shoes_type,
+            parent=shoes,
+        )
 
     category, product_type = resolve_category_and_product_type("sandals")
 
