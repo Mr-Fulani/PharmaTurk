@@ -1,4 +1,5 @@
 import uuid
+import logging
 from decimal import Decimal
 from django.db import models
 from django.db.models import JSONField
@@ -7,6 +8,9 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.core.cache import cache
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+
+
+logger = logging.getLogger(__name__)
 
 
 def _clear_margin_caches():
@@ -211,11 +215,28 @@ class MarginSettings(models.Model):
         self.currency_pair = (self.currency_pair or "").strip().upper()
         super().save(*args, **kwargs)
         _clear_margin_caches()
+        self._schedule_snapshot_refresh()
 
     def delete(self, *args, **kwargs):
         result = super().delete(*args, **kwargs)
         _clear_margin_caches()
+        self._schedule_snapshot_refresh()
         return result
+
+    @staticmethod
+    def _schedule_snapshot_refresh():
+        """После commit ставит тяжёлый пересчёт в Celery, не задерживая admin POST."""
+        from django.db import transaction
+
+        def enqueue():
+            try:
+                from .tasks import refresh_currency_margin_snapshots_task
+
+                refresh_currency_margin_snapshots_task.delay()
+            except Exception:
+                logger.exception("Failed to enqueue currency margin snapshot refresh")
+
+        transaction.on_commit(enqueue, robust=True)
 
 
 class ProductPrice(models.Model):

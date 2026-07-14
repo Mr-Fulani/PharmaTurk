@@ -1,4 +1,6 @@
 from django.contrib import admin
+from decimal import Decimal
+from types import SimpleNamespace
 
 from apps.catalog.currency_models import (
     CurrencyUpdateLog,
@@ -58,3 +60,26 @@ def test_currency_update_log_admin_uses_only_log_fields(rf, django_user_model):
     assert log_admin.get_queryset(request).query.select_related is False
     assert "updated_at" not in flattened_fields(log_admin)
     assert log_admin.get_actions(request) == {}
+
+
+def test_product_price_admin_shows_effective_product_markup_separately():
+    product_admin = admin.site._registry[ProductPrice]
+    product = SimpleNamespace(
+        brand=None,
+        category=SimpleNamespace(margin_percent=Decimal("10")),
+    )
+    price = SimpleNamespace(
+        product=product,
+        base_currency="TRY",
+        base_price=Decimal("100"),
+        rub_price_with_margin=Decimal("200"),
+        usd_price_with_margin=Decimal("5"),
+        kzt_price_with_margin=None,
+        eur_price_with_margin=None,
+        try_price_with_margin=Decimal("100"),
+        usdt_price_with_margin=None,
+    )
+
+    assert product_admin.effective_product_markup_display(price) == "10% (категория)"
+    assert product_admin.public_rub_price(price) == Decimal("220.00")
+    assert product_admin.public_try_price(price) == Decimal("110.00")

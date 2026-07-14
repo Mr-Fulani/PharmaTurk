@@ -72,6 +72,14 @@ def update_product_prices_batch(product_type=None, batch_size=100):
         return {'status': 'error', 'message': str(e)}
 
 
+@shared_task(name='currency.refresh_margin_snapshots')
+def refresh_currency_margin_snapshots_task():
+    """Применяет актуальные маржи валютных пар к сохранённым конвертированным ценам."""
+    from .currency_price_snapshots import refresh_currency_margin_snapshots
+
+    return refresh_currency_margin_snapshots()
+
+
 @shared_task(name='currency.cleanup_old_logs')
 def cleanup_old_currency_logs(days_to_keep=30):
     """Очистка старых логов обновления курсов."""
@@ -441,4 +449,3 @@ def sync_ikea_product_task(self, item_codes: list[str]) -> dict:
         "errors": errors,
         "total": len(item_codes)
     }
-

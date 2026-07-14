@@ -12,6 +12,76 @@ from .currency_models import (
 )
 
 
+COMPUTED_CURRENCY_PRICE_FIELDS = tuple(
+    f"{currency}_{suffix}"
+    for currency in ("rub", "usd", "kzt", "eur", "try", "usdt")
+    for suffix in ("price", "price_with_margin")
+)
+PAIR_MARGIN_DESCRIPTION = (
+    'Вычисляемые поля только для конвертации валют. «С маржой» означает маржу конкретной '
+    'валютной пары, а не товарную маржу бренда/категории/глобальную.'
+)
+
+
+class PublicProductPriceAdminMixin:
+    """Динамически показывает конечную цену товара с его товарной маржой."""
+
+    def _markup_product(self, obj):
+        return getattr(obj, "product", None)
+
+    @admin.display(description='Применённая товарная маржа')
+    def effective_product_markup_display(self, obj):
+        from .utils.product_markup import get_effective_product_markup
+
+        product = self._markup_product(obj)
+        if not product:
+            return 'Нет связанного товара'
+        margin, source = get_effective_product_markup(product)
+        source_labels = {
+            'brand': 'бренд',
+            'category': 'категория',
+            'global': 'глобальная настройка',
+        }
+        return f"{margin}% ({source_labels.get(source, 'не задана')})"
+
+    def _public_price(self, obj, currency):
+        from .utils.product_markup import apply_product_markup
+
+        product = self._markup_product(obj)
+        if not product:
+            return None
+        # Сохранённое значение включает только маржу валютной пары. Товарная
+        # маржа накладывается поверх него динамически и не сохраняется в snapshot.
+        value = getattr(obj, f"{currency.lower()}_price_with_margin", None)
+        if value is None and currency == (obj.base_currency or '').upper():
+            value = obj.base_price
+        return apply_product_markup(value, product)
+
+    @admin.display(description='Цена в RUB с товарной маржой')
+    def public_rub_price(self, obj):
+        return self._public_price(obj, 'RUB')
+
+    @admin.display(description='Цена в USD с товарной маржой')
+    def public_usd_price(self, obj):
+        return self._public_price(obj, 'USD')
+
+    @admin.display(description='Цена в KZT с товарной маржой')
+    def public_kzt_price(self, obj):
+        return self._public_price(obj, 'KZT')
+
+    @admin.display(description='Цена в EUR с товарной маржой')
+    def public_eur_price(self, obj):
+        return self._public_price(obj, 'EUR')
+
+    @admin.display(description='Цена в TRY с товарной маржой')
+    def public_try_price(self, obj):
+        return self._public_price(obj, 'TRY')
+
+    @admin.display(description='Цена в USDT с товарной маржой')
+    def public_usdt_price(self, obj):
+        return self._public_price(obj, 'USDT')
+
+
 @admin.register(GlobalCurrencySettings)
 class GlobalCurrencySettingsAdmin(admin.ModelAdmin):
     """Админ-панель для глобальных настроек валют."""
@@ -281,41 +351,54 @@ class MarginSettingsAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProductPrice)
-class ProductPriceAdmin(admin.ModelAdmin):
+class ProductPriceAdmin(PublicProductPriceAdminMixin, admin.ModelAdmin):
     """Админ-панель для цен товаров."""
     
     list_display = [
         'product_link', 'base_currency', 'base_price',
-        'rub_price_with_margin', 'usd_price_with_margin',
-        'kzt_price_with_margin', 'try_price_with_margin',
-        'usdt_price_with_margin', 'shipping_info', 'updated_at'
+        'effective_product_markup_display', 'public_rub_price', 'public_usd_price',
+        'public_kzt_price', 'public_try_price', 'public_usdt_price',
+        'shipping_info', 'updated_at'
     ]
     list_filter = ['base_currency', 'updated_at']
     search_fields = ['product__name', 'product__slug']
-    readonly_fields = ['created_at', 'updated_at']
+    readonly_fields = [
+        *COMPUTED_CURRENCY_PRICE_FIELDS,
+        'effective_product_markup_display',
+        'public_rub_price', 'public_usd_price', 'public_kzt_price',
+        'public_eur_price', 'public_try_price', 'public_usdt_price',
+        'created_at', 'updated_at',
+    ]
     
     fieldsets = (
         ('Основная информация', {
             'fields': ('product', 'base_currency', 'base_price')
         }),
+        ('Товарная маржа', {
+            'fields': ('effective_product_markup_display',),
+            'description': (
+                'Здесь применяется товарная маржа по приоритету бренд → категория → глобальная. '
+                'Именно эти значения должны отображаться на витрине, в избранном и корзине.'
+            ),
+        }),
         ('Цены в рублях', {
-            'fields': ('rub_price', 'rub_price_with_margin'),
+            'fields': ('rub_price', 'public_rub_price'),
             'classes': ('collapse',)
         }),
         ('Цены в долларах', {
-            'fields': ('usd_price', 'usd_price_with_margin'),
+            'fields': ('usd_price', 'public_usd_price'),
             'classes': ('collapse',)
         }),
         ('Цены в тенге', {
-            'fields': ('kzt_price', 'kzt_price_with_margin'),
+            'fields': ('kzt_price', 'public_kzt_price'),
             'classes': ('collapse',)
         }),
         ('Цены в евро', {
-            'fields': ('eur_price', 'eur_price_with_margin'),
+            'fields': ('eur_price', 'public_eur_price'),
             'classes': ('collapse',)
         }),
         ('Цены в турецких лирах', {
-            'fields': ('try_price', 'try_price_with_margin'),
+            'fields': ('try_price', 'public_try_price'),
             'classes': ('collapse',)
         }),
         ('Индивидуальная доставка — наивысший приоритет', {
@@ -436,41 +519,53 @@ class ProductPriceAdmin(admin.ModelAdmin):
 
 
 @admin.register(ProductVariantPrice)
-class ProductVariantPriceAdmin(admin.ModelAdmin):
+class ProductVariantPriceAdmin(PublicProductPriceAdminMixin, admin.ModelAdmin):
     """Админ-панель для цен вариантов товаров."""
     
     list_display = [
         'variant_link', 'base_currency', 'base_price',
-        'rub_price_with_margin', 'usd_price_with_margin',
-        'kzt_price_with_margin', 'try_price_with_margin',
-        'usdt_price_with_margin', 'shipping_info', 'updated_at'
+        'effective_product_markup_display', 'public_rub_price', 'public_usd_price',
+        'public_kzt_price', 'public_try_price', 'public_usdt_price',
+        'shipping_info', 'updated_at'
     ]
     list_filter = ['base_currency', 'updated_at']
     search_fields = ['content_type__model', 'object_id']
-    readonly_fields = ['created_at', 'updated_at']
+    readonly_fields = [
+        *COMPUTED_CURRENCY_PRICE_FIELDS,
+        'effective_product_markup_display',
+        'public_rub_price', 'public_usd_price', 'public_kzt_price',
+        'public_eur_price', 'public_try_price', 'public_usdt_price',
+        'created_at', 'updated_at',
+    ]
     
     fieldsets = (
         ('Основная информация', {
             'fields': ('content_type', 'object_id', 'base_currency', 'base_price')
         }),
+        ('Товарная маржа', {
+            'fields': ('effective_product_markup_display',),
+            'description': (
+                'Товарная маржа берётся у родительского товара варианта: бренд → категория → глобальная.'
+            ),
+        }),
         ('Цены в рублях', {
-            'fields': ('rub_price', 'rub_price_with_margin'),
+            'fields': ('rub_price', 'public_rub_price'),
             'classes': ('collapse',)
         }),
         ('Цены в долларах', {
-            'fields': ('usd_price', 'usd_price_with_margin'),
+            'fields': ('usd_price', 'public_usd_price'),
             'classes': ('collapse',)
         }),
         ('Цены в тенге', {
-            'fields': ('kzt_price', 'kzt_price_with_margin'),
+            'fields': ('kzt_price', 'public_kzt_price'),
             'classes': ('collapse',)
         }),
         ('Цены в евро', {
-            'fields': ('eur_price', 'eur_price_with_margin'),
+            'fields': ('eur_price', 'public_eur_price'),
             'classes': ('collapse',)
         }),
         ('Цены в турецких лирах', {
-            'fields': ('try_price', 'try_price_with_margin'),
+            'fields': ('try_price', 'public_try_price'),
             'classes': ('collapse',)
         }),
         ('Индивидуальная доставка варианта — наивысший приоритет', {
@@ -503,6 +598,9 @@ class ProductVariantPriceAdmin(admin.ModelAdmin):
         except Exception:
             return str(obj.object_id)
     variant_link.short_description = 'Вариант / Цена'
+
+    def _markup_product(self, obj):
+        return getattr(getattr(obj, 'variant', None), 'product', None)
     
     def shipping_info(self, obj):
         """Информация о доставке."""
@@ -594,7 +692,7 @@ class ServicePriceAdmin(admin.ModelAdmin):
     ]
     list_filter = ['base_currency', 'updated_at']
     search_fields = ['service__name', 'service__slug']
-    readonly_fields = ['created_at', 'updated_at']
+    readonly_fields = [*COMPUTED_CURRENCY_PRICE_FIELDS, 'created_at', 'updated_at']
     
     fieldsets = (
         ('Основная информация', {
@@ -602,22 +700,27 @@ class ServicePriceAdmin(admin.ModelAdmin):
         }),
         ('Цены в рублях', {
             'fields': ('rub_price', 'rub_price_with_margin'),
+            'description': PAIR_MARGIN_DESCRIPTION,
             'classes': ('collapse',)
         }),
         ('Цены в долларах', {
             'fields': ('usd_price', 'usd_price_with_margin'),
+            'description': PAIR_MARGIN_DESCRIPTION,
             'classes': ('collapse',)
         }),
         ('Цены в тенге', {
             'fields': ('kzt_price', 'kzt_price_with_margin'),
+            'description': PAIR_MARGIN_DESCRIPTION,
             'classes': ('collapse',)
         }),
         ('Цены в евро', {
             'fields': ('eur_price', 'eur_price_with_margin'),
+            'description': PAIR_MARGIN_DESCRIPTION,
             'classes': ('collapse',)
         }),
         ('Цены в турецких лирах', {
             'fields': ('try_price', 'try_price_with_margin'),
+            'description': PAIR_MARGIN_DESCRIPTION,
             'classes': ('collapse',)
         }),
         ('Временные метки', {
