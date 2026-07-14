@@ -133,6 +133,7 @@ class BaseScraper(ABC):
         self.username = username
         self.password = password
         self.max_products = None  # Лимит товаров
+        self.pages_processed = 0
 
         # Прокси для обхода репутационных блокировок (Akamai и т.п.).
         # Активен только при use_proxy=True и заданном SCRAPER_PROXY_URL.
@@ -305,6 +306,7 @@ class BaseScraper(ABC):
                     if attempt < self.max_retries:
                         time.sleep(2 ** attempt)  # Exponential backoff
                         continue
+                    raise
                 break
 
             except SoftTimeLimitExceeded:
@@ -316,7 +318,7 @@ class BaseScraper(ABC):
                 if attempt < self.max_retries:
                     time.sleep(2 ** attempt)
                     continue
-                break
+                raise
         
         return None
     

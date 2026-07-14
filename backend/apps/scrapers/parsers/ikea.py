@@ -1,13 +1,18 @@
 """Парсер для сайта IKEA Turkey."""
 
 import logging
-from typing import List, Optional
+from typing import Iterator, List, Optional
 from ..base.scraper import BaseScraper, ScrapedProduct
 from apps.catalog.services import IkeaService
 
 
 class IkeaParser(BaseScraper):
     """Парсер для IKEA Turkey (через внутренний API)."""
+
+    SUPPORTS_PAGE_CHUNKING = True
+    REPORTS_PAGES_PROCESSED = True
+    MAX_PAGES_PER_CHUNK = 1
+    API_PAGE_SIZE = 40
 
     def __init__(self, base_url: str, **kwargs):
         super().__init__(base_url, **kwargs)
@@ -20,9 +25,13 @@ class IkeaParser(BaseScraper):
     def get_supported_domains(self) -> List[str]:
         return ["ikea.com.tr", "www.ikea.com.tr"]
 
-    def parse_product_list(self, category_url: str, max_pages: int = 10) -> List[ScrapedProduct]:
+    def parse_product_list(
+        self,
+        category_url: str,
+        max_pages: int = 10,
+        start_page: int = 1,
+    ) -> Iterator[ScrapedProduct]:
         """Парсит список товаров из категории."""
-        max_products = max_pages * 24 # Примерное количество на странице
         self.logger.info(f"Начинаем парсинг каталога IKEA: {category_url}")
         
         # Получаем category_id из URL (если это возможно) или просто ищем товары
@@ -35,44 +44,64 @@ class IkeaParser(BaseScraper):
             return []
 
         # Получаем краткие данные из поиска (язык из пути: /en/category/... vs /kategori/...)
-        brief_results = self.ikea_service.get_category_products(
-            category_slug, limit=max_products, language=site_language
-        )
-        
-        # Извлекаем артикулы (sprCode) для получения полных данных
-        item_codes = []
-        for item in brief_results:
-            code = item.get("sprCode") or item.get("id")
-            if code:
-                item_codes.append(str(code))
-        
-        # Ограничиваем список кодов согласно лимиту (если задан в self.max_products или max_products)
-        final_limit = self.max_products or max_products
-        item_codes = item_codes[:final_limit]
-        
-        self.logger.info(f"Найдено {len(item_codes)} артикулов для детальной обработки (лимит: {final_limit})")
-        
-        # Получаем ПОЛНЫЕ данные о товарах (с видео, всеми фото и т.д.)
-        full_results = self.ikea_service.fetch_items(item_codes)
-
-        # В листинге с цветовыми вариантами один и тот же диван может быть несколькими sprCode —
-        # собираем цвета в одну карточку и пропускаем уже учтённые артикулы.
-        scraped_products: List[ScrapedProduct] = []
         seen_spr: set[str] = set()
-        for item in full_results:
-            row_code = self.ikea_service._clean_spr_code(item.get("sprCode") or item.get("id"))
-            if not row_code or row_code in seen_spr:
-                continue
-            variant_details = self.ikea_service.collect_color_variant_details(item)
-            for raw in variant_details:
-                c = self.ikea_service._clean_spr_code(raw.get("sprCode") or raw.get("id"))
-                if c:
-                    seen_spr.add(c)
-            scraped_products.append(
-                self._scraped_product_from_variant_details(variant_details, canonical_spr=row_code)
-            )
+        yielded = 0
+        final_limit = self.max_products or max_pages * self.API_PAGE_SIZE
 
-        return scraped_products
+        for page in range(max(1, start_page), max(1, start_page) + max(1, max_pages)):
+            brief_results = self.ikea_service.get_category_products(
+                category_slug,
+                limit=self.API_PAGE_SIZE,
+                language=site_language,
+                page=page,
+            )
+            self.pages_processed += 1
+            if not brief_results:
+                break
+
+            item_codes = []
+            page_codes: set[str] = set()
+            for item in brief_results:
+                code = item.get("sprCode") or item.get("id")
+                clean_code = self.ikea_service._clean_spr_code(code)
+                if (
+                    clean_code
+                    and clean_code not in seen_spr
+                    and clean_code not in page_codes
+                ):
+                    item_codes.append(clean_code)
+                    page_codes.add(clean_code)
+
+            self.logger.info(
+                "IKEA API: страница %s, найдено %s артикулов для детальной обработки",
+                page,
+                len(item_codes),
+            )
+            full_results = self.ikea_service.fetch_items(item_codes)
+
+            for item in full_results:
+                row_code = self.ikea_service._clean_spr_code(
+                    item.get("sprCode") or item.get("id")
+                )
+                if not row_code or row_code in seen_spr:
+                    continue
+                variant_details = self.ikea_service.collect_color_variant_details(item)
+                for raw in variant_details:
+                    clean_variant = self.ikea_service._clean_spr_code(
+                        raw.get("sprCode") or raw.get("id")
+                    )
+                    if clean_variant:
+                        seen_spr.add(clean_variant)
+                yield self._scraped_product_from_variant_details(
+                    variant_details,
+                    canonical_spr=row_code,
+                )
+                yielded += 1
+                if yielded >= final_limit:
+                    return
+
+            if len(brief_results) < self.API_PAGE_SIZE:
+                break
 
     def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:
         """Парсит карточку товара; несколько цветов — одна позиция каталога, варианты в attributes."""

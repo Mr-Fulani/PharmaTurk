@@ -18,7 +18,7 @@ def _httpx_response(status_code: int, url: str = "https://example.com/catalog"):
     )
 
 
-@pytest.mark.parametrize("status_code", [401, 403])
+@pytest.mark.parametrize("status_code", [401, 403, 407])
 def test_base_scraper_raises_for_access_denied(monkeypatch, status_code):
     parser = LcwParser(base_url="https://www.lcw.com")
     monkeypatch.setattr(
@@ -31,6 +31,18 @@ def test_base_scraper_raises_for_access_denied(monkeypatch, status_code):
         parser._make_request("https://example.com/catalog")
 
     assert exc_info.value.status_code == status_code
+
+
+def test_base_scraper_raises_transport_error_after_retries(monkeypatch):
+    parser = LcwParser(base_url="https://www.lcw.com", max_retries=0)
+
+    def fail(*args, **kwargs):
+        raise httpx.ConnectError("proxy unavailable")
+
+    monkeypatch.setattr(parser.client, "get", fail)
+
+    with pytest.raises(httpx.ConnectError, match="proxy unavailable"):
+        parser._make_request("https://example.com/catalog")
 
 
 def test_base_scraper_keeps_404_as_not_found(monkeypatch):
@@ -115,4 +127,3 @@ def test_instagram_structured_403_becomes_common_access_error(monkeypatch):
         parser._parse_profile("test_profile", max_posts=1)
 
     assert exc_info.value.status_code == 403
-

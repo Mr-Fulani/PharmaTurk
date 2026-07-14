@@ -1,6 +1,7 @@
 import pytest
 
 from apps.catalog.models import Category
+from apps.scrapers.admin import SiteScraperTaskAdmin
 from apps.scrapers.models import ScraperConfig, ScrapingSession, SiteScraperTask
 from apps.scrapers.services import ScraperIntegrationService, ScraperTaskPaused
 from apps.scrapers.tasks import run_scraper_task
@@ -241,3 +242,20 @@ def test_live_progress_is_saved_after_first_product(monkeypatch):
     assert task.products_found == 1
     assert task.products_created == 1
     assert task.session_id == session.id
+
+
+def test_site_task_admin_list_displays_configured_subcategory():
+    category_index = SiteScraperTaskAdmin.list_display.index("target_category")
+
+    assert SiteScraperTaskAdmin.list_display[category_index + 1] == "target_subcategory"
+    assert "target_subcategory" in SiteScraperTaskAdmin.list_select_related
+
+
+def test_site_task_admin_allows_configuring_brand_override():
+    parsing_fields = SiteScraperTaskAdmin.fieldsets[0][1]["fields"]
+    subcategory_index = SiteScraperTaskAdmin.list_display.index("target_subcategory")
+
+    assert "target_brand" in parsing_fields
+    assert "target_brand" in SiteScraperTaskAdmin.raw_id_fields
+    assert SiteScraperTaskAdmin.list_display[subcategory_index + 1] == "target_brand"
+    assert "target_brand" in SiteScraperTaskAdmin.list_select_related

@@ -316,6 +316,8 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
     list_display = [
         "scraper_config",
         "target_category",
+        "target_subcategory",
+        "target_brand",
         "status_badge",
         "max_pages",
         "max_products",
@@ -326,11 +328,17 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         "duration_display",
         "actions_column",
     ]
+    list_select_related = [
+        "scraper_config",
+        "target_category",
+        "target_subcategory",
+        "target_brand",
+    ]
     list_filter = ["status", "scraper_config", "target_category", "created_at"]
     search_fields = ["scraper_config__name", "start_url", "error_message"]
     ordering = ["-created_at"]
     # Как у целевой категории: всплывающее окно с поиском и иерархией, без гигантского <select>.
-    raw_id_fields = ["target_category", "target_subcategory"]
+    raw_id_fields = ["target_category", "target_subcategory", "target_brand"]
 
     fieldsets = [
         (
@@ -341,6 +349,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     "task_type",
                     "target_category",
                     "target_subcategory",
+                    "target_brand",
                     "gender",
                     "start_url",
                     "max_pages",

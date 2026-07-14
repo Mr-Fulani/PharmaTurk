@@ -55,6 +55,25 @@ class TestIkeaExtractItemCode:
         assert lang == "tr"
 
 
+def test_search_items_passes_requested_page(monkeypatch):
+    ikea_service = IkeaService()
+    response = MagicMock(status_code=200)
+    response.url = "https://frontendapi.ikea.com.tr/api/search/products"
+    response.json.return_value = {"products": []}
+    captured = {}
+
+    def fake_get(url, **kwargs):
+        captured.update(kwargs.get("params", {}))
+        return response
+
+    monkeypatch.setattr(ikea_service.client, "get", fake_get)
+
+    ikea_service.search_items(query=None, category="kanepeler", limit=40, page=3)
+
+    assert captured["size"] == 40
+    assert captured["page"] == 3
+
+
 @pytest.mark.django_db
 class TestIkeaService:
     """variantInfo у IKEA TR бывает list или nested dict — цвет для вариантов и фронта."""

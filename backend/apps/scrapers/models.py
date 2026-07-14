@@ -595,6 +595,18 @@ class SiteScraperTask(models.Model):
         verbose_name=_("Подкатегория"),
         help_text=_("Опционально. Узкая подкатегория (например, жанр книги или тип одежды). Если выбрано, товары будут сохранены сюда."),
     )
+    target_brand = models.ForeignKey(
+        "catalog.Brand",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="site_scraper_tasks",
+        verbose_name=_("Бренд"),
+        help_text=_(
+            "Опционально. Проставит бренд всем товарам этой задачи. "
+            "Имеет приоритет над брендом из конфигурации парсера и данными страницы."
+        ),
+    )
     GENDER_CHOICES = [
         ("men", _("Мужской")),
         ("women", _("Женский")),

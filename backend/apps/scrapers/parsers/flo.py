@@ -19,6 +19,7 @@ class FloParser(BaseScraper):
     """Парсер flo.com.tr на основе серверного JSON ``window.productDetail``."""
 
     SUPPORTS_PAGE_CHUNKING = True
+    REPORTS_PAGES_PROCESSED = True
 
     PRODUCT_PATH_RE = re.compile(r"/urun/[^/?#]*?-(\d{4,})(?:[/?#]|$)", re.IGNORECASE)
     PRODUCT_DETAIL_MARKER = "window.productDetail = "
@@ -126,6 +127,7 @@ class FloParser(BaseScraper):
             html = self._fetch(page_url)
             if not html:
                 break
+            self.pages_processed += 1
 
             product_urls = self._extract_product_links(html)
             new_on_page = 0

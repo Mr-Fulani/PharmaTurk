@@ -259,6 +259,7 @@ class IkeaService:
         limit: int = 24,
         *,
         language: str = "tr",
+        page: int = 1,
     ) -> List[Dict]:
         """Ищет товары по запросу или категории."""
         url = f"{self.BASE_URL}/search/products"
@@ -273,6 +274,8 @@ class IkeaService:
             params["keyword"] = query
         if category:
             params["Category"] = category
+        if page > 1:
+            params["page"] = page
 
         headers = {**self.HEADERS, "x-bone-language": language}
 
@@ -306,6 +309,7 @@ class IkeaService:
         limit: int = 24,
         *,
         language: str = "tr",
+        page: int = 1,
     ) -> List[Dict]:
         """Получает товары конкретной категории по её слагу."""
         # Исследование показало, что API IKEA ожидает весьма специфическую нормализацию:
@@ -320,7 +324,13 @@ class IkeaService:
                 if lang not in order:
                     order.append(lang)
             for lang in order:
-                found = self.search_items(query=None, category=slug, limit=limit, language=lang)
+                found = self.search_items(
+                    query=None,
+                    category=slug,
+                    limit=limit,
+                    language=lang,
+                    page=page,
+                )
                 if found:
                     return found
             return []
@@ -349,6 +359,8 @@ class IkeaService:
                     "SearchFrom": "Category",
                     "IncludeColorVariants": "true",
                 }
+                if page > 1:
+                    params["page"] = page
                 headers = {**self.HEADERS, "x-bone-language": lang}
                 try:
                     response = self.client.get(url, params=params, headers=headers)

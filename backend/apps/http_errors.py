@@ -21,13 +21,13 @@ class ExternalAccessBlockedError(RuntimeError):
             super().__init__(message)
             return
         host = urlparse(url).netloc or url
-        reason = "отклонил авторизацию" if status_code == 401 else "запретил доступ"
+        reason = "отклонил авторизацию" if status_code in (401, 407) else "запретил доступ"
         super().__init__(f"{source} {reason} (HTTP {status_code}, {host})")
 
 
 def raise_for_blocked_status(*, status_code: int, url: str, source: str) -> None:
-    """Преобразует только 401/403 в единую ошибку доступа."""
-    if status_code in (401, 403):
+    """Преобразует отказ источника или прокси в единую ошибку доступа."""
+    if status_code in (401, 403, 407):
         raise ExternalAccessBlockedError(
             source=source,
             status_code=status_code,

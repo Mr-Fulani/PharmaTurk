@@ -773,6 +773,7 @@ class ScraperIntegrationService:
         max_products: int = None,
         max_images_per_product: int = None,
         target_category=None,
+        target_brand=None,
         gender: str = "",
         start_page: int = 1,
         site_task_id: Optional[int] = None,
@@ -790,6 +791,7 @@ class ScraperIntegrationService:
             max_pages: Максимальное количество страниц
             max_products: Максимальное количество товаров
             target_category: Категория для сохранения товаров (переопределяет default_category)
+            target_brand: Бренд для товаров задачи (переопределяет default_brand)
 
         Returns:
             Сессия парсинга
@@ -813,6 +815,9 @@ class ScraperIntegrationService:
         # Пол из настроек задачи (men/women/unisex или пусто). Транзиентно: применяется
         # в _process_scraped_products как явный override, в БД сессии не хранится.
         session._override_gender = gender or ""
+        # Бренд задачи хранится транзиентно, аналогично полу: он нужен только во
+        # время этой обработки и не изменяет конфигурацию парсера.
+        session._override_brand = target_brand
 
         try:
             # Получаем класс парсера
@@ -1043,7 +1048,10 @@ class ScraperIntegrationService:
                         "(спарсено %s товаров, цепочка продолжится).",
                         incremental_results["found"],
                     )
-                session.pages_processed += incremental_results["found"] // 20 + 1
+                if getattr(parser, "REPORTS_PAGES_PROCESSED", False):
+                    session.pages_processed += parser.pages_processed
+                elif incremental_results["found"]:
+                    session.pages_processed += incremental_results["found"] // 20 + 1
 
             elif is_search:
                 # Поиск товаров
@@ -1233,15 +1241,19 @@ class ScraperIntegrationService:
         """
         Устанавливает бренд товара.
         Приоритет:
-        1. scraper_config.default_brand — бренд по умолчанию из конфигурации (самый надежный)
-        2. scraped_product.brand — бренд, найденный парсером на странице
+        1. Бренд конкретной задачи
+        2. scraper_config.default_brand — бренд по умолчанию из конфигурации
+        3. scraped_product.brand — бренд, найденный парсером на странице
         """
-        # Приоритет 1: бренд из конфигурации парсера
-        default_brand = session.scraper_config.default_brand
-        
-        if default_brand:
-            scraped_product.brand = default_brand.name
-        # Если в конфигурации пусто, используем то что нашел парсер (уже в scraped_product.brand)
+        override_brand = getattr(session, "_override_brand", None)
+        brand = override_brand or session.scraper_config.default_brand
+
+        if brand:
+            scraped_product.brand = brand.name
+        # Сохраняем сам объект только для явного выбора в задаче. Это позволяет
+        # авторитетно заменить бренд существующего товара без повторного поиска по имени.
+        scraped_product._brand_override = override_brand
+        # Если оба поля пусты, сохраняем бренд, который нашел парсер.
 
     def _get_first_image_url(self, media_urls: List[str]) -> Optional[str]:
         for media_url in media_urls or []:
@@ -2666,11 +2678,15 @@ class ScraperIntegrationService:
                 existing_product.is_available = (existing_product.stock_quantity or 0) > 0
                 updated = True
 
-        # Бренд после обогащения/ручной правки не перетираем повторным парсом:
-        # при повторной синхронизации только дозаполняем пустое поле.
-        if scraped_product.brand:
+        # Явный бренд задачи авторитетен и заменяет текущее значение. Обычный
+        # бренд конфигурации/парсера по-прежнему только дозаполняет пустое поле,
+        # чтобы повторный парсинг не стирал ручную правку.
+        brand_override = getattr(scraped_product, "_brand_override", None)
+        if brand_override and existing_product.brand_id != brand_override.pk:
+            existing_product.brand = brand_override
+            updated = True
+        elif scraped_product.brand:
             from apps.catalog.models import Brand
-            from django.utils.text import slugify as _slugify
             brand_name = scraped_product.brand.strip()
             if not existing_product.brand:
                 brand = Brand.objects.filter(name__iexact=brand_name).first()

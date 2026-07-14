@@ -255,11 +255,20 @@ def run_scraper_task(self,
                 )
             return result
         
+        requested_chunk_pages = max_pages or scraper_config.max_pages_per_run
+        parser_class = get_parser(scraper_config.parser_class)
+        max_pages_per_chunk = getattr(parser_class, "MAX_PAGES_PER_CHUNK", None)
+        runtime_max_pages = (
+            min(requested_chunk_pages, max_pages_per_chunk)
+            if max_pages_per_chunk
+            else requested_chunk_pages
+        )
+
         log_lines = [
             f"Парсер: {scraper_config.name}",
             f"URL: {start_url or scraper_config.base_url}",
             f"Страница старт: {start_page}",
-            f"Страниц в чанке: {max_pages or scraper_config.max_pages_per_run}",
+            f"Страниц в чанке: {runtime_max_pages}",
             f"Макс. товаров всего: {max_products or scraper_config.max_products_per_run}",
             f"Макс. медиа: {max_images_per_product or scraper_config.max_images_per_product}",
             f"Старт: {timezone.now().isoformat()}"
@@ -309,10 +318,11 @@ def run_scraper_task(self,
         session = integration_service.run_scraper(
             scraper_config=scraper_config,
             start_url=start_url,
-            max_pages=max_pages,
+            max_pages=runtime_max_pages,
             max_products=max_products,
             max_images_per_product=max_images_per_product,
             target_category=target_category,
+            target_brand=(site_task.target_brand if site_task else None),
             gender=(site_task.gender if site_task else ""),
             start_page=start_page,
             site_task_id=site_task_id,
@@ -355,7 +365,8 @@ def run_scraper_task(self,
             new_created = total_created + session.products_created
             new_updated = total_updated + session.products_updated
             new_skipped = total_skipped + session.products_skipped
-            chunk_pages = max_pages or scraper_config.max_pages_per_run
+            new_pages_total = site_task.pages_processed + session.pages_processed
+            chunk_pages = session.max_pages
             effective_max = site_task.max_products
 
             # Абсолютные значения (не F()): live-апдейт в процессе ставит ту же
@@ -416,7 +427,7 @@ def run_scraper_task(self,
                 next_task = run_scraper_task.apply_async(kwargs=dict(
                     scraper_config_id=scraper_config_id,
                     start_url=start_url,
-                    max_pages=max_pages,
+                    max_pages=runtime_max_pages,
                     max_products=max_products,
                     max_images_per_product=max_images_per_product,
                     site_task_id=site_task_id,
@@ -444,7 +455,8 @@ def run_scraper_task(self,
                 )
                 logger.info(
                     f"Парсер {scraper_config.name} завершён: "
-                    f"всего {new_total} товаров за {start_page + chunk_pages - 1} страниц"
+                    f"всего {new_total} товаров, реально обработано "
+                    f"{new_pages_total} страниц"
                 )
                 # Цепочка завершена — подчищаем parsed-орфаны парсера (от пропущенных дублей).
                 _sweep_parsed_orphans(scraper_config.parser_class)
