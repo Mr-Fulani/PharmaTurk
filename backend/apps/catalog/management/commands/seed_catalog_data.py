@@ -92,11 +92,8 @@ SUBCAT_TO_ROOT = {
     "disinfection-hygiene": "medical-equipment",
     # Аксессуары L2 (под accessories)
     "bags-wallets": "accessories",
-    "acc-jewelry": "accessories",
-    "fashion-jewelry": "accessories",
     "watches": "accessories",
     "belts": "accessories",
-    "acc-headwear": "accessories",
     "scarves-shawls": "accessories",
     "acc-gloves": "accessories",
     "eyewear": "accessories",

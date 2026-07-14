@@ -3133,20 +3133,6 @@ ACCESSORIES_SUBCATEGORIES = [
         ],
     ),
     (
-        "Бижутерия",
-        "Fashion Jewelry",
-        "fashion-jewelry",
-        "Бижутерия",
-        "Fashion jewelry",
-        [
-            ("Кольца", "Rings", "bijou-rings", "Бижутерия кольца", "Fashion jewelry rings"),
-            ("Серьги", "Earrings", "bijou-earrings", "Бижутерия серьги", "Fashion jewelry earrings"),
-            ("Колье", "Necklaces", "bijou-necklaces", "Бижутерия колье", "Fashion jewelry necklaces"),
-            ("Браслеты", "Bracelets", "bijou-bracelets", "Бижутерия браслеты", "Fashion jewelry bracelets"),
-            ("Наборы бижутерии", "Jewelry Sets", "bijou-sets", "Наборы бижутерии", "Fashion jewelry sets"),
-        ],
-    ),
-    (
         "Часы",
         "Watches",
         "watches",
@@ -3209,40 +3195,6 @@ ACCESSORIES_SUBCATEGORIES = [
                     ("Широкие", "Wide", "womens-wide-belts", "Широкие женские ремни", "Wide women's belts"),
                 ],
             ),
-        ],
-    ),
-    (
-        "Головные уборы",
-        "Headwear",
-        "acc-headwear",
-        "Головные уборы",
-        "Headwear",
-        [
-            ("Шапки", "Beanies", "beanies", "Шапки", "Beanies"),
-            (
-                "Кепки",
-                "Caps",
-                "acc-caps",
-                "Кепки",
-                "Caps",
-                [
-                    ("Бейсболки", "Baseball Caps", "baseball-caps", "Бейсболки", "Baseball caps"),
-                    ("Панамы", "Bucket Hats", "bucket-hats", "Панамы", "Bucket hats"),
-                ],
-            ),
-            (
-                "Шляпы",
-                "Hats",
-                "acc-hats",
-                "Шляпы",
-                "Hats",
-                [
-                    ("Фетровые", "Fedora", "fedora-hats", "Фетровые шляпы", "Fedora hats"),
-                    ("Соломенные", "Straw Hats", "straw-hats", "Соломенные шляпы", "Straw hats"),
-                ],
-            ),
-            ("Береты", "Berets", "berets", "Береты", "Berets"),
-            ("Платки и банданы", "Scarves & Bandanas", "scarves-bandanas", "Платки и банданы", "Scarves and bandanas"),
         ],
     ),
     (
@@ -3628,7 +3580,7 @@ INCENSE_SUBCATEGORIES = [
     ),
 ]
 
-# Головные уборы (headwear): 3–4 уровня. Префикс hw- для избежания конфликтов с acc-headwear.
+# Головные уборы (headwear): 3–4 уровня. Префикс hw- сохраняет уникальность slug.
 HEADWEAR_SUBCATEGORIES = [
     (
         "Зимние головные уборы",
@@ -4233,7 +4185,6 @@ BRANDS_DATA = {
     ],
     "supplements": [
         ("Solgar", "Американский производитель витаминов и БАДов.", "American manufacturer of vitamins and supplements.", "https://www.solgar.com"),
-        ("Now Foods", "Производитель натуральных добавок.", "Natural supplements manufacturer.", "https://www.nowfoods.com"),
         ("Nature's Bounty", "Витамины и БАДы.", "Vitamins and dietary supplements.", "https://www.naturesbounty.com"),
     ],
     "clothing": [
@@ -4298,13 +4249,11 @@ BRANDS_DATA = {
         ("Decathlon", "Спортивные товары.", "Sports goods retailer.", "https://www.decathlon.com"),
     ],
     "auto-parts": [
-        ("Tofaş", "Турецкий автопроизводитель.", "Turkish automobile manufacturer.", "https://www.tofas.com.tr"),
         ("Bosch", "Немецкий производитель автозапчастей.", "German auto parts manufacturer.", "https://www.bosch.com"),
         ("Ford Otosan", "Совместное предприятие Ford в Турции.", "Ford joint venture in Turkey.", "https://www.fordotosan.com.tr"),
     ],
     "islamic-clothing": [
         ("Tekbir", "Турецкий бренд исламской одежды.", "Turkish Islamic clothing brand.", ""),
-        ("Armine", "Мусульманская одежда и хиджабы.", "Islamic clothing and hijabs.", ""),
     ],
     "incense": [
         ("Al Haramain", "Арабские благовония и oud.", "Arabian incense and oud.", "https://www.alharamainperfumes.com"),
