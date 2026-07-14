@@ -435,6 +435,7 @@ class ContentGenerator:
             "description": description,
             "price": str(product.price) if product.price else None,
             "brand": product.brand.name if product.brand else None,
+            "category_context": self._get_category_context(product),
         }
 
         variant_context = self._collect_variant_context(product)
@@ -532,6 +533,35 @@ class ContentGenerator:
         data["category_family_rules"] = self._get_category_family_rules(product)
 
         return data
+
+    def _get_category_context(self, product: Product) -> Dict[str, Any]:
+        """Явный путь категории для выбора смысла терминов при локализации."""
+        category = getattr(product, "category", None)
+        if category is None:
+            return {}
+
+        lineage = []
+        current = category
+        guard = 0
+        while current is not None and guard < 10:
+            lineage.append(
+                {
+                    "name": (getattr(current, "name", "") or "").strip(),
+                    "slug": (getattr(current, "slug", "") or "").strip(),
+                }
+            )
+            current = getattr(current, "parent", None)
+            guard += 1
+        lineage.reverse()
+
+        names = [item["name"] for item in lineage if item["name"]]
+        return {
+            "category": names[0] if names else "",
+            "subcategory": names[-1] if len(names) > 1 else "",
+            "current_category": names[-1] if names else "",
+            "category_path": " > ".join(names),
+            "lineage": lineage,
+        }
 
     def _collect_dynamic_attribute_catalog(self, product: Product) -> List[Dict[str, str]]:
         """Список доступных динамических атрибутов для категории товара."""
@@ -1112,13 +1142,14 @@ class ContentGenerator:
 
         Правила:
         1. Название товара (ru.generated_title) — ОБЯЗАТЕЛЬНО заполняй. Это главное отображаемое название: короткое, без подзаголовка и лишнего текста (например: «ИСЛАМСКИЕ ФИНАНСЫ», а не «ИСЛАМСКИЕ ФИНАНСЫ концепция и инструменты»). Для книг при наличии name в image_analysis — используй его; иначе очисти product_name от подзаголовка.
-        2. SEO (meta title, meta description, keywords) — ТОЛЬКО на английском, латиница. Кириллица в SEO недопустима.
+        2. Создавай название, описание и SEO в двух отдельных языковых блоках: ru — только на русском, en — только на английском. ru и en должны описывать один и тот же тип товара и одни и те же подтверждённые свойства.
         3. Описание товара — всегда на двух языках (ru и en). ru.generated_description и en.generated_description — один смысл (переводы друг друга). Исходный текст может быть на русском, английском или турецком: очисти, улучши, затем создай оба перевода. Объём каждого: от 20 до 100 слов. Если текстового описания нет или оно скудное, но есть image_analysis — пиши описание и SEO на основе изображений.
         4. Технические поля (ISBN, издательство, страницы, автор и т.д.) заполняй только если данные есть в описании или known_attributes. Не придумывай.
         5. Определяй категорию по контексту товара.
         6. Предпочитай конкретные факты из сырого текста маркетинговым штампам. Если в источнике есть материал, тип застёжки, форма носка, узор, состав, уход, назначение — используй их.
         7. Не включай цену, валюту, SKU, product code, TL/TRY, внешний ID и служебные коды в название, описание и SEO.
         8. Не пиши пустые общие фразы вроде «идеально подходит для повседневной носки», если это не следует из исходного текста.
+        9. category_context — обязательный смысловой контекст товара. category_path показывает путь от корневой категории к самой точной подкатегории. При переводе многозначных слов фактический тип товара выбирай прежде всего по самой точной подкатегории, если исходные данные ей явно не противоречат. Не переводи слово изолированно и буквально вопреки категории. Например, турецкое «şapka» в подкатегории «Кепки» означает «кепка» / «cap», а не «шапка» / «beanie». Выбранный тип товара используй одинаково в RU/EN названиях, описаниях, SEO title, SEO description и keywords.
 
         Ответ — строго JSON по указанной структуре.
         """
@@ -1211,6 +1242,7 @@ class ContentGenerator:
         data = {
             "product_name": input_data.get("name", ""),
             "brand": input_data.get("brand") or "Unknown",
+            "category_context": input_data.get("category_context") or {},
             "known_attributes": known_attrs,
             "source_sections": {
                 key: {
@@ -1250,6 +1282,7 @@ class ContentGenerator:
         Составь карточку из этих данных. Это задача перевода и раскладки, не копирайтинг.
 
         Требования к качеству:
+        - Учитывай category_context как назначенный путь категории товара; используй одинаковый тип товара в RU/EN названиях, описаниях и SEO.
         - Используй только факты из source_sections, source_description, known_attributes или image_analysis.
         - Если source_sections не пустой, НЕ используй source_description и НЕ пересказывай разделы.
         - source_sections.indications -> indications.
@@ -1823,6 +1856,7 @@ class ContentGenerator:
             "product_name": input_data["name"],
             "current_description": input_data["description"],
             "brand": input_data["brand"] or "Unknown",
+            "category_context": input_data.get("category_context") or {},
             "known_attributes": known_attrs,
             "image_analysis": image_analysis,
         }
@@ -1854,6 +1888,8 @@ class ContentGenerator:
         {json.dumps(data, ensure_ascii=False)}
 
         Важно:
+        - category_context содержит назначенную товару категорию и полный путь подкатегорий. Считай самую точную подкатегорию фактическим типом товара и используй её для разрешения неоднозначных слов во ВСЕХ полях RU и EN: generated_title, generated_description, seo_title, seo_description и keywords. Не делай буквальный перевод, противоречащий подкатегории. Пример: «şapka» при category_path «Головные уборы > Кепки» — это «кепка» в RU и «cap» в EN, не «шапка» и не «beanie».
+        - Если исходный текст явно противоречит назначенной подкатегории, не маскируй противоречие выдуманными фактами; выбирай тип по совокупности исходных данных. Во всех языковых и SEO-полях термин должен оставаться единообразным.
         - Если в current_description есть текст (например на русском), но НЕТ image_analysis (картинки не загрузились) — ОБЯЗАТЕЛЬНО переведи описание на английский в en.generated_description и заполни ВСЕ SEO-поля и для ru, и для en. Не оставляй ru/en SEO пустыми, когда есть текст описания.
         - Если у товара НЕТ описания или оно очень короткое (мало текста), но есть image_analysis (анализ фото товара) — ОБЯЗАТЕЛЬНО сгенерируй описание на двух языках (ru и en) и заполни все SEO-поля в "ru" и "en" на основе анализа изображений. Не оставляй описание и SEO пустыми, когда есть картинки.
         - Если есть и текст, и image_analysis — объединяй: описание на двух языках и SEO на двух языках.
