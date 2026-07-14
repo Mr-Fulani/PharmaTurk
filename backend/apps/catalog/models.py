@@ -290,6 +290,14 @@ class Category(models.Model):
         ('unisex', _('Унисекс')),
         ('kids', _('Детская')),
     ]
+
+    SHIPPING_CALCULATION_CHOICES = [
+        ("inherit", _("Наследовать")),
+        ("fixed", _("Фиксированная цена за единицу")),
+        ("weight", _("По оплачиваемому весу")),
+        ("volume", _("По объёму")),
+        ("quote", _("Цена по запросу")),
+    ]
     
     # Основные поля
     name = models.CharField(_("Название"), max_length=200)
@@ -367,6 +375,53 @@ class Category(models.Model):
     margin_percent = models.DecimalField(
         _("Маржа, %"), max_digits=5, decimal_places=2, default=0,
         help_text=_("Процент наценки для категории; перекрывается на уровне бренда/товара")
+    )
+    shipping_calculation = models.CharField(
+        _("Расчёт доставки"),
+        max_length=16,
+        choices=SHIPPING_CALCULATION_CHOICES,
+        default="inherit",
+        help_text=_("Наследуется от ближайшей родительской категории; если нигде не задано — используются глобальные фиксированные тарифы."),
+    )
+    air_shipping_cost_usd = models.DecimalField(
+        _("База авиадоставки, USD"), max_digits=10, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    sea_shipping_cost_usd = models.DecimalField(
+        _("База морской доставки, USD"), max_digits=10, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    ground_shipping_cost_usd = models.DecimalField(
+        _("База наземной доставки, USD"), max_digits=10, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    air_shipping_rate_per_kg_usd = models.DecimalField(
+        _("Авиа за кг, USD"), max_digits=10, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    sea_shipping_rate_per_kg_usd = models.DecimalField(
+        _("Море за кг, USD"), max_digits=10, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    ground_shipping_rate_per_kg_usd = models.DecimalField(
+        _("Наземная за кг, USD"), max_digits=10, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    air_shipping_rate_per_m3_usd = models.DecimalField(
+        _("Авиа за м³, USD"), max_digits=12, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    sea_shipping_rate_per_m3_usd = models.DecimalField(
+        _("Море за м³, USD"), max_digits=12, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    ground_shipping_rate_per_m3_usd = models.DecimalField(
+        _("Наземная за м³, USD"), max_digits=12, decimal_places=2,
+        null=True, blank=True, validators=[MinValueValidator(0)],
+    )
+    free_shipping_eligible = models.BooleanField(
+        _("Участвует в бесплатной доставке"), default=True,
+        help_text=_("Отключите для лекарств с особым режимом, крупногабаритных и других дорогих отправлений."),
     )
     sort_order = models.PositiveIntegerField(_("Порядок сортировки"), default=0)
     created_at = models.DateTimeField(_("Дата создания"), auto_now_add=True)

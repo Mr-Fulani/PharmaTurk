@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'next-i18next'
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations'
 import { SITE_NAME } from '../lib/siteMeta'
-import { formatPrice } from '../lib/price'
+import { formatMoney } from '../lib/price'
 import Link from 'next/link'
 import api from '../lib/api'
 import { resolveMediaUrl, isVideoUrl } from '../lib/media'
@@ -1069,13 +1069,13 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                               {t('checkout_qty', 'Кол-во')}: {item.quantity}
                             </span>
                             <span className="text-xs text-gray-500">
-                              {item.price} {item.currency} {t('checkout_per_item', 'за шт.')}
+                              {formatMoney(item.price)} {item.currency} {t('checkout_per_item', 'за шт.')}
                             </span>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="font-bold text-gray-900 text-sm">
-                            {formatPrice(parseFloat(item.price) * item.quantity)} {item.currency}
+                            {formatMoney(parseFloat(item.price) * item.quantity)} {item.currency}
                           </p>
                         </div>
                       </div>
@@ -1088,7 +1088,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 <div className="flex justify-between text-sm text-gray-600">
                   <span>{t('cart_subtotal', 'Сумма товаров')}</span>
                   <span className="font-medium text-gray-900">
-                    {cart.total_amount} {cart.currency || 'USD'}
+                    {formatMoney(cart.total_amount)} {cart.currency || 'USD'}
                   </span>
                 </div>
                 {parseFloat(String(cart.discount_amount ?? '0')) > 0 ? (
@@ -1096,7 +1096,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     <div className="flex justify-between text-sm !text-red-600">
                       <span>{t('cart_discount', 'Скидка')}</span>
                       <span className="font-medium">
-                        -{cart.discount_amount} {cart.currency || 'USD'}
+                        -{formatMoney(cart.discount_amount)} {cart.currency || 'USD'}
                       </span>
                     </div>
                     {cart.promo_code && (
@@ -1125,7 +1125,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   <div className="flex justify-between items-baseline">
                     <span className="text-lg font-semibold text-gray-900">{t('cart_total', 'Итого')}</span>
                     <span className="text-2xl font-bold text-violet-600">
-                      {formatPrice(
+                      {formatMoney(
                         parseFloat(cart.final_amount || cart.total_amount || '0') +
                         (cart?.shipping_requires_quote ? 0 : cart.shipping_options?.[shippingMethod] || 0)
                       )}{' '}

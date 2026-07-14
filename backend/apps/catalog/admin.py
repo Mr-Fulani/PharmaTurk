@@ -596,7 +596,7 @@ class BaseCategoryAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
     """Базовый админ для прокси категорий с фильтром по типу."""
     form = CategoryFormCatalogHints
     required_category_type_slug: str | None = None
-    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent', 'shipping_calculation', 'is_active', 'sort_order', 'created_at')
     list_filter = (
         ActiveRootFilter,
         'is_active',
@@ -604,6 +604,7 @@ class BaseCategoryAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
         CategoryRootFilter,
         ('parent', admin.RelatedOnlyFieldListFilter),
         'category_type',
+        'shipping_calculation',
         'clothing_type',
         'device_type',
         'created_at',
@@ -631,6 +632,27 @@ class BaseCategoryAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
         (_('Медиа карточки'), {
             'fields': ('card_media', 'card_media_external_url', 'card_media_preview'),
             'description': _('Это медиа самой категории. Используется в карточках/hero категории и как fallback для OG image. Можно указать файл или внешнюю ссылку (CDN/S3). Внешняя ссылка приоритетнее.'),
+        }),
+        (_('Доставка'), {
+            'fields': ('shipping_calculation', 'free_shipping_eligible'),
+            'description': _(
+                'Приоритет ниже товара и варианта, но выше глобального тарифа. Сначала выберите способ расчёта. '
+                '«Наследовать» берёт всё правило ближайшей родительской категории, затем глобальные настройки.'
+            ),
+        }),
+        (_('Доставка — фиксированная база за единицу (USD)'), {
+            'fields': ('air_shipping_cost_usd', 'sea_shipping_cost_usd', 'ground_shipping_cost_usd'),
+            'description': _('Для фиксированной авиадоставки 10 USD укажите здесь «Авиа = 10». Пусто — глобальная база; 0 — бесплатно.'),
+        }),
+        (_('Доставка — дополнительная ставка за кг (USD)'), {
+            'fields': ('air_shipping_rate_per_kg_usd', 'sea_shipping_rate_per_kg_usd', 'ground_shipping_rate_per_kg_usd'),
+            'classes': ('collapse',),
+            'description': _('Работает только в режиме «По оплачиваемому весу» и только когда у товара заполнен вес или габариты.'),
+        }),
+        (_('Доставка — дополнительная ставка за м³ (USD)'), {
+            'fields': ('air_shipping_rate_per_m3_usd', 'sea_shipping_rate_per_m3_usd', 'ground_shipping_rate_per_m3_usd'),
+            'classes': ('collapse',),
+            'description': _('Работает только в режиме «По объёму» и только когда у товара заполнены длина, ширина и высота.'),
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),
@@ -691,7 +713,7 @@ class BaseCategoryAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
 class AllCategoriesAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
     """Единый список всех категорий (корневые и подкатегории)."""
     form = CategoryFormCatalogHints
-    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent_display', 'margin_percent', 'is_active', 'sort_order', 'created_at')
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent_display', 'margin_percent', 'shipping_calculation', 'is_active', 'sort_order', 'created_at')
     list_filter = (
         ActiveRootFilter,
         'is_active',
@@ -699,6 +721,7 @@ class AllCategoriesAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin)
         CategoryRootFilter,
         ('parent', admin.RelatedOnlyFieldListFilter),
         'category_type',
+        'shipping_calculation',
         'created_at',
     )
     search_fields = ('name', 'slug', 'description')
@@ -731,6 +754,27 @@ class AllCategoriesAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin)
             'description': _(
                 'Накладывается поверх маржи валютной пары. Используется, если у бренда товара не задана своя наценка.'
             ),
+        }),
+        (_('Доставка'), {
+            'fields': ('shipping_calculation', 'free_shipping_eligible'),
+            'description': _(
+                'Приоритет ниже товара и варианта, но выше глобального тарифа. Сначала выберите способ расчёта. '
+                '«Наследовать» берёт всё правило ближайшей родительской категории, затем глобальные настройки.'
+            ),
+        }),
+        (_('Доставка — фиксированная база за единицу (USD)'), {
+            'fields': ('air_shipping_cost_usd', 'sea_shipping_cost_usd', 'ground_shipping_cost_usd'),
+            'description': _('Для фиксированной авиадоставки 10 USD укажите здесь «Авиа = 10». Пусто — глобальная база; 0 — бесплатно.'),
+        }),
+        (_('Доставка — дополнительная ставка за кг (USD)'), {
+            'fields': ('air_shipping_rate_per_kg_usd', 'sea_shipping_rate_per_kg_usd', 'ground_shipping_rate_per_kg_usd'),
+            'classes': ('collapse',),
+            'description': _('Работает только в режиме «По оплачиваемому весу» и только когда у товара заполнен вес или габариты.'),
+        }),
+        (_('Доставка — дополнительная ставка за м³ (USD)'), {
+            'fields': ('air_shipping_rate_per_m3_usd', 'sea_shipping_rate_per_m3_usd', 'ground_shipping_rate_per_m3_usd'),
+            'classes': ('collapse',),
+            'description': _('Работает только в режиме «По объёму» и только когда у товара заполнены длина, ширина и высота.'),
         }),
         (_('Settings'), {'fields': ('is_active', 'sort_order')}),
         (_('External'), {'fields': ('external_id', 'external_data')}),

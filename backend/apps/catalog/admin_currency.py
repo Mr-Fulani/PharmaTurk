@@ -6,7 +6,10 @@ from django.db.models import Count
 from django.urls import reverse
 from django.utils.safestring import mark_safe
 from decimal import Decimal
-from .currency_models import CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog, ProductVariantPrice, GlobalCurrencySettings, ServicePrice
+from .currency_models import (
+    CurrencyRate, MarginSettings, ProductPrice, CurrencyUpdateLog,
+    ProductVariantPrice, GlobalCurrencySettings, GlobalShippingSettings, ServicePrice,
+)
 
 
 @admin.register(GlobalCurrencySettings)
@@ -14,9 +17,7 @@ class GlobalCurrencySettingsAdmin(admin.ModelAdmin):
     """Админ-панель для глобальных настроек валют."""
     
     list_display = [
-        'id_display', 'default_margin_percentage', 'usdt_markup_percentage',
-        'default_ground_shipping_usd', 'free_shipping_min_subtotal_usd',
-        'updated_at',
+        'id_display', 'default_margin_percentage', 'usdt_markup_percentage', 'updated_at',
     ]
     readonly_fields = ['created_at', 'updated_at']
     
@@ -35,15 +36,6 @@ class GlobalCurrencySettingsAdmin(admin.ModelAdmin):
                 'в выборе товарной маржи. USDT считается от паритета 1 USDT = 1 USD плюс наценка USDT.'
             ),
         }),
-        ('Доставка по умолчанию (USD)', {
-            'fields': (
-                'default_air_shipping_usd',
-                'default_sea_shipping_usd',
-                'default_ground_shipping_usd',
-                'free_shipping_min_subtotal_usd',
-            ),
-            'description': 'Суммы в долларах США; в корзине конвертируются в валюту клиента без торговой маржи.',
-        }),
         ('Временные метки', {
             'fields': ('created_at', 'updated_at'),
             'classes': ('collapse',)
@@ -58,6 +50,62 @@ class GlobalCurrencySettingsAdmin(admin.ModelAdmin):
         if self.model.objects.exists():
             return False
         return super().has_add_permission(request)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(GlobalShippingSettings)
+class GlobalShippingSettingsAdmin(admin.ModelAdmin):
+    """Глобальные fallback-настройки доставки без смешивания с маржами."""
+
+    list_display = [
+        'id_display', 'default_air_shipping_usd', 'default_sea_shipping_usd',
+        'default_ground_shipping_usd', 'free_shipping_min_subtotal_usd', 'updated_at',
+    ]
+    readonly_fields = ['shipping_priority_help', 'created_at', 'updated_at']
+    fieldsets = (
+        ('Как выбирается тариф', {
+            'fields': ('shipping_priority_help',),
+        }),
+        ('Глобальные тарифы по умолчанию (USD)', {
+            'fields': (
+                'default_air_shipping_usd',
+                'default_sea_shipping_usd',
+                'default_ground_shipping_usd',
+            ),
+            'description': (
+                'Используются только когда тариф не задан у варианта, товара или категории. '
+                'В корзине конвертируются из USD без товарной и валютной маржи.'
+            ),
+        }),
+        ('Вес и бесплатная доставка', {
+            'fields': ('shipping_volumetric_divisor', 'free_shipping_min_subtotal_usd'),
+            'description': (
+                'Категории можно исключить из бесплатной доставки. Делитель применяется только '
+                'к категориям с режимом «По оплачиваемому весу».'
+            ),
+        }),
+        ('Временные метки', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    @admin.display(description='Настройки')
+    def id_display(self, obj):
+        return 'Глобальные настройки доставки'
+
+    @admin.display(description='Приоритет')
+    def shipping_priority_help(self, obj):
+        return format_html(
+            '<strong>{}</strong><br>{}',
+            'Вариант товара → товар → ближайшая категория → глобальный тариф.',
+            'Пустое поле наследует следующий уровень. Значение 0 означает бесплатную доставку.',
+        )
+
+    def has_add_permission(self, request):
+        return False
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -270,9 +318,12 @@ class ProductPriceAdmin(admin.ModelAdmin):
             'fields': ('try_price', 'try_price_with_margin'),
             'classes': ('collapse',)
         }),
-        ('Доставка', {
+        ('Индивидуальная доставка — наивысший приоритет', {
             'fields': ('air_shipping_cost', 'sea_shipping_cost', 'ground_shipping_cost'),
-            'classes': ('collapse',)
+            'description': (
+                'Эти суммы в USD перекрывают тариф категории и глобальные настройки. '
+                'Пустое поле — наследовать; 0 — бесплатная доставка для этого товара.'
+            ),
         }),
         ('Временные метки', {
             'fields': ('created_at', 'updated_at'),
@@ -297,12 +348,12 @@ class ProductPriceAdmin(admin.ModelAdmin):
     def shipping_info(self, obj):
         """Информация о стоимости доставки."""
         costs = []
-        if obj.air_shipping_cost:
-            costs.append(f"Авиа: {obj.air_shipping_cost}")
-        if obj.sea_shipping_cost:
-            costs.append(f"Море: {obj.sea_shipping_cost}")
-        if obj.ground_shipping_cost:
-            costs.append(f"Назем: {obj.ground_shipping_cost}")
+        if obj.air_shipping_cost is not None:
+            costs.append(f"Авиа: {obj.air_shipping_cost} USD")
+        if obj.sea_shipping_cost is not None:
+            costs.append(f"Море: {obj.sea_shipping_cost} USD")
+        if obj.ground_shipping_cost is not None:
+            costs.append(f"Назем: {obj.ground_shipping_cost} USD")
         if costs:
             return format_html('<br>'.join(costs))
         return 'Не указана'
@@ -422,9 +473,12 @@ class ProductVariantPriceAdmin(admin.ModelAdmin):
             'fields': ('try_price', 'try_price_with_margin'),
             'classes': ('collapse',)
         }),
-        ('Доставка', {
+        ('Индивидуальная доставка варианта — наивысший приоритет', {
             'fields': ('air_shipping_cost', 'sea_shipping_cost', 'ground_shipping_cost'),
-            'classes': ('collapse',)
+            'description': (
+                'Эти суммы в USD перекрывают товар, категорию и глобальные настройки. '
+                'Пустое поле — наследовать; 0 — бесплатная доставка для этого варианта.'
+            ),
         }),
         ('Временные метки', {
             'fields': ('created_at', 'updated_at'),
@@ -453,12 +507,12 @@ class ProductVariantPriceAdmin(admin.ModelAdmin):
     def shipping_info(self, obj):
         """Информация о доставке."""
         costs = []
-        if obj.air_shipping_cost:
-            costs.append(f"Авиа: {obj.air_shipping_cost}")
-        if obj.sea_shipping_cost:
-            costs.append(f"Море: {obj.sea_shipping_cost}")
-        if obj.ground_shipping_cost:
-            costs.append(f"Назем: {obj.ground_shipping_cost}")
+        if obj.air_shipping_cost is not None:
+            costs.append(f"Авиа: {obj.air_shipping_cost} USD")
+        if obj.sea_shipping_cost is not None:
+            costs.append(f"Море: {obj.sea_shipping_cost} USD")
+        if obj.ground_shipping_cost is not None:
+            costs.append(f"Назем: {obj.ground_shipping_cost} USD")
         
         if costs:
             return format_html('<br>'.join(costs))
@@ -674,6 +728,10 @@ class CurrencyUpdateLogAdmin(admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         """Запретить редактирование записей."""
         return False
+
+    def has_delete_permission(self, request, obj=None):
+        """Журнал является историей операций и доступен только для чтения."""
+        return False
     
     def status_badge(self, obj):
         """Индикатор статуса."""
@@ -709,112 +767,10 @@ class CurrencyUpdateLogAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
         ('Временные метки', {
-            'fields': ('created_at', 'updated_at'),
+            'fields': ('created_at',),
             'classes': ('collapse',)
         }),
     )
-    
-    def variant_link(self, obj):
-        """Ссылка на вариант."""
-        if obj.variant:
-            try:
-                # Получаем URL для редактирования варианта
-                content_type = obj.content_type
-                app_label = content_type.app_label
-                model_name = content_type.model
-                
-                # Определяем правильный URL для разных типов вариантов
-                if model_name == 'clothingvariant':
-                    url = reverse('admin:catalog_clothingvariant_change', args=[obj.object_id])
-                elif model_name == 'shoevariant':
-                    url = reverse('admin:catalog_shoevariant_change', args=[obj.object_id])
-                elif model_name == 'jewelryvariant':
-                    url = reverse('admin:catalog_jewelryvariant_change', args=[obj.object_id])
-                elif model_name == 'furniturevariant':
-                    url = reverse('admin:catalog_furniturevariant_change', args=[obj.object_id])
-                elif model_name == 'bookvariant':
-                    url = reverse('admin:catalog_bookvariant_change', args=[obj.object_id])
-                else:
-                    return str(obj.variant)
-                
-                variant_name = getattr(obj.variant, 'name', '') or str(obj.variant)
-                if len(variant_name) > 50:
-                    variant_name = variant_name[:50] + '...'
-                
-                return format_html(
-                    '<a href="{}">{}</a>',
-                    url, variant_name
-                )
-            except Exception as e:
-                return str(obj.variant)
-        return '-'
-    variant_link.short_description = 'Вариант'
-    
-    def get_queryset(self, request):
-        """Оптимизация запросов."""
-        return super().get_queryset(request).select_related('content_type')
-    
-    actions = ['recalculate_prices', 'delete_all_prices']
-    
-    def recalculate_prices(self, request, queryset):
-        """Пересчитать выбранные цены."""
-        from apps.catalog.utils.currency_converter import currency_converter
-        
-        success_count = 0
-        error_count = 0
-        
-        for price_info in queryset:
-            try:
-                # Используем base_price и base_currency из ProductVariantPrice
-                if price_info.base_price and price_info.base_currency:
-                    # Конвертируем в целевые валюты
-                    results = currency_converter.convert_to_multiple_currencies(
-                        price_info.base_price, price_info.base_currency, ['RUB', 'USD', 'KZT', 'EUR', 'TRY', 'USDT'], apply_margin=True
-                    )
-                    
-                    if 'RUB' in results and results['RUB']:
-                        price_info.rub_price = results['RUB']['converted_price']
-                        price_info.rub_price_with_margin = results['RUB']['price_with_margin']
-                    
-                    if 'USD' in results and results['USD']:
-                        price_info.usd_price = results['USD']['converted_price']
-                        price_info.usd_price_with_margin = results['USD']['price_with_margin']
-                    
-                    if 'KZT' in results and results['KZT']:
-                        price_info.kzt_price = results['KZT']['converted_price']
-                        price_info.kzt_price_with_margin = results['KZT']['price_with_margin']
-                    
-                    if 'EUR' in results and results['EUR']:
-                        price_info.eur_price = results['EUR']['converted_price']
-                        price_info.eur_price_with_margin = results['EUR']['price_with_margin']
-                    
-                    if 'TRY' in results and results['TRY']:
-                        price_info.try_price = results['TRY']['converted_price']
-                        price_info.try_price_with_margin = results['TRY']['price_with_margin']
-                    
-                    if 'USDT' in results and results['USDT']:
-                        price_info.usdt_price = results['USDT']['converted_price']
-                        price_info.usdt_price_with_margin = results['USDT']['price_with_margin']
-                    
-                    price_info.save()
-                    success_count += 1
-                else:
-                    error_count += 1
-            except Exception:
-                error_count += 1
-        
-        self.message_user(
-            request, 
-            f'Пересчет завершен: успешно {success_count}, ошибок {error_count}'
-        )
-    recalculate_prices.short_description = 'Пересчитать цены'
-    
-    def delete_all_prices(self, request, queryset):
-        """Удалить все выбранные цены."""
-        count = queryset.count()
-        queryset.delete()
-        self.message_user(request, f'Удалено {count} записей цен')
-    delete_all_prices.short_description = 'Удалить цены'
 
 
 # Настройка заголовка админ-панели

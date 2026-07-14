@@ -11,7 +11,7 @@ import { buildProductUrl } from '../lib/urls'
 import { buildFavoriteProductHref } from '../lib/favoriteLinks'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import { SITE_NAME } from '../lib/siteMeta'
-import { formatPrice } from '../lib/price'
+import { formatMoney } from '../lib/price'
 
 interface CartItem {
   id: number
@@ -413,7 +413,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           </div>
                         ) : null}
                         <div className="mt-1 text-lg font-bold text-red-600">
-                          {item.price} {item.currency}
+                              {formatMoney(item.price)} {item.currency}
                         </div>
                         {(item.old_price_formatted || item.old_price) && (
                           <div className="flex items-baseline gap-2">
@@ -459,7 +459,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           <div className="text-right">
                             <div className="text-sm text-gray-500">{t('cart_item_total', 'Итого')}</div>
                             <div className="text-lg font-bold text-gray-900">
-                              {formatPrice(parseFloat(item.price) * item.quantity)} {item.currency}
+                              {formatMoney(parseFloat(item.price) * item.quantity)} {item.currency}
                             </div>
                           </div>
                           <button
@@ -565,13 +565,13 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                       <div className="flex justify-between text-sm text-gray-600">
                         <span>{t('cart_subtotal', 'Сумма товаров')}</span>
                         <span className="font-medium text-gray-900">
-                          {cart.total_amount} {cart.currency || 'USD'}
+                          {formatMoney(cart.total_amount)} {cart.currency || 'USD'}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm !text-red-600">
                         <span>{t('cart_discount', 'Скидка')}</span>
                         <span className="font-medium">
-                          -{cart.discount_amount} {cart.currency || 'USD'}
+                          -{formatMoney(cart.discount_amount)} {cart.currency || 'USD'}
                         </span>
                       </div>
                     </>
@@ -580,7 +580,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     <div className="flex justify-between items-baseline">
                       <span className="text-lg font-semibold text-gray-900">{t('cart_total', 'Итого')}</span>
                       <span className="text-2xl font-bold text-[var(--text-strong)]">
-                        {cart.final_amount || cart.total_amount} {cart.currency || 'USD'}
+                        {formatMoney(cart.final_amount ?? cart.total_amount)} {cart.currency || 'USD'}
                       </span>
                     </div>
                   </div>

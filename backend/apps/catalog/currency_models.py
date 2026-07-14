@@ -125,13 +125,19 @@ class GlobalCurrencySettings(models.Model):
         verbose_name='Бесплатная доставка от суммы заказа (USD)',
         help_text="Порог по сумме товаров в заказе (субтотал без доставки), в USD. Не путать со стоимостью доставки: при субтотале ≥ порога доставка в API = 0. Пусто — правило отключено.",
     )
+    shipping_volumetric_divisor = models.PositiveIntegerField(
+        default=5000,
+        validators=[MinValueValidator(1)],
+        verbose_name='Делитель объёмного веса (см³/кг)',
+        help_text='Для весового расчёта: объёмный вес = Д×Ш×В в сантиметрах / делитель.',
+    )
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлено')
 
     class Meta:
         verbose_name = 'глобальная настройка валют'
-        verbose_name_plural = '🌐 Настройки: Валюты и Маржа'
+        verbose_name_plural = '🌐 Настройки: Валюты и товарная маржа'
 
     def __str__(self):
         return f"Глобальные настройки (Товарная маржа: {self.default_margin_percentage}%, USDT наценка: {self.usdt_markup_percentage}%)"
@@ -157,6 +163,15 @@ class GlobalCurrencySettings(models.Model):
         obj, created = cls.objects.get_or_create(pk=1)
         cache.set("global_currency_settings", obj, timeout=60 * 60 * 24)  # Кэшируем на сутки
         return obj
+
+
+class GlobalShippingSettings(GlobalCurrencySettings):
+    """Отдельный раздел админки доставки, использующий ту же singleton-запись."""
+
+    class Meta:
+        proxy = True
+        verbose_name = 'глобальная настройка доставки'
+        verbose_name_plural = '🚚 Настройки: Доставка'
 
 
 class MarginSettings(models.Model):
@@ -338,7 +353,7 @@ class ProductPrice(models.Model):
         validators=[MinValueValidator(0)],
         null=True, blank=True,
         verbose_name='Стоимость авиадоставки',
-        help_text="Фиксированная стоимость доставки в валюте продажи (не в процентах)"
+        help_text="Фиксированная стоимость за единицу в USD; перекрывает категорию и глобальный тариф"
     )
     sea_shipping_cost = models.DecimalField(
         max_digits=10, 
@@ -346,7 +361,7 @@ class ProductPrice(models.Model):
         validators=[MinValueValidator(0)],
         null=True, blank=True,
         verbose_name='Стоимость морской доставки',
-        help_text="Фиксированная стоимость доставки в валюте продажи (не в процентах)"
+        help_text="Фиксированная стоимость за единицу в USD; перекрывает категорию и глобальный тариф"
     )
     ground_shipping_cost = models.DecimalField(
         max_digits=10, 
@@ -354,7 +369,7 @@ class ProductPrice(models.Model):
         validators=[MinValueValidator(0)],
         null=True, blank=True,
         verbose_name='Стоимость наземной доставки',
-        help_text="Фиксированная стоимость доставки в валюте продажи (не в процентах)"
+        help_text="Фиксированная стоимость за единицу в USD; перекрывает категорию и глобальный тариф"
     )
     
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
@@ -523,7 +538,7 @@ class ProductVariantPrice(models.Model):
         validators=[MinValueValidator(0)],
         null=True, blank=True,
         verbose_name='Стоимость авиадоставки',
-        help_text="Фиксированная стоимость доставки в валюте продажи (не в процентах)"
+        help_text="Фиксированная стоимость за единицу в USD; перекрывает категорию и глобальный тариф"
     )
     sea_shipping_cost = models.DecimalField(
         max_digits=10, 
@@ -531,7 +546,7 @@ class ProductVariantPrice(models.Model):
         validators=[MinValueValidator(0)],
         null=True, blank=True,
         verbose_name='Стоимость морской доставки',
-        help_text="Фиксированная стоимость доставки в валюте продажи (не в процентах)"
+        help_text="Фиксированная стоимость за единицу в USD; перекрывает категорию и глобальный тариф"
     )
     ground_shipping_cost = models.DecimalField(
         max_digits=10, 
@@ -539,7 +554,7 @@ class ProductVariantPrice(models.Model):
         validators=[MinValueValidator(0)],
         null=True, blank=True,
         verbose_name='Стоимость наземной доставки',
-        help_text="Фиксированная стоимость доставки в валюте продажи (не в процентах)"
+        help_text="Фиксированная стоимость за единицу в USD; перекрывает категорию и глобальный тариф"
     )
     
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')

@@ -21,6 +21,7 @@ import {
 import { buildProductUrl } from '../lib/urls'
 import { buildFavoriteProductHref } from '../lib/favoriteLinks'
 import { favoriteApiProductId } from '../lib/product'
+import { formatMoney } from '../lib/price'
 import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import ProductCardImageGallery, { ProductCardGalleryImage } from './ProductCardImageGallery'
 
@@ -313,7 +314,7 @@ export default function ProductCard({
             <div className="flex items-center gap-4 mb-3">
               <div className="flex items-baseline gap-2">
                 <div className="text-lg font-bold text-[var(--text-strong)]">
-                  {price ? `${price} ${currency}` : t('price_on_request', 'Цена по запросу')}
+                  {price ? `${formatMoney(price)} ${currency}` : t('price_on_request', 'Цена по запросу')}
                 </div>
                 {oldPrice && (
                   <div className="text-sm text-gray-400 line-through">
@@ -473,7 +474,7 @@ export default function ProductCard({
       >
         <div className="flex items-baseline gap-2 mb-1">
           <span className="text-base md:text-lg font-bold text-[var(--text-strong)] leading-tight tracking-tight">
-            {price ? `${price} ${currency}` : t('price_on_request', 'Цена по запросу')}
+            {price ? `${formatMoney(price)} ${currency}` : t('price_on_request', 'Цена по запросу')}
           </span>
           {oldPrice && (
             <span className="text-xs md:text-sm text-gray-400 line-through">

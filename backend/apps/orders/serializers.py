@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from urllib.parse import quote
 
 from rest_framework import serializers
@@ -1286,81 +1286,17 @@ class CartSerializer(serializers.ModelSerializer):
         return self._get_preferred_currency(request)
     
     def get_total_amount(self, obj):
-        """Рассчитать общую сумму корзины в предпочитаемой валюте."""
-        request = self.context.get('request')
-        preferred_currency = self._get_preferred_currency(request)
-        
-        total = 0
+        """Сумма тех же публичных цен, которые возвращаются у строк корзины."""
+        item_serializer = CartItemSerializer(context=self.context)
+        total = Decimal('0')
         for item in obj.items.all():
             try:
-                if item.product and item.product.product_type == "jewelry":
-                    product = item.product
-                    base_price = product.price
-                    if base_price is not None:
-                        from_currency = (product.currency or 'RUB').upper()
-                        try:
-                            _, _, price_with_margin = currency_converter.convert_price(
-                                Decimal(base_price),
-                                from_currency,
-                                preferred_currency,
-                                apply_margin=True,
-                            )
-                            total += price_with_margin * item.quantity
-                            continue
-                        except Exception:
-                            total += float(base_price) * item.quantity
-                            continue
-                prices = item.product.get_all_prices()
-                if prices and preferred_currency in prices:
-                    # Нужная валюта найдена напрямую
-                    price = prices[preferred_currency].get('price_with_margin', 0)
-                elif prices:
-                    # Предпочитаемой валюты нет в кэше — находим базовую цену и конвертируем
-                    base_price_val = 0
-                    base_curr = None
-                    for currency, data in prices.items():
-                        if data.get('is_base_price'):
-                            base_price_val = data.get('price_with_margin') or data.get('converted_price') or 0
-                            base_curr = currency
-                            break
-                    if not base_curr and prices:
-                        first_key = list(prices.keys())[0]
-                        base_price_val = prices[first_key].get('price_with_margin', 0)
-                        base_curr = first_key
-
-                    if base_curr and base_price_val and base_curr.upper() != preferred_currency.upper():
-                        # Конвертируем из базовой валюты в предпочитаемую
-                        try:
-                            _, _, price = currency_converter.convert_price(
-                                Decimal(str(base_price_val)),
-                                base_curr,
-                                preferred_currency,
-                                apply_margin=True,
-                            )
-                        except Exception:
-                            price = base_price_val
-                    else:
-                        price = base_price_val
-                else:
-                    # Fallback к полю item — конвертируем из валюты позиции
-                    raw_price = item.price
-                    from_currency = (item.currency or getattr(item.product, 'currency', None) or 'RUB').upper()
-                    try:
-                        _, _, price = currency_converter.convert_price(
-                            Decimal(str(raw_price)),
-                            from_currency,
-                            preferred_currency,
-                            apply_margin=True,
-                        )
-                    except Exception:
-                        price = raw_price
-                
-                total += price * item.quantity
+                price = item_serializer.get_price(item)
+                total += Decimal(str(price or 0)) * item.quantity
             except Exception:
-                # Финальный fallback к старому полю без конвертации
-                total += item.price * item.quantity
-        
-        return float(round(total, 2))
+                total += Decimal(str(item.price or 0)) * item.quantity
+
+        return float(total.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
     
     def get_discount_amount(self, obj):
         """Рассчитать скидку по промокоду."""
@@ -1392,10 +1328,12 @@ class CartSerializer(serializers.ModelSerializer):
         return float((total_dec - discount_dec).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
     def get_shipping_requires_quote(self, obj):
-        """Мебель (крупногабарит): доставка не считается автоматически, только по запросу менеджера."""
+        """Товары с категорийным правилом quote и мебель без явного правила требуют расчёта менеджером."""
+        from apps.orders.shipping_pricing import product_shipping_requires_quote
+
         for item in obj.items.all():
             product = item.product
-            if product and getattr(product, 'product_type', None) == 'furniture':
+            if product and product_shipping_requires_quote(product):
                 return True
         return False
 
@@ -1440,7 +1378,10 @@ class CartSerializer(serializers.ModelSerializer):
         from apps.catalog.currency_models import GlobalCurrencySettings, ProductVariantPrice
         from django.contrib.contenttypes.models import ContentType
         from apps.catalog.utils.currency_converter import currency_converter
-        from apps.orders.shipping_pricing import resolve_shipping_costs_usd
+        from apps.orders.shipping_pricing import (
+            calculate_item_shipping_costs_usd,
+            product_is_free_shipping_eligible,
+        )
         from decimal import Decimal
 
         global_settings = GlobalCurrencySettings.load()
@@ -1449,6 +1390,11 @@ class CartSerializer(serializers.ModelSerializer):
             'air': 0.0,
             'sea': 0.0,
             'ground': 0.0
+        }
+        free_shipping_eligible_costs = {
+            'air': 0.0,
+            'sea': 0.0,
+            'ground': 0.0,
         }
 
         # Валюта исходных сумм доставки — USD
@@ -1507,13 +1453,19 @@ class CartSerializer(serializers.ModelSerializer):
                             object_id=variant.id
                         ).first()
 
-            air_cost, sea_cost, ground_cost = resolve_shipping_costs_usd(
-                variant_price, price_info, global_settings
+            item_costs = calculate_item_shipping_costs_usd(
+                item.product,
+                item.quantity,
+                variant_price,
+                price_info,
+                global_settings,
             )
-
-            shipping_costs['air'] += convert_cost(air_cost) * item.quantity
-            shipping_costs['sea'] += convert_cost(sea_cost) * item.quantity
-            shipping_costs['ground'] += convert_cost(ground_cost) * item.quantity
+            eligible = product_is_free_shipping_eligible(item.product)
+            for method, cost in item_costs.items():
+                converted_cost = convert_cost(cost)
+                shipping_costs[method] += converted_cost
+                if eligible:
+                    free_shipping_eligible_costs[method] += converted_cost
 
         threshold = global_settings.free_shipping_min_subtotal_usd
         if threshold is not None and threshold > 0:
@@ -1529,7 +1481,10 @@ class CartSerializer(serializers.ModelSerializer):
                         apply_margin=False,
                     )
                 if subtotal_usd >= threshold:
-                    shipping_costs = {'air': 0.0, 'sea': 0.0, 'ground': 0.0}
+                    shipping_costs = {
+                        method: max(0.0, cost - free_shipping_eligible_costs[method])
+                        for method, cost in shipping_costs.items()
+                    }
             except Exception:
                 pass
 
