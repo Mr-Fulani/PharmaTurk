@@ -2177,7 +2177,7 @@ class ProductSearchSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'category_name', 'brand_name',
             'product_type',
             'price', 'price_formatted', 'currency', 'is_available',
-            'main_image', 'is_featured'
+            'main_image', 'is_new', 'is_featured'
         ]
     
     def get_price_formatted(self, obj):
@@ -7490,6 +7490,7 @@ class HeadwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer)
         fields = [
             'id', 'base_product_id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
             'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
+            'is_new', 'is_featured',
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
             'variants', 'default_variant_slug', 'active_variant_slug',
@@ -7710,6 +7711,7 @@ class UnderwearProductSerializer(_SimpleDomainMixin, serializers.ModelSerializer
         fields = [
             'id', 'base_product_id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
             'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
+            'is_new', 'is_featured',
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
             'variants', 'default_variant_slug', 'active_variant_slug',
@@ -7930,6 +7932,7 @@ class IslamicClothingProductSerializer(_SimpleDomainMixin, serializers.ModelSeri
         fields = [
             'id', 'base_product_id', 'name', 'slug', 'description', 'price', 'currency', 'old_price',
             'price_formatted', 'old_price_formatted', 'is_available', 'is_active',
+            'is_new', 'is_featured',
             'stock_quantity', 'category', 'category_slug', 'category_name', 
             'brand', 'brand_name', 'brand_slug', 'main_image', 'main_image_url', 'images',
             'variants', 'default_variant_slug', 'active_variant_slug',
