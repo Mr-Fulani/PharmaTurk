@@ -5,6 +5,7 @@ import { buildProductIdentityKey, isBaseProductType } from '../lib/product'
 import ProductCard from './ProductCard'
 import { ProductTranslation } from '../lib/i18n'
 import { ProductCardGalleryImage } from './ProductCardImageGallery'
+import { parsePriceWithCurrency } from '../lib/price'
 
 interface Product {
   id: number
@@ -49,21 +50,6 @@ interface SimilarProductsProps {
   limit?: number
   /** Use RecSys API (vector similar) when slug is available */
   useRecsys?: boolean
-}
-
-const parsePriceWithCurrency = (value?: string | number | null) => {
-  if (value === null || typeof value === 'undefined') {
-    return { price: null as string | number | null, currency: null as string | null }
-  }
-  if (typeof value === 'number') {
-    return { price: value, currency: null as string | null }
-  }
-  const trimmed = value.trim()
-  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
-  if (match) {
-    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
-  }
-  return { price: trimmed, currency: null as string | null }
 }
 
 const normalizeProductType = (value?: string | null) =>

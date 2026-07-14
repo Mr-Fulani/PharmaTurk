@@ -11,7 +11,7 @@ import { buildProductUrl } from '../lib/urls'
 import { buildFavoriteProductHref } from '../lib/favoriteLinks'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import { SITE_NAME } from '../lib/siteMeta'
-import { formatMoney } from '../lib/price'
+import { formatMoney, parseMoneyNumber as parseNumber } from '../lib/price'
 
 interface CartItem {
   id: number
@@ -51,14 +51,6 @@ interface Cart {
   promo_code?: PromoCode | null
   shipping_requires_quote?: boolean
   free_shipping_threshold?: number | null
-}
-
-const parseNumber = (value: string | number | null | undefined) => {
-  if (value === null || typeof value === 'undefined') return null
-  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
-  if (!normalized) return null
-  const num = Number(normalized)
-  return Number.isFinite(num) ? num : null
 }
 
 export default function CartPage({ initialCart }: { initialCart: Cart }) {
@@ -413,7 +405,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           </div>
                         ) : null}
                         <div className="mt-1 text-lg font-bold text-red-600">
-                              {formatMoney(item.price)} {item.currency}
+                              {formatMoney(item.price, item.currency, i18n.language)} {item.currency}
                         </div>
                         {(item.old_price_formatted || item.old_price) && (
                           <div className="flex items-baseline gap-2">
@@ -459,7 +451,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           <div className="text-right">
                             <div className="text-sm text-gray-500">{t('cart_item_total', 'Итого')}</div>
                             <div className="text-lg font-bold text-gray-900">
-                              {formatMoney(parseFloat(item.price) * item.quantity)} {item.currency}
+                              {formatMoney(parseFloat(item.price) * item.quantity, item.currency, i18n.language)} {item.currency}
                             </div>
                           </div>
                           <button
@@ -565,13 +557,13 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                       <div className="flex justify-between text-sm text-gray-600">
                         <span>{t('cart_subtotal', 'Сумма товаров')}</span>
                         <span className="font-medium text-gray-900">
-                          {formatMoney(cart.total_amount)} {cart.currency || 'USD'}
+                          {formatMoney(cart.total_amount, cart.currency || 'USD', i18n.language)} {cart.currency || 'USD'}
                         </span>
                       </div>
                       <div className="flex justify-between text-sm !text-red-600">
                         <span>{t('cart_discount', 'Скидка')}</span>
                         <span className="font-medium">
-                          -{formatMoney(cart.discount_amount)} {cart.currency || 'USD'}
+                          -{formatMoney(cart.discount_amount, cart.currency || 'USD', i18n.language)} {cart.currency || 'USD'}
                         </span>
                       </div>
                     </>
@@ -580,7 +572,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                     <div className="flex justify-between items-baseline">
                       <span className="text-lg font-semibold text-gray-900">{t('cart_total', 'Итого')}</span>
                       <span className="text-2xl font-bold text-[var(--text-strong)]">
-                        {formatMoney(cart.final_amount ?? cart.total_amount)} {cart.currency || 'USD'}
+                        {formatMoney(cart.final_amount ?? cart.total_amount, cart.currency || 'USD', i18n.language)} {cart.currency || 'USD'}
                       </span>
                     </div>
                   </div>
@@ -614,10 +606,7 @@ export default function CartPage({ initialCart }: { initialCart: Cart }) {
                           <p className="font-medium">{t('cart_delivery_info_title', 'Бесплатная доставка')}</p>
                           <p className="mt-1">
                             {t('cart_delivery_info_text', 'При заказе от {{minAmount}} {{currency}}', {
-                              minAmount: Number(cart.free_shipping_threshold).toLocaleString(i18n.language, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              }),
+                              minAmount: formatMoney(cart.free_shipping_threshold, cart.currency || 'USD', i18n.language),
                               currency: cart.currency || 'USD',
                             })}
                           </p>

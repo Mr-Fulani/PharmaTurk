@@ -21,7 +21,7 @@ import {
 import { buildProductUrl } from '../lib/urls'
 import { buildFavoriteProductHref } from '../lib/favoriteLinks'
 import { favoriteApiProductId } from '../lib/product'
-import { formatMoney } from '../lib/price'
+import { formatMoney, parseMoneyNumber } from '../lib/price'
 import { getLocalizedProductDescription, getLocalizedProductName, ProductTranslation } from '../lib/i18n'
 import ProductCardImageGallery, { ProductCardGalleryImage } from './ProductCardImageGallery'
 
@@ -197,15 +197,8 @@ export default function ProductCard({
   const resolvedGifSrc =
     rawGif && isGifUrl(rawGif) ? withListingImageMaxWidth(resolveMediaUrl(rawGif)) : null
   const showGif = Boolean(resolvedGifSrc)
-  const parseNumber = (value: string | number | null | undefined) => {
-    if (value === null || typeof value === 'undefined') return null
-    const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
-    if (!normalized) return null
-    const num = Number(normalized)
-    return Number.isFinite(num) ? num : null
-  }
-  const priceValue = parseNumber(price)
-  const oldPriceValue = parseNumber(oldPrice)
+  const priceValue = parseMoneyNumber(price)
+  const oldPriceValue = parseMoneyNumber(oldPrice)
   const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
     ? Math.round(((oldPriceValue - priceValue) / oldPriceValue) * 100)
     : null
@@ -314,11 +307,11 @@ export default function ProductCard({
             <div className="flex items-center gap-4 mb-3">
               <div className="flex items-baseline gap-2">
                 <div className="text-lg font-bold text-[var(--text-strong)]">
-                  {price ? `${formatMoney(price)} ${currency}` : t('price_on_request', 'Цена по запросу')}
+                  {price ? `${formatMoney(price, currency, locale || i18n.language)} ${currency}` : t('price_on_request', 'Цена по запросу')}
                 </div>
                 {oldPrice && (
                   <div className="text-sm text-gray-400 line-through">
-                    {String(oldPrice).includes(currency) ? oldPrice : `${oldPrice} ${currency}`}
+                    {`${formatMoney(oldPrice, currency, locale || i18n.language)} ${currency}`}
                   </div>
                 )}
                 {oldPrice && discountPercent !== null && (
@@ -474,11 +467,11 @@ export default function ProductCard({
       >
         <div className="flex items-baseline gap-2 mb-1">
           <span className="text-base md:text-lg font-bold text-[var(--text-strong)] leading-tight tracking-tight">
-            {price ? `${formatMoney(price)} ${currency}` : t('price_on_request', 'Цена по запросу')}
+            {price ? `${formatMoney(price, currency, locale || i18n.language)} ${currency}` : t('price_on_request', 'Цена по запросу')}
           </span>
           {oldPrice && (
             <span className="text-xs md:text-sm text-gray-400 line-through">
-              {String(oldPrice).includes(currency) ? oldPrice : `${oldPrice} ${currency}`}
+              {`${formatMoney(oldPrice, currency, locale || i18n.language)} ${currency}`}
             </span>
           )}
           {oldPrice && discountPercent !== null && (

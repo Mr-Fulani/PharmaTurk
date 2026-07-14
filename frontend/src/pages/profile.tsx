@@ -874,7 +874,7 @@ export default function ProfilePage() {
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">{t('profile_total_spent', 'Потрачено всего')}</span>
                       <span className="text-base font-semibold text-[var(--text-strong)]">
-                        {formatPrice(totalSpentFromOrders)} {currency}
+                        {formatPrice(totalSpentFromOrders, currency, i18n.language)} {currency}
                       </span>
                     </div>
                   </div>

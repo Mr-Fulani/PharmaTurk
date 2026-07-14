@@ -48,9 +48,9 @@ interface AnalogProductsProps {
 
 // ─── Форматирование цены ──────────────────────────────────────────────────────
 
-function formatPrice(price: number | null, currency: string): string {
+function formatPrice(price: number | null, currency: string, locale?: string): string {
   if (price === null || price === undefined) return '—'
-  const formatted = formatPriceNum(price)
+  const formatted = formatPriceNum(price, currency, locale)
   return formatted !== null ? `${formatted} ${currency}` : '—'
 }
 
@@ -79,7 +79,7 @@ interface AnalogCardProps {
 }
 
 function AnalogCard({ analog, productType }: AnalogCardProps) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const [imgError, setImgError] = useState(false)
 
   const href = `/${productType}/${analog.slug}`
@@ -139,11 +139,11 @@ function AnalogCard({ analog, productType }: AnalogCardProps) {
           {analog.price !== null ? (
             <>
               <span className="analog-card__price">
-                {formatPrice(analog.price, currency)}
+                {formatPrice(analog.price, currency, i18n.language)}
               </span>
               {analog.old_price && analog.old_price > analog.price && (
                 <span className="analog-card__old-price">
-                  {formatPrice(analog.old_price, currency)}
+                  {formatPrice(analog.old_price, currency, i18n.language)}
                 </span>
               )}
             </>
@@ -157,7 +157,7 @@ function AnalogCard({ analog, productType }: AnalogCardProps) {
         {/* Выгода */}
         {hasSaving && analog.saving_amount !== null && (
           <p className="analog-card__saving">
-            {t('analog_saving', { amount: formatPrice(analog.saving_amount, currency), defaultValue: `Экономия ${formatPrice(analog.saving_amount, currency)}` })}
+            {t('analog_saving', { amount: formatPrice(analog.saving_amount, currency, i18n.language), defaultValue: `Экономия ${formatPrice(analog.saving_amount, currency, i18n.language)}` })}
           </p>
         )}
       </div>

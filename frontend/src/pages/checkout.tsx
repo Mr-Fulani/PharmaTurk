@@ -744,7 +744,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                           {cart?.shipping_requires_quote
                             ? t('shipping_on_request', 'По запросу')
                             : cart?.shipping_options?.ground !== undefined
-                              ? `+${cart.shipping_options.ground} ${cart.currency || 'USD'}`
+                              ? `+${formatMoney(cart.shipping_options.ground, cart.currency || 'USD', i18n.language)} ${cart.currency || 'USD'}`
                               : ''}
                         </span>
                       </div>
@@ -771,7 +771,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                           {cart?.shipping_requires_quote
                             ? t('shipping_on_request', 'По запросу')
                             : cart?.shipping_options?.air !== undefined
-                              ? `+${cart.shipping_options.air} ${cart.currency || 'USD'}`
+                              ? `+${formatMoney(cart.shipping_options.air, cart.currency || 'USD', i18n.language)} ${cart.currency || 'USD'}`
                               : ''}
                         </span>
                       </div>
@@ -798,7 +798,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                           {cart?.shipping_requires_quote
                             ? t('shipping_on_request', 'По запросу')
                             : cart?.shipping_options?.sea !== undefined
-                              ? `+${cart.shipping_options.sea} ${cart.currency || 'USD'}`
+                              ? `+${formatMoney(cart.shipping_options.sea, cart.currency || 'USD', i18n.language)} ${cart.currency || 'USD'}`
                               : ''}
                         </span>
                       </div>
@@ -1069,13 +1069,13 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                               {t('checkout_qty', 'Кол-во')}: {item.quantity}
                             </span>
                             <span className="text-xs text-gray-500">
-                              {formatMoney(item.price)} {item.currency} {t('checkout_per_item', 'за шт.')}
+                              {formatMoney(item.price, item.currency, i18n.language)} {item.currency} {t('checkout_per_item', 'за шт.')}
                             </span>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="font-bold text-gray-900 text-sm">
-                            {formatMoney(parseFloat(item.price) * item.quantity)} {item.currency}
+                            {formatMoney(parseFloat(item.price) * item.quantity, item.currency, i18n.language)} {item.currency}
                           </p>
                         </div>
                       </div>
@@ -1088,7 +1088,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                 <div className="flex justify-between text-sm text-gray-600">
                   <span>{t('cart_subtotal', 'Сумма товаров')}</span>
                   <span className="font-medium text-gray-900">
-                    {formatMoney(cart.total_amount)} {cart.currency || 'USD'}
+                    {formatMoney(cart.total_amount, cart.currency || 'USD', i18n.language)} {cart.currency || 'USD'}
                   </span>
                 </div>
                 {parseFloat(String(cart.discount_amount ?? '0')) > 0 ? (
@@ -1096,7 +1096,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                     <div className="flex justify-between text-sm !text-red-600">
                       <span>{t('cart_discount', 'Скидка')}</span>
                       <span className="font-medium">
-                        -{formatMoney(cart.discount_amount)} {cart.currency || 'USD'}
+                        -{formatMoney(cart.discount_amount, cart.currency || 'USD', i18n.language)} {cart.currency || 'USD'}
                       </span>
                     </div>
                     {cart.promo_code && (
@@ -1118,7 +1118,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                   <span className="font-medium text-gray-900">
                     {cart?.shipping_requires_quote
                       ? t('shipping_on_request', 'По запросу')
-                      : `+${cart.shipping_options?.[shippingMethod] || 0} ${cart.currency || 'USD'}`}
+                      : `+${formatMoney(cart.shipping_options?.[shippingMethod] || 0, cart.currency || 'USD', i18n.language)} ${cart.currency || 'USD'}`}
                   </span>
                 </div>
                 <div className="border-t border-gray-200 pt-4 mt-4">
@@ -1128,7 +1128,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                       {formatMoney(
                         parseFloat(cart.final_amount || cart.total_amount || '0') +
                         (cart?.shipping_requires_quote ? 0 : cart.shipping_options?.[shippingMethod] || 0)
-                      )}{' '}
+                      , cart.currency || 'USD', i18n.language)}{' '}
                       {cart.currency || 'USD'}
                     </span>
                   </div>
@@ -1146,10 +1146,7 @@ export default function CheckoutPage({ initialCart }: { initialCart?: Cart }) {
                           'cart_delivery_info_text',
                           'При заказе от {{minAmount}} {{currency}} (сумма товаров без доставки)',
                           {
-                            minAmount: Number(cart.free_shipping_threshold).toLocaleString(i18n.language, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }),
+                            minAmount: formatMoney(cart.free_shipping_threshold, cart.currency || 'USD', i18n.language),
                             currency: cart.currency || 'USD',
                           },
                         )}

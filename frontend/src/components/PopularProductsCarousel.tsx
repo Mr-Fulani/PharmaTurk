@@ -17,7 +17,7 @@ import {
 import { buildProductUrl } from '../lib/urls'
 import { buildProductIdentityKey, favoriteApiProductId } from '../lib/product'
 import { getLocalizedProductName, ProductTranslation } from '../lib/i18n'
-import { formatPrice } from '../lib/price'
+import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../lib/price'
 import ProductCardImageGallery, { normalizeProductCardImages, ProductCardGalleryImage } from './ProductCardImageGallery'
 
 const LazyYouTubeCard = dynamic(() => import('./LazyYouTubeCard'), { ssr: false })
@@ -54,29 +54,6 @@ interface Product {
 
 interface PopularProductsCarouselProps {
   className?: string
-}
-
-const parsePriceWithCurrency = (value?: string | number | null) => {
-  if (value === null || typeof value === 'undefined') {
-    return { price: null as string | number | null, currency: null as string | null }
-  }
-  if (typeof value === 'number') {
-    return { price: value, currency: null as string | null }
-  }
-  const trimmed = value.trim()
-  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
-  if (match) {
-    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
-  }
-  return { price: trimmed, currency: null as string | null }
-}
-
-const parseNumber = (value: string | number | null | undefined) => {
-  if (value === null || typeof value === 'undefined') return null
-  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
-  if (!normalized) return null
-  const num = Number(normalized)
-  return Number.isFinite(num) ? num : null
 }
 
 
@@ -318,8 +295,8 @@ export default function PopularProductsCarousel({ className = '' }: PopularProdu
                 displayOldPrice = displayOldPrice.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '')
               }
 
-              const displayPriceLabel = displayPrice ? formatPrice(displayPrice) : null
-              const displayOldPriceLabel = displayOldPrice ? formatPrice(displayOldPrice) : null
+              const displayPriceLabel = displayPrice ? formatPrice(displayPrice, displayCurrency, i18n.language) : null
+              const displayOldPriceLabel = displayOldPrice ? formatPrice(displayOldPrice, displayCurrency, i18n.language) : null
               const displayCurrencyLabel = displayCurrency ? String(displayCurrency) : null
               const displayOldCurrencyLabel = displayOldCurrency ? String(displayOldCurrency) : null
               const priceValue = parseNumber(displayPrice)

@@ -414,10 +414,10 @@ function BrandPageContent({
                     const parsedPrice = parsePriceWithCurrency(product.price_formatted ?? product.price)
                     const parsedOldPrice = parsePriceWithCurrency(product.old_price_formatted ?? product.old_price)
                     const displayCurrency = parsedPrice.currency || product.currency
-                    const displayPrice = formatPrice(parsedPrice.price)
+                    const displayPrice = formatPrice(parsedPrice.price, displayCurrency, i18n.language)
                     const displayOldPrice =
                       !parsedOldPrice.currency || parsedOldPrice.currency === displayCurrency
-                        ? formatPrice(parsedOldPrice.price)
+                        ? formatPrice(parsedOldPrice.price, displayCurrency, i18n.language)
                         : null
                     return (
                       <ProductCard

@@ -22,7 +22,7 @@ import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
 import { buildFavoriteProductHref } from '../../lib/favoriteLinks'
 import { isBaseProductType, favoriteApiProductId } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
-import { formatPrice } from '../../lib/price'
+import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
 import { useTheme } from '../../context/ThemeContext'
 import ProductReviews, { ReviewSummary } from '../../components/ProductReviews'
 
@@ -48,29 +48,6 @@ const normalizeCategoryType = (value?: string): CategoryType => {
   const lower = value.toLowerCase().replace(/_/g, '-')
   // Если есть алиас - возвращаем его, иначе возвращаем как есть (для поддержки новых категорий)
   return CATEGORY_ALIASES[lower] || lower
-}
-
-const parsePriceWithCurrency = (value?: string | number | null) => {
-  if (value === null || typeof value === 'undefined') {
-    return { price: null as string | number | null, currency: null as string | null }
-  }
-  if (typeof value === 'number') {
-    return { price: value, currency: null as string | null }
-  }
-  const trimmed = value.trim()
-  const match = trimmed.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([A-Za-z]{3,5})$/)
-  if (match) {
-    return { price: match[1].replace(',', '.'), currency: match[2].toUpperCase() }
-  }
-  return { price: trimmed, currency: null as string | null }
-}
-
-const parseNumber = (value: string | number | null | undefined) => {
-  if (value === null || typeof value === 'undefined') return null
-  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
-  if (!normalized) return null
-  const num = Number(normalized)
-  return Number.isFinite(num) ? num : null
 }
 
 const normalizeMediaValue = (value?: string | null) => {
@@ -1224,7 +1201,7 @@ export default function ProductPage({
   )
   const displayOldPrice = parsedOldCurrency && parsedOldCurrency !== currency ? null : (parsedOldPrice ?? oldPriceSource)
   const displayOldCurrency = parsedOldCurrency || currency
-  const displayOldPriceLabel = displayOldPrice ? formatPrice(displayOldPrice) : null
+  const displayOldPriceLabel = displayOldPrice ? formatPrice(displayOldPrice, currency, i18n.language) : null
   const displayOldCurrencyLabel = displayOldCurrency ? String(displayOldCurrency) : null
   const oldPriceValue = parseNumber(displayOldPrice)
   const discountPercent = priceValue !== null && oldPriceValue !== null && oldPriceValue > priceValue && oldPriceValue > 0
@@ -1232,9 +1209,9 @@ export default function ProductPage({
     : null
 
   // Вычисляем общую сумму с учетом количества
-  const totalPrice = priceValue !== null ? formatPrice(priceValue * quantity) : null
+  const totalPrice = priceValue !== null ? formatPrice(priceValue * quantity, currency, i18n.language) : null
   const displayPrice = priceValue !== null
-    ? `${formatPrice(priceValue)} ${currency}`
+    ? `${formatPrice(priceValue, currency, i18n.language)} ${currency}`
     : t('price_on_request')
   const displayTotalPrice = totalPrice !== null
     ? `${totalPrice} ${currency}`

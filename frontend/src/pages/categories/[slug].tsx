@@ -8,7 +8,7 @@ import { getSiteOrigin, buildProductUrl } from '../../lib/urls'
 import { resolveMediaUrl } from '../../lib/media'
 import { buildProductIdentityKey, isBaseProductType } from '../../lib/product'
 import { SITE_NAME } from '../../lib/siteMeta'
-import { formatPrice, parsePriceWithCurrency } from '../../lib/price'
+import { formatPrice, parseMoneyNumber as parseNumber, parsePriceWithCurrency } from '../../lib/price'
 import { buildCatalogPageQuery, parseBrandIds, parseCatalogFiltersQuery } from '../../lib/catalogQuery'
 import { isCategoryInProductTree, selectExactCategory } from '../../lib/categoryRouting'
 import { GetServerSideProps } from 'next'
@@ -281,14 +281,6 @@ const resolveProductsEndpoint = (categoryType: string) => {
     case 'supplements': return '/api/catalog/supplements/products'
     default: return '/api/catalog/products'
   }
-}
-
-const parseNumber = (value: string | number | null | undefined) => {
-  if (value === null || typeof value === 'undefined') return null
-  const normalized = String(value).replace(',', '.').replace(/[^0-9.]/g, '')
-  if (!normalized) return null
-  const num = Number(normalized)
-  return Number.isFinite(num) ? num : null
 }
 
 const parseFirstNumber = (value: string | number | null | undefined) => {
@@ -1653,8 +1645,8 @@ export default function CategoryPage({
                     }
 
                     // Форматируем цены для отображения
-                    const displayPriceFormatted = displayPrice ? formatPrice(displayPrice) : null
-                    const displayOldPriceFormatted = displayOldPrice ? formatPrice(displayOldPrice) : null
+                    const displayPriceFormatted = displayPrice ? formatPrice(displayPrice, displayCurrency, i18n.language) : null
+                    const displayOldPriceFormatted = displayOldPrice ? formatPrice(displayOldPrice, displayCurrency, i18n.language) : null
                     const effectiveProductType = (product.product_type || categoryType).replace(/_/g, '-')
                     const productHref = buildProductUrl(effectiveProductType, product.slug)
                     const isBaseProduct = isBaseProductType(effectiveProductType)
