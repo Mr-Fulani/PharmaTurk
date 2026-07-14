@@ -22,6 +22,21 @@ def test_resolve_ikea_category_uses_exact_api_values():
     assert resolve_ikea_category(raw_category={"name": "Mobilyalar"}) is None
 
 
+@pytest.mark.parametrize(
+    ("furniture_type", "expected_slug"),
+    [
+        ("2'li yataklı kanepe", "sofa-beds"),
+        ("4'lü modüler köşe kanepe", "modular-sofas"),
+        ("tepsili sehpa", "coffee-tables"),
+        ("döner berjer", "armchairs"),
+    ],
+)
+def test_resolve_legacy_ikea_furniture_type(furniture_type, expected_slug):
+    match = resolve_ikea_category(furniture_type=furniture_type)
+
+    assert match.category_slug == expected_slug
+
+
 @pytest.mark.django_db
 def test_manual_subcategory_has_priority_over_ikea_mapping():
     root = Category.objects.create(name="Мебель", slug="furniture")

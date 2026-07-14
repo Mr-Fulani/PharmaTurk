@@ -89,6 +89,8 @@ IKEA_CATEGORY_ALIASES = {
     "outdoor-furniture-sets": "patio-sets", "bahce-mobilyasi-setleri": "patio-sets",
 }
 
+CANONICAL_FURNITURE_CATEGORY_SLUGS = frozenset(IKEA_CATEGORY_ALIASES.values())
+
 
 # Только однозначные старые категории. Команда аудита показывает их, но не
 # деактивирует и не удаляет автоматически.
@@ -134,6 +136,20 @@ def resolve_ikea_category(
         target = IKEA_CATEGORY_ALIASES.get(normalized)
         if target:
             return IkeaCategoryMatch(target, reason)
+
+    # Старые карточки IKEA часто сохранили только конкретный турецкий function,
+    # например ``2'li yataklı kanepe``. Используем лишь однозначные сочетания.
+    function_text = _normalize(furniture_type)
+    if "yatakli" in function_text and ({"kanepe", "koltuk"} & set(function_text.split("-"))):
+        return IkeaCategoryMatch("sofa-beds", "тип мебели IKEA: спальное место")
+    if "moduler" in function_text and "kanepe" in function_text:
+        return IkeaCategoryMatch("modular-sofas", "тип мебели IKEA: модульный диван")
+    if "sehpa" in function_text:
+        return IkeaCategoryMatch("coffee-tables", "тип мебели IKEA: столик")
+    if "berjer" in function_text:
+        return IkeaCategoryMatch("armchairs", "тип мебели IKEA: кресло")
+    if "kanepe" in function_text:
+        return IkeaCategoryMatch("sofas", "тип мебели IKEA: диван")
     return None
 
 
@@ -141,7 +157,7 @@ def resolve_ikea_product_category(product: Any) -> IkeaCategoryMatch | None:
     external_data = product.external_data if isinstance(product.external_data, dict) else {}
     raw = external_data.get("raw") if isinstance(external_data.get("raw"), dict) else {}
     attributes = external_data.get("attributes") if isinstance(external_data.get("attributes"), dict) else {}
-    return resolve_ikea_category(
+    match = resolve_ikea_category(
         source_category_slug=(
             external_data.get("source_category_slug", "")
             or attributes.get("ikea_source_category_slug", "")
@@ -151,3 +167,9 @@ def resolve_ikea_product_category(product: Any) -> IkeaCategoryMatch | None:
         furniture_type=product.furniture_type or attributes.get("furniture_type", ""),
         external_url=product.external_url,
     )
+    if match:
+        return match
+    current_slug = getattr(getattr(product, "category", None), "slug", "")
+    if current_slug in CANONICAL_FURNITURE_CATEGORY_SLUGS:
+        return IkeaCategoryMatch(current_slug, "уже назначенная каноническая категория")
+    return None
