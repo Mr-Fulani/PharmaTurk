@@ -1004,7 +1004,14 @@ class BrandViewSet(SmartSlugLookupMixin, viewsets.ReadOnlyModelViewSet):
 
         is_new = str(self.request.query_params.get('is_new', '')).lower() in ('true', '1', 'yes', 'on')
         if is_new:
-            queryset = _apply_is_new_filter(queryset, self.request, use_flag=True)
+            # На странице бренда чекбокс «Новинка» соответствует явному
+            # редакторскому флагу. Не подмешиваем сюда все товары, созданные
+            # за последние 30 дней: после массового импорта фильтр иначе
+            # визуально не меняет выдачу.
+            if 'is_new' in field_names:
+                queryset = queryset.filter(is_new=True)
+            else:
+                queryset = _apply_is_new_filter(queryset, self.request)
         queryset = _apply_price_filter(queryset, self.request)
         queryset = _apply_gender_filter(queryset, self.request)
         return queryset

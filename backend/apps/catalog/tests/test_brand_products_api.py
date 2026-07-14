@@ -186,6 +186,25 @@ def test_brand_products_category_slug_filter_includes_descendants(brand_catalog)
 
 
 @pytest.mark.django_db
+def test_brand_products_is_new_filter_uses_explicit_flag(brand_catalog):
+    """Недавно импортированные товары без is_new не должны считаться новинками."""
+    client = APIClient()
+    brand = brand_catalog["brand"]
+    new_product = brand_catalog["clothing_products"][1]
+    new_product.is_new = True
+    new_product.save(update_fields=["is_new"])
+
+    response = client.get(
+        f"/api/catalog/brands/{brand.slug}/products",
+        {"is_new": "true", "ordering": "name_asc"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["count"] == 1
+    assert [item["name"] for item in response.json()["results"]] == ["Delta"]
+
+
+@pytest.mark.django_db
 def test_brand_products_hydrates_only_page_models(brand_catalog):
     """Prefetch связей — только для моделей, попавших на страницу.
 
