@@ -24,6 +24,17 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 
+def _proxy_account_error_message(exc: Exception) -> Optional[str]:
+    """Возвращает понятное администратору описание блокировки прокси-аккаунта."""
+    error_text = str(exc).lower()
+    if "407" in error_text and "account is suspended" in error_text:
+        return (
+            "Прокси недоступен: аккаунт прокси-сервиса приостановлен (HTTP 407). "
+            "Проверьте оплату, баланс и статус аккаунта у провайдера прокси."
+        )
+    return None
+
+
 def _build_duplicate_candidates_notification_text(result: Dict) -> str:
     duplicates_found = result.get("duplicates_found", 0)
     created = result.get("candidates_created", 0)
@@ -550,7 +561,8 @@ def run_scraper_task(self,
         }
 
     except Exception as e:
-        error_msg = f"Ошибка в задаче парсинга: {e}"
+        proxy_error_msg = _proxy_account_error_message(e)
+        error_msg = proxy_error_msg or f"Ошибка в задаче парсинга: {e}"
         logger.error(error_msg)
         if site_task:
             SiteScraperTask.objects.filter(id=site_task.id).update(
@@ -559,6 +571,16 @@ def run_scraper_task(self,
                 log_output=error_msg,
                 finished_at=timezone.now()
             )
+
+        # Приостановленный аккаунт прокси не восстановится от автоматического
+        # повтора: завершаем задачу сразу и показываем администратору инструкцию.
+        if proxy_error_msg:
+            return {
+                'status': 'error',
+                'error': error_msg,
+                'scraper_config_id': scraper_config_id,
+                'timestamp': timezone.now().isoformat(),
+            }
         
         if self.request.retries < self.max_retries:
             raise self.retry(exc=e)

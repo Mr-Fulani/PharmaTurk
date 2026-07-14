@@ -259,3 +259,14 @@ def test_site_task_admin_allows_configuring_brand_override():
     assert "target_brand" in SiteScraperTaskAdmin.raw_id_fields
     assert SiteScraperTaskAdmin.list_display[subcategory_index + 1] == "target_brand"
     assert "target_brand" in SiteScraperTaskAdmin.list_select_related
+
+
+def test_site_task_admin_list_displays_configured_gender():
+    brand_index = SiteScraperTaskAdmin.list_display.index("target_brand")
+    task = SiteScraperTask(gender="men")
+
+    assert SiteScraperTaskAdmin.list_display[brand_index + 1] == "gender_display"
+    assert SiteScraperTaskAdmin.gender_display(None, task) == "Мужской"
+
+    task.gender = ""
+    assert SiteScraperTaskAdmin.gender_display(None, task) is None

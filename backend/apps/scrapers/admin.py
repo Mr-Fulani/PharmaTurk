@@ -318,6 +318,7 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
         "target_category",
         "target_subcategory",
         "target_brand",
+        "gender_display",
         "status_badge",
         "max_pages",
         "max_products",
@@ -449,6 +450,10 @@ class SiteScraperTaskAdmin(admin.ModelAdmin):
                     logger.exception("Failed to auto-start SiteScraperTask #%s after admin save", task_pk)
 
             transaction.on_commit(enqueue_after_commit)
+
+    @admin.display(description="Пол", ordering="gender", empty_value="—")
+    def gender_display(self, obj):
+        return obj.get_gender_display() if obj.gender else None
 
     def status_badge(self, obj):
         colors = {"pending": "blue", "running": "orange", "paused": "purple", "completed": "green", "failed": "red", "cancelled": "gray"}

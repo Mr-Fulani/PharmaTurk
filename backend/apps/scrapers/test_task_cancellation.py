@@ -4,7 +4,11 @@ from apps.catalog.models import Category
 from apps.scrapers.base.scraper import ScraperAccessBlockedError
 from apps.scrapers.models import ScraperConfig, ScrapingSession, SiteScraperTask
 from apps.scrapers.services import ScraperIntegrationService, ScraperTaskCancelled
-from apps.scrapers.tasks import revoke_site_scraper_task, run_scraper_task
+from apps.scrapers.tasks import (
+    _proxy_account_error_message,
+    revoke_site_scraper_task,
+    run_scraper_task,
+)
 
 
 def _build_scraper_task(status: str = "running") -> SiteScraperTask:
@@ -116,6 +120,16 @@ def test_revoke_site_scraper_task_uses_celery_control(monkeypatch):
     assert calls == [("celery-123", True, "SIGTERM")]
 
 
+def test_proxy_account_error_message_is_actionable():
+    message = _proxy_account_error_message(RuntimeError("407 Account is suspended"))
+
+    assert message == (
+        "Прокси недоступен: аккаунт прокси-сервиса приостановлен (HTTP 407). "
+        "Проверьте оплату, баланс и статус аккаунта у провайдера прокси."
+    )
+    assert _proxy_account_error_message(RuntimeError("connection reset")) is None
+
+
 @pytest.mark.django_db
 def test_access_blocked_marks_task_failed_without_retry(monkeypatch):
     task = _build_scraper_task(status="running")
@@ -138,3 +152,30 @@ def test_access_blocked_marks_task_failed_without_retry(monkeypatch):
     assert result["status"] == "error"
     assert task.status == "failed"
     assert "HTTP 403" in task.error_message
+
+
+@pytest.mark.django_db
+def test_suspended_proxy_account_has_actionable_error_without_retry(monkeypatch):
+    task = _build_scraper_task(status="running")
+
+    def proxy_suspended(*args, **kwargs):
+        raise RuntimeError("407 Account is suspended")
+
+    monkeypatch.setattr(ScraperIntegrationService, "run_scraper", proxy_suspended)
+
+    result = run_scraper_task.run(
+        scraper_config_id=task.scraper_config_id,
+        start_url=task.start_url,
+        max_pages=task.max_pages,
+        max_products=task.max_products,
+        max_images_per_product=task.max_images_per_product,
+        site_task_id=task.id,
+    )
+
+    task.refresh_from_db()
+    assert result["status"] == "error"
+    assert task.status == "failed"
+    assert task.error_message == (
+        "Прокси недоступен: аккаунт прокси-сервиса приостановлен (HTTP 407). "
+        "Проверьте оплату, баланс и статус аккаунта у провайдера прокси."
+    )

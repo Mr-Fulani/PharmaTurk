@@ -92,10 +92,12 @@ class IkeaParser(BaseScraper):
                     )
                     if clean_variant:
                         seen_spr.add(clean_variant)
-                yield self._scraped_product_from_variant_details(
+                scraped = self._scraped_product_from_variant_details(
                     variant_details,
                     canonical_spr=row_code,
                 )
+                scraped.attributes["ikea_source_category_slug"] = category_slug
+                yield scraped
                 yielded += 1
                 if yielded >= final_limit:
                     return
@@ -208,5 +210,7 @@ class IkeaParser(BaseScraper):
                 "video_url": normalized.get("video_url"),
                 "variant_info": raw.get("variantInfo"),
                 "color": normalized.get("color"),
+                "ikea_category": raw.get("category"),
+                "ikea_function": raw.get("function"),
             },
         )

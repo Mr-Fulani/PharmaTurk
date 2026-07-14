@@ -350,5 +350,9 @@ def test_ikea_parser_fetches_real_api_pages(monkeypatch):
     )
 
     assert [product.external_id for product in products] == ["11111111", "22222222"]
+    assert all(
+        product.attributes["ikea_source_category_slug"] == "kanepeler"
+        for product in products
+    )
     assert requested_pages == [2, 3]
     assert parser.pages_processed == 2

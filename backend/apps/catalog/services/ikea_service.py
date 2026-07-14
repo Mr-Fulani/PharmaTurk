@@ -9,6 +9,7 @@ from django.utils.text import slugify
 from django.utils import timezone
 
 from apps.http_errors import ExternalAccessBlockedError, raise_for_blocked_status
+from apps.catalog.ikea_category_mapping import resolve_ikea_category
 from apps.catalog.models import (
     FurnitureProduct,
     FurnitureVariant,
@@ -546,6 +547,20 @@ class IkeaService:
         else:
             eff_stock = 0
 
+        raw_item = normalized.get("raw_item", {})
+        category_match = resolve_ikea_category(
+            raw_category=raw_item.get("category") if isinstance(raw_item, dict) else None,
+            raw_function=raw_item.get("function") if isinstance(raw_item, dict) else None,
+            furniture_type=normalized.get("furniture_type", ""),
+            external_url=normalized.get("url", ""),
+        )
+        resolved_category = self.default_category
+        if category_match:
+            resolved_category = (
+                Category.objects.filter(slug=category_match.category_slug, is_active=True).first()
+                or resolved_category
+            )
+
         # 1. FurnitureProduct
         product, created = FurnitureProduct.objects.get_or_create(
             external_id=item_no,
@@ -556,7 +571,7 @@ class IkeaService:
                 "price": price,
                 "currency": currency,
                 "brand": self.brand, # Для новых товаров
-                "category": self.default_category,
+                "category": resolved_category,
                 "dimensions": normalized.get("dimensions", "")[:500],
                 "material": normalized.get("material", "")[:500],
                 "furniture_type": normalized.get("furniture_type", "")[:100],
@@ -575,8 +590,8 @@ class IkeaService:
             product.brand = self.brand
             product.save(update_fields=["brand"])
             
-        if not product.category and self.default_category:
-            product.category = self.default_category
+        if not product.category and resolved_category:
+            product.category = resolved_category
             product.save(update_fields=["category"])
         
         # Сохраняем видео, если оно есть (даже для существующего товара)
@@ -599,16 +614,24 @@ class IkeaService:
                 updated = True
                 
             # Обновляем характеристики
-            for attr in ["dimensions", "material", "furniture_type", "color", "main_image", "video_url", "brand", "category"]:
+            for attr in ["dimensions", "material", "furniture_type", "color", "main_image", "video_url", "brand"]:
                 new_val = normalized.get(attr, "")
                 if not new_val and attr == "brand":
                      new_val = self.brand
-                if not new_val and attr == "category":
-                     new_val = self.default_category
                      
                 if new_val and getattr(product, attr, "") != new_val:
                     setattr(product, attr, new_val)
                     updated = True
+
+            # Точный IKEA-маппинг может уточнить только пустую или корневую
+            # категорию. Ручную подкатегорию существующего товара не заменяем.
+            if (
+                resolved_category
+                and product.category_id != resolved_category.id
+                and (not product.category_id or product.category.slug == "furniture")
+            ):
+                product.category = resolved_category
+                updated = True
             
             if updated:
                 product.save()

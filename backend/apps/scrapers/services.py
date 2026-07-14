@@ -57,6 +57,7 @@ from apps.catalog.utils.tr_vocab import (
     translate_turkish_product_term,
 )
 from apps.catalog.models import (
+    Category,
     Product,
     BookProduct,
     JewelryProduct,
@@ -66,6 +67,7 @@ from apps.catalog.models import (
     ProductAuthor,
 )
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
+from apps.catalog.ikea_category_mapping import resolve_ikea_category
 from apps.catalog.utils.parser_media_handler import download_and_optimize_parsed_media
 import datetime
 
@@ -1226,9 +1228,34 @@ class ScraperIntegrationService:
         2. scraper_config.default_category — категория по умолчанию из конфигурации парсера
         Авто-определение категории по атрибутам товара отключено.
         """
-        # Приоритет 1: категория из задачи (task.target_category сохраняется в session)
+        # Явно выбранная конечная подкатегория всегда имеет высший приоритет.
         category = session.target_category
-        # Приоритет 2: категория по умолчанию из конфигурации парсера
+        if category and category.slug != "furniture":
+            scraped_product.category = category.slug or category.name
+            return
+
+        # Для IKEA корень «Мебель» является fallback, а не запретом на более
+        # точное определение по категории и функции из API.
+        if (scraped_product.source or "").strip().lower() == "ikea":
+            attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
+            match = resolve_ikea_category(
+                source_category_slug=attrs.get("ikea_source_category_slug", ""),
+                raw_category=attrs.get("ikea_category"),
+                raw_function=attrs.get("ikea_function"),
+                furniture_type=attrs.get("furniture_type", ""),
+                external_url=scraped_product.url,
+            )
+            if match and Category.objects.filter(slug=match.category_slug, is_active=True).exists():
+                scraped_product.category = match.category_slug
+                attrs["ikea_category_match"] = {
+                    "slug": match.category_slug,
+                    "reason": match.reason,
+                    "confidence": match.confidence,
+                }
+                scraped_product.attributes = attrs
+                return
+
+        # Категория задачи (включая корень) либо настройка конфигурации — fallback.
         if not category:
             category = session.scraper_config.default_category
 

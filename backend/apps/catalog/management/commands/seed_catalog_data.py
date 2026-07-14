@@ -139,6 +139,7 @@ SUBCAT_TO_ROOT = {
     "office": "furniture",
     "kids-furniture": "furniture",
     "storage-furniture": "furniture",
+    "bathroom-furniture": "furniture",
     "outdoor-furniture": "furniture",
     # Автозапчасти L2 (под auto-parts)
     "engine-parts": "auto-parts",
@@ -361,8 +362,13 @@ class Command(BaseCommand):
         parent,
         sort_order,
         is_active=True,
+        preserve_existing=False,
     ):
-        """Создать категорию или привести существующую к ожидаемой иерархии."""
+        """Создать категорию или привести существующую к ожидаемой иерархии.
+
+        ``preserve_existing`` используется для безопасно расширяемых деревьев:
+        повторный seed добавляет отсутствующие узлы, но не затирает ручные правки.
+        """
         category, created = Category.objects.get_or_create(
             slug=slug,
             defaults={
@@ -374,6 +380,9 @@ class Command(BaseCommand):
                 "sort_order": sort_order,
             },
         )
+
+        if preserve_existing and not created:
+            return category, False, False
 
         update_fields = []
         if category.name != name:
@@ -483,6 +492,7 @@ class Command(BaseCommand):
         self.stdout.write("Создание корневых категорий...")
         for i, (slug, name_ru, name_en, desc_ru, desc_en, type_slug) in enumerate(ROOT_CATEGORIES):
             cat_type = CategoryType.objects.filter(slug=type_slug).first()
+            preserve_existing = slug == "furniture"
             cat, created, updated = self._ensure_category(
                 slug=slug,
                 name=name_ru,
@@ -491,12 +501,20 @@ class Command(BaseCommand):
                 parent=None,
                 is_active=True,
                 sort_order=i,
+                preserve_existing=preserve_existing,
             )
             if created:
                 self.stdout.write(f"  ✓ Корневая: {slug}")
             elif updated:
                 self.stdout.write(f"  ↻ Корневая исправлена: {slug}")
-            _ensure_category_translations(cat, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            _ensure_category_translations(
+                cat,
+                name_ru,
+                name_en,
+                desc_ru or name_ru,
+                desc_en or name_en,
+                preserve_existing=preserve_existing,
+            )
 
     def _seed_subcategories(self):
         self.stdout.write("Создание подкатегорий...")
@@ -1065,7 +1083,7 @@ class Command(BaseCommand):
                 _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
 
     def _seed_furniture_subcategories(self):
-        """Создание подкатегорий мебели (L2 и L3) по FURNITURE_SUBCATEGORIES."""
+        """Безопасно дополняет дерево мебели, не меняя существующие категории."""
         self.stdout.write("Создание подкатегорий мебели...")
         root = Category.objects.filter(slug="furniture", parent__isnull=True).first()
         if not root:
@@ -1082,12 +1100,20 @@ class Command(BaseCommand):
                 parent=root,
                 is_active=True,
                 sort_order=sort_l2,
+                preserve_existing=True,
             )
             if created:
                 self.stdout.write(f"  ✓ L2: {slug_l2} -> furniture")
             elif updated:
                 self.stdout.write(f"  ↻ L2 исправлен: {slug_l2} -> furniture")
-            _ensure_category_translations(cat_l2, name_ru, name_en, desc_ru or name_ru, desc_en or name_en)
+            _ensure_category_translations(
+                cat_l2,
+                name_ru,
+                name_en,
+                desc_ru or name_ru,
+                desc_en or name_en,
+                preserve_existing=True,
+            )
             for sort_l3, child in enumerate(children):
                 c_ru, c_en, c_slug, c_desc_ru, c_desc_en = child
                 cat_l3, created, updated = self._ensure_category(
@@ -1098,12 +1124,20 @@ class Command(BaseCommand):
                     parent=cat_l2,
                     is_active=True,
                     sort_order=sort_l3,
+                    preserve_existing=True,
                 )
                 if created:
                     self.stdout.write(f"  ✓ L3: {c_slug} -> {slug_l2}")
                 elif updated:
                     self.stdout.write(f"  ↻ Исправлен parent: {c_slug} -> {slug_l2}")
-                _ensure_category_translations(cat_l3, c_ru, c_en, c_desc_ru or c_ru, c_desc_en or c_en)
+                _ensure_category_translations(
+                    cat_l3,
+                    c_ru,
+                    c_en,
+                    c_desc_ru or c_ru,
+                    c_desc_en or c_en,
+                    preserve_existing=True,
+                )
 
     def _seed_auto_parts_subcategories(self):
         """Создание подкатегорий автозапчастей (L2 и L3) по AUTO_PARTS_SUBCATEGORIES."""
@@ -1498,8 +1532,23 @@ class Command(BaseCommand):
             self.stdout.write("  ✓ Бренд: Другое (other)")
 
 
-def _ensure_category_translations(category, name_ru: str, name_en: str, desc_ru: str, desc_en: str):
+def _ensure_category_translations(
+    category,
+    name_ru: str,
+    name_en: str,
+    desc_ru: str,
+    desc_en: str,
+    *,
+    preserve_existing: bool = False,
+):
     for locale, name, desc in [("ru", name_ru, desc_ru), ("en", name_en, desc_en)]:
+        if preserve_existing:
+            CategoryTranslation.objects.get_or_create(
+                category=category,
+                locale=locale,
+                defaults={"name": name, "description": desc or ""},
+            )
+            continue
         CategoryTranslation.objects.update_or_create(
             category=category,
             locale=locale,
