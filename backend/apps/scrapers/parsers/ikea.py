@@ -32,6 +32,7 @@ class IkeaParser(BaseScraper):
         start_page: int = 1,
     ) -> Iterator[ScrapedProduct]:
         """Парсит список товаров из категории."""
+        self.has_more_pages = True
         self.logger.info(f"Начинаем парсинг каталога IKEA: {category_url}")
         
         # Получаем category_id из URL (если это возможно) или просто ищем товары
@@ -57,6 +58,7 @@ class IkeaParser(BaseScraper):
             )
             self.pages_processed += 1
             if not brief_results:
+                self.has_more_pages = False
                 break
 
             item_codes = []
@@ -103,6 +105,7 @@ class IkeaParser(BaseScraper):
                     return
 
             if len(brief_results) < self.API_PAGE_SIZE:
+                self.has_more_pages = False
                 break
 
     def parse_product_detail(self, product_url: str) -> Optional[ScrapedProduct]:

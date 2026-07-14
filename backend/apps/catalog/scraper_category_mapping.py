@@ -144,6 +144,14 @@ def resolve_category_and_product_type(category_value: str) -> Tuple[Optional[Cat
     if not raw:
         return None, None
 
+    # Явный slug из задачи парсинга должен иметь приоритет над словарными
+    # алиасами. Например, `sandals` — реальная подкатегория, но одновременно
+    # общий турецкий термин раньше схлопывал её в корень `shoes`.
+    exact_slug = raw.lower().replace("_", "-")
+    category = Category.objects.filter(slug=exact_slug).first()
+    if category:
+        return category, _resolve_product_type(category)
+
     normalized_name = _normalize_category_alias_key(raw)
     # Сначала проверяем алиасы
     slug_from_alias = CATEGORY_NAME_ALIASES.get(normalized_name)
@@ -156,16 +164,18 @@ def resolve_category_and_product_type(category_value: str) -> Tuple[Optional[Cat
         # Нормализуем в формат корневых категорий (с дефисом)
         cat_slug = cat_slug.replace("_", "-")
 
-    category = Category.objects.filter(
-        slug=cat_slug
-    ).first()
+    category = Category.objects.filter(slug=cat_slug).first()
     if not category and cat_slug in ALLOWED_ROOT_SLUGS:
         category = get_or_create_root_category(cat_slug)
 
     if not category:
         return None, None
 
-    # product_type в модели Product с подчёркиваниями (medical_equipment, auto_parts)
+    return category, _resolve_product_type(category)
+
+
+def _resolve_product_type(category: Category) -> Optional[str]:
+    """Определяет product_type по category_type или корню дерева."""
     current_cat = category
     product_type = None
     
@@ -183,4 +193,4 @@ def resolve_category_and_product_type(category_value: str) -> Tuple[Optional[Cat
             current_cat = current_cat.parent
         product_type = (current_cat.slug or "").replace("-", "_")
 
-    return category, product_type or None
+    return product_type or None

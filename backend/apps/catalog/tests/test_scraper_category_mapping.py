@@ -1,6 +1,23 @@
 import pytest
 
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
+from apps.catalog.models import Category, CategoryType
+
+
+@pytest.mark.django_db
+def test_exact_subcategory_slug_has_priority_over_root_term_alias():
+    shoes_type = CategoryType.objects.create(name="Обувь", slug="shoes")
+    shoes = Category.objects.create(
+        name="Обувь", slug="shoes", category_type=shoes_type
+    )
+    sandals = Category.objects.create(
+        name="Сандалии", slug="sandals", category_type=shoes_type, parent=shoes
+    )
+
+    category, product_type = resolve_category_and_product_type("sandals")
+
+    assert category == sandals
+    assert product_type == "shoes"
 
 
 @pytest.mark.django_db

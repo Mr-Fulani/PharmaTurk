@@ -304,9 +304,31 @@ class IlacFiyatiParser(BaseScraper):
         start_page — с какой страницы начинать (для авточепочки задач).
         max_pages — сколько страниц обработать в этом вызове (размер чанка).
         """
+        self.has_more_pages = True
         count = 0
         page = start_page
         pages_parsed = 0
+        previous_page_urls = None
+
+        def extract_product_urls(html):
+            soup = BeautifulSoup(html, 'html.parser')
+            urls = []
+            for link in soup.select('a[href*="/ilaclar/"], a[href*="/takviye-edici-gida/"]'):
+                href = link.get('href')
+                if not href or 'pg=' in href:
+                    continue
+                path_parts = urlparse(href).path.strip('/').split('/')
+                if len(path_parts) >= 2 and path_parts[0] in ('ilaclar', 'takviye-edici-gida'):
+                    full_url = urljoin(self.base_url, href)
+                    if full_url not in urls:
+                        urls.append(full_url)
+            return urls
+
+        if page > 1:
+            previous_url = f"{category_url}?pg={page - 1}"
+            previous_html = self._make_request(previous_url)
+            if previous_html:
+                previous_page_urls = extract_product_urls(previous_html)
 
         try:
             self.logger.info(f"Начинаем парсинг товаров: {category_url} (страницы {start_page}+{max_pages})")
@@ -317,25 +339,22 @@ class IlacFiyatiParser(BaseScraper):
 
                 html = self._make_request(url)
                 if not html:
+                    self.has_more_pages = False
                     break
 
-                soup = BeautifulSoup(html, 'html.parser')
-
-                product_links = soup.select('a[href*="/ilaclar/"], a[href*="/takviye-edici-gida/"]')
-                product_urls = []
-
-                for link in product_links:
-                    href = link.get('href')
-                    if href and 'pg=' not in href:
-                        path = urlparse(href).path.strip('/')
-                        path_parts = path.split('/')
-                        if len(path_parts) >= 2 and path_parts[0] in ('ilaclar', 'takviye-edici-gida'):
-                            full_url = urljoin(self.base_url, href)
-                            if full_url not in product_urls:
-                                product_urls.append(full_url)
+                product_urls = extract_product_urls(html)
 
                 if not product_urls:
                     self.logger.info("Ссылки на товары не найдены, завершаем пагинацию.")
+                    self.has_more_pages = False
+                    break
+
+                if previous_page_urls and product_urls == previous_page_urls:
+                    self.logger.info(
+                        "IlacFiyati: страница %s повторяет предыдущую, каталог исчерпан.",
+                        page,
+                    )
+                    self.has_more_pages = False
                     break
 
                 for product_url in product_urls:
@@ -348,6 +367,7 @@ class IlacFiyatiParser(BaseScraper):
                         yield detail
 
                 pages_parsed += 1
+                previous_page_urls = product_urls
                 page += 1
 
         except SoftTimeLimitExceeded:

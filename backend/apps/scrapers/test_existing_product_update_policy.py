@@ -1,7 +1,7 @@
 import pytest
 from django.conf import settings
 
-from apps.catalog.models import Brand, Product
+from apps.catalog.models import Brand, Category, Product
 from apps.catalog.scraper_category_mapping import resolve_category_and_product_type
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.services import ScraperIntegrationService
@@ -260,6 +260,41 @@ def test_repeat_scrape_does_not_overwrite_existing_domain_gender_and_size():
     assert changed is True
     assert headwear.gender == "women"
     assert headwear.size == "XS"
+
+
+@pytest.mark.django_db
+def test_explicit_task_category_replaces_existing_product_category():
+    service = ScraperIntegrationService()
+    old_category = Category.objects.create(name="Обувь", slug="existing-category-root")
+    target_category = Category.objects.create(
+        name="Сандалии", slug="existing-category-sandals", parent=old_category
+    )
+    product = Product.objects.create(
+        name="Existing Sandals",
+        slug="existing-sandals-category-override",
+        category=old_category,
+        product_type="shoes",
+        price=100,
+        currency="TRY",
+        external_id="existing-sandals-category-override",
+        external_data={},
+    )
+    scraped = ScrapedProduct(
+        name=product.name,
+        price=product.price,
+        currency=product.currency,
+        url="https://www.flo.com.tr/urun/existing-sandal-12345",
+        external_id=product.external_id,
+        source="flo",
+        attributes={},
+    )
+    scraped._category_override = target_category
+
+    status, updated_product = service._update_existing_product(None, scraped, product)
+    updated_product.refresh_from_db()
+
+    assert status == "updated"
+    assert updated_product.category == target_category
 
 
 @pytest.mark.django_db

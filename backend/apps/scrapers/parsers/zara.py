@@ -399,7 +399,9 @@ class ZaraParser(BaseScraper):
         max_pages: int = 10,
         start_page: int = 1,
     ) -> Iterator[ScrapedProduct]:
+        self.has_more_pages = True
         if self.is_zara_marketing_url(category_url):
+            self.has_more_pages = False
             yield from self._parse_marketing_category(category_url, max_categories=max_pages)
             return
 
@@ -412,6 +414,7 @@ class ZaraParser(BaseScraper):
             page_url = self._page_url(category_url, page)
             payload = self._request_payload(page_url)
             if not payload:
+                self.has_more_pages = False
                 break
 
             components = self._extract_category_components(payload, page)
@@ -436,6 +439,7 @@ class ZaraParser(BaseScraper):
             pages_done += 1
             pagination = payload.get("paginationInfo") or {}
             if pagination.get("isLastPage") is True or new_on_page == 0:
+                self.has_more_pages = False
                 break
             page += 1
 

@@ -15,6 +15,24 @@ from ..base.scraper import BaseScraper, ScrapedProduct, ScraperAccessBlockedErro
 from ..base.utils import clean_text
 
 
+FLO_SHOE_CATEGORY_MARKERS = (
+    ("sandals", ("sandalet", "sandal")),
+    ("sneakers", ("sneaker", "spor ayakkabi", "spor ayakkabı")),
+    ("home-shoes", ("ev terligi", "ev terliği", "panduf")),
+    ("boots", ("bot", "cizme", "çizme")),
+    ("dress-shoes", ("klasik ayakkabi", "klasik ayakkabı")),
+)
+
+
+def resolve_flo_shoe_category_slug(*values: Any) -> str:
+    """Определяет подкатегорию обуви FLO по breadcrumb, названию и URL."""
+    haystack = " ".join(str(value or "") for value in values).casefold()
+    for slug, markers in FLO_SHOE_CATEGORY_MARKERS:
+        if any(marker in haystack for marker in markers):
+            return slug
+    return ""
+
+
 class FloParser(BaseScraper):
     """Парсер flo.com.tr на основе серверного JSON ``window.productDetail``."""
 
@@ -115,6 +133,7 @@ class FloParser(BaseScraper):
         max_pages: int = 10,
         start_page: int = 1,
     ) -> Iterator[ScrapedProduct]:
+        self.has_more_pages = True
         # Дедуп по sku цвета: карточка группирует все цвета модели, поэтому
         # ссылки на другие цвета той же модели в листинге пропускаем.
         seen_skus: Set[str] = set()
@@ -126,6 +145,7 @@ class FloParser(BaseScraper):
             page_url = self._page_url(category_url, page)
             html = self._fetch(page_url)
             if not html:
+                self.has_more_pages = False
                 break
             self.pages_processed += 1
 
@@ -153,6 +173,7 @@ class FloParser(BaseScraper):
 
             pages_done += 1
             if new_on_page == 0 or 'rel="next"' not in html:
+                self.has_more_pages = False
                 break
             page += 1
 

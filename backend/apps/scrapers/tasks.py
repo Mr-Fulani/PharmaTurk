@@ -432,6 +432,7 @@ def run_scraper_task(self,
                 and site_task.status != "cancelled"
                 and products_this_chunk > 0
                 and new_total < effective_max
+                and getattr(session, "_has_more_pages", None) is not False
             )
 
             if should_chain:

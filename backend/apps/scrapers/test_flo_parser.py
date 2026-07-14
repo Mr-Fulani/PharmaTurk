@@ -1,10 +1,12 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from apps.scrapers.base.scraper import ScrapedProduct, ScraperAccessBlockedError
-from apps.scrapers.parsers.flo import FloParser
+from apps.scrapers.parsers.flo import FloParser, resolve_flo_shoe_category_slug
 from apps.scrapers.services import ScraperIntegrationService
+from apps.catalog.models import Category
 
 
 def _detail(sku="101792825", name="COURT BOROUGH LOW RECRAFT Beyaz Unisex Sneaker"):
@@ -84,6 +86,40 @@ def test_flo_url_detection():
     )
     # чужой домен и нестандартный путь не считаем товаром FLO
     assert not FloParser.is_flo_product_url("https://www.lcw.com/urun-o-4827603")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("Erkek Sandalet", "sandals"),
+        ("Klasik Sneaker", "sneakers"),
+        ("Kadın Çizme", "boots"),
+        ("Ev Terliği", "home-shoes"),
+        ("Bilinmeyen Ayakkabı", ""),
+    ],
+)
+def test_resolve_flo_shoe_category_slug(value, expected):
+    assert resolve_flo_shoe_category_slug(value) == expected
+
+
+@pytest.mark.django_db
+def test_flo_root_task_keeps_inferred_sandals_subcategory():
+    shoes = Category.objects.create(name="Обувь", slug="shoes")
+    Category.objects.create(name="Сандалии", slug="sandals", parent=shoes)
+    session = SimpleNamespace(
+        target_category=shoes,
+        scraper_config=SimpleNamespace(default_category=None),
+    )
+    product = ScrapedProduct(
+        name="Hakiki Deri Erkek Sandalet",
+        url="https://www.flo.com.tr/urun/erkek-sandalet-12345",
+        category="Erkек Sandalet",
+        source="flo",
+    )
+
+    ScraperIntegrationService()._apply_category_mapping(session, product)
+
+    assert product.category == "sandals"
 
 
 def test_flo_chunking_only_for_category_not_product():
@@ -217,6 +253,7 @@ def test_flo_parse_list_paginates_and_dedupes(monkeypatch):
 
     assert [p.external_id for p in products] == ["flo-111111", "flo-222222", "flo-333333"]
     assert f"{category_url}&page=2" in requested
+    assert parser.has_more_pages is False
     # третьей страницы нет — остановились по отсутствию rel="next"
     assert f"{category_url}&page=3" not in requested
 

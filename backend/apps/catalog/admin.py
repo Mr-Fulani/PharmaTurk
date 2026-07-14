@@ -592,11 +592,24 @@ def _category_level_display(obj):
     return "L3+"
 
 
-class BaseCategoryAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
+class CategoryProductCountAdminMixin:
+    """Один агрегированный COUNT для всей таблицы категорий, без N+1."""
+
+    @admin.display(description=_("Товаров"), ordering="_products_count")
+    def products_count_display(self, obj):
+        return getattr(obj, "_products_count", 0)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(
+            _products_count=Count("products", distinct=True)
+        )
+
+
+class BaseCategoryAdmin(CategoryProductCountAdminMixin, AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
     """Базовый админ для прокси категорий с фильтром по типу."""
     form = CategoryFormCatalogHints
     required_category_type_slug: str | None = None
-    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent', 'shipping_calculation', 'is_active', 'sort_order', 'created_at')
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent', 'products_count_display', 'shipping_calculation', 'is_active', 'sort_order', 'created_at')
     list_filter = (
         ActiveRootFilter,
         'is_active',
@@ -710,10 +723,10 @@ class BaseCategoryAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
 
 
 @admin.register(Category)
-class AllCategoriesAdmin(AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
+class AllCategoriesAdmin(CategoryProductCountAdminMixin, AdminMediaHelpTextMixin, nested_admin.NestedModelAdmin):
     """Единый список всех категорий (корневые и подкатегории)."""
     form = CategoryFormCatalogHints
-    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent_display', 'margin_percent', 'shipping_calculation', 'is_active', 'sort_order', 'created_at')
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'parent_display', 'products_count_display', 'margin_percent', 'shipping_calculation', 'is_active', 'sort_order', 'created_at')
     list_filter = (
         ActiveRootFilter,
         'is_active',
@@ -1296,10 +1309,10 @@ class FavoriteAdmin(admin.ModelAdmin):
 # ============================================================================
 
 @admin.register(CategoryClothing)
-class ClothingCategoryAdmin(admin.ModelAdmin):
+class ClothingCategoryAdmin(CategoryProductCountAdminMixin, admin.ModelAdmin):
     """Админка для категорий одежды."""
     form = CategoryFormCatalogHints
-    list_display = ('name', 'slug', 'category_type', 'level_display', 'clothing_type', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_display = ('name', 'slug', 'category_type', 'level_display', 'clothing_type', 'parent', 'products_count_display', 'is_active', 'sort_order', 'created_at')
     list_filter = (
         'is_active',
         CategoryLevelFilter,
@@ -1683,10 +1696,10 @@ class ClothingProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, 
 
 
 @admin.register(CategoryShoes)
-class ShoeCategoryAdmin(admin.ModelAdmin):
+class ShoeCategoryAdmin(CategoryProductCountAdminMixin, admin.ModelAdmin):
     """Админка для категорий обуви."""
     form = CategoryFormCatalogHints
-    list_display = ('name', 'slug', 'level_display', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_display = ('name', 'slug', 'level_display', 'parent', 'products_count_display', 'is_active', 'sort_order', 'created_at')
     list_filter = (
         'is_active',
         CategoryLevelFilter,
@@ -2137,10 +2150,10 @@ class ShoeProductAdmin(MainMediaPreviewAdminMixin, AdminMediaHelpTextMixin, Shad
 
 
 @admin.register(CategoryElectronics)
-class ElectronicsCategoryAdmin(admin.ModelAdmin):
+class ElectronicsCategoryAdmin(CategoryProductCountAdminMixin, admin.ModelAdmin):
     """Админка для категорий электроники."""
     form = CategoryFormCatalogHints
-    list_display = ('name', 'slug', 'level_display', 'device_type', 'parent', 'is_active', 'sort_order', 'created_at')
+    list_display = ('name', 'slug', 'level_display', 'device_type', 'parent', 'products_count_display', 'is_active', 'sort_order', 'created_at')
     list_filter = (
         'is_active',
         CategoryLevelFilter,

@@ -138,6 +138,7 @@ class LcwParser(BaseScraper):
         обработать за этот вызов (размер чанка). Останавливается, когда страница пустая
         или не приносит новых товаров (LCW за последней страницей повторяет последнюю).
         """
+        self.has_more_pages = True
         seen_urls = set()
         seen_family_urls = set()
         seen_group_ids = set()
@@ -158,6 +159,7 @@ class LcwParser(BaseScraper):
         while pages_done < max(1, max_pages):
             html = self._make_request(self._lcw_page_url(category_url, page))
             if not html:
+                self.has_more_pages = False
                 break
             soup = BeautifulSoup(html, "html.parser")
 
@@ -168,6 +170,7 @@ class LcwParser(BaseScraper):
                     page,
                     page - 1,
                 )
+                self.has_more_pages = False
                 break
 
             new_on_page = 0
@@ -227,6 +230,7 @@ class LcwParser(BaseScraper):
             page += 1
             # Новых товаров на странице не было → вышли за последнюю страницу LCW.
             if new_on_page == 0:
+                self.has_more_pages = False
                 break
 
     def _extract_listing_product_urls(self, html: str) -> Set[str]:

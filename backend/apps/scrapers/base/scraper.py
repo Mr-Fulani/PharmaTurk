@@ -134,6 +134,9 @@ class BaseScraper(ABC):
         self.password = password
         self.max_products = None  # Лимит товаров
         self.pages_processed = 0
+        # None — парсер не сообщает; True/False — явный сигнал для Celery,
+        # нужен ли следующий постраничный чанк.
+        self.has_more_pages = None
 
         # Прокси для обхода репутационных блокировок (Akamai и т.п.).
         # Активен только при use_proxy=True и заданном SCRAPER_PROXY_URL.

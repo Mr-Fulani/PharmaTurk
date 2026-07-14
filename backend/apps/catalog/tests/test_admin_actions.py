@@ -2,21 +2,39 @@ import pytest
 from django.contrib.admin.sites import AdminSite
 from django.test import RequestFactory
 
-from apps.catalog.admin import ClothingProductAdmin, ServiceAdmin
+from apps.catalog.admin import AllCategoriesAdmin, ClothingProductAdmin, ServiceAdmin
 from apps.catalog.admin_books import BookProductAdmin
 from apps.catalog.admin_headwear import HeadwearProductAdmin, HeadwearVariantAdmin
 from apps.catalog.admin_perfumery import PerfumeryProductAdmin
 from apps.catalog.admin_wave2 import MedicineProductAdmin, SupplementProductAdmin
 from apps.catalog.models import (
     BookProduct,
+    Category,
     ClothingProduct,
     HeadwearProduct,
     HeadwearVariant,
     MedicineProduct,
     PerfumeryProduct,
+    Product,
     Service,
     SupplementProduct,
 )
+
+
+@pytest.mark.django_db
+def test_category_admin_annotates_product_count_once_for_changelist(admin_request):
+    category = Category.objects.create(name="Сандалии", slug="admin-count-sandals")
+    Product.objects.create(
+        name="Тестовые сандалии",
+        slug="admin-count-sandal-product",
+        category=category,
+    )
+    model_admin = AllCategoriesAdmin(Category, AdminSite())
+
+    row = model_admin.get_queryset(admin_request).get(pk=category.pk)
+
+    assert row._products_count == 1
+    assert model_admin.products_count_display(row) == 1
 
 
 @pytest.fixture

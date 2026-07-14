@@ -1054,6 +1054,7 @@ class ScraperIntegrationService:
                     session.pages_processed += parser.pages_processed
                 elif incremental_results["found"]:
                     session.pages_processed += incremental_results["found"] // 20 + 1
+                session._has_more_pages = getattr(parser, "has_more_pages", None)
 
             elif is_search:
                 # Поиск товаров
@@ -1230,13 +1231,32 @@ class ScraperIntegrationService:
         """
         # Явно выбранная конечная подкатегория всегда имеет высший приоритет.
         category = session.target_category
+        source = (scraped_product.source or "").strip().lower()
+
+        # Корень «Обувь» в задаче FLO задаёт тип товара, но не должен стирать
+        # более точный тип из breadcrumb/названия карточки.
+        if category and category.slug == "shoes" and source == "flo":
+            from apps.scrapers.parsers.flo import resolve_flo_shoe_category_slug
+
+            flo_slug = resolve_flo_shoe_category_slug(
+                scraped_product.category,
+                scraped_product.name,
+                scraped_product.url,
+            )
+            flo_category = Category.objects.filter(slug=flo_slug, is_active=True).first()
+            if flo_category:
+                scraped_product.category = flo_slug
+                scraped_product._category_override = flo_category
+                return
+
         if category and category.slug != "furniture":
             scraped_product.category = category.slug or category.name
+            scraped_product._category_override = category
             return
 
         # Для IKEA корень «Мебель» является fallback, а не запретом на более
         # точное определение по категории и функции из API.
-        if (scraped_product.source or "").strip().lower() == "ikea":
+        if source == "ikea":
             attrs = scraped_product.attributes if isinstance(scraped_product.attributes, dict) else {}
             match = resolve_ikea_category(
                 source_category_slug=attrs.get("ikea_source_category_slug", ""),
@@ -1245,8 +1265,13 @@ class ScraperIntegrationService:
                 furniture_type=attrs.get("furniture_type", ""),
                 external_url=scraped_product.url,
             )
-            if match and Category.objects.filter(slug=match.category_slug, is_active=True).exists():
+            matched_category = (
+                Category.objects.filter(slug=match.category_slug, is_active=True).first()
+                if match else None
+            )
+            if matched_category:
                 scraped_product.category = match.category_slug
+                scraped_product._category_override = matched_category
                 attrs["ikea_category_match"] = {
                     "slug": match.category_slug,
                     "reason": match.reason,
@@ -1261,6 +1286,8 @@ class ScraperIntegrationService:
 
         if category:
             scraped_product.category = category.slug or category.name
+            if getattr(session, "target_category_id", None):
+                scraped_product._category_override = category
 
     def _apply_brand_mapping(
         self, session: ScrapingSession, scraped_product: ScrapedProduct
@@ -2774,7 +2801,11 @@ class ScraperIntegrationService:
                 existing_product.external_url = scraped_product.url
                 updated = True
 
-        if scraped_product.category:
+        category_override = getattr(scraped_product, "_category_override", None)
+        if category_override and existing_product.category_id != category_override.pk:
+            existing_product.category = category_override
+            updated = True
+        elif scraped_product.category:
             category, product_type = resolve_category_and_product_type(scraped_product.category)
             if category is not None and not existing_product.category_id:
                 existing_product.category = category

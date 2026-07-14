@@ -154,6 +154,34 @@ def test_paginating_parser_chains_next_chunk(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_paginating_parser_does_not_chain_after_explicit_last_page(monkeypatch):
+    task = _build_task("flo")
+    task.start_url = "https://www.flo.com.tr/sandalet"
+    task.save(update_fields=["start_url"])
+    session = _session_with_products(task)
+    session._has_more_pages = False
+
+    monkeypatch.setattr(ScraperIntegrationService, "run_scraper", lambda *a, **k: session)
+
+    def fail_apply_async(*args, **kwargs):
+        raise AssertionError("после последней страницы новый чанк запрещён")
+
+    monkeypatch.setattr(run_scraper_task, "apply_async", fail_apply_async)
+
+    run_scraper_task.run(
+        scraper_config_id=task.scraper_config_id,
+        start_url=task.start_url,
+        max_pages=task.max_pages,
+        max_products=task.max_products,
+        max_images_per_product=task.max_images_per_product,
+        site_task_id=task.id,
+    )
+
+    task.refresh_from_db()
+    assert task.status == "completed"
+
+
+@pytest.mark.django_db
 def test_ikea_chains_one_api_page_per_worker_run(monkeypatch):
     task = _build_task("ikea")
     task.start_url = "https://www.ikea.com.tr/kategori/kanepeler"
@@ -306,6 +334,24 @@ def test_config_brand_is_used_when_task_brand_is_empty():
 
     assert product.brand == "Config Brand"
     assert product._brand_override is None
+
+
+@pytest.mark.django_db
+def test_task_category_is_marked_as_authoritative_override():
+    service = ScraperIntegrationService()
+    root = Category.objects.create(name="Обувь", slug="task-category-shoes")
+    sandals = Category.objects.create(name="Сандалии", slug="task-category-sandals", parent=root)
+    product = ScrapedProduct(name="Сандалии", category="Обувь", source="flo")
+    session = SimpleNamespace(
+        target_category=sandals,
+        target_category_id=sandals.pk,
+        scraper_config=SimpleNamespace(default_category=root),
+    )
+
+    service._apply_category_mapping(session, product)
+
+    assert product.category == sandals.slug
+    assert product._category_override == sandals
 
 
 def test_ikea_parser_fetches_real_api_pages(monkeypatch):
