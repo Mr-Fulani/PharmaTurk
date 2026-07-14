@@ -4246,17 +4246,28 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
         )
 
         # Конвертируем текущую цену в preferred_currency для сравнения
-        def _convert(price, currency):
-            """Конвертирует price из currency в preferred_currency с маржой."""
+        def _convert(price, currency, priced_product):
+            """Конвертирует цену и накладывает товарную маржу конкретного товара."""
             if price is None:
                 return None
             try:
                 _original, _converted, price_with_margin = currency_converter.convert_price(
                     price, currency or 'TRY', preferred_currency, apply_margin=True
                 )
-                return float(price_with_margin)
+                from .utils.product_markup import apply_product_markup
+
+                return float(apply_product_markup(price_with_margin, priced_product))
             except Exception:
-                return float(price)
+                logger.exception(
+                    "Failed to calculate public analog price for product_id=%s",
+                    getattr(priced_product, 'pk', None),
+                )
+                try:
+                    from .utils.product_markup import apply_product_markup
+
+                    return float(apply_product_markup(price, priced_product))
+                except Exception:
+                    return float(price)
 
         try:
             from .utils.currency_converter import currency_converter as _cc
@@ -4264,12 +4275,18 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
         except Exception:
             currency_converter = None
 
-        def _safe_convert(price, from_currency):
+        def _safe_convert(price, from_currency, priced_product):
             if currency_converter is None or price is None:
-                return float(price) if price else None
-            return _convert(price, from_currency)
+                if price is None:
+                    return None
+                from .utils.product_markup import apply_product_markup
 
-        current_price_converted = _safe_convert(product.price, product.currency or 'TRY')
+                return float(apply_product_markup(price, priced_product))
+            return _convert(price, from_currency, priced_product)
+
+        current_price_converted = _safe_convert(
+            product.price, product.currency or 'TRY', product
+        )
 
         results = []
         for analog in analogs_qs:
@@ -4282,8 +4299,12 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
             if main_img and request and not main_img.startswith('http'):
                 main_img = request.build_absolute_uri(main_img)
             # Конвертируем цену аналога в preferred_currency
-            analog_price_converted = _safe_convert(analog.price, analog.currency or 'TRY')
-            analog_old_price_converted = _safe_convert(analog.old_price, analog.currency or 'TRY')
+            analog_price_converted = _safe_convert(
+                analog.price, analog.currency or 'TRY', analog
+            )
+            analog_old_price_converted = _safe_convert(
+                analog.old_price, analog.currency or 'TRY', analog
+            )
 
             # Расчёт экономии vs текущий товар (в той же preferred_currency)
             saving_percent = None
@@ -4298,7 +4319,7 @@ class MedicineProductViewSet(_SimpleDomainViewSet):
                 'slug': analog.slug,
                 'name': analog.name,
                 'brand': analog.brand.name if analog.brand else None,
-                # Цена в preferred_currency с маржой
+                # Публичная цена: маржа валютной пары, затем товарная маржа
                 'price': round(analog_price_converted, 2) if analog_price_converted else None,
                 'old_price': round(analog_old_price_converted, 2) if analog_old_price_converted else None,
                 'original_price': float(analog.price) if analog.price else None,

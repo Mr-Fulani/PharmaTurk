@@ -1,6 +1,8 @@
 import pytest
+from decimal import Decimal
 from rest_framework.test import APIRequestFactory
 
+from apps.catalog.currency_models import GlobalCurrencySettings
 from apps.catalog.models import MedicineAnalog, Product
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.services import ScraperIntegrationService
@@ -169,6 +171,57 @@ def test_medicine_analogs_api_sorts_by_price_and_returns_savings():
     assert response.status_code == 200
     assert [item["slug"] for item in response.data["results"]] == [cheap.slug, expensive.slug]
     assert response.data["results"][0]["saving_percent"] > response.data["results"][1]["saving_percent"] > 0
+
+
+@pytest.mark.django_db
+def test_medicine_analogs_api_applies_product_markup_to_public_prices():
+    from apps.catalog.views import MedicineProductViewSet
+
+    settings = GlobalCurrencySettings.load()
+    settings.default_margin_percentage = Decimal("20")
+    settings.save()
+
+    service = ScraperIntegrationService()
+    source_base = Product.objects.create(
+        name="SOURCE WITH MARKUP",
+        slug="source-with-markup",
+        product_type="medicines",
+        price=Decimal("100"),
+        currency="TRY",
+        external_data={},
+    )
+    source = service._get_medicine_product(source_base)
+    analog_base = Product.objects.create(
+        name="ANALOG WITH MARKUP",
+        slug="analog-with-markup",
+        product_type="medicines",
+        price=Decimal("80"),
+        old_price=Decimal("90"),
+        currency="TRY",
+        external_id="analog-with-markup",
+        external_data={},
+        is_available=True,
+    )
+    analog = service._get_medicine_product(analog_base)
+    MedicineAnalog.objects.create(
+        product=source,
+        analog_product=analog,
+        name=analog.name,
+        external_id=analog.external_id,
+        source="ilacfiyati",
+    )
+
+    request = APIRequestFactory().get("/", HTTP_X_CURRENCY="TRY")
+    response = MedicineProductViewSet.as_view({"get": "analogs"})(
+        request, slug=source.slug
+    )
+
+    assert response.status_code == 200
+    result = response.data["results"][0]
+    assert result["price"] == 96.0
+    assert result["old_price"] == 108.0
+    assert result["saving_amount"] == 24.0
+    assert result["saving_percent"] == 20
 
 
 @pytest.mark.django_db
