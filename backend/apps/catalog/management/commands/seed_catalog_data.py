@@ -286,6 +286,11 @@ class Command(BaseCommand):
             help="Создать только категории и подкатегории",
         )
         parser.add_argument(
+            "--furniture-only",
+            action="store_true",
+            help="Безопасно добавить только отсутствующие категории мебели",
+        )
+        parser.add_argument(
             "--brands-only",
             action="store_true",
             help="Создать только бренды",
@@ -307,6 +312,12 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        if options["furniture_only"]:
+            with transaction.atomic():
+                self._seed_furniture_subcategories()
+            self.stdout.write(self.style.SUCCESS("Готово."))
+            return
+
         if options["fix_hierarchy"]:
             self._fix_hierarchy()
             return

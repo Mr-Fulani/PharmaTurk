@@ -5,6 +5,15 @@ from apps.catalog.management.commands.seed_catalog_data import Command
 from apps.catalog.models import Category, CategoryTranslation
 
 
+def test_seed_command_has_isolated_furniture_only_mode():
+    parser = Command().create_parser("manage.py", "seed_catalog_data")
+
+    options = vars(parser.parse_args(["--furniture-only"]))
+
+    assert options["furniture_only"] is True
+    assert options["categories_only"] is False
+
+
 def test_furniture_seed_tree_has_expected_top_level_and_unique_slugs():
     top_level_slugs = [item[2] for item in FURNITURE_SUBCATEGORIES]
     all_slugs = top_level_slugs + [
