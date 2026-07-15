@@ -2,6 +2,7 @@
 
 import logging
 from typing import Iterator, List, Optional
+from urllib.parse import urlparse
 from ..base.scraper import BaseScraper, ScrapedProduct
 from apps.catalog.services import IkeaService
 
@@ -24,6 +25,16 @@ class IkeaParser(BaseScraper):
 
     def get_supported_domains(self) -> List[str]:
         return ["ikea.com.tr", "www.ikea.com.tr"]
+
+    @classmethod
+    def is_ikea_product_url(cls, url: str) -> bool:
+        parts = [part for part in urlparse(url or "").path.strip("/").split("/") if part]
+        return any(part in ("urun", "product", "p") for part in parts)
+
+    @classmethod
+    def supports_page_chunking_for_url(cls, url: str) -> bool:
+        """Only IKEA category/API listings have a meaningful page cursor."""
+        return not cls.is_ikea_product_url(url)
 
     def parse_product_list(
         self,

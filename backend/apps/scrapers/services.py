@@ -79,8 +79,9 @@ DEFAULT_ASSUMED_STOCK_QUANTITY = 1000
 SCRAPER_TASK_SEEN_TTL = 7 * 24 * 60 * 60
 
 
-def _scraper_task_seen_cache_key(site_task_id: int) -> str:
-    return f"scraper:site-task:{site_task_id}:seen-products"
+def _scraper_task_product_cache_key(site_task_id: int, identity: str) -> str:
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return f"scraper:site-task:{site_task_id}:product:{digest}"
 
 
 def _scraped_product_identity(product: ScrapedProduct) -> str:
@@ -1007,10 +1008,6 @@ class ScraperIntegrationService:
                 # сохраняется в БД сразу после парсинга, не накапливается в памяти.
                 incremental_results = {"found": 0, "created": 0, "updated": 0, "skipped": 0, "errors": 0}
                 checkpoint = 0
-                seen_cache_key = (
-                    _scraper_task_seen_cache_key(site_task_id) if site_task_id else None
-                )
-                seen_task_products = set(cache.get(seen_cache_key, [])) if seen_cache_key else set()
                 # start_page передаём только парсерам с настоящей пагинацией,
                 # иначе остальные упадут на неизвестном аргументе (TypeError).
                 list_kwargs = {"max_pages": session.max_pages}
@@ -1028,7 +1025,12 @@ class ScraperIntegrationService:
                             break
                         self._ensure_site_task_not_cancelled(site_task_id, celery_task_id)
                         product_identity = _scraped_product_identity(product)
-                        if product_identity and product_identity in seen_task_products:
+                        product_cache_key = (
+                            _scraper_task_product_cache_key(site_task_id, product_identity)
+                            if site_task_id and product_identity
+                            else None
+                        )
+                        if product_cache_key and cache.get(product_cache_key):
                             incremental_results["skipped"] += 1
                             self.logger.warning(
                                 "Повторная карточка между чанками пропущена: %s (task=%s)",
@@ -1039,11 +1041,10 @@ class ScraperIntegrationService:
                         r = self._process_scraped_products(session, [product])
                         for k in incremental_results:
                             incremental_results[k] += r.get(k, 0)
-                        if product_identity and seen_cache_key:
-                            seen_task_products.add(product_identity)
+                        if product_cache_key:
                             cache.set(
-                                seen_cache_key,
-                                list(seen_task_products),
+                                product_cache_key,
+                                True,
                                 timeout=SCRAPER_TASK_SEEN_TTL,
                             )
                         checkpoint += 1

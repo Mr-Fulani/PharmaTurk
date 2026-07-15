@@ -10,6 +10,7 @@ import pytest
 from types import SimpleNamespace
 
 from django.conf import settings
+from django.core.cache import cache
 
 from apps.catalog.models import Brand, Category
 from apps.scrapers.base.scraper import ScrapedProduct
@@ -17,6 +18,8 @@ from apps.scrapers.models import ScraperConfig, ScrapingSession, SiteScraperTask
 from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
 from apps.scrapers.parsers.ikea import IkeaParser
 from apps.scrapers.parsers.lcw import LcwParser
+from apps.scrapers.parsers.flo import FloParser
+from apps.scrapers.parsers.zara import ZaraParser
 from apps.scrapers.parsers.ummaland import UmmalandParser
 from apps.scrapers.services import ScraperIntegrationService
 from apps.scrapers.tasks import run_scraper_task
@@ -47,6 +50,24 @@ def test_only_paginating_parser_supports_chunking():
     assert IkeaParser.SUPPORTS_PAGE_CHUNKING is True
     # UmmaLand берёт весь листинг из API за один проход → чепочка переоткрыла бы те же товары.
     assert UmmalandParser.SUPPORTS_PAGE_CHUNKING is False
+
+
+@pytest.mark.parametrize(
+    "parser_class",
+    [FloParser, IkeaParser, IlacFiyatiParser, LcwParser, ZaraParser],
+)
+def test_every_chunking_parser_has_url_specific_guard(parser_class):
+    assert parser_class.SUPPORTS_PAGE_CHUNKING is True
+    assert callable(getattr(parser_class, "supports_page_chunking_for_url", None))
+
+
+def test_ikea_chunking_only_for_listing_not_product():
+    assert IkeaParser.supports_page_chunking_for_url(
+        "https://www.ikea.com.tr/kategori/kanepeler"
+    )
+    assert not IkeaParser.supports_page_chunking_for_url(
+        "https://www.ikea.com.tr/urun/ektorp-kanepe-49509025"
+    )
 
 
 def test_ilacfiyati_chunking_only_for_listing_not_product():
@@ -216,6 +237,96 @@ def test_ikea_chains_one_api_page_per_worker_run(monkeypatch):
     assert captured_run["max_pages"] == 1
     assert queued["start_page"] == 2
     assert queued["max_pages"] == 1
+
+
+@pytest.mark.django_db
+def test_ikea_product_url_does_not_chain(monkeypatch):
+    task = _build_task("ikea")
+    task.start_url = "https://www.ikea.com.tr/urun/ektorp-kanepe-49509025"
+    task.save(update_fields=["start_url"])
+    session = _session_with_products(task)
+    session.products_found = 1
+    session.products_updated = 1
+
+    monkeypatch.setattr(ScraperIntegrationService, "run_scraper", lambda *a, **k: session)
+
+    def fail_apply_async(*args, **kwargs):
+        raise AssertionError("одиночный IKEA-товар не должен ставить новый чанк")
+
+    monkeypatch.setattr(run_scraper_task, "apply_async", fail_apply_async)
+
+    run_scraper_task.run(
+        scraper_config_id=task.scraper_config_id,
+        start_url=task.start_url,
+        max_pages=task.max_pages,
+        max_products=task.max_products,
+        max_images_per_product=task.max_images_per_product,
+        site_task_id=task.id,
+    )
+
+    task.refresh_from_db()
+    assert task.status == "completed"
+    assert task.products_found == 1
+
+
+@pytest.mark.django_db
+def test_duplicate_product_is_skipped_across_separate_celery_chunks(monkeypatch):
+    """Regression: every chunk creates a new parser, but task-wide dedup must survive."""
+    task = _build_task("flo")
+    task.start_url = "https://www.flo.com.tr/sandalet"
+    task.save(update_fields=["start_url"])
+    cache.clear()
+
+    class RepeatingParser:
+        SUPPORTS_PAGE_CHUNKING = True
+        REPORTS_PAGES_PROCESSED = True
+        max_products = 100
+        pages_processed = 1
+        has_more_pages = True
+
+        @staticmethod
+        def is_category_url(url):
+            return True
+
+        @staticmethod
+        def supports_page_chunking_for_url(url):
+            return True
+
+        def parse_product_list(self, *args, **kwargs):
+            yield ScrapedProduct(
+                name="Same card",
+                source="flo",
+                external_id="flo-duplicate-1",
+                url="https://www.flo.com.tr/urun/same-10001",
+            )
+
+    service = ScraperIntegrationService()
+    monkeypatch.setattr(
+        service,
+        "_process_scraped_products",
+        lambda session, products: {
+            "found": 1,
+            "created": 0,
+            "updated": 1,
+            "skipped": 0,
+            "errors": 0,
+        },
+    )
+
+    first_session = _session_with_products(task)
+    first_session.pages_processed = 0
+    _, first = service._run_parser_scraping(
+        RepeatingParser(), first_session, task.start_url, site_task_id=task.id
+    )
+
+    second_session = _session_with_products(task)
+    second_session.pages_processed = 0
+    _, second = service._run_parser_scraping(
+        RepeatingParser(), second_session, task.start_url, start_page=2, site_task_id=task.id
+    )
+
+    assert first == {"found": 1, "created": 0, "updated": 1, "skipped": 0, "errors": 0}
+    assert second == {"found": 0, "created": 0, "updated": 0, "skipped": 1, "errors": 0}
 
 
 @pytest.mark.django_db
