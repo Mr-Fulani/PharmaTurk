@@ -170,11 +170,9 @@ def process_product_ai_task(
                 error_message=str(e),
                 completed_at=timezone.now(),
             )
-        return {
-            "status": "error",
-            "error": str(e),
-            "product_id": product_id,
-        }
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e, countdown=min(60 * (2 ** self.request.retries), 300))
+        raise
 
 
 @shared_task

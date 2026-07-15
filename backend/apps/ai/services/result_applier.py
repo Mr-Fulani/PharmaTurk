@@ -296,16 +296,6 @@ class BookAIApplier(BaseAIApplier):
             except (TypeError, ValueError):
                 pass
 
-        # Количество на складе: если не задано у товара — ставим из AI или дефолт 3
-        if hasattr(target, 'stock_quantity') and not target.stock_quantity:
-            stock_qty = attrs.get('stock_quantity') or 3
-            try:
-                target.stock_quantity = int(stock_qty)
-                book_updated = True
-            except (TypeError, ValueError):
-                target.stock_quantity = 3
-                book_updated = True
-
         if book_updated:
             target.save()
             updated = True
@@ -527,6 +517,23 @@ class AIResultApplier:
 
         # Применяем сгенерированное название к товару: обновляем доменную модель (name + slug), sync скопирует в Product
         with transaction.atomic():
+            suggested_category = ai_data.get("suggested_category")
+            try:
+                category_confidence = float(ai_data.get("category_confidence") or 0)
+            except (TypeError, ValueError):
+                category_confidence = 0
+            if (
+                suggested_category is not None
+                and getattr(suggested_category, "is_active", False)
+                and category_confidence >= 0.75
+            ):
+                if product.category_id != suggested_category.id:
+                    product.category = suggested_category
+                    product.save(update_fields=["category"])
+                if target is not None and hasattr(target, "category_id") and target.category_id != suggested_category.id:
+                    target.category = suggested_category
+                    target.save(update_fields=["category"])
+
             new_title = (ai_data.get("generated_title") or "").strip()
             if new_title and target is not None:
                 target.name = new_title[:500]
