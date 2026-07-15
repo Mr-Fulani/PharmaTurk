@@ -1344,6 +1344,25 @@ class ScraperIntegrationService:
         scraped_product._brand_override = override_brand
         # Если оба поля пусты, сохраняем бренд, который нашел парсер.
 
+    @staticmethod
+    def _apply_authoritative_product_overrides(
+        product: Product, scraped_product: ScrapedProduct
+    ) -> bool:
+        """Apply exact task-selected FK values after normalizer create/update logic."""
+        changed_fields = []
+        category = getattr(scraped_product, "_category_override", None)
+        brand = getattr(scraped_product, "_brand_override", None)
+        if category and product.category_id != category.pk:
+            product.category = category
+            changed_fields.append("category")
+        if brand and product.brand_id != brand.pk:
+            product.brand = brand
+            changed_fields.append("brand")
+        if changed_fields:
+            product.save(update_fields=changed_fields)
+            return True
+        return False
+
     def _get_first_image_url(self, media_urls: List[str]) -> Optional[str]:
         for media_url in media_urls or []:
             if self.catalog_normalizer._resolve_media_type(media_url) == "image":
@@ -3795,6 +3814,11 @@ class ScraperIntegrationService:
         if prepared_attrs:
             if self._update_product_attributes(product, prepared_attrs, session=session):
                 product.save()
+
+        # Нормализатор резолвит категорию/бренд по строкам. Для явно выбранных
+        # значений задачи этого недостаточно: закрепляем точные FK после всей
+        # create-логики, включая очистку бренда для отдельных типов товаров.
+        self._apply_authoritative_product_overrides(product, scraped_product)
 
         # Обрабатываем аналоги, если это медицина
         if product.product_type == "medicines" and getattr(scraped_product, "analogs", None):

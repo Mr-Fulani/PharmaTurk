@@ -12,7 +12,7 @@ from types import SimpleNamespace
 from django.conf import settings
 from django.core.cache import cache
 
-from apps.catalog.models import Brand, Category
+from apps.catalog.models import Brand, Category, Product
 from apps.scrapers.base.scraper import ScrapedProduct
 from apps.scrapers.models import ScraperConfig, ScrapingSession, SiteScraperTask
 from apps.scrapers.parsers.ilacfiyati import IlacFiyatiParser
@@ -429,6 +429,70 @@ def test_task_brand_override_has_priority_over_config_brand():
 
     assert product.brand == "Task Brand"
     assert product._brand_override == task_brand
+
+
+@pytest.mark.django_db
+def test_exact_task_brand_and_subcategory_are_forwarded_to_scraper_chunk(monkeypatch):
+    task = _build_task("flo")
+    root = task.target_category or task.scraper_config.default_category
+    subcategory = Category.objects.create(
+        name="Exact subcategory",
+        slug="exact-task-subcategory",
+        parent=root,
+    )
+    brand = Brand.objects.create(name="Exact Brand", slug="exact-task-brand")
+    task.target_category = root
+    task.target_subcategory = subcategory
+    task.target_brand = brand
+    task.start_url = "https://www.flo.com.tr/sandalet"
+    task.save(
+        update_fields=["target_category", "target_subcategory", "target_brand", "start_url"]
+    )
+    session = _session_with_products(task)
+    session._has_more_pages = False
+    captured = {}
+
+    def fake_run_scraper(*args, **kwargs):
+        captured.update(kwargs)
+        return session
+
+    monkeypatch.setattr(ScraperIntegrationService, "run_scraper", fake_run_scraper)
+
+    run_scraper_task.run(
+        scraper_config_id=task.scraper_config_id,
+        start_url=task.start_url,
+        max_pages=task.max_pages,
+        max_products=task.max_products,
+        max_images_per_product=task.max_images_per_product,
+        site_task_id=task.id,
+    )
+
+    assert captured["target_category"] == subcategory
+    assert captured["target_brand"] == brand
+
+
+@pytest.mark.django_db
+def test_authoritative_task_fk_overrides_replace_normalizer_result():
+    service = ScraperIntegrationService()
+    wrong_category = Category.objects.create(name="Wrong", slug="wrong-category")
+    exact_category = Category.objects.create(name="Exact", slug="exact-category")
+    wrong_brand = Brand.objects.create(name="Wrong Brand", slug="wrong-brand")
+    exact_brand = Brand.objects.create(name="Exact Brand FK", slug="exact-brand-fk")
+    product = Product.objects.create(
+        name="Product",
+        slug="authoritative-override-product",
+        category=wrong_category,
+        brand=wrong_brand,
+    )
+    scraped = ScrapedProduct(name="Product")
+    scraped._category_override = exact_category
+    scraped._brand_override = exact_brand
+
+    assert service._apply_authoritative_product_overrides(product, scraped) is True
+
+    product.refresh_from_db()
+    assert product.category == exact_category
+    assert product.brand == exact_brand
 
 
 @pytest.mark.django_db
